@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -110,6 +111,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [pessoa, setPessoa] = useState<Pessoa | null>(null);
   const [isPreview, setIsPreview] = useState(false);
+  const pessoaRef = useRef<Pessoa | null>(null);
+
+  useEffect(() => {
+    pessoaRef.current = pessoa;
+  }, [pessoa]);
 
   useEffect(() => {
     if (!supabase) {
@@ -125,16 +131,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let mounted = true;
 
+    async function loadAndStorePessoa(authId: string, showLoading: boolean) {
+      if (!mounted) return;
+
+      if (showLoading) {
+        setLoading(true);
+      }
+
+      try {
+        const loadedPessoa = await loadPessoa(authId);
+        if (!mounted) return;
+        pessoaRef.current = loadedPessoa;
+        setPessoa(loadedPessoa);
+      } catch (error) {
+        console.error("Não foi possível carregar o perfil do colaborador.", error);
+        if (showLoading && mounted) {
+          pessoaRef.current = null;
+          setPessoa(null);
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
 
       setSession(data.session);
       if (data.session?.user.id) {
-        try {
-          setPessoa(await loadPessoa(data.session.user.id));
-        } finally {
-          if (mounted) setLoading(false);
-        }
+        await loadAndStorePessoa(data.session.user.id, true);
       } else {
         setLoading(false);
       }
@@ -143,15 +168,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       if (!nextSession?.user.id) {
+        pessoaRef.current = null;
         setPessoa(null);
         setLoading(false);
         return;
       }
 
-      setLoading(true);
-      loadPessoa(nextSession.user.id)
-        .then(setPessoa)
-        .finally(() => setLoading(false));
+      const currentPessoa = pessoaRef.current;
+      const isSameUser = currentPessoa?.auth_id === nextSession.user.id;
+      void loadAndStorePessoa(nextSession.user.id, !isSameUser);
     });
 
     return () => {

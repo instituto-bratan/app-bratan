@@ -306,6 +306,17 @@ export async function getOrCreateRemoteChecklistRun(dateRef = todayISO()) {
 export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ runId: string; items: ChecklistItem[] }> {
   const client = requireSupabase();
   const run = await getOrCreateRemoteChecklistRun(dateRef);
+  const mapRunItem = (item: RemoteChecklistItemRun): ChecklistItem => ({
+    id: item.id,
+    grupo: item.grupo,
+    descricao: item.descricao,
+    responsavel: item.responsavel,
+    ordem: item.ordem,
+    concluido: item.concluido,
+    concluidoPor: item.concluido_por ? "Equipe Bratan" : undefined,
+    concluidoEm: item.concluido_em ?? undefined,
+  });
+  const itemKey = (item: Pick<RemoteChecklistItemRun, "grupo" | "descricao">) => `${item.grupo}:::${item.descricao}`;
 
   const { data: existingItems, error: existingItemsError } = await client
     .from("checklist_item_run")
@@ -315,22 +326,6 @@ export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ 
 
   if (existingItemsError) throw existingItemsError;
 
-  if (existingItems && existingItems.length > 0) {
-    return {
-      runId: run.id,
-      items: ((existingItems ?? []) as RemoteChecklistItemRun[]).map((item) => ({
-        id: item.id,
-        grupo: item.grupo,
-        descricao: item.descricao,
-        responsavel: item.responsavel,
-        ordem: item.ordem,
-        concluido: item.concluido,
-        concluidoPor: item.concluido_por ? "Equipe Bratan" : undefined,
-        concluidoEm: item.concluido_em ?? undefined,
-      })),
-    };
-  }
-
   const { data: templateItems, error: templateItemsError } = await client
     .from("checklist_item_template")
     .select("grupo, descricao, responsavel, ordem")
@@ -339,7 +334,45 @@ export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ 
 
   if (templateItemsError) throw templateItemsError;
 
-  const inserts = ((templateItems ?? []) as RemoteChecklistTemplateItem[]).map((item) => ({
+  const currentTemplateItems = (templateItems ?? []) as RemoteChecklistTemplateItem[];
+  const currentTemplateKeys = new Set(currentTemplateItems.map(itemKey));
+
+  if (existingItems && existingItems.length > 0) {
+    const existingRunItems = existingItems as RemoteChecklistItemRun[];
+    const existingKeys = new Set(existingRunItems.map(itemKey));
+    const missingTemplateItems = currentTemplateItems.filter((item) => !existingKeys.has(itemKey(item)));
+    let createdItems: RemoteChecklistItemRun[] = [];
+
+    if (missingTemplateItems.length > 0) {
+      const { data: syncedItems, error: syncedItemsError } = await client
+        .from("checklist_item_run")
+        .insert(
+          missingTemplateItems.map((item) => ({
+            run_id: run.id,
+            grupo: item.grupo,
+            descricao: item.descricao,
+            responsavel: item.responsavel,
+            ordem: item.ordem,
+          })),
+        )
+        .select("*");
+
+      if (syncedItemsError) throw syncedItemsError;
+      createdItems = (syncedItems ?? []) as RemoteChecklistItemRun[];
+    }
+
+    const visibleExistingItems = currentTemplateKeys.size
+      ? existingRunItems.filter((item) => currentTemplateKeys.has(itemKey(item)))
+      : existingRunItems;
+    const mergedItems = [...visibleExistingItems, ...createdItems].sort((a, b) => a.ordem - b.ordem);
+
+    return {
+      runId: run.id,
+      items: mergedItems.map(mapRunItem),
+    };
+  }
+
+  const inserts = currentTemplateItems.map((item) => ({
     run_id: run.id,
     grupo: item.grupo,
     descricao: item.descricao,
@@ -361,16 +394,7 @@ export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ 
 
   return {
     runId: run.id,
-    items: ((createdItems ?? []) as RemoteChecklistItemRun[]).map((item) => ({
-      id: item.id,
-      grupo: item.grupo,
-      descricao: item.descricao,
-      responsavel: item.responsavel,
-      ordem: item.ordem,
-      concluido: item.concluido,
-      concluidoPor: item.concluido_por ? "Equipe Bratan" : undefined,
-      concluidoEm: item.concluido_em ?? undefined,
-    })),
+    items: ((createdItems ?? []) as RemoteChecklistItemRun[]).map(mapRunItem),
   };
 }
 

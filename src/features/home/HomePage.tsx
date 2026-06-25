@@ -75,9 +75,9 @@ const modules = [
     title: "POPs & Fluxos",
     href: "/pops-fluxos",
     icon: FileText,
-    label: "Fase 2",
-    description: "Base preparada para abrir documentos por área e apontar para SharePoint.",
-    action: "Ver estrutura",
+    label: "18 fluxos",
+    description: "Fluxogramas reais por setor, com contexto operacional e tarefas extraídas.",
+    action: "Abrir biblioteca",
     allowed: canBaseModules,
   },
   {
