@@ -1,4 +1,5 @@
 import { todayISO } from "@/lib/localStore";
+import type { Cargo } from "@/types/database";
 
 export type ChecklistItem = {
   id: string;
@@ -170,6 +171,39 @@ export function createChecklistRun(): ChecklistItem[] {
     ...item,
     concluido: false,
   }));
+}
+
+export function checklistGroupsForCargo(cargo: Cargo | null | undefined) {
+  switch (cargo) {
+    case "recepcionista":
+    case "secretaria_executiva":
+    case "marketing":
+      return ["Recepção / Comercial"];
+    case "enfermeira":
+      return ["Enfermagem"];
+    case "nutricionista":
+      return ["Copa / Nutrição"];
+    case "limpeza":
+      return ["Higienização / Limpeza"];
+    case "gestor_financeiro":
+      return ["Financeiro / Administrativo"];
+    case "dr_daniel":
+    case "ceo":
+    case "gestor":
+      return ["Gestão"];
+    default:
+      return [];
+  }
+}
+
+export function filterChecklistItemsByCargo(items: ChecklistItem[], cargo: Cargo | null | undefined) {
+  const allowedGroups = checklistGroupsForCargo(cargo);
+
+  if (!allowedGroups.length) {
+    return [];
+  }
+
+  return items.filter((item) => allowedGroups.includes(item.grupo));
 }
 
 export function checklistSummary(items: ChecklistItem[]) {

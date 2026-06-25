@@ -10,7 +10,14 @@ import { isCoordenacao } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { listRemoteChecklistItems, resetRemoteChecklistRun, updateRemoteChecklistItem } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
-import { checklistStorageKey, checklistSummary, createChecklistRun, type ChecklistItem } from "./checklistData";
+import {
+  checklistGroupsForCargo,
+  checklistStorageKey,
+  checklistSummary,
+  createChecklistRun,
+  filterChecklistItemsByCargo,
+  type ChecklistItem,
+} from "./checklistData";
 
 function ProgressRing({ value }: { value: number }) {
   const radius = 38;
@@ -70,7 +77,10 @@ export function ChecklistPage() {
     mutationFn: resetRemoteChecklistRun,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["checklist", dateRef] }),
   });
-  const items = useRemote ? checklistQuery.data?.items ?? [] : localItems;
+  const allItems = useRemote ? checklistQuery.data?.items ?? [] : localItems;
+  const visibleItems = useMemo(() => filterChecklistItemsByCargo(allItems, pessoa?.cargo), [allItems, pessoa?.cargo]);
+  const sectorGroups = checklistGroupsForCargo(pessoa?.cargo);
+  const sectorLabel = sectorGroups.length > 0 ? sectorGroups.join(", ") : "Setor não definido";
   const runId = checklistQuery.data?.runId ?? null;
 
   function persist(nextItems: ChecklistItem[]) {
@@ -79,7 +89,7 @@ export function ChecklistPage() {
   }
 
   async function toggleItem(id: string) {
-    const item = items.find((currentItem) => currentItem.id === id);
+    const item = allItems.find((currentItem) => currentItem.id === id);
     if (!item) return;
 
     if (useRemote) {
@@ -93,7 +103,7 @@ export function ChecklistPage() {
 
     const now = new Date().toISOString();
     persist(
-      items.map((item) =>
+      allItems.map((item) =>
         item.id === id
           ? {
               ...item,
@@ -115,14 +125,14 @@ export function ChecklistPage() {
     persist(createChecklistRun());
   }
 
-  const { doneCount, progress } = checklistSummary(items);
+  const { doneCount, progress } = checklistSummary(visibleItems);
   const groupedItems = useMemo(() => {
-    return items.reduce<Record<string, ChecklistItem[]>>((groups, item) => {
+    return visibleItems.reduce<Record<string, ChecklistItem[]>>((groups, item) => {
       groups[item.grupo] = groups[item.grupo] ?? [];
       groups[item.grupo].push(item);
       return groups;
     }, {});
-  }, [items]);
+  }, [visibleItems]);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -139,9 +149,10 @@ export function ChecklistPage() {
             </Badge>
             <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Tarefas do dia</h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Execução diária do checklist de fechamento. O modelo permanece estável e o histórico do dia fica preservado.
+              Execução diária filtrada pelo setor do colaborador. O histórico do dia fica preservado sem misturar tarefas de outras áreas.
             </p>
             <p className="mt-2 text-sm font-semibold capitalize text-brand-oliva">{formatLongDate()}</p>
+            <p className="mt-2 text-sm font-semibold text-brand-tinta">Setor visível: {sectorLabel}</p>
             {checklistQuery.isError ? (
               <p className="mt-3 text-sm font-semibold text-destructive">
                 Não foi possível carregar o checklist no Supabase. Confira migrations e permissões.
@@ -152,7 +163,7 @@ export function ChecklistPage() {
             <ProgressRing value={progress} />
             <div className="min-w-28">
               <p className="text-3xl font-bold text-brand-tinta">
-                {doneCount}/{items.length}
+                {doneCount}/{visibleItems.length}
               </p>
               <p className="text-sm text-muted-foreground">tarefas concluídas</p>
               {isCoordenacao(pessoa?.cargo) ? (
@@ -168,6 +179,16 @@ export function ChecklistPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <section className="space-y-4">
+          {visibleItems.length === 0 ? (
+            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+              <CardContent className="p-6">
+                <p className="text-lg font-semibold text-brand-musgo">Nenhuma tarefa vinculada ao seu setor.</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Confira se o cargo do colaborador está correto em Administração &gt; Colaboradores.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
           {Object.entries(groupedItems).map(([grupo, groupItems], groupIndex) => (
             <motion.div
               key={grupo}
@@ -248,7 +269,7 @@ export function ChecklistPage() {
               </div>
               <div className="grid grid-cols-2 gap-3 text-center">
                 <div className="rounded-lg border border-brand-oliva/20 bg-white p-3">
-                  <p className="text-2xl font-bold text-brand-musgo">{items.length - doneCount}</p>
+                  <p className="text-2xl font-bold text-brand-musgo">{visibleItems.length - doneCount}</p>
                   <p className="text-xs font-semibold uppercase text-brand-oliva">pendentes</p>
                 </div>
                 <div className="rounded-lg border border-brand-oliva/20 bg-white p-3">

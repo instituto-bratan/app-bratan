@@ -26,7 +26,7 @@ import { canAdministracao, canBaseModules, canComprovantes, canLembretesPagament
 import { formatLongDate, formatShortTime, readLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { lunchSummary, statusLabel } from "@/features/almoco/almocoData";
-import { checklistStorageKey, checklistSummary, createChecklistRun } from "@/features/checklist/checklistData";
+import { checklistStorageKey, checklistSummary, createChecklistRun, filterChecklistItemsByCargo } from "@/features/checklist/checklistData";
 import {
   comprovantesStorageKey,
   comprovantesSummary,
@@ -168,8 +168,8 @@ export function HomePage() {
 
   const checklist = useMemo(() => {
     const items = readLocalValue(checklistStorageKey(), createChecklistRun());
-    return checklistSummary(items);
-  }, []);
+    return checklistSummary(filterChecklistItemsByCargo(items, cargo));
+  }, [cargo]);
 
   const lunch = useMemo(() => lunchSummary(now), [now]);
 
