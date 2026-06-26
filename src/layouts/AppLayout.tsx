@@ -8,6 +8,7 @@ import {
   Home,
   LogOut,
   ReceiptText,
+  ShieldCheck,
   Utensils,
   UserRound,
   UsersRound,
@@ -30,6 +31,7 @@ const navItems = [
   { label: "Comprovantes", href: "/comprovantes", icon: ReceiptText, mobile: true, allowed: canComprovantes },
   { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, mobile: true, allowed: canLembretesPagamento },
   { label: "Colaboradores", href: "/administracao/colaboradores", icon: UsersRound, mobile: false, allowed: canAdministracao },
+  { label: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, mobile: false, allowed: canAdministracao },
   { label: "Auditoria", href: "/administracao/auditoria", icon: History, mobile: false, allowed: canAdministracao },
 ];
 

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AuditoriaPage } from "@/features/admin/AuditoriaPage";
 import { ColaboradorPerfilPage } from "@/features/admin/ColaboradorPerfilPage";
 import { ColaboradoresPage } from "@/features/admin/ColaboradoresPage";
+import { SegurancaPage } from "@/features/admin/SegurancaPage";
 import { AlmocoPage } from "@/features/almoco/AlmocoPage";
 import { ChecklistPage } from "@/features/checklist/ChecklistPage";
 import { ComprovantesPage } from "@/features/comprovantes/ComprovantesPage";
@@ -32,6 +33,7 @@ export function App() {
           <Route path="/administracao" element={<Navigate to="/administracao/colaboradores" replace />} />
           <Route path="/administracao/colaboradores" element={<ColaboradoresPage />} />
           <Route path="/administracao/colaboradores/:id" element={<ColaboradorPerfilPage />} />
+          <Route path="/administracao/seguranca" element={<SegurancaPage />} />
           <Route path="/administracao/auditoria" element={<AuditoriaPage />} />
         </Route>
       </Route>

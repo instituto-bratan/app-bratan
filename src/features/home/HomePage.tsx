@@ -108,6 +108,15 @@ const modules = [
     allowed: canAdministracao,
   },
   {
+    title: "Segurança",
+    href: "/administracao/seguranca",
+    icon: ShieldCheck,
+    label: "Administração",
+    description: "Revise acessos, desligamentos, e-mails e eventos sensíveis.",
+    action: "Ver segurança",
+    allowed: canAdministracao,
+  },
+  {
     title: "Auditoria",
     href: "/administracao/auditoria",
     icon: History,

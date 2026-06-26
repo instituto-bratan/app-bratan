@@ -13,6 +13,8 @@ export const auditActionLabels: Record<string, string> = {
   "auth.create_colaborador_access": "Acesso criado",
   "colaborador.create": "Colaborador cadastrado",
   "colaborador.update": "Colaborador atualizado",
+  "colaborador.deactivate": "Colaborador desligado",
+  "colaborador.reactivate": "Colaborador reativado",
   "aviso.publish": "Aviso publicado",
   "aviso.archive": "Aviso arquivado",
   "checklist_item.toggle": "Tarefa marcada",
