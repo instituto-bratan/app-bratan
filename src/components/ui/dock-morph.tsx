@@ -44,18 +44,18 @@ export default function DockMorph({ items, className, position = "bottom" }: Doc
       : defaultItems;
 
   const positionClasses = {
-    bottom: "fixed bottom-4 left-1/2 -translate-x-1/2",
-    top: "fixed top-4 left-1/2 -translate-x-1/2",
-    left: "fixed left-6 top-1/2 -translate-y-1/2 flex-col",
+    bottom: "fixed bottom-[calc(0.8rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2",
+    top: "fixed top-[calc(0.8rem+env(safe-area-inset-top))] left-1/2 -translate-x-1/2",
+    left: "fixed left-4 top-1/2 -translate-y-1/2 flex-col",
   };
 
   return (
-    <div className={cn("z-50 flex items-center justify-center", positionClasses[position], className)}>
+    <div className={cn("z-50 flex max-w-[calc(100vw-1rem)] items-center justify-center", positionClasses[position], className)}>
       <TooltipProvider delayDuration={120}>
         <div
           className={cn(
-            "relative flex items-center rounded-lg border border-brand-oliva/25 bg-brand-papel/88 p-2 shadow-calm backdrop-blur-xl",
-            position === "left" ? "flex-col gap-3 px-3 py-5" : "flex-row gap-2",
+            "ios-glass mobile-scrollbar-none relative flex max-w-[calc(100vw-1rem)] items-center overflow-x-auto rounded-[28px] border p-2 shadow-ios-dock",
+            position === "left" ? "flex-col gap-3 px-3 py-5" : "flex-row gap-1.5 sm:gap-2",
           )}
         >
           {dockItems.map((item, index) => (
@@ -70,15 +70,19 @@ export default function DockMorph({ items, className, position = "bottom" }: Doc
                     {(hovered === index || item.active) && (
                       <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: item.active ? 1.1 : 1.35, opacity: 1 }}
+                        animate={{
+                          scale: item.active ? 1.08 : 1.28,
+                          opacity: 1,
+                          rotate: hovered === index && !item.active ? 4 : 0,
+                        }}
                         exit={{ scale: 0.8, opacity: 0 }}
                         transition={{ type: "spring", stiffness: 220, damping: 24 }}
                         className={cn(
-                          "absolute inset-0 -z-10 rounded-full",
+                          "absolute inset-0 -z-10 rounded-full blur-[0.2px]",
                           item.active
-                            ? "bg-brand-musgo"
-                            : "bg-gradient-to-tr from-brand-dourado/35 via-brand-creme/65 to-transparent",
-                          "shadow-md",
+                            ? "bg-gradient-to-br from-brand-musgo via-brand-oliva to-brand-musgo"
+                            : "bg-gradient-to-tr from-brand-dourado/34 via-white/72 to-brand-creme/36",
+                          "shadow-md ring-1 ring-white/55",
                         )}
                       />
                     )}
@@ -89,8 +93,8 @@ export default function DockMorph({ items, className, position = "bottom" }: Doc
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "relative z-10 h-11 w-11 rounded-full transition-transform duration-200 hover:scale-105",
-                      item.active ? "text-brand-papel hover:bg-transparent hover:text-brand-papel" : "text-brand-musgo",
+                      "ios-pressable relative z-10 h-12 w-12 shrink-0 rounded-full transition-transform duration-200 hover:scale-105 sm:h-11 sm:w-11",
+                      item.active ? "text-brand-papel hover:bg-transparent hover:text-brand-papel" : "text-brand-musgo hover:bg-white/54",
                       item.disabled && "cursor-not-allowed opacity-45 hover:scale-100",
                     )}
                     onClick={item.disabled ? undefined : item.onClick}

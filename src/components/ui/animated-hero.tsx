@@ -42,18 +42,18 @@ function Hero({
 
   return (
     <div className="w-full">
-      <div className="mx-auto flex max-w-5xl flex-col items-start justify-center gap-7 py-2">
+      <div className="mx-auto flex max-w-5xl flex-col items-start justify-center gap-6 py-1 sm:gap-7 sm:py-2">
         <div>
-          <Button variant="secondary" size="sm" className="gap-3">
+          <Button variant="secondary" size="sm" className="gap-3 rounded-full px-3.5">
             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
             {eyebrow}
           </Button>
         </div>
 
         <div className="flex max-w-4xl flex-col gap-5">
-          <h1 className="text-5xl leading-[1.03] text-brand-tinta sm:text-6xl lg:text-7xl">
+          <h1 className="text-4xl leading-[1.03] text-brand-tinta sm:text-6xl lg:text-7xl">
             <span>{titleLead}</span>
-            <span className="relative flex min-h-[1.05em] w-full overflow-hidden pb-1 pt-1 text-brand-musgo">
+            <span className="relative flex min-h-[1.12em] w-full overflow-hidden pb-1 pt-1 text-brand-musgo sm:min-h-[1.05em]">
               {titles.map((title, index) => (
                 <motion.span
                   key={title}
@@ -78,18 +78,18 @@ function Hero({
             </span>
           </h1>
 
-          <p className="max-w-2xl text-lg leading-8 text-muted-foreground">{description}</p>
+          <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">{description}</p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
           {primaryAction ? (
-            <LiquidButton type="button" size="xl" onClick={primaryAction.onClick}>
+            <LiquidButton type="button" size="xl" className="w-full justify-center sm:w-auto" onClick={primaryAction.onClick}>
               {primaryAction.label}
               <MoveRight className="h-4 w-4" aria-hidden="true" />
             </LiquidButton>
           ) : null}
           {secondaryAction ? (
-            <Button type="button" size="lg" variant="outline" className="gap-3" onClick={secondaryAction.onClick}>
+            <Button type="button" size="lg" variant="outline" className="w-full gap-3 sm:w-auto" onClick={secondaryAction.onClick}>
               {secondaryAction.label}
               <MoveRight className="h-4 w-4" aria-hidden="true" />
             </Button>

@@ -31,6 +31,10 @@
   --ring: 43 44% 58%;
   --glass: rgba(255, 255, 255, 0.58);
   --glass-strong: rgba(255, 255, 255, 0.78);
+  --ios-surface: rgba(255, 255, 255, 0.66);
+  --ios-surface-strong: rgba(255, 255, 255, 0.82);
+  --ios-hairline: rgba(77, 86, 59, 0.16);
+  --ios-shadow: 0 24px 60px rgba(43, 46, 36, 0.10);
 }
 
 * {
@@ -46,14 +50,14 @@ html {
 body {
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(248, 237, 189, 0.52), transparent 360px),
-    radial-gradient(circle at 90% 10%, rgba(122, 137, 94, 0.14), transparent 420px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(250, 248, 241, 0) 420px),
-    var(--bratan-papel);
+  background: linear-gradient(180deg, #fffdf7 0%, #faf8f1 46%, #eeeadd 100%);
+  background-attachment: fixed;
   color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
   text-rendering: optimizeLegibility;
 }
 
@@ -83,6 +87,103 @@ h3 {
 
 ::selection {
   background: rgba(198, 168, 98, 0.35);
+}
+
+@layer utilities {
+  .ios-safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .ios-safe-top {
+    padding-top: max(0rem, env(safe-area-inset-top));
+  }
+
+  .ios-glass {
+    border-color: var(--ios-hairline);
+    background: linear-gradient(180deg, var(--ios-surface-strong), var(--ios-surface));
+    box-shadow: var(--ios-shadow);
+    backdrop-filter: blur(24px) saturate(1.38);
+    -webkit-backdrop-filter: blur(24px) saturate(1.38);
+  }
+
+  .ios-glass-quiet {
+    border-color: rgba(77, 86, 59, 0.13);
+    background: rgba(255, 255, 255, 0.58);
+    box-shadow: 0 16px 34px rgba(43, 46, 36, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.68);
+    backdrop-filter: blur(18px) saturate(1.18);
+    -webkit-backdrop-filter: blur(18px) saturate(1.18);
+  }
+
+  .ios-pressable {
+    transform: translateZ(0);
+    transition:
+      transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      background-color 180ms ease;
+  }
+
+  .ios-pressable:active {
+    transform: scale(0.985);
+  }
+
+  .ios-liquid-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ios-liquid-sheen::after {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    background:
+      linear-gradient(115deg, transparent 0%, rgba(255, 255, 255, 0.38) 34%, transparent 56%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 42%);
+    opacity: 0;
+    transform: translateX(-42%);
+    transition:
+      opacity 220ms ease,
+      transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .ios-liquid-sheen:hover::after,
+  .ios-liquid-sheen:focus-within::after {
+    opacity: 1;
+    transform: translateX(42%);
+  }
+
+  .mobile-scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .mobile-scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-app-shell section.rounded-lg.border {
+    border-color: var(--ios-hairline);
+    background: rgba(255, 255, 255, 0.62);
+    box-shadow: var(--ios-shadow);
+    backdrop-filter: blur(22px) saturate(1.22);
+    -webkit-backdrop-filter: blur(22px) saturate(1.22);
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  h1[class*="text-4xl"],
+  h1[class*="text-5xl"] {
+    font-size: 2.35rem;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  h3[class*="text-xl"] {
+    line-height: 1.15;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

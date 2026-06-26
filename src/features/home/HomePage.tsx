@@ -217,7 +217,7 @@ export function HomePage() {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.48, ease: [0.4, 0, 0.2, 1] }}
-        className="overflow-hidden rounded-lg border border-brand-oliva/20 bg-white/62 px-5 py-6 shadow-calm backdrop-blur sm:px-7 sm:py-8 lg:px-10"
+        className="ios-glass ios-liquid-sheen overflow-hidden rounded-lg border px-4 py-5 shadow-ios sm:px-7 sm:py-8 lg:px-10"
       >
         <div className="mb-5 flex flex-wrap gap-2">
           <Badge variant="gold">Painel do dia</Badge>

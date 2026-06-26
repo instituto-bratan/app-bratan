@@ -64,6 +64,8 @@ declare const config: {
             };
             boxShadow: {
                 calm: string;
+                ios: string;
+                "ios-dock": string;
             };
         };
     };

@@ -82,6 +82,8 @@ var config = {
             },
             boxShadow: {
                 calm: "0 18px 40px rgba(43, 46, 36, 0.08)",
+                ios: "0 22px 55px rgba(43, 46, 36, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.68)",
+                "ios-dock": "0 22px 60px rgba(43, 46, 36, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.82)",
             },
         },
     },
