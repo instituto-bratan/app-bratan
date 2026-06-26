@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Eye, KeyRound, Save, UserRoundPlus, UsersRound } from "lucide-react";
+import { Eye, KeyRound, RotateCcw, Save, Search, ShieldCheck, Trash2, UserRoundPlus, UsersRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,13 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, cargoGroup, cargoLabels, cargos, seededColaboradores } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
-import { createRemoteColaboradorAccess, listRemoteColaboradores, saveRemoteColaborador } from "@/lib/remoteData";
+import {
+  createRemoteColaboradorAccess,
+  deactivateRemoteColaborador,
+  listRemoteColaboradores,
+  reactivateRemoteColaborador,
+  saveRemoteColaborador,
+} from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import type { Cargo, Colaborador } from "@/types/database";
 import { colaboradoresStorageKey } from "./colaboradoresData";
@@ -36,6 +42,17 @@ function createId() {
   return `colaborador-${crypto.randomUUID?.() ?? Date.now()}`;
 }
 
+function createSecurePassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const values = new Uint32Array(16);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
+}
+
+function isInstitutionalEmail(email: string) {
+  return email.endsWith("@institutobratan.com.br");
+}
+
 export function ColaboradoresPage() {
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
@@ -48,6 +65,8 @@ export function ColaboradoresPage() {
   const [accessError, setAccessError] = useState<string | null>(null);
   const [createAccessNow, setCreateAccessNow] = useState(false);
   const [initialPassword, setInitialPassword] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ativos" | "desligados" | "todos">("ativos");
   const colaboradoresQuery = useQuery({
     queryKey: ["colaboradores"],
     queryFn: listRemoteColaboradores,
@@ -61,15 +80,39 @@ export function ColaboradoresPage() {
     mutationFn: createRemoteColaboradorAccess,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["colaboradores"] }),
   });
+  const deactivateMutation = useMutation({
+    mutationFn: deactivateRemoteColaborador,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["colaboradores"] }),
+  });
+  const reactivateMutation = useMutation({
+    mutationFn: reactivateRemoteColaborador,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["colaboradores"] }),
+  });
   const colaboradores = useRemote ? colaboradoresQuery.data ?? [] : localColaboradores;
+  const activeColaboradores = useMemo(() => colaboradores.filter((colaborador) => colaborador.ativo), [colaboradores]);
 
   const sortedColaboradores = useMemo(
-    () =>
-      [...colaboradores].sort((a, b) => {
+    () => {
+      const normalizedQuery = query.trim().toLowerCase();
+
+      return colaboradores
+        .filter((colaborador) => {
+          if (statusFilter === "ativos" && !colaborador.ativo) return false;
+          if (statusFilter === "desligados" && colaborador.ativo) return false;
+
+          if (!normalizedQuery) return true;
+
+          return `${colaborador.nome} ${colaborador.email} ${cargoLabels[colaborador.cargo]}`
+            .toLowerCase()
+            .includes(normalizedQuery);
+        })
+        .sort((a, b) => {
+          if (a.ativo !== b.ativo) return a.ativo ? -1 : 1;
         const cargoDelta = cargos.indexOf(a.cargo) - cargos.indexOf(b.cargo);
         return cargoDelta || a.nome.localeCompare(b.nome);
-      }),
-    [colaboradores],
+        });
+    },
+    [colaboradores, query, statusFilter],
   );
 
   function persist(nextColaboradores: Colaborador[]) {
@@ -79,6 +122,8 @@ export function ColaboradoresPage() {
 
   function edit(colaborador: Colaborador) {
     setError(null);
+    setCreateAccessNow(false);
+    setInitialPassword("");
     setForm({
       id: colaborador.id,
       nome: colaborador.nome,
@@ -106,6 +151,14 @@ export function ColaboradoresPage() {
     setAccessTarget(null);
   }
 
+  function fillGeneratedInitialPassword() {
+    setInitialPassword(createSecurePassword());
+  }
+
+  function fillGeneratedAccessPassword() {
+    setAccessPassword(createSecurePassword());
+  }
+
   async function submitAccess(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAccessError(null);
@@ -114,8 +167,8 @@ export function ColaboradoresPage() {
     const password = accessPassword.trim();
 
     if (!target) return;
-    if (password.length < 8) {
-      setAccessError("Use uma senha inicial com pelo menos 8 caracteres.");
+    if (password.length < 12) {
+      setAccessError("Use uma senha inicial com pelo menos 12 caracteres.");
       return;
     }
 
@@ -145,15 +198,20 @@ export function ColaboradoresPage() {
       return;
     }
 
+    if (!isInstitutionalEmail(email)) {
+      setError("Use um e-mail @institutobratan.com.br.");
+      return;
+    }
+
     const emailInUse = colaboradores.some((colaborador) => colaborador.email.toLowerCase() === email && colaborador.id !== form.id);
     if (emailInUse) {
-      setError("Este e-mail já está cadastrado.");
+      setError("Este e-mail já está cadastrado. Edite ou reative o colaborador existente.");
       return;
     }
 
     if (useRemote) {
-      if (!form.id && createAccessNow && initialPassword.trim().length < 8) {
-        setError("Use uma senha inicial com pelo menos 8 caracteres.");
+      if (!form.id && createAccessNow && initialPassword.trim().length < 12) {
+        setError("Use uma senha inicial com pelo menos 12 caracteres.");
         return;
       }
 
@@ -221,6 +279,67 @@ export function ColaboradoresPage() {
     resetForm();
   }
 
+  async function deactivate(colaborador: Colaborador) {
+    setError(null);
+
+    if (colaborador.id === pessoa?.id || colaborador.auth_id === pessoa?.auth_id) {
+      setError("Você não pode desligar o próprio acesso.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Desligar ${colaborador.nome}? O histórico será preservado e o acesso ao app será bloqueado.`);
+    if (!confirmed) return;
+
+    if (useRemote) {
+      try {
+        await deactivateMutation.mutateAsync(colaborador.id);
+        if (form.id === colaborador.id) resetForm();
+      } catch {
+        setError("Não foi possível desligar este colaborador. Verifique se ainda existe outra conta de coordenação ativa.");
+      }
+      return;
+    }
+
+    persist(
+      colaboradores.map((current) =>
+        current.id === colaborador.id
+          ? {
+              ...current,
+              ativo: false,
+              auth_id: null,
+              updated_at: new Date().toISOString(),
+            }
+          : current,
+      ),
+    );
+    if (form.id === colaborador.id) resetForm();
+  }
+
+  async function reactivate(colaborador: Colaborador) {
+    setError(null);
+
+    if (useRemote) {
+      try {
+        await reactivateMutation.mutateAsync(colaborador.id);
+      } catch {
+        setError("Não foi possível reativar este colaborador.");
+      }
+      return;
+    }
+
+    persist(
+      colaboradores.map((current) =>
+        current.id === colaborador.id
+          ? {
+              ...current,
+              ativo: true,
+              updated_at: new Date().toISOString(),
+            }
+          : current,
+      ),
+    );
+  }
+
   return (
     <AccessGate allowed={canAdministracao} label="Colaboradores">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -241,8 +360,8 @@ export function ColaboradoresPage() {
               </p>
             </div>
             <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-              <p className="text-2xl font-bold text-brand-musgo">{colaboradores.length}</p>
-              <p className="text-xs font-semibold uppercase text-brand-oliva">{useRemote ? "Supabase" : "prévia local"}</p>
+              <p className="text-2xl font-bold text-brand-musgo">{activeColaboradores.length}</p>
+              <p className="text-xs font-semibold uppercase text-brand-oliva">{useRemote ? "ativos no Supabase" : "ativos na prévia"}</p>
             </div>
           </div>
         </motion.section>
@@ -319,13 +438,17 @@ export function ColaboradoresPage() {
                           <Label htmlFor="initial-password">Senha inicial</Label>
                           <Input
                             id="initial-password"
-                            type="password"
-                            minLength={8}
+                            type="text"
+                            minLength={12}
                             autoComplete="new-password"
                             value={initialPassword}
-                            placeholder="mínimo 8 caracteres"
+                            placeholder="mínimo 12 caracteres"
                             onChange={(event) => setInitialPassword(event.target.value)}
                           />
+                          <Button type="button" variant="outline" size="sm" onClick={fillGeneratedInitialPassword}>
+                            <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
+                            Gerar senha segura
+                          </Button>
                         </div>
                       ) : null}
                     </div>
@@ -366,13 +489,17 @@ export function ColaboradoresPage() {
                       <Label htmlFor="access-password">Senha inicial</Label>
                       <Input
                         id="access-password"
-                        type="password"
-                        minLength={8}
+                        type="text"
+                        minLength={12}
                         autoComplete="new-password"
                         value={accessPassword}
-                        placeholder="mínimo 8 caracteres"
+                        placeholder="mínimo 12 caracteres"
                         onChange={(event) => setAccessPassword(event.target.value)}
                       />
+                      <Button type="button" variant="outline" size="sm" onClick={fillGeneratedAccessPassword}>
+                        <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Gerar senha segura
+                      </Button>
                     </div>
 
                     {accessError ? <p className="text-sm text-destructive">{accessError}</p> : null}
@@ -392,6 +519,37 @@ export function ColaboradoresPage() {
           </div>
 
           <section className="grid gap-3">
+            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+              <CardContent className="space-y-3 p-4">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Buscar por nome, e-mail ou cargo"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "ativos", label: "Ativos" },
+                    { id: "desligados", label: "Desligados" },
+                    { id: "todos", label: "Todos" },
+                  ].map((filter) => (
+                    <Button
+                      key={filter.id}
+                      type="button"
+                      size="sm"
+                      variant={statusFilter === filter.id ? "default" : "outline"}
+                      onClick={() => setStatusFilter(filter.id as typeof statusFilter)}
+                    >
+                      {filter.label}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
             {sortedColaboradores.map((colaborador, index) => (
               <motion.article
                 key={colaborador.id}
@@ -403,6 +561,7 @@ export function ColaboradoresPage() {
                   className={cn(
                     "border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm",
                     form.id === colaborador.id && "border-brand-dourado/60 bg-brand-creme/35",
+                    !colaborador.ativo && "border-muted bg-white/45 opacity-75",
                   )}
                 >
                   <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -418,14 +577,15 @@ export function ColaboradoresPage() {
                     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                       <Badge variant="outline">{cargoLabels[colaborador.cargo]}</Badge>
                       <Badge variant="muted">{cargoGroup(colaborador.cargo)}</Badge>
+                      {!colaborador.ativo ? <Badge variant="muted">Desligado</Badge> : null}
                       {useRemote ? (
-                        colaborador.auth_id ? (
+                        colaborador.ativo && colaborador.auth_id ? (
                           <Badge variant="gold">Acesso ativo</Badge>
                         ) : (
                           <Badge variant="muted">Sem acesso</Badge>
                         )
                       ) : null}
-                      {useRemote && !colaborador.auth_id ? (
+                      {useRemote && colaborador.ativo && !colaborador.auth_id ? (
                         <Button type="button" variant="outline" size="sm" onClick={() => openAccess(colaborador)}>
                           Criar acesso
                         </Button>
@@ -436,9 +596,28 @@ export function ColaboradoresPage() {
                           Perfil
                         </Link>
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => edit(colaborador)}>
-                        Editar
-                      </Button>
+                      {colaborador.ativo ? (
+                        <>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => edit(colaborador)}>
+                            Editar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            disabled={deactivateMutation.isPending || colaborador.id === pessoa?.id}
+                            onClick={() => deactivate(colaborador)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                            Desligar
+                          </Button>
+                        </>
+                      ) : (
+                        <Button type="button" variant="outline" size="sm" disabled={reactivateMutation.isPending} onClick={() => reactivate(colaborador)}>
+                          <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                          Reativar
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -8,11 +8,9 @@ export type LunchSlot = {
 export type LunchStatus = "antes" | "agora" | "depois";
 
 export const lunchSlots: LunchSlot[] = [
-  { id: "recepcao-1", rotulo: "Recepção · turno 1", horaInicio: "11:30", horaFim: "12:30" },
-  { id: "enfermagem", rotulo: "Enfermagem", horaInicio: "12:00", horaFim: "13:00" },
-  { id: "comercial", rotulo: "Comercial", horaInicio: "12:30", horaFim: "13:30" },
-  { id: "recepcao-2", rotulo: "Recepção · turno 2", horaInicio: "13:00", horaFim: "14:00" },
-  { id: "financeiro", rotulo: "Financeiro", horaInicio: "13:30", horaFim: "14:30" },
+  { id: "lilian", rotulo: "Lilian", horaInicio: "12:00", horaFim: "13:00" },
+  { id: "isabela", rotulo: "Isabela", horaInicio: "12:30", horaFim: "13:30" },
+  { id: "juliana", rotulo: "Juliana", horaInicio: "13:00", horaFim: "14:00" },
 ];
 
 function minutesFromTime(value: string) {

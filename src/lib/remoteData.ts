@@ -54,7 +54,11 @@ async function safeWriteRemoteAuditEvent(values: AuditEvent) {
 
 export async function listRemoteColaboradores(): Promise<Colaborador[]> {
   const client = requireSupabase();
-  const { data, error } = await client.from("colaborador_app").select("*").eq("ativo", true).order("nome", { ascending: true });
+  const { data, error } = await client
+    .from("colaborador_app")
+    .select("*")
+    .order("ativo", { ascending: false })
+    .order("nome", { ascending: true });
 
   if (error) throw error;
   return (data ?? []) as Colaborador[];
@@ -142,6 +146,24 @@ export async function createRemoteColaboradorAccess(values: {
 
   if (error) throw error;
   return data as { authId: string; colaboradorId: string };
+}
+
+export async function deactivateRemoteColaborador(id: string) {
+  const client = requireSupabase();
+  const { error } = await client.rpc("deactivate_colaborador", {
+    _colaborador_id: id,
+  });
+
+  if (error) throw error;
+}
+
+export async function reactivateRemoteColaborador(id: string) {
+  const client = requireSupabase();
+  const { error } = await client.rpc("reactivate_colaborador", {
+    _colaborador_id: id,
+  });
+
+  if (error) throw error;
 }
 
 type RemoteAuditEvent = {
