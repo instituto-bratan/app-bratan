@@ -16,7 +16,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import DockMorph from "@/components/ui/dock-morph";
-import { IOSAmbientLayer } from "@/components/ui/ios-ambient-layer";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, canBaseModules, canComprovantes, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { cn } from "@/lib/utils";
@@ -73,7 +72,7 @@ function DesktopNav({ cargo }: { cargo: Cargo | null | undefined }) {
           end={item.href === "/"}
           className={({ isActive }) =>
             cn(
-              "ios-pressable ios-liquid-sheen flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
+              "ios-pressable flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
               isActive ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-tinta hover:bg-white/70",
             )
           }
@@ -110,8 +109,6 @@ export function AppLayout() {
 
   return (
     <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-hidden lg:grid lg:grid-cols-[280px_1fr]">
-      <IOSAmbientLayer />
-
       <aside className="ios-glass-quiet hidden border-r px-5 py-6 lg:block">
         <Brand />
         <DesktopNav cargo={pessoa?.cargo} />

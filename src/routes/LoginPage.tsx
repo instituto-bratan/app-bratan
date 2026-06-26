@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { IOSAmbientLayer } from "@/components/ui/ios-ambient-layer";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
@@ -62,14 +61,13 @@ export function LoginPage() {
 
   return (
     <main className="isolate grid min-h-screen min-h-dvh place-items-center overflow-hidden px-3 py-8 ios-safe-bottom ios-safe-top sm:px-4 sm:py-10">
-      <IOSAmbientLayer />
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-7 flex items-start justify-between gap-4">
           <img src={bratanLogoHorizontal} alt="Instituto Bratan" className="h-auto w-60 max-w-[72%] object-contain" />
           <Badge variant="gold">Interno</Badge>
         </div>
 
-        <Card className="ios-liquid-sheen border-brand-oliva/20 bg-white/72 shadow-ios backdrop-blur-xl">
+        <Card className="border-brand-oliva/20 bg-white/72 shadow-ios backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="text-2xl text-brand-tinta">Acesso da equipe</CardTitle>
             <CardDescription>Entre com e-mail e senha autorizados pela coordenação.</CardDescription>

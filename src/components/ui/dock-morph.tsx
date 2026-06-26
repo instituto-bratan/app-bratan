@@ -73,7 +73,6 @@ export default function DockMorph({ items, className, position = "bottom" }: Doc
                         animate={{
                           scale: item.active ? 1.08 : 1.28,
                           opacity: 1,
-                          rotate: hovered === index && !item.active ? 4 : 0,
                         }}
                         exit={{ scale: 0.8, opacity: 0 }}
                         transition={{ type: "spring", stiffness: 220, damping: 24 }}

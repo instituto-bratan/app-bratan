@@ -8,9 +8,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "ios-liquid-sheen bg-primary text-primary-foreground shadow-sm hover:bg-primary/92",
+        default: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/92",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        secondary: "ios-liquid-sheen border border-white/60 bg-brand-creme/82 text-brand-tinta shadow-sm backdrop-blur-xl hover:bg-brand-creme",
+        secondary: "border border-white/60 bg-brand-creme/82 text-brand-tinta shadow-sm backdrop-blur-xl hover:bg-brand-creme",
         outline: "border border-border bg-white/35 text-foreground shadow-sm backdrop-blur-xl hover:bg-white/68 hover:text-foreground",
         ghost: "text-foreground hover:bg-muted hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",

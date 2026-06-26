@@ -126,32 +126,6 @@ h3 {
     transform: scale(0.985);
   }
 
-  .ios-liquid-sheen {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .ios-liquid-sheen::after {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    content: "";
-    background:
-      linear-gradient(115deg, transparent 0%, rgba(255, 255, 255, 0.38) 34%, transparent 56%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 42%);
-    opacity: 0;
-    transform: translateX(-42%);
-    transition:
-      opacity 220ms ease,
-      transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-
-  .ios-liquid-sheen:hover::after,
-  .ios-liquid-sheen:focus-within::after {
-    opacity: 1;
-    transform: translateX(42%);
-  }
-
   .mobile-scrollbar-none {
     scrollbar-width: none;
   }
