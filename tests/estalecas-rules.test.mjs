@@ -202,3 +202,25 @@ test("cashback pendente não entra no saldo, aprovado entra, recusado não entra
   assert.equal(approvedBalance([approved]), 90);
   assert.equal(approvedBalance([rejected]), 0);
 });
+
+test("estorno de cashback cria lançamento separado no ledger", () => {
+  const cashback = {
+    id: "cashback-1",
+    amount: 120,
+    status: "approved",
+    type: "cashback",
+    source: "cashback",
+  };
+  const reversal = {
+    id: "reversal-1",
+    amount: -120,
+    status: "approved",
+    type: "reversal",
+    source: "cashback",
+    metadata: { originalTransactionId: cashback.id },
+  };
+
+  assert.equal(cashback.status, "approved");
+  assert.equal(approvedBalance([cashback, reversal]), 0);
+  assert.equal(reversal.metadata.originalTransactionId, cashback.id);
+});

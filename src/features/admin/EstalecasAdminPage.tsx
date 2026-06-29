@@ -141,7 +141,7 @@ const adjustmentPresets: Record<AdjustmentKind, {
   },
 };
 
-const transactionStatusOptions: EstalecaTransactionStatus[] = ["pending", "approved", "rejected", "reversed"];
+const transactionStatusOptions: EstalecaTransactionStatus[] = ["pending", "approved", "rejected"];
 const rewardStatusOptions: RewardStatus[] = ["pending", "confirmed", "delivered", "cancelled"];
 
 const selectClass = "flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -350,8 +350,17 @@ export function EstalecasAdminPage() {
     [transactions],
   );
   const managedCashbacks = useMemo(
-    () => sortedTransactions.filter((transaction) => transaction.source === "cashback").slice(0, 10),
+    () => sortedTransactions.filter((transaction) => transaction.source === "cashback" && transaction.type === "cashback").slice(0, 10),
     [sortedTransactions],
+  );
+  const reversedTransactionIds = useMemo(
+    () =>
+      new Set(
+        transactions
+          .filter((transaction) => transaction.type === "reversal" && typeof transaction.metadata.originalTransactionId === "string")
+          .map((transaction) => String(transaction.metadata.originalTransactionId)),
+      ),
+    [transactions],
   );
   const visibleCheckins = useMemo(
     () => [...checkins].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 12),
@@ -618,6 +627,66 @@ export function EstalecasAdminPage() {
     const reason = reasonByTransaction[transaction.id]?.trim();
     if (!reason || reason.length < 6) {
       setError("Informe um motivo antes de alterar o status da transação.");
+      return;
+    }
+
+    if (status === "reversed") {
+      if (!pessoa) return;
+      if (transaction.status !== "approved" || transaction.amount <= 0) {
+        setError("Apenas transações aprovadas e positivas podem ser estornadas.");
+        return;
+      }
+      if (reversedTransactionIds.has(transaction.id)) {
+        setError("Esta transação já possui estorno registrado.");
+        return;
+      }
+
+      const reversalPayload = {
+        targetUserId: transaction.userId,
+        createdBy: pessoa.id,
+        type: "reversal" as const,
+        source: transaction.source,
+        amount: -transaction.amount,
+        status: "approved" as const,
+        description: `Estorno de Estalecas: ${transaction.description}`,
+        metadata: {
+          originalTransactionId: transaction.id,
+          originalAmount: transaction.amount,
+          adminReason: reason,
+          controlledByAdmin: true,
+        },
+      };
+
+      if (useRemote) {
+        try {
+          await createTransactionMutation.mutateAsync(reversalPayload);
+          setMessage("Estorno registrado como nova transação no ledger.");
+          setReasonByTransaction((current) => ({ ...current, [transaction.id]: "" }));
+        } catch {
+          setError("Não foi possível registrar o estorno no Supabase.");
+        }
+        return;
+      }
+
+      const now = new Date().toISOString();
+      persistTransactions([
+        {
+          id: createId("estaleca-reversal"),
+          userId: transaction.userId,
+          type: "reversal",
+          source: transaction.source,
+          amount: -transaction.amount,
+          status: "approved",
+          description: `Estorno de Estalecas: ${transaction.description}`,
+          metadata: reversalPayload.metadata,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: pessoa.id,
+        },
+        ...transactions,
+      ]);
+      setReasonByTransaction((current) => ({ ...current, [transaction.id]: "" }));
+      setMessage("Estorno registrado como nova transação na prévia local.");
       return;
     }
 
@@ -1170,10 +1239,14 @@ export function EstalecasAdminPage() {
                               </>
                             ) : null}
                             {transaction.status === "approved" ? (
-                              <Button type="button" size="sm" variant="outline" className="gap-2" onClick={() => updateTransactionStatus(transaction, "reversed")}>
-                                <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                                Estornar
-                              </Button>
+                              reversedTransactionIds.has(transaction.id) ? (
+                                <Badge variant="muted">Estorno registrado</Badge>
+                              ) : (
+                                <Button type="button" size="sm" variant="outline" className="gap-2" onClick={() => updateTransactionStatus(transaction, "reversed")}>
+                                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                                  Estornar
+                                </Button>
+                              )
                             ) : null}
                           </div>
                         </div>
