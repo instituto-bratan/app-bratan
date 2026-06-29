@@ -37,6 +37,7 @@ import {
   defaultEstalecaConfig,
   estalecaSourceLabels,
   estalecaStatusLabels,
+  estalecasConfigStorageKey,
   estalecasCheckinsStorageKey,
   estalecasProfilesStorageKey,
   estalecasRewardsStorageKey,
@@ -167,6 +168,10 @@ export function EstalecasPage() {
     () => readLocalValue<GamificationProfile[]>(estalecasProfilesStorageKey, []),
     [localRevision],
   );
+  const localConfig = useMemo(
+    () => readLocalValue(estalecasConfigStorageKey, defaultEstalecaConfig),
+    [localRevision],
+  );
   const localTransactions = useMemo(
     () => readLocalValue<EstalecaTransaction[]>(estalecasTransactionsStorageKey, []),
     [localRevision],
@@ -185,7 +190,7 @@ export function EstalecasPage() {
       ? profileQuery.data ?? { userId: pessoa.id, rankingOptIn: true }
       : localProfileFor(pessoa, localProfiles)
     : null;
-  const config = configQuery.data ?? defaultEstalecaConfig;
+  const config = useRemote ? configQuery.data ?? defaultEstalecaConfig : localConfig;
   const transactions = useRemote ? transactionsQuery.data ?? [] : localTransactions;
   const checkins = useRemote ? checkinsQuery.data ?? [] : localCheckins;
   const rewards = useRemote ? rewardsQuery.data ?? [] : localRewards;

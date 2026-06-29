@@ -129,6 +129,7 @@ export const estalecasTransactionsStorageKey = "app-bratan-estalecas-transaction
 export const estalecasCheckinsStorageKey = "app-bratan-estalecas-checkins";
 export const estalecasProfilesStorageKey = "app-bratan-gamification-profiles";
 export const estalecasRewardsStorageKey = "app-bratan-estalecas-rewards";
+export const estalecasConfigStorageKey = "app-bratan-estalecas-config";
 export const estalecasDeviceIdStorageKey = "app-bratan-device-id";
 
 export const defaultEstalecaConfig: EstalecaConfig = {
@@ -152,6 +153,17 @@ export const estalecaStatusLabels: Record<EstalecaTransactionStatus, string> = {
   reversed: "Estornado",
 };
 
+export const estalecaTypeLabels: Record<EstalecaTransactionType, string> = {
+  earn: "Ganho",
+  spend: "Uso",
+  adjustment: "Ajuste",
+  cashback: "Cashback",
+  checkin: "Check-in",
+  reward: "Prêmio",
+  reversal: "Estorno",
+  expiration: "Expiração",
+};
+
 export const estalecaSourceLabels: Record<EstalecaTransactionSource, string> = {
   church_checkin: "Check-in confirmado",
   gym_checkin: "Check-in academia",
@@ -166,6 +178,21 @@ export const estalecaSourceLabels: Record<EstalecaTransactionSource, string> = {
 export const checkinTypeLabels: Record<CheckinType, string> = {
   church: "Check-in",
   gym: "Academia",
+};
+
+export const rewardStatusLabels: Record<RewardStatus, string> = {
+  pending: "Pendente",
+  confirmed: "Confirmado",
+  delivered: "Entregue",
+  cancelled: "Cancelado",
+};
+
+export const rewardTypeLabels: Record<RewardType, string> = {
+  monthly_winner: "Mais Disciplinado da Academia",
+  milestone_500: "Marco de 500 checkpoints",
+  cashback_bonus: "Bônus de cashback",
+  checkin_bonus: "Bônus de check-in",
+  manual_prize: "Prêmio manual",
 };
 
 function localDateKey(date = new Date()) {

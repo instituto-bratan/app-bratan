@@ -1043,3 +1043,208 @@ export async function performRemoteEstalecasCheckin(values: {
     message: string;
   };
 }
+
+function estalecaConfigPayload(config: EstalecaConfig) {
+  return {
+    church_checkin_estalecas: config.churchCheckinEstalecas,
+    gym_checkin_estalecas: config.gymCheckinEstalecas,
+    gym_checkin_checkpoints: config.gymCheckinCheckpoints,
+    streak_bonus_estalecas: config.streakBonusEstalecas,
+    milestone_500_estalecas: config.milestone500Estalecas,
+    default_cashback_percent: config.defaultCashbackPercent,
+    max_cashback_estalecas: config.maxCashbackEstalecas,
+    cashback_approval_days: config.cashbackApprovalDays,
+    estalecas_expiration_days: config.estalecasExpirationDays,
+    eligible_categories: config.eligibleCategories,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function saveRemoteEstalecaConfig(config: EstalecaConfig) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("estaleca_config")
+    .update(estalecaConfigPayload(config))
+    .eq("id", true);
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "estalecas.config.update",
+    entity: "estaleca_config",
+    entityId: "default",
+    metadata: {
+      gymCheckinEstalecas: config.gymCheckinEstalecas,
+      churchCheckinEstalecas: config.churchCheckinEstalecas,
+      defaultCashbackPercent: config.defaultCashbackPercent,
+      eligibleCategories: config.eligibleCategories,
+    },
+  });
+}
+
+export async function createRemoteEstalecaTransaction(values: {
+  targetUserId: string;
+  createdBy: string;
+  type: EstalecaTransactionType;
+  source: EstalecaTransactionSource;
+  amount: number;
+  status: EstalecaTransactionStatus;
+  description: string;
+  metadata?: Record<string, unknown>;
+  expiresAt?: string | null;
+}) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("estaleca_transactions")
+    .insert({
+      user_id: values.targetUserId,
+      type: values.type,
+      source: values.source,
+      amount: values.amount,
+      status: values.status,
+      description: values.description,
+      metadata: values.metadata ?? {},
+      expires_at: values.expiresAt ?? null,
+      created_by: values.createdBy,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "estalecas.transaction.create",
+    entity: "estaleca_transactions",
+    entityId: data?.id,
+    metadata: {
+      targetUserId: values.targetUserId,
+      amount: values.amount,
+      status: values.status,
+      source: values.source,
+      type: values.type,
+    },
+  });
+  return data?.id as string;
+}
+
+export async function updateRemoteEstalecaTransactionStatus(values: {
+  transaction: EstalecaTransaction;
+  status: EstalecaTransactionStatus;
+  reason: string;
+}) {
+  const client = requireSupabase();
+  const metadata = {
+    ...values.transaction.metadata,
+    adminStatusReason: values.reason,
+    previousStatus: values.transaction.status,
+    statusUpdatedAt: new Date().toISOString(),
+  };
+  const { error } = await client
+    .from("estaleca_transactions")
+    .update({
+      status: values.status,
+      metadata,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", values.transaction.id);
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "estalecas.transaction.status",
+    entity: "estaleca_transactions",
+    entityId: values.transaction.id,
+    metadata: {
+      targetUserId: values.transaction.userId,
+      amount: values.transaction.amount,
+      before: values.transaction.status,
+      after: values.status,
+      reason: values.reason,
+    },
+  });
+}
+
+export async function invalidateRemoteCheckin(values: { checkinId: string; reason: string }) {
+  const client = requireSupabase();
+  const { error } = await client.rpc("invalidate_checkin", {
+    _checkin_id: values.checkinId,
+    _reason: values.reason,
+  });
+
+  if (error) throw error;
+}
+
+export async function updateRemoteRewardStatus(values: {
+  reward: EstalecaReward;
+  status: RewardStatus;
+  reason: string;
+}) {
+  const client = requireSupabase();
+  const metadata = {
+    ...values.reward.metadata,
+    adminStatusReason: values.reason,
+    previousStatus: values.reward.status,
+    statusUpdatedAt: new Date().toISOString(),
+  };
+  const { error } = await client
+    .from("rewards")
+    .update({
+      status: values.status,
+      metadata,
+      delivered_at: values.status === "delivered" ? new Date().toISOString() : values.reward.deliveredAt ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", values.reward.id);
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "estalecas.reward.status",
+    entity: "rewards",
+    entityId: values.reward.id,
+    metadata: {
+      targetUserId: values.reward.userId,
+      before: values.reward.status,
+      after: values.status,
+      reason: values.reason,
+    },
+  });
+}
+
+export async function createRemoteMonthlyWinnerReward(values: {
+  userId: string;
+  month: number;
+  year: number;
+  title: string;
+  description: string;
+  tieBreakNote?: string;
+}) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("rewards")
+    .insert({
+      user_id: values.userId,
+      reward_type: "monthly_winner",
+      title: values.title,
+      description: values.description,
+      status: "pending",
+      month: values.month,
+      year: values.year,
+      metadata: {
+        tieBreakNote: values.tieBreakNote,
+        uniqueWinnerRule: true,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "estalecas.reward.monthly_winner.create",
+    entity: "rewards",
+    entityId: data?.id,
+    metadata: {
+      targetUserId: values.userId,
+      month: values.month,
+      year: values.year,
+      tieBreakNote: values.tieBreakNote,
+    },
+  });
+  return data?.id as string;
+}

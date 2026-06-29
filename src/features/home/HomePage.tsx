@@ -6,6 +6,7 @@ import {
   Bell,
   CalendarClock,
   CheckSquare,
+  CircleDollarSign,
   Clock,
   Coins,
   FileText,
@@ -121,6 +122,15 @@ const modules = [
     label: "Administração",
     description: "Gerencie perfis e cargos que controlam os acessos.",
     action: "Gerir equipe",
+    allowed: canAdministracao,
+  },
+  {
+    title: "Gestão Estalecas",
+    href: "/administracao/estalecas",
+    icon: CircleDollarSign,
+    label: "Administração",
+    description: "Configure regras, cashback, check-ins, prêmios e vencedor mensal.",
+    action: "Gerir Estalecas",
     allowed: canAdministracao,
   },
   {

@@ -25,6 +25,7 @@ const actionFilters = [
   { label: "Mural", value: "aviso" },
   { label: "Comprovantes", value: "comprovante" },
   { label: "Lembretes", value: "pagamento_lembrete" },
+  { label: "Estalecas", value: "estalecas" },
   { label: "Checklist", value: "checklist" },
 ];
 
@@ -42,6 +43,7 @@ function isInsideFilter(event: AuditEventRecord, filter: string) {
   if (filter === "all") return true;
   if (filter === "auth") return event.action.startsWith("auth.");
   if (filter === "checklist") return event.entity.includes("checklist");
+  if (filter === "estalecas") return event.action.startsWith("estalecas.") || ["gamification_profile", "estaleca_config", "estaleca_transactions", "checkins", "rewards"].includes(event.entity);
   return event.entity === filter;
 }
 

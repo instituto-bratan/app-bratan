@@ -26,6 +26,15 @@ export const auditActionLabels: Record<string, string> = {
   "pagamento_lembrete.status": "Status do lembrete",
   "pagamento_lembrete.postpone": "Lembrete reagendado",
   "pagamento_lembrete.hide": "Lembrete ocultado",
+  "estalecas.checkin": "Check-in Estalecas",
+  "estalecas.consent": "Consentimento Estalecas",
+  "estalecas.profile.update": "Perfil de ranking atualizado",
+  "estalecas.config.update": "Configuração de Estalecas",
+  "estalecas.transaction.create": "Lançamento de Estalecas",
+  "estalecas.transaction.status": "Status de Estalecas",
+  "estalecas.checkin.invalidate": "Check-in invalidado",
+  "estalecas.reward.status": "Status de prêmio",
+  "estalecas.reward.monthly_winner.create": "Vencedor mensal registrado",
 };
 
 export const auditEntityLabels: Record<string, string> = {
@@ -35,6 +44,11 @@ export const auditEntityLabels: Record<string, string> = {
   checklist_run: "Checklist",
   comprovante: "Comprovante",
   pagamento_lembrete: "Lembrete",
+  gamification_profile: "Perfil de Estalecas",
+  estaleca_config: "Configuração de Estalecas",
+  estaleca_transactions: "Transação de Estalecas",
+  checkins: "Check-ins",
+  rewards: "Prêmios",
 };
 
 export function auditActionLabel(action: string) {

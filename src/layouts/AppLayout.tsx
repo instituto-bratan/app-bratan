@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import {
   Bell,
   CalendarClock,
+  CircleDollarSign,
   CheckSquare,
   Coins,
   FileText,
@@ -33,6 +34,7 @@ const navItems = [
   { label: "Comprovantes", href: "/comprovantes", icon: ReceiptText, mobile: true, allowed: canComprovantes },
   { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, mobile: true, allowed: canLembretesPagamento },
   { label: "Colaboradores", href: "/administracao/colaboradores", icon: UsersRound, mobile: false, allowed: canAdministracao },
+  { label: "Gestão Estalecas", href: "/administracao/estalecas", icon: CircleDollarSign, mobile: false, allowed: canAdministracao },
   { label: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, mobile: false, allowed: canAdministracao },
   { label: "Auditoria", href: "/administracao/auditoria", icon: History, mobile: false, allowed: canAdministracao },
 ];
