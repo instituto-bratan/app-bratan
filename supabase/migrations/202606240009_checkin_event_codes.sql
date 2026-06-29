@@ -34,13 +34,7 @@ immutable
 security definer
 set search_path = public
 as $$
-  select encode(
-    digest(
-      upper(regexp_replace(trim(coalesce(_validation_code, '')), '[^a-zA-Z0-9]', '', 'g')),
-      'sha256'
-    ),
-    'hex'
-  )
+  select md5(upper(regexp_replace(trim(coalesce(_validation_code, '')), '[^a-zA-Z0-9]', '', 'g')))
 $$;
 
 create or replace function public.valid_checkin_event_code(
