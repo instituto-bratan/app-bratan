@@ -153,6 +153,12 @@ const modules = [
   },
 ];
 
+type HomeModule = (typeof modules)[number];
+
+function isHomeModule(module: HomeModule | undefined): module is HomeModule {
+  return Boolean(module);
+}
+
 function StatCard({
   icon: Icon,
   label,
@@ -195,6 +201,46 @@ export function HomePage() {
   const useRemote = Boolean(pessoa && session && !isPreview);
   const now = useMemo(() => new Date(), []);
   const allowedModules = modules.filter((module) => module.allowed(cargo));
+  const flowSections = useMemo(() => {
+    const moduleMap = new Map(allowedModules.map((module) => [module.href, module]));
+    const groups = [
+      {
+        title: "Dia a dia",
+        label: "Rotina",
+        icon: CheckSquare,
+        detail: "Tarefas, almoço e avisos no mesmo fluxo.",
+        hrefs: ["/tarefas", "/almoco", "/mural"],
+      },
+      {
+        title: "Documentos",
+        label: "Operação",
+        icon: FileText,
+        detail: "POP, fluxogramas e comprovantes do dia.",
+        hrefs: ["/pops-fluxos", "/comprovantes"],
+      },
+      {
+        title: "Reconhecimento",
+        label: "Estalecas",
+        icon: Coins,
+        detail: "Carteira, check-ins, cashback e prêmios.",
+        hrefs: ["/estalecas", "/administracao/estalecas"],
+      },
+      {
+        title: "Coordenação",
+        label: "Gestão",
+        icon: UsersRound,
+        detail: "Equipe, lembretes, segurança e auditoria agrupados.",
+        hrefs: ["/lembretes-pagamento", "/administracao/colaboradores", "/administracao/seguranca", "/administracao/auditoria"],
+      },
+    ];
+
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.hrefs.map((href) => moduleMap.get(href)).filter(isHomeModule),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [allowedModules]);
   const pagamentosQuery = useQuery({
     queryKey: ["pagamentos-lembretes"],
     queryFn: listRemotePagamentos,
@@ -453,41 +499,54 @@ export function HomePage() {
       <section>
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl text-brand-musgo">Acessos rápidos</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Visíveis para o cargo atual.</p>
+            <h2 className="text-2xl text-brand-musgo">Fluxos rápidos</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Rotina, documentos, reconhecimento e coordenação.</p>
           </div>
           <LiquidButton type="button" size="lg" onClick={() => navigate("/tarefas")}>
             Continuar rotina
             <TrendingUp className="h-4 w-4" aria-hidden="true" />
           </LiquidButton>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {allowedModules.map((module, index) => (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {flowSections.map((flow, index) => (
             <motion.div
-              key={module.href}
+              key={flow.title}
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.38, delay: 0.06 * index, ease: [0.4, 0, 0.2, 1] }}
             >
-              <Card className="h-full border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm">
+              <Card className="flow-card h-full border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm">
                 <CardHeader>
-                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-lg bg-brand-musgo text-brand-papel">
-                    <module.icon className="h-5 w-5" aria-hidden="true" />
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-musgo text-brand-papel">
+                        <flow.icon className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <Badge variant="muted" className="w-fit">
+                          {flow.label}
+                        </Badge>
+                        <CardTitle className="mt-2">{flow.title}</CardTitle>
+                      </div>
+                    </div>
                   </div>
-                  <Badge variant="muted" className="w-fit">
-                    {module.label}
-                  </Badge>
-                  <CardTitle>{module.title}</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="mb-5 min-h-16 text-sm leading-6 text-muted-foreground">{module.description}</p>
-                  {index === 0 ? (
-                    <GetStartedButton className="w-full" label={module.action} onClick={() => navigate(module.href)} />
-                  ) : (
-                    <Button asChild variant="outline" className="w-full">
-                      <Link to={module.href}>{module.action}</Link>
-                    </Button>
-                  )}
+                <CardContent className="space-y-3">
+                  <p className="text-sm leading-6 text-muted-foreground">{flow.detail}</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {flow.items.map((module, moduleIndex) =>
+                      index === 0 && moduleIndex === 0 ? (
+                        <GetStartedButton key={module.href} size="sm" className="h-10 w-full" label={module.action} onClick={() => navigate(module.href)} />
+                      ) : (
+                        <Button key={module.href} asChild variant={moduleIndex === 0 ? "default" : "outline"} className="justify-start gap-2">
+                          <Link to={module.href}>
+                            <module.icon className="h-4 w-4" aria-hidden="true" />
+                            {module.action}
+                          </Link>
+                        </Button>
+                      ),
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>

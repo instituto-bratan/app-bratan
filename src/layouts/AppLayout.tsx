@@ -1,4 +1,6 @@
+import { useMemo, useState, type ComponentType } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
   CalendarClock,
@@ -8,36 +10,118 @@ import {
   FileText,
   History,
   Home,
+  LayoutGrid,
   LogOut,
   ReceiptText,
   ShieldCheck,
   Utensils,
   UserRound,
   UsersRound,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import DockMorph from "@/components/ui/dock-morph";
+import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, canBaseModules, canComprovantes, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
 import bratanMark from "@/assets/bratan-mark.png";
 
-const navItems = [
-  { label: "Início", href: "/", icon: Home, mobile: true, allowed: () => true },
-  { label: "Tarefas", href: "/tarefas", icon: CheckSquare, mobile: true, allowed: canBaseModules },
-  { label: "Almoço", href: "/almoco", icon: Utensils, mobile: true, allowed: canBaseModules },
-  { label: "Mural", href: "/mural", icon: Bell, mobile: true, allowed: canBaseModules },
-  { label: "Estalecas", href: "/estalecas", icon: Coins, mobile: true, allowed: canBaseModules },
-  { label: "POPs & Fluxos", href: "/pops-fluxos", icon: FileText, mobile: true, allowed: canBaseModules },
-  { label: "Comprovantes", href: "/comprovantes", icon: ReceiptText, mobile: true, allowed: canComprovantes },
-  { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, mobile: true, allowed: canLembretesPagamento },
-  { label: "Colaboradores", href: "/administracao/colaboradores", icon: UsersRound, mobile: false, allowed: canAdministracao },
-  { label: "Gestão Estalecas", href: "/administracao/estalecas", icon: CircleDollarSign, mobile: false, allowed: canAdministracao },
-  { label: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, mobile: false, allowed: canAdministracao },
-  { label: "Auditoria", href: "/administracao/auditoria", icon: History, mobile: false, allowed: canAdministracao },
+type NavEntry = {
+  label: string;
+  shortLabel?: string;
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  allowed: (cargo: Cargo | null | undefined) => boolean;
+};
+
+type FlowGroup = {
+  label: string;
+  detail: string;
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  allowed: (cargo: Cargo | null | undefined) => boolean;
+  entries: NavEntry[];
+};
+
+const homeEntry: NavEntry = { label: "Início", href: "/", icon: Home, allowed: () => true };
+
+const flowGroups: FlowGroup[] = [
+  {
+    label: "Hoje",
+    detail: "tarefas, almoço e mural",
+    href: "/tarefas",
+    icon: CheckSquare,
+    allowed: canBaseModules,
+    entries: [
+      { label: "Tarefas", href: "/tarefas", icon: CheckSquare, allowed: canBaseModules },
+      { label: "Almoço", href: "/almoco", icon: Utensils, allowed: canBaseModules },
+      { label: "Mural", href: "/mural", icon: Bell, allowed: canBaseModules },
+    ],
+  },
+  {
+    label: "Carteira",
+    detail: "saldo, check-ins e ranking",
+    href: "/estalecas",
+    icon: Coins,
+    allowed: canBaseModules,
+    entries: [
+      { label: "Minhas Estalecas", shortLabel: "Estalecas", href: "/estalecas", icon: Coins, allowed: canBaseModules },
+    ],
+  },
+  {
+    label: "Documentos",
+    detail: "POPs e comprovantes",
+    href: "/pops-fluxos",
+    icon: FileText,
+    allowed: canBaseModules,
+    entries: [
+      { label: "POPs & Fluxos", shortLabel: "POPs", href: "/pops-fluxos", icon: FileText, allowed: canBaseModules },
+      { label: "Comprovantes", href: "/comprovantes", icon: ReceiptText, allowed: canComprovantes },
+    ],
+  },
+  {
+    label: "Financeiro",
+    detail: "combinados e pendências",
+    href: "/lembretes-pagamento",
+    icon: CalendarClock,
+    allowed: canLembretesPagamento,
+    entries: [
+      { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
+    ],
+  },
+  {
+    label: "Administração",
+    detail: "equipe, segurança e auditoria",
+    href: "/administracao/colaboradores",
+    icon: UsersRound,
+    allowed: canAdministracao,
+    entries: [
+      { label: "Colaboradores", href: "/administracao/colaboradores", icon: UsersRound, allowed: canAdministracao },
+      { label: "Gestão Estalecas", shortLabel: "Gestão", href: "/administracao/estalecas", icon: CircleDollarSign, allowed: canAdministracao },
+      { label: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, allowed: canAdministracao },
+      { label: "Auditoria", href: "/administracao/auditoria", icon: History, allowed: canAdministracao },
+    ],
+  },
 ];
+
+function isEntryActive(pathname: string, entry: NavEntry) {
+  if (entry.href === "/") return pathname === "/" || pathname === "/inicio";
+  return pathname === entry.href || pathname.startsWith(`${entry.href}/`);
+}
+
+function isGroupActive(pathname: string, group: FlowGroup) {
+  return pathname === group.href || pathname.startsWith(`${group.href}/`) || group.entries.some((entry) => isEntryActive(pathname, entry));
+}
+
+function visibleFlowGroups(cargo: Cargo | null | undefined) {
+  return flowGroups
+    .filter((group) => group.allowed(cargo))
+    .map((group) => ({ ...group, entries: group.entries.filter((entry) => entry.allowed(cargo)) }))
+    .filter((group) => group.entries.length > 0);
+}
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -65,40 +149,105 @@ function Brand({ compact = false }: { compact?: boolean }) {
 }
 
 function DesktopNav({ cargo }: { cargo: Cargo | null | undefined }) {
-  const allowedItems = navItems.filter((item) => item.allowed(cargo));
+  const location = useLocation();
+  const groups = visibleFlowGroups(cargo);
 
   return (
-    <nav className="mt-8 hidden space-y-1 lg:block" aria-label="Navegação principal">
-      {allowedItems.map((item) => (
-        <NavLink
-          key={item.href}
-          to={item.href}
-          end={item.href === "/"}
-          className={({ isActive }) =>
-            cn(
-              "ios-pressable flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
-              isActive ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-tinta hover:bg-white/70",
-            )
-          }
-        >
-          <item.icon className="h-4 w-4" aria-hidden="true" />
-          {item.label}
-        </NavLink>
-      ))}
+    <nav className="mt-8 hidden space-y-3 lg:block" aria-label="Navegação principal">
+      <NavLink
+        to={homeEntry.href}
+        end
+        className={({ isActive }) =>
+          cn(
+            "ios-pressable flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition-colors",
+            isActive ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-tinta hover:bg-white/70",
+          )
+        }
+      >
+        <homeEntry.icon className="h-4 w-4" aria-hidden="true" />
+        {homeEntry.label}
+      </NavLink>
+
+      {groups.map((group) => {
+        const groupActive = isGroupActive(location.pathname, group);
+        const Icon = group.icon;
+
+        return (
+          <div key={group.label} className="rounded-xl border border-brand-oliva/10 bg-white/28 p-1.5">
+            <NavLink
+              to={group.href}
+              className={cn(
+                "ios-pressable flex items-center gap-3 rounded-lg px-3 py-3 transition-colors",
+                groupActive ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-tinta hover:bg-white/70",
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">{group.label}</span>
+                <span className={cn("block truncate text-xs", groupActive ? "text-brand-papel/76" : "text-muted-foreground")}>{group.detail}</span>
+              </span>
+            </NavLink>
+
+            <AnimatePresence initial={false}>
+              {groupActive ? (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="grid gap-1 px-1 pb-1 pt-2">
+                    {group.entries.map((entry) => (
+                      <NavLink
+                        key={entry.href}
+                        to={entry.href}
+                        className={({ isActive }) =>
+                          cn(
+                            "flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
+                            isActive ? "bg-white text-brand-musgo shadow-sm" : "text-brand-tinta/78 hover:bg-white/60",
+                          )
+                        }
+                      >
+                        <entry.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                        {entry.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        );
+      })}
     </nav>
   );
 }
 
-function MobileNav({ cargo }: { cargo: Cargo | null | undefined }) {
+function MobileNav({ cargo, menuOpen, onOpenMenu }: { cargo: Cargo | null | undefined; menuOpen: boolean; onOpenMenu: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const mobileItems = navItems
-    .filter((item) => item.mobile && item.allowed(cargo))
+  const groups = visibleFlowGroups(cargo);
+  const coreItems: (NavEntry & { menu?: boolean })[] = [
+    homeEntry,
+    ...groups
+      .filter((group) => ["Hoje", "Carteira", "Documentos"].includes(group.label))
+      .map((group) => ({
+        label: group.label,
+        shortLabel: group.label === "Documentos" ? "Docs" : group.label,
+        href: group.href,
+        icon: group.icon,
+        allowed: group.allowed,
+      })),
+    { label: "Menu", href: "#menu", icon: LayoutGrid, allowed: () => true, menu: true },
+  ];
+  const mobileItems = coreItems
+    .filter((item) => item.allowed(cargo))
     .map((item) => ({
       icon: item.icon,
-      label: item.label,
-      active: item.href === "/" ? location.pathname === "/" || location.pathname === "/inicio" : location.pathname === item.href,
-      onClick: () => navigate(item.href),
+      label: item.shortLabel ?? item.label,
+      active: item.menu ? menuOpen : item.href === "/" ? location.pathname === "/" || location.pathname === "/inicio" : location.pathname === item.href || location.pathname.startsWith(`${item.href}/`),
+      onClick: () => (item.menu ? onOpenMenu() : navigate(item.href)),
     }));
 
   return (
@@ -108,8 +257,95 @@ function MobileNav({ cargo }: { cargo: Cargo | null | undefined }) {
   );
 }
 
+function FlowLauncher({
+  cargo,
+  open,
+  onClose,
+}: {
+  cargo: Cargo | null | undefined;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const groups = useMemo(() => visibleFlowGroups(cargo), [cargo]);
+
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-brand-tinta/18 px-3 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-[calc(4rem+env(safe-area-inset-top))] backdrop-blur-sm lg:items-center lg:pb-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+            className="ios-glass w-full max-w-3xl overflow-hidden rounded-[28px] border"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 border-b border-brand-oliva/12 px-4 py-4 sm:px-5">
+              <div>
+                <p className="text-xs font-semibold uppercase text-brand-oliva">Fluxos Bratan</p>
+                <h2 className="text-xl text-brand-musgo">Fluxos de trabalho</h2>
+              </div>
+              <Button type="button" size="icon" variant="ghost" className="rounded-full bg-white/50" onClick={onClose} aria-label="Fechar fluxos">
+                <X className="h-5 w-5" aria-hidden="true" />
+              </Button>
+            </div>
+
+            <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {groups.map((group, index) => (
+                  <motion.section
+                    key={group.label}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.22, delay: index * 0.035, ease: [0.4, 0, 0.2, 1] }}
+                    className="rounded-2xl border border-brand-oliva/14 bg-white/58 p-3 backdrop-blur-xl"
+                  >
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="grid h-10 w-10 place-items-center rounded-xl bg-brand-musgo text-brand-papel">
+                        <group.icon className="h-5 w-5" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-brand-tinta">{group.label}</p>
+                        <p className="truncate text-xs text-muted-foreground">{group.detail}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                      {group.entries.map((entry, entryIndex) => (
+                        <Button
+                          key={entry.href}
+                          asChild
+                          variant={entryIndex === 0 ? "default" : "outline"}
+                          className="justify-start gap-2"
+                          onClick={onClose}
+                        >
+                          <Link to={entry.href}>
+                            <entry.icon className="h-4 w-4" aria-hidden="true" />
+                            {entry.label}
+                          </Link>
+                        </Button>
+                      ))}
+                    </div>
+                  </motion.section>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
 export function AppLayout() {
   const { pessoa, isPreview, signOut } = useAuth();
+  const [flowLauncherOpen, setFlowLauncherOpen] = useState(false);
 
   return (
     <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-hidden lg:grid lg:grid-cols-[280px_1fr]">
@@ -128,6 +364,10 @@ export function AppLayout() {
               <p className="text-sm text-muted-foreground">Hub operacional interno</p>
             </div>
             <div className="flex items-center gap-2">
+              <LiquidButton type="button" size="sm" className="hidden h-9 px-4 sm:inline-flex" onClick={() => setFlowLauncherOpen(true)}>
+                <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+                Fluxos
+              </LiquidButton>
               {isPreview ? <Badge variant="gold" className="hidden sm:inline-flex">Prévia</Badge> : null}
               {pessoa?.cargo ? <Badge variant="outline" className="hidden max-w-36 truncate min-[430px]:inline-flex sm:max-w-none">{cargoLabels[pessoa.cargo]}</Badge> : null}
               {pessoa?.cargo ? <Badge variant="muted" className="hidden sm:inline-flex">{cargoGroup(pessoa.cargo)}</Badge> : null}
@@ -148,7 +388,8 @@ export function AppLayout() {
         </main>
       </div>
 
-      <MobileNav cargo={pessoa?.cargo} />
+      <FlowLauncher cargo={pessoa?.cargo} open={flowLauncherOpen} onClose={() => setFlowLauncherOpen(false)} />
+      <MobileNav cargo={pessoa?.cargo} menuOpen={flowLauncherOpen} onOpenMenu={() => setFlowLauncherOpen(true)} />
     </div>
   );
 }
