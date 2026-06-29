@@ -128,6 +128,16 @@ function milestoneRewardIfNeeded({ userId, checkins, rewards }) {
   return null;
 }
 
+function reversalOriginalIds(transactions) {
+  return transactions
+    .filter((transaction) => transaction.type === "reversal" && transaction.metadata?.originalTransactionId)
+    .map((transaction) => transaction.metadata.originalTransactionId);
+}
+
+function canCreateReversal(transactions, originalTransactionId) {
+  return !reversalOriginalIds(transactions).includes(originalTransactionId);
+}
+
 test("ledger soma apenas transações aprovadas e não expiradas", () => {
   const balance = approvedBalance([
     { amount: 100, status: "approved" },
@@ -223,4 +233,19 @@ test("estorno de cashback cria lançamento separado no ledger", () => {
   assert.equal(cashback.status, "approved");
   assert.equal(approvedBalance([cashback, reversal]), 0);
   assert.equal(reversal.metadata.originalTransactionId, cashback.id);
+});
+
+test("estorno de cashback só pode existir uma vez por transação original", () => {
+  const existingTransactions = [
+    {
+      id: "reversal-1",
+      amount: -120,
+      status: "approved",
+      type: "reversal",
+      metadata: { originalTransactionId: "cashback-1" },
+    },
+  ];
+
+  assert.equal(canCreateReversal(existingTransactions, "cashback-1"), false);
+  assert.equal(canCreateReversal(existingTransactions, "cashback-2"), true);
 });
