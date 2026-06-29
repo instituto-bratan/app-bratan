@@ -146,6 +146,10 @@ function canApproveTransaction(transactions, candidate) {
   return currentBalance + candidate.amount >= 0;
 }
 
+function calculateCashbackAmount(purchaseAmount, percent, maxAmount) {
+  return Math.max(1, Math.min(maxAmount, Math.floor((purchaseAmount * percent) / 100)));
+}
+
 test("ledger soma apenas transações aprovadas e não expiradas", () => {
   const balance = approvedBalance([
     { amount: 100, status: "approved" },
@@ -219,6 +223,11 @@ test("cashback pendente não entra no saldo, aprovado entra, recusado não entra
   assert.equal(approvedBalance([pending]), 0);
   assert.equal(approvedBalance([approved]), 90);
   assert.equal(approvedBalance([rejected]), 0);
+});
+
+test("cashback respeita percentual configurado e teto por transação", () => {
+  assert.equal(calculateCashbackAmount(1000, 3, 500), 30);
+  assert.equal(calculateCashbackAmount(50000, 3, 500), 500);
 });
 
 test("estorno de cashback cria lançamento separado no ledger", () => {

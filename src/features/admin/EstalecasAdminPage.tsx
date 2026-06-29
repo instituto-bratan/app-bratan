@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
+  Calculator,
   CheckCircle2,
   Coins,
   Copy,
@@ -98,6 +99,12 @@ type CodeForm = {
   expiresAt: string;
 };
 
+type CashbackForm = {
+  purchaseAmount: string;
+  category: string;
+  purchaseDescription: string;
+};
+
 const emptyAdjustmentForm: AdjustmentForm = {
   targetUserId: "",
   kind: "cashback",
@@ -113,6 +120,12 @@ const emptyCodeForm: CodeForm = {
   code: "",
   eventDate: todayISO(),
   expiresAt: "",
+};
+
+const emptyCashbackForm: CashbackForm = {
+  purchaseAmount: "",
+  category: defaultEstalecaConfig.eligibleCategories[0],
+  purchaseDescription: "",
 };
 
 const adjustmentPresets: Record<AdjustmentKind, {
@@ -174,6 +187,11 @@ function checkinLinkFor(values: { checkinType: CheckinType; code: string }) {
 function parseInteger(value: string) {
   const parsed = Number(value.replace(/\./g, "").replace(",", "."));
   return Number.isFinite(parsed) ? Math.trunc(parsed) : NaN;
+}
+
+function parseDecimal(value: string) {
+  const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : NaN;
 }
 
 function formatDateTime(dateString: string) {
@@ -253,6 +271,7 @@ export function EstalecasAdminPage() {
   const [categoryText, setCategoryText] = useState(localConfig.eligibleCategories.join(", "));
   const [codeForm, setCodeForm] = useState<CodeForm>(emptyCodeForm);
   const [adjustmentForm, setAdjustmentForm] = useState<AdjustmentForm>(emptyAdjustmentForm);
+  const [cashbackForm, setCashbackForm] = useState<CashbackForm>(emptyCashbackForm);
   const [reasonByTransaction, setReasonByTransaction] = useState<Record<string, string>>({});
   const [reasonByCheckin, setReasonByCheckin] = useState<Record<string, string>>({});
   const [reasonByReward, setReasonByReward] = useState<Record<string, string>>({});
@@ -342,6 +361,11 @@ export function EstalecasAdminPage() {
     if (!source) return;
     setConfigDraft(source);
     setCategoryText(source.eligibleCategories.join(", "));
+    setCashbackForm((current) =>
+      source.eligibleCategories.some((category) => category.toLowerCase() === current.category.toLowerCase())
+        ? current
+        : { ...current, category: source.eligibleCategories[0] ?? "" },
+    );
   }, [configQuery.data, localConfig, useRemote]);
 
   const activeColaboradores = useMemo(() => colaboradores.filter((colaborador) => colaborador.ativo), [colaboradores]);
@@ -377,11 +401,47 @@ export function EstalecasAdminPage() {
   const pendingRewards = rewards.filter((reward) => reward.status === "pending").length;
   const topRanking = ranking[0];
   const directCheckinLink = checkinLinkFor({ checkinType: codeForm.checkinType, code: codeForm.code });
+  const cashbackPreview = useMemo(() => {
+    const purchaseAmount = parseDecimal(cashbackForm.purchaseAmount);
+    const category = cashbackForm.category.trim();
+    const eligible = config.eligibleCategories.some((eligibleCategory) => eligibleCategory.toLowerCase() === category.toLowerCase());
+
+    if (!Number.isFinite(purchaseAmount) || purchaseAmount <= 0) {
+      return { purchaseAmount: 0, amount: 0, eligible };
+    }
+
+    const calculated = Math.floor((purchaseAmount * config.defaultCashbackPercent) / 100);
+    return {
+      purchaseAmount,
+      amount: Math.max(1, Math.min(config.maxCashbackEstalecas, calculated)),
+      eligible,
+    };
+  }, [cashbackForm.category, cashbackForm.purchaseAmount, config.defaultCashbackPercent, config.eligibleCategories, config.maxCashbackEstalecas]);
 
   function balanceForUser(userId: string, excludedTransactionId?: string) {
     return calculateEstalecasBalance(
       transactions.filter((transaction) => transaction.userId === userId && transaction.id !== excludedTransactionId),
     );
+  }
+
+  function applyCashbackPreview() {
+    setError(null);
+    setMessage(null);
+
+    const descriptionBase = cashbackForm.purchaseDescription.trim() || cashbackForm.category.trim();
+    if (!cashbackPreview.eligible || cashbackPreview.amount <= 0 || !descriptionBase) {
+      setError("Informe valor, categoria elegível e descrição do cashback.");
+      return;
+    }
+
+    setAdjustmentForm((current) => ({
+      ...current,
+      kind: "cashback",
+      amount: String(cashbackPreview.amount),
+      status: "pending",
+      description: `Cashback recebido por ${descriptionBase}`,
+    }));
+    setMessage("Cashback calculado pelas regras atuais.");
   }
 
   function persistConfig(nextConfig: EstalecaConfig) {
@@ -557,14 +617,22 @@ export function EstalecasAdminPage() {
     setMessage(null);
 
     if (!pessoa) return;
-    const amount = parseInteger(adjustmentForm.amount);
+    const amount = adjustmentForm.kind === "cashback" ? cashbackPreview.amount : parseInteger(adjustmentForm.amount);
     const preset = adjustmentPresets[adjustmentForm.kind];
     const target = activeColaboradores.find((colaborador) => colaborador.id === adjustmentForm.targetUserId);
-    const description = adjustmentForm.description.trim();
+    const description = adjustmentForm.kind === "cashback" && cashbackForm.purchaseDescription.trim()
+      ? `Cashback recebido por ${cashbackForm.purchaseDescription.trim()}`
+      : adjustmentForm.description.trim();
     const reason = adjustmentForm.reason.trim();
+    const cashbackCategory = cashbackForm.category.trim();
 
     if (!target || !Number.isFinite(amount) || amount === 0 || !description || reason.length < 8) {
       setError("Informe colaborador, quantidade, descrição e um motivo administrativo claro.");
+      return;
+    }
+
+    if (adjustmentForm.kind === "cashback" && (!cashbackPreview.eligible || cashbackPreview.purchaseAmount <= 0 || !cashbackCategory)) {
+      setError("Cashback precisa de valor de compra e categoria elegível pelas regras atuais.");
       return;
     }
 
@@ -587,6 +655,15 @@ export function EstalecasAdminPage() {
       beforeBalance,
       afterBalanceEstimate,
       controlledByAdmin: true,
+      ...(adjustmentForm.kind === "cashback"
+        ? {
+            purchaseAmount: cashbackPreview.purchaseAmount,
+            category: cashbackCategory,
+            cashbackPercent: config.defaultCashbackPercent,
+            maxCashbackEstalecas: config.maxCashbackEstalecas,
+            approvalDays: config.cashbackApprovalDays,
+          }
+        : {}),
     };
     const expiresAt = expirationFromConfig(config, amount);
 
@@ -605,6 +682,7 @@ export function EstalecasAdminPage() {
         });
         setMessage("Lançamento administrativo registrado.");
         setAdjustmentForm(emptyAdjustmentForm);
+        setCashbackForm((current) => ({ ...current, purchaseAmount: "", purchaseDescription: "" }));
       } catch {
         setError("Não foi possível registrar o lançamento no Supabase.");
       }
@@ -630,6 +708,7 @@ export function EstalecasAdminPage() {
       ...transactions,
     ]);
     setAdjustmentForm(emptyAdjustmentForm);
+    setCashbackForm((current) => ({ ...current, purchaseAmount: "", purchaseDescription: "" }));
     setMessage("Lançamento salvo na prévia local.");
   }
 
@@ -1149,9 +1228,77 @@ export function EstalecasAdminPage() {
                       </select>
                     </div>
                   </div>
+                  {adjustmentForm.kind === "cashback" ? (
+                    <div className="rounded-lg border border-brand-dourado/30 bg-brand-creme/35 p-3">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-brand-tinta">Calculadora de cashback</p>
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            Regra atual: {config.defaultCashbackPercent}% com teto de {formatEstalecas(config.maxCashbackEstalecas)} Estalecas.
+                          </p>
+                        </div>
+                        <div className="grid h-10 w-10 place-items-center rounded-lg bg-white/70 text-brand-musgo">
+                          <Calculator className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="cashback-purchase-amount">Valor da compra</Label>
+                          <Input
+                            id="cashback-purchase-amount"
+                            inputMode="decimal"
+                            placeholder="Ex.: 18000"
+                            value={cashbackForm.purchaseAmount}
+                            onChange={(event) => setCashbackForm((current) => ({ ...current, purchaseAmount: event.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="cashback-category">Categoria</Label>
+                          <select
+                            id="cashback-category"
+                            value={cashbackForm.category}
+                            onChange={(event) => setCashbackForm((current) => ({ ...current, category: event.target.value }))}
+                            className={selectClass}
+                          >
+                            {config.eligibleCategories.map((category) => (
+                              <option key={category} value={category}>
+                                {category}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        <Label htmlFor="cashback-description">Motivo/compra/tratamento</Label>
+                        <Input
+                          id="cashback-description"
+                          placeholder="Ex.: protocolo premium de longevidade"
+                          value={cashbackForm.purchaseDescription}
+                          onChange={(event) => setCashbackForm((current) => ({ ...current, purchaseDescription: event.target.value }))}
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-col gap-3 rounded-lg bg-white/65 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-brand-oliva">Cashback calculado</p>
+                          <p className="text-2xl font-bold text-brand-musgo">{formatEstalecas(cashbackPreview.amount)} Estalecas</p>
+                        </div>
+                        <Button type="button" variant="outline" className="gap-2" onClick={applyCashbackPreview}>
+                          <Calculator className="h-4 w-4" aria-hidden="true" />
+                          Usar cálculo
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <Label htmlFor="adjustment-amount">Estalecas</Label>
-                    <Input id="adjustment-amount" inputMode="numeric" placeholder="Ex.: 150" value={adjustmentForm.amount} onChange={(event) => setAdjustmentForm((current) => ({ ...current, amount: event.target.value }))} />
+                    <Input
+                      id="adjustment-amount"
+                      inputMode="numeric"
+                      placeholder="Ex.: 150"
+                      value={adjustmentForm.amount}
+                      readOnly={adjustmentForm.kind === "cashback"}
+                      onChange={(event) => setAdjustmentForm((current) => ({ ...current, amount: event.target.value }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="adjustment-description">Descrição para o histórico</Label>
