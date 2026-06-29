@@ -5,7 +5,9 @@ import type { ChecklistItem } from "@/features/checklist/checklistData";
 import type { Aviso } from "@/features/mural/muralData";
 import type { ComprovanteRecord } from "@/features/comprovantes/comprovantesData";
 import {
+  checkinCodePreview,
   defaultEstalecaConfig,
+  type CheckinEventCode,
   type EstalecaCheckin,
   type EstalecaConfig,
   type EstalecaReward,
@@ -1247,4 +1249,109 @@ export async function createRemoteMonthlyWinnerReward(values: {
     },
   });
   return data?.id as string;
+}
+
+type RemoteCheckinEventCode = {
+  id: string;
+  checkin_type: CheckinType;
+  label: string;
+  code_hash: string;
+  code_preview: string;
+  event_date: string;
+  active: boolean;
+  expires_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+function mapRemoteCheckinEventCode(record: RemoteCheckinEventCode): CheckinEventCode {
+  return {
+    id: record.id,
+    checkinType: record.checkin_type,
+    label: record.label,
+    codeHash: record.code_hash,
+    codePreview: record.code_preview,
+    eventDate: record.event_date,
+    active: record.active,
+    expiresAt: record.expires_at ?? undefined,
+    createdBy: record.created_by ?? undefined,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at ?? undefined,
+  };
+}
+
+export async function listRemoteCheckinEventCodes(): Promise<CheckinEventCode[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("checkin_event_codes")
+    .select("id, checkin_type, label, code_hash, code_preview, event_date, active, expires_at, created_by, created_at, updated_at")
+    .order("event_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+  return ((data ?? []) as RemoteCheckinEventCode[]).map(mapRemoteCheckinEventCode);
+}
+
+export async function createRemoteCheckinEventCode(values: {
+  pessoa: Colaborador;
+  checkinType: CheckinType;
+  label: string;
+  code: string;
+  eventDate: string;
+  expiresAt?: string | null;
+}) {
+  const client = requireSupabase();
+  const { data: hash, error: hashError } = await client.rpc("normalized_checkin_code_hash", {
+    _validation_code: values.code,
+  });
+
+  if (hashError) throw hashError;
+
+  const { data, error } = await client
+    .from("checkin_event_codes")
+    .insert({
+      checkin_type: values.checkinType,
+      label: values.label,
+      code_hash: hash,
+      code_preview: checkinCodePreview(values.code),
+      event_date: values.eventDate,
+      active: true,
+      expires_at: values.expiresAt ?? null,
+      created_by: values.pessoa.id,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "estalecas.checkin_code.create",
+    entity: "checkin_event_codes",
+    entityId: data?.id,
+    metadata: {
+      checkinType: values.checkinType,
+      eventDate: values.eventDate,
+      codePreview: checkinCodePreview(values.code),
+    },
+  });
+  return data?.id as string;
+}
+
+export async function updateRemoteCheckinEventCodeStatus(values: {
+  id: string;
+  active: boolean;
+}) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("checkin_event_codes")
+    .update({ active: values.active, updated_at: new Date().toISOString() })
+    .eq("id", values.id);
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: values.active ? "estalecas.checkin_code.activate" : "estalecas.checkin_code.deactivate",
+    entity: "checkin_event_codes",
+    entityId: values.id,
+  });
 }

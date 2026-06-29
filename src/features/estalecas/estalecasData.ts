@@ -79,6 +79,20 @@ export type EstalecaReward = {
   deliveredAt?: string;
 };
 
+export type CheckinEventCode = {
+  id: string;
+  checkinType: CheckinType;
+  label: string;
+  codeHash: string;
+  codePreview: string;
+  eventDate: string;
+  active: boolean;
+  expiresAt?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
 export type GymStats = {
   totalGymCheckins: number;
   totalChurchCheckins: number;
@@ -130,6 +144,7 @@ export const estalecasCheckinsStorageKey = "app-bratan-estalecas-checkins";
 export const estalecasProfilesStorageKey = "app-bratan-gamification-profiles";
 export const estalecasRewardsStorageKey = "app-bratan-estalecas-rewards";
 export const estalecasConfigStorageKey = "app-bratan-estalecas-config";
+export const checkinEventCodesStorageKey = "app-bratan-checkin-event-codes";
 export const estalecasDeviceIdStorageKey = "app-bratan-device-id";
 
 export const defaultEstalecaConfig: EstalecaConfig = {
@@ -248,6 +263,42 @@ export function publicRankingName(profile: GamificationProfile | undefined, pess
   const display = profile?.displayName?.trim();
   if (display) return display.slice(0, 32);
   return firstNameOrMasked(pessoa?.nome ?? "Equipe Bratan");
+}
+
+export function normalizeCheckinCode(code: string) {
+  return code
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+}
+
+export function simpleCheckinCodeHash(code: string) {
+  const normalized = normalizeCheckinCode(code);
+  let hash = 5381;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ normalized.charCodeAt(index);
+  }
+  return `local-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+export function checkinCodePreview(code: string) {
+  const normalized = normalizeCheckinCode(code);
+  return normalized.length <= 4 ? normalized : normalized.slice(-4);
+}
+
+export function isCheckinEventCodeActive(code: CheckinEventCode, values: {
+  checkinType: CheckinType;
+  validationCode: string;
+  checkinDate: string;
+  now?: Date;
+}) {
+  const now = values.now ?? new Date();
+  if (!code.active) return false;
+  if (code.checkinType !== values.checkinType) return false;
+  if (code.eventDate !== values.checkinDate) return false;
+  if (code.expiresAt && new Date(code.expiresAt).getTime() <= now.getTime()) return false;
+  return code.codeHash === simpleCheckinCodeHash(values.validationCode);
 }
 
 export function isTransactionAvailable(transaction: EstalecaTransaction, now = new Date()) {
@@ -528,6 +579,7 @@ export function performLocalCheckin(values: {
   transactions: EstalecaTransaction[];
   checkins: EstalecaCheckin[];
   rewards: EstalecaReward[];
+  eventCodes?: CheckinEventCode[];
   profile?: GamificationProfile;
   validationCode?: string;
   config?: EstalecaConfig;
@@ -549,6 +601,21 @@ export function performLocalCheckin(values: {
 
   if (values.checkinType === "church" && (!values.validationCode || values.validationCode.trim().length < 4)) {
     throw new Error("church_code_required");
+  }
+
+  if (values.checkinType === "church") {
+    const validCode = (values.eventCodes ?? []).some((code) =>
+      isCheckinEventCodeActive(code, {
+        checkinType: values.checkinType,
+        validationCode: values.validationCode ?? "",
+        checkinDate,
+        now,
+      }),
+    );
+
+    if (!validCode) {
+      throw new Error("invalid_checkin_code");
+    }
   }
 
   if (existing) {

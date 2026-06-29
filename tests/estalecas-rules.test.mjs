@@ -96,6 +96,27 @@ function performCheckin({ userId, type, date, checkins, transactions }) {
   };
 }
 
+function normalizeCode(code) {
+  return code
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+}
+
+function localCodeHash(code) {
+  const normalized = normalizeCode(code);
+  let hash = 5381;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ normalized.charCodeAt(index);
+  }
+  return `local-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function isActiveCode(code, input, date) {
+  return code.active && code.eventDate === date && code.codeHash === localCodeHash(input);
+}
+
 function milestoneRewardIfNeeded({ userId, checkins, rewards }) {
   const total = checkins
     .filter((checkin) => checkin.userId === userId && checkin.checkinType === "gym" && checkin.status === "valid")
@@ -125,6 +146,24 @@ test("check-in diário é idempotente e não duplica Estalecas", () => {
   assert.equal(second.created, false);
   assert.equal(second.checkins.length, 1);
   assert.equal(second.transactions.length, 1);
+});
+
+test("check-in por código exige código ativo do dia", () => {
+  const activeCode = {
+    active: true,
+    eventDate: "2026-06-29",
+    codeHash: localCodeHash("BRATAN-ABCD"),
+  };
+  const inactiveCode = {
+    active: false,
+    eventDate: "2026-06-29",
+    codeHash: localCodeHash("BRATAN-WXYZ"),
+  };
+
+  assert.equal(isActiveCode(activeCode, "bratan abcd", "2026-06-29"), true);
+  assert.equal(isActiveCode(activeCode, "BRATAN-ERRADO", "2026-06-29"), false);
+  assert.equal(isActiveCode(activeCode, "BRATAN-ABCD", "2026-06-30"), false);
+  assert.equal(isActiveCode(inactiveCode, "BRATAN-WXYZ", "2026-06-29"), false);
 });
 
 test("ranking mensal usa desempate determinístico por sequência", () => {

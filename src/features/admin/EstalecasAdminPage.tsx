@@ -7,6 +7,7 @@ import {
   Dumbbell,
   Gift,
   History,
+  KeyRound,
   RotateCcw,
   Save,
   Settings2,
@@ -22,12 +23,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, cargoLabels, seededColaboradores } from "@/lib/access";
-import { readLocalValue, writeLocalValue } from "@/lib/localStore";
+import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import {
+  createRemoteCheckinEventCode,
   createRemoteEstalecaTransaction,
   createRemoteMonthlyWinnerReward,
   getRemoteEstalecaConfig,
   invalidateRemoteCheckin,
+  listRemoteCheckinEventCodes,
   listRemoteCheckins,
   listRemoteColaboradores,
   listRemoteEstalecaTransactions,
@@ -35,10 +38,12 @@ import {
   listRemoteRewards,
   saveRemoteEstalecaConfig,
   updateRemoteEstalecaTransactionStatus,
+  updateRemoteCheckinEventCodeStatus,
   updateRemoteRewardStatus,
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import type {
+  CheckinType,
   Colaborador,
   EstalecaTransactionSource,
   EstalecaTransactionStatus,
@@ -49,6 +54,9 @@ import { colaboradoresStorageKey } from "./colaboradoresData";
 import {
   buildMonthlyGymRanking,
   calculateEstalecasBalance,
+  checkinCodePreview,
+  checkinEventCodesStorageKey,
+  checkinTypeLabels,
   defaultEstalecaConfig,
   estalecasConfigStorageKey,
   estalecaSourceLabels,
@@ -61,6 +69,8 @@ import {
   formatEstalecas,
   rewardStatusLabels,
   rewardTypeLabels,
+  simpleCheckinCodeHash,
+  type CheckinEventCode,
   type EstalecaCheckin,
   type EstalecaConfig,
   type EstalecaReward,
@@ -79,6 +89,14 @@ type AdjustmentForm = {
   reason: string;
 };
 
+type CodeForm = {
+  checkinType: CheckinType;
+  label: string;
+  code: string;
+  eventDate: string;
+  expiresAt: string;
+};
+
 const emptyAdjustmentForm: AdjustmentForm = {
   targetUserId: "",
   kind: "cashback",
@@ -86,6 +104,14 @@ const emptyAdjustmentForm: AdjustmentForm = {
   status: "pending",
   description: "",
   reason: "",
+};
+
+const emptyCodeForm: CodeForm = {
+  checkinType: "church",
+  label: "Check-in do dia",
+  code: "",
+  eventDate: todayISO(),
+  expiresAt: "",
 };
 
 const adjustmentPresets: Record<AdjustmentKind, {
@@ -122,6 +148,14 @@ const textareaClass = "min-h-24 w-full resize-none rounded-lg border border-inpu
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID?.() ?? Date.now()}`;
+}
+
+function generateCheckinCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const values = new Uint32Array(8);
+  crypto.getRandomValues(values);
+  const suffix = Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
+  return `BRATAN-${suffix}`;
 }
 
 function parseInteger(value: string) {
@@ -200,9 +234,11 @@ export function EstalecasAdminPage() {
   const [localTransactions, setLocalTransactions] = useState<EstalecaTransaction[]>(() => readLocalValue(estalecasTransactionsStorageKey, []));
   const [localCheckins, setLocalCheckins] = useState<EstalecaCheckin[]>(() => readLocalValue(estalecasCheckinsStorageKey, []));
   const [localRewards, setLocalRewards] = useState<EstalecaReward[]>(() => readLocalValue(estalecasRewardsStorageKey, []));
+  const [localEventCodes, setLocalEventCodes] = useState<CheckinEventCode[]>(() => readLocalValue(checkinEventCodesStorageKey, []));
   const [localProfiles] = useState<GamificationProfile[]>(() => readLocalValue(estalecasProfilesStorageKey, []));
   const [configDraft, setConfigDraft] = useState<EstalecaConfig>(localConfig);
   const [categoryText, setCategoryText] = useState(localConfig.eligibleCategories.join(", "));
+  const [codeForm, setCodeForm] = useState<CodeForm>(emptyCodeForm);
   const [adjustmentForm, setAdjustmentForm] = useState<AdjustmentForm>(emptyAdjustmentForm);
   const [reasonByTransaction, setReasonByTransaction] = useState<Record<string, string>>({});
   const [reasonByCheckin, setReasonByCheckin] = useState<Record<string, string>>({});
@@ -238,6 +274,11 @@ export function EstalecasAdminPage() {
     queryFn: listRemoteRankingProfiles,
     enabled: useRemote,
   });
+  const eventCodesQuery = useQuery({
+    queryKey: ["checkin-event-codes"],
+    queryFn: listRemoteCheckinEventCodes,
+    enabled: useRemote,
+  });
 
   const configMutation = useMutation({
     mutationFn: saveRemoteEstalecaConfig,
@@ -266,12 +307,21 @@ export function EstalecasAdminPage() {
     mutationFn: createRemoteMonthlyWinnerReward,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["estalecas-rewards"] }),
   });
+  const createEventCodeMutation = useMutation({
+    mutationFn: createRemoteCheckinEventCode,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["checkin-event-codes"] }),
+  });
+  const eventCodeStatusMutation = useMutation({
+    mutationFn: updateRemoteCheckinEventCodeStatus,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["checkin-event-codes"] }),
+  });
 
   const colaboradores = useRemote ? colaboradoresQuery.data ?? [] : localColaboradores;
   const config = useRemote ? configQuery.data ?? defaultEstalecaConfig : localConfig;
   const transactions = useRemote ? transactionsQuery.data ?? [] : localTransactions;
   const checkins = useRemote ? checkinsQuery.data ?? [] : localCheckins;
   const rewards = useRemote ? rewardsQuery.data ?? [] : localRewards;
+  const eventCodes = useRemote ? eventCodesQuery.data ?? [] : localEventCodes;
   const rankingProfiles = useRemote ? rankingProfilesQuery.data ?? [] : localProfiles;
 
   useEffect(() => {
@@ -325,9 +375,90 @@ export function EstalecasAdminPage() {
     writeLocalValue(estalecasRewardsStorageKey, nextRewards);
   }
 
+  function persistEventCodes(nextCodes: CheckinEventCode[]) {
+    setLocalEventCodes(nextCodes);
+    writeLocalValue(checkinEventCodesStorageKey, nextCodes);
+  }
+
   function setConfigNumber<K extends keyof EstalecaConfig>(key: K, value: string) {
     const parsed = value === "" ? 0 : Number(value);
     setConfigDraft((current) => ({ ...current, [key]: Number.isFinite(parsed) ? parsed : current[key] }));
+  }
+
+  function fillGeneratedCode() {
+    setCodeForm((current) => ({ ...current, code: generateCheckinCode() }));
+  }
+
+  async function submitEventCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    if (!pessoa) return;
+    const label = codeForm.label.trim();
+    const code = codeForm.code.trim();
+    if (!label || label.length < 3 || code.length < 4 || !codeForm.eventDate) {
+      setError("Informe nome, data e código com pelo menos 4 caracteres.");
+      return;
+    }
+
+    const expiresAt = codeForm.expiresAt ? new Date(codeForm.expiresAt).toISOString() : null;
+
+    if (useRemote) {
+      try {
+        await createEventCodeMutation.mutateAsync({
+          pessoa,
+          checkinType: codeForm.checkinType,
+          label,
+          code,
+          eventDate: codeForm.eventDate,
+          expiresAt,
+        });
+        setCodeForm({ ...emptyCodeForm, eventDate: todayISO() });
+        setMessage(`Código de check-in criado: ${code}. Compartilhe apenas com quem deve validar presença.`);
+      } catch {
+        setError("Não foi possível criar o código. Verifique se já existe um código ativo igual para esta data.");
+      }
+      return;
+    }
+
+    const now = new Date().toISOString();
+    persistEventCodes([
+      {
+        id: createId("checkin-code"),
+        checkinType: codeForm.checkinType,
+        label,
+        codeHash: simpleCheckinCodeHash(code),
+        codePreview: checkinCodePreview(code),
+        eventDate: codeForm.eventDate,
+        active: true,
+        expiresAt: expiresAt ?? undefined,
+        createdBy: pessoa.id,
+        createdAt: now,
+        updatedAt: now,
+      },
+      ...eventCodes,
+    ]);
+    setCodeForm({ ...emptyCodeForm, eventDate: todayISO() });
+    setMessage(`Código criado na prévia local: ${code}.`);
+  }
+
+  async function updateEventCodeStatus(code: CheckinEventCode, active: boolean) {
+    setError(null);
+    setMessage(null);
+
+    if (useRemote) {
+      try {
+        await eventCodeStatusMutation.mutateAsync({ id: code.id, active });
+        setMessage(active ? "Código reativado." : "Código desativado.");
+      } catch {
+        setError("Não foi possível atualizar o código.");
+      }
+      return;
+    }
+
+    persistEventCodes(eventCodes.map((item) => (item.id === code.id ? { ...item, active, updatedAt: new Date().toISOString() } : item)));
+    setMessage(active ? "Código reativado na prévia local." : "Código desativado na prévia local.");
   }
 
   async function submitConfig(event: FormEvent<HTMLFormElement>) {
@@ -747,6 +878,81 @@ export function EstalecasAdminPage() {
                     Salvar regras
                   </Button>
                 </form>
+              </CardContent>
+            </Card>
+
+            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <KeyRound className="h-5 w-5" aria-hidden="true" />
+                  Códigos de check-in
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <form className="space-y-4" onSubmit={submitEventCode}>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="code-type">Tipo</Label>
+                      <select
+                        id="code-type"
+                        value={codeForm.checkinType}
+                        onChange={(event) => setCodeForm((current) => ({ ...current, checkinType: event.target.value as CheckinType }))}
+                        className={selectClass}
+                      >
+                        <option value="church">{checkinTypeLabels.church}</option>
+                        <option value="gym">{checkinTypeLabels.gym}</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="code-date">Data</Label>
+                      <Input id="code-date" type="date" value={codeForm.eventDate} onChange={(event) => setCodeForm((current) => ({ ...current, eventDate: event.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="code-label">Nome do evento</Label>
+                    <Input id="code-label" value={codeForm.label} onChange={(event) => setCodeForm((current) => ({ ...current, label: event.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="code-value">Código</Label>
+                    <div className="flex gap-2">
+                      <Input id="code-value" value={codeForm.code} placeholder="BRATAN-..." onChange={(event) => setCodeForm((current) => ({ ...current, code: event.target.value }))} />
+                      <Button type="button" variant="outline" onClick={fillGeneratedCode}>
+                        Gerar
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="code-expiration">Expira em</Label>
+                    <Input id="code-expiration" type="datetime-local" value={codeForm.expiresAt} onChange={(event) => setCodeForm((current) => ({ ...current, expiresAt: event.target.value }))} />
+                  </div>
+                  <Button type="submit" className="w-full gap-2" disabled={createEventCodeMutation.isPending}>
+                    <KeyRound className="h-4 w-4" aria-hidden="true" />
+                    Criar código
+                  </Button>
+                </form>
+
+                <div className="space-y-2">
+                  {eventCodes.slice(0, 6).map((code) => (
+                    <div key={code.id} className="rounded-lg border border-brand-oliva/14 bg-white/65 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <Badge variant={code.active ? "gold" : "muted"}>{code.active ? "Ativo" : "Inativo"}</Badge>
+                            <Badge variant="outline">{checkinTypeLabels[code.checkinType]}</Badge>
+                          </div>
+                          <p className="truncate font-semibold text-brand-tinta">{code.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {code.eventDate} - final {code.codePreview}
+                          </p>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" onClick={() => updateEventCodeStatus(code, !code.active)}>
+                          {code.active ? "Desativar" : "Ativar"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {!eventCodes.length ? <p className="text-sm text-muted-foreground">Nenhum código criado ainda.</p> : null}
+                </div>
               </CardContent>
             </Card>
 

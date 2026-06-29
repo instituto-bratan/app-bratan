@@ -35,6 +35,9 @@ export const auditActionLabels: Record<string, string> = {
   "estalecas.checkin.invalidate": "Check-in invalidado",
   "estalecas.reward.status": "Status de prêmio",
   "estalecas.reward.monthly_winner.create": "Vencedor mensal registrado",
+  "estalecas.checkin_code.create": "Código de check-in criado",
+  "estalecas.checkin_code.activate": "Código de check-in ativado",
+  "estalecas.checkin_code.deactivate": "Código de check-in desativado",
 };
 
 export const auditEntityLabels: Record<string, string> = {
@@ -48,6 +51,7 @@ export const auditEntityLabels: Record<string, string> = {
   estaleca_config: "Configuração de Estalecas",
   estaleca_transactions: "Transação de Estalecas",
   checkins: "Check-ins",
+  checkin_event_codes: "Códigos de check-in",
   rewards: "Prêmios",
 };
 

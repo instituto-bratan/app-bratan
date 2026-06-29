@@ -33,6 +33,7 @@ import type { CheckinType, Colaborador } from "@/types/database";
 import {
   buildEstalecasSnapshot,
   buildMonthlyGymRanking,
+  checkinEventCodesStorageKey,
   checkinTypeLabels,
   defaultEstalecaConfig,
   estalecaSourceLabels,
@@ -46,6 +47,7 @@ import {
   getLocalDeviceId,
   performLocalCheckin,
   publicRankingName,
+  type CheckinEventCode,
   type EstalecaCheckin,
   type EstalecaReward,
   type EstalecaTransaction,
@@ -184,6 +186,10 @@ export function EstalecasPage() {
     () => readLocalValue<EstalecaReward[]>(estalecasRewardsStorageKey, []),
     [localRevision],
   );
+  const localEventCodes = useMemo(
+    () => readLocalValue<CheckinEventCode[]>(checkinEventCodesStorageKey, []),
+    [localRevision],
+  );
 
   const profile = pessoa
     ? useRemote
@@ -290,6 +296,7 @@ export function EstalecasPage() {
         transactions: localTransactions,
         checkins: localCheckins,
         rewards: localRewards,
+        eventCodes: localEventCodes,
         profile: profile ?? undefined,
         validationCode: churchCode,
         config,
@@ -309,6 +316,8 @@ export function EstalecasPage() {
         setMessage("Informe o código do dia/evento para confirmar este check-in.");
       } else if (messageText.includes("consent_required")) {
         setMessage("Ative o consentimento de check-ins antes de registrar atividades.");
+      } else if (messageText.includes("invalid_checkin_code")) {
+        setMessage("Código não encontrado, vencido ou inativo para hoje. Peça o código atualizado à coordenação.");
       } else {
         setMessage("Não foi possível registrar o check-in agora.");
       }

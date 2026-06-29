@@ -232,6 +232,20 @@ export type RewardRow = {
   delivered_at: string | null;
 };
 
+export type CheckinEventCodeRow = {
+  id: string;
+  checkin_type: CheckinType;
+  label: string;
+  code_hash: string;
+  code_preview: string;
+  event_date: string;
+  active: boolean;
+  expires_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -478,6 +492,23 @@ export type Database = {
           delivered_at?: string | null;
         };
         Update: Partial<Omit<RewardRow, "id" | "user_id" | "created_at">>;
+      };
+      checkin_event_codes: {
+        Row: CheckinEventCodeRow;
+        Insert: {
+          id?: string;
+          checkin_type: CheckinType;
+          label: string;
+          code_hash: string;
+          code_preview: string;
+          event_date: string;
+          active?: boolean;
+          expires_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string | null;
+        };
+        Update: Partial<Omit<CheckinEventCodeRow, "id" | "created_at">>;
       };
     };
     Enums: {
