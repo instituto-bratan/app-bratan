@@ -138,6 +138,14 @@ function canCreateReversal(transactions, originalTransactionId) {
   return !reversalOriginalIds(transactions).includes(originalTransactionId);
 }
 
+function canApproveTransaction(transactions, candidate) {
+  if (candidate.status !== "approved" || candidate.amount >= 0) return true;
+  const currentBalance = approvedBalance(
+    transactions.filter((transaction) => transaction.userId === candidate.userId && transaction.id !== candidate.id),
+  );
+  return currentBalance + candidate.amount >= 0;
+}
+
 test("ledger soma apenas transações aprovadas e não expiradas", () => {
   const balance = approvedBalance([
     { amount: 100, status: "approved" },
@@ -248,4 +256,19 @@ test("estorno de cashback só pode existir uma vez por transação original", ()
 
   assert.equal(canCreateReversal(existingTransactions, "cashback-1"), false);
   assert.equal(canCreateReversal(existingTransactions, "cashback-2"), true);
+});
+
+test("transação negativa aprovada não pode deixar saldo abaixo de zero", () => {
+  const transactions = [
+    {
+      id: "earn-1",
+      userId: "u1",
+      amount: 80,
+      status: "approved",
+      type: "earn",
+    },
+  ];
+
+  assert.equal(canApproveTransaction(transactions, { id: "spend-1", userId: "u1", amount: -50, status: "approved" }), true);
+  assert.equal(canApproveTransaction(transactions, { id: "spend-2", userId: "u1", amount: -90, status: "approved" }), false);
 });

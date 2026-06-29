@@ -378,6 +378,12 @@ export function EstalecasAdminPage() {
   const topRanking = ranking[0];
   const directCheckinLink = checkinLinkFor({ checkinType: codeForm.checkinType, code: codeForm.code });
 
+  function balanceForUser(userId: string, excludedTransactionId?: string) {
+    return calculateEstalecasBalance(
+      transactions.filter((transaction) => transaction.userId === userId && transaction.id !== excludedTransactionId),
+    );
+  }
+
   function persistConfig(nextConfig: EstalecaConfig) {
     setLocalConfig(nextConfig);
     writeLocalValue(estalecasConfigStorageKey, nextConfig);
@@ -570,6 +576,12 @@ export function EstalecasAdminPage() {
     const targetTransactions = transactions.filter((transaction) => transaction.userId === target.id);
     const beforeBalance = calculateEstalecasBalance(targetTransactions);
     const afterBalanceEstimate = adjustmentForm.status === "approved" ? beforeBalance + amount : beforeBalance;
+
+    if (adjustmentForm.status === "approved" && afterBalanceEstimate < 0) {
+      setError("Este lançamento deixaria o saldo negativo. Registre um valor menor ou faça um estorno vinculado à origem correta.");
+      return;
+    }
+
     const metadata = {
       adminReason: reason,
       beforeBalance,
@@ -640,6 +652,10 @@ export function EstalecasAdminPage() {
         setError("Esta transação já possui estorno registrado.");
         return;
       }
+      if (balanceForUser(transaction.userId) - transaction.amount < 0) {
+        setError("O saldo atual não comporta este estorno sem ficar negativo.");
+        return;
+      }
 
       const reversalPayload = {
         targetUserId: transaction.userId,
@@ -687,6 +703,11 @@ export function EstalecasAdminPage() {
       ]);
       setReasonByTransaction((current) => ({ ...current, [transaction.id]: "" }));
       setMessage("Estorno registrado como nova transação na prévia local.");
+      return;
+    }
+
+    if (status === "approved" && transaction.amount < 0 && balanceForUser(transaction.userId, transaction.id) + transaction.amount < 0) {
+      setError("A aprovação deixaria o saldo negativo. Ajuste o valor antes de aprovar.");
       return;
     }
 
