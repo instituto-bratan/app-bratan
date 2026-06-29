@@ -1251,6 +1251,44 @@ export async function createRemoteMonthlyWinnerReward(values: {
   return data?.id as string;
 }
 
+export async function createRemoteReward(values: {
+  userId: string;
+  rewardType: RewardType;
+  title: string;
+  description: string;
+  status: RewardStatus;
+  metadata?: Record<string, unknown>;
+}) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("rewards")
+    .insert({
+      user_id: values.userId,
+      reward_type: values.rewardType,
+      title: values.title,
+      description: values.description,
+      status: values.status,
+      metadata: values.metadata ?? {},
+      delivered_at: values.status === "delivered" ? new Date().toISOString() : null,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "estalecas.reward.create",
+    entity: "rewards",
+    entityId: data?.id,
+    metadata: {
+      targetUserId: values.userId,
+      rewardType: values.rewardType,
+      status: values.status,
+      title: values.title,
+    },
+  });
+  return data?.id as string;
+}
+
 type RemoteCheckinEventCode = {
   id: string;
   checkin_type: CheckinType;

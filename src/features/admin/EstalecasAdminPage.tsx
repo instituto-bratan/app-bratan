@@ -30,6 +30,7 @@ import {
   createRemoteCheckinEventCode,
   createRemoteEstalecaTransaction,
   createRemoteMonthlyWinnerReward,
+  createRemoteReward,
   getRemoteEstalecaConfig,
   invalidateRemoteCheckin,
   listRemoteCheckinEventCodes,
@@ -51,6 +52,7 @@ import type {
   EstalecaTransactionStatus,
   EstalecaTransactionType,
   RewardStatus,
+  RewardType,
 } from "@/types/database";
 import { colaboradoresStorageKey } from "./colaboradoresData";
 import {
@@ -105,6 +107,15 @@ type CashbackForm = {
   purchaseDescription: string;
 };
 
+type RewardForm = {
+  targetUserId: string;
+  rewardType: RewardType;
+  status: RewardStatus;
+  title: string;
+  description: string;
+  reason: string;
+};
+
 const emptyAdjustmentForm: AdjustmentForm = {
   targetUserId: "",
   kind: "cashback",
@@ -126,6 +137,15 @@ const emptyCashbackForm: CashbackForm = {
   purchaseAmount: "",
   category: defaultEstalecaConfig.eligibleCategories[0],
   purchaseDescription: "",
+};
+
+const emptyRewardForm: RewardForm = {
+  targetUserId: "",
+  rewardType: "manual_prize",
+  status: "pending",
+  title: "",
+  description: "",
+  reason: "",
 };
 
 const adjustmentPresets: Record<AdjustmentKind, {
@@ -156,6 +176,7 @@ const adjustmentPresets: Record<AdjustmentKind, {
 
 const transactionStatusOptions: EstalecaTransactionStatus[] = ["pending", "approved", "rejected"];
 const rewardStatusOptions: RewardStatus[] = ["pending", "confirmed", "delivered", "cancelled"];
+const manualRewardTypeOptions: RewardType[] = ["manual_prize", "cashback_bonus", "checkin_bonus"];
 
 const selectClass = "flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const textareaClass = "min-h-24 w-full resize-none rounded-lg border border-input bg-white/80 px-3 py-3 text-sm leading-6 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -272,6 +293,7 @@ export function EstalecasAdminPage() {
   const [codeForm, setCodeForm] = useState<CodeForm>(emptyCodeForm);
   const [adjustmentForm, setAdjustmentForm] = useState<AdjustmentForm>(emptyAdjustmentForm);
   const [cashbackForm, setCashbackForm] = useState<CashbackForm>(emptyCashbackForm);
+  const [rewardForm, setRewardForm] = useState<RewardForm>(emptyRewardForm);
   const [reasonByTransaction, setReasonByTransaction] = useState<Record<string, string>>({});
   const [reasonByCheckin, setReasonByCheckin] = useState<Record<string, string>>({});
   const [reasonByReward, setReasonByReward] = useState<Record<string, string>>({});
@@ -337,6 +359,10 @@ export function EstalecasAdminPage() {
   });
   const monthlyWinnerMutation = useMutation({
     mutationFn: createRemoteMonthlyWinnerReward,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["estalecas-rewards"] }),
+  });
+  const createRewardMutation = useMutation({
+    mutationFn: createRemoteReward,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["estalecas-rewards"] }),
   });
   const createEventCodeMutation = useMutation({
@@ -912,6 +938,66 @@ export function EstalecasAdminPage() {
     setMessage("Prêmio atualizado na prévia local.");
   }
 
+  async function submitReward(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    if (!pessoa) return;
+    const target = activeColaboradores.find((colaborador) => colaborador.id === rewardForm.targetUserId);
+    const title = rewardForm.title.trim();
+    const description = rewardForm.description.trim();
+    const reason = rewardForm.reason.trim();
+
+    if (!target || !title || !description || reason.length < 8) {
+      setError("Informe colaborador, título, descrição e motivo administrativo do prêmio.");
+      return;
+    }
+
+    const metadata = {
+      adminReason: reason,
+      controlledByAdmin: true,
+      createdBy: pessoa.id,
+    };
+
+    if (useRemote) {
+      try {
+        await createRewardMutation.mutateAsync({
+          userId: target.id,
+          rewardType: rewardForm.rewardType,
+          status: rewardForm.status,
+          title,
+          description,
+          metadata,
+        });
+        setRewardForm(emptyRewardForm);
+        setMessage("Prêmio registrado para o colaborador.");
+      } catch {
+        setError("Não foi possível registrar o prêmio no Supabase.");
+      }
+      return;
+    }
+
+    const now = new Date().toISOString();
+    persistRewards([
+      {
+        id: createId("reward-manual"),
+        userId: target.id,
+        rewardType: rewardForm.rewardType,
+        title,
+        description,
+        status: rewardForm.status,
+        metadata,
+        createdAt: now,
+        updatedAt: now,
+        deliveredAt: rewardForm.status === "delivered" ? now : undefined,
+      },
+      ...rewards,
+    ]);
+    setRewardForm(emptyRewardForm);
+    setMessage("Prêmio registrado na prévia local.");
+  }
+
   async function registerMonthlyWinner() {
     setError(null);
     setMessage(null);
@@ -1311,6 +1397,98 @@ export function EstalecasAdminPage() {
                   <Button type="submit" className="w-full gap-2" disabled={createTransactionMutation.isPending}>
                     <Coins className="h-4 w-4" aria-hidden="true" />
                     Registrar lançamento
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Gift className="h-5 w-5" aria-hidden="true" />
+                  Prêmio manual
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form className="space-y-4" onSubmit={submitReward}>
+                  <div className="space-y-2">
+                    <Label htmlFor="reward-user">Colaborador</Label>
+                    <select
+                      id="reward-user"
+                      value={rewardForm.targetUserId}
+                      onChange={(event) => setRewardForm((current) => ({ ...current, targetUserId: event.target.value }))}
+                      className={selectClass}
+                    >
+                      <option value="">Selecione</option>
+                      {activeColaboradores.map((colaborador) => (
+                        <option key={colaborador.id} value={colaborador.id}>
+                          {colaborador.nome} - {cargoLabels[colaborador.cargo]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="reward-type">Tipo</Label>
+                      <select
+                        id="reward-type"
+                        value={rewardForm.rewardType}
+                        onChange={(event) => setRewardForm((current) => ({ ...current, rewardType: event.target.value as RewardType }))}
+                        className={selectClass}
+                      >
+                        {manualRewardTypeOptions.map((rewardType) => (
+                          <option key={rewardType} value={rewardType}>
+                            {rewardTypeLabels[rewardType]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reward-status">Status inicial</Label>
+                      <select
+                        id="reward-status"
+                        value={rewardForm.status}
+                        onChange={(event) => setRewardForm((current) => ({ ...current, status: event.target.value as RewardStatus }))}
+                        className={selectClass}
+                      >
+                        {rewardStatusOptions.map((status) => (
+                          <option key={status} value={status}>
+                            {rewardStatusLabels[status]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reward-title">Título</Label>
+                    <Input
+                      id="reward-title"
+                      placeholder="Ex.: Suplemento premium"
+                      value={rewardForm.title}
+                      onChange={(event) => setRewardForm((current) => ({ ...current, title: event.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reward-description">Descrição</Label>
+                    <Input
+                      id="reward-description"
+                      placeholder="Benefício definido pela coordenação"
+                      value={rewardForm.description}
+                      onChange={(event) => setRewardForm((current) => ({ ...current, description: event.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reward-reason">Motivo administrativo</Label>
+                    <textarea
+                      id="reward-reason"
+                      className={textareaClass}
+                      value={rewardForm.reason}
+                      onChange={(event) => setRewardForm((current) => ({ ...current, reason: event.target.value }))}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full gap-2" disabled={createRewardMutation.isPending}>
+                    <Gift className="h-4 w-4" aria-hidden="true" />
+                    Registrar prêmio
                   </Button>
                 </form>
               </CardContent>

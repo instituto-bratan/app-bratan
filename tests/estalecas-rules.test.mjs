@@ -150,6 +150,10 @@ function calculateCashbackAmount(purchaseAmount, percent, maxAmount) {
   return Math.max(1, Math.min(maxAmount, Math.floor((purchaseAmount * percent) / 100)));
 }
 
+function canCreateManualReward(form) {
+  return Boolean(form.userId && form.title?.trim() && form.description?.trim() && form.reason?.trim().length >= 8);
+}
+
 test("ledger soma apenas transações aprovadas e não expiradas", () => {
   const balance = approvedBalance([
     { amount: 100, status: "approved" },
@@ -280,4 +284,9 @@ test("transação negativa aprovada não pode deixar saldo abaixo de zero", () =
 
   assert.equal(canApproveTransaction(transactions, { id: "spend-1", userId: "u1", amount: -50, status: "approved" }), true);
   assert.equal(canApproveTransaction(transactions, { id: "spend-2", userId: "u1", amount: -90, status: "approved" }), false);
+});
+
+test("prêmio manual exige colaborador, descrição e motivo administrativo", () => {
+  assert.equal(canCreateManualReward({ userId: "u1", title: "Brinde", description: "Suplemento", reason: "meta batida" }), true);
+  assert.equal(canCreateManualReward({ userId: "u1", title: "Brinde", description: "Suplemento", reason: "curto" }), false);
 });
