@@ -4,9 +4,32 @@ import { prepareSharePointDispatch } from "@/lib/sharepoint";
 import type { ChecklistItem } from "@/features/checklist/checklistData";
 import type { Aviso } from "@/features/mural/muralData";
 import type { ComprovanteRecord } from "@/features/comprovantes/comprovantesData";
+import {
+  defaultEstalecaConfig,
+  type EstalecaCheckin,
+  type EstalecaConfig,
+  type EstalecaReward,
+  type EstalecaTransaction,
+  type GamificationProfile,
+} from "@/features/estalecas/estalecasData";
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
-import type { Cargo, Colaborador, ComprovanteTipo, FormaPagamento, PagamentoLembreteStatus, PrioridadeAviso } from "@/types/database";
+import type {
+  Cargo,
+  CheckinStatus,
+  CheckinType,
+  CheckinValidationMethod,
+  Colaborador,
+  ComprovanteTipo,
+  EstalecaTransactionSource,
+  EstalecaTransactionStatus,
+  EstalecaTransactionType,
+  FormaPagamento,
+  PagamentoLembreteStatus,
+  PrioridadeAviso,
+  RewardStatus,
+  RewardType,
+} from "@/types/database";
 
 function requireSupabase() {
   if (!supabase) {
@@ -730,4 +753,293 @@ export async function softDeleteRemotePagamento(id: string) {
     entity: "pagamento_lembrete",
     entityId: id,
   });
+}
+
+type RemoteEstalecaConfig = {
+  church_checkin_estalecas: number;
+  gym_checkin_estalecas: number;
+  gym_checkin_checkpoints: number;
+  streak_bonus_estalecas: number;
+  milestone_500_estalecas: number;
+  default_cashback_percent: number | string;
+  max_cashback_estalecas: number;
+  cashback_approval_days: number;
+  estalecas_expiration_days: number | null;
+  eligible_categories: unknown;
+};
+
+function mapRemoteConfig(record: RemoteEstalecaConfig | null | undefined): EstalecaConfig {
+  if (!record) return defaultEstalecaConfig;
+
+  return {
+    churchCheckinEstalecas: record.church_checkin_estalecas,
+    gymCheckinEstalecas: record.gym_checkin_estalecas,
+    gymCheckinCheckpoints: record.gym_checkin_checkpoints,
+    streakBonusEstalecas: record.streak_bonus_estalecas,
+    milestone500Estalecas: record.milestone_500_estalecas,
+    defaultCashbackPercent: Number(record.default_cashback_percent),
+    maxCashbackEstalecas: record.max_cashback_estalecas,
+    cashbackApprovalDays: record.cashback_approval_days,
+    estalecasExpirationDays: record.estalecas_expiration_days,
+    eligibleCategories: Array.isArray(record.eligible_categories)
+      ? record.eligible_categories.filter((item): item is string => typeof item === "string")
+      : defaultEstalecaConfig.eligibleCategories,
+  };
+}
+
+export async function getRemoteEstalecaConfig(): Promise<EstalecaConfig> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("estaleca_config")
+    .select("church_checkin_estalecas, gym_checkin_estalecas, gym_checkin_checkpoints, streak_bonus_estalecas, milestone_500_estalecas, default_cashback_percent, max_cashback_estalecas, cashback_approval_days, estalecas_expiration_days, eligible_categories")
+    .eq("id", true)
+    .maybeSingle();
+
+  if (error) throw error;
+  return mapRemoteConfig(data as RemoteEstalecaConfig | null);
+}
+
+type RemoteGamificationProfile = {
+  user_id: string;
+  display_name: string | null;
+  ranking_opt_in: boolean;
+  checkins_consent_at: string | null;
+  updated_at: string | null;
+};
+
+function mapRemoteProfile(record: RemoteGamificationProfile | null | undefined, pessoa: Colaborador): GamificationProfile {
+  return {
+    userId: pessoa.id,
+    displayName: record?.display_name ?? undefined,
+    rankingOptIn: record?.ranking_opt_in ?? true,
+    checkinsConsentAt: record?.checkins_consent_at ?? undefined,
+    updatedAt: record?.updated_at ?? undefined,
+  };
+}
+
+export async function getRemoteGamificationProfile(pessoa: Colaborador): Promise<GamificationProfile> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("gamification_profile")
+    .select("user_id, display_name, ranking_opt_in, checkins_consent_at, updated_at")
+    .eq("user_id", pessoa.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return mapRemoteProfile(data as RemoteGamificationProfile | null, pessoa);
+}
+
+export async function saveRemoteGamificationProfile(values: {
+  pessoa: Colaborador;
+  displayName?: string;
+  rankingOptIn?: boolean;
+  acceptCheckins?: boolean;
+}) {
+  const client = requireSupabase();
+  const payload = {
+    user_id: values.pessoa.id,
+    display_name: values.displayName?.trim() || null,
+    ranking_opt_in: values.rankingOptIn ?? true,
+    checkins_consent_at: values.acceptCheckins ? new Date().toISOString() : undefined,
+  };
+
+  const { error } = await client
+    .from("gamification_profile")
+    .upsert(payload, { onConflict: "user_id" });
+
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: values.acceptCheckins ? "estalecas.consent" : "estalecas.profile.update",
+    entity: "gamification_profile",
+    entityId: values.pessoa.id,
+    metadata: { rankingOptIn: values.rankingOptIn ?? true, hasDisplayName: Boolean(values.displayName?.trim()) },
+  });
+}
+
+type RemoteEstalecaTransaction = {
+  id: string;
+  user_id: string;
+  type: EstalecaTransactionType;
+  source: EstalecaTransactionSource;
+  amount: number;
+  status: EstalecaTransactionStatus;
+  description: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+  expires_at: string | null;
+  created_by: string | null;
+};
+
+function mapRemoteEstalecaTransaction(record: RemoteEstalecaTransaction): EstalecaTransaction {
+  return {
+    id: record.id,
+    userId: record.user_id,
+    type: record.type,
+    source: record.source,
+    amount: record.amount,
+    status: record.status,
+    description: record.description,
+    metadata: record.metadata ?? {},
+    createdAt: record.created_at,
+    updatedAt: record.updated_at ?? undefined,
+    expiresAt: record.expires_at ?? undefined,
+    createdBy: record.created_by ?? undefined,
+  };
+}
+
+export async function listRemoteEstalecaTransactions(): Promise<EstalecaTransaction[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("estaleca_transactions")
+    .select("id, user_id, type, source, amount, status, description, metadata, created_at, updated_at, expires_at, created_by")
+    .order("created_at", { ascending: false })
+    .limit(250);
+
+  if (error) throw error;
+  return ((data ?? []) as RemoteEstalecaTransaction[]).map(mapRemoteEstalecaTransaction);
+}
+
+type RemoteCheckin = {
+  id: string;
+  user_id: string;
+  checkin_type: CheckinType;
+  checkin_date: string;
+  status: CheckinStatus;
+  validation_method: CheckinValidationMethod;
+  reward_transaction_id: string | null;
+  checkpoints_awarded: number;
+  estalecas_awarded: number;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+  invalidated_by: string | null;
+  invalidation_reason: string | null;
+};
+
+function mapRemoteCheckin(record: RemoteCheckin): EstalecaCheckin {
+  return {
+    id: record.id,
+    userId: record.user_id,
+    checkinType: record.checkin_type,
+    checkinDate: record.checkin_date,
+    status: record.status,
+    validationMethod: record.validation_method,
+    rewardTransactionId: record.reward_transaction_id ?? undefined,
+    checkpointsAwarded: record.checkpoints_awarded,
+    estalecasAwarded: record.estalecas_awarded,
+    metadata: record.metadata ?? {},
+    createdAt: record.created_at,
+    updatedAt: record.updated_at ?? undefined,
+    invalidatedBy: record.invalidated_by ?? undefined,
+    invalidationReason: record.invalidation_reason ?? undefined,
+  };
+}
+
+export async function listRemoteCheckins(): Promise<EstalecaCheckin[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("checkins")
+    .select("id, user_id, checkin_type, checkin_date, status, validation_method, reward_transaction_id, checkpoints_awarded, estalecas_awarded, metadata, created_at, updated_at, invalidated_by, invalidation_reason")
+    .order("checkin_date", { ascending: false })
+    .limit(500);
+
+  if (error) throw error;
+  return ((data ?? []) as RemoteCheckin[]).map(mapRemoteCheckin);
+}
+
+type RemoteReward = {
+  id: string;
+  user_id: string;
+  campaign_id: string | null;
+  reward_type: RewardType;
+  title: string;
+  description: string;
+  status: RewardStatus;
+  month: number | null;
+  year: number | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+  delivered_at: string | null;
+};
+
+function mapRemoteReward(record: RemoteReward): EstalecaReward {
+  return {
+    id: record.id,
+    userId: record.user_id,
+    campaignId: record.campaign_id ?? undefined,
+    rewardType: record.reward_type,
+    title: record.title,
+    description: record.description,
+    status: record.status,
+    month: record.month ?? undefined,
+    year: record.year ?? undefined,
+    metadata: record.metadata ?? {},
+    createdAt: record.created_at,
+    updatedAt: record.updated_at ?? undefined,
+    deliveredAt: record.delivered_at ?? undefined,
+  };
+}
+
+export async function listRemoteRewards(): Promise<EstalecaReward[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("rewards")
+    .select("id, user_id, campaign_id, reward_type, title, description, status, month, year, metadata, created_at, updated_at, delivered_at")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+  return ((data ?? []) as RemoteReward[]).map(mapRemoteReward);
+}
+
+type RemoteRankingProfile = {
+  user_id: string;
+  display_name: string;
+  ranking_opt_in: boolean;
+};
+
+export async function listRemoteRankingProfiles(): Promise<GamificationProfile[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("gamification_ranking_profile")
+    .select("user_id, display_name, ranking_opt_in")
+    .eq("ranking_opt_in", true);
+
+  if (error) throw error;
+  return ((data ?? []) as RemoteRankingProfile[]).map((record) => ({
+    userId: record.user_id,
+    displayName: record.display_name,
+    rankingOptIn: record.ranking_opt_in,
+  }));
+}
+
+export async function performRemoteEstalecasCheckin(values: {
+  checkinType: CheckinType;
+  validationCode?: string;
+  validationMethod?: CheckinValidationMethod;
+  deviceId?: string;
+  userAgent?: string;
+  consentAccepted?: boolean;
+}) {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("perform_estalecas_checkin", {
+    _checkin_type: values.checkinType,
+    _validation_code: values.validationCode ?? null,
+    _validation_method: values.validationMethod ?? null,
+    _device_id: values.deviceId ?? null,
+    _user_agent: values.userAgent ?? null,
+    _consent_accepted: values.consentAccepted ?? false,
+  });
+
+  if (error) throw error;
+  return data as {
+    alreadyExists: boolean;
+    checkinId: string;
+    transactionId?: string;
+    rewardId?: string;
+    rewardTransactionId?: string;
+    message: string;
+  };
 }

@@ -6,6 +6,7 @@ import { SegurancaPage } from "@/features/admin/SegurancaPage";
 import { AlmocoPage } from "@/features/almoco/AlmocoPage";
 import { ChecklistPage } from "@/features/checklist/ChecklistPage";
 import { ComprovantesPage } from "@/features/comprovantes/ComprovantesPage";
+import { EstalecasPage } from "@/features/estalecas/EstalecasPage";
 import { HomePage } from "@/features/home/HomePage";
 import { MuralPage } from "@/features/mural/MuralPage";
 import { PagamentosPage } from "@/features/pagamentos/PagamentosPage";
@@ -29,6 +30,7 @@ export function App() {
           <Route path="/mural" element={<MuralPage />} />
           <Route path="/pops-fluxos" element={<PopsFluxosPage />} />
           <Route path="/comprovantes" element={<ComprovantesPage />} />
+          <Route path="/estalecas" element={<EstalecasPage />} />
           <Route path="/lembretes-pagamento" element={<PagamentosPage />} />
           <Route path="/administracao" element={<Navigate to="/administracao/colaboradores" replace />} />
           <Route path="/administracao/colaboradores" element={<ColaboradoresPage />} />

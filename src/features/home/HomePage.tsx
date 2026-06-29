@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CheckSquare,
   Clock,
+  Coins,
   FileText,
   History,
   ReceiptText,
@@ -41,7 +42,13 @@ import {
   pagamentosSummary,
   type PagamentoLembrete,
 } from "@/features/pagamentos/pagamentosData";
-import { listRemotePagamentos } from "@/lib/remoteData";
+import {
+  buildEstalecasSnapshot,
+  estalecasTransactionsStorageKey,
+  formatEstalecas,
+  type EstalecaTransaction,
+} from "@/features/estalecas/estalecasData";
+import { listRemoteEstalecaTransactions, listRemotePagamentos } from "@/lib/remoteData";
 
 const modules = [
   {
@@ -69,6 +76,15 @@ const modules = [
     label: "Comunicados",
     description: "Coordenação publica. Equipe lê. Comunicação clara, em um só lugar.",
     action: "Abrir mural",
+    allowed: canBaseModules,
+  },
+  {
+    title: "Suas Estalecas",
+    href: "/estalecas",
+    icon: Coins,
+    label: "Carteira Bratan",
+    description: "Ganhe Estalecas mantendo sua disciplina e participando das ações Bratan.",
+    action: "Ver minha carteira",
     allowed: canBaseModules,
   },
   {
@@ -174,6 +190,11 @@ export function HomePage() {
     queryFn: listRemotePagamentos,
     enabled: useRemote && canLembretesPagamento(cargo),
   });
+  const estalecasQuery = useQuery({
+    queryKey: ["estalecas-transactions", pessoa?.id],
+    queryFn: listRemoteEstalecaTransactions,
+    enabled: useRemote && Boolean(pessoa),
+  });
 
   const checklist = useMemo(() => {
     const items = readLocalValue(checklistStorageKey(), createChecklistRun());
@@ -198,6 +219,14 @@ export function HomePage() {
       : readLocalValue<PagamentoLembrete[]>(pagamentosStorageKey, []);
     return pagamentosSummary(records);
   }, [cargo, pagamentosQuery.data, useRemote]);
+
+  const estalecas = useMemo(() => {
+    if (!pessoa) return null;
+    const records = useRemote
+      ? estalecasQuery.data ?? []
+      : readLocalValue<EstalecaTransaction[]>(estalecasTransactionsStorageKey, []);
+    return buildEstalecasSnapshot({ userId: pessoa.id, transactions: records, checkins: [], rewards: [] });
+  }, [estalecasQuery.data, pessoa, useRemote]);
 
   const nextLunchLabel = lunch.currentLunch[0]
     ? `${lunch.currentLunch[0].rotulo} está em pausa`
@@ -270,6 +299,13 @@ export function HomePage() {
             value={`${checklist.progress}%`}
             detail={`${checklist.doneCount}/${checklist.total} tarefas concluídas`}
             tone={checklist.progress === 100 ? "gold" : "default"}
+          />
+          <StatCard
+            icon={Coins}
+            label="Estalecas"
+            value={estalecas ? formatEstalecas(estalecas.balance) : "0"}
+            detail="Saldo interno da Carteira Bratan."
+            tone={estalecas && estalecas.balance > 0 ? "gold" : "default"}
           />
           <StatCard
             icon={Utensils}
