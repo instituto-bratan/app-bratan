@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -129,6 +130,7 @@ function ProgressBar({ value }: { value: number }) {
 export function EstalecasPage() {
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [localRevision, setLocalRevision] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [churchCode, setChurchCode] = useState("");
@@ -233,6 +235,28 @@ export function EstalecasPage() {
   useEffect(() => {
     setDisplayNameDraft(profile?.displayName ?? "");
   }, [profile?.displayName]);
+
+  const urlCheckinType = searchParams.get("checkin");
+  const urlCheckinCode = searchParams.get("code") ?? searchParams.get("codigo");
+
+  useEffect(() => {
+    if (urlCheckinType !== "church" && urlCheckinType !== "gym") return;
+
+    if (urlCheckinType === "church" && urlCheckinCode) {
+      setChurchCode(urlCheckinCode);
+      setMessage("Código recebido pelo link. Confirme a presença para concluir o check-in.");
+    } else if (urlCheckinType === "gym") {
+      setMessage("Link de academia recebido. Confirme o treino para concluir o check-in.");
+    }
+
+    setSearchParams((params) => {
+      const nextParams = new URLSearchParams(params);
+      nextParams.delete("checkin");
+      nextParams.delete("code");
+      nextParams.delete("codigo");
+      return nextParams;
+    }, { replace: true });
+  }, [setSearchParams, urlCheckinCode, urlCheckinType]);
 
   const invalidateEstalecasQueries = () => {
     void queryClient.invalidateQueries({ queryKey: ["gamification-profile"] });

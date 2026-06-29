@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import {
   CheckCircle2,
   Coins,
+  Copy,
   Dumbbell,
   Gift,
   History,
@@ -156,6 +157,18 @@ function generateCheckinCode() {
   crypto.getRandomValues(values);
   const suffix = Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
   return `BRATAN-${suffix}`;
+}
+
+function checkinLinkFor(values: { checkinType: CheckinType; code: string }) {
+  const code = values.code.trim();
+  if (!code || typeof window === "undefined") return "";
+
+  const query = `checkin=${encodeURIComponent(values.checkinType)}&code=${encodeURIComponent(code)}`;
+  if (window.location.protocol === "file:") {
+    return `${window.location.href.split("#")[0]}#/estalecas?${query}`;
+  }
+
+  return `${window.location.origin}/estalecas?${query}`;
 }
 
 function parseInteger(value: string) {
@@ -354,6 +367,7 @@ export function EstalecasAdminPage() {
   const totalApprovedBalance = useMemo(() => calculateEstalecasBalance(transactions), [transactions]);
   const pendingRewards = rewards.filter((reward) => reward.status === "pending").length;
   const topRanking = ranking[0];
+  const directCheckinLink = checkinLinkFor({ checkinType: codeForm.checkinType, code: codeForm.code });
 
   function persistConfig(nextConfig: EstalecaConfig) {
     setLocalConfig(nextConfig);
@@ -387,6 +401,23 @@ export function EstalecasAdminPage() {
 
   function fillGeneratedCode() {
     setCodeForm((current) => ({ ...current, code: generateCheckinCode() }));
+  }
+
+  async function copyCheckinLink() {
+    setError(null);
+    setMessage(null);
+    const link = checkinLinkFor({ checkinType: codeForm.checkinType, code: codeForm.code });
+    if (!link) {
+      setError("Gere ou informe um código antes de copiar o link.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(link);
+      setMessage("Link de check-in copiado.");
+    } catch {
+      setError("Não foi possível copiar automaticamente. Copie o link exibido manualmente.");
+    }
   }
 
   async function submitEventCode(event: FormEvent<HTMLFormElement>) {
@@ -921,6 +952,18 @@ export function EstalecasAdminPage() {
                       </Button>
                     </div>
                   </div>
+                  {directCheckinLink ? (
+                    <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-brand-tinta">Link direto</p>
+                        <Button type="button" size="sm" variant="outline" className="gap-2" onClick={copyCheckinLink}>
+                          <Copy className="h-4 w-4" aria-hidden="true" />
+                          Copiar
+                        </Button>
+                      </div>
+                      <p className="break-all text-xs leading-5 text-muted-foreground">{directCheckinLink}</p>
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <Label htmlFor="code-expiration">Expira em</Label>
                     <Input id="code-expiration" type="datetime-local" value={codeForm.expiresAt} onChange={(event) => setCodeForm((current) => ({ ...current, expiresAt: event.target.value }))} />
