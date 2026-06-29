@@ -6,11 +6,11 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const liquidbuttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold outline-none transition-[color,box-shadow,transform] disabled:pointer-events-none disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "ios-pressable inline-flex shrink-0 cursor-pointer transform-gpu items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold outline-none transition-[color,box-shadow,transform] disabled:pointer-events-none disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-transparent text-brand-musgo duration-300 hover:scale-[1.03]",
+        default: "bg-transparent text-brand-musgo duration-200 hover:scale-[1.03]",
         destructive: "bg-destructive text-white hover:bg-destructive/90",
         outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
@@ -33,7 +33,7 @@ const liquidbuttonVariants = cva(
   },
 );
 
-function GlassFilter() {
+function LiquidGlassFilterDefs() {
   return (
     <svg className="hidden" aria-hidden="true">
       <defs>
@@ -69,7 +69,6 @@ function LiquidButton({ className, variant, size, asChild = false, children, ...
         style={{ backdropFilter: 'url("#container-glass") blur(18px) saturate(1.18)' }}
       />
       <div className="pointer-events-none relative z-10 flex items-center gap-2">{children}</div>
-      <GlassFilter />
     </Comp>
   );
 }
@@ -247,4 +246,4 @@ const MetalButton = React.forwardRef<HTMLButtonElement, MetalButtonProps>(
 
 MetalButton.displayName = "MetalButton";
 
-export { LiquidButton, MetalButton, liquidbuttonVariants };
+export { LiquidButton, LiquidGlassFilterDefs, MetalButton, liquidbuttonVariants };

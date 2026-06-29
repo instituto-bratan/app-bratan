@@ -26,6 +26,7 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, canBaseModules, canComprovantes, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue } from "@/lib/localStore";
+import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import { lunchSummary, statusLabel } from "@/features/almoco/almocoData";
 import { checklistStorageKey, checklistSummary, createChecklistRun, filterChecklistItemsByCargo } from "@/features/checklist/checklistData";
@@ -157,6 +158,14 @@ type HomeModule = (typeof modules)[number];
 
 function isHomeModule(module: HomeModule | undefined): module is HomeModule {
   return Boolean(module);
+}
+
+function warmRouteProps(href: string) {
+  return {
+    onPointerEnter: () => prefetchRoute(href),
+    onFocus: () => prefetchRoute(href),
+    onTouchStart: () => prefetchRoute(href),
+  };
 }
 
 function StatCard({
@@ -301,7 +310,7 @@ export function HomePage() {
       <motion.section
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.48, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 0.34, ease: [0.4, 0, 0.2, 1] }}
         className="ios-glass overflow-hidden rounded-lg border px-4 py-5 shadow-ios sm:px-7 sm:py-8 lg:px-10"
       >
         <div className="mb-5 flex flex-wrap gap-2">
@@ -318,8 +327,21 @@ export function HomePage() {
             titleLead="Operação"
             rotatingWords={["em foco.", "sem ruído.", "no ritmo.", "sob controle."]}
             description="Seu resumo do dia: tarefas, almoço, avisos e comprovantes em uma visão única, filtrada pelo seu cargo."
-            primaryAction={{ label: "Abrir tarefas", onClick: () => navigate("/tarefas") }}
-            secondaryAction={{ label: canComprovantes(cargo) ? "Anexar comprovante" : "Ver POPs", onClick: () => navigate(canComprovantes(cargo) ? "/comprovantes" : "/pops-fluxos") }}
+            primaryAction={{
+              label: "Abrir tarefas",
+              onClick: () => {
+                prefetchRoute("/tarefas");
+                navigate("/tarefas");
+              },
+            }}
+            secondaryAction={{
+              label: canComprovantes(cargo) ? "Anexar comprovante" : "Ver POPs",
+              onClick: () => {
+                const href = canComprovantes(cargo) ? "/comprovantes" : "/pops-fluxos";
+                prefetchRoute(href);
+                navigate(href);
+              },
+            }}
           />
 
           <Card className="border-brand-dourado/45 bg-brand-creme/45 shadow-none">
@@ -345,7 +367,7 @@ export function HomePage() {
             <p className="mt-1 text-sm text-muted-foreground">Sinais principais para decidir o próximo passo.</p>
           </div>
           <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
-            <Link to="/mural">Ver avisos</Link>
+            <Link to="/mural" {...warmRouteProps("/mural")}>Ver avisos</Link>
           </Button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -476,7 +498,7 @@ export function HomePage() {
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-lg">Avisos recentes</CardTitle>
               <Button asChild variant="ghost" size="sm">
-                <Link to="/mural">Abrir</Link>
+                <Link to="/mural" {...warmRouteProps("/mural")}>Abrir</Link>
               </Button>
             </div>
           </CardHeader>
@@ -502,7 +524,15 @@ export function HomePage() {
             <h2 className="text-2xl text-brand-musgo">Fluxos rápidos</h2>
             <p className="mt-1 text-sm text-muted-foreground">Rotina, documentos, reconhecimento e coordenação.</p>
           </div>
-          <LiquidButton type="button" size="lg" onClick={() => navigate("/tarefas")}>
+          <LiquidButton
+            type="button"
+            size="lg"
+            {...warmRouteProps("/tarefas")}
+            onClick={() => {
+              prefetchRoute("/tarefas");
+              navigate("/tarefas");
+            }}
+          >
             Continuar rotina
             <TrendingUp className="h-4 w-4" aria-hidden="true" />
           </LiquidButton>
@@ -513,7 +543,7 @@ export function HomePage() {
               key={flow.title}
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.38, delay: 0.06 * index, ease: [0.4, 0, 0.2, 1] }}
+              transition={{ duration: 0.28, delay: 0.035 * index, ease: [0.4, 0, 0.2, 1] }}
             >
               <Card className="flow-card h-full border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm">
                 <CardHeader>
@@ -536,10 +566,20 @@ export function HomePage() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     {flow.items.map((module, moduleIndex) =>
                       index === 0 && moduleIndex === 0 ? (
-                        <GetStartedButton key={module.href} size="sm" className="h-10 w-full" label={module.action} onClick={() => navigate(module.href)} />
+                        <GetStartedButton
+                          key={module.href}
+                          size="sm"
+                          className="h-10 w-full"
+                          label={module.action}
+                          {...warmRouteProps(module.href)}
+                          onClick={() => {
+                            prefetchRoute(module.href);
+                            navigate(module.href);
+                          }}
+                        />
                       ) : (
                         <Button key={module.href} asChild variant={moduleIndex === 0 ? "default" : "outline"} className="justify-start gap-2">
-                          <Link to={module.href}>
+                          <Link to={module.href} {...warmRouteProps(module.href)}>
                             <module.icon className="h-4 w-4" aria-hidden="true" />
                             {module.action}
                           </Link>

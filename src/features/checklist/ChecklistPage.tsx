@@ -46,7 +46,7 @@ function ProgressRing({ value }: { value: number }) {
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: dashOffset }}
-          transition={{ duration: 0.55, ease: [0.4, 0, 0.2, 1] }}
+          transition={{ duration: 0.34, ease: [0.4, 0, 0.2, 1] }}
         />
       </svg>
       <div className="absolute text-center">
@@ -139,7 +139,7 @@ export function ChecklistPage() {
       <motion.section
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
         className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
       >
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">

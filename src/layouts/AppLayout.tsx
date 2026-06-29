@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType } from "react";
+import { Suspense, useMemo, useState, type ComponentType } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -25,6 +25,7 @@ import DockMorph from "@/components/ui/dock-morph";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, canBaseModules, canComprovantes, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
+import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
 import bratanMark from "@/assets/bratan-mark.png";
@@ -123,10 +124,30 @@ function visibleFlowGroups(cargo: Cargo | null | undefined) {
     .filter((group) => group.entries.length > 0);
 }
 
+function preloadRouteProps(href: string) {
+  return {
+    onPointerEnter: () => prefetchRoute(href),
+    onFocus: () => prefetchRoute(href),
+    onTouchStart: () => prefetchRoute(href),
+  };
+}
+
+function PageFallback() {
+  return (
+    <div className="grid min-h-[42vh] place-items-center px-4">
+      <div className="ios-glass-quiet flex items-center gap-3 rounded-full border px-4 py-3 text-sm font-semibold text-brand-musgo">
+        <span className="h-2.5 w-2.5 rounded-full bg-brand-dourado motion-safe:animate-pulse" aria-hidden="true" />
+        Preparando tela
+      </div>
+    </div>
+  );
+}
+
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <Link
       to="/"
+      {...preloadRouteProps("/")}
       className={cn(
         "flex min-w-0 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         compact ? "gap-2" : "gap-3",
@@ -157,6 +178,7 @@ function DesktopNav({ cargo }: { cargo: Cargo | null | undefined }) {
       <NavLink
         to={homeEntry.href}
         end
+        {...preloadRouteProps(homeEntry.href)}
         className={({ isActive }) =>
           cn(
             "ios-pressable flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition-colors",
@@ -176,6 +198,7 @@ function DesktopNav({ cargo }: { cargo: Cargo | null | undefined }) {
           <div key={group.label} className="rounded-xl border border-brand-oliva/10 bg-white/28 p-1.5">
             <NavLink
               to={group.href}
+              {...preloadRouteProps(group.href)}
               className={cn(
                 "ios-pressable flex items-center gap-3 rounded-lg px-3 py-3 transition-colors",
                 groupActive ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-tinta hover:bg-white/70",
@@ -202,6 +225,7 @@ function DesktopNav({ cargo }: { cargo: Cargo | null | undefined }) {
                       <NavLink
                         key={entry.href}
                         to={entry.href}
+                        {...preloadRouteProps(entry.href)}
                         className={({ isActive }) =>
                           cn(
                             "flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors",
@@ -247,7 +271,14 @@ function MobileNav({ cargo, menuOpen, onOpenMenu }: { cargo: Cargo | null | unde
       icon: item.icon,
       label: item.shortLabel ?? item.label,
       active: item.menu ? menuOpen : item.href === "/" ? location.pathname === "/" || location.pathname === "/inicio" : location.pathname === item.href || location.pathname.startsWith(`${item.href}/`),
-      onClick: () => (item.menu ? onOpenMenu() : navigate(item.href)),
+      onClick: () => {
+        if (item.menu) {
+          onOpenMenu();
+          return;
+        }
+        prefetchRoute(item.href);
+        navigate(item.href);
+      },
     }));
 
   return (
@@ -325,7 +356,7 @@ function FlowLauncher({
                           className="justify-start gap-2"
                           onClick={onClose}
                         >
-                          <Link to={entry.href}>
+                          <Link to={entry.href} {...preloadRouteProps(entry.href)}>
                             <entry.icon className="h-4 w-4" aria-hidden="true" />
                             {entry.label}
                           </Link>
@@ -372,7 +403,7 @@ export function AppLayout() {
               {pessoa?.cargo ? <Badge variant="outline" className="hidden max-w-36 truncate min-[430px]:inline-flex sm:max-w-none">{cargoLabels[pessoa.cargo]}</Badge> : null}
               {pessoa?.cargo ? <Badge variant="muted" className="hidden sm:inline-flex">{cargoGroup(pessoa.cargo)}</Badge> : null}
               <Button asChild variant="ghost" size="icon" className="bg-white/35 shadow-sm backdrop-blur-xl" aria-label="Meu perfil">
-                <Link to="/meu-perfil">
+                <Link to="/meu-perfil" {...preloadRouteProps("/meu-perfil")}>
                   <UserRound className="h-5 w-5" aria-hidden="true" />
                 </Link>
               </Button>
@@ -384,7 +415,9 @@ export function AppLayout() {
         </header>
 
         <main className="relative z-10 flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-          <Outlet />
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

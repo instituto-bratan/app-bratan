@@ -1,0 +1,85 @@
+import { lazy, type ComponentType, type LazyExoticComponent } from "react";
+
+type PageModule = { default: ComponentType };
+type PageLoader = () => Promise<PageModule>;
+
+function namedPage<TModule extends Record<string, unknown>, TExport extends keyof TModule>(
+  loadModule: () => Promise<TModule>,
+  exportName: TExport,
+): PageLoader {
+  return () =>
+    loadModule().then((module) => ({
+      default: module[exportName] as ComponentType,
+    }));
+}
+
+const routeLoaders = {
+  home: namedPage(() => import("@/features/home/HomePage"), "HomePage"),
+  perfil: namedPage(() => import("@/features/perfil/MeuPerfilPage"), "MeuPerfilPage"),
+  tarefas: namedPage(() => import("@/features/checklist/ChecklistPage"), "ChecklistPage"),
+  almoco: namedPage(() => import("@/features/almoco/AlmocoPage"), "AlmocoPage"),
+  mural: namedPage(() => import("@/features/mural/MuralPage"), "MuralPage"),
+  popsFluxos: namedPage(() => import("@/features/pops/PopsFluxosPage"), "PopsFluxosPage"),
+  comprovantes: namedPage(() => import("@/features/comprovantes/ComprovantesPage"), "ComprovantesPage"),
+  estalecas: namedPage(() => import("@/features/estalecas/EstalecasPage"), "EstalecasPage"),
+  pagamentos: namedPage(() => import("@/features/pagamentos/PagamentosPage"), "PagamentosPage"),
+  colaboradores: namedPage(() => import("@/features/admin/ColaboradoresPage"), "ColaboradoresPage"),
+  colaboradorPerfil: namedPage(() => import("@/features/admin/ColaboradorPerfilPage"), "ColaboradorPerfilPage"),
+  estalecasAdmin: namedPage(() => import("@/features/admin/EstalecasAdminPage"), "EstalecasAdminPage"),
+  seguranca: namedPage(() => import("@/features/admin/SegurancaPage"), "SegurancaPage"),
+  auditoria: namedPage(() => import("@/features/admin/AuditoriaPage"), "AuditoriaPage"),
+} as const;
+
+export type RoutePreloadKey = keyof typeof routeLoaders;
+
+const loadedRoutes = new Map<RoutePreloadKey, Promise<PageModule>>();
+
+function normalizeHref(href: string) {
+  if (!href || href.startsWith("#")) return "";
+  try {
+    const url = new URL(href, globalThis.location?.href ?? "http://app.bratan.local/");
+    return url.pathname === "/index.html" ? "/" : url.pathname;
+  } catch {
+    return href.startsWith("/") ? href : `/${href}`;
+  }
+}
+
+export function routeKeyForHref(href: string): RoutePreloadKey | null {
+  const pathname = normalizeHref(href);
+
+  if (pathname === "/" || pathname === "/inicio") return "home";
+  if (pathname === "/meu-perfil") return "perfil";
+  if (pathname === "/tarefas") return "tarefas";
+  if (pathname === "/almoco") return "almoco";
+  if (pathname === "/mural") return "mural";
+  if (pathname === "/pops-fluxos") return "popsFluxos";
+  if (pathname === "/comprovantes") return "comprovantes";
+  if (pathname === "/estalecas") return "estalecas";
+  if (pathname === "/lembretes-pagamento") return "pagamentos";
+  if (pathname.startsWith("/administracao/colaboradores/")) return "colaboradorPerfil";
+  if (pathname === "/administracao" || pathname === "/administracao/colaboradores") return "colaboradores";
+  if (pathname === "/administracao/estalecas") return "estalecasAdmin";
+  if (pathname === "/administracao/seguranca") return "seguranca";
+  if (pathname === "/administracao/auditoria") return "auditoria";
+
+  return null;
+}
+
+export function loadRoute(key: RoutePreloadKey) {
+  const cached = loadedRoutes.get(key);
+  if (cached) return cached;
+
+  const promise = routeLoaders[key]();
+  loadedRoutes.set(key, promise);
+  return promise;
+}
+
+export function prefetchRoute(href: string) {
+  const key = routeKeyForHref(href);
+  if (!key) return;
+  void loadRoute(key);
+}
+
+export function lazyRoute(key: RoutePreloadKey): LazyExoticComponent<ComponentType> {
+  return lazy(() => loadRoute(key));
+}
