@@ -1,5 +1,6 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -31,6 +32,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { useAuth } from "@/hooks/useAuth";
+import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
 import {
   actionPriorityLabels,
   actionStatusLabels,
@@ -187,12 +190,36 @@ const modules: ModuleConfig[] = [
 const moduleBySlug = Object.fromEntries(modules.map((module) => [module.slug, module])) as Record<ModuleSlug, ModuleConfig>;
 
 function useInteligenciaState() {
+  const { pessoa, session, isPreview } = useAuth();
+  const queryClient = useQueryClient();
+  const useRemote = Boolean(pessoa && session && !isPreview);
   const [state, setState] = useState<Inteligencia360State>(() => loadInteligencia360State());
+  const remoteStateQuery = useQuery({
+    queryKey: ["inteligencia-360-state"],
+    queryFn: listRemoteInteligencia360State,
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+  const saveRemoteMutation = useMutation({
+    mutationFn: saveRemoteInteligencia360State,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inteligencia-360-state"] }),
+  });
+
+  useEffect(() => {
+    if (!remoteStateQuery.data) return;
+    setState(remoteStateQuery.data);
+    saveInteligencia360State(remoteStateQuery.data);
+  }, [remoteStateQuery.data]);
 
   function persist(updater: (current: Inteligencia360State) => Inteligencia360State) {
     setState((current) => {
       const next = updater(current);
       saveInteligencia360State(next);
+      if (useRemote) {
+        void saveRemoteMutation.mutateAsync(next).catch((error) => {
+          console.warn("Inteligência 360 não sincronizou com o Supabase.", error);
+        });
+      }
       return next;
     });
   }
@@ -200,9 +227,21 @@ function useInteligenciaState() {
   function reset() {
     setState(seedInteligencia360State);
     saveInteligencia360State(seedInteligencia360State);
+    if (useRemote) {
+      void saveRemoteMutation.mutateAsync(seedInteligencia360State).catch((error) => {
+        console.warn("Inteligência 360 não sincronizou com o Supabase.", error);
+      });
+    }
   }
 
-  return { state, persist, reset };
+  return {
+    state,
+    persist,
+    reset,
+    syncMode: useRemote ? "Supabase" : "Local",
+    isSyncing: remoteStateQuery.isFetching || saveRemoteMutation.isPending,
+    syncError: remoteStateQuery.error || saveRemoteMutation.error,
+  };
 }
 
 function copyText(text: string) {
@@ -398,7 +437,7 @@ function InsightCard({
 }
 
 export function Inteligencia360DashboardPage() {
-  const { state, persist, reset } = useInteligenciaState();
+  const { state, persist, reset, syncMode, isSyncing, syncError } = useInteligenciaState();
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   const insights = useMemo(() => generateActionRecommendations(state), [state]);
   const quality = useMemo(() => buildDataQuality(state), [state]);
@@ -510,6 +549,9 @@ export function Inteligencia360DashboardPage() {
       description="Camada executiva read-only: consolida dados dos módulos, mostra alertas e leva você para a fonte correta. O dado nasce no fluxo de trabalho, não aqui."
       actions={
         <>
+          <Badge variant={syncError ? "gold" : "outline"} className={syncError ? "text-destructive" : undefined}>
+            {syncError ? "Sem sincronizar" : isSyncing ? "Sincronizando" : syncMode}
+          </Badge>
           <Button type="button" variant="outline" className="gap-2" onClick={() => copyText(generateMorningGoalMessage(state))}>
             <Copy className="h-4 w-4" aria-hidden="true" />
             Copiar meta do dia
@@ -1098,7 +1140,7 @@ export function Inteligencia360ModulePage() {
   const navigate = useNavigate();
   const slug = (section ?? "ticket-medio") as ModuleSlug;
   const module = moduleBySlug[slug] ?? moduleBySlug["ticket-medio"];
-  const { state, persist } = useInteligenciaState();
+  const { state, persist, syncMode, isSyncing, syncError } = useInteligenciaState();
   const Icon = module.icon;
 
   if (!moduleBySlug[slug]) {
@@ -1112,6 +1154,9 @@ export function Inteligencia360ModulePage() {
       description={module.description}
       actions={
         <>
+          <Badge variant={syncError ? "gold" : "outline"} className={syncError ? "text-destructive" : undefined}>
+            {syncError ? "Sem sincronizar" : isSyncing ? "Sincronizando" : syncMode}
+          </Badge>
           <Button asChild variant="outline">
             <Link to={moduleRoutes360.dashboard}>Dashboard 360</Link>
           </Button>

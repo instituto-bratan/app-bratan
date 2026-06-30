@@ -16,6 +16,23 @@ import {
 } from "@/features/estalecas/estalecasData";
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
+import {
+  defaultSettings360,
+  type ActionItem360,
+  type ChurnInvestigation,
+  type Inteligencia360State,
+  type ObjectionPlaybookItem,
+  type OperationalSettings360,
+  type PatientExperience,
+  type PatientJourney,
+  type PrescriptionSale,
+  type PricingTableItem,
+  type Receivable,
+  type RelationshipTouchpoint,
+  type RescueWorkflow,
+  type RetentionCohort,
+  type WeeklyAverageTicket,
+} from "@/features/inteligencia360/inteligencia360Data";
 import type {
   Cargo,
   CheckinStatus,
@@ -754,6 +771,625 @@ export async function softDeleteRemotePagamento(id: string) {
     action: "pagamento_lembrete.hide",
     entity: "pagamento_lembrete",
     entityId: id,
+  });
+}
+
+function remoteNumber(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function remoteText(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function uuidOrNull(value?: string | null) {
+  if (!value) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : null;
+}
+
+function dateOrNull(value?: string | null) {
+  return value || null;
+}
+
+function remoteId(row: { id?: string; client_ref?: string | null }, prefix: string) {
+  return row.client_ref || row.id || `${prefix}-${crypto.randomUUID?.() ?? Date.now()}`;
+}
+
+function mapRemoteSettings(record: any): OperationalSettings360 {
+  if (!record) return defaultSettings360;
+  return {
+    monthlyRevenueTarget: remoteNumber(record.monthly_revenue_target),
+    weeklyRevenueTarget: remoteNumber(record.weekly_revenue_target),
+    dailyRevenueTarget: remoteNumber(record.daily_revenue_target),
+    generalAverageTicketTarget: remoteNumber(record.general_average_ticket_target),
+    ticketDropCriticalPercentage: remoteNumber(record.ticket_drop_critical_percentage) || 10,
+    prescriptionConversionMin: remoteNumber(record.prescription_conversion_min) || 70,
+    prescriptionConversionMax: remoteNumber(record.prescription_conversion_max) || 80,
+    maxDefaultDiscountPercentage: remoteNumber(record.max_default_discount_percentage) || 10,
+    maxMessagesPerCycle: remoteNumber(record.max_messages_per_cycle) || 8,
+    originSystem: ["iClinic", "Feegow", "Manual", "CSV", "Outro"].includes(record.origin_system)
+      ? record.origin_system
+      : defaultSettings360.originSystem,
+    areaOwners:
+      record.area_owners && typeof record.area_owners === "object" && !Array.isArray(record.area_owners)
+        ? { ...defaultSettings360.areaOwners, ...record.area_owners }
+        : defaultSettings360.areaOwners,
+  };
+}
+
+function settingsPayload(settings: OperationalSettings360) {
+  return {
+    id: true,
+    monthly_revenue_target: settings.monthlyRevenueTarget,
+    weekly_revenue_target: settings.weeklyRevenueTarget,
+    daily_revenue_target: settings.dailyRevenueTarget,
+    general_average_ticket_target: settings.generalAverageTicketTarget,
+    ticket_drop_critical_percentage: settings.ticketDropCriticalPercentage,
+    prescription_conversion_min: settings.prescriptionConversionMin,
+    prescription_conversion_max: settings.prescriptionConversionMax,
+    max_default_discount_percentage: settings.maxDefaultDiscountPercentage,
+    max_messages_per_cycle: settings.maxMessagesPerCycle,
+    area_owners: settings.areaOwners,
+    origin_system: settings.originSystem,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+async function list360Table(table: string, orderColumn?: string) {
+  const client = requireSupabase();
+  let query = client.from(table).select("*");
+  if (orderColumn) {
+    query = query.order(orderColumn, { ascending: false });
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function upsert360Table(table: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const client = requireSupabase();
+  const { error } = await client.from(table).upsert(rows, { onConflict: "client_ref" });
+  if (error) throw error;
+}
+
+export async function listRemoteInteligencia360State(): Promise<Inteligencia360State> {
+  const client = requireSupabase();
+  const [
+    weeklyTickets,
+    pricing,
+    prescriptions,
+    objectionPlaybook,
+    journeys,
+    touchpoints,
+    retentionCohorts,
+    rescueWorkflows,
+    churnInvestigations,
+    experiences,
+    receivables,
+    actions,
+    settingsResult,
+  ] = await Promise.all([
+    list360Table("weekly_average_ticket", "week_start_date"),
+    list360Table("pricing_table", "created_at"),
+    list360Table("prescriptions_sales", "consultation_date"),
+    list360Table("objection_playbook", "objection_text"),
+    list360Table("patient_journey", "created_at"),
+    list360Table("relationship_touchpoints", "scheduled_date"),
+    list360Table("retention_cohorts", "created_at"),
+    list360Table("rescue_workflows", "created_at"),
+    list360Table("churn_investigations", "created_at"),
+    list360Table("patient_experience", "created_at"),
+    list360Table("receivables", "due_date"),
+    list360Table("action_items", "due_date"),
+    client.from("inteligencia_360_settings").select("*").eq("id", true).maybeSingle(),
+  ]);
+
+  if (settingsResult.error) throw settingsResult.error;
+
+  return {
+    weeklyTickets: (weeklyTickets as any[]).map(
+      (row): WeeklyAverageTicket => ({
+        id: remoteId(row, "wat"),
+        weekStartDate: row.week_start_date,
+        weekEndDate: row.week_end_date,
+        referenceMonth: row.reference_month,
+        doctorId: row.doctor_id ?? "",
+        doctorName: remoteText(row.doctor_name),
+        patientType: row.patient_type,
+        patientsSeenCount: remoteNumber(row.patients_seen_count),
+        patientsClosedCount: remoteNumber(row.patients_closed_count),
+        totalSoldAmount: remoteNumber(row.total_sold_amount),
+        totalReceivedAmount: remoteNumber(row.total_received_amount),
+        targetAverageTicket: remoteNumber(row.target_average_ticket),
+        previousWeekAverageTicket: remoteNumber(row.previous_week_average_ticket),
+        mainHypothesis: remoteText(row.main_hypothesis),
+        rootCauseCategory: row.root_cause_category ?? "OTHER",
+        actionPlan: remoteText(row.action_plan),
+        responsibleUserId: row.responsible_user_id ?? "",
+        dueDate: row.due_date ?? "",
+        notes: remoteText(row.notes),
+        createdBy: row.created_by ?? "Coordenação",
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    pricing: (pricing as any[]).map(
+      (row): PricingTableItem => ({
+        id: remoteId(row, "price"),
+        serviceName: remoteText(row.service_name),
+        category: remoteText(row.category),
+        standardPrice: remoteNumber(row.standard_price),
+        bratanPrice: remoteNumber(row.bratan_price),
+        directCost: remoteNumber(row.direct_cost),
+        medicationCost: remoteNumber(row.medication_cost),
+        labCost: remoteNumber(row.lab_cost),
+        cardFeePercentage: remoteNumber(row.card_fee_percentage),
+        doctorRepasseType: row.doctor_repasse_type ?? "PERCENTAGE",
+        doctorRepasseValue: remoteNumber(row.doctor_repasse_value),
+        otherVariableCosts: remoteNumber(row.other_variable_costs),
+        maxDiscountPercentage: remoteNumber(row.max_discount_percentage),
+        active: row.active ?? true,
+        strategicHighMargin: row.strategic_high_margin ?? false,
+        notes: remoteText(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    prescriptions: (prescriptions as any[]).map(
+      (row): PrescriptionSale => ({
+        id: remoteId(row, "sale"),
+        patientReference: remoteText(row.patient_reference),
+        patientType: row.patient_type,
+        doctorId: row.doctor_id ?? "",
+        sellerId: row.seller_id ?? "",
+        consultationDate: row.consultation_date,
+        prescribedAmount: remoteNumber(row.prescribed_amount),
+        soldAmount: remoteNumber(row.sold_amount),
+        receivedAmount: remoteNumber(row.received_amount),
+        closed: row.closed ?? false,
+        fullPlanClosed: row.full_plan_closed ?? false,
+        partialReason: remoteText(row.partial_reason),
+        discountPercentage: remoteNumber(row.discount_percentage),
+        paymentMethod: remoteText(row.payment_method),
+        installments: remoteNumber(row.installments),
+        acquisitionChannel: remoteText(row.acquisition_channel),
+        mainObjection: remoteText(row.main_objection),
+        objectionCategory: row.objection_category ?? "OTHER",
+        nextFollowUpDate: row.next_follow_up_date ?? "",
+        status: row.status ?? "PRESCRIBED",
+        notes: remoteText(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    objectionPlaybook: (objectionPlaybook as any[]).map(
+      (row): ObjectionPlaybookItem => ({
+        id: remoteId(row, "obj"),
+        objectionCategory: row.objection_category ?? "OTHER",
+        objectionText: remoteText(row.objection_text),
+        recommendedResponse: remoteText(row.recommended_response),
+        examples: remoteText(row.examples),
+        active: row.active ?? true,
+      }),
+    ),
+    journeys: (journeys as any[]).map(
+      (row): PatientJourney => ({
+        id: remoteId(row, "journey"),
+        patientReference: remoteText(row.patient_reference),
+        patientType: row.patient_type,
+        currentStage: row.current_stage,
+        doctorId: row.doctor_id ?? "",
+        sellerId: row.seller_id ?? "",
+        conciergeId: row.concierge_id ?? "",
+        nurseId: row.nurse_id ?? "",
+        adminId: row.admin_id ?? "",
+        treatmentPlanSummary: remoteText(row.treatment_plan_summary),
+        prescriptionSent: row.prescription_sent ?? false,
+        treatmentGroupSent: row.treatment_group_sent ?? false,
+        pharmacyGroupSent: row.pharmacy_group_sent ?? false,
+        pmiCompleted: row.pmi_completed ?? false,
+        contractCreated: row.contract_created ?? false,
+        contractSent: row.contract_sent ?? false,
+        contractSigned: row.contract_signed ?? false,
+        firstDoseScheduled: row.first_dose_scheduled ?? false,
+        firstBioimpedanceScheduled: row.first_bioimpedance_scheduled ?? false,
+        allDatesScheduled: row.all_dates_scheduled ?? false,
+        nextMedicalReturnDate: row.next_medical_return_date ?? "",
+        nextExamDueDate: row.next_exam_due_date ?? "",
+        notes: remoteText(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    touchpoints: (touchpoints as any[]).map(
+      (row): RelationshipTouchpoint => ({
+        id: remoteId(row, "touch"),
+        patientReference: remoteText(row.patient_reference),
+        journeyId: row.journey_id ?? "",
+        touchType: row.touch_type,
+        scheduledDate: row.scheduled_date,
+        sentDate: row.sent_date ?? "",
+        responsibleRole: remoteText(row.responsible_role),
+        responsibleUserId: row.responsible_user_id ?? "",
+        status: row.status ?? "PENDING",
+        channel: row.channel ?? "WHATSAPP",
+        messageTemplateId: remoteText(row.message_template_id),
+        manualMessageText: remoteText(row.manual_message_text),
+        responseSummary: remoteText(row.response_summary),
+        optOut: row.opt_out ?? false,
+        fatigueRisk: row.fatigue_risk ?? false,
+        notes: remoteText(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    retentionCohorts: (retentionCohorts as any[]).map(
+      (row): RetentionCohort => ({
+        id: remoteId(row, "ret"),
+        cohortMonth: remoteText(row.cohort_month),
+        cohortLabel: remoteText(row.cohort_label),
+        totalPatients: remoteNumber(row.total_patients),
+        scheduledReturns: remoteNumber(row.scheduled_returns),
+        attendedReturns: remoteNumber(row.attended_returns),
+        missedReturns: remoteNumber(row.missed_returns),
+        patientType: row.patient_type ?? "MIXED",
+        notes: remoteText(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    rescueWorkflows: (rescueWorkflows as any[]).map(
+      (row): RescueWorkflow => ({
+        id: remoteId(row, "rescue"),
+        patientReference: remoteText(row.patient_reference),
+        rescueType: row.rescue_type,
+        triggerDate: row.trigger_date,
+        attemptsTotal: remoteNumber(row.attempts_total),
+        attemptsDone: remoteNumber(row.attempts_done),
+        status: row.status ?? "OPEN",
+        rescuedCriteria: row.rescued_criteria ?? "",
+        ownerUserId: row.owner_user_id ?? "",
+        notes: remoteText(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    churnInvestigations: (churnInvestigations as any[]).map(
+      (row): ChurnInvestigation => ({
+        id: remoteId(row, "churn"),
+        patientReference: remoteText(row.patient_reference),
+        rescueWorkflowId: row.rescue_workflow_id ?? "",
+        investigatorUserId: row.investigator_user_id ?? "",
+        callDate: row.call_date ?? "",
+        answered: row.answered ?? false,
+        churnReasonCategory: row.churn_reason_category ?? "OTHER",
+        churnReasonDetail: remoteText(row.churn_reason_detail),
+        correctiveAction: remoteText(row.corrective_action),
+        responsibleUserId: row.responsible_user_id ?? "",
+        dueDate: row.due_date ?? "",
+        status: row.status ?? "OPEN",
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    experiences: (experiences as any[]).map(
+      (row): PatientExperience => ({
+        id: remoteId(row, "exp"),
+        patientReference: remoteText(row.patient_reference),
+        journeyId: row.journey_id ?? "",
+        npsScore: remoteNumber(row.nps_score),
+        satisfactionScore: remoteNumber(row.satisfaction_score),
+        googleReviewRequested: row.google_review_requested ?? false,
+        googleReviewDone: row.google_review_done ?? false,
+        leadershipContactDone: row.leadership_contact_done ?? false,
+        leadershipContactDate: row.leadership_contact_date ?? "",
+        feedbackType: row.feedback_type ?? "PRAISE",
+        feedbackText: remoteText(row.feedback_text),
+        actionRequired: row.action_required ?? false,
+        actionPlanId: row.action_plan_id ?? "",
+        status: row.status ?? "OPEN",
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    receivables: (receivables as any[]).map(
+      (row): Receivable => ({
+        id: remoteId(row, "recv"),
+        patientReference: remoteText(row.patient_reference),
+        saleId: row.sale_id ?? "",
+        totalAmount: remoteNumber(row.total_amount),
+        receivedAmount: remoteNumber(row.received_amount),
+        dueDate: row.due_date,
+        paymentMethod: remoteText(row.payment_method),
+        installments: remoteNumber(row.installments),
+        status: row.status ?? "OPEN",
+        ownerUserId: row.owner_user_id ?? "",
+        collectionStatus: row.collection_status ?? "NOT_STARTED",
+        notes: remoteText(row.notes),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    actions: (actions as any[]).map(
+      (row): ActionItem360 => ({
+        id: remoteId(row, "act"),
+        sourceModule: row.source_module ?? "MANUAL",
+        sourceId: row.source_id ?? "",
+        title: remoteText(row.title),
+        description: remoteText(row.description),
+        priority: row.priority ?? "MEDIUM",
+        ownerUserId: row.owner_user_id ?? "",
+        dueDate: row.due_date ?? "",
+        status: row.status ?? "OPEN",
+        expectedImpact: row.expected_impact ?? "PROCESS",
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    settings: mapRemoteSettings(settingsResult.data),
+  };
+}
+
+export async function saveRemoteInteligencia360State(state: Inteligencia360State) {
+  const client = requireSupabase();
+  await Promise.all([
+    upsert360Table(
+      "weekly_average_ticket",
+      state.weeklyTickets.map((record) => ({
+        client_ref: record.id,
+        week_start_date: record.weekStartDate,
+        week_end_date: record.weekEndDate,
+        reference_month: record.referenceMonth,
+        doctor_id: uuidOrNull(record.doctorId),
+        doctor_name: record.doctorName,
+        patient_type: record.patientType,
+        patients_seen_count: record.patientsSeenCount,
+        patients_closed_count: record.patientsClosedCount,
+        total_sold_amount: record.totalSoldAmount,
+        total_received_amount: record.totalReceivedAmount,
+        target_average_ticket: record.targetAverageTicket,
+        previous_week_average_ticket: record.previousWeekAverageTicket,
+        main_hypothesis: record.mainHypothesis || null,
+        root_cause_category: record.rootCauseCategory,
+        action_plan: record.actionPlan || null,
+        responsible_user_id: uuidOrNull(record.responsibleUserId),
+        due_date: dateOrNull(record.dueDate),
+        notes: record.notes || null,
+        created_by: uuidOrNull(record.createdBy),
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "pricing_table",
+      state.pricing.map((record) => ({
+        client_ref: record.id,
+        service_name: record.serviceName,
+        category: record.category,
+        standard_price: record.standardPrice,
+        bratan_price: record.bratanPrice,
+        direct_cost: record.directCost,
+        medication_cost: record.medicationCost,
+        lab_cost: record.labCost,
+        card_fee_percentage: record.cardFeePercentage,
+        doctor_repasse_type: record.doctorRepasseType,
+        doctor_repasse_value: record.doctorRepasseValue,
+        other_variable_costs: record.otherVariableCosts,
+        max_discount_percentage: record.maxDiscountPercentage,
+        strategic_high_margin: record.strategicHighMargin,
+        active: record.active,
+        notes: record.notes || null,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "prescriptions_sales",
+      state.prescriptions.map((record) => ({
+        client_ref: record.id,
+        patient_reference: record.patientReference,
+        patient_type: record.patientType,
+        doctor_id: uuidOrNull(record.doctorId),
+        seller_id: uuidOrNull(record.sellerId),
+        consultation_date: record.consultationDate,
+        prescribed_amount: record.prescribedAmount,
+        sold_amount: record.soldAmount,
+        received_amount: record.receivedAmount,
+        closed: record.closed,
+        full_plan_closed: record.fullPlanClosed,
+        partial_reason: record.partialReason || null,
+        discount_percentage: record.discountPercentage,
+        payment_method: record.paymentMethod || null,
+        installments: record.installments,
+        acquisition_channel: record.acquisitionChannel || null,
+        main_objection: record.mainObjection || null,
+        objection_category: record.objectionCategory,
+        next_follow_up_date: dateOrNull(record.nextFollowUpDate),
+        status: record.status,
+        notes: record.notes || null,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "objection_playbook",
+      state.objectionPlaybook.map((record) => ({
+        client_ref: record.id,
+        objection_category: record.objectionCategory,
+        objection_text: record.objectionText,
+        recommended_response: record.recommendedResponse,
+        examples: record.examples || null,
+        active: record.active,
+      })),
+    ),
+    upsert360Table(
+      "patient_journey",
+      state.journeys.map((record) => ({
+        client_ref: record.id,
+        patient_reference: record.patientReference,
+        patient_type: record.patientType,
+        current_stage: record.currentStage,
+        doctor_id: uuidOrNull(record.doctorId),
+        seller_id: uuidOrNull(record.sellerId),
+        concierge_id: uuidOrNull(record.conciergeId),
+        nurse_id: uuidOrNull(record.nurseId),
+        admin_id: uuidOrNull(record.adminId),
+        treatment_plan_summary: record.treatmentPlanSummary || null,
+        prescription_sent: record.prescriptionSent,
+        treatment_group_sent: record.treatmentGroupSent,
+        pharmacy_group_sent: record.pharmacyGroupSent,
+        pmi_completed: record.pmiCompleted,
+        contract_created: record.contractCreated,
+        contract_sent: record.contractSent,
+        contract_signed: record.contractSigned,
+        first_dose_scheduled: record.firstDoseScheduled,
+        first_bioimpedance_scheduled: record.firstBioimpedanceScheduled,
+        all_dates_scheduled: record.allDatesScheduled,
+        next_medical_return_date: dateOrNull(record.nextMedicalReturnDate),
+        next_exam_due_date: dateOrNull(record.nextExamDueDate),
+        notes: record.notes || null,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "relationship_touchpoints",
+      state.touchpoints.map((record) => ({
+        client_ref: record.id,
+        patient_reference: record.patientReference,
+        journey_id: uuidOrNull(record.journeyId),
+        touch_type: record.touchType,
+        scheduled_date: record.scheduledDate,
+        sent_date: dateOrNull(record.sentDate),
+        responsible_role: record.responsibleRole,
+        responsible_user_id: uuidOrNull(record.responsibleUserId),
+        status: record.status,
+        channel: record.channel,
+        message_template_id: record.messageTemplateId || null,
+        manual_message_text: record.manualMessageText || null,
+        response_summary: record.responseSummary || null,
+        opt_out: record.optOut,
+        fatigue_risk: record.fatigueRisk,
+        notes: record.notes || null,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "retention_cohorts",
+      state.retentionCohorts.map((record) => ({
+        client_ref: record.id,
+        cohort_month: record.cohortMonth,
+        cohort_label: record.cohortLabel,
+        total_patients: record.totalPatients,
+        scheduled_returns: record.scheduledReturns,
+        attended_returns: record.attendedReturns,
+        missed_returns: record.missedReturns,
+        patient_type: record.patientType,
+        notes: record.notes || null,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "rescue_workflows",
+      state.rescueWorkflows.map((record) => ({
+        client_ref: record.id,
+        patient_reference: record.patientReference,
+        rescue_type: record.rescueType,
+        trigger_date: record.triggerDate,
+        attempts_total: record.attemptsTotal,
+        attempts_done: record.attemptsDone,
+        status: record.status,
+        rescued_criteria: record.rescuedCriteria || null,
+        owner_user_id: uuidOrNull(record.ownerUserId),
+        notes: record.notes || null,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "churn_investigations",
+      state.churnInvestigations.map((record) => ({
+        client_ref: record.id,
+        patient_reference: record.patientReference,
+        rescue_workflow_id: uuidOrNull(record.rescueWorkflowId),
+        investigator_user_id: uuidOrNull(record.investigatorUserId),
+        call_date: dateOrNull(record.callDate),
+        answered: record.answered,
+        churn_reason_category: record.churnReasonCategory,
+        churn_reason_detail: record.churnReasonDetail || null,
+        corrective_action: record.correctiveAction || null,
+        responsible_user_id: uuidOrNull(record.responsibleUserId),
+        due_date: dateOrNull(record.dueDate),
+        status: record.status,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "patient_experience",
+      state.experiences.map((record) => ({
+        client_ref: record.id,
+        patient_reference: record.patientReference,
+        journey_id: uuidOrNull(record.journeyId),
+        nps_score: record.npsScore,
+        satisfaction_score: record.satisfactionScore,
+        google_review_requested: record.googleReviewRequested,
+        google_review_done: record.googleReviewDone,
+        leadership_contact_done: record.leadershipContactDone,
+        leadership_contact_date: dateOrNull(record.leadershipContactDate),
+        feedback_type: record.feedbackType,
+        feedback_text: record.feedbackText || null,
+        action_required: record.actionRequired,
+        action_plan_id: uuidOrNull(record.actionPlanId),
+        status: record.status,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "receivables",
+      state.receivables.map((record) => ({
+        client_ref: record.id,
+        patient_reference: record.patientReference,
+        sale_id: uuidOrNull(record.saleId),
+        total_amount: record.totalAmount,
+        received_amount: record.receivedAmount,
+        due_date: record.dueDate,
+        payment_method: record.paymentMethod || null,
+        installments: record.installments,
+        status: record.status,
+        owner_user_id: uuidOrNull(record.ownerUserId),
+        collection_status: record.collectionStatus,
+        notes: record.notes || null,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    upsert360Table(
+      "action_items",
+      state.actions.map((record) => ({
+        client_ref: record.id,
+        source_module: record.sourceModule,
+        source_id: record.sourceId || null,
+        title: record.title,
+        description: record.description || null,
+        priority: record.priority,
+        owner_user_id: uuidOrNull(record.ownerUserId),
+        due_date: dateOrNull(record.dueDate),
+        status: record.status,
+        expected_impact: record.expectedImpact,
+        updated_at: record.updatedAt || new Date().toISOString(),
+      })),
+    ),
+    client.from("inteligencia_360_settings").upsert(settingsPayload(state.settings), { onConflict: "id" }).then(({ error }: { error: unknown }) => {
+      if (error) throw error;
+    }),
+  ]);
+
+  await safeWriteRemoteAuditEvent({
+    action: "inteligencia_360.sync",
+    entity: "inteligencia_360",
+    metadata: {
+      weeklyTickets: state.weeklyTickets.length,
+      prescriptions: state.prescriptions.length,
+      receivables: state.receivables.length,
+      actions: state.actions.length,
+    },
   });
 }
 
