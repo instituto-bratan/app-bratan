@@ -828,6 +828,28 @@ export function isOverdue(date: string) {
   return new Date(`${date}T00:00:00`).getTime() < new Date(`${todayISO()}T00:00:00`).getTime();
 }
 
+export function updateActionStatus360(record: ActionItem360, status: ActionStatus360, updatedAt = new Date().toISOString()): ActionItem360 {
+  return {
+    ...record,
+    status,
+    updatedAt,
+  };
+}
+
+export function updateReceivableStatus360(
+  record: Receivable,
+  status: ReceivableStatus360,
+  updatedAt = new Date().toISOString(),
+): Receivable {
+  return {
+    ...record,
+    status,
+    receivedAmount: status === "PAID" ? record.totalAmount : record.receivedAmount,
+    collectionStatus: status === "PAID" ? "RESOLVED" : status === "OVERDUE" ? "FIRST_CONTACT" : record.collectionStatus,
+    updatedAt,
+  };
+}
+
 export function loadInteligencia360State() {
   return readLocalValue<Inteligencia360State>(inteligencia360StorageKey, seedInteligencia360State);
 }

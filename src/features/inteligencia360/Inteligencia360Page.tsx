@@ -57,6 +57,8 @@ import {
   ticketStatus,
   ticketVariationPercentage,
   touchTypeLabels,
+  updateActionStatus360,
+  updateReceivableStatus360,
   type ActionItem360,
   type ActionPriority360,
   type ActionSourceModule360,
@@ -68,6 +70,7 @@ import {
   type ObjectionCategory360,
   type PatientType360,
   type PrescriptionStatus360,
+  type Receivable,
   type ReceivableStatus360,
   type RescueStatus360,
   type RootCauseCategory360,
@@ -701,6 +704,80 @@ function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }
   );
 }
 
+function MiniActionButton({
+  children,
+  disabled,
+  onClick,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button type="button" size="sm" variant="outline" className="h-8 px-2 text-xs" disabled={disabled} onClick={onClick}>
+      {children}
+    </Button>
+  );
+}
+
+function ActionStatusControls({
+  record,
+  persist,
+}: {
+  record: ActionItem360;
+  persist: ReturnType<typeof useInteligenciaState>["persist"];
+}) {
+  function updateAction(status: ActionStatus360) {
+    persist((current) => ({
+      ...current,
+      actions: current.actions.map((item) => (item.id === record.id ? updateActionStatus360(item, status) : item)),
+    }));
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <MiniActionButton disabled={record.status === "IN_PROGRESS"} onClick={() => updateAction("IN_PROGRESS")}>
+        Iniciar
+      </MiniActionButton>
+      <MiniActionButton disabled={record.status === "DONE"} onClick={() => updateAction("DONE")}>
+        Concluir
+      </MiniActionButton>
+      <MiniActionButton disabled={record.status === "CANCELED"} onClick={() => updateAction("CANCELED")}>
+        Cancelar
+      </MiniActionButton>
+    </div>
+  );
+}
+
+function ReceivableStatusControls({
+  record,
+  persist,
+}: {
+  record: Receivable;
+  persist: ReturnType<typeof useInteligenciaState>["persist"];
+}) {
+  function updateReceivable(status: ReceivableStatus360) {
+    persist((current) => ({
+      ...current,
+      receivables: current.receivables.map((item) => (item.id === record.id ? updateReceivableStatus360(item, status) : item)),
+    }));
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <MiniActionButton disabled={record.status === "PAID"} onClick={() => updateReceivable("PAID")}>
+        Pago
+      </MiniActionButton>
+      <MiniActionButton disabled={record.status === "OVERDUE"} onClick={() => updateReceivable("OVERDUE")}>
+        Vencido
+      </MiniActionButton>
+      <MiniActionButton disabled={record.status === "OPEN"} onClick={() => updateReceivable("OPEN")}>
+        Aberto
+      </MiniActionButton>
+    </div>
+  );
+}
+
 function TicketModule({ state, persist }: { state: Inteligencia360State; persist: ReturnType<typeof useInteligenciaState>["persist"] }) {
   const [form, setForm] = useState({
     weekStartDate: new Date().toISOString().slice(0, 10),
@@ -1075,7 +1152,18 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
-        <DataTable headers={["Paciente", "Vendido", "Recebido", "Aberto", "Vencimento", "Status"]} rows={state.receivables.map((record) => [record.patientReference, money360(record.totalAmount), money360(record.receivedAmount), money360(receivableOpenAmount(record)), record.dueDate, isOverdue(record.dueDate) && record.status !== "PAID" ? <Badge key={record.id} variant="gold" className="text-destructive">Vencido</Badge> : record.status])} />
+        <DataTable
+          headers={["Paciente", "Vendido", "Recebido", "Aberto", "Vencimento", "Status", "Ações"]}
+          rows={state.receivables.map((record) => [
+            record.patientReference,
+            money360(record.totalAmount),
+            money360(record.receivedAmount),
+            money360(receivableOpenAmount(record)),
+            record.dueDate,
+            isOverdue(record.dueDate) && record.status !== "PAID" ? <Badge key={record.id} variant="gold" className="text-destructive">Vencido</Badge> : record.status,
+            <ReceivableStatusControls key={record.id} record={record} persist={persist} />,
+          ])}
+        />
       </>
     );
   }
@@ -1102,7 +1190,20 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
-        <DataTable headers={["Ação", "Prioridade", "Dono", "Prazo", "Status", "Impacto"]} rows={state.actions.map((record) => [record.title, actionPriorityLabels[record.priority], record.ownerUserId, record.dueDate, actionStatusLabels[record.status as ActionStatus360], record.expectedImpact])} />
+        <DataTable
+          headers={["Ação", "Prioridade", "Dono", "Prazo", "Status", "Impacto", "Ações"]}
+          rows={state.actions.map((record) => [
+            record.title,
+            actionPriorityLabels[record.priority],
+            record.ownerUserId,
+            record.dueDate,
+            <Badge key={record.id} variant={record.status === "DONE" ? "muted" : record.status === "CANCELED" ? "outline" : "gold"}>
+              {actionStatusLabels[record.status as ActionStatus360]}
+            </Badge>,
+            record.expectedImpact,
+            <ActionStatusControls key={record.id} record={record} persist={persist} />,
+          ])}
+        />
       </>
     );
   }

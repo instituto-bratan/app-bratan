@@ -183,3 +183,31 @@ test("resumo semanal inclui financeiro, conversão e ações recomendadas", () =
   assert.match(brief, /Conversão prescrito x vendido:/);
   assert.match(brief, /Ações recomendadas:/);
 });
+
+test("ação operacional muda status mantendo rastreabilidade de atualização", () => {
+  const state = cloneState();
+  const action = state.actions[0];
+  const updated = data.updateActionStatus360(action, "DONE", "2026-06-30T15:00:00.000Z");
+
+  assert.equal(updated.status, "DONE");
+  assert.equal(updated.updatedAt, "2026-06-30T15:00:00.000Z");
+  assert.equal(updated.id, action.id);
+});
+
+test("recebível marcado como pago zera aberto e resolve cobrança", () => {
+  const state = cloneState();
+  const receivable = {
+    ...state.receivables[0],
+    totalAmount: 10000,
+    receivedAmount: 2500,
+    collectionStatus: "FIRST_CONTACT",
+  };
+  const paid = data.updateReceivableStatus360(receivable, "PAID", "2026-06-30T15:00:00.000Z");
+  const overdue = data.updateReceivableStatus360(receivable, "OVERDUE", "2026-06-30T15:01:00.000Z");
+
+  assert.equal(paid.receivedAmount, 10000);
+  assert.equal(paid.collectionStatus, "RESOLVED");
+  assert.equal(data.receivableOpenAmount(paid), 0);
+  assert.equal(overdue.receivedAmount, 2500);
+  assert.equal(overdue.collectionStatus, "FIRST_CONTACT");
+});
