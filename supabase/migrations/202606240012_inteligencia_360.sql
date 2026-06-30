@@ -470,8 +470,8 @@ begin
     'inteligencia_360_settings'
   ]
   loop
-    execute format('drop trigger if exists trg_%I_updated_at on public.%I', _table, _table);
-    execute format('create trigger trg_%I_updated_at before update on public.%I for each row execute function public.set_updated_at()', _table, _table);
+    execute format('drop trigger if exists %I on public.%I', 'trg_' || _table || '_updated_at', _table);
+    execute format('create trigger %I before update on public.%I for each row execute function public.set_updated_at()', 'trg_' || _table || '_updated_at', _table);
   end loop;
 end
 $$;
