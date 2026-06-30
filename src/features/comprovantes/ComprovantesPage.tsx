@@ -15,13 +15,17 @@ import { formatShortTime, readLocalValue, writeLocalValue } from "@/lib/localSto
 import {
   createRemoteEstorno,
   listRemoteComprovantes,
+  listRemotePagamentos,
   softDeleteRemoteComprovante,
   uploadRemoteComprovante,
 } from "@/lib/remoteData";
 import { prepareSharePointDispatch } from "@/lib/sharepoint";
 import { cn } from "@/lib/utils";
 import type { ComprovanteTipo, FormaPagamento } from "@/types/database";
+import { loadInteligencia360State, saveInteligencia360State } from "@/features/inteligencia360/inteligencia360Data";
+import { pagamentosStorageKey, type PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
+  applyComprovanteToPagamentos,
   comprovantesAccept,
   comprovantesStorageKey,
   formatFileSize,
@@ -29,6 +33,7 @@ import {
   isAcceptedComprovante,
   isInsideFilter,
   money,
+  receivableFromComprovante,
   type ComprovanteRecord,
   type PeriodoFiltro,
 } from "./comprovantesData";
@@ -37,15 +42,24 @@ function createId() {
   return `comprovante-${crypto.randomUUID?.() ?? Date.now()}`;
 }
 
+function parseMoneyInput(value: string) {
+  const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function ComprovantesPage() {
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
   const inputRef = useRef<HTMLInputElement>(null);
   const [localRecords, setLocalRecords] = useState<ComprovanteRecord[]>(() => readLocalValue(comprovantesStorageKey, []));
+  const [localPagamentos, setLocalPagamentos] = useState<PagamentoLembrete[]>(() => readLocalValue(pagamentosStorageKey, []));
   const [filter, setFilter] = useState<PeriodoFiltro>("dia");
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pacienteReferencia, setPacienteReferencia] = useState("");
+  const [pagamentoLembreteId, setPagamentoLembreteId] = useState("");
+  const [alimentarRecebiveis360, setAlimentarRecebiveis360] = useState(true);
   const [valor, setValor] = useState("");
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento | "">("");
   const [observacao, setObservacao] = useState("");
@@ -53,6 +67,11 @@ export function ComprovantesPage() {
   const comprovantesQuery = useQuery({
     queryKey: ["comprovantes", pessoa?.cargo],
     queryFn: () => listRemoteComprovantes(pessoa!.cargo),
+    enabled: useRemote && Boolean(pessoa),
+  });
+  const pagamentosQuery = useQuery({
+    queryKey: ["pagamentos-lembretes"],
+    queryFn: listRemotePagamentos,
     enabled: useRemote && Boolean(pessoa),
   });
   const uploadMutation = useMutation({
@@ -68,6 +87,11 @@ export function ComprovantesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["comprovantes"] }),
   });
   const records = useRemote ? comprovantesQuery.data ?? [] : localRecords;
+  const pagamentos = useRemote ? pagamentosQuery.data ?? [] : localPagamentos;
+  const pagamentosAbertos = useMemo(
+    () => pagamentos.filter((record) => !record.deletedAt && record.status === "aberto"),
+    [pagamentos],
+  );
 
   const visibleRecords = useMemo(
     () =>
@@ -83,6 +107,46 @@ export function ComprovantesPage() {
     writeLocalValue(comprovantesStorageKey, nextRecords);
   }
 
+  function resetCaptureForm() {
+    setPacienteReferencia("");
+    setPagamentoLembreteId("");
+    setValor("");
+    setFormaPagamento("");
+    setObservacao("");
+    setAlimentarRecebiveis360(true);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function selectPagamento(id: string) {
+    setPagamentoLembreteId(id);
+    const pagamento = pagamentosAbertos.find((record) => record.id === id);
+    if (!pagamento) return;
+    setPacienteReferencia(pagamento.pacienteNome);
+    setValor(String(pagamento.valorPendente).replace(".", ","));
+    if (!observacao.trim()) {
+      setObservacao(`Baixa da pendência combinada para ${pagamento.dataPrevista}.`);
+    }
+  }
+
+  function syncLocalFinancialLinks(comprovantes: ComprovanteRecord[]) {
+    const nextPagamentos = comprovantes.reduce(applyComprovanteToPagamentos, localPagamentos);
+    setLocalPagamentos(nextPagamentos);
+    writeLocalValue(pagamentosStorageKey, nextPagamentos);
+
+    const receivables = comprovantes.flatMap((comprovante) => {
+      const receivable = receivableFromComprovante(comprovante);
+      return receivable ? [receivable] : [];
+    });
+    if (!receivables.length) return;
+
+    const current360 = loadInteligencia360State();
+    const existingIds = new Set(receivables.map((record) => record.id));
+    saveInteligencia360State({
+      ...current360,
+      receivables: [...receivables, ...current360.receivables.filter((record) => !existingIds.has(record.id))],
+    });
+  }
+
   async function attach(files: FileList | File[]) {
     const nextFiles = Array.from(files);
     const acceptedFiles = nextFiles.filter(isAcceptedComprovante);
@@ -92,36 +156,41 @@ export function ComprovantesPage() {
       return;
     }
 
-    const parsedValor = valor ? Number(valor.replace(",", ".")) : undefined;
+    const parsedValor = valor ? parseMoneyInput(valor) : undefined;
+    const paciente = pacienteReferencia.trim();
 
     if (useRemote && pessoa) {
       try {
         await Promise.all(
-          acceptedFiles.map((file) =>
+          acceptedFiles.map((file, index) =>
             uploadMutation.mutateAsync({
               pessoa,
               file,
+              pacienteReferencia: paciente || undefined,
+              pagamentoLembreteId: pagamentoLembreteId || undefined,
               valor: Number.isFinite(parsedValor) ? parsedValor : undefined,
               formaPagamento: formaPagamento || undefined,
               observacao: observacao.trim() || undefined,
+              alimentarRecebiveis360: alimentarRecebiveis360 && index === 0,
             }),
           ),
         );
 
         setError(null);
-        setValor("");
-        setFormaPagamento("");
-        setObservacao("");
-        if (inputRef.current) inputRef.current.value = "";
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["pagamentos-lembretes"] }),
+          queryClient.invalidateQueries({ queryKey: ["inteligencia-360-state"] }),
+        ]);
+        resetCaptureForm();
       } catch {
-        setError("Não foi possível anexar no Supabase Storage. Confira bucket privado, RLS e permissões.");
+        setError("Não foi possível anexar e vincular no Supabase. Confira bucket privado, RLS, migrations e permissões.");
       }
 
       return;
     }
 
     const now = new Date().toISOString();
-    const nextRecords = acceptedFiles.map((file) => {
+    const nextRecords = acceptedFiles.map((file, index) => {
       const id = createId();
       return {
         id,
@@ -132,6 +201,9 @@ export function ComprovantesPage() {
         anexadoEm: now,
         anexadoPor: pessoa?.nome ?? "Equipe Bratan",
         anexadoPorCargo: pessoa?.cargo ?? "recepcionista",
+        pacienteReferencia: paciente || undefined,
+        pagamentoLembreteId: pagamentoLembreteId || undefined,
+        inteligencia360ReceivableId: paciente && Number.isFinite(parsedValor) && alimentarRecebiveis360 && index === 0 ? `recv-${id}` : undefined,
         valor: Number.isFinite(parsedValor) ? parsedValor : undefined,
         formaPagamento: formaPagamento || undefined,
         observacao: observacao.trim() || undefined,
@@ -149,10 +221,8 @@ export function ComprovantesPage() {
     setError(null);
     setPreviewUrls((current) => ({ ...current, ...nextPreviewUrls }));
     persist([...nextRecords, ...records]);
-    setValor("");
-    setFormaPagamento("");
-    setObservacao("");
-    if (inputRef.current) inputRef.current.value = "";
+    syncLocalFinancialLinks(nextRecords);
+    resetCaptureForm();
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -185,6 +255,8 @@ export function ComprovantesPage() {
       anexadoEm: new Date().toISOString(),
       anexadoPor: pessoa?.nome ?? "Equipe Bratan",
       anexadoPorCargo: pessoa?.cargo ?? "gestor_financeiro",
+      pacienteReferencia: record.pacienteReferencia,
+      pagamentoLembreteId: record.pagamentoLembreteId,
       valor: typeof record.valor === "number" ? -Math.abs(record.valor) : undefined,
       observacao: `Correção operacional do comprovante ${record.arquivoNome}.`,
       estornoDe: record.id,
@@ -285,6 +357,34 @@ export function ComprovantesPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="pagamento-vinculado">Baixar pendência existente</Label>
+                <select
+                  id="pagamento-vinculado"
+                  value={pagamentoLembreteId}
+                  onChange={(event) => selectPagamento(event.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">Não vincular</option>
+                  {pagamentosAbertos.map((record) => (
+                    <option key={record.id} value={record.id}>
+                      {record.pacienteNome} · {money(record.valorPendente)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Ao vincular, o comprovante marca a pendência como paga e alimenta os recebíveis.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="paciente-referencia">Paciente / referência</Label>
+                <Input
+                  id="paciente-referencia"
+                  placeholder="Nome ou código simples"
+                  value={pacienteReferencia}
+                  onChange={(event) => setPacienteReferencia(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="valor">Valor opcional</Label>
                 <Input id="valor" inputMode="decimal" placeholder="0,00" value={valor} onChange={(event) => setValor(event.target.value)} />
               </div>
@@ -315,6 +415,18 @@ export function ComprovantesPage() {
                   onChange={(event) => setObservacao(event.target.value)}
                 />
               </div>
+              <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6">
+                <input
+                  type="checkbox"
+                  checked={alimentarRecebiveis360}
+                  onChange={(event) => setAlimentarRecebiveis360(event.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block font-semibold text-brand-tinta">Alimentar Recebíveis 360</span>
+                  <span className="text-muted-foreground">Com paciente e valor, este comprovante vira receita recebida no 360.</span>
+                </span>
+              </label>
               {error ? <p className="text-sm text-destructive">{error}</p> : null}
             </div>
           </CardContent>
@@ -365,7 +477,14 @@ export function ComprovantesPage() {
                           {record.anexadoPor} · {cargoLabels[record.anexadoPorCargo]} · {formatFileSize(record.arquivoTamanho)}
                         </p>
                         <p className="mt-1 text-sm font-semibold text-brand-musgo">{money(record.valor)}</p>
+                        {record.pacienteReferencia ? <p className="text-sm text-muted-foreground">Paciente/referência: {record.pacienteReferencia}</p> : null}
                         {record.formaPagamento ? <p className="text-sm text-muted-foreground">{formaLabels[record.formaPagamento]}</p> : null}
+                        {record.pagamentoLembreteId ? (
+                          <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">Pendência baixada pelo comprovante</p>
+                        ) : null}
+                        {record.inteligencia360ReceivableId ? (
+                          <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">Recebíveis 360 alimentado</p>
+                        ) : null}
                         {record.observacao ? <p className="mt-2 text-sm leading-6 text-muted-foreground">{record.observacao}</p> : null}
                         <p className="mt-2 text-xs font-semibold uppercase text-brand-oliva">SharePoint: {record.sharePoint.status}</p>
                       </div>

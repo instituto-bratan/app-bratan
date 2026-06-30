@@ -1,4 +1,6 @@
 import type { SharePointQueueItem } from "@/lib/sharepoint";
+import type { Receivable } from "@/features/inteligencia360/inteligencia360Data";
+import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import type { Cargo, ComprovanteTipo, FormaPagamento } from "@/types/database";
 
 export type PeriodoFiltro = "dia" | "semana" | "mes" | "ano";
@@ -12,6 +14,9 @@ export type ComprovanteRecord = {
   anexadoEm: string;
   anexadoPor: string;
   anexadoPorCargo: Cargo;
+  pacienteReferencia?: string;
+  pagamentoLembreteId?: string;
+  inteligencia360ReceivableId?: string;
   valor?: number;
   formaPagamento?: FormaPagamento;
   observacao?: string;
@@ -93,5 +98,45 @@ export function comprovantesSummary(records: ComprovanteRecord[]) {
     pendingSharePoint,
     totalHoje,
     lastRecord: activeRecords[0] ?? null,
+  };
+}
+
+export function applyComprovanteToPagamentos(records: PagamentoLembrete[], comprovante: ComprovanteRecord) {
+  if (!comprovante.pagamentoLembreteId || comprovante.tipo !== "entrada") return records;
+
+  return records.map((record) =>
+    record.id === comprovante.pagamentoLembreteId
+      ? {
+          ...record,
+          status: "pago" as const,
+          pagoEm: comprovante.anexadoEm,
+        }
+      : record,
+  );
+}
+
+export function receivableFromComprovante(comprovante: ComprovanteRecord): Receivable | null {
+  if (comprovante.tipo !== "entrada" || !comprovante.pacienteReferencia || typeof comprovante.valor !== "number" || comprovante.valor <= 0) {
+    return null;
+  }
+
+  const id = comprovante.inteligencia360ReceivableId ?? `recv-${comprovante.id}`;
+  return {
+    id,
+    patientReference: comprovante.pacienteReferencia,
+    saleId: "",
+    totalAmount: comprovante.valor,
+    receivedAmount: comprovante.valor,
+    dueDate: comprovante.anexadoEm.slice(0, 10),
+    paymentMethod: comprovante.formaPagamento ? formaLabels[comprovante.formaPagamento] : "Comprovante",
+    installments: 1,
+    status: "PAID",
+    ownerUserId: "Financeiro",
+    collectionStatus: "RESOLVED",
+    notes: comprovante.pagamentoLembreteId
+      ? `Recebido via comprovante ${comprovante.arquivoNome}; pendência vinculada ${comprovante.pagamentoLembreteId}.`
+      : `Recebido via comprovante ${comprovante.arquivoNome}.`,
+    createdAt: comprovante.anexadoEm,
+    updatedAt: comprovante.anexadoEm,
   };
 }

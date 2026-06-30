@@ -34,6 +34,10 @@ function loadTsModule(filePath) {
 
   const localRequire = (request) => {
     if (request === "@/lib/localStore") return localStoreStub;
+    if (request.startsWith("@/")) {
+      const resolved = request.replace("@/", "src/");
+      return loadTsModule(path.extname(resolved) ? resolved : `${resolved}.ts`);
+    }
     if (request.startsWith(".")) {
       const resolved = path.resolve(path.dirname(absolutePath), request);
       return loadTsModule(path.relative(repoRoot, path.extname(resolved) ? resolved : `${resolved}.ts`));
@@ -66,6 +70,7 @@ function loadTsModule(filePath) {
 
 const engine = loadTsModule("src/features/inteligencia360/intelligenceEngine.ts");
 const data = loadTsModule("src/features/inteligencia360/inteligencia360Data.ts");
+const comprovantes = loadTsModule("src/features/comprovantes/comprovantesData.ts");
 
 function cloneState() {
   return JSON.parse(JSON.stringify(data.seedInteligencia360State));
@@ -210,4 +215,83 @@ test("recebível marcado como pago zera aberto e resolve cobrança", () => {
   assert.equal(data.receivableOpenAmount(paid), 0);
   assert.equal(overdue.receivedAmount, 2500);
   assert.equal(overdue.collectionStatus, "FIRST_CONTACT");
+});
+
+test("comprovante vinculado baixa lembrete de pagamento sem duplicar preenchimento", () => {
+  const pagamentos = [
+    {
+      id: "pag-1",
+      pacienteNome: "Paciente A",
+      valorPendente: 1200,
+      dataPrevista: "2026-06-30",
+      status: "aberto",
+      criadoPor: "Financeiro",
+      criadoEm: "2026-06-29T10:00:00.000Z",
+    },
+    {
+      id: "pag-2",
+      pacienteNome: "Paciente B",
+      valorPendente: 900,
+      dataPrevista: "2026-07-01",
+      status: "aberto",
+      criadoPor: "Financeiro",
+      criadoEm: "2026-06-29T10:00:00.000Z",
+    },
+  ];
+
+  const updated = comprovantes.applyComprovanteToPagamentos(pagamentos, {
+    id: "comp-1",
+    tipo: "entrada",
+    arquivoNome: "pix.pdf",
+    arquivoTipo: "application/pdf",
+    arquivoTamanho: 1000,
+    anexadoEm: "2026-06-30T14:30:00.000Z",
+    anexadoPor: "Recepção",
+    anexadoPorCargo: "recepcionista",
+    pagamentoLembreteId: "pag-1",
+    sharePoint: { comprovanteId: "comp-1", arquivoNome: "pix.pdf", queuedAt: "2026-06-30T14:30:00.000Z", provider: "microsoft_graph_next_phase", status: "pendente" },
+  });
+
+  assert.equal(updated[0].status, "pago");
+  assert.equal(updated[0].pagoEm, "2026-06-30T14:30:00.000Z");
+  assert.equal(updated[1].status, "aberto");
+});
+
+test("comprovante com paciente e valor vira recebível 360 pago uma única vez", () => {
+  const receivable = comprovantes.receivableFromComprovante({
+    id: "comp-2",
+    tipo: "entrada",
+    arquivoNome: "cartao.pdf",
+    arquivoTipo: "application/pdf",
+    arquivoTamanho: 1000,
+    anexadoEm: "2026-06-30T15:00:00.000Z",
+    anexadoPor: "Recepção",
+    anexadoPorCargo: "recepcionista",
+    pacienteReferencia: "Paciente C",
+    pagamentoLembreteId: "pag-3",
+    inteligencia360ReceivableId: "recv-comp-2",
+    valor: 1850,
+    formaPagamento: "cartao_credito",
+    sharePoint: { comprovanteId: "comp-2", arquivoNome: "cartao.pdf", queuedAt: "2026-06-30T15:00:00.000Z", provider: "microsoft_graph_next_phase", status: "pendente" },
+  });
+
+  const withoutPatient = comprovantes.receivableFromComprovante({
+    id: "comp-3",
+    tipo: "entrada",
+    arquivoNome: "sem-paciente.pdf",
+    arquivoTipo: "application/pdf",
+    arquivoTamanho: 1000,
+    anexadoEm: "2026-06-30T15:00:00.000Z",
+    anexadoPor: "Recepção",
+    anexadoPorCargo: "recepcionista",
+    valor: 1850,
+    sharePoint: { comprovanteId: "comp-3", arquivoNome: "sem-paciente.pdf", queuedAt: "2026-06-30T15:00:00.000Z", provider: "microsoft_graph_next_phase", status: "pendente" },
+  });
+
+  assert.equal(receivable.id, "recv-comp-2");
+  assert.equal(receivable.status, "PAID");
+  assert.equal(receivable.collectionStatus, "RESOLVED");
+  assert.equal(receivable.patientReference, "Paciente C");
+  assert.equal(receivable.paymentMethod, "Cartão de crédito");
+  assert.equal(withoutPatient, null);
 });

@@ -512,6 +512,9 @@ type RemoteComprovante = {
   mime_type: string;
   file_size_bytes: number;
   uploaded_at: string;
+  paciente_referencia: string | null;
+  pagamento_lembrete_id: string | null;
+  inteligencia_360_receivable_ref: string | null;
   valor: number | null;
   forma_pagamento: FormaPagamento | null;
   observacao: string | null;
@@ -525,7 +528,7 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
   const client = requireSupabase();
   const { data, error } = await client
     .from("comprovante")
-    .select("id, tipo, original_filename, mime_type, file_size_bytes, uploaded_at, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
+    .select("id, tipo, original_filename, mime_type, file_size_bytes, uploaded_at, paciente_referencia, pagamento_lembrete_id, inteligencia_360_receivable_ref, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
     .is("deleted_at", null)
     .order("uploaded_at", { ascending: false });
 
@@ -540,6 +543,9 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
     anexadoEm: record.uploaded_at,
     anexadoPor: record.colaborador?.nome ?? "Equipe Bratan",
     anexadoPorCargo: uploadedByCargo,
+    pacienteReferencia: record.paciente_referencia ?? undefined,
+    pagamentoLembreteId: record.pagamento_lembrete_id ?? undefined,
+    inteligencia360ReceivableId: record.inteligencia_360_receivable_ref ?? undefined,
     valor: record.valor ?? undefined,
     formaPagamento: record.forma_pagamento ?? undefined,
     observacao: record.observacao ?? undefined,
@@ -558,9 +564,12 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
 export async function uploadRemoteComprovante(values: {
   pessoa: Colaborador;
   file: File;
+  pacienteReferencia?: string;
+  pagamentoLembreteId?: string;
   valor?: number;
   formaPagamento?: FormaPagamento;
   observacao?: string;
+  alimentarRecebiveis360?: boolean;
 }) {
   const client = requireSupabase();
   const id = crypto.randomUUID();
@@ -574,6 +583,11 @@ export async function uploadRemoteComprovante(values: {
 
   if (storageError) throw storageError;
 
+  const inteligenciaReceivableRef =
+    values.alimentarRecebiveis360 !== false && values.pacienteReferencia && typeof values.valor === "number" && values.valor > 0
+      ? `recv-comprovante-${id}`
+      : null;
+
   const { error: insertError } = await client.from("comprovante").insert({
     id,
     storage_path: storagePath,
@@ -581,6 +595,9 @@ export async function uploadRemoteComprovante(values: {
     mime_type: values.file.type || "application/octet-stream",
     file_size_bytes: values.file.size,
     uploaded_by: values.pessoa.id,
+    paciente_referencia: values.pacienteReferencia?.trim() || null,
+    pagamento_lembrete_id: values.pagamentoLembreteId ?? null,
+    inteligencia_360_receivable_ref: inteligenciaReceivableRef,
     valor: values.valor ?? null,
     forma_pagamento: values.formaPagamento ?? null,
     observacao: values.observacao ?? null,
@@ -588,6 +605,37 @@ export async function uploadRemoteComprovante(values: {
   });
 
   if (insertError) throw insertError;
+
+  if (values.pagamentoLembreteId) {
+    const { error: pagamentoError } = await client.rpc("mark_pagamento_pago_por_comprovante", {
+      _pagamento_id: values.pagamentoLembreteId,
+      _comprovante_id: id,
+    });
+    if (pagamentoError) throw pagamentoError;
+  }
+
+  if (inteligenciaReceivableRef && values.pacienteReferencia && typeof values.valor === "number") {
+    const { error: receivableError } = await client.from("receivables").upsert(
+      {
+        client_ref: inteligenciaReceivableRef,
+        patient_reference: values.pacienteReferencia,
+        total_amount: values.valor,
+        received_amount: values.valor,
+        due_date: todayISO(),
+        payment_method: values.formaPagamento ?? "Comprovante",
+        installments: 1,
+        status: "PAID",
+        owner_user_id: values.pessoa.id,
+        collection_status: "RESOLVED",
+        notes: values.pagamentoLembreteId
+          ? `Recebido via comprovante ${values.file.name}; pendência vinculada ${values.pagamentoLembreteId}.`
+          : `Recebido via comprovante ${values.file.name}.`,
+      },
+      { onConflict: "client_ref" },
+    );
+    if (receivableError) throw receivableError;
+  }
+
   await safeWriteRemoteAuditEvent({
     action: "comprovante.upload",
     entity: "comprovante",
@@ -595,10 +643,15 @@ export async function uploadRemoteComprovante(values: {
     metadata: {
       fileName: values.file.name,
       fileSize: values.file.size,
+      pacienteReferencia: values.pacienteReferencia ?? null,
+      pagamentoLembreteId: values.pagamentoLembreteId ?? null,
       formaPagamento: values.formaPagamento ?? null,
       hasValor: typeof values.valor === "number",
+      feedsReceivables360: Boolean(inteligenciaReceivableRef),
     },
   });
+
+  return id;
 }
 
 export async function createRemoteEstorno(values: {
@@ -616,6 +669,8 @@ export async function createRemoteEstorno(values: {
     mime_type: "application/json",
     file_size_bytes: 0,
     uploaded_by: values.pessoa.id,
+    paciente_referencia: values.record.pacienteReferencia ?? null,
+    pagamento_lembrete_id: values.record.pagamentoLembreteId ?? null,
     valor: typeof values.record.valor === "number" ? -Math.abs(values.record.valor) : null,
     observacao: `Correção operacional do comprovante ${values.record.arquivoNome}.`,
     estorno_de: values.record.id,
