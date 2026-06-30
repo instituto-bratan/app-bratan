@@ -15,6 +15,10 @@ const PopsFluxosPage = lazyRoute("popsFluxos");
 const ComprovantesPage = lazyRoute("comprovantes");
 const EstalecasPage = lazyRoute("estalecas");
 const PagamentosPage = lazyRoute("pagamentos");
+const CrmTasksPage = lazyRoute("crmTasks");
+const CrmKanbanPage = lazyRoute("crmKanban");
+const CrmContactProfilePage = lazyRoute("crmContact");
+const CrmCadencesPage = lazyRoute("crmCadences");
 const ColaboradoresPage = lazyRoute("colaboradores");
 const ColaboradorPerfilPage = lazyRoute("colaboradorPerfil");
 const EstalecasAdminPage = lazyRoute("estalecasAdmin");
@@ -53,6 +57,11 @@ export function App() {
               <Route path="/comprovantes" element={<ComprovantesPage />} />
               <Route path="/estalecas" element={<EstalecasPage />} />
               <Route path="/lembretes-pagamento" element={<PagamentosPage />} />
+              <Route path="/crm" element={<Navigate to="/crm/minhas-tarefas" replace />} />
+              <Route path="/crm/minhas-tarefas" element={<CrmTasksPage />} />
+              <Route path="/crm/vendas" element={<CrmKanbanPage />} />
+              <Route path="/crm/contatos/:id" element={<CrmContactProfilePage />} />
+              <Route path="/crm/cadencias" element={<CrmCadencesPage />} />
               <Route path="/administracao" element={<Navigate to="/administracao/colaboradores" replace />} />
               <Route path="/administracao/colaboradores" element={<ColaboradoresPage />} />
               <Route path="/administracao/colaboradores/:id" element={<ColaboradorPerfilPage />} />

@@ -166,6 +166,10 @@ export function canInteligencia360(cargo: Cargo | null | undefined) {
   return Boolean(cargo);
 }
 
+export function canCrmBratan(cargo: Cargo | null | undefined) {
+  return Boolean(cargo && cargo !== "limpeza");
+}
+
 export function canManageInteligencia360(cargo: Cargo | null | undefined) {
   return isCoordenacao(cargo);
 }

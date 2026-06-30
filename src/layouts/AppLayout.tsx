@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import DockMorph from "@/components/ui/dock-morph";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canAdministracao, canBaseModules, canComprovantes, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
+import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
@@ -78,6 +78,18 @@ const flowGroups: FlowGroup[] = [
     allowed: canBaseModules,
     entries: [
       { label: "Minhas Estalecas", shortLabel: "Estalecas", href: "/estalecas", icon: Coins, allowed: canBaseModules },
+    ],
+  },
+  {
+    label: "CRM",
+    detail: "tarefas, vendas e cadências",
+    href: "/crm/minhas-tarefas",
+    icon: MessageCircle,
+    allowed: canCrmBratan,
+    entries: [
+      { label: "Minhas Tarefas", shortLabel: "Tarefas", href: "/crm/minhas-tarefas", icon: ClipboardList, allowed: canCrmBratan },
+      { label: "Kanban Comercial", shortLabel: "Kanban", href: "/crm/vendas", icon: Target, allowed: canCrmBratan },
+      { label: "Cadências", href: "/crm/cadencias", icon: MessageCircle, allowed: canCrmBratan },
     ],
   },
   {
@@ -283,7 +295,7 @@ function MobileNav({ cargo, menuOpen, onOpenMenu }: { cargo: Cargo | null | unde
   const coreItems: (NavEntry & { menu?: boolean })[] = [
     homeEntry,
     ...groups
-      .filter((group) => ["Hoje", "Carteira", "Documentos"].includes(group.label))
+      .filter((group) => ["Hoje", "CRM", "Carteira", "Documentos"].includes(group.label))
       .map((group) => ({
         label: group.label,
         shortLabel: group.label === "Documentos" ? "Docs" : group.label,
