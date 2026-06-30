@@ -28,6 +28,8 @@ const routeLoaders = {
   estalecasAdmin: namedPage(() => import("@/features/admin/EstalecasAdminPage"), "EstalecasAdminPage"),
   seguranca: namedPage(() => import("@/features/admin/SegurancaPage"), "SegurancaPage"),
   auditoria: namedPage(() => import("@/features/admin/AuditoriaPage"), "AuditoriaPage"),
+  inteligencia360: namedPage(() => import("@/features/inteligencia360/Inteligencia360Page"), "Inteligencia360DashboardPage"),
+  inteligencia360Module: namedPage(() => import("@/features/inteligencia360/Inteligencia360Page"), "Inteligencia360ModulePage"),
 } as const;
 
 export type RoutePreloadKey = keyof typeof routeLoaders;
@@ -61,6 +63,8 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/administracao/estalecas") return "estalecasAdmin";
   if (pathname === "/administracao/seguranca") return "seguranca";
   if (pathname === "/administracao/auditoria") return "auditoria";
+  if (pathname === "/inteligencia-360") return "inteligencia360";
+  if (pathname.startsWith("/inteligencia-360/")) return "inteligencia360Module";
 
   return null;
 }

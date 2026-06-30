@@ -162,6 +162,14 @@ export function canLembretesPagamento(cargo: Cargo | null | undefined) {
   return isCoordenacao(cargo);
 }
 
+export function canInteligencia360(cargo: Cargo | null | undefined) {
+  return Boolean(cargo);
+}
+
+export function canManageInteligencia360(cargo: Cargo | null | undefined) {
+  return isCoordenacao(cargo);
+}
+
 export function canBaseModules(cargo: Cargo | null | undefined) {
   return Boolean(cargo);
 }

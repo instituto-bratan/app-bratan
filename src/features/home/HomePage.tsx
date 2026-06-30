@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bell,
+  BrainCircuit,
   CalendarClock,
   CheckSquare,
   CircleDollarSign,
@@ -24,7 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GetStartedButton } from "@/components/ui/get-started-button";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canAdministracao, canBaseModules, canComprovantes, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
+import { canAdministracao, canBaseModules, canComprovantes, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue } from "@/lib/localStore";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
@@ -115,6 +116,15 @@ const modules = [
     description: "Acompanhe saldos prometidos, datas combinadas e retornos vencidos.",
     action: "Ver lembretes",
     allowed: canLembretesPagamento,
+  },
+  {
+    title: "Inteligência 360",
+    href: "/inteligencia-360",
+    icon: BrainCircuit,
+    label: "Torre de controle",
+    description: "Consolida ticket, comercial, jornada, réguas, recebíveis, NPS e ações com dono.",
+    action: "Abrir 360",
+    allowed: canInteligencia360,
   },
   {
     title: "Colaboradores",
@@ -239,7 +249,7 @@ export function HomePage() {
         label: "Gestão",
         icon: UsersRound,
         detail: "Equipe, lembretes, segurança e auditoria agrupados.",
-        hrefs: ["/lembretes-pagamento", "/administracao/colaboradores", "/administracao/seguranca", "/administracao/auditoria"],
+        hrefs: ["/inteligencia-360", "/lembretes-pagamento", "/administracao/colaboradores", "/administracao/seguranca", "/administracao/auditoria"],
       },
     ];
 

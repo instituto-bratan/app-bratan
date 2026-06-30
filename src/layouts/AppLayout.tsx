@@ -3,18 +3,26 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
+  BrainCircuit,
   CalendarClock,
   CircleDollarSign,
   CheckSquare,
   Coins,
+  ClipboardList,
   FileText,
+  HandCoins,
+  HeartPulse,
   History,
   Home,
   LayoutGrid,
   LogOut,
+  MessageCircle,
   ReceiptText,
+  RefreshCw,
   ShieldCheck,
+  Target,
   Utensils,
+  UserRoundCheck,
   UserRound,
   UsersRound,
   X,
@@ -24,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import DockMorph from "@/components/ui/dock-morph";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canAdministracao, canBaseModules, canComprovantes, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
+import { canAdministracao, canBaseModules, canComprovantes, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
@@ -91,6 +99,26 @@ const flowGroups: FlowGroup[] = [
     allowed: canLembretesPagamento,
     entries: [
       { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
+    ],
+  },
+  {
+    label: "Inteligência",
+    detail: "360, indicadores e ações",
+    href: "/inteligencia-360",
+    icon: BrainCircuit,
+    allowed: canInteligencia360,
+    entries: [
+      { label: "Dashboard 360", shortLabel: "360", href: "/inteligencia-360", icon: BrainCircuit, allowed: canInteligencia360 },
+      { label: "Ticket Médio", href: "/inteligencia-360/ticket-medio", icon: Target, allowed: canInteligencia360 },
+      { label: "Precificação", href: "/inteligencia-360/precificacao", icon: HandCoins, allowed: canInteligencia360 },
+      { label: "Comercial", href: "/inteligencia-360/comercial", icon: CircleDollarSign, allowed: canInteligencia360 },
+      { label: "Jornada", href: "/inteligencia-360/jornada-paciente", icon: UserRoundCheck, allowed: canInteligencia360 },
+      { label: "Réguas", href: "/inteligencia-360/reguas", icon: MessageCircle, allowed: canInteligencia360 },
+      { label: "Retenção", href: "/inteligencia-360/retencao-resgate", icon: RefreshCw, allowed: canInteligencia360 },
+      { label: "Experiência", href: "/inteligencia-360/experiencia", icon: HeartPulse, allowed: canInteligencia360 },
+      { label: "Recebíveis", href: "/inteligencia-360/recebiveis", icon: ReceiptText, allowed: canInteligencia360 },
+      { label: "Ações", href: "/inteligencia-360/acoes", icon: ClipboardList, allowed: canInteligencia360 },
+      { label: "Configurações", href: "/inteligencia-360/configuracoes", icon: ShieldCheck, allowed: canAdministracao },
     ],
   },
   {
