@@ -17,6 +17,20 @@ import {
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
+  deriveInteligencia360FromCrm,
+  seedCrmState,
+  type CrmCadence,
+  type CrmCadenceEnrollment,
+  type CrmCadenceStep,
+  type CrmContact,
+  type CrmDeal,
+  type CrmMessageTemplate,
+  type CrmState,
+  type CrmTask,
+  type CrmTimelineEvent,
+  type CrmTouchpoint,
+} from "@/features/crm/crmData";
+import {
   defaultSettings360,
   type ActionItem360,
   type ChurnInvestigation,
@@ -898,6 +912,10 @@ function remoteText(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+function remoteStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 function uuidOrNull(value?: string | null) {
   if (!value) return null;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : null;
@@ -1004,7 +1022,7 @@ export async function listRemoteInteligencia360State(): Promise<Inteligencia360S
 
   if (settingsResult.error) throw settingsResult.error;
 
-  return {
+  const baseState: Inteligencia360State = {
     weeklyTickets: (weeklyTickets as any[]).map(
       (row): WeeklyAverageTicket => ({
         id: remoteId(row, "wat"),
@@ -1246,6 +1264,14 @@ export async function listRemoteInteligencia360State(): Promise<Inteligencia360S
     ),
     settings: mapRemoteSettings(settingsResult.data),
   };
+
+  try {
+    const crmState = await listRemoteCrmState();
+    return deriveInteligencia360FromCrm(crmState, baseState);
+  } catch (error) {
+    console.warn("CRM remoto não entrou na consolidação do Dashboard 360.", error);
+    return baseState;
+  }
 }
 
 export async function saveRemoteInteligencia360State(state: Inteligencia360State) {
@@ -1504,6 +1530,423 @@ export async function saveRemoteInteligencia360State(state: Inteligencia360State
       prescriptions: state.prescriptions.length,
       receivables: state.receivables.length,
       actions: state.actions.length,
+    },
+  });
+}
+
+async function listCrmTable(table: string, orderColumn?: string) {
+  const client = requireSupabase();
+  let query = client.from(table).select("*");
+  if (orderColumn) {
+    query = query.order(orderColumn, { ascending: false });
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
+}
+
+async function upsertCrmTable(table: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const client = requireSupabase();
+  const { error } = await client.from(table).upsert(rows, { onConflict: "client_ref" });
+  if (error) throw error;
+}
+
+export async function listRemoteCrmState(): Promise<CrmState> {
+  const [contacts, deals, tasks, cadences, cadenceSteps, cadenceEnrollments, messageTemplates, touchpoints, timelineEvents] = await Promise.all([
+    listCrmTable("crm_contacts", "created_at"),
+    listCrmTable("crm_deals", "created_at"),
+    listCrmTable("crm_tasks", "due_at"),
+    listCrmTable("crm_cadences", "created_at"),
+    listCrmTable("crm_cadence_steps", "step_order"),
+    listCrmTable("crm_cadence_enrollments", "created_at"),
+    listCrmTable("crm_message_templates", "created_at"),
+    listCrmTable("crm_touchpoints", "sent_at"),
+    listCrmTable("crm_timeline_events", "created_at"),
+  ]);
+
+  const mappedCadences = (cadences as any[]).map(
+    (row): CrmCadence => ({
+      id: remoteId(row, "crm-cadence"),
+      name: remoteText(row.name),
+      description: remoteText(row.description),
+      cadenceType: row.cadence_type ?? "COMMERCIAL_FOLLOW_UP",
+      defaultOwnerRole: row.default_owner_role ?? "ADMIN_GESTAO",
+      active: row.active ?? true,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }),
+  );
+  const mappedCadenceSteps = (cadenceSteps as any[]).map(
+    (row): CrmCadenceStep => ({
+      id: remoteId(row, "crm-step"),
+      cadenceId: remoteText(row.cadence_id),
+      stepOrder: remoteNumber(row.step_order),
+      name: remoteText(row.name),
+      offsetType: row.offset_type ?? "DAYS_AFTER_TRIGGER",
+      offsetValue: remoteNumber(row.offset_value),
+      preferredTimeWindow: row.preferred_time_window ?? "ANY",
+      taskType: row.task_type ?? "WHATSAPP",
+      assignedToRole: row.assigned_to_role ?? "ADMIN_GESTAO",
+      messageTemplateId: row.message_template_id ?? "",
+      required: row.required ?? true,
+      pauseIfContactResponded: row.pause_if_contact_responded ?? true,
+      cancelIfStageChanged: row.cancel_if_stage_changed ?? true,
+      active: row.active ?? true,
+    }),
+  );
+  const mappedMessageTemplates = (messageTemplates as any[]).map(
+    (row): CrmMessageTemplate => ({
+      id: remoteId(row, "crm-template"),
+      name: remoteText(row.name),
+      category: remoteText(row.category),
+      roleOwner: row.role_owner ?? "ADMIN_GESTAO",
+      cadenceType: row.cadence_type ?? "COMMERCIAL_FOLLOW_UP",
+      channel: row.channel ?? "WHATSAPP",
+      body: remoteText(row.body),
+      variables: remoteStringArray(row.variables_json),
+      active: row.active ?? true,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }),
+  );
+
+  return {
+    contacts: (contacts as any[]).map(
+      (row): CrmContact => ({
+        id: remoteId(row, "crm-contact"),
+        contactType: row.contact_type ?? "LEAD",
+        lifecycleStage: row.lifecycle_stage ?? "COLD_LEAD",
+        fullName: remoteText(row.full_name),
+        preferredName: remoteText(row.preferred_name),
+        phone: remoteText(row.phone),
+        whatsapp: remoteText(row.whatsapp),
+        email: remoteText(row.email),
+        instagram: remoteText(row.instagram),
+        sourceChannel: remoteText(row.source_channel),
+        acquisitionCampaign: remoteText(row.acquisition_campaign),
+        leadTemperature: row.lead_temperature ?? "WARM",
+        personaFit: row.persona_fit ?? "UNKNOWN",
+        mainPain: remoteText(row.main_pain),
+        mainGoal: remoteText(row.main_goal),
+        ownerUserId: remoteText(row.owner_user_id),
+        commercialOwnerId: remoteText(row.commercial_owner_id),
+        conciergeOwnerId: remoteText(row.concierge_owner_id),
+        nurseOwnerId: remoteText(row.nurse_owner_id),
+        doctorId: remoteText(row.doctor_id),
+        notes: remoteText(row.notes),
+        createdBy: remoteText(row.created_by),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        archivedAt: row.archived_at ?? null,
+        optOut: row.opt_out ?? false,
+      }),
+    ),
+    deals: (deals as any[]).map(
+      (row): CrmDeal => ({
+        id: remoteId(row, "crm-deal"),
+        contactId: remoteText(row.contact_id),
+        title: remoteText(row.title),
+        dealType: row.deal_type ?? "FIRST_CONSULTATION",
+        stage: row.stage ?? "LEAD_NOVO",
+        estimatedValue: remoteNumber(row.estimated_value),
+        prescribedAmount: remoteNumber(row.prescribed_amount),
+        soldAmount: remoteNumber(row.sold_amount),
+        receivedAmount: remoteNumber(row.received_amount),
+        probability: remoteNumber(row.probability),
+        status: row.status ?? "OPEN",
+        mainObjection: remoteText(row.main_objection),
+        objectionCategory: row.objection_category ?? "OTHER",
+        sourceChannel: remoteText(row.source_channel),
+        ownerUserId: remoteText(row.owner_user_id),
+        doctorId: remoteText(row.doctor_id),
+        expectedCloseDate: row.expected_close_date ?? "",
+        closedAt: row.closed_at ?? null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    tasks: (tasks as any[]).map(
+      (row): CrmTask => ({
+        id: remoteId(row, "crm-task"),
+        contactId: remoteText(row.contact_id),
+        dealId: remoteText(row.deal_id),
+        cadenceId: remoteText(row.cadence_id),
+        cadenceStepId: remoteText(row.cadence_step_id),
+        title: remoteText(row.title),
+        description: remoteText(row.description),
+        taskType: row.task_type ?? "FOLLOW_UP",
+        assignedToUserId: remoteText(row.assigned_to_user_id),
+        assignedToRole: row.assigned_to_role ?? "ADMIN_GESTAO",
+        dueAt: row.due_at,
+        completedAt: row.completed_at ?? null,
+        status: row.status ?? "PENDING",
+        priority: row.priority ?? "MEDIUM",
+        visibilityScope: row.visibility_scope ?? "ROLE",
+        generatedBy: row.generated_by ?? "MANUAL",
+        result: row.result ?? "",
+        resultNotes: remoteText(row.result_notes),
+        createdBy: remoteText(row.created_by),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    cadences: mappedCadences.length ? mappedCadences : seedCrmState.cadences,
+    cadenceSteps: mappedCadenceSteps.length ? mappedCadenceSteps : seedCrmState.cadenceSteps,
+    cadenceEnrollments: (cadenceEnrollments as any[]).map(
+      (row): CrmCadenceEnrollment => ({
+        id: remoteId(row, "crm-enrollment"),
+        cadenceId: remoteText(row.cadence_id),
+        contactId: remoteText(row.contact_id),
+        dealId: remoteText(row.deal_id),
+        status: row.status ?? "ACTIVE",
+        enrolledAt: row.enrolled_at,
+        triggerSource: remoteText(row.trigger_source),
+        triggerDate: row.trigger_date,
+        ownerUserId: remoteText(row.owner_user_id),
+        ownerRole: row.owner_role ?? "ADMIN_GESTAO",
+        completedAt: row.completed_at ?? null,
+        canceledReason: remoteText(row.canceled_reason),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }),
+    ),
+    messageTemplates: mappedMessageTemplates.length ? mappedMessageTemplates : seedCrmState.messageTemplates,
+    touchpoints: (touchpoints as any[]).map(
+      (row): CrmTouchpoint => ({
+        id: remoteId(row, "crm-touch"),
+        contactId: remoteText(row.contact_id),
+        taskId: remoteText(row.task_id),
+        cadenceId: remoteText(row.cadence_id),
+        touchType: row.touch_type ?? "FOLLOW_UP",
+        channel: row.channel ?? "WHATSAPP",
+        sentByUserId: remoteText(row.sent_by_user_id),
+        sentAt: row.sent_at,
+        responseReceived: row.response_received ?? false,
+        responseAt: row.response_at ?? null,
+        responseSummary: remoteText(row.response_summary),
+        sentiment: row.sentiment ?? "NEUTRAL",
+        createdAt: row.created_at,
+      }),
+    ),
+    timelineEvents: (timelineEvents as any[]).map(
+      (row): CrmTimelineEvent => ({
+        id: remoteId(row, "crm-timeline"),
+        contactId: remoteText(row.contact_id),
+        eventType: remoteText(row.event_type),
+        eventTitle: remoteText(row.event_title),
+        eventDescription: remoteText(row.event_description),
+        sourceModule: row.source_module ?? "CRM",
+        sourceId: remoteText(row.source_id),
+        createdBy: remoteText(row.created_by),
+        createdAt: row.created_at,
+      }),
+    ),
+  };
+}
+
+export async function saveRemoteCrmState(state: CrmState) {
+  const now = new Date().toISOString();
+
+  await upsertCrmTable(
+    "crm_contacts",
+    state.contacts.map((record) => ({
+      client_ref: record.id,
+      contact_type: record.contactType,
+      lifecycle_stage: record.lifecycleStage,
+      full_name: record.fullName,
+      preferred_name: record.preferredName || null,
+      phone: record.phone || null,
+      whatsapp: record.whatsapp || null,
+      email: record.email || null,
+      instagram: record.instagram || null,
+      source_channel: record.sourceChannel || null,
+      acquisition_campaign: record.acquisitionCampaign || null,
+      lead_temperature: record.leadTemperature,
+      persona_fit: record.personaFit,
+      main_pain: record.mainPain || null,
+      main_goal: record.mainGoal || null,
+      owner_user_id: record.ownerUserId || null,
+      commercial_owner_id: record.commercialOwnerId || null,
+      concierge_owner_id: record.conciergeOwnerId || null,
+      nurse_owner_id: record.nurseOwnerId || null,
+      doctor_id: record.doctorId || null,
+      notes: record.notes || null,
+      opt_out: record.optOut ?? false,
+      created_by: record.createdBy || null,
+      created_at: record.createdAt || now,
+      updated_at: record.updatedAt || now,
+      archived_at: record.archivedAt || null,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_cadences",
+    state.cadences.map((record) => ({
+      client_ref: record.id,
+      name: record.name,
+      description: record.description || null,
+      cadence_type: record.cadenceType,
+      default_owner_role: record.defaultOwnerRole,
+      active: record.active,
+      created_at: record.createdAt || now,
+      updated_at: record.updatedAt || now,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_cadence_steps",
+    state.cadenceSteps.map((record) => ({
+      client_ref: record.id,
+      cadence_id: record.cadenceId,
+      step_order: record.stepOrder,
+      name: record.name,
+      offset_type: record.offsetType,
+      offset_value: record.offsetValue,
+      preferred_time_window: record.preferredTimeWindow,
+      task_type: record.taskType,
+      assigned_to_role: record.assignedToRole,
+      message_template_id: record.messageTemplateId || null,
+      required: record.required,
+      pause_if_contact_responded: record.pauseIfContactResponded,
+      cancel_if_stage_changed: record.cancelIfStageChanged,
+      active: record.active,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_message_templates",
+    state.messageTemplates.map((record) => ({
+      client_ref: record.id,
+      name: record.name,
+      category: record.category || null,
+      role_owner: record.roleOwner,
+      cadence_type: record.cadenceType,
+      channel: record.channel,
+      body: record.body,
+      variables_json: record.variables,
+      active: record.active,
+      created_at: record.createdAt || now,
+      updated_at: record.updatedAt || now,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_deals",
+    state.deals.map((record) => ({
+      client_ref: record.id,
+      contact_id: record.contactId,
+      title: record.title,
+      deal_type: record.dealType,
+      stage: record.stage,
+      estimated_value: record.estimatedValue,
+      prescribed_amount: record.prescribedAmount,
+      sold_amount: record.soldAmount,
+      received_amount: record.receivedAmount,
+      probability: record.probability,
+      status: record.status,
+      main_objection: record.mainObjection || null,
+      objection_category: record.objectionCategory,
+      source_channel: record.sourceChannel || null,
+      owner_user_id: record.ownerUserId || null,
+      doctor_id: record.doctorId || null,
+      expected_close_date: dateOrNull(record.expectedCloseDate),
+      closed_at: record.closedAt || null,
+      created_at: record.createdAt || now,
+      updated_at: record.updatedAt || now,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_cadence_enrollments",
+    state.cadenceEnrollments.map((record) => ({
+      client_ref: record.id,
+      cadence_id: record.cadenceId,
+      contact_id: record.contactId,
+      deal_id: record.dealId || null,
+      status: record.status,
+      enrolled_at: record.enrolledAt || now,
+      trigger_source: record.triggerSource || null,
+      trigger_date: record.triggerDate,
+      owner_user_id: record.ownerUserId || null,
+      owner_role: record.ownerRole,
+      completed_at: record.completedAt || null,
+      canceled_reason: record.canceledReason || null,
+      created_at: record.createdAt || now,
+      updated_at: record.updatedAt || now,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_tasks",
+    state.tasks.map((record) => ({
+      client_ref: record.id,
+      contact_id: record.contactId || null,
+      deal_id: record.dealId || null,
+      cadence_id: record.cadenceId || null,
+      cadence_step_id: record.cadenceStepId || null,
+      title: record.title,
+      description: record.description || null,
+      task_type: record.taskType,
+      assigned_to_user_id: record.assignedToUserId || null,
+      assigned_to_role: record.assignedToRole,
+      due_at: record.dueAt,
+      completed_at: record.completedAt || null,
+      status: record.status,
+      priority: record.priority,
+      visibility_scope: record.visibilityScope,
+      generated_by: record.generatedBy,
+      result: record.result || null,
+      result_notes: record.resultNotes || null,
+      created_by: record.createdBy || null,
+      created_at: record.createdAt || now,
+      updated_at: record.updatedAt || now,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_touchpoints",
+    state.touchpoints.map((record) => ({
+      client_ref: record.id,
+      contact_id: record.contactId,
+      task_id: record.taskId || null,
+      cadence_id: record.cadenceId || null,
+      touch_type: record.touchType,
+      channel: record.channel,
+      sent_by_user_id: record.sentByUserId || null,
+      sent_at: record.sentAt || now,
+      response_received: record.responseReceived,
+      response_at: record.responseAt || null,
+      response_summary: record.responseSummary || null,
+      sentiment: record.sentiment,
+      created_at: record.createdAt || now,
+    })),
+  );
+
+  await upsertCrmTable(
+    "crm_timeline_events",
+    state.timelineEvents.map((record) => ({
+      client_ref: record.id,
+      contact_id: record.contactId,
+      event_type: record.eventType,
+      event_title: record.eventTitle,
+      event_description: record.eventDescription || null,
+      source_module: record.sourceModule,
+      source_id: record.sourceId || null,
+      created_by: record.createdBy || null,
+      created_at: record.createdAt || now,
+    })),
+  );
+
+  await safeWriteRemoteAuditEvent({
+    action: "crm.sync",
+    entity: "crm",
+    metadata: {
+      contacts: state.contacts.length,
+      deals: state.deals.length,
+      tasks: state.tasks.length,
+      touchpoints: state.touchpoints.length,
     },
   });
 }
