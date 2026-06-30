@@ -71,6 +71,7 @@ function loadTsModule(filePath) {
 const engine = loadTsModule("src/features/inteligencia360/intelligenceEngine.ts");
 const data = loadTsModule("src/features/inteligencia360/inteligencia360Data.ts");
 const comprovantes = loadTsModule("src/features/comprovantes/comprovantesData.ts");
+const pagamentos = loadTsModule("src/features/pagamentos/pagamentosData.ts");
 
 function cloneState() {
   return JSON.parse(JSON.stringify(data.seedInteligencia360State));
@@ -294,4 +295,123 @@ test("comprovante com paciente e valor vira recebível 360 pago uma única vez",
   assert.equal(receivable.patientReference, "Paciente C");
   assert.equal(receivable.paymentMethod, "Cartão de crédito");
   assert.equal(withoutPatient, null);
+});
+
+test("lembrete de pagamento alimenta Recebíveis 360 e acompanha status", () => {
+  const openPayment = {
+    id: "pag-360",
+    pacienteNome: "Paciente Lembrete",
+    valorPendente: 3200,
+    dataPrevista: "2026-07-05",
+    observacao: "Promessa de pagamento registrada.",
+    status: "aberto",
+    criadoPor: "Financeiro",
+    criadoEm: "2026-06-30T10:00:00.000Z",
+  };
+  const paidPayment = {
+    ...openPayment,
+    status: "pago",
+    pagoEm: "2026-07-03T12:00:00.000Z",
+  };
+
+  const openReceivable = pagamentos.receivableFromPagamento(openPayment);
+  const paidReceivable = pagamentos.receivableFromPagamento(paidPayment);
+
+  assert.equal(openReceivable.id, "recv-pagamento-pag-360");
+  assert.equal(openReceivable.status, "OPEN");
+  assert.equal(openReceivable.collectionStatus, "PROMISED_PAYMENT");
+  assert.equal(openReceivable.receivedAmount, 0);
+  assert.equal(paidReceivable.status, "PAID");
+  assert.equal(paidReceivable.receivedAmount, 3200);
+  assert.equal(paidReceivable.collectionStatus, "RESOLVED");
+});
+
+test("recebíveis automáticos de lembretes substituem só a própria fonte", () => {
+  const merged = pagamentos.mergePagamentoReceivables(
+    [
+      {
+        id: "recv-pagamento-antigo",
+        patientReference: "Antigo",
+        saleId: "",
+        totalAmount: 100,
+        receivedAmount: 0,
+        dueDate: "2026-06-30",
+        paymentMethod: "Lembrete de pagamento",
+        installments: 1,
+        status: "OPEN",
+        ownerUserId: "Financeiro",
+        collectionStatus: "PROMISED_PAYMENT",
+        notes: "",
+        createdAt: "2026-06-30T10:00:00.000Z",
+        updatedAt: "2026-06-30T10:00:00.000Z",
+      },
+      {
+        id: "recv-comprovante-1",
+        patientReference: "Comprovante",
+        saleId: "",
+        totalAmount: 200,
+        receivedAmount: 200,
+        dueDate: "2026-06-30",
+        paymentMethod: "Pix",
+        installments: 1,
+        status: "PAID",
+        ownerUserId: "Financeiro",
+        collectionStatus: "RESOLVED",
+        notes: "",
+        createdAt: "2026-06-30T10:00:00.000Z",
+        updatedAt: "2026-06-30T10:00:00.000Z",
+      },
+    ],
+    [
+      {
+        id: "novo",
+        pacienteNome: "Paciente Novo",
+        valorPendente: 500,
+        dataPrevista: "2026-07-10",
+        status: "aberto",
+        criadoPor: "Financeiro",
+        criadoEm: "2026-06-30T10:00:00.000Z",
+      },
+    ],
+  );
+
+  assert.equal(JSON.stringify(merged.map((record) => record.id)), JSON.stringify(["recv-pagamento-novo", "recv-comprovante-1"]));
+});
+
+test("venda parcial cria recebível 360 sem pedir novo cadastro financeiro", () => {
+  const sale = {
+    id: "rx-1",
+    patientReference: "Paciente Comercial",
+    patientType: "NEW",
+    doctorId: "Dr. Daniel",
+    sellerId: "Comercial",
+    consultationDate: "2026-06-30",
+    prescribedAmount: 12000,
+    soldAmount: 10000,
+    receivedAmount: 4000,
+    closed: true,
+    fullPlanClosed: false,
+    partialReason: "",
+    discountPercentage: 0,
+    paymentMethod: "Cartão",
+    installments: 3,
+    acquisitionChannel: "Indicação",
+    mainObjection: "Preço",
+    objectionCategory: "PRICE",
+    nextFollowUpDate: "2026-07-05",
+    status: "CLOSED_PARTIAL",
+    notes: "",
+    createdAt: "2026-06-30T10:00:00.000Z",
+    updatedAt: "2026-06-30T10:00:00.000Z",
+  };
+
+  const receivable = data.receivableFromPrescriptionSale(sale);
+  const merged = data.mergePrescriptionReceivables([], [sale]);
+
+  assert.equal(receivable.id, "recv-sale-rx-1");
+  assert.equal(receivable.totalAmount, 10000);
+  assert.equal(receivable.receivedAmount, 4000);
+  assert.equal(receivable.status, "PARTIALLY_PAID");
+  assert.equal(receivable.dueDate, "2026-07-05");
+  assert.equal(merged.length, 1);
 });

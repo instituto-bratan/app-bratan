@@ -45,6 +45,7 @@ import {
   loadInteligencia360State,
   moduleRoutes360,
   money360,
+  mergePrescriptionReceivables,
   objectionLabels,
   parseNumber360,
   percent360,
@@ -69,6 +70,7 @@ import {
   type JourneyStage360,
   type ObjectionCategory360,
   type PatientType360,
+  type PrescriptionSale,
   type PrescriptionStatus360,
   type Receivable,
   type ReceivableStatus360,
@@ -800,36 +802,56 @@ function TicketModule({ state, persist }: { state: Inteligencia360State; persist
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const now = new Date().toISOString();
-    persist((current) => ({
-      ...current,
-      weeklyTickets: [
-        {
-          id: createId360("wat"),
-          weekStartDate: form.weekStartDate,
-          weekEndDate: form.weekEndDate,
-          referenceMonth: form.weekStartDate.slice(0, 7),
-          doctorId: form.doctorName.toLowerCase().replace(/\s+/g, "-"),
-          doctorName: form.doctorName,
-          patientType: form.patientType,
-          patientsSeenCount: parseNumber360(form.patientsSeenCount),
-          patientsClosedCount: parseNumber360(form.patientsClosedCount),
-          totalSoldAmount: parseNumber360(form.totalSoldAmount),
-          totalReceivedAmount: parseNumber360(form.totalReceivedAmount),
-          targetAverageTicket: parseNumber360(form.targetAverageTicket),
-          previousWeekAverageTicket: parseNumber360(form.previousWeekAverageTicket),
-          mainHypothesis: form.mainHypothesis,
-          rootCauseCategory: form.rootCauseCategory,
-          actionPlan: form.actionPlan,
-          responsibleUserId: form.responsibleUserId,
-          dueDate: form.dueDate,
-          notes: "",
-          createdBy: "Gestão",
-          createdAt: now,
-          updatedAt: now,
-        },
-        ...current.weeklyTickets,
-      ],
-    }));
+    persist((current) => {
+      const ticket = {
+        id: createId360("wat"),
+        weekStartDate: form.weekStartDate,
+        weekEndDate: form.weekEndDate,
+        referenceMonth: form.weekStartDate.slice(0, 7),
+        doctorId: form.doctorName.toLowerCase().replace(/\s+/g, "-"),
+        doctorName: form.doctorName,
+        patientType: form.patientType,
+        patientsSeenCount: parseNumber360(form.patientsSeenCount),
+        patientsClosedCount: parseNumber360(form.patientsClosedCount),
+        totalSoldAmount: parseNumber360(form.totalSoldAmount),
+        totalReceivedAmount: parseNumber360(form.totalReceivedAmount),
+        targetAverageTicket: parseNumber360(form.targetAverageTicket),
+        previousWeekAverageTicket: parseNumber360(form.previousWeekAverageTicket),
+        mainHypothesis: form.mainHypothesis,
+        rootCauseCategory: form.rootCauseCategory,
+        actionPlan: form.actionPlan,
+        responsibleUserId: form.responsibleUserId,
+        dueDate: form.dueDate,
+        notes: "",
+        createdBy: "Gestão",
+        createdAt: now,
+        updatedAt: now,
+      };
+      const status = ticketStatus(ticket, current.settings.ticketDropCriticalPercentage);
+      const action =
+        status === "CRITICAL" || form.actionPlan.trim()
+          ? {
+              id: createId360("act"),
+              sourceModule: "TICKET_AVERAGE" as const,
+              sourceId: ticket.id,
+              title: `Corrigir ticket médio - ${ticket.doctorName}`,
+              description: form.actionPlan || form.mainHypothesis || "Ticket médio exige análise e ação corretiva.",
+              priority: status === "CRITICAL" ? "CRITICAL" as const : "HIGH" as const,
+              ownerUserId: form.responsibleUserId,
+              dueDate: form.dueDate,
+              status: "OPEN" as const,
+              expectedImpact: "CASH" as const,
+              createdAt: now,
+              updatedAt: now,
+            }
+          : null;
+
+      return {
+        ...current,
+        weeklyTickets: [ticket, ...current.weeklyTickets],
+        actions: action ? [action, ...current.actions] : current.actions,
+      };
+    });
   }
 
   return (
@@ -870,7 +892,7 @@ function TicketModule({ state, persist }: { state: Inteligencia360State; persist
             <div className="md:col-span-2 xl:col-span-4">
               <LiquidButton type="submit" size="lg">
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                Adicionar ticket
+                Adicionar ticket e ação se necessário
               </LiquidButton>
             </div>
           </form>
@@ -1002,9 +1024,17 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
               event.preventDefault();
               const now = new Date().toISOString();
               const sold = parseNumber360(form.soldAmount);
-              persist((current) => ({ ...current, prescriptions: [{
+              const prescription: PrescriptionSale = {
                 id: createId360("rx"), patientReference: form.patientReference || "PAC-SEM-ID", patientType: form.patientType, doctorId: "Dr. Daniel", sellerId: "Comercial", consultationDate: todayPlus(0), prescribedAmount: parseNumber360(form.prescribedAmount), soldAmount: sold, receivedAmount: parseNumber360(form.receivedAmount), closed: sold > 0, fullPlanClosed: form.status === "CLOSED_FULL", partialReason: "", discountPercentage: 0, paymentMethod: "", installments: 0, acquisitionChannel: form.acquisitionChannel, mainObjection: objectionLabels[form.objectionCategory], objectionCategory: form.objectionCategory, nextFollowUpDate: form.nextFollowUpDate, status: form.status, notes: "", createdAt: now, updatedAt: now,
-              }, ...current.prescriptions] }));
+              };
+              persist((current) => {
+                const prescriptions = [prescription, ...current.prescriptions];
+                return {
+                  ...current,
+                  prescriptions,
+                  receivables: mergePrescriptionReceivables(current.receivables, prescriptions),
+                };
+              });
             }}>
               <Field label="Referência paciente" value={form.patientReference} onChange={(value) => setForm({ ...form, patientReference: value })} />
               <SelectField label="Tipo" value={form.patientType} onChange={(value) => setForm({ ...form, patientType: value })} options={[{ value: "NEW", label: "Novo" }, { value: "RETURNING", label: "Recorrente" }]} />
@@ -1014,7 +1044,9 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
               <Field label="Canal" value={form.acquisitionChannel} onChange={(value) => setForm({ ...form, acquisitionChannel: value })} />
               <SelectField label="Objeção" value={form.objectionCategory} onChange={(value) => setForm({ ...form, objectionCategory: value })} options={Object.entries(objectionLabels).map(([value, label]) => ({ value: value as ObjectionCategory360, label }))} />
               <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={["PRESCRIBED", "CLOSED_FULL", "CLOSED_PARTIAL", "NOT_CLOSED", "IN_RECOVERY", "LOST"].map((value) => ({ value: value as PrescriptionStatus360, label: value }))} />
-              <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg">Adicionar venda</LiquidButton></div>
+              <div className="md:col-span-2 xl:col-span-4">
+                <LiquidButton type="submit" size="lg">Adicionar venda e atualizar recebíveis</LiquidButton>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -1115,14 +1147,38 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
               event.preventDefault();
               const now = new Date().toISOString();
               const nps = parseNumber360(form.npsScore);
-              persist((current) => ({ ...current, experiences: [{ id: createId360("exp"), patientReference: form.patientReference || "PAC-SEM-ID", journeyId: "", npsScore: nps, satisfactionScore: parseNumber360(form.satisfactionScore), googleReviewRequested: false, googleReviewDone: false, leadershipContactDone: false, leadershipContactDate: "", feedbackType: form.feedbackType, feedbackText: form.feedbackText, actionRequired: nps <= 6 || form.feedbackType === "CRITICISM" || form.feedbackType === "COMPLAINT", actionPlanId: "", status: "OPEN", createdAt: now, updatedAt: now }, ...current.experiences] }));
+              const actionRequired = nps <= 6 || form.feedbackType === "CRITICISM" || form.feedbackType === "COMPLAINT";
+              const experienceId = createId360("exp");
+              const actionId = actionRequired ? createId360("act") : "";
+              const experience = { id: experienceId, patientReference: form.patientReference || "PAC-SEM-ID", journeyId: "", npsScore: nps, satisfactionScore: parseNumber360(form.satisfactionScore), googleReviewRequested: false, googleReviewDone: false, leadershipContactDone: false, leadershipContactDate: "", feedbackType: form.feedbackType, feedbackText: form.feedbackText, actionRequired, actionPlanId: actionId, status: "OPEN" as const, createdAt: now, updatedAt: now };
+              const action: ActionItem360 | null = actionRequired
+                ? {
+                    id: actionId,
+                    sourceModule: "NPS",
+                    sourceId: experienceId,
+                    title: `Ação corretiva de experiência - ${experience.patientReference}`,
+                    description: form.feedbackText || "Paciente exige contato de liderança e correção de experiência.",
+                    priority: nps <= 6 || form.feedbackType === "COMPLAINT" ? "CRITICAL" : "HIGH",
+                    ownerUserId: "Concierge",
+                    dueDate: todayPlus(1),
+                    status: "OPEN",
+                    expectedImpact: "PATIENT_EXPERIENCE",
+                    createdAt: now,
+                    updatedAt: now,
+                  }
+                : null;
+              persist((current) => ({
+                ...current,
+                experiences: [experience, ...current.experiences],
+                actions: action ? [action, ...current.actions] : current.actions,
+              }));
             }}>
               <Field label="Referência paciente" value={form.patientReference} onChange={(value) => setForm({ ...form, patientReference: value })} />
               <Field label="NPS" type="number" value={form.npsScore} onChange={(value) => setForm({ ...form, npsScore: value })} />
               <Field label="Satisfação" type="number" value={form.satisfactionScore} onChange={(value) => setForm({ ...form, satisfactionScore: value })} />
               <SelectField label="Tipo" value={form.feedbackType} onChange={(value) => setForm({ ...form, feedbackType: value })} options={["PRAISE", "CRITICISM", "SUGGESTION", "COMPLAINT"].map((value) => ({ value: value as FeedbackType360, label: value }))} />
               <TextAreaField label="Feedback" value={form.feedbackText} onChange={(value) => setForm({ ...form, feedbackText: value })} />
-              <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg">Adicionar experiência</LiquidButton></div>
+              <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg">Adicionar experiência e ação se necessário</LiquidButton></div>
             </form>
           </CardContent>
         </Card>

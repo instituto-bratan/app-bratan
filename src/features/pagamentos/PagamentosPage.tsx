@@ -12,6 +12,7 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canLembretesPagamento } from "@/lib/access";
 import { formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
+import { loadInteligencia360State, saveInteligencia360State } from "@/features/inteligencia360/inteligencia360Data";
 import {
   createRemotePagamento,
   listRemotePagamentos,
@@ -27,6 +28,7 @@ import {
   isPagamentoHoje,
   isPagamentoProximo,
   isPagamentoVencido,
+  mergePagamentoReceivables,
   money,
   pagamentoFiltroLabels,
   pagamentosStorageKey,
@@ -111,6 +113,11 @@ export function PagamentosPage() {
   function persist(nextRecords: PagamentoLembrete[]) {
     setLocalRecords(nextRecords);
     writeLocalValue(pagamentosStorageKey, nextRecords);
+    const current360 = loadInteligencia360State();
+    saveInteligencia360State({
+      ...current360,
+      receivables: mergePagamentoReceivables(current360.receivables, nextRecords),
+    });
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -249,7 +256,7 @@ export function PagamentosPage() {
               </Badge>
               <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Lembretes de pagamento</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Lembretes simples por nome, valor pendente e data combinada para a equipe não depender de memória.
+                Lembretes simples por nome, valor pendente e data combinada. Cada lembrete alimenta Recebíveis 360 automaticamente.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -391,6 +398,7 @@ export function PagamentosPage() {
                           <h2 className="truncate text-xl font-semibold text-brand-tinta">{record.pacienteNome}</h2>
                           <p className="mt-1 text-lg font-bold text-brand-musgo">{money(record.valorPendente)}</p>
                           {record.observacao ? <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{record.observacao}</p> : null}
+                          <p className="mt-2 text-xs font-semibold uppercase text-brand-oliva">Recebíveis 360 sincronizado</p>
                           {record.pagoEm ? <p className="mt-2 text-xs font-semibold uppercase text-brand-oliva">Pago às {formatShortTime(record.pagoEm)}</p> : null}
                         </div>
 

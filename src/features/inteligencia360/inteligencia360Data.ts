@@ -850,6 +850,46 @@ export function updateReceivableStatus360(
   };
 }
 
+export function saleReceivableId(record: Pick<PrescriptionSale, "id">) {
+  return `recv-sale-${record.id}`;
+}
+
+export function isSaleReceivable(record: Pick<Receivable, "id">) {
+  return record.id.startsWith("recv-sale-");
+}
+
+export function receivableFromPrescriptionSale(record: PrescriptionSale): Receivable | null {
+  const openAmount = Math.max(record.soldAmount - record.receivedAmount, 0);
+  if (!record.closed || record.soldAmount <= 0 || openAmount <= 0) return null;
+
+  const status: ReceivableStatus360 = record.receivedAmount > 0 ? "PARTIALLY_PAID" : "OPEN";
+  return {
+    id: saleReceivableId(record),
+    patientReference: record.patientReference,
+    saleId: record.id,
+    totalAmount: record.soldAmount,
+    receivedAmount: record.receivedAmount,
+    dueDate: record.nextFollowUpDate || record.consultationDate,
+    paymentMethod: record.paymentMethod || "Comercial e Prescrições",
+    installments: record.installments || 1,
+    status,
+    ownerUserId: record.sellerId || "Comercial",
+    collectionStatus: "PROMISED_PAYMENT",
+    notes: "Gerado automaticamente por Comercial e Prescrições.",
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export function mergePrescriptionReceivables(receivables: Receivable[], prescriptions: PrescriptionSale[]) {
+  const saleReceivables = prescriptions.flatMap((record) => {
+    const receivable = receivableFromPrescriptionSale(record);
+    return receivable ? [receivable] : [];
+  });
+
+  return [...saleReceivables, ...receivables.filter((record) => !isSaleReceivable(record))];
+}
+
 export function loadInteligencia360State() {
   return readLocalValue<Inteligencia360State>(inteligencia360StorageKey, seedInteligencia360State);
 }

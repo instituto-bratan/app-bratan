@@ -1,3 +1,4 @@
+import type { Receivable } from "@/features/inteligencia360/inteligencia360Data";
 import type { PagamentoLembreteStatus } from "@/types/database";
 
 export type PagamentoFiltro = "abertos" | "vencidos" | "hoje" | "proximos" | "pagos" | "todos";
@@ -114,4 +115,47 @@ export function pagamentosSummary(records: PagamentoLembrete[]) {
     totalAberto,
     proximoLembrete: sortPagamentos(abertos)[0] ?? null,
   };
+}
+
+export function pagamentoReceivableId(record: Pick<PagamentoLembrete, "id">) {
+  return `recv-pagamento-${record.id}`;
+}
+
+export function isPagamentoReceivable(record: Pick<Receivable, "id">) {
+  return record.id.startsWith("recv-pagamento-");
+}
+
+export function receivableFromPagamento(record: PagamentoLembrete): Receivable {
+  const status = record.status === "pago" ? "PAID" : record.status === "cancelado" ? "CANCELED" : isPagamentoVencido(record) ? "OVERDUE" : "OPEN";
+  const collectionStatus = status === "PAID" || status === "CANCELED" ? "RESOLVED" : status === "OVERDUE" ? "FIRST_CONTACT" : "PROMISED_PAYMENT";
+  const updatedAt = record.pagoEm ?? record.criadoEm;
+
+  return {
+    id: pagamentoReceivableId(record),
+    patientReference: record.pacienteNome,
+    saleId: "",
+    totalAmount: record.valorPendente,
+    receivedAmount: status === "PAID" ? record.valorPendente : 0,
+    dueDate: record.dataPrevista,
+    paymentMethod: "Lembrete de pagamento",
+    installments: 1,
+    status,
+    ownerUserId: record.criadoPor,
+    collectionStatus,
+    notes: record.observacao
+      ? `Gerado automaticamente por Lembretes de pagamento. ${record.observacao}`
+      : "Gerado automaticamente por Lembretes de pagamento.",
+    createdAt: record.criadoEm,
+    updatedAt,
+  };
+}
+
+export function mergePagamentoReceivables(receivables: Receivable[], pagamentos: PagamentoLembrete[]) {
+  const pagamentoReceivables = pagamentos.filter((record) => !record.deletedAt).map(receivableFromPagamento);
+  const pagamentoIds = new Set(pagamentoReceivables.map((record) => record.id));
+
+  return [
+    ...pagamentoReceivables,
+    ...receivables.filter((record) => !isPagamentoReceivable(record) && !pagamentoIds.has(record.id)),
+  ];
 }

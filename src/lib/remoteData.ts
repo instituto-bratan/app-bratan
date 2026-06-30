@@ -713,6 +713,50 @@ type RemotePagamentoLembrete = {
   colaborador?: { nome?: string | null } | null;
 };
 
+function pagamentoReceivableClientRef(id: string) {
+  return `pagamento-${id}`;
+}
+
+function remotePagamentoReceivableStatus(record: RemotePagamentoLembrete) {
+  if (record.status === "pago") return "PAID";
+  if (record.status === "cancelado") return "CANCELED";
+  const dueDate = new Date(`${record.data_prevista}T00:00:00`);
+  const today = new Date(`${todayISO()}T00:00:00`);
+  return dueDate < today ? "OVERDUE" : "OPEN";
+}
+
+function remotePagamentoReceivableCollectionStatus(status: string) {
+  if (status === "PAID" || status === "CANCELED") return "RESOLVED";
+  if (status === "OVERDUE") return "FIRST_CONTACT";
+  return "PROMISED_PAYMENT";
+}
+
+async function upsertRemoteReceivableFromPagamento(record: RemotePagamentoLembrete) {
+  const client = requireSupabase();
+  const totalAmount = Number(record.valor_pendente);
+  const status = remotePagamentoReceivableStatus(record);
+  const { error } = await client.from("receivables").upsert(
+    {
+      client_ref: pagamentoReceivableClientRef(record.id),
+      patient_reference: record.paciente_nome,
+      total_amount: totalAmount,
+      received_amount: status === "PAID" ? totalAmount : 0,
+      due_date: record.data_prevista,
+      payment_method: "Lembrete de pagamento",
+      installments: 1,
+      status,
+      owner_user_id: record.criado_por,
+      collection_status: remotePagamentoReceivableCollectionStatus(status),
+      notes: record.observacao
+        ? `Gerado automaticamente por Lembretes de pagamento. ${record.observacao}`
+        : "Gerado automaticamente por Lembretes de pagamento.",
+    },
+    { onConflict: "client_ref" },
+  );
+
+  if (error) throw error;
+}
+
 function mapRemotePagamento(record: RemotePagamentoLembrete): PagamentoLembrete {
   return {
     id: record.id,
@@ -760,10 +804,11 @@ export async function createRemotePagamento(values: {
       observacao: values.observacao ?? null,
       criado_por: values.pessoa.id,
     })
-    .select("id")
+    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
     .single();
 
   if (error) throw error;
+  await upsertRemoteReceivableFromPagamento(data as RemotePagamentoLembrete);
   await safeWriteRemoteAuditEvent({
     action: "pagamento_lembrete.create",
     entity: "pagamento_lembrete",
@@ -777,15 +822,18 @@ export async function updateRemotePagamentoStatus(values: {
   status: PagamentoLembreteStatus;
 }) {
   const client = requireSupabase();
-  const { error } = await client
+  const { data, error } = await client
     .from("pagamento_lembrete")
     .update({
       status: values.status,
       pago_em: values.status === "pago" ? new Date().toISOString() : null,
     })
-    .eq("id", values.id);
+    .eq("id", values.id)
+    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .single();
 
   if (error) throw error;
+  await upsertRemoteReceivableFromPagamento(data as RemotePagamentoLembrete);
   await safeWriteRemoteAuditEvent({
     action: "pagamento_lembrete.status",
     entity: "pagamento_lembrete",
@@ -799,16 +847,19 @@ export async function postponeRemotePagamento(values: {
   dataPrevista: string;
 }) {
   const client = requireSupabase();
-  const { error } = await client
+  const { data, error } = await client
     .from("pagamento_lembrete")
     .update({
       data_prevista: values.dataPrevista,
       status: "aberto",
       pago_em: null,
     })
-    .eq("id", values.id);
+    .eq("id", values.id)
+    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .single();
 
   if (error) throw error;
+  await upsertRemoteReceivableFromPagamento(data as RemotePagamentoLembrete);
   await safeWriteRemoteAuditEvent({
     action: "pagamento_lembrete.postpone",
     entity: "pagamento_lembrete",
@@ -822,6 +873,15 @@ export async function softDeleteRemotePagamento(id: string) {
   const { error } = await client.from("pagamento_lembrete").update({ deleted_at: new Date().toISOString() }).eq("id", id);
 
   if (error) throw error;
+  const { error: receivableError } = await client
+    .from("receivables")
+    .update({
+      status: "CANCELED",
+      collection_status: "RESOLVED",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("client_ref", pagamentoReceivableClientRef(id));
+  if (receivableError) throw receivableError;
   await safeWriteRemoteAuditEvent({
     action: "pagamento_lembrete.hide",
     entity: "pagamento_lembrete",
