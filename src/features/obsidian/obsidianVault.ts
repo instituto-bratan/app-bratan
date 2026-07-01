@@ -173,6 +173,163 @@ export function appendObsidianLog(log: ObsidianSyncLog) {
   writeLocalValue(obsidianLogsStorageKey, [log, ...loadObsidianLogs()].slice(0, 50));
 }
 
+export type ObsidianSettingsRow = {
+  id?: boolean;
+  obsidian_enabled: boolean;
+  obsidian_vault_path: string;
+  sync_mode: string;
+  export_sensitive_data: boolean;
+  export_financial_values: boolean;
+  export_patient_names: boolean;
+  export_contact_phone: boolean;
+  default_redaction_mode: string;
+  last_sync_at: string | null;
+  last_sync_status: string;
+  last_sync_error: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ObsidianQueueRow = {
+  id?: string;
+  entity_type: string;
+  entity_id: string;
+  export_type: string;
+  target_path: string;
+  status: string;
+  error_message: string;
+  attempts: number;
+  last_attempt_at: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ObsidianSyncLogRow = {
+  id?: string;
+  sync_type: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  files_created: number;
+  files_updated: number;
+  files_failed: number;
+  error_message: string;
+  triggered_by_user_id: string | null;
+  created_at?: string | null;
+};
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function asUuidOrNull(value: string | null | undefined) {
+  return value && uuidPattern.test(value) ? value : null;
+}
+
+function oneOf<T extends string>(value: string | null | undefined, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+export function obsidianConfigFromSettingsRow(row: ObsidianSettingsRow): ObsidianVaultConfig {
+  return {
+    enabled: !!row.obsidian_enabled,
+    vaultPath: row.obsidian_vault_path ?? "",
+    syncMode: oneOf(row.sync_mode, ["MANUAL", "AUTO_DAILY", "AUTO_WEEKLY", "ON_DEMAND"], "MANUAL"),
+    exportSensitiveData: !!row.export_sensitive_data,
+    exportFinancialValues: !!row.export_financial_values,
+    exportPatientNames: !!row.export_patient_names,
+    exportContactPhone: !!row.export_contact_phone,
+    defaultRedactionMode: oneOf(row.default_redaction_mode, ["NONE", "PARTIAL", "STRICT"], "PARTIAL"),
+    lastSyncAt: row.last_sync_at ?? "",
+    lastSyncStatus: oneOf(
+      row.last_sync_status,
+      ["connected", "no_permission", "invalid_path", "awaiting_config", "success", "failed"],
+      "awaiting_config",
+    ),
+    lastSyncError: row.last_sync_error ?? "",
+    createdAt: row.created_at ?? new Date().toISOString(),
+    updatedAt: row.updated_at ?? new Date().toISOString(),
+  };
+}
+
+export function obsidianConfigToSettingsRow(config: ObsidianVaultConfig): ObsidianSettingsRow {
+  return {
+    id: true,
+    obsidian_enabled: config.enabled,
+    obsidian_vault_path: config.vaultPath,
+    sync_mode: config.syncMode,
+    export_sensitive_data: config.exportSensitiveData,
+    export_financial_values: config.exportFinancialValues,
+    export_patient_names: config.exportPatientNames,
+    export_contact_phone: config.exportContactPhone,
+    default_redaction_mode: config.defaultRedactionMode,
+    last_sync_at: config.lastSyncAt || null,
+    last_sync_status: config.lastSyncStatus,
+    last_sync_error: config.lastSyncError,
+  };
+}
+
+export function obsidianQueueRowFromItem(item: ObsidianExportQueueItem): ObsidianQueueRow {
+  return {
+    entity_type: item.entityType,
+    entity_id: item.entityId,
+    export_type: item.exportType,
+    target_path: item.targetPath,
+    status: item.status,
+    error_message: item.errorMessage,
+    attempts: item.attempts,
+    last_attempt_at: item.lastAttemptAt || null,
+  };
+}
+
+export function obsidianQueueItemFromRow(row: ObsidianQueueRow): ObsidianExportQueueItem {
+  return {
+    id: row.id ?? createId("obsq"),
+    entityType: oneOf(
+      row.entity_type,
+      ["DASHBOARD_SNAPSHOT", "CRM_CONTACT", "CRM_DEAL", "CRM_TASK", "CADENCE", "TEMPLATE", "REPORT", "PLAYBOOK", "AUDIT"],
+      "REPORT",
+    ),
+    entityId: row.entity_id,
+    exportType: oneOf(row.export_type, ["CREATE", "UPDATE", "DELETE", "SNAPSHOT"], "UPDATE"),
+    targetPath: row.target_path,
+    status: oneOf(row.status, ["PENDING", "PROCESSING", "DONE", "FAILED", "SKIPPED"], "PENDING"),
+    errorMessage: row.error_message ?? "",
+    attempts: row.attempts ?? 0,
+    lastAttemptAt: row.last_attempt_at ?? "",
+    createdAt: row.created_at ?? "",
+    updatedAt: row.updated_at ?? "",
+  };
+}
+
+export function obsidianLogRowFromLog(log: ObsidianSyncLog): ObsidianSyncLogRow {
+  return {
+    sync_type: log.syncType,
+    status: log.status,
+    started_at: log.startedAt,
+    finished_at: log.finishedAt || null,
+    files_created: log.filesCreated,
+    files_updated: log.filesUpdated,
+    files_failed: log.filesFailed,
+    error_message: log.errorMessage,
+    triggered_by_user_id: asUuidOrNull(log.triggeredByUserId),
+  };
+}
+
+export function obsidianLogFromRow(row: ObsidianSyncLogRow): ObsidianSyncLog {
+  return {
+    id: row.id ?? createId("obslog"),
+    syncType: row.sync_type,
+    status: oneOf(row.status, ["DONE", "FAILED", "SKIPPED"], "DONE"),
+    startedAt: row.started_at,
+    finishedAt: row.finished_at ?? "",
+    filesCreated: row.files_created ?? 0,
+    filesUpdated: row.files_updated ?? 0,
+    filesFailed: row.files_failed ?? 0,
+    errorMessage: row.error_message ?? "",
+    triggeredByUserId: row.triggered_by_user_id ?? "",
+    createdAt: row.created_at ?? "",
+  };
+}
+
 export function sanitizeFileName(value: string) {
   return (value || "Sem titulo")
     .normalize("NFD")

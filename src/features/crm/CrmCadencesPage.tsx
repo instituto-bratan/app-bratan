@@ -17,7 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { downloadObsidianFiles, exportCadencePlaybooks, exportMessageTemplates, loadObsidianConfig } from "@/features/obsidian/obsidianVault";
+import { exportCadencePlaybooks, exportMessageTemplates } from "@/features/obsidian/obsidianVault";
+import { useObsidianVault } from "@/features/obsidian/useObsidianVault";
 import {
   applyMessageTemplate,
   canUserAccessCadence,
@@ -44,6 +45,7 @@ function statusTone(status: CrmCadenceStatus) {
 export function CrmCadencesPage() {
   const { pessoa } = useAuth();
   const { state, persist } = useCrmState();
+  const obsidianVault = useObsidianVault();
   const [cadenceId, setCadenceId] = useState("cad-cold-lead");
   const [contactId, setContactId] = useState(state.contacts[0]?.id ?? "");
   const [dealId, setDealId] = useState("");
@@ -108,12 +110,11 @@ export function CrmCadencesPage() {
   }
 
   function exportCadencesToObsidian() {
-    const config = loadObsidianConfig();
-    downloadObsidianFiles(
+    const config = obsidianVault.config;
+    obsidianVault.downloadFiles(
       [...exportCadencePlaybooks(state, config), ...exportMessageTemplates(state.messageTemplates, config)],
       `app-bratan-cadencias-${new Date().toISOString().slice(0, 10)}.zip`,
       "CRM_CADENCE_EXPORT",
-      pessoa?.id ?? "preview",
     );
     setFeedback("Playbooks e templates preparados em ZIP para o Obsidian.");
   }

@@ -29,6 +29,17 @@ O que pode ser exportado:
 - Templates de mensagem.
 - Relatório de qualidade dos dados.
 
+## Persistência no Supabase
+
+A configuração do Vault, a fila de exportação e os logs de sincronização agora são persistidos no Supabase quando o usuário está autenticado (tabelas `obsidian_vault_settings`, `obsidian_export_queue` e `obsidian_sync_logs`, protegidas por RLS restrita à coordenação).
+
+Como funciona:
+
+- O hook `useObsidianVault` (em `src/features/obsidian/useObsidianVault.ts`) é a porta de entrada única para configuração e exportação. Todas as telas com botão "Exportar Obsidian" (Dashboard 360, Kanban, Perfil 360, Cadências e a própria tela do Vault) usam esse hook.
+- Fluxo local-first: a configuração continua salva no navegador e o app funciona offline/preview; quando há sessão real, cada alteração e cada exportação também são gravadas no Supabase.
+- A tela `/configuracoes/obsidian` mostra o modo de sincronização ativo ("Supabase + local" ou "Somente local") e lê fila/histórico do banco quando disponível.
+- Toda gravação remota registra evento de auditoria (`obsidian.settings.save` e `obsidian.export.record`).
+
 ## Kanban Comercial
 
 O Kanban agora tem:
@@ -48,7 +59,6 @@ Regra de uso:
 
 ## Próxima sprint sugerida
 
-- Persistir configurações do Vault no Supabase em vez de apenas local/ZIP.
 - Criar rotina backend para escrita direta no filesystem quando houver ambiente com permissão.
 - Adicionar exportação individual em mais módulos operacionais.
 - Criar busca global dedicada do CRM no topo do app.

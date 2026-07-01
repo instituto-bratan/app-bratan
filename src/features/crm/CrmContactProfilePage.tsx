@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { loadInteligencia360State, money360, stageLabels, touchTypeLabels } from "@/features/inteligencia360/inteligencia360Data";
-import { downloadObsidianFiles, exportCrmContactSummary, loadObsidianConfig } from "@/features/obsidian/obsidianVault";
+import { exportCrmContactSummary } from "@/features/obsidian/obsidianVault";
+import { useObsidianVault } from "@/features/obsidian/useObsidianVault";
 import {
   canUserAccessContact,
   canUserSeeFinancialValues,
@@ -67,6 +68,7 @@ export function CrmContactProfilePage() {
   const { id = "" } = useParams();
   const { pessoa } = useAuth();
   const { state } = useCrmState();
+  const obsidianVault = useObsidianVault();
   const [tab, setTab] = useState<ProfileTab>("resumo");
   const inteligencia = useMemo(() => loadInteligencia360State(), []);
   const contact = state.contacts.find((item) => item.id === id);
@@ -93,12 +95,10 @@ export function CrmContactProfilePage() {
 
   function exportProfileToObsidian() {
     if (!contact) return;
-    const config = loadObsidianConfig();
-    downloadObsidianFiles(
-      [exportCrmContactSummary(contact, state, config)],
+    obsidianVault.downloadFiles(
+      [exportCrmContactSummary(contact, state, obsidianVault.config)],
       `app-bratan-perfil-${contact.id}.zip`,
       "CRM_PROFILE_EXPORT",
-      pessoa?.id ?? "preview",
     );
   }
 

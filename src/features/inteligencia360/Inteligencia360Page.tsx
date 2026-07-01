@@ -35,13 +35,12 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { generateCadenceTasks, loadCrmState } from "@/features/crm/crmData";
 import {
-  downloadObsidianFiles,
   exportDailyBriefing,
   exportDashboardSnapshot,
   exportDataQualityReport,
   exportWeeklyKickoff,
-  loadObsidianConfig,
 } from "@/features/obsidian/obsidianVault";
+import { useObsidianVault } from "@/features/obsidian/useObsidianVault";
 import { useAuth } from "@/hooks/useAuth";
 import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
@@ -472,8 +471,8 @@ function InsightCard({
 }
 
 export function Inteligencia360DashboardPage() {
-  const { pessoa } = useAuth();
   const { state, persist, reset, syncMode, isSyncing, syncError } = useInteligenciaState();
+  const obsidianVault = useObsidianVault();
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   const insights = useMemo(() => generateActionRecommendations(state), [state]);
   const quality = useMemo(() => buildDataQuality(state), [state]);
@@ -487,10 +486,10 @@ export function Inteligencia360DashboardPage() {
   }
 
   function exportSnapshotToObsidian() {
-    const config = loadObsidianConfig();
+    const config = obsidianVault.config;
     const crm = generateCadenceTasks(loadCrmState());
     const reference = new Date();
-    downloadObsidianFiles(
+    obsidianVault.downloadFiles(
       [
         exportDashboardSnapshot(state, config, reference),
         exportDataQualityReport(state, config, reference),
@@ -499,7 +498,6 @@ export function Inteligencia360DashboardPage() {
       ],
       `app-bratan-dashboard-360-${reference.toISOString().slice(0, 10)}.zip`,
       "DASHBOARD_360_EXPORT",
-      pessoa?.id ?? "preview",
     );
   }
 

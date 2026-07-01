@@ -8,27 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao } from "@/lib/access";
 import { loadInteligencia360State } from "@/features/inteligencia360/inteligencia360Data";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
-  appendObsidianLog,
-  appendObsidianQueueItems,
-  buildObsidianExportBundle,
+  buildVaultExportFiles,
   defaultObsidianConfig,
-  downloadBlob,
-  exportVaultAsZip,
-  loadObsidianConfig,
-  loadObsidianLogs,
-  loadObsidianQueue,
-  saveObsidianConfig,
   testVaultConnection,
   vaultFolders,
   type ObsidianRedactionMode,
   type ObsidianSyncMode,
-  type ObsidianVaultConfig,
 } from "./obsidianVault";
+import { useObsidianVault } from "./useObsidianVault";
 
 function FieldRow({ label, children, detail }: { label: string; children: React.ReactNode; detail?: string }) {
   return (
@@ -63,19 +54,11 @@ function ToggleRow({
 }
 
 export function ObsidianVaultPage() {
-  const { pessoa } = useAuth();
   const { state: crmState } = useCrmState();
-  const [config, setConfig] = useState<ObsidianVaultConfig>(() => loadObsidianConfig());
+  const { config, updateConfig, queue, logs, downloadFiles, syncMode, isSyncing } = useObsidianVault();
   const [message, setMessage] = useState("");
-  const [queue, setQueue] = useState(() => loadObsidianQueue());
-  const [logs, setLogs] = useState(() => loadObsidianLogs());
   const inteligenciaState = useMemo(() => loadInteligencia360State(), []);
   const connection = testVaultConnection(config);
-
-  function updateConfig(next: ObsidianVaultConfig) {
-    setConfig(next);
-    saveObsidianConfig(next);
-  }
 
   function testConnection() {
     const result = testVaultConnection(config);
@@ -90,20 +73,15 @@ export function ObsidianVaultPage() {
   }
 
   function exportZip() {
-    const bundle = buildObsidianExportBundle(crmState, inteligenciaState, config, pessoa?.id ?? "preview");
-    const zip = exportVaultAsZip(bundle.files);
-    downloadBlob(zip.blob, zip.name);
-    appendObsidianQueueItems(bundle.queueItems);
-    appendObsidianLog(bundle.log);
-    setQueue(loadObsidianQueue());
-    setLogs(loadObsidianLogs());
+    const files = buildVaultExportFiles({ crm: crmState, inteligencia: inteligenciaState, config });
+    const record = downloadFiles(files, `app-bratan-vault-${new Date().toISOString().slice(0, 10)}.zip`, "EXPORT_ZIP");
     updateConfig({
       ...config,
-      lastSyncAt: bundle.log.finishedAt,
+      lastSyncAt: record.log.finishedAt,
       lastSyncStatus: "success",
       lastSyncError: "",
     });
-    setMessage(`${bundle.files.length} arquivos Markdown preparados no ZIP do Vault.`);
+    setMessage(`${files.length} arquivos Markdown preparados no ZIP do Vault.`);
   }
 
   function resetStructure() {
@@ -128,7 +106,10 @@ export function ObsidianVaultPage() {
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <Badge variant="gold">Documentação viva</Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="gold">Documentação viva</Badge>
+                <Badge variant="muted">{isSyncing ? "Sincronizando..." : syncMode}</Badge>
+              </div>
               <h1 className="mt-3 text-4xl leading-tight text-brand-musgo sm:text-5xl">Vault Obsidian</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                 O APP continua sendo a fonte da verdade. O Vault recebe snapshots, briefings, playbooks e decisões em Markdown seguro.
