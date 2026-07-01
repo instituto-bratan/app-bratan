@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   CalendarClock,
   CircleDollarSign,
+  Download,
   FileSignature,
   HeartPulse,
   History,
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { loadInteligencia360State, money360, stageLabels, touchTypeLabels } from "@/features/inteligencia360/inteligencia360Data";
+import { downloadObsidianFiles, exportCrmContactSummary, loadObsidianConfig } from "@/features/obsidian/obsidianVault";
 import {
   canUserAccessContact,
   canUserSeeFinancialValues,
@@ -88,6 +90,17 @@ export function CrmContactProfilePage() {
   const lastTouch = contactTouchpoints
     .slice()
     .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0];
+
+  function exportProfileToObsidian() {
+    if (!contact) return;
+    const config = loadObsidianConfig();
+    downloadObsidianFiles(
+      [exportCrmContactSummary(contact, state, config)],
+      `app-bratan-perfil-${contact.id}.zip`,
+      "CRM_PROFILE_EXPORT",
+      pessoa?.id ?? "preview",
+    );
+  }
 
   const mergedTimeline = useMemo(() => {
     const crmEvents = contactTimeline.map((event) => ({
@@ -175,6 +188,10 @@ export function CrmContactProfilePage() {
                 <MessageCircle className="mr-2 h-4 w-4" />
                 WhatsApp
               </a>
+            </Button>
+            <Button type="button" variant="outline" onClick={exportProfileToObsidian}>
+              <Download className="mr-2 h-4 w-4" />
+              Exportar Obsidian
             </Button>
             <Button asChild>
               <Link to={crmModuleRoutes.deals}>Ver Kanban</Link>

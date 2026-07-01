@@ -5,10 +5,14 @@ import {
   AlertTriangle,
   ArrowRight,
   CircleDollarSign,
+  Download,
+  Maximize2,
   MessageCircle,
+  Minimize2,
   Plus,
   Search,
   UserPlus,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { downloadObsidianFiles, exportDailyBriefing, exportDealSummary, loadObsidianConfig } from "@/features/obsidian/obsidianVault";
 import { useAuth } from "@/hooks/useAuth";
+import { readLocalValue, writeLocalValue } from "@/lib/localStore";
+import { cn } from "@/lib/utils";
 import {
   canUserAccessContact,
   contactDisplayName,
@@ -25,14 +32,17 @@ import {
   dealStageLabels,
   dealStages,
   findOrCreateCrmContact,
+  formatCrmDateTime,
   moneyCrm,
   moveDealStage,
-  whatsappUrl,
+  taskEffectiveStatus,
   type CrmDeal,
   type CrmDealStage,
+  type CrmContact,
   type CrmLeadTemperature,
   type CrmObjectionCategory,
   type CrmPersonaFit,
+  type CrmTask,
 } from "./crmData";
 import { useCrmState } from "./useCrmState";
 
@@ -48,6 +58,39 @@ const objectionOptions: CrmObjectionCategory[] = [
   "OTHER",
 ];
 
+type KanbanSection = "all" | "captacao" | "negociacao";
+type KanbanDensity = "compact" | "comfortable" | "executive";
+
+const sectionLabels: Record<KanbanSection, string> = {
+  all: "Ver tudo",
+  captacao: "Captação & Consulta",
+  negociacao: "Negociação & Recuperação",
+};
+
+const stageSections: Record<KanbanSection, CrmDealStage[]> = {
+  all: dealStages,
+  captacao: ["LEAD_FRIO", "LEAD_NOVO", "CONTATADO", "QUALIFICADO", "CONSULTA_AGENDADA", "CONSULTA_CONFIRMADA", "CONSULTA_REALIZADA"],
+  negociacao: ["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "RECUPERACAO_D1_MEDICO", "RECUPERACAO_D2_GESTOR", "PERDIDO", "RESGATE_D60"],
+};
+
+const densityLabels: Record<KanbanDensity, string> = {
+  compact: "Compacto",
+  comfortable: "Confortável",
+  executive: "Executivo",
+};
+
+const densityColumns: Record<KanbanDensity, string> = {
+  compact: "auto-cols-[minmax(300px,320px)]",
+  comfortable: "auto-cols-[minmax(360px,390px)]",
+  executive: "auto-cols-[minmax(420px,460px)]",
+};
+
+const temperatureLabels: Record<CrmLeadTemperature, string> = {
+  COLD: "Frio",
+  WARM: "Morno",
+  HOT: "Quente",
+};
+
 function stageProbability(stage: CrmDealStage) {
   if (stage === "FECHOU_COMPLETO" || stage === "FECHOU_PARCIAL") return 100;
   if (stage === "PERDIDO") return 0;
@@ -60,31 +103,46 @@ function stageProbability(stage: CrmDealStage) {
 
 function DealCard({
   deal,
-  contactName,
-  contactPhone,
+  contact,
+  nextTask,
+  density,
   canSeeValue,
   onSelect,
 }: {
   deal: CrmDeal;
-  contactName: string;
-  contactPhone: string;
+  contact?: CrmContact;
+  nextTask?: CrmTask;
+  density: KanbanDensity;
   canSeeValue: boolean;
   onSelect: () => void;
 }) {
+  const contactName = contactDisplayName(contact);
+  const contactPhone = contact ? (contact.whatsapp || contact.phone).replace(/\D/g, "") : "";
+  const hasNextTask = Boolean(nextTask);
+
   return (
-    <article className="rounded-lg border border-brand-oliva/14 bg-white/75 p-3 shadow-sm backdrop-blur-xl">
+    <article className={cn("rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl", density === "compact" ? "p-3" : "p-4")}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-semibold text-brand-musgo">{contactName}</p>
+          <p className={cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg")}>{contactName}</p>
           <p className="mt-1 truncate text-xs text-muted-foreground">{deal.title}</p>
         </div>
         <Badge variant="muted">{deal.probability}%</Badge>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Badge variant="outline">{deal.sourceChannel || "Manual"}</Badge>
+        {contact?.leadTemperature ? <Badge variant={contact.leadTemperature === "HOT" ? "gold" : "muted"}>{temperatureLabels[contact.leadTemperature]}</Badge> : null}
+        {!hasNextTask ? <Badge className="bg-red-100 text-red-800">Sem próxima ação</Badge> : null}
         {deal.mainObjection ? <Badge className="bg-brand-creme text-brand-tinta">{deal.mainObjection}</Badge> : null}
       </div>
       <div className="mt-3 grid gap-2">
+        {nextTask ? (
+          <div className="rounded-md border border-brand-dourado/25 bg-brand-creme/35 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase text-brand-oliva">Próxima ação</p>
+            <p className="mt-1 text-sm font-semibold leading-5 text-brand-tinta">{nextTask.title}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{formatCrmDateTime(nextTask.dueAt)}</p>
+          </div>
+        ) : null}
         {canSeeValue ? (
           <div className="rounded-md bg-brand-papel/70 px-3 py-2">
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">Potencial / vendido</p>
@@ -116,6 +174,9 @@ export function CrmKanbanPage() {
   const { state, persist } = useCrmState();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
+  const [density, setDensity] = useState<KanbanDensity>(() => readLocalValue<KanbanDensity>("app-bratan-kanban-density", "comfortable"));
+  const [fullscreen, setFullscreen] = useState(false);
   const [selectedDealId, setSelectedDealId] = useState("");
   const [targetStage, setTargetStage] = useState<CrmDealStage>("CONTATADO");
   const [prescribed, setPrescribed] = useState("");
@@ -134,6 +195,16 @@ export function CrmKanbanPage() {
 
   const canSeeValue = Boolean(pessoa?.cargo && ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "marketing", "secretaria_executiva", "recepcionista"].includes(pessoa.cargo));
   const contactsById = useMemo(() => new Map(state.contacts.map((contact) => [contact.id, contact])), [state.contacts]);
+  const nextTaskByDealId = useMemo(() => {
+    const map = new Map<string, CrmTask>();
+    state.tasks
+      .filter((task) => task.dealId && !["DONE", "CANCELED", "SKIPPED"].includes(task.status))
+      .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+      .forEach((task) => {
+        if (!map.has(task.dealId)) map.set(task.dealId, task);
+      });
+    return map;
+  }, [state.tasks]);
   const visibleDeals = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return state.deals.filter((deal) => {
@@ -145,7 +216,35 @@ export function CrmKanbanPage() {
     });
   }, [contactsById, pessoa, query, state.deals, status]);
 
+  const visibleStages = stageSections[section] ?? dealStages;
   const selectedDeal = state.deals.find((deal) => deal.id === selectedDealId) ?? null;
+  const selectedContact = selectedDeal ? contactsById.get(selectedDeal.contactId) : undefined;
+  const selectedNextTask = selectedDeal ? nextTaskByDealId.get(selectedDeal.id) : undefined;
+
+  function changeSection(next: KanbanSection) {
+    setSection(next);
+    writeLocalValue("app-bratan-kanban-section", next);
+  }
+
+  function changeDensity(next: KanbanDensity) {
+    setDensity(next);
+    writeLocalValue("app-bratan-kanban-density", next);
+  }
+
+  function exportKanbanToObsidian() {
+    const config = loadObsidianConfig();
+    const files = [
+      exportDailyBriefing(state, config),
+      ...visibleDeals.slice(0, 60).map((deal) => exportDealSummary(deal, state, config)),
+    ];
+    downloadObsidianFiles(
+      files,
+      `app-bratan-kanban-${new Date().toISOString().slice(0, 10)}.zip`,
+      "CRM_KANBAN_EXPORT",
+      pessoa?.id ?? "preview",
+    );
+    setFeedback(`${files.length} arquivos do Kanban preparados para o Obsidian.`);
+  }
 
   function handleCreateLead(event: FormEvent) {
     event.preventDefault();
@@ -217,7 +316,12 @@ export function CrmKanbanPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 sm:gap-6">
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-[1500px] flex-col gap-5 sm:gap-6",
+        fullscreen && "fixed inset-0 z-50 max-w-none overflow-y-auto bg-brand-papel p-3 sm:p-5",
+      )}
+    >
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -231,9 +335,19 @@ export function CrmKanbanPage() {
               Uma movimentação cria tarefas para Médico, Concierge, Recepção, Administrativo, Enfermagem e Financeiro quando necessário.
             </p>
           </div>
-          <Button asChild variant="outline">
-            <Link to={crmModuleRoutes.tasks}>Minhas tarefas <ArrowRight className="ml-2 h-4 w-4" /></Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={exportKanbanToObsidian}>
+              <Download className="mr-2 h-4 w-4" />
+              Exportar Obsidian
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setFullscreen((value) => !value)}>
+              {fullscreen ? <Minimize2 className="mr-2 h-4 w-4" /> : <Maximize2 className="mr-2 h-4 w-4" />}
+              {fullscreen ? "Sair da tela cheia" : "Modo tela cheia"}
+            </Button>
+            <Button asChild variant="outline">
+              <Link to={crmModuleRoutes.tasks}>Minhas tarefas <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </div>
         </div>
       </motion.section>
 
@@ -291,61 +405,23 @@ export function CrmKanbanPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-brand-dourado/30">
+        <Card className="border-brand-dourado/30 bg-brand-creme/28">
           <CardHeader>
-            <CardTitle>Mover card com automação operacional</CardTitle>
+            <CardTitle>Operação guiada</CardTitle>
           </CardHeader>
-          <CardContent>
-            {selectedDeal ? (
-              <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleMoveDeal}>
-                <div className="sm:col-span-2 rounded-lg bg-brand-papel/70 p-3">
-                  <p className="font-semibold text-brand-musgo">{selectedDeal.title}</p>
-                  <p className="text-sm text-muted-foreground">Atual: {dealStageLabels[selectedDeal.stage]}</p>
-                </div>
-                <div>
-                  <Label>Nova etapa</Label>
-                  <select value={targetStage} onChange={(event) => setTargetStage(event.target.value as CrmDealStage)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                    {dealStages.map((stage) => <option key={stage} value={stage}>{dealStageLabels[stage]}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label>Valor prescrito</Label>
-                  <Input value={prescribed} onChange={(event) => setPrescribed(event.target.value)} inputMode="decimal" />
-                </div>
-                <div>
-                  <Label>Valor vendido</Label>
-                  <Input value={sold} onChange={(event) => setSold(event.target.value)} inputMode="decimal" />
-                </div>
-                <div>
-                  <Label>Valor recebido</Label>
-                  <Input value={received} onChange={(event) => setReceived(event.target.value)} inputMode="decimal" />
-                </div>
-                <div>
-                  <Label>Categoria da objeção</Label>
-                  <select value={objectionCategory} onChange={(event) => setObjectionCategory(event.target.value as CrmObjectionCategory)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                    {objectionOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label>Objeção / motivo</Label>
-                  <Input value={objection} onChange={(event) => setObjection(event.target.value)} placeholder="Obrigatório se não fechou" />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label>Motivo do parcial</Label>
-                  <Input value={partialReason} onChange={(event) => setPartialReason(event.target.value)} placeholder="Obrigatório se fechou parcial" />
-                </div>
-                <div className="sm:col-span-2 flex flex-wrap gap-2">
-                  <Button type="submit">
-                    Mover e gerar tarefas
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setSelectedDealId("")}>Limpar</Button>
-                </div>
-              </form>
-            ) : (
-              <div className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/45 p-5 text-sm text-muted-foreground">
-                Escolha um card do Kanban para movimentar. O app valida valor, objeção e cria tarefas automaticamente.
-              </div>
-            )}
+          <CardContent className="grid gap-3">
+            <div className="rounded-lg border border-brand-oliva/14 bg-white/58 p-3">
+              <p className="font-semibold text-brand-musgo">Clique em um card</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                A lateral abre com próxima ação, histórico curto, WhatsApp e mudança de etapa. Assim o Kanban vira mesa de trabalho.
+              </p>
+            </div>
+            <div className="rounded-lg border border-brand-oliva/14 bg-white/58 p-3">
+              <p className="font-semibold text-brand-musgo">Sem retrabalho</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Ao mover etapa, o app atualiza CRM, tarefas, cadências e alimenta o Dashboard 360 pela origem correta.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -357,12 +433,117 @@ export function CrmKanbanPage() {
         </div>
       ) : null}
 
+      {selectedDeal ? (
+        <div className="fixed inset-0 z-[70] bg-brand-tinta/28 backdrop-blur-sm" onClick={() => setSelectedDealId("")}>
+          <aside
+            className="ml-auto flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-brand-oliva/20 bg-brand-papel p-4 shadow-2xl sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <Badge variant="gold">Detalhes do card</Badge>
+                <h2 className="mt-2 text-2xl text-brand-musgo">{selectedDeal.title}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{contactDisplayName(selectedContact)} - {dealStageLabels[selectedDeal.stage]}</p>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedDealId("")}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-brand-oliva/14 bg-white/64 p-3">
+                <p className="text-xs font-semibold uppercase text-brand-oliva">Próxima ação</p>
+                {selectedNextTask ? (
+                  <>
+                    <p className="mt-1 font-semibold text-brand-tinta">{selectedNextTask.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatCrmDateTime(selectedNextTask.dueAt)} - {taskEffectiveStatus(selectedNextTask)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">Sem próxima ação. Ao mover etapa, o app cria a pendência correta.</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-brand-oliva/14 bg-white/64 p-3">
+                <p className="text-xs font-semibold uppercase text-brand-oliva">Qualidade</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Badge variant={selectedNextTask ? "muted" : "gold"}>{selectedNextTask ? "Com próxima ação" : "Falta próxima ação"}</Badge>
+                  <Badge variant={selectedDeal.mainObjection ? "muted" : "gold"}>{selectedDeal.mainObjection ? "Objeção registrada" : "Falta objeção"}</Badge>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <Link to={crmModuleRoutes.contact(selectedDeal.contactId)}>Abrir Perfil 360</Link>
+              </Button>
+              {selectedContact ? (
+                <Button asChild variant="outline">
+                  <a href={`https://wa.me/55${(selectedContact.whatsapp || selectedContact.phone).replace(/\D/g, "").replace(/^55/, "")}`} target="_blank" rel="noreferrer">
+                    WhatsApp
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+
+            <form className="mt-5 grid gap-3 sm:grid-cols-2" onSubmit={handleMoveDeal}>
+              <div>
+                <Label>Nova etapa</Label>
+                <select value={targetStage} onChange={(event) => setTargetStage(event.target.value as CrmDealStage)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                  {dealStages.map((stage) => <option key={stage} value={stage}>{dealStageLabels[stage]}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>Valor prescrito</Label>
+                <Input value={prescribed} onChange={(event) => setPrescribed(event.target.value)} inputMode="decimal" />
+              </div>
+              <div>
+                <Label>Valor vendido</Label>
+                <Input value={sold} onChange={(event) => setSold(event.target.value)} inputMode="decimal" />
+              </div>
+              <div>
+                <Label>Valor recebido</Label>
+                <Input value={received} onChange={(event) => setReceived(event.target.value)} inputMode="decimal" />
+              </div>
+              <div>
+                <Label>Categoria da objeção</Label>
+                <select value={objectionCategory} onChange={(event) => setObjectionCategory(event.target.value as CrmObjectionCategory)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                  {objectionOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>Objeção / motivo</Label>
+                <Input value={objection} onChange={(event) => setObjection(event.target.value)} placeholder="Obrigatório se não fechou" />
+              </div>
+              <div className="sm:col-span-2">
+                <Label>Motivo do parcial</Label>
+                <Input value={partialReason} onChange={(event) => setPartialReason(event.target.value)} placeholder="Obrigatório se fechou parcial" />
+              </div>
+              <div className="sm:col-span-2 flex flex-wrap gap-2">
+                <Button type="submit">Mover e gerar tarefas</Button>
+                <Button type="button" variant="outline" onClick={() => setSelectedDealId("")}>Fechar</Button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      ) : null}
+
       <section className="rounded-lg border border-brand-oliva/15 bg-white/45 p-3 shadow-sm backdrop-blur-xl">
-        <div className="grid gap-2 md:grid-cols-[1.4fr_0.7fr]">
+        <div className="grid gap-2 lg:grid-cols-[1.25fr_0.7fr_0.65fr_0.55fr]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Buscar lead, paciente, origem ou objeção" />
           </label>
+          <select value={section} onChange={(event) => changeSection(event.target.value as KanbanSection)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl">
+            {(Object.keys(sectionLabels) as KanbanSection[]).map((item) => (
+              <option key={item} value={item}>{sectionLabels[item]}</option>
+            ))}
+          </select>
+          <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl">
+            {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
+              <option key={item} value={item}>{densityLabels[item]}</option>
+            ))}
+          </select>
           <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl">
             <option value="">Todos os status</option>
             <option value="OPEN">Abertos</option>
@@ -374,8 +555,8 @@ export function CrmKanbanPage() {
       </section>
 
       <div className="mobile-scrollbar-none overflow-x-auto pb-3">
-        <div className="grid w-max grid-flow-col auto-cols-[minmax(232px,252px)] gap-3">
-          {dealStages.map((stage) => {
+        <div className={cn("grid w-max grid-flow-col gap-3", densityColumns[density])}>
+          {visibleStages.map((stage) => {
             const stageDeals = visibleDeals.filter((deal) => deal.stage === stage);
             const total = stageDeals.reduce((sum, deal) => sum + (deal.soldAmount || deal.estimatedValue * (stageProbability(stage) / 100)), 0);
 
@@ -392,13 +573,13 @@ export function CrmKanbanPage() {
                   {stageDeals.length ? (
                     stageDeals.map((deal) => {
                       const contact = contactsById.get(deal.contactId);
-                      const phone = contact ? (contact.whatsapp || contact.phone).replace(/\D/g, "") : "";
                       return (
                         <DealCard
                           key={deal.id}
                           deal={deal}
-                          contactName={contactDisplayName(contact)}
-                          contactPhone={phone}
+                          contact={contact}
+                          nextTask={nextTaskByDealId.get(deal.id)}
+                          density={density}
                           canSeeValue={canSeeValue}
                           onSelect={() => selectDeal(deal)}
                         />
