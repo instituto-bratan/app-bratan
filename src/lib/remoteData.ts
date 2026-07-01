@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { todayISO } from "@/lib/localStore";
-import { prepareSharePointDispatch } from "@/lib/sharepoint";
+import { prepareSharePointDispatch, sharePointTargetFolder, type SharePointDispatchStatus, type SharePointModule } from "@/lib/sharepoint";
 import type { ChecklistItem } from "@/features/checklist/checklistData";
 import type { Aviso } from "@/features/mural/muralData";
 import type { ComprovanteRecord } from "@/features/comprovantes/comprovantesData";
@@ -580,13 +580,12 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
     observacao: record.observacao ?? undefined,
     estornoDe: record.estorno_de ?? undefined,
     deletedAt: record.deleted_at ?? undefined,
-    sharePoint: {
-      comprovanteId: record.id,
-      arquivoNome: record.original_filename,
-      queuedAt: record.uploaded_at,
-      provider: "microsoft_graph_next_phase",
-      status: record.sharepoint_status === "pendente" ? "pendente" : "pendente",
-    },
+    sharePoint: prepareSharePointDispatch(
+      record.id,
+      record.original_filename,
+      record.tipo === "estorno" ? "ESTORNO" : "COMPROVANTE",
+      new Date(record.uploaded_at),
+    ),
   }));
 }
 
@@ -635,6 +634,22 @@ export async function uploadRemoteComprovante(values: {
 
   if (insertError) throw insertError;
 
+  // Fila de despacho para o SharePoint: a Edge Function sharepoint-dispatch envia
+  // o arquivo para a pasta certa quando as credenciais do Microsoft Graph estão configuradas.
+  const { error: dispatchError } = await client.from("sharepoint_dispatch_queue").insert({
+    module: "COMPROVANTE",
+    entity_id: id,
+    storage_bucket: "comprovantes",
+    storage_path: storagePath,
+    file_name: values.file.name,
+    mime_type: values.file.type || "application/octet-stream",
+    target_folder: sharePointTargetFolder("COMPROVANTE"),
+    created_by: values.pessoa.id,
+  });
+  if (dispatchError) {
+    console.warn("Comprovante salvo, mas não entrou na fila do SharePoint.", dispatchError);
+  }
+
   if (values.pagamentoLembreteId) {
     const { error: pagamentoError } = await client.rpc("mark_pagamento_pago_por_comprovante", {
       _pagamento_id: values.pagamentoLembreteId,
@@ -681,6 +696,44 @@ export async function uploadRemoteComprovante(values: {
   });
 
   return id;
+}
+
+export type SharePointQueueRecord = {
+  id: string;
+  module: SharePointModule;
+  entityId: string;
+  fileName: string;
+  targetFolder: string;
+  status: SharePointDispatchStatus;
+  attempts: number;
+  lastError: string;
+  sharePointWebUrl: string;
+  sentAt: string | null;
+  createdAt: string;
+};
+
+export async function listRemoteSharePointQueue(limit = 50): Promise<SharePointQueueRecord[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("sharepoint_dispatch_queue")
+    .select("id, module, entity_id, file_name, target_folder, status, attempts, last_error, sharepoint_web_url, sent_at, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    module: row.module as SharePointModule,
+    entityId: String(row.entity_id ?? ""),
+    fileName: String(row.file_name ?? ""),
+    targetFolder: String(row.target_folder ?? ""),
+    status: row.status as SharePointDispatchStatus,
+    attempts: Number(row.attempts ?? 0),
+    lastError: String(row.last_error ?? ""),
+    sharePointWebUrl: String(row.sharepoint_web_url ?? ""),
+    sentAt: (row.sent_at as string | null) ?? null,
+    createdAt: String(row.created_at ?? ""),
+  }));
 }
 
 export async function createRemoteEstorno(values: {

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -108,21 +108,37 @@ function DealCard({
   nextTask,
   density,
   canSeeValue,
+  isDragging,
   onSelect,
+  onDragStart,
+  onDragEnd,
 }: {
   deal: CrmDeal;
   contact?: CrmContact;
   nextTask?: CrmTask;
   density: KanbanDensity;
   canSeeValue: boolean;
+  isDragging: boolean;
   onSelect: () => void;
+  onDragStart: (event: DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
 }) {
   const contactName = contactDisplayName(contact);
   const contactPhone = contact ? (contact.whatsapp || contact.phone).replace(/\D/g, "") : "";
   const hasNextTask = Boolean(nextTask);
 
   return (
-    <article className={cn("rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl", density === "compact" ? "p-3" : "p-4")}>
+    <article
+      data-deal-card
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={cn(
+        "cursor-grab rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl transition-opacity active:cursor-grabbing",
+        density === "compact" ? "p-3" : "p-4",
+        isDragging && "opacity-45",
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className={cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg")}>{contactName}</p>
@@ -194,6 +210,24 @@ export function CrmKanbanPage() {
   const [newTemp, setNewTemp] = useState<CrmLeadTemperature>("WARM");
   const [newFit, setNewFit] = useState<CrmPersonaFit>("UNKNOWN");
   const [feedback, setFeedback] = useState("");
+  const [draggingDealId, setDraggingDealId] = useState("");
+  const [dragOverStage, setDragOverStage] = useState<CrmDealStage | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const panState = useRef({ active: false, moved: false, startX: 0, scrollLeft: 0 });
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setFullscreen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fullscreen]);
 
   const canSeeValue = Boolean(pessoa?.cargo && ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "marketing", "secretaria_executiva", "recepcionista"].includes(pessoa.cargo));
   const contactsById = useMemo(() => new Map(state.contacts.map((contact) => [contact.id, contact])), [state.contacts]);
@@ -305,9 +339,9 @@ export function CrmKanbanPage() {
     });
   }
 
-  function selectDeal(deal: CrmDeal) {
+  function selectDeal(deal: CrmDeal, stageOverride?: CrmDealStage) {
     setSelectedDealId(deal.id);
-    setTargetStage(deal.stage);
+    setTargetStage(stageOverride ?? deal.stage);
     setPrescribed(deal.prescribedAmount ? String(deal.prescribedAmount) : "");
     setSold(deal.soldAmount ? String(deal.soldAmount) : "");
     setReceived(deal.receivedAmount ? String(deal.receivedAmount) : "");
@@ -316,13 +350,99 @@ export function CrmKanbanPage() {
     setPartialReason("");
   }
 
+  function attemptMoveDeal(dealId: string, stage: CrmDealStage) {
+    const deal = state.deals.find((item) => item.id === dealId);
+    if (!deal || deal.stage === stage) return;
+    setFeedback("");
+    persist((current) => {
+      const moved = moveDealStage(current, dealId, {
+        actorId: pessoa?.id ?? "preview",
+        stage,
+        prescribedAmount: deal.prescribedAmount || undefined,
+        soldAmount: deal.soldAmount || undefined,
+        receivedAmount: deal.receivedAmount || undefined,
+        objection: deal.mainObjection || undefined,
+        objectionCategory: deal.objectionCategory,
+      });
+      if (!moved.ok) {
+        selectDeal(deal, stage);
+        setFeedback(`${moved.message} Complete no painel lateral para concluir a movimentação.`);
+        return current;
+      }
+      setFeedback(moved.message);
+      return moved.state;
+    });
+  }
+
+  function onCardDragStart(event: DragEvent<HTMLElement>, dealId: string) {
+    event.dataTransfer.setData("text/plain", dealId);
+    event.dataTransfer.effectAllowed = "move";
+    setDraggingDealId(dealId);
+  }
+
+  function onCardDragEnd() {
+    setDraggingDealId("");
+    setDragOverStage(null);
+  }
+
+  function onColumnDrop(event: DragEvent<HTMLElement>, stage: CrmDealStage) {
+    event.preventDefault();
+    const dealId = event.dataTransfer.getData("text/plain") || draggingDealId;
+    setDragOverStage(null);
+    setDraggingDealId("");
+    if (dealId) attemptMoveDeal(dealId, stage);
+  }
+
+  function onBoardPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-deal-card], button, a, input, select, textarea")) return;
+    const board = boardRef.current;
+    if (!board) return;
+    panState.current = { active: true, moved: false, startX: event.clientX, scrollLeft: board.scrollLeft };
+    board.setPointerCapture(event.pointerId);
+  }
+
+  function onBoardPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!panState.current.active) return;
+    const board = boardRef.current;
+    if (!board) return;
+    const delta = event.clientX - panState.current.startX;
+    if (Math.abs(delta) > 4) panState.current.moved = true;
+    board.scrollLeft = panState.current.scrollLeft - delta;
+  }
+
+  function onBoardPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    panState.current.active = false;
+    boardRef.current?.releasePointerCapture?.(event.pointerId);
+  }
+
   return (
     <div
       className={cn(
         "mx-auto flex w-full max-w-[1500px] flex-col gap-5 sm:gap-6",
-        fullscreen && "fixed inset-0 z-50 max-w-none overflow-y-auto bg-brand-papel p-3 sm:p-5",
+        fullscreen && "fixed inset-0 z-50 max-w-none gap-3 overflow-hidden bg-brand-papel p-3 sm:p-4",
       )}
     >
+      {fullscreen ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <Badge variant="gold">CRM Bratan</Badge>
+            <h1 className="text-xl text-brand-musgo sm:text-2xl">Kanban Comercial</h1>
+            <span className="hidden text-xs text-muted-foreground sm:inline">{visibleDeals.length} negociações · arraste os cards entre etapas</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={exportKanbanToObsidian}>
+              <Download className="mr-2 h-4 w-4" />
+              Obsidian
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setFullscreen(false)}>
+              <Minimize2 className="mr-2 h-4 w-4" />
+              Sair (Esc)
+            </Button>
+          </div>
+        </div>
+      ) : (
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -333,7 +453,7 @@ export function CrmKanbanPage() {
             <Badge variant="gold">CRM Bratan</Badge>
             <h1 className="mt-3 text-4xl leading-tight text-brand-musgo sm:text-5xl">Kanban Comercial</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Uma movimentação cria tarefas para Médico, Concierge, Recepção, Administrativo, Enfermagem e Financeiro quando necessário.
+              Arraste os cards entre etapas ou clique para registrar valores. Cada movimentação cria tarefas para Médico, Concierge, Recepção, Administrativo, Enfermagem e Financeiro quando necessário.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -341,9 +461,9 @@ export function CrmKanbanPage() {
               <Download className="mr-2 h-4 w-4" />
               Exportar Obsidian
             </Button>
-            <Button type="button" variant="outline" onClick={() => setFullscreen((value) => !value)}>
-              {fullscreen ? <Minimize2 className="mr-2 h-4 w-4" /> : <Maximize2 className="mr-2 h-4 w-4" />}
-              {fullscreen ? "Sair da tela cheia" : "Modo tela cheia"}
+            <Button type="button" variant="outline" onClick={() => setFullscreen(true)}>
+              <Maximize2 className="mr-2 h-4 w-4" />
+              Modo tela cheia
             </Button>
             <Button asChild variant="outline">
               <Link to={crmModuleRoutes.tasks}>Minhas tarefas <ArrowRight className="ml-2 h-4 w-4" /></Link>
@@ -351,7 +471,9 @@ export function CrmKanbanPage() {
           </div>
         </div>
       </motion.section>
+      )}
 
+      {!fullscreen ? (
       <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
         <Card>
           <CardHeader>
@@ -412,9 +534,9 @@ export function CrmKanbanPage() {
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="rounded-lg border border-brand-oliva/14 bg-white/58 p-3">
-              <p className="font-semibold text-brand-musgo">Clique em um card</p>
+              <p className="font-semibold text-brand-musgo">Arraste os cards</p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                A lateral abre com próxima ação, histórico curto, WhatsApp e mudança de etapa. Assim o Kanban vira mesa de trabalho.
+                Solte o card na nova etapa. Se faltar valor ou objeção obrigatória, o painel lateral abre já preenchido para completar.
               </p>
             </div>
             <div className="rounded-lg border border-brand-oliva/14 bg-white/58 p-3">
@@ -426,6 +548,7 @@ export function CrmKanbanPage() {
           </CardContent>
         </Card>
       </div>
+      ) : null}
 
       {feedback ? (
         <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/70 p-3 text-sm text-brand-tinta">
@@ -555,22 +678,50 @@ export function CrmKanbanPage() {
         </div>
       </section>
 
-      <div className="mobile-scrollbar-none overflow-x-auto pb-3">
-        <div className={cn("grid w-max grid-flow-col gap-3", densityColumns[density])}>
+      <div
+        ref={boardRef}
+        onPointerDown={onBoardPointerDown}
+        onPointerMove={onBoardPointerMove}
+        onPointerUp={onBoardPointerUp}
+        onPointerCancel={onBoardPointerUp}
+        className={cn(
+          "kanban-scroll cursor-grab touch-pan-x overflow-x-auto pb-3 active:cursor-grabbing",
+          fullscreen && "min-h-0 flex-1",
+        )}
+      >
+        <div className={cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen && "h-full items-stretch")}>
           {visibleStages.map((stage) => {
             const stageDeals = visibleDeals.filter((deal) => deal.stage === stage);
             const total = stageDeals.reduce((sum, deal) => sum + (deal.soldAmount || deal.estimatedValue * (stageProbability(stage) / 100)), 0);
+            const isDropTarget = dragOverStage === stage;
 
             return (
-              <section key={stage} className="rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl">
-                <div className="mb-2 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
+              <section
+                key={stage}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  if (dragOverStage !== stage) setDragOverStage(stage);
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                  setDragOverStage((current) => (current === stage ? null : current));
+                }}
+                onDrop={(event) => onColumnDrop(event, stage)}
+                className={cn(
+                  "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
+                  fullscreen ? "h-full" : "max-h-[68vh]",
+                  isDropTarget && "border-brand-dourado/70 bg-brand-creme/45 ring-2 ring-brand-dourado/30",
+                )}
+              >
+                <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
                   <p className="text-sm font-semibold">{dealStageLabels[stage]}</p>
                   <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
                     <span>{stageDeals.length} cards</span>
                     {canSeeValue ? <span>{moneyCrm(total)}</span> : null}
                   </div>
                 </div>
-                <div className="grid gap-2">
+                <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
                   {stageDeals.length ? (
                     stageDeals.map((deal) => {
                       const contact = contactsById.get(deal.contactId);
@@ -582,13 +733,16 @@ export function CrmKanbanPage() {
                           nextTask={nextTaskByDealId.get(deal.id)}
                           density={density}
                           canSeeValue={canSeeValue}
+                          isDragging={draggingDealId === deal.id}
                           onSelect={() => selectDeal(deal)}
+                          onDragStart={(event) => onCardDragStart(event, deal.id)}
+                          onDragEnd={onCardDragEnd}
                         />
                       );
                     })
                   ) : (
                     <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
-                      Sem cards
+                      Solte um card aqui
                     </div>
                   )}
                 </div>
@@ -598,6 +752,7 @@ export function CrmKanbanPage() {
         </div>
       </div>
 
+      {!fullscreen ? (
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
           <CircleDollarSign className="h-5 w-5 text-brand-musgo" />
@@ -617,6 +772,7 @@ export function CrmKanbanPage() {
           <p className="text-sm leading-6 text-muted-foreground">Não fechou exige objeção. Fechou exige valor. Parcial exige motivo.</p>
         </div>
       </div>
+      ) : null}
     </div>
   );
 }
