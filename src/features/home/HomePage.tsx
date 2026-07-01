@@ -10,10 +10,13 @@ import {
   CircleDollarSign,
   Clock,
   Coins,
+  ClipboardList,
   FileText,
   History,
+  MessageCircle,
   ReceiptText,
   ShieldCheck,
+  Target,
   TrendingUp,
   UsersRound,
   Utensils,
@@ -25,7 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GetStartedButton } from "@/components/ui/get-started-button";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canAdministracao, canBaseModules, canComprovantes, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
+import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue } from "@/lib/localStore";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
@@ -107,6 +110,33 @@ const modules = [
     description: "Anexe arquivos, filtre por período e preserve histórico imutável.",
     action: "Anexar",
     allowed: canComprovantes,
+  },
+  {
+    title: "Minhas tarefas CRM",
+    href: "/crm/minhas-tarefas",
+    icon: ClipboardList,
+    label: "CRM",
+    description: "Veja os próximos contatos, pendências comerciais e relacionamento do dia.",
+    action: "Abrir CRM",
+    allowed: canCrmBratan,
+  },
+  {
+    title: "Kanban Comercial",
+    href: "/crm/vendas",
+    icon: Target,
+    label: "CRM",
+    description: "Acompanhe prescrições, negociações, objeções e oportunidades por etapa.",
+    action: "Ver vendas",
+    allowed: canCrmBratan,
+  },
+  {
+    title: "Cadências",
+    href: "/crm/cadencias",
+    icon: MessageCircle,
+    label: "CRM",
+    description: "Mensagens e toques organizados por função, sem duplicar acompanhamento.",
+    action: "Ver cadências",
+    allowed: canCrmBratan,
   },
   {
     title: "Lembretes de pagamento",
@@ -243,6 +273,13 @@ export function HomePage() {
         icon: Coins,
         detail: "Carteira, check-ins, cashback e prêmios.",
         hrefs: ["/estalecas", "/administracao/estalecas"],
+      },
+      {
+        title: "Comercial",
+        label: "CRM",
+        icon: Target,
+        detail: "Tarefas, vendas e cadências conectadas.",
+        hrefs: ["/crm/minhas-tarefas", "/crm/vendas", "/crm/cadencias"],
       },
       {
         title: "Coordenação",
