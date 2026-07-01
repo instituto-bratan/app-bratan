@@ -217,7 +217,7 @@ export function CrmKanbanPage() {
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 sm:gap-6">
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -373,8 +373,8 @@ export function CrmKanbanPage() {
         </div>
       </section>
 
-      <div className="overflow-x-auto pb-3">
-        <div className="grid min-w-[1720px] grid-cols-[repeat(16,minmax(0,1fr))] gap-3">
+      <div className="mobile-scrollbar-none overflow-x-auto pb-3">
+        <div className="grid w-max grid-flow-col auto-cols-[minmax(232px,252px)] gap-3">
           {dealStages.map((stage) => {
             const stageDeals = visibleDeals.filter((deal) => deal.stage === stage);
             const total = stageDeals.reduce((sum, deal) => sum + (deal.soldAmount || deal.estimatedValue * (stageProbability(stage) / 100)), 0);

@@ -419,13 +419,13 @@ export function AppLayout() {
   const [flowLauncherOpen, setFlowLauncherOpen] = useState(false);
 
   return (
-    <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-hidden lg:grid lg:grid-cols-[280px_1fr]">
-      <aside className="ios-glass-quiet hidden border-r px-5 py-6 lg:block">
+    <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-hidden lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside className="ios-glass-quiet hidden min-w-0 border-r px-5 py-6 lg:block">
         <Brand />
         <DesktopNav cargo={pessoa?.cargo} />
       </aside>
 
-      <div className="flex min-h-screen min-h-dvh flex-col pb-[calc(6.75rem+env(safe-area-inset-bottom))] lg:pb-0">
+      <div className="flex min-h-screen min-h-dvh min-w-0 flex-col pb-[calc(6.75rem+env(safe-area-inset-bottom))] lg:pb-0">
         <header className="ios-glass sticky top-0 z-30 border-b ios-safe-top">
           <div className="flex min-h-16 items-center justify-between gap-2 px-3 sm:min-h-20 sm:px-6 lg:px-8">
             <div className="lg:hidden">
@@ -454,7 +454,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main className="relative z-10 flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+        <main className="app-content-frame relative z-10 flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
           <Suspense fallback={<PageFallback />}>
             <Outlet />
           </Suspense>

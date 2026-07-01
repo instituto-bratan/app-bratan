@@ -50,12 +50,12 @@ export default function DockMorph({ items, className, position = "bottom" }: Doc
   };
 
   return (
-    <div className={cn("z-50 flex max-w-[calc(100vw-1rem)] items-center justify-center", positionClasses[position], className)}>
+    <div className={cn("z-50 flex max-w-[calc(100vw-1.25rem)] items-center justify-center", positionClasses[position], className)}>
       <TooltipProvider delayDuration={120}>
         <div
           className={cn(
-            "ios-glass mobile-scrollbar-none relative flex max-w-[calc(100vw-1rem)] items-center overflow-x-auto rounded-[28px] border p-2 shadow-ios-dock",
-            position === "left" ? "flex-col gap-3 px-3 py-5" : "flex-row gap-1.5 sm:gap-2",
+            "ios-glass mobile-scrollbar-none relative flex max-w-[calc(100vw-1.25rem)] items-center overflow-x-auto rounded-[26px] border p-1.5 shadow-ios-dock sm:p-2",
+            position === "left" ? "flex-col gap-3 px-3 py-5" : "flex-row gap-1 sm:gap-2",
           )}
         >
           {dockItems.map((item, index) => (
@@ -92,7 +92,7 @@ export default function DockMorph({ items, className, position = "bottom" }: Doc
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "ios-pressable relative z-10 h-12 w-12 shrink-0 rounded-full transition-transform duration-200 hover:scale-105 sm:h-11 sm:w-11",
+                      "ios-pressable relative z-10 h-11 w-11 shrink-0 rounded-full transition-transform duration-200 hover:scale-105 sm:h-11 sm:w-11",
                       item.active ? "text-brand-papel hover:bg-transparent hover:text-brand-papel" : "text-brand-musgo hover:bg-white/54",
                       item.disabled && "cursor-not-allowed opacity-45 hover:scale-100",
                     )}

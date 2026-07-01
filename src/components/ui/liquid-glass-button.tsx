@@ -6,7 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const liquidbuttonVariants = cva(
-  "ios-pressable inline-flex shrink-0 cursor-pointer transform-gpu items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold outline-none transition-[color,box-shadow,transform] disabled:pointer-events-none disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "ios-pressable inline-flex max-w-full shrink-0 cursor-pointer transform-gpu items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold outline-none transition-[color,box-shadow,transform] disabled:pointer-events-none disabled:opacity-50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -68,7 +68,7 @@ function LiquidButton({ className, variant, size, asChild = false, children, ...
         className="absolute left-0 top-0 -z-10 h-full w-full overflow-hidden rounded-full bg-white/45"
         style={{ backdropFilter: 'url("#container-glass") blur(18px) saturate(1.18)' }}
       />
-      <div className="pointer-events-none relative z-10 flex items-center gap-2">{children}</div>
+      <div className="pointer-events-none relative z-10 flex min-w-0 items-center gap-2">{children}</div>
     </Comp>
   );
 }

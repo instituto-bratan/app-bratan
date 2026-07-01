@@ -174,7 +174,7 @@ export function CrmTasksPage() {
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
