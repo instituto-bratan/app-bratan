@@ -67,6 +67,21 @@ declare const config: {
                 ios: string;
                 "ios-dock": string;
             };
+            keyframes: {
+                spotlight: {
+                    "0%": {
+                        opacity: string;
+                        transform: string;
+                    };
+                    "100%": {
+                        opacity: string;
+                        transform: string;
+                    };
+                };
+            };
+            animation: {
+                spotlight: string;
+            };
         };
     };
     plugins: never[];

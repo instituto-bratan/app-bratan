@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState, type ComponentType } from "react";
+import { Suspense, useEffect, useMemo, useState, type ComponentType } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -19,6 +19,7 @@ import {
   MessageCircle,
   ReceiptText,
   RefreshCw,
+  Search,
   ShieldCheck,
   Target,
   Utensils,
@@ -32,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import DockMorph from "@/components/ui/dock-morph";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
+import { useAvatar } from "@/features/perfil/avatarStore";
 import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
@@ -329,6 +331,13 @@ function MobileNav({ cargo, menuOpen, onOpenMenu }: { cargo: Cargo | null | unde
   );
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function FlowLauncher({
   cargo,
   open,
@@ -339,6 +348,23 @@ function FlowLauncher({
   onClose: () => void;
 }) {
   const groups = useMemo(() => visibleFlowGroups(cargo), [cargo]);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  const filteredGroups = useMemo(() => {
+    const term = normalizeSearch(query.trim());
+    if (!term) return groups;
+    return groups
+      .map((group) => {
+        const groupMatch = normalizeSearch(`${group.label} ${group.detail}`).includes(term);
+        const entries = groupMatch ? group.entries : group.entries.filter((entry) => normalizeSearch(entry.label).includes(term));
+        return { ...group, entries };
+      })
+      .filter((group) => group.entries.length > 0);
+  }, [groups, query]);
 
   return (
     <AnimatePresence>
@@ -358,19 +384,38 @@ function FlowLauncher({
             className="ios-glass w-full max-w-3xl overflow-hidden rounded-[28px] border"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-4 border-b border-brand-oliva/12 px-4 py-4 sm:px-5">
-              <div>
-                <p className="text-xs font-semibold uppercase text-brand-oliva">Fluxos Bratan</p>
-                <h2 className="text-xl text-brand-musgo">Fluxos de trabalho</h2>
+            <div className="border-b border-brand-oliva/12 px-4 py-4 sm:px-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">Fluxos Bratan</p>
+                  <h2 className="text-xl text-brand-musgo">Fluxos de trabalho</h2>
+                </div>
+                <Button type="button" size="icon" variant="ghost" className="rounded-full bg-white/50" onClick={onClose} aria-label="Fechar fluxos">
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </Button>
               </div>
-              <Button type="button" size="icon" variant="ghost" className="rounded-full bg-white/50" onClick={onClose} aria-label="Fechar fluxos">
-                <X className="h-5 w-5" aria-hidden="true" />
-              </Button>
+              <div className="relative mt-3">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Buscar módulo ou fluxo..."
+                  autoFocus={typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches}
+                  className="h-11 w-full rounded-xl border border-brand-oliva/18 bg-white/70 pl-10 pr-3 text-sm text-brand-tinta placeholder:text-muted-foreground/70 focus-visible:border-brand-dourado/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dourado/25"
+                  aria-label="Buscar módulo ou fluxo"
+                />
+              </div>
             </div>
 
-            <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
+            <div className="max-h-[62vh] overflow-y-auto p-4 sm:p-5">
+              {filteredGroups.length === 0 ? (
+                <p className="px-1 py-8 text-center text-sm text-muted-foreground">
+                  Nada encontrado para "{query.trim()}". Tente outro nome, como "tarefas" ou "kanban".
+                </p>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
-                {groups.map((group, index) => (
+                {filteredGroups.map((group, index) => (
                   <motion.section
                     key={group.label}
                     initial={{ opacity: 0, y: 12 }}
@@ -418,6 +463,20 @@ function FlowLauncher({
 export function AppLayout() {
   const { pessoa, isPreview, signOut } = useAuth();
   const [flowLauncherOpen, setFlowLauncherOpen] = useState(false);
+  const avatar = useAvatar(pessoa?.id);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setFlowLauncherOpen((open) => !open);
+        return;
+      }
+      if (event.key === "Escape") setFlowLauncherOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-hidden lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -439,13 +498,20 @@ export function AppLayout() {
               <LiquidButton type="button" size="sm" className="hidden h-9 px-4 sm:inline-flex" onClick={() => setFlowLauncherOpen(true)}>
                 <LayoutGrid className="h-4 w-4" aria-hidden="true" />
                 Fluxos
+                <span className="hidden rounded border border-brand-oliva/25 bg-white/45 px-1.5 py-0.5 text-[10px] font-semibold text-brand-oliva lg:inline" aria-hidden="true">
+                  ⌘K
+                </span>
               </LiquidButton>
               {isPreview ? <Badge variant="gold" className="hidden sm:inline-flex">Prévia</Badge> : null}
               {pessoa?.cargo ? <Badge variant="outline" className="hidden max-w-36 truncate min-[430px]:inline-flex sm:max-w-none">{cargoLabels[pessoa.cargo]}</Badge> : null}
               {pessoa?.cargo ? <Badge variant="muted" className="hidden sm:inline-flex">{cargoGroup(pessoa.cargo)}</Badge> : null}
-              <Button asChild variant="ghost" size="icon" className="bg-white/35 shadow-sm backdrop-blur-xl" aria-label="Meu perfil">
+              <Button asChild variant="ghost" size="icon" className="overflow-hidden rounded-full bg-white/35 shadow-sm backdrop-blur-xl" aria-label="Meu perfil">
                 <Link to="/meu-perfil" {...preloadRouteProps("/meu-perfil")}>
-                  <UserRound className="h-5 w-5" aria-hidden="true" />
+                  {avatar ? (
+                    <img src={avatar} alt="" className="h-full w-full rounded-full object-cover" />
+                  ) : (
+                    <UserRound className="h-5 w-5" aria-hidden="true" />
+                  )}
                 </Link>
               </Button>
               <Button type="button" variant="ghost" size="icon" className="bg-white/35 shadow-sm backdrop-blur-xl" aria-label="Sair" onClick={signOut}>

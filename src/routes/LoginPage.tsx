@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { Spotlight } from "@/components/ui/spotlight";
 import { useAuth } from "@/hooks/useAuth";
 import { cargoLabels, cargos } from "@/lib/access";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -60,14 +61,19 @@ export function LoginPage() {
   }
 
   return (
-    <main className="isolate grid min-h-screen min-h-dvh place-items-center overflow-hidden px-3 py-8 ios-safe-bottom ios-safe-top sm:px-4 sm:py-10">
+    <main className="relative isolate grid min-h-screen min-h-dvh place-items-center overflow-hidden bg-[#20241a] px-3 py-8 ios-safe-bottom ios-safe-top sm:px-4 sm:py-10">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_0%,rgba(122,137,94,0.22),rgba(32,36,26,0)_60%)]"
+      />
+      <Spotlight className="-top-40 left-0 md:-top-20 md:left-60" fill="#C6A862" fillOpacity={0.16} />
       <div className="relative z-10 w-full max-w-md">
-        <div className="mb-7 flex items-start justify-between gap-4">
-          <img src={bratanLogoHorizontal} alt="Instituto Bratan" className="h-auto w-60 max-w-[72%] object-contain" />
-          <Badge variant="gold">Interno</Badge>
+        <div className="mb-7 flex items-end justify-between gap-4">
+          <img src={bratanLogoHorizontal} alt="Instituto Bratan" className="h-auto w-60 max-w-[72%] object-contain brightness-125" />
+          <Badge className="border-brand-dourado/45 bg-brand-dourado/15 text-brand-creme" variant="outline">Interno</Badge>
         </div>
 
-        <Card className="border-brand-oliva/20 bg-white/72 shadow-ios backdrop-blur-xl">
+        <Card className="border-white/14 shadow-[0_32px_80px_rgba(0,0,0,0.45)] [background:var(--bratan-papel)]">
           <CardHeader>
             <CardTitle className="text-2xl text-brand-tinta">Acesso da equipe</CardTitle>
             <CardDescription>Entre com e-mail e senha autorizados pela coordenação.</CardDescription>

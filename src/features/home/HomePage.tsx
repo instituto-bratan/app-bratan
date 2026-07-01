@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GetStartedButton } from "@/components/ui/get-started-button";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { Spotlight } from "@/components/ui/spotlight";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue } from "@/lib/localStore";
@@ -367,8 +368,9 @@ export function HomePage() {
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.34, ease: [0.4, 0, 0.2, 1] }}
-        className="ios-glass overflow-hidden rounded-lg border px-4 py-5 shadow-ios sm:px-7 sm:py-8 lg:px-10"
+        className="ios-glass relative overflow-hidden rounded-lg border px-4 py-5 shadow-ios sm:px-7 sm:py-8 lg:px-10"
       >
+        <Spotlight className="-top-32 left-0 md:-top-16 md:left-44" fill="#C6A862" fillOpacity={0.1} />
         <div className="mb-5 flex flex-wrap gap-2">
           <Badge variant="gold">Painel do dia</Badge>
           <Badge variant="outline">{formatLongDate(now)}</Badge>

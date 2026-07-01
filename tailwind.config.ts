@@ -87,6 +87,15 @@ const config = {
         ios: "0 22px 55px rgba(43, 46, 36, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.68)",
         "ios-dock": "0 22px 60px rgba(43, 46, 36, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.82)",
       },
+      keyframes: {
+        spotlight: {
+          "0%": { opacity: "0", transform: "translate(-72%, -62%) scale(0.5)" },
+          "100%": { opacity: "1", transform: "translate(-50%, -40%) scale(1)" },
+        },
+      },
+      animation: {
+        spotlight: "spotlight 2s ease 0.75s 1 forwards",
+      },
     },
   },
   plugins: [],

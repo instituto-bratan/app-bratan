@@ -1,11 +1,88 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, KeyRound, Mail, ShieldCheck, UserRound } from "lucide-react";
+import { Camera, CheckCircle2, KeyRound, Mail, ShieldCheck, UserRound, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
+import { useImageUpload } from "@/hooks/use-image-upload";
 import { cargoGroup, cargoLabels } from "@/lib/access";
 import { cn } from "@/lib/utils";
 import { accessMatrix, allowedModuleCount } from "@/features/admin/colaboradoresData";
+import { fileToAvatarDataUrl, saveAvatar, useAvatar } from "./avatarStore";
+
+export function avatarInitials(nome: string) {
+  const parts = nome.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return `${first}${last}`.toUpperCase() || "IB";
+}
+
+function AvatarUpload({ pessoaId, nome }: { pessoaId: string; nome: string }) {
+  const avatar = useAvatar(pessoaId);
+  const [isDragging, setIsDragging] = useState(false);
+  const [error, setError] = useState("");
+  const { fileInputRef, handleThumbnailClick, handleFileChange } = useImageUpload({
+    onUpload: (_url, file) => {
+      setError("");
+      fileToAvatarDataUrl(file)
+        .then((dataUrl) => saveAvatar(pessoaId, dataUrl))
+        .catch(() => setError("Não foi possível processar a foto. Tente JPG ou PNG."));
+    },
+  });
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <input ref={fileInputRef} type="file" accept="image/*" className="sr-only" onChange={handleFileChange} />
+      <button
+        type="button"
+        onClick={handleThumbnailClick}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setIsDragging(false);
+          const file = event.dataTransfer.files?.[0];
+          if (file?.type.startsWith("image/")) {
+            setError("");
+            fileToAvatarDataUrl(file)
+              .then((dataUrl) => saveAvatar(pessoaId, dataUrl))
+              .catch(() => setError("Não foi possível processar a foto. Tente JPG ou PNG."));
+          }
+        }}
+        aria-label={avatar ? "Trocar foto do perfil" : "Adicionar foto do perfil"}
+        className={cn(
+          "group ios-pressable relative grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-full border-2 shadow-calm transition-colors",
+          isDragging ? "border-brand-dourado bg-brand-creme/60" : "border-white/70 bg-brand-musgo",
+        )}
+      >
+        {avatar ? (
+          <img src={avatar} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-2xl font-bold text-brand-papel">{avatarInitials(nome)}</span>
+        )}
+        <span className="absolute inset-0 grid place-items-center bg-brand-tinta/45 opacity-0 backdrop-blur-[2px] transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          <Camera className="h-6 w-6 text-white" aria-hidden="true" />
+        </span>
+      </button>
+      {avatar ? (
+        <button
+          type="button"
+          onClick={() => saveAvatar(pessoaId, null)}
+          className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-white/70 hover:text-brand-tinta"
+        >
+          <X className="h-3 w-3" aria-hidden="true" />
+          Remover foto
+        </button>
+      ) : (
+        <p className="text-xs text-muted-foreground">Toque para adicionar</p>
+      )}
+      {error ? <p className="max-w-40 text-center text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
+}
 
 function formatDateTime(dateString?: string | null) {
   if (!dateString) return "Não informado";
@@ -35,18 +112,21 @@ export function MeuPerfilPage() {
         className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
       >
         <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="mb-4 flex flex-wrap gap-2">
-              <Badge variant="gold">Meu perfil</Badge>
-              {isPreview ? <Badge variant="outline">Prévia local</Badge> : null}
-              <Badge variant="outline">{cargoLabels[pessoa.cargo]}</Badge>
-              <Badge variant="muted">{cargoGroup(pessoa.cargo)}</Badge>
+          <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
+            <AvatarUpload pessoaId={pessoa.id} nome={pessoa.nome} />
+            <div>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <Badge variant="gold">Meu perfil</Badge>
+                {isPreview ? <Badge variant="outline">Prévia local</Badge> : null}
+                <Badge variant="outline">{cargoLabels[pessoa.cargo]}</Badge>
+                <Badge variant="muted">{cargoGroup(pessoa.cargo)}</Badge>
+              </div>
+              <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">{pessoa.nome}</h1>
+              <p className="mt-3 flex max-w-2xl items-center gap-2 text-base leading-7 text-muted-foreground">
+                <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {pessoa.email}
+              </p>
             </div>
-            <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">{pessoa.nome}</h1>
-            <p className="mt-3 flex max-w-2xl items-center gap-2 text-base leading-7 text-muted-foreground">
-              <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {pessoa.email}
-            </p>
           </div>
           <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
             <p className="text-2xl font-bold text-brand-musgo">{allowedModuleCount(pessoa.cargo)}</p>
