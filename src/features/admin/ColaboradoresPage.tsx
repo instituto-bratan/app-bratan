@@ -376,7 +376,7 @@ export function ColaboradoresPage() {
           </Card>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
           <div className="space-y-4">
             <Card className="h-fit border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
               <CardHeader>

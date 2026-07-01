@@ -112,7 +112,7 @@ function StatTile({
           </div>
           <Badge variant={tone === "gold" ? "gold" : "muted"}>{label}</Badge>
         </div>
-        <p className="text-3xl font-bold text-brand-tinta">{value}</p>
+        <p className="text-3xl font-bold leading-tight text-brand-tinta">{value}</p>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
       </CardContent>
     </Card>
@@ -355,7 +355,7 @@ export function EstalecasPage() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
       <section className="rounded-lg border border-brand-oliva/20 bg-white/62 p-5 shadow-calm backdrop-blur sm:p-6">
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px] lg:items-end">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-end">
           <div>
             <div className="mb-4 flex flex-wrap gap-2">
               <Badge variant="gold">Minha Carteira Bratan</Badge>
@@ -370,7 +370,7 @@ export function EstalecasPage() {
           <Card className="border-brand-dourado/45 bg-brand-creme/45 shadow-none">
             <CardContent className="p-5">
               <p className="text-xs font-semibold uppercase text-brand-oliva">Saldo atual</p>
-              <p className="mt-2 text-5xl font-bold text-brand-tinta">{formatEstalecas(snapshot.balance)}</p>
+              <p className="mt-2 text-4xl font-bold leading-tight text-brand-tinta sm:text-5xl">{formatEstalecas(snapshot.balance)}</p>
               <p className="mt-2 text-sm text-muted-foreground">Estalecas aprovadas e não expiradas.</p>
             </CardContent>
           </Card>
@@ -383,7 +383,7 @@ export function EstalecasPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         <StatTile icon={WalletCards} label="Mês" value={formatEstalecas(snapshot.earnedThisMonth)} detail="Total ganho neste mês." tone="gold" />
         <StatTile icon={Coins} label="Ano" value={formatEstalecas(snapshot.earnedThisYear)} detail="Total ganho no ano." />
         <StatTile icon={Dumbbell} label="Treinos" value={`${snapshot.stats.monthlyGymCheckins}`} detail="Check-ins válidos no mês." />
@@ -507,7 +507,7 @@ export function EstalecasPage() {
           <CardContent className="space-y-3">
             {ranking.length ? (
               ranking.slice(0, 6).map((entry) => (
-                <div key={entry.userId} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+                <div key={entry.userId} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
                   <div className={cn("grid h-9 w-9 place-items-center rounded-lg text-sm font-bold", entry.position === 1 ? "bg-brand-creme text-brand-tinta" : "bg-brand-papel text-brand-musgo")}>
                     {entry.position}
                   </div>
@@ -515,7 +515,7 @@ export function EstalecasPage() {
                     <p className="truncate text-sm font-semibold text-brand-tinta">{entry.displayName}</p>
                     <p className="text-xs text-muted-foreground">{entry.validGymCheckins} treinos · sequência {entry.currentStreak}</p>
                   </div>
-                  <p className="text-sm font-bold text-brand-musgo">{entry.checkpoints}</p>
+                  <p className="text-sm font-bold leading-tight text-brand-musgo">{entry.checkpoints}</p>
                 </div>
               ))
             ) : (
@@ -530,7 +530,7 @@ export function EstalecasPage() {
         </Card>
       </section>
 
-      <section className="grid gap-5 lg:grid-cols-[360px_1fr]">
+      <section className="grid gap-5 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
         <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
           <CardHeader>
             <CardTitle className="text-lg">Como apareço no ranking</CardTitle>

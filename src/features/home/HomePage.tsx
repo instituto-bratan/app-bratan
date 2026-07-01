@@ -331,7 +331,7 @@ export function HomePage() {
           <Badge variant="outline">Ético</Badge>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_360px] lg:items-end">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-end">
           <Hero
             eyebrow={`Bom trabalho, ${firstName}`}
             titleLead="Operação"

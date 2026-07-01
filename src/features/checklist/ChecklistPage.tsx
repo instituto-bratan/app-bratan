@@ -177,7 +177,7 @@ export function ChecklistPage() {
         </div>
       </motion.section>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
         <section className="space-y-4">
           {visibleItems.length === 0 ? (
             <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">

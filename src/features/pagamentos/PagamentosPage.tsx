@@ -259,7 +259,7 @@ export function PagamentosPage() {
                 Lembretes simples por nome, valor pendente e data combinada. Cada lembrete alimenta Recebíveis 360 automaticamente.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 min-[430px]:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
                 <p className="text-2xl font-bold text-brand-musgo">{summary.abertos.length}</p>
                 <p className="text-xs font-semibold uppercase text-brand-oliva">abertos</p>
@@ -290,7 +290,7 @@ export function PagamentosPage() {
           </Card>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
           <Card className="h-fit border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -395,7 +395,7 @@ export function PagamentosPage() {
                               criado às {formatShortTime(record.criadoEm)}
                             </span>
                           </div>
-                          <h2 className="truncate text-xl font-semibold text-brand-tinta">{record.pacienteNome}</h2>
+                          <h2 className="text-xl font-semibold leading-tight text-brand-tinta">{record.pacienteNome}</h2>
                           <p className="mt-1 text-lg font-bold text-brand-musgo">{money(record.valorPendente)}</p>
                           {record.observacao ? <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{record.observacao}</p> : null}
                           <p className="mt-2 text-xs font-semibold uppercase text-brand-oliva">Recebíveis 360 sincronizado</p>

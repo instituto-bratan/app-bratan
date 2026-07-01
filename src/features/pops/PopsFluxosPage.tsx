@@ -67,7 +67,7 @@ export function PopsFluxosPage() {
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
         className="overflow-hidden rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
       >
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px] lg:items-end">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-end">
           <div>
             <Badge variant="gold" className="mb-4">
               Biblioteca operacional
@@ -138,7 +138,7 @@ export function PopsFluxosPage() {
                 <Badge variant="outline">{documentsByArea(activeArea.id).length} fluxos</Badge>
               </div>
             </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-[280px_1fr]">
+            <CardContent className="grid gap-4 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
               <div className="rounded-lg border border-brand-oliva/16 bg-brand-papel/60 p-4">
                 <p className="text-xs font-semibold uppercase text-brand-oliva">Responsáveis</p>
                 <div className="mt-3 flex flex-wrap gap-2">

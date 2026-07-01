@@ -208,7 +208,7 @@ export function SegurancaPage() {
           </Card>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
           <section className="space-y-4">
             <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
               <CardHeader>

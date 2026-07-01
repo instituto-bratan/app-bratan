@@ -395,7 +395,7 @@ function MetricCard({
             <ArrowRight className="h-4 w-4 text-brand-oliva transition group-hover:translate-x-1" aria-hidden="true" />
           </div>
           <p className="text-xs font-semibold uppercase text-brand-oliva">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-brand-tinta">{value}</p>
+          <p className="mt-2 text-2xl font-bold leading-tight text-brand-tinta">{value}</p>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
         </CardContent>
       </Card>
@@ -569,7 +569,7 @@ export function Inteligencia360DashboardPage() {
       }
     >
       <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
-        <CardContent className="grid gap-3 p-4 md:grid-cols-5">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
           <SelectField
             label="Período"
             value={period}
@@ -633,7 +633,7 @@ export function Inteligencia360DashboardPage() {
           <CardContent className="space-y-3">
             <div className="rounded-lg border border-brand-dourado/25 bg-brand-creme/35 p-4">
               <p className="text-xs font-semibold uppercase text-brand-oliva">Score</p>
-              <p className="mt-1 text-4xl font-bold text-brand-musgo">{snapshot.dataCompletenessScore}%</p>
+              <p className="mt-1 text-4xl font-bold leading-tight text-brand-musgo">{snapshot.dataCompletenessScore}%</p>
               <p className="mt-2 text-sm text-muted-foreground">Indicadores incompletos ficam marcados antes de virar decisão.</p>
             </div>
             {quality.map((item) => (
@@ -670,8 +670,8 @@ function ModuleNav({ active }: { active: ModuleSlug }) {
 function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) {
   return (
     <div className="overflow-hidden rounded-lg border border-brand-oliva/16 bg-white/65">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
+      <div className="mobile-scrollbar-none overflow-x-auto">
+        <table className="text-left text-sm" style={{ minWidth: Math.max(headers.length * 160, 680) }}>
           <thead className="bg-brand-papel/70 text-xs uppercase text-brand-oliva">
             <tr>
               {headers.map((header) => (

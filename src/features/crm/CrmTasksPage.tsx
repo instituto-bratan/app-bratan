@@ -219,7 +219,7 @@ export function CrmTasksPage() {
       </motion.section>
 
       <section className="rounded-lg border border-brand-oliva/15 bg-white/45 p-3 shadow-sm backdrop-blur-xl">
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="mobile-scrollbar-none flex gap-2 overflow-x-auto pb-1">
           {(Object.keys(tabLabels) as TaskTab[]).map((item) => (
             <Button key={item} type="button" variant={tab === item ? "default" : "outline"} size="sm" onClick={() => setTab(item)}>
               {tabLabels[item]}

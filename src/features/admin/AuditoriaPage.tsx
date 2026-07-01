@@ -137,7 +137,7 @@ export function AuditoriaPage() {
           </Card>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[340px_1fr]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(300px,340px)_minmax(0,1fr)]">
           <section className="space-y-4">
             <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
               <CardHeader>

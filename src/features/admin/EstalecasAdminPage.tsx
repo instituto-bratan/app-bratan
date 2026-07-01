@@ -268,7 +268,7 @@ function MetricCard({
           </div>
           <Badge variant="muted">{label}</Badge>
         </div>
-        <p className="text-2xl font-bold text-brand-musgo">{value}</p>
+        <p className="text-2xl font-bold leading-tight text-brand-musgo">{value}</p>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
       </CardContent>
     </Card>
@@ -1067,7 +1067,7 @@ export function EstalecasAdminPage() {
                 Configure regras, aprove cashback, invalide check-ins suspeitos e acompanhe premiações com rastreabilidade.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 min-[430px]:grid-cols-2 xl:grid-cols-4">
               <MetricCard icon={Coins} label="Saldo" value={formatEstalecas(totalApprovedBalance)} detail="Total aprovado no ledger." />
               <MetricCard icon={History} label="Cashback" value={String(pendingCashbackCount)} detail="Pendências recentes." />
               <MetricCard icon={Gift} label="Prêmios" value={String(pendingRewards)} detail="Aguardando ação." />
@@ -1104,7 +1104,7 @@ export function EstalecasAdminPage() {
           </Card>
         ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
           <section className="space-y-5">
             <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
               <CardHeader>

@@ -318,7 +318,7 @@ export function ComprovantesPage() {
         ) : null}
 
         <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardContent className="grid gap-5 p-5 lg:grid-cols-[1fr_280px]">
+          <CardContent className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,280px)]">
             <div
               onDrop={onDrop}
               onDragOver={(event) => {

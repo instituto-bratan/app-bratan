@@ -183,7 +183,7 @@ export function CrmContactProfilePage() {
         </div>
       </motion.section>
 
-      <div className="flex gap-2 overflow-x-auto rounded-lg border border-brand-oliva/15 bg-white/45 p-2 backdrop-blur-xl">
+      <div className="mobile-scrollbar-none flex gap-2 overflow-x-auto rounded-lg border border-brand-oliva/15 bg-white/45 p-2 backdrop-blur-xl">
         {(Object.keys(tabLabels) as ProfileTab[])
           .filter((item) => (item === "recebiveis" ? canSeeFinancial : item === "experiencia" || item === "jornada" ? canSeeSensitive : true))
           .map((item) => (
