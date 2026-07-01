@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
+import { cn } from "@/lib/utils";
 import {
   actionPriorityLabels,
   actionStatusLabels,
@@ -100,8 +101,11 @@ type ModuleSlug =
   | "acoes"
   | "configuracoes";
 
+type ModuleGroupKey = "resultado" | "paciente" | "execucao";
+
 type ModuleConfig = {
   slug: ModuleSlug;
+  group: ModuleGroupKey;
   title: string;
   description: string;
   href: string;
@@ -109,9 +113,16 @@ type ModuleConfig = {
   icon: typeof BarChart3;
 };
 
+const moduleGroups: { key: ModuleGroupKey; label: string; detail: string }[] = [
+  { key: "resultado", label: "Resultado", detail: "venda, margem e caixa" },
+  { key: "paciente", label: "Paciente", detail: "jornada, retenção e experiência" },
+  { key: "execucao", label: "Execução", detail: "ações, metas e governança" },
+];
+
 const modules: ModuleConfig[] = [
   {
     slug: "ticket-medio",
+    group: "resultado",
     title: "Ticket Médio Semanal",
     description: "Preenchimento por semana, médico e tipo de paciente.",
     href: moduleRoutes360.ticket,
@@ -120,6 +131,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "precificacao",
+    group: "resultado",
     title: "Precificação e Margem",
     description: "Preço, custo, repasse, desconto permitido e margem.",
     href: moduleRoutes360.pricing,
@@ -128,6 +140,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "comercial",
+    group: "resultado",
     title: "Comercial e Prescrições",
     description: "Prescrito x vendido, objeções, descontos e follow-up.",
     href: moduleRoutes360.commercial,
@@ -136,6 +149,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "jornada-paciente",
+    group: "paciente",
     title: "Jornada do Paciente",
     description: "Etapa, contrato, agenda, grupos e gargalos por setor.",
     href: moduleRoutes360.journey,
@@ -144,6 +158,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "reguas",
+    group: "paciente",
     title: "Réguas de Relacionamento",
     description: "Toques, mensagens, responsáveis, opt-out e fadiga.",
     href: moduleRoutes360.touchpoints,
@@ -152,6 +167,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "retencao-resgate",
+    group: "paciente",
     title: "Retenção, Resgate e Churn",
     description: "Coortes, tentativas, investigação e motivos de evasão.",
     href: moduleRoutes360.retention,
@@ -160,6 +176,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "experiencia",
+    group: "paciente",
     title: "Experiência do Paciente",
     description: "NPS, Google, feedback e contato de liderança.",
     href: moduleRoutes360.experience,
@@ -168,6 +185,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "recebiveis",
+    group: "resultado",
     title: "Recebíveis e Caixa",
     description: "Vendido não é caixa: aberto, vencido e recebido.",
     href: moduleRoutes360.receivables,
@@ -176,6 +194,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "acoes",
+    group: "execucao",
     title: "Ações e Plano de Melhoria",
     description: "Dono, prazo, prioridade, status e impacto esperado.",
     href: moduleRoutes360.actions,
@@ -184,6 +203,7 @@ const modules: ModuleConfig[] = [
   },
   {
     slug: "configuracoes",
+    group: "execucao",
     title: "Configurações Operacionais",
     description: "Metas, limites, responsáveis e origem dos dados.",
     href: moduleRoutes360.settings,
@@ -657,12 +677,50 @@ export function Inteligencia360DashboardPage() {
 
 function ModuleNav({ active }: { active: ModuleSlug }) {
   return (
-    <div className="mobile-scrollbar-none flex gap-2 overflow-x-auto pb-1">
-      {modules.map((module) => (
-        <Button key={module.slug} asChild size="sm" variant={module.slug === active ? "default" : "outline"} className="shrink-0">
-          <Link to={module.href}>{module.title}</Link>
-        </Button>
-      ))}
+    <div className="grid gap-3 lg:grid-cols-3">
+      {moduleGroups.map((group) => {
+        const groupModules = modules.filter((module) => module.group === group.key);
+        const isActiveGroup = groupModules.some((module) => module.slug === active);
+
+        return (
+          <section
+            key={group.key}
+            className={cn(
+              "rounded-lg border p-3 transition duration-200",
+              isActiveGroup ? "border-brand-dourado/45 bg-brand-creme/42 shadow-sm" : "border-brand-oliva/16 bg-white/62",
+            )}
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold leading-tight text-brand-musgo">{group.label}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{group.detail}</p>
+              </div>
+              <Badge variant={isActiveGroup ? "gold" : "muted"}>{groupModules.length}</Badge>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+              {groupModules.map((module) => {
+                const Icon = module.icon;
+
+                return (
+                  <Button
+                    key={module.slug}
+                    asChild
+                    size="sm"
+                    variant={module.slug === active ? "default" : "outline"}
+                    className="h-auto justify-start gap-2 whitespace-normal px-3 py-2 text-left leading-tight"
+                  >
+                    <Link to={module.href}>
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      <span className="min-w-0">{module.title}</span>
+                    </Link>
+                  </Button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
