@@ -12,6 +12,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -129,7 +130,14 @@ export function CrmCadencesPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Badge variant="gold">CRM Bratan</Badge>
-            <h1 className="mt-3 text-4xl leading-tight text-brand-musgo sm:text-5xl">Cadências por função</h1>
+            <h1 className="mt-3 flex items-center gap-2 text-4xl leading-tight text-brand-musgo sm:text-5xl">
+              Cadências por função
+              <InfoTip title="O que são cadências?">
+                São as réguas de relacionamento do Instituto em ação: sequências de toques (D+1 do concierge, enfermeira a cada
+                14 dias, resgates D1·D5·D7·D60) que geram tarefas automaticamente para a pessoa certa, na hora certa. Você
+                aprova e envia a mensagem — o app nunca dispara sozinho.
+              </InfoTip>
+            </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               Mensagens sugeridas, tarefas geradas e antifadiga. Nada é enviado automaticamente nesta fase.
             </p>

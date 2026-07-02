@@ -14,6 +14,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
@@ -177,7 +178,14 @@ export function CrmContactProfilePage() {
               <Badge variant="muted">{lifecycleLabels[contact.lifecycleStage]}</Badge>
               {fatigue?.risk ? <Badge className="bg-red-100 text-red-800">Risco de fadiga</Badge> : null}
             </div>
-            <h1 className="mt-3 text-4xl leading-tight text-brand-musgo sm:text-5xl">{contactDisplayName(contact)}</h1>
+            <h1 className="mt-3 flex items-center gap-2 text-4xl leading-tight text-brand-musgo sm:text-5xl">
+              {contactDisplayName(contact)}
+              <InfoTip title="O que é o Perfil 360?">
+                A ficha completa do contato em um só lugar: dados, negociações, tarefas, cadências ativas e a linha do tempo de
+                tudo que já aconteceu — cada evento mostra de onde veio. É a fonte de verdade antes de qualquer contato com o
+                paciente.
+              </InfoTip>
+            </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               Perfil comercial e relacional. Não é prontuário médico; reúne execução, jornada, tarefas e alertas sem duplicar cadastro.
             </p>

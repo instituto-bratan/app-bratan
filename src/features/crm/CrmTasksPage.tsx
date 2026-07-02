@@ -14,6 +14,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -183,7 +184,14 @@ export function CrmTasksPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Badge variant="gold">CRM Bratan</Badge>
-            <h1 className="mt-3 text-4xl leading-tight text-brand-musgo sm:text-5xl">Minhas tarefas</h1>
+            <h1 className="mt-3 flex items-center gap-2 text-4xl leading-tight text-brand-musgo sm:text-5xl">
+              Minhas tarefas
+              <InfoTip title="O que é esta tela?">
+                É a sua fila de trabalho do CRM: cada tarefa nasce de uma movimentação no Kanban, de uma cadência ou de uma
+                importação — já com contato, prazo e contexto. Conclua por aqui e o histórico vai sozinho para o Perfil 360 do
+                paciente e para o Dashboard.
+              </InfoTip>
+            </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
               {role ? `${crmRoleLabels[role]}: ${roleFocus(role)}` : "Seu dia operacional com dados conectados ao Kanban, cadências e 360."}
             </p>

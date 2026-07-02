@@ -10,7 +10,7 @@ const liquidbuttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-transparent text-brand-musgo duration-200 hover:scale-[1.03]",
+        default: "bg-transparent text-brand-musgo duration-200",
         destructive: "bg-destructive text-white hover:bg-destructive/90",
         outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
@@ -33,20 +33,10 @@ const liquidbuttonVariants = cva(
   },
 );
 
+// Mantido por compatibilidade: o vidro do LiquidButton agora usa blur puro,
+// sem displacement map — a distorção deixava o conteúdo atrás do botão borrado.
 function LiquidGlassFilterDefs() {
-  return (
-    <svg className="hidden" aria-hidden="true">
-      <defs>
-        <filter id="container-glass" x="0%" y="0%" width="100%" height="100%" colorInterpolationFilters="sRGB">
-          <feTurbulence type="fractalNoise" baseFrequency="0.035 0.045" numOctaves="1" seed="1" result="turbulence" />
-          <feGaussianBlur in="turbulence" stdDeviation="1.25" result="blurredNoise" />
-          <feDisplacementMap in="SourceGraphic" in2="blurredNoise" scale="24" xChannelSelector="R" yChannelSelector="B" result="displaced" />
-          <feGaussianBlur in="displaced" stdDeviation="2.25" result="finalBlur" />
-          <feComposite in="finalBlur" in2="finalBlur" operator="over" />
-        </filter>
-      </defs>
-    </svg>
-  );
+  return null;
 }
 
 type LiquidButtonProps = React.ComponentProps<"button"> &
@@ -63,10 +53,10 @@ function LiquidButton({ className, variant, size, asChild = false, children, ...
       className={cn("relative isolate overflow-hidden", liquidbuttonVariants({ variant, size, className }))}
       {...props}
     >
-      <div className="absolute left-0 top-0 z-0 h-full w-full rounded-full border border-white/42 bg-white/18 shadow-[0_10px_28px_rgba(43,46,36,0.10),inset_0_1px_0_rgba(255,255,255,0.62),inset_0_-1px_0_rgba(77,86,59,0.12)] transition-all" />
+      <div className="absolute left-0 top-0 z-0 h-full w-full rounded-full border border-white/48 bg-white/30 shadow-[0_10px_28px_rgba(43,46,36,0.10),inset_0_1px_0_rgba(255,255,255,0.65),inset_0_-1px_0_rgba(77,86,59,0.10)] transition-all group-hover:bg-white/40" />
       <div
         className="absolute left-0 top-0 -z-10 h-full w-full overflow-hidden rounded-full bg-white/45"
-        style={{ backdropFilter: 'url("#container-glass") blur(18px) saturate(1.18)' }}
+        style={{ backdropFilter: "blur(14px) saturate(1.22)", WebkitBackdropFilter: "blur(14px) saturate(1.22)" }}
       />
       <div className="pointer-events-none relative z-10 flex min-w-0 items-center gap-2">{children}</div>
     </Comp>

@@ -1,22 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowRight,
+  BrainCircuit,
   CircleDollarSign,
   Download,
+  GraduationCap,
   Maximize2,
-  MessageCircle,
   Minimize2,
+  Move,
   Plus,
   Search,
+  Sparkles,
+  Target,
   UserPlus,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-tour";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
@@ -91,6 +96,49 @@ const temperatureLabels: Record<CrmLeadTemperature, string> = {
   WARM: "Morno",
   HOT: "Quente",
 };
+
+const kanbanTourSteps: TourStep[] = [
+  {
+    icon: Target,
+    title: "As colunas são a caminhada do lead",
+    description:
+      "Do Lead Frio até Fechou (ou Resgate), cada coluna é uma etapa real da operação Bratan. Use as seções no topo para focar em Captação & Consulta ou Negociação & Recuperação.",
+    hint: "O valor no cabeçalho de cada coluna soma o potencial dos cards dela.",
+  },
+  {
+    icon: Move,
+    title: "Arraste os cards entre etapas",
+    description:
+      "Pegue um card com o mouse e solte na nova etapa. No iPhone, toque em \"Mover / registrar\" dentro do card — faz a mesma coisa.",
+    hint: "Se faltar algo obrigatório (objeção, valor), o painel lateral abre sozinho para completar.",
+  },
+  {
+    icon: CircleDollarSign,
+    title: "Registre valores e objeções",
+    description:
+      "Ao clicar em um card, o painel lateral mostra próxima ação, WhatsApp e os campos de prescrito, vendido e recebido. Não fechou? Registre a objeção — é o PMI digital.",
+    hint: "Regra da casa: não fechou exige objeção; fechou exige valor; parcial exige motivo.",
+  },
+  {
+    icon: AlertTriangle,
+    title: "Nenhum card sem próxima ação",
+    description:
+      "Card com selo vermelho \"Sem próxima ação\" é lead esfriando. Ao mover uma etapa, o app cria automaticamente as tarefas certas para Médico, Concierge, Recepção e Enfermagem.",
+    hint: "Exemplo: mover para \"Não Fechou\" agenda o contato do médico em D+1 e do gestor em D+2.",
+  },
+  {
+    icon: Search,
+    title: "Busque e ajuste o visual",
+    description:
+      "A busca encontra por nome, origem ou objeção. A densidade (Compacto, Confortável, Executivo) muda o tamanho dos cards. Tudo fica salvo para a próxima visita.",
+  },
+  {
+    icon: BrainCircuit,
+    title: "Tudo alimenta o Dashboard 360",
+    description:
+      "Valores vendidos, conversão e objeções fluem daqui para a Inteligência 360 — sem digitar nada duas vezes. O botão Obsidian exporta um resumo em Markdown para documentação.",
+  },
+];
 
 function stageProbability(stage: CrmDealStage) {
   if (stage === "FECHOU_COMPLETO" || stage === "FECHOU_PARCIAL") return 100;
@@ -212,6 +260,9 @@ export function CrmKanbanPage() {
   const [feedback, setFeedback] = useState("");
   const [draggingDealId, setDraggingDealId] = useState("");
   const [dragOverStage, setDragOverStage] = useState<CrmDealStage | null>(null);
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const { seen: tourSeen, markSeen: markTourSeen } = useTourSeen("app-bratan-tour-kanban");
   const boardRef = useRef<HTMLDivElement>(null);
   const panState = useRef({ active: false, moved: false, startX: 0, scrollLeft: 0 });
 
@@ -317,6 +368,7 @@ export function CrmKanbanPage() {
 
     setNewName("");
     setNewPhone("");
+    setLeadModalOpen(false);
   }
 
   function handleMoveDeal(event: FormEvent) {
@@ -417,137 +469,84 @@ export function CrmKanbanPage() {
     boardRef.current?.releasePointerCapture?.(event.pointerId);
   }
 
+  const soldTotal = state.deals.reduce((sum, deal) => sum + deal.soldAmount, 0);
+  const withoutNextAction = state.deals.filter(
+    (deal) => deal.status === "OPEN" && !state.tasks.some((task) => task.dealId === deal.id && !["DONE", "CANCELED", "SKIPPED"].includes(task.status)),
+  ).length;
+
   return (
     <div
       className={cn(
-        "mx-auto flex w-full max-w-[1500px] flex-col gap-5 sm:gap-6",
-        fullscreen && "fixed inset-0 z-50 max-w-none gap-3 overflow-hidden bg-brand-papel p-3 sm:p-4",
+        "mx-auto flex w-full max-w-[1500px] flex-col gap-3 sm:gap-4",
+        fullscreen
+          ? "fixed inset-0 z-50 max-w-none gap-3 overflow-hidden bg-brand-papel p-3 sm:p-4"
+          : "lg:h-[calc(100dvh-9.5rem)] lg:min-h-[540px]",
       )}
     >
-      {fullscreen ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <Badge variant="gold">CRM Bratan</Badge>
-            <h1 className="text-xl text-brand-musgo sm:text-2xl">Kanban Comercial</h1>
-            <span className="hidden text-xs text-muted-foreground sm:inline">{visibleDeals.length} negociações · arraste os cards entre etapas</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={exportKanbanToObsidian}>
-              <Download className="mr-2 h-4 w-4" />
-              Obsidian
-            </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Badge variant="gold">CRM Bratan</Badge>
+          <h1 className={cn("text-brand-musgo", fullscreen ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl")}>Kanban Comercial</h1>
+          <InfoTip title="O que é o Kanban Comercial?">
+            É o mapa de todas as negociações do Instituto: cada card é um lead ou paciente, cada coluna é uma etapa da caminhada
+            — da captação ao fechamento e resgate. Arraste os cards para mover de etapa; o app cria as tarefas certas para cada
+            setor e alimenta o Dashboard 360 sozinho.
+          </InfoTip>
+          <span className="hidden text-xs text-muted-foreground xl:inline">{visibleDeals.length} negociações</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={() => setLeadModalOpen(true)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Novo lead
+          </LiquidButton>
+          <Button type="button" variant="outline" size="sm" onClick={() => { setTourOpen(true); markTourSeen(); }}>
+            <GraduationCap className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            Como usar
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={exportKanbanToObsidian}>
+            <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            Obsidian
+          </Button>
+          {fullscreen ? (
             <Button type="button" variant="outline" size="sm" onClick={() => setFullscreen(false)}>
-              <Minimize2 className="mr-2 h-4 w-4" />
+              <Minimize2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
               Sair (Esc)
             </Button>
-          </div>
+          ) : (
+            <>
+              <Button type="button" variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setFullscreen(true)}>
+                <Maximize2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                Tela cheia
+              </Button>
+              <Button asChild variant="outline" size="sm" className="hidden md:inline-flex">
+                <Link to={crmModuleRoutes.tasks}>
+                  Minhas tarefas <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
-      ) : (
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-      >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <Badge variant="gold">CRM Bratan</Badge>
-            <h1 className="mt-3 text-4xl leading-tight text-brand-musgo sm:text-5xl">Kanban Comercial</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Arraste os cards entre etapas ou clique para registrar valores. Cada movimentação cria tarefas para Médico, Concierge, Recepção, Administrativo, Enfermagem e Financeiro quando necessário.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={exportKanbanToObsidian}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar Obsidian
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setFullscreen(true)}>
-              <Maximize2 className="mr-2 h-4 w-4" />
-              Modo tela cheia
-            </Button>
-            <Button asChild variant="outline">
-              <Link to={crmModuleRoutes.tasks}>Minhas tarefas <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-          </div>
-        </div>
-      </motion.section>
-      )}
-
-      {!fullscreen ? (
-      <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              Novo lead sem retrabalho
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleCreateLead}>
-              <div>
-                <Label>Nome</Label>
-                <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nome ou referência" />
-              </div>
-              <div>
-                <Label>WhatsApp</Label>
-                <Input value={newPhone} onChange={(event) => setNewPhone(event.target.value)} placeholder="11999999999" />
-              </div>
-              <div>
-                <Label>Origem</Label>
-                <Input value={newSource} onChange={(event) => setNewSource(event.target.value)} placeholder="Instagram, indicação..." />
-              </div>
-              <div>
-                <Label>Valor potencial</Label>
-                <Input value={newValue} onChange={(event) => setNewValue(event.target.value)} inputMode="decimal" />
-              </div>
-              <div>
-                <Label>Temperatura</Label>
-                <select value={newTemp} onChange={(event) => setNewTemp(event.target.value as CrmLeadTemperature)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                  <option value="COLD">Frio</option>
-                  <option value="WARM">Morno</option>
-                  <option value="HOT">Quente</option>
-                </select>
-              </div>
-              <div>
-                <Label>Persona</Label>
-                <select value={newFit} onChange={(event) => setNewFit(event.target.value as CrmPersonaFit)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                  <option value="AAA">AAA</option>
-                  <option value="HIGH_TICKET">High ticket</option>
-                  <option value="MEDIUM">Médio</option>
-                  <option value="LOW_FIT">Baixo fit</option>
-                  <option value="UNKNOWN">A validar</option>
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <LiquidButton type="submit" size="sm">
-                  <Plus className="h-4 w-4" />
-                  Criar contato e oportunidade
-                </LiquidButton>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card className="border-brand-dourado/30 bg-brand-creme/28">
-          <CardHeader>
-            <CardTitle>Operação guiada</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <div className="rounded-lg border border-brand-oliva/14 bg-white/58 p-3">
-              <p className="font-semibold text-brand-musgo">Arraste os cards</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Solte o card na nova etapa. Se faltar valor ou objeção obrigatória, o painel lateral abre já preenchido para completar.
-              </p>
-            </div>
-            <div className="rounded-lg border border-brand-oliva/14 bg-white/58 p-3">
-              <p className="font-semibold text-brand-musgo">Sem retrabalho</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Ao mover etapa, o app atualiza CRM, tarefas, cadências e alimenta o Dashboard 360 pela origem correta.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
+      {!tourSeen && !fullscreen ? (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/50 px-4 py-2.5"
+        >
+          <p className="flex items-center gap-2 text-sm text-brand-tinta">
+            <Sparkles className="h-4 w-4 text-brand-dourado" aria-hidden="true" />
+            Primeira vez no Kanban? Veja como usar em 6 passos rápidos.
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={() => { setTourOpen(true); markTourSeen(); }}>
+              Ver tutorial
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={markTourSeen}>
+              Agora não
+            </Button>
+          </div>
+        </motion.div>
       ) : null}
 
       {feedback ? (
@@ -560,7 +559,7 @@ export function CrmKanbanPage() {
       {selectedDeal ? (
         <div className="fixed inset-0 z-[70] bg-brand-tinta/28 backdrop-blur-sm" onClick={() => setSelectedDealId("")}>
           <aside
-            className="ml-auto flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-brand-oliva/20 bg-brand-papel p-4 shadow-2xl sm:p-5"
+            className="ml-auto flex h-full w-[min(36rem,100vw)] flex-col overflow-y-auto border-l border-brand-oliva/20 bg-brand-papel p-4 shadow-2xl sm:p-5"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -652,29 +651,50 @@ export function CrmKanbanPage() {
         </div>
       ) : null}
 
-      <section className="rounded-lg border border-brand-oliva/15 bg-white/45 p-3 shadow-sm backdrop-blur-xl">
-        <div className="grid gap-2 lg:grid-cols-[1.25fr_0.7fr_0.65fr_0.55fr]">
+      <section className="rounded-lg border border-brand-oliva/15 bg-white/45 p-2.5 shadow-sm backdrop-blur-xl">
+        <div className="grid gap-2 lg:grid-cols-[1.2fr_0.65fr_0.6fr_0.55fr_auto]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Buscar lead, paciente, origem ou objeção" />
           </label>
-          <select value={section} onChange={(event) => changeSection(event.target.value as KanbanSection)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl">
+          <select value={section} onChange={(event) => changeSection(event.target.value as KanbanSection)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Seção do funil">
             {(Object.keys(sectionLabels) as KanbanSection[]).map((item) => (
               <option key={item} value={item}>{sectionLabels[item]}</option>
             ))}
           </select>
-          <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl">
+          <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Densidade dos cards">
             {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
               <option key={item} value={item}>{densityLabels[item]}</option>
             ))}
           </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl">
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Status das negociações">
             <option value="">Todos os status</option>
             <option value="OPEN">Abertos</option>
             <option value="WON_FULL">Ganhos completos</option>
             <option value="WON_PARTIAL">Ganhos parciais</option>
             <option value="LOST">Perdidos</option>
           </select>
+          <div className="hidden items-center gap-2 lg:flex">
+            {canSeeValue ? (
+              <span className="flex h-12 items-center gap-1.5 whitespace-nowrap rounded-md border border-brand-oliva/16 bg-white/60 px-3 text-xs font-semibold text-brand-musgo">
+                <CircleDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                {moneyCrm(soldTotal)}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                "flex h-12 items-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-xs font-semibold",
+                withoutNextAction ? "border-red-200 bg-red-50 text-red-800" : "border-brand-oliva/16 bg-white/60 text-brand-musgo",
+              )}
+            >
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+              {withoutNextAction} sem ação
+            </span>
+            <InfoTip title="Validações do Kanban" side="bottom">
+              "Vendidos" soma o valor fechado pelo CRM. "Sem ação" conta negociações abertas sem próxima tarefa — a regra de
+              ouro é zerar esse número. Ao mover etapas: não fechou exige objeção, fechou exige valor, parcial exige motivo.
+            </InfoTip>
+          </div>
         </div>
       </section>
 
@@ -686,10 +706,10 @@ export function CrmKanbanPage() {
         onPointerCancel={onBoardPointerUp}
         className={cn(
           "kanban-scroll cursor-grab touch-pan-x overflow-x-auto pb-3 active:cursor-grabbing",
-          fullscreen && "min-h-0 flex-1",
+          fullscreen ? "min-h-0 flex-1" : "lg:min-h-0 lg:flex-1",
         )}
       >
-        <div className={cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen && "h-full items-stretch")}>
+        <div className={cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen ? "h-full items-stretch" : "lg:h-full lg:items-stretch")}>
           {visibleStages.map((stage) => {
             const stageDeals = visibleDeals.filter((deal) => deal.stage === stage);
             const total = stageDeals.reduce((sum, deal) => sum + (deal.soldAmount || deal.estimatedValue * (stageProbability(stage) / 100)), 0);
@@ -710,7 +730,7 @@ export function CrmKanbanPage() {
                 onDrop={(event) => onColumnDrop(event, stage)}
                 className={cn(
                   "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
-                  fullscreen ? "h-full" : "max-h-[68vh]",
+                  fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none",
                   isDropTarget && "border-brand-dourado/70 bg-brand-creme/45 ring-2 ring-brand-dourado/30",
                 )}
               >
@@ -752,27 +772,90 @@ export function CrmKanbanPage() {
         </div>
       </div>
 
-      {!fullscreen ? (
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-          <CircleDollarSign className="h-5 w-5 text-brand-musgo" />
-          <p className="mt-2 text-sm font-semibold text-brand-musgo">Vendidos pelo CRM</p>
-          <p className="text-2xl font-bold text-brand-musgo">{canSeeValue ? moneyCrm(state.deals.reduce((sum, deal) => sum + deal.soldAmount, 0)) : "Restrito"}</p>
-        </div>
-        <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-          <MessageCircle className="h-5 w-5 text-brand-musgo" />
-          <p className="mt-2 text-sm font-semibold text-brand-musgo">Sem próxima ação</p>
-          <p className="text-2xl font-bold text-brand-musgo">
-            {state.deals.filter((deal) => deal.status === "OPEN" && !state.tasks.some((task) => task.dealId === deal.id && !["DONE", "CANCELED", "SKIPPED"].includes(task.status))).length}
-          </p>
-        </div>
-        <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-          <AlertTriangle className="h-5 w-5 text-brand-musgo" />
-          <p className="mt-2 text-sm font-semibold text-brand-musgo">Validações ativas</p>
-          <p className="text-sm leading-6 text-muted-foreground">Não fechou exige objeção. Fechou exige valor. Parcial exige motivo.</p>
-        </div>
-      </div>
-      ) : null}
+      <AnimatePresence>
+        {leadModalOpen ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[75] grid place-items-center bg-brand-tinta/30 px-4 py-6 backdrop-blur-sm"
+            onClick={() => setLeadModalOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className="max-h-[86dvh] w-[min(32rem,94vw)] overflow-y-auto rounded-2xl border border-brand-oliva/18 bg-brand-papel p-5 shadow-[0_32px_80px_rgba(43,46,36,0.28)] sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-label="Novo lead"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-xl text-brand-musgo">
+                    <UserPlus className="h-5 w-5" aria-hidden="true" />
+                    Novo lead sem retrabalho
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Se o telefone já existir, o app avisa e reaproveita o cadastro — nada duplica.
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setLeadModalOpen(false)} aria-label="Fechar">
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </Button>
+              </div>
+              <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleCreateLead}>
+                <div>
+                  <Label>Nome</Label>
+                  <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nome ou referência" />
+                </div>
+                <div>
+                  <Label>WhatsApp</Label>
+                  <Input value={newPhone} onChange={(event) => setNewPhone(event.target.value)} placeholder="11999999999" />
+                </div>
+                <div>
+                  <Label>Origem</Label>
+                  <Input value={newSource} onChange={(event) => setNewSource(event.target.value)} placeholder="Instagram, indicação..." />
+                </div>
+                <div>
+                  <Label>Valor potencial</Label>
+                  <Input value={newValue} onChange={(event) => setNewValue(event.target.value)} inputMode="decimal" />
+                </div>
+                <div>
+                  <Label>Temperatura</Label>
+                  <select value={newTemp} onChange={(event) => setNewTemp(event.target.value as CrmLeadTemperature)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                    <option value="COLD">Frio</option>
+                    <option value="WARM">Morno</option>
+                    <option value="HOT">Quente</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>Persona</Label>
+                  <select value={newFit} onChange={(event) => setNewFit(event.target.value as CrmPersonaFit)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                    <option value="AAA">AAA</option>
+                    <option value="HIGH_TICKET">High ticket</option>
+                    <option value="MEDIUM">Médio</option>
+                    <option value="LOW_FIT">Baixo fit</option>
+                    <option value="UNKNOWN">A validar</option>
+                  </select>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-2 sm:col-span-2">
+                  <LiquidButton type="submit" size="sm">
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Criar contato e oportunidade
+                  </LiquidButton>
+                  <Button type="button" variant="outline" onClick={() => setLeadModalOpen(false)}>
+                    Fechar
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <GuidedTour open={tourOpen} steps={kanbanTourSteps} title="Como usar o Kanban" onClose={() => setTourOpen(false)} />
     </div>
   );
 }
