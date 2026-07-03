@@ -73,11 +73,11 @@ const crm = loadTsModule("src/features/crm/crmData.ts");
 const data360 = loadTsModule("src/features/inteligencia360/inteligencia360Data.ts");
 
 function cloneState() {
-  return JSON.parse(JSON.stringify(crm.seedCrmState));
+  return JSON.parse(JSON.stringify(crm.demoCrmFixtures));
 }
 
 function clone360() {
-  return JSON.parse(JSON.stringify(data360.seedInteligencia360State));
+  return JSON.parse(JSON.stringify(data360.demoInteligencia360Fixtures));
 }
 
 test("findOrCreateCrmContact evita duplicidade por telefone", () => {

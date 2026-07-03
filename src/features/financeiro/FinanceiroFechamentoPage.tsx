@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canLembretesPagamento } from "@/lib/access";
+import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -31,9 +32,11 @@ function formatDay(day: string) {
 function DayRow({
   day,
   financeiro,
+  readOnly,
 }: {
   day: string;
   financeiro: ReturnType<typeof useFinanceiro>;
+  readOnly: boolean;
 }) {
   const expected = useMemo(() => buildDayExpected(financeiro.sales, day), [financeiro.sales, day]);
   const saved = financeiro.reconciliations.find((record) => record.day === day) ?? null;
@@ -78,7 +81,7 @@ function DayRow({
           </Badge>
           <span className="text-xs text-muted-foreground">{expected.salesCount} comandas · {moneyFin(expected.total)}</span>
         </div>
-        <div className="flex gap-2">
+        <div className={cn("flex gap-2", readOnly && "hidden")}>
           <Button type="button" size="sm" variant={status === "CONFERIDO" ? "default" : "outline"} onClick={() => save("CONFERIDO")}>
             <CheckCircle2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Bateu
@@ -132,6 +135,8 @@ function DayRow({
 }
 
 export function FinanceiroFechamentoPage() {
+  const { pessoa } = useAuth();
+  const readOnly = !canFinanceiroFull(pessoa?.cargo);
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
@@ -169,7 +174,7 @@ export function FinanceiroFechamentoPage() {
   }
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Financeiro · Fechamento">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Fechamento">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
@@ -216,7 +221,7 @@ export function FinanceiroFechamentoPage() {
             <LiquidButton
               type="button"
               size="sm"
-              className="mt-2 h-8 px-3 text-xs"
+              className={cn("mt-2 h-8 px-3 text-xs", readOnly && "hidden")}
               onClick={generateFeesExpense}
               disabled={feesExpenseExists || feesTotal <= 0}
             >
@@ -238,7 +243,7 @@ export function FinanceiroFechamentoPage() {
           </CardHeader>
           <CardContent className="grid gap-3">
             {days.length ? (
-              days.map((day) => <DayRow key={`${day}-${financeiro.reconciliations.find((r) => r.day === day)?.confirmedAt ?? "novo"}`} day={day} financeiro={financeiro} />)
+              days.map((day) => <DayRow key={`${day}-${financeiro.reconciliations.find((r) => r.day === day)?.confirmedAt ?? "novo"}`} day={day} financeiro={financeiro} readOnly={readOnly} />)
             ) : (
               <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma comanda lançada neste mês ainda — o fechamento nasce do Lançar Dia.</p>
             )}

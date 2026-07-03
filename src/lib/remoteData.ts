@@ -492,6 +492,28 @@ export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ 
   };
 }
 
+export async function createRemoteChecklistItem(values: {
+  runId: string;
+  grupo: string;
+  descricao: string;
+  responsavel: string;
+}) {
+  const client = requireSupabase();
+  const { error } = await client.from("checklist_item_run").insert({
+    run_id: values.runId,
+    grupo: values.grupo,
+    descricao: values.descricao,
+    responsavel: values.responsavel,
+    ordem: 999,
+  });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "checklist.item.adicionar",
+    entity: "checklist_item_run",
+    metadata: { grupo: values.grupo, descricao: values.descricao },
+  });
+}
+
 export async function updateRemoteChecklistItem(values: {
   id: string;
   concluido: boolean;

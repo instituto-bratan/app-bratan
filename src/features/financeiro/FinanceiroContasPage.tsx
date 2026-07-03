@@ -9,7 +9,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canLembretesPagamento } from "@/lib/access";
+import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -31,6 +32,8 @@ function parseAmount(value: string) {
 }
 
 export function FinanceiroContasPage() {
+  const { pessoa } = useAuth();
+  const readOnly = !canFinanceiroFull(pessoa?.cargo);
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
@@ -113,7 +116,7 @@ export function FinanceiroContasPage() {
   }
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Financeiro · Contas a Pagar">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Contas a Pagar">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
@@ -168,7 +171,7 @@ export function FinanceiroContasPage() {
           </div>
         ) : null}
 
-        <Card>
+        <Card className={cn(readOnly && "hidden")}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
@@ -280,7 +283,9 @@ export function FinanceiroContasPage() {
                           <td className="px-3 py-2.5 text-xs">{expense.method ? paymentMethodLabels[expense.method] : "—"}</td>
                           <td className="px-3 py-2.5 text-right font-semibold text-brand-musgo">{moneyFin(expense.amount)}</td>
                           <td className="px-3 py-2.5">
-                            {expense.paidAt ? (
+                            {readOnly ? (
+                              expense.paidAt ? <Badge className="bg-emerald-100 text-emerald-800">Paga</Badge> : <Badge variant="muted">Pendente</Badge>
+                            ) : expense.paidAt ? (
                               <button type="button" onClick={() => financeiro.setExpensePaid(expense.id, null)} title="Desfazer pagamento">
                                 <Badge className="bg-emerald-100 text-emerald-800">Paga {expense.paidAt.split("-").reverse().slice(0, 2).join("/")}</Badge>
                               </button>
@@ -291,9 +296,11 @@ export function FinanceiroContasPage() {
                             )}
                           </td>
                           <td className="px-3 py-2.5">
-                            <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${expense.description}`} onClick={() => financeiro.removeExpense(expense.id)}>
-                              <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            </Button>
+                            {readOnly ? null : (
+                              <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${expense.description}`} onClick={() => financeiro.removeExpense(expense.id)}>
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );

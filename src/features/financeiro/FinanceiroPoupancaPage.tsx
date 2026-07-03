@@ -9,7 +9,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canLembretesPagamento } from "@/lib/access";
+import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -25,6 +26,8 @@ import {
 import { useFinanceiro } from "./useFinanceiro";
 
 export function FinanceiroPoupancaPage() {
+  const { pessoa } = useAuth();
+  const readOnly = !canFinanceiroFull(pessoa?.cargo);
   const now = todayISO();
   const financeiro = useFinanceiro(Number(now.slice(0, 4)));
   const [direction, setDirection] = useState<FinSavingsDirection>("ENTRADA");
@@ -87,7 +90,7 @@ export function FinanceiroPoupancaPage() {
   }
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Financeiro · Poupança">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Poupança">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
@@ -126,7 +129,7 @@ export function FinanceiroPoupancaPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className={cn("grid gap-5 lg:grid-cols-2", readOnly && "hidden")}>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -240,9 +243,11 @@ export function FinanceiroPoupancaPage() {
                     <span className={cn("text-sm font-bold", move.direction === "ENTRADA" ? "text-emerald-700" : "text-red-700")}>
                       {move.direction === "ENTRADA" ? "+" : "−"}{moneyFin(move.amount)}
                     </span>
-                    <Button type="button" variant="ghost" size="icon" aria-label={`Excluir movimento ${move.reason}`} onClick={() => financeiro.removeSavingsMove(move.id)}>
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </Button>
+                    {readOnly ? null : (
+                      <Button type="button" variant="ghost" size="icon" aria-label={`Excluir movimento ${move.reason}`} onClick={() => financeiro.removeSavingsMove(move.id)}>
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))

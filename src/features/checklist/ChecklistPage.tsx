@@ -1,14 +1,15 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Check, CheckCircle2, Circle, RotateCcw } from "lucide-react";
+import { Check, CheckCircle2, Circle, Plus, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { isCoordenacao } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
-import { listRemoteChecklistItems, resetRemoteChecklistRun, updateRemoteChecklistItem } from "@/lib/remoteData";
+import { createRemoteChecklistItem, listRemoteChecklistItems, resetRemoteChecklistRun, updateRemoteChecklistItem } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import {
   checklistGroupsForCargo,
@@ -116,6 +117,34 @@ export function ChecklistPage() {
     );
   }
 
+  const [newTask, setNewTask] = useState("");
+  const [newTaskGroup, setNewTaskGroup] = useState("");
+  const allGroups = useMemo(() => [...new Set(createChecklistRun().map((item) => item.grupo))], []);
+  const defaultGroup = sectorGroups[0] ?? allGroups[0] ?? "Gestão";
+
+  async function addCustomTask() {
+    const descricao = newTask.trim();
+    if (!descricao) return;
+    const grupo = newTaskGroup || defaultGroup;
+    setNewTask("");
+    if (useRemote && runId) {
+      await createRemoteChecklistItem({ runId, grupo, descricao, responsavel: pessoa?.nome ?? "Equipe" });
+      await queryClient.invalidateQueries({ queryKey: ["checklist", dateRef] });
+      return;
+    }
+    persist([
+      ...allItems,
+      {
+        id: `custom-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+        grupo,
+        descricao,
+        responsavel: pessoa?.nome ?? "Equipe",
+        ordem: 999,
+        concluido: false,
+      },
+    ]);
+  }
+
   async function resetDay() {
     if (useRemote && runId) {
       await resetMutation.mutateAsync(runId);
@@ -189,6 +218,39 @@ export function ChecklistPage() {
               </CardContent>
             </Card>
           ) : null}
+          <Card className="border-brand-dourado/35 bg-brand-creme/25 shadow-none">
+            <CardContent className="p-4">
+              <form
+                className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(170px,220px)_auto]"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void addCustomTask();
+                }}
+              >
+                <Input
+                  value={newTask}
+                  onChange={(event) => setNewTask(event.target.value)}
+                  placeholder="Adicionar tarefa do dia (ex.: conferir entrega da Stin, ligar para paciente X...)"
+                  aria-label="Nova tarefa"
+                />
+                <select
+                  value={newTaskGroup || defaultGroup}
+                  onChange={(event) => setNewTaskGroup(event.target.value)}
+                  className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                  aria-label="Setor da tarefa"
+                >
+                  {(isCoordenacao(pessoa?.cargo) ? allGroups : sectorGroups.length ? sectorGroups : allGroups).map((grupo) => (
+                    <option key={grupo} value={grupo}>{grupo}</option>
+                  ))}
+                </select>
+                <Button type="submit" disabled={!newTask.trim()}>
+                  <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                  Adicionar
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
           {Object.entries(groupedItems).map(([grupo, groupItems], groupIndex) => (
             <motion.div
               key={grupo}

@@ -154,6 +154,24 @@ export function canComprovantes(cargo: Cargo | null | undefined) {
   return isCoordenacao(cargo) || cargo === "recepcionista";
 }
 
+// Financeiro 360 — decisão do Lucas (03/07/2026):
+// acesso total = Lucas (gestor_financeiro), Dr Daniel e Andrya (ceo);
+// gestor só visualiza (e mantém comprovantes/lembretes para lançar);
+// recepcionista só lança o dia e anexa comprovantes.
+const financeiroFullCargos: Cargo[] = ["dr_daniel", "ceo", "gestor_financeiro"];
+
+export function canFinanceiroFull(cargo: Cargo | null | undefined) {
+  return Boolean(cargo && financeiroFullCargos.includes(cargo));
+}
+
+export function canFinanceiroView(cargo: Cargo | null | undefined) {
+  return canFinanceiroFull(cargo) || cargo === "gestor";
+}
+
+export function canLancarDia(cargo: Cargo | null | undefined) {
+  return canFinanceiroFull(cargo) || cargo === "recepcionista";
+}
+
 export function canAdministracao(cargo: Cargo | null | undefined) {
   return isCoordenacao(cargo);
 }

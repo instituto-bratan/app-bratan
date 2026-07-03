@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canLembretesPagamento } from "@/lib/access";
+import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -89,6 +90,8 @@ function InvoiceQuickForm({
 }
 
 export function FinanceiroImpostosPage() {
+  const { pessoa } = useAuth();
+  const readOnly = !canFinanceiroFull(pessoa?.cargo);
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
@@ -141,7 +144,7 @@ export function FinanceiroImpostosPage() {
   }
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Financeiro · Impostos">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Impostos">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
@@ -185,7 +188,7 @@ export function FinanceiroImpostosPage() {
             <Landmark className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Imposto mensal ({month.slice(5, 7)})</p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totals.mensal)}</p>
-            <LiquidButton type="button" size="sm" className="mt-2 h-8 px-3 text-xs" disabled={monthlyGuideExists || totals.mensal <= 0} onClick={() => createGuide("MENSAL")}>
+            <LiquidButton type="button" size="sm" className={cn("mt-2 h-8 px-3 text-xs", readOnly && "hidden")} disabled={monthlyGuideExists || totals.mensal <= 0} onClick={() => createGuide("MENSAL")}>
               {monthlyGuideExists ? "Guia já lançada" : "Gerar guia mensal"}
             </LiquidButton>
           </div>
@@ -193,7 +196,7 @@ export function FinanceiroImpostosPage() {
             <Landmark className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Trimestral ({quarterRef.slice(5)})</p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(quarterTotal)}</p>
-            <LiquidButton type="button" size="sm" className="mt-2 h-8 px-3 text-xs" disabled={quarterlyGuideExists || quarterTotal <= 0} onClick={() => createGuide("TRIMESTRAL")}>
+            <LiquidButton type="button" size="sm" className={cn("mt-2 h-8 px-3 text-xs", readOnly && "hidden")} disabled={quarterlyGuideExists || quarterTotal <= 0} onClick={() => createGuide("TRIMESTRAL")}>
               {quarterlyGuideExists ? "Guia já lançada" : "Gerar guia trimestral"}
             </LiquidButton>
           </div>
@@ -225,7 +228,7 @@ export function FinanceiroImpostosPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-4">
+                  <div className={cn("mt-2 flex flex-wrap gap-4", readOnly && "hidden")}>
                     {consulta > 0 ? (
                       <InvoiceQuickForm defaultType="CONSULTA" defaultAmount={consulta} patientName={sale.patientName} saleRef={sale.id} comandaDate={sale.saleDate} onCreate={(invoice) => { financeiro.addInvoice(invoice); setFeedback(`NF ${invoice.invoiceNumber} registrada (${moneyFin(invoice.amount)}).`); }} />
                     ) : null}
@@ -284,9 +287,11 @@ export function FinanceiroImpostosPage() {
                           <td className="px-2 py-2 text-right">{moneyFin(taxes.csll)}</td>
                           <td className="px-2 py-2 text-right font-semibold text-brand-musgo">{moneyFin(taxes.total)}</td>
                           <td className="px-2 py-2">
-                            <Button type="button" variant="ghost" size="icon" aria-label={`Excluir NF ${invoice.invoiceNumber}`} onClick={() => financeiro.removeInvoice(invoice.id)}>
-                              <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            </Button>
+                            {readOnly ? null : (
+                              <Button type="button" variant="ghost" size="icon" aria-label={`Excluir NF ${invoice.invoiceNumber}`} onClick={() => financeiro.removeInvoice(invoice.id)}>
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );

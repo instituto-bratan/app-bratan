@@ -471,7 +471,7 @@ export const defaultSettings360: OperationalSettings360 = {
   },
 };
 
-export const seedInteligencia360State: Inteligencia360State = {
+export const demoInteligencia360Fixtures: Inteligencia360State = {
   weeklyTickets: [
     {
       id: "wat-001",
@@ -889,6 +889,24 @@ export function mergePrescriptionReceivables(receivables: Receivable[], prescrip
 
   return [...saleReceivables, ...receivables.filter((record) => !isSaleReceivable(record))];
 }
+
+// Sem dados fictícios: o 360 real começa vazio e é alimentado pelo CRM e Financeiro.
+// O mapa de objeções (playbook) permanece por ser conteúdo de processo.
+export const seedInteligencia360State: Inteligencia360State = {
+  weeklyTickets: [],
+  pricing: [],
+  prescriptions: [],
+  objectionPlaybook: demoInteligencia360Fixtures.objectionPlaybook,
+  journeys: [],
+  touchpoints: [],
+  retentionCohorts: [],
+  rescueWorkflows: [],
+  churnInvestigations: [],
+  experiences: [],
+  receivables: [],
+  actions: [],
+  settings: demoInteligencia360Fixtures.settings,
+};
 
 export function loadInteligencia360State() {
   return readLocalValue<Inteligencia360State>(inteligencia360StorageKey, seedInteligencia360State);

@@ -124,7 +124,7 @@ function useFilteredTasks(tasks: CrmTask[], tab: TaskTab, query: string, type: s
 
 export function CrmTasksPage() {
   const { pessoa } = useAuth();
-  const { state, persist, reset, syncMode } = useCrmState();
+  const { state, persist, syncMode } = useCrmState();
   const role = cargoToCrmRole(pessoa?.cargo);
   const summary = crmSummary(state, pessoa);
   const visibleTasks = state.tasks.filter((task) => !pessoa || canUserAccessTask(pessoa, task));
@@ -202,10 +202,6 @@ export function CrmTasksPage() {
                 Kanban <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-            <LiquidButton type="button" size="sm" onClick={reset}>
-              <RefreshCw className="h-4 w-4" />
-              Dados demo
-            </LiquidButton>
           </div>
         </div>
 

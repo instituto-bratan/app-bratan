@@ -74,7 +74,7 @@ const comprovantes = loadTsModule("src/features/comprovantes/comprovantesData.ts
 const pagamentos = loadTsModule("src/features/pagamentos/pagamentosData.ts");
 
 function cloneState() {
-  return JSON.parse(JSON.stringify(data.seedInteligencia360State));
+  return JSON.parse(JSON.stringify(data.demoInteligencia360Fixtures));
 }
 
 test("Dashboard 360 consolida dados das fontes sem modificar o estado operacional", () => {

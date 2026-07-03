@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { BrainCircuit, X } from "lucide-react";
+import { BrainCircuit, Eye, EyeOff, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
-import { canLembretesPagamento } from "@/lib/access";
+import { canFinanceiroView } from "@/lib/access";
 import { cn } from "@/lib/utils";
 import {
   buildP12Matrix,
@@ -13,24 +13,28 @@ import {
   p12MonthLabels,
   saleTotal,
   type FinCategory,
+  type P12Matrix,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
 
 type CellSelection = { category: FinCategory | null; month: number; isRevenue: boolean };
 
-function cellClass(value: number, isRevenue = false) {
-  if (value === 0) return "text-muted-foreground/50";
-  return isRevenue ? "font-semibold text-brand-musgo" : "text-brand-tinta";
+function cellValue(value: number, isRevenue = false) {
+  if (!value) return <span className="text-brand-oliva/30">—</span>;
+  return <span className={isRevenue ? "font-semibold text-brand-musgo" : "text-brand-tinta"}>{moneyFin(value)}</span>;
 }
 
 export function FinanceiroP12Page() {
   const [year, setYear] = useState(new Date().getFullYear());
+  const [monthFilter, setMonthFilter] = useState<number | null>(null);
+  const [hideEmpty, setHideEmpty] = useState(true);
   const financeiro = useFinanceiro(year);
   const matrix = useMemo(
     () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year),
     [financeiro.sales, financeiro.expenses, financeiro.categories, year],
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
+  const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
 
   const selectionEntries = useMemo(() => {
     if (!selection) return [];
@@ -64,8 +68,8 @@ export function FinanceiroP12Page() {
   }, [selection, financeiro.sales, financeiro.expenses, year]);
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Financeiro · P12">
-      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · P12">
+      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -80,13 +84,13 @@ export function FinanceiroP12Page() {
               <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
                 P12 ao vivo
                 <InfoTip title="O que é a P12 ao vivo?">
-                  A mesma matriz categoria × mês da planilha, mas 100% derivada dos lançamentos: o faturamento vem das comandas
-                  do Lançar Dia e cada categoria soma as contas lançadas nela. Clique em qualquer célula para ver a "prova viva"
-                  — os lançamentos que compõem aquele número.
+                  A matriz categoria × mês 100% derivada dos lançamentos: faturamento vem das comandas, cada categoria soma as
+                  contas lançadas nela. Clique em qualquer valor para ver a "prova viva" — os lançamentos que o compõem. Use o
+                  filtro de mês para focar em um fechamento.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Nada aqui é digitado: se um número parecer errado, corrija o lançamento de origem e a matriz acompanha.
+                Nada aqui é digitado: se um número parecer errado, corrija o lançamento de origem.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -97,54 +101,96 @@ export function FinanceiroP12Page() {
           </div>
         </motion.section>
 
-        <section className="rounded-lg border border-brand-oliva/15 bg-white/55 shadow-sm backdrop-blur-xl">
+        <section className="flex flex-wrap items-center gap-1.5 rounded-lg border border-brand-oliva/15 bg-white/50 p-2 backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setMonthFilter(null)}
+            className={cn(
+              "ios-pressable rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+              monthFilter === null ? "bg-brand-musgo text-brand-papel" : "text-brand-tinta hover:bg-white/80",
+            )}
+          >
+            Ano inteiro
+          </button>
+          {p12MonthLabels.map((label, index) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setMonthFilter((current) => (current === index ? null : index))}
+              className={cn(
+                "ios-pressable rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                monthFilter === index ? "bg-brand-musgo text-brand-papel" : "text-brand-tinta hover:bg-white/80",
+                matrix.revenueMonths[index].total === 0 && matrix.totalExpensesMonths[index] === 0 && monthFilter !== index && "text-brand-oliva/40",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="mx-1 hidden h-5 w-px bg-brand-oliva/20 sm:block" />
+          <button
+            type="button"
+            onClick={() => setHideEmpty((value) => !value)}
+            className="ios-pressable flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-brand-tinta hover:bg-white/80"
+          >
+            {hideEmpty ? <EyeOff className="h-3.5 w-3.5" aria-hidden="true" /> : <Eye className="h-3.5 w-3.5" aria-hidden="true" />}
+            {hideEmpty ? "Só categorias com valor" : "Todas as categorias"}
+          </button>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-brand-oliva/15 bg-white/60 shadow-calm backdrop-blur-xl">
           <div className="kanban-scroll overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-right text-xs">
+            <table className={cn("w-full text-right text-xs", monthFilter === null ? "min-w-[1180px]" : "min-w-[520px]")}>
               <thead>
-                <tr className="border-b border-brand-oliva/15 text-[11px] uppercase text-brand-oliva">
-                  <th className="sticky left-0 z-10 bg-brand-papel px-3 py-2.5 text-left">Categoria</th>
-                  {p12MonthLabels.map((label) => (
-                    <th key={label} className="px-2 py-2.5">{label}</th>
+                <tr className="border-b border-brand-oliva/18 bg-brand-papel/80 text-[11px] uppercase tracking-wide text-brand-oliva">
+                  <th className="sticky left-0 z-10 bg-brand-papel px-4 py-3 text-left">Categoria</th>
+                  {visibleMonths.map((month) => (
+                    <th key={month} className="px-2.5 py-3">{p12MonthLabels[month]}</th>
                   ))}
-                  <th className="px-3 py-2.5">Anual</th>
+                  <th className="px-4 py-3">Anual</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-brand-oliva/8">
-                <tr className="bg-brand-creme/40 font-semibold">
-                  <td className="sticky left-0 z-10 bg-brand-creme/90 px-3 py-2.5 text-left text-brand-musgo">FATURAMENTO BRUTO</td>
-                  {matrix.revenueMonths.map((cell, month) => (
-                    <td key={month} className="px-2 py-2.5">
+              <tbody>
+                <tr className="border-b border-brand-dourado/25 bg-brand-creme/45 font-semibold">
+                  <td className="sticky left-0 z-10 bg-brand-creme/95 px-4 py-3 text-left text-brand-musgo">FATURAMENTO BRUTO</td>
+                  {visibleMonths.map((month) => (
+                    <td key={month} className="px-2.5 py-3">
                       <button
                         type="button"
-                        className={cn("rounded px-1 py-0.5 hover:bg-white/70", cellClass(cell.total, true))}
-                        onClick={() => cell.total && setSelection({ category: null, month, isRevenue: true })}
+                        className="rounded px-1 py-0.5 hover:bg-white/80"
+                        onClick={() => matrix.revenueMonths[month].total && setSelection({ category: null, month, isRevenue: true })}
                       >
-                        {cell.total ? moneyFin(cell.total) : "—"}
+                        {cellValue(matrix.revenueMonths[month].total, true)}
                       </button>
                     </td>
                   ))}
-                  <td className="px-3 py-2.5 text-brand-musgo">{moneyFin(matrix.revenueYear)}</td>
+                  <td className="px-4 py-3 text-brand-musgo">{moneyFin(matrix.revenueYear)}</td>
                 </tr>
 
                 {matrix.groups.map((group) => (
-                  <GroupRows key={group.groupKey} group={group} onSelect={(category, month) => setSelection({ category, month, isRevenue: false })} />
+                  <GroupRows
+                    key={group.groupKey}
+                    group={group}
+                    visibleMonths={visibleMonths}
+                    hideEmpty={hideEmpty}
+                    onSelect={(category, month) => setSelection({ category, month, isRevenue: false })}
+                  />
                 ))}
 
                 <tr className="bg-brand-musgo font-semibold text-brand-papel">
-                  <td className="sticky left-0 z-10 bg-brand-musgo px-3 py-2.5 text-left">TOTAL DE DESPESAS</td>
-                  {matrix.totalExpensesMonths.map((value, month) => (
-                    <td key={month} className="px-2 py-2.5">{value ? moneyFin(value) : "—"}</td>
+                  <td className="sticky left-0 z-10 bg-brand-musgo px-4 py-3 text-left">TOTAL DE DESPESAS</td>
+                  {visibleMonths.map((month) => (
+                    <td key={month} className="px-2.5 py-3">{matrix.totalExpensesMonths[month] ? moneyFin(matrix.totalExpensesMonths[month]) : "—"}</td>
                   ))}
-                  <td className="px-3 py-2.5">{moneyFin(matrix.totalExpensesYear)}</td>
+                  <td className="px-4 py-3">{moneyFin(matrix.totalExpensesYear)}</td>
                 </tr>
-                <tr className="bg-brand-creme/60 font-bold">
-                  <td className="sticky left-0 z-10 bg-brand-creme px-3 py-2.5 text-left text-brand-musgo">LUCRO</td>
-                  {matrix.profitMonths.map((value, month) => (
-                    <td key={month} className={cn("px-2 py-2.5", value < 0 ? "text-red-700" : "text-brand-musgo")}>
-                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] ? moneyFin(value) : "—"}
+                <tr className="bg-brand-creme/70 font-bold">
+                  <td className="sticky left-0 z-10 bg-brand-creme px-4 py-3 text-left text-brand-musgo">LUCRO</td>
+                  {visibleMonths.map((month) => (
+                    <td key={month} className={cn("px-2.5 py-3", matrix.profitMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
+                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
                     </td>
                   ))}
-                  <td className={cn("px-3 py-2.5", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>
+                  <td className={cn("px-4 py-3", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>
                 </tr>
               </tbody>
             </table>
@@ -198,46 +244,53 @@ export function FinanceiroP12Page() {
 
 function GroupRows({
   group,
+  visibleMonths,
+  hideEmpty,
   onSelect,
 }: {
-  group: ReturnType<typeof buildP12Matrix>["groups"][number];
+  group: P12Matrix["groups"][number];
+  visibleMonths: number[];
+  hideEmpty: boolean;
   onSelect: (category: FinCategory, month: number) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const rows = hideEmpty ? group.rows.filter((row) => row.yearTotal !== 0) : group.rows;
+
   return (
     <>
-      <tr className="bg-white/70 font-semibold">
-        <td className="sticky left-0 z-10 bg-brand-papel px-3 py-2.5 text-left">
+      <tr className="border-y border-brand-oliva/12 bg-white/85 font-semibold">
+        <td className="sticky left-0 z-10 bg-brand-papel px-4 py-2.5 text-left">
           <button type="button" className="flex items-center gap-1.5 text-brand-musgo" onClick={() => setOpen((value) => !value)}>
-            <span className={cn("text-[10px] transition-transform", open ? "rotate-90" : "")}>▶</span>
+            <span className={cn("text-[9px] text-brand-oliva transition-transform", open ? "rotate-90" : "")}>▶</span>
             {group.label}
+            <span className="text-[10px] font-normal text-muted-foreground">({rows.length})</span>
           </button>
         </td>
-        {group.months.map((cell, month) => (
-          <td key={month} className={cn("px-2 py-2.5", cellClass(cell.total))}>{cell.total ? moneyFin(cell.total) : "—"}</td>
+        {visibleMonths.map((month) => (
+          <td key={month} className="px-2.5 py-2.5">{cellValue(group.months[month].total)}</td>
         ))}
-        <td className="px-3 py-2.5 font-bold text-brand-musgo">{moneyFin(group.yearTotal)}</td>
+        <td className="px-4 py-2.5 font-bold text-brand-musgo">{group.yearTotal ? moneyFin(group.yearTotal) : "—"}</td>
       </tr>
       {open
-        ? group.rows.map((row) => (
-            <tr key={row.category.id} className="text-[11px]">
-              <td className="sticky left-0 z-10 bg-brand-papel px-3 py-2 pl-7 text-left text-muted-foreground">
+        ? rows.map((row, index) => (
+            <tr key={row.category.id} className={cn("text-[11px]", index % 2 === 1 && "bg-brand-papel/60")}>
+              <td className={cn("sticky left-0 z-10 px-4 py-2 pl-8 text-left text-muted-foreground", index % 2 === 1 ? "bg-[#f5f2e8]" : "bg-brand-papel")}>
                 {row.category.name}
-                {row.category.isCapex ? <span className="ml-1 rounded bg-brand-creme px-1 text-[9px] font-semibold text-brand-tinta">CAPEX</span> : null}
+                {row.category.isCapex ? <span className="ml-1.5 rounded bg-brand-creme px-1 py-0.5 text-[9px] font-semibold text-brand-tinta">CAPEX</span> : null}
               </td>
-              {row.months.map((cell, month) => (
-                <td key={month} className="px-2 py-2">
+              {visibleMonths.map((month) => (
+                <td key={month} className="px-2.5 py-2">
                   <button
                     type="button"
-                    className={cn("rounded px-1 py-0.5 hover:bg-brand-creme/60", cellClass(cell.total))}
-                    onClick={() => cell.total && onSelect(row.category, month)}
-                    title={cell.count ? `${cell.count} lançamento(s)` : ""}
+                    className="rounded px-1 py-0.5 hover:bg-brand-creme/70"
+                    onClick={() => row.months[month].total && onSelect(row.category, month)}
+                    title={row.months[month].count ? `${row.months[month].count} lançamento(s)` : ""}
                   >
-                    {cell.total ? moneyFin(cell.total) : "—"}
+                    {cellValue(row.months[month].total)}
                   </button>
                 </td>
               ))}
-              <td className="px-3 py-2 font-semibold text-brand-tinta">{row.yearTotal ? moneyFin(row.yearTotal) : "—"}</td>
+              <td className="px-4 py-2 font-semibold text-brand-tinta">{row.yearTotal ? moneyFin(row.yearTotal) : "—"}</td>
             </tr>
           ))
         : null}

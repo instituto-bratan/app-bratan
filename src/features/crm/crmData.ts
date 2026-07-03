@@ -1142,7 +1142,22 @@ const seedEnrollments: CrmCadenceEnrollment[] = [
   },
 ];
 
+// Sem dados fictícios: o CRM real começa vazio (decisão do Lucas, 03/07/2026).
+// Cadências e templates permanecem — são processo, não dados inventados.
 export const seedCrmState: CrmState = {
+  contacts: [],
+  deals: [],
+  tasks: [],
+  cadences,
+  cadenceSteps,
+  cadenceEnrollments: [],
+  messageTemplates,
+  touchpoints: [],
+  timelineEvents: [],
+};
+
+// Fixtures de demonstração usados APENAS pelos testes automatizados.
+export const demoCrmFixtures: CrmState = {
   contacts: seedContacts,
   deals: seedDeals,
   tasks: seedTasks,

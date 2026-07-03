@@ -634,11 +634,6 @@ export function Inteligencia360DashboardPage() {
           <Field label="Médico" value="Todos" onChange={() => undefined} />
           <Field label="Tipo de paciente" value="Todos" onChange={() => undefined} />
           <Field label="Canal" value="Todos" onChange={() => undefined} />
-          <div className="flex items-end">
-            <Button type="button" variant="outline" className="w-full" onClick={reset}>
-              Restaurar demo
-            </Button>
-          </div>
         </CardContent>
       </Card>
 

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canComprovantes } from "@/lib/access";
+import { canLancarDia } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { contactDisplayName } from "@/features/crm/crmData";
@@ -122,12 +122,12 @@ export function FinanceiroLancarDiaPage() {
       createdAt: new Date().toISOString(),
     };
     financeiro.addSale(sale);
-    setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}.`);
+    setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}. Pode adicionar o próximo paciente.`);
     resetForm();
   }
 
   return (
-    <AccessGate allowed={canComprovantes} label="Financeiro · Lançar dia">
+    <AccessGate allowed={canLancarDia} label="Financeiro · Lançar dia">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
@@ -148,7 +148,9 @@ export function FinanceiroLancarDiaPage() {
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Registre cada comanda do dia. O resumo ao lado substitui o cartão de papel e as somas manuais.
+                Registre paciente por paciente tudo que entrou no dia anterior — ao salvar, o formulário limpa para o próximo.
+                Cada comanda vai direto para o financeiro (Fechamento, P12, NFs e repasses). Os comprovantes da maquininha
+                entram no módulo Comprovantes, como hoje.
               </p>
             </div>
             <label className="flex items-center gap-2">
@@ -312,7 +314,7 @@ export function FinanceiroLancarDiaPage() {
                   <div className="flex flex-wrap items-center gap-3">
                     <LiquidButton type="submit" size="sm">
                       <Plus className="h-4 w-4" aria-hidden="true" />
-                      Lançar comanda
+                      Lançar e adicionar próximo paciente
                     </LiquidButton>
                     <span className={cn("text-sm font-semibold", totalsMatch ? "text-brand-musgo" : "text-destructive")}>
                       Itens {moneyFin(itemsTotal)} · Pagamentos {moneyFin(paymentsTotal)}

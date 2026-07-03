@@ -30,6 +30,7 @@ const routeLoaders = {
   finPoupanca: namedPage(() => import("@/features/financeiro/FinanceiroPoupancaPage"), "FinanceiroPoupancaPage"),
   finImpostos: namedPage(() => import("@/features/financeiro/FinanceiroImpostosPage"), "FinanceiroImpostosPage"),
   finRepasses: namedPage(() => import("@/features/financeiro/FinanceiroRepassesPage"), "FinanceiroRepassesPage"),
+  finPdca: namedPage(() => import("@/features/financeiro/FinanceiroPdcaPage"), "FinanceiroPdcaPage"),
   crmTasks: namedPage(() => import("@/features/crm/CrmTasksPage"), "CrmTasksPage"),
   crmKanban: namedPage(() => import("@/features/crm/CrmKanbanPage"), "CrmKanbanPage"),
   crmContact: namedPage(() => import("@/features/crm/CrmContactProfilePage"), "CrmContactProfilePage"),
@@ -77,6 +78,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/financeiro/poupanca") return "finPoupanca";
   if (pathname === "/financeiro/impostos") return "finImpostos";
   if (pathname === "/financeiro/repasses") return "finRepasses";
+  if (pathname === "/financeiro/pdca") return "finPdca";
   if (pathname === "/crm" || pathname === "/crm/minhas-tarefas") return "crmTasks";
   if (pathname === "/crm/vendas") return "crmKanban";
   if (pathname.startsWith("/crm/contatos/")) return "crmContact";

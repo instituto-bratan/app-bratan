@@ -9,7 +9,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canLembretesPagamento } from "@/lib/access";
+import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -30,6 +31,8 @@ import {
 import { useFinanceiro } from "./useFinanceiro";
 
 export function FinanceiroRepassesPage() {
+  const { pessoa } = useAuth();
+  const readOnly = !canFinanceiroFull(pessoa?.cargo);
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const [professional, setProfessional] = useState<FinPartnerProfessional>("NUTRICIONISTA");
@@ -112,7 +115,7 @@ export function FinanceiroRepassesPage() {
   }
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Financeiro · Repasses">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Repasses">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
@@ -164,7 +167,7 @@ export function FinanceiroRepassesPage() {
           <div className={cn("rounded-lg border p-4", summary.net > 0 ? "border-brand-dourado/45 bg-brand-creme/40" : "border-emerald-200 bg-emerald-50/50")}>
             <p className="text-sm font-semibold text-brand-musgo">{summary.net >= 0 ? "A pagar à Dra" : "A receber da Dra"}</p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(Math.abs(summary.net))}</p>
-            {summary.net > 0 ? (
+            {summary.net > 0 && !readOnly ? (
               <LiquidButton type="button" size="sm" className="mt-2 h-8 px-3 text-xs" disabled={closingExists} onClick={closeMonth}>
                 <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden="true" />
                 {closingExists ? "Fechamento já lançado" : "Fechar mês e lançar na P12"}
@@ -182,7 +185,7 @@ export function FinanceiroRepassesPage() {
           </div>
         ) : null}
 
-        {suggestions.length ? (
+        {suggestions.length && !readOnly ? (
           <Card className="border-brand-dourado/40 bg-brand-creme/25">
             <CardHeader>
               <CardTitle className="text-lg">Vindos das comandas — classifique ({suggestions.length})</CardTitle>
@@ -230,9 +233,11 @@ export function FinanceiroRepassesPage() {
                       <span className={cn("text-sm font-bold", entry.kind === "PLANO" ? "text-brand-dourado" : entry.kind === "AVULSA" ? "text-emerald-700" : "text-muted-foreground")}>
                         {entry.kind === "RETORNO" ? "—" : moneyFin(entry.amount)}
                       </span>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${entry.patientName}`} onClick={() => financeiro.removePartnerEntry(entry.id)}>
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
+                      {readOnly ? null : (
+                        <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${entry.patientName}`} onClick={() => financeiro.removePartnerEntry(entry.id)}>
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -242,7 +247,7 @@ export function FinanceiroRepassesPage() {
             </CardContent>
           </Card>
 
-          <Card className="h-fit">
+          <Card className={cn("h-fit", readOnly && "hidden")}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
