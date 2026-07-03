@@ -509,3 +509,188 @@ export function loadLocalFinSavings() {
 export function saveLocalFinSavings(moves: FinSavingsMove[]) {
   writeLocalValue(finSavingsStorageKey, moves);
 }
+
+// ---------------- Sprint 3: notas fiscais/impostos e repasses ----------------
+
+export type FinInvoiceType = "CONSULTA" | "TRATAMENTO";
+export type FinPartnerProfessional = "NUTRICIONISTA" | "PSICOLOGA";
+export type FinPartnerKind = "PLANO" | "AVULSA" | "RETORNO";
+
+export type FinInvoice = {
+  id: string;
+  saleRef: string | null;
+  invoiceType: FinInvoiceType;
+  invoiceNumber: string;
+  issueDate: string;
+  comandaDate: string | null;
+  patientName: string;
+  amount: number;
+  notes: string;
+  createdAt: string;
+};
+
+export type FinPartnerEntry = {
+  id: string;
+  professional: FinPartnerProfessional;
+  entryDate: string;
+  patientName: string;
+  saleItemRef: string | null;
+  kind: FinPartnerKind;
+  amount: number;
+  notes: string;
+  createdAt: string;
+};
+
+// Alíquotas da planilha CONTROLE DE IMPOSTOS (regime atual).
+// Mensal = ISS + PIS + COFINS; Trimestral = IRPJ + CSLL.
+export const finTaxRates: Record<FinInvoiceType, { iss: number; pis: number; cofins: number; irpj: number; csll: number }> = {
+  CONSULTA: { iss: 0.02, pis: 0.0065, cofins: 0.03, irpj: 0.048, csll: 0.0288 },
+  TRATAMENTO: { iss: 0.02, pis: 0.0065, cofins: 0.03, irpj: 0.012, csll: 0.0108 },
+};
+
+export const invoiceTypeLabels: Record<FinInvoiceType, string> = {
+  CONSULTA: "Consulta / Bio / Sinal",
+  TRATAMENTO: "Tratamento",
+};
+
+export type InvoiceTaxes = {
+  iss: number;
+  pis: number;
+  cofins: number;
+  irpj: number;
+  csll: number;
+  mensal: number;
+  trimestral: number;
+  total: number;
+};
+
+export function invoiceTaxes(invoiceType: FinInvoiceType, amount: number): InvoiceTaxes {
+  const rates = finTaxRates[invoiceType];
+  const iss = amount * rates.iss;
+  const pis = amount * rates.pis;
+  const cofins = amount * rates.cofins;
+  const irpj = amount * rates.irpj;
+  const csll = amount * rates.csll;
+  const mensal = iss + pis + cofins;
+  const trimestral = irpj + csll;
+  return { iss, pis, cofins, irpj, csll, mensal, trimestral, total: mensal + trimestral };
+}
+
+export function quarterOfMonth(month: string) {
+  const quarter = Math.ceil(Number(month.slice(5, 7)) / 3);
+  return `${month.slice(0, 4)}-Q${quarter}`;
+}
+
+export function quarterMonths(quarterRef: string) {
+  const year = quarterRef.slice(0, 4);
+  const quarter = Number(quarterRef.slice(6));
+  return [1, 2, 3].map((offset) => `${year}-${String((quarter - 1) * 3 + offset).padStart(2, "0")}`);
+}
+
+export function monthlyTaxExpenseRef(month: string) {
+  return `fexp-imp-mensal-${month}`;
+}
+
+export function quarterlyTaxExpenseRef(quarterRef: string) {
+  return `fexp-imp-trim-${quarterRef}`;
+}
+
+export function partnerClosingExpenseRef(professional: FinPartnerProfessional, month: string) {
+  return `fexp-repasse-${professional.toLowerCase()}-${month}`;
+}
+
+export type MonthInvoiceTotals = {
+  count: number;
+  amount: number;
+  mensal: number;
+  trimestral: number;
+  byType: Record<FinInvoiceType, { count: number; amount: number }>;
+};
+
+export function monthInvoiceTotals(invoices: FinInvoice[], month: string): MonthInvoiceTotals {
+  const totals: MonthInvoiceTotals = {
+    count: 0,
+    amount: 0,
+    mensal: 0,
+    trimestral: 0,
+    byType: { CONSULTA: { count: 0, amount: 0 }, TRATAMENTO: { count: 0, amount: 0 } },
+  };
+  for (const invoice of invoices) {
+    if (invoice.issueDate.slice(0, 7) !== month) continue;
+    const taxes = invoiceTaxes(invoice.invoiceType, invoice.amount);
+    totals.count += 1;
+    totals.amount += invoice.amount;
+    totals.mensal += taxes.mensal;
+    totals.trimestral += taxes.trimestral;
+    totals.byType[invoice.invoiceType].count += 1;
+    totals.byType[invoice.invoiceType].amount += invoice.amount;
+  }
+  return totals;
+}
+
+export function quarterTrimestralTotal(invoices: FinInvoice[], quarterRef: string) {
+  return quarterMonths(quarterRef).reduce((sum, month) => sum + monthInvoiceTotals(invoices, month).trimestral, 0);
+}
+
+// Comandas do mês que ainda não têm NF registrada (itens do Instituto; psi/nutri ficam fora).
+export function salesPendingInvoice(sales: FinSale[], invoices: FinInvoice[], month: string) {
+  const invoicedSales = new Set(invoices.filter((invoice) => invoice.saleRef).map((invoice) => invoice.saleRef));
+  return sales
+    .filter((sale) => sale.saleDate.slice(0, 7) === month)
+    .filter((sale) => !invoicedSales.has(sale.id))
+    .map((sale) => {
+      const consulta = sale.items
+        .filter((item) => consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO")
+        .reduce((sum, item) => sum + item.amount, 0);
+      const tratamento = sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
+      return { sale, consulta, tratamento };
+    })
+    .filter((entry) => entry.consulta > 0 || entry.tratamento > 0);
+}
+
+export const partnerProfessionalLabels: Record<FinPartnerProfessional, string> = {
+  NUTRICIONISTA: "Dra. Géssica (Nutricionista)",
+  PSICOLOGA: "Barbara (Psicóloga)",
+};
+
+export const partnerKindLabels: Record<FinPartnerKind, string> = {
+  PLANO: "Plano de acompanhamento",
+  AVULSA: "Consulta avulsa (paciente da Dra.)",
+  RETORNO: "Retorno (sem repasse)",
+};
+
+// Regras do fechamento: plano R$110 Instituto→Dra; avulsa R$150 Dra→Instituto; retorno sem repasse.
+export const partnerKindDefaults: Record<FinPartnerKind, { amount: number; direction: "INSTITUTO_PARA_DRA" | "DRA_PARA_INSTITUTO" | "SEM_REPASSE" }> = {
+  PLANO: { amount: 110, direction: "INSTITUTO_PARA_DRA" },
+  AVULSA: { amount: 150, direction: "DRA_PARA_INSTITUTO" },
+  RETORNO: { amount: 0, direction: "SEM_REPASSE" },
+};
+
+export type PartnerMonthSummary = {
+  institutoParaDra: number;
+  draParaInstituto: number;
+  net: number;
+  entries: FinPartnerEntry[];
+};
+
+export function partnerMonthSummary(entries: FinPartnerEntry[], professional: FinPartnerProfessional, month: string): PartnerMonthSummary {
+  const monthEntries = entries.filter((entry) => entry.professional === professional && entry.entryDate.slice(0, 7) === month);
+  const institutoParaDra = monthEntries.filter((entry) => entry.kind === "PLANO").reduce((sum, entry) => sum + entry.amount, 0);
+  const draParaInstituto = monthEntries.filter((entry) => entry.kind === "AVULSA").reduce((sum, entry) => sum + entry.amount, 0);
+  return { institutoParaDra, draParaInstituto, net: institutoParaDra - draParaInstituto, entries: monthEntries };
+}
+
+// Itens psi/nutri lançados nas comandas que ainda não foram classificados no fechamento.
+export function partnerSuggestions(sales: FinSale[], entries: FinPartnerEntry[], professional: FinPartnerProfessional, month: string) {
+  const itemType: FinSaleItemType = professional === "NUTRICIONISTA" ? "NUTRICIONISTA" : "PSICOLOGA";
+  const classified = new Set(entries.filter((entry) => entry.saleItemRef).map((entry) => entry.saleItemRef));
+  const suggestions: { saleItemRef: string; date: string; patientName: string; amount: number }[] = [];
+  for (const sale of sales) {
+    if (sale.saleDate.slice(0, 7) !== month) continue;
+    for (const item of sale.items) {
+      if (item.itemType !== itemType || classified.has(item.id)) continue;
+      suggestions.push({ saleItemRef: item.id, date: sale.saleDate, patientName: sale.patientName, amount: item.amount });
+    }
+  }
+  return suggestions;
+}

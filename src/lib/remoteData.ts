@@ -15,7 +15,7 @@ import {
   type GamificationProfile,
 } from "@/features/estalecas/estalecasData";
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
-import type { FinCategory, FinExpense, FinProvisionRule, FinReconciliation, FinSale, FinSavingsMove } from "@/features/financeiro/financeiroData";
+import type { FinCategory, FinExpense, FinInvoice, FinPartnerEntry, FinProvisionRule, FinReconciliation, FinSale, FinSavingsMove } from "@/features/financeiro/financeiroData";
 import {
   defaultObsidianConfig,
   obsidianConfigFromSettingsRow,
@@ -3042,4 +3042,107 @@ export async function listRemoteFinProvisionRules(): Promise<FinProvisionRule[]>
     sortOrder: Number(row.sort_order ?? 0),
     active: Boolean(row.active),
   }));
+}
+
+export async function listRemoteFinInvoices(year: number): Promise<FinInvoice[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_invoices")
+    .select("client_ref, sale_ref, invoice_type, invoice_number, issue_date, comanda_date, patient_name, amount, notes, created_at")
+    .gte("issue_date", `${year}-01-01`)
+    .lte("issue_date", `${year}-12-31`)
+    .is("deleted_at", null)
+    .order("issue_date", { ascending: false });
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    saleRef: (row.sale_ref as string | null) ?? null,
+    invoiceType: row.invoice_type as FinInvoice["invoiceType"],
+    invoiceNumber: String(row.invoice_number ?? ""),
+    issueDate: String(row.issue_date),
+    comandaDate: (row.comanda_date as string | null) ?? null,
+    patientName: String(row.patient_name ?? ""),
+    amount: Number(row.amount ?? 0),
+    notes: String(row.notes ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
+export async function createRemoteFinInvoice(invoice: FinInvoice, createdBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_invoices").insert({
+    client_ref: invoice.id,
+    sale_ref: invoice.saleRef,
+    invoice_type: invoice.invoiceType,
+    invoice_number: invoice.invoiceNumber,
+    issue_date: invoice.issueDate,
+    comanda_date: invoice.comandaDate,
+    patient_name: invoice.patientName,
+    amount: invoice.amount,
+    notes: invoice.notes,
+    created_by: uuidOrNull(createdBy),
+  });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.nf.registrar",
+    entity: "fin_invoices",
+    entityId: invoice.id,
+    metadata: { invoiceType: invoice.invoiceType, amount: invoice.amount, invoiceNumber: invoice.invoiceNumber },
+  });
+}
+
+export async function deleteRemoteFinInvoice(invoiceRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_invoices").update({ deleted_at: new Date().toISOString() }).eq("client_ref", invoiceRef);
+  if (error) throw error;
+}
+
+export async function listRemoteFinPartnerEntries(year: number): Promise<FinPartnerEntry[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_partner_entries")
+    .select("client_ref, professional, entry_date, patient_name, sale_item_ref, kind, amount, notes, created_at")
+    .gte("entry_date", `${year}-01-01`)
+    .lte("entry_date", `${year}-12-31`)
+    .is("deleted_at", null)
+    .order("entry_date", { ascending: false });
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    professional: row.professional as FinPartnerEntry["professional"],
+    entryDate: String(row.entry_date),
+    patientName: String(row.patient_name ?? ""),
+    saleItemRef: (row.sale_item_ref as string | null) ?? null,
+    kind: row.kind as FinPartnerEntry["kind"],
+    amount: Number(row.amount ?? 0),
+    notes: String(row.notes ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
+export async function createRemoteFinPartnerEntry(entry: FinPartnerEntry, createdBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_partner_entries").upsert(
+    {
+      client_ref: entry.id,
+      professional: entry.professional,
+      entry_date: entry.entryDate,
+      patient_name: entry.patientName,
+      sale_item_ref: entry.saleItemRef,
+      kind: entry.kind,
+      amount: entry.amount,
+      notes: entry.notes,
+      created_by: uuidOrNull(createdBy),
+    },
+    { onConflict: "client_ref", ignoreDuplicates: true },
+  );
+  if (error) throw error;
+}
+
+export async function deleteRemoteFinPartnerEntry(entryRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_partner_entries").update({ deleted_at: new Date().toISOString() }).eq("client_ref", entryRef);
+  if (error) throw error;
 }

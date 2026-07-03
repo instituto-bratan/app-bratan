@@ -5,12 +5,18 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   createRemoteFinExpense,
   createRemoteFinSale,
+  createRemoteFinInvoice,
+  createRemoteFinPartnerEntry,
   createRemoteFinSavingsMoves,
   deleteRemoteFinExpense,
   deleteRemoteFinSale,
+  deleteRemoteFinInvoice,
+  deleteRemoteFinPartnerEntry,
   deleteRemoteFinSavingsMove,
   listRemoteFinCategories,
   listRemoteFinExpenses,
+  listRemoteFinInvoices,
+  listRemoteFinPartnerEntries,
   listRemoteFinProvisionRules,
   listRemoteFinReconciliations,
   listRemoteFinSales,
@@ -30,6 +36,8 @@ import {
   seedFinCategories,
   seedProvisionRules,
   type FinExpense,
+  type FinInvoice,
+  type FinPartnerEntry,
   type FinReconciliation,
   type FinSale,
   type FinSavingsMove,
@@ -43,6 +51,8 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   const [expenses, setExpenses] = useState<FinExpense[]>(() => loadLocalFinExpenses());
   const [reconciliations, setReconciliations] = useState<FinReconciliation[]>(() => loadLocalFinReconciliations());
   const [savingsMoves, setSavingsMoves] = useState<FinSavingsMove[]>(() => loadLocalFinSavings());
+  const [invoices, setInvoices] = useState<FinInvoice[]>([]);
+  const [partnerEntries, setPartnerEntries] = useState<FinPartnerEntry[]>([]);
 
   const categoriesQuery = useQuery({
     queryKey: ["fin-categories"],
@@ -105,6 +115,27 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     setSavingsMoves(savingsQuery.data);
     saveLocalFinSavings(savingsQuery.data);
   }, [savingsQuery.data]);
+
+  const invoicesQuery = useQuery({
+    queryKey: ["fin-invoices", year],
+    queryFn: () => listRemoteFinInvoices(year),
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+  const partnerEntriesQuery = useQuery({
+    queryKey: ["fin-partner-entries", year],
+    queryFn: () => listRemoteFinPartnerEntries(year),
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (invoicesQuery.data) setInvoices(invoicesQuery.data);
+  }, [invoicesQuery.data]);
+
+  useEffect(() => {
+    if (partnerEntriesQuery.data) setPartnerEntries(partnerEntriesQuery.data);
+  }, [partnerEntriesQuery.data]);
 
   const invalidate = (key: string) => void queryClient.invalidateQueries({ queryKey: [key, year] });
 
@@ -211,6 +242,38 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
+  function addInvoice(invoice: FinInvoice) {
+    setInvoices((current) => [invoice, ...current]);
+    if (useRemote) {
+      void createRemoteFinInvoice(invoice, pessoa?.id ?? null)
+        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-invoices", year] }))
+        .catch((error) => console.warn("NF não sincronizou.", error));
+    }
+  }
+
+  function removeInvoice(invoiceId: string) {
+    setInvoices((current) => current.filter((invoice) => invoice.id !== invoiceId));
+    if (useRemote) {
+      void deleteRemoteFinInvoice(invoiceId).catch((error) => console.warn("Exclusão de NF não sincronizou.", error));
+    }
+  }
+
+  function addPartnerEntry(entry: FinPartnerEntry) {
+    setPartnerEntries((current) => (current.some((item) => item.id === entry.id) ? current : [entry, ...current]));
+    if (useRemote) {
+      void createRemoteFinPartnerEntry(entry, pessoa?.id ?? null)
+        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-partner-entries", year] }))
+        .catch((error) => console.warn("Repasse não sincronizou.", error));
+    }
+  }
+
+  function removePartnerEntry(entryId: string) {
+    setPartnerEntries((current) => current.filter((entry) => entry.id !== entryId));
+    if (useRemote) {
+      void deleteRemoteFinPartnerEntry(entryId).catch((error) => console.warn("Exclusão de repasse não sincronizou.", error));
+    }
+  }
+
   function removeExpense(expenseId: string) {
     setExpenses((current) => {
       const next = current.filter((expense) => expense.id !== expenseId);
@@ -228,6 +291,8 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     expenses,
     reconciliations,
     savingsMoves,
+    invoices,
+    partnerEntries,
     provisionRules: provisionRulesQuery.data?.length ? provisionRulesQuery.data : seedProvisionRules,
     categories: categoriesQuery.data?.length ? categoriesQuery.data : seedFinCategories,
     addSale,
@@ -238,6 +303,10 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     saveReconciliation,
     addSavingsMoves,
     removeSavingsMove,
+    addInvoice,
+    removeInvoice,
+    addPartnerEntry,
+    removePartnerEntry,
     syncMode: useRemote ? "Supabase + local" : "Somente local",
     isSyncing: salesQuery.isFetching || expensesQuery.isFetching,
   };

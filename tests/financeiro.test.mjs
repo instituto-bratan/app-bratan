@@ -143,3 +143,70 @@ test("provisões do mês são idempotentes por referência determinística", () 
   assert.equal(fin.monthProvisionsDone(moves, "2026-08"), false);
   assert.equal(fin.seedProvisionRules.length, 7);
 });
+
+test("impostos de consulta batem com a planilha (NF 5927: R$ 200)", () => {
+  const taxes = fin.invoiceTaxes("CONSULTA", 200);
+  assert.ok(Math.abs(taxes.iss - 4) < 0.001);
+  assert.ok(Math.abs(taxes.pis - 1.3) < 0.001);
+  assert.ok(Math.abs(taxes.cofins - 6) < 0.001);
+  assert.ok(Math.abs(taxes.irpj - 9.6) < 0.001);
+  assert.ok(Math.abs(taxes.csll - 5.76) < 0.001);
+  assert.ok(Math.abs(taxes.total - 200 * 0.1333) < 0.01);
+});
+
+test("impostos de tratamento batem com a planilha (NF 5928: R$ 4.720)", () => {
+  const taxes = fin.invoiceTaxes("TRATAMENTO", 4720);
+  assert.ok(Math.abs(taxes.iss - 94.4) < 0.001);
+  assert.ok(Math.abs(taxes.pis - 30.68) < 0.001);
+  assert.ok(Math.abs(taxes.cofins - 141.6) < 0.001);
+  assert.ok(Math.abs(taxes.irpj - 56.64) < 0.001);
+  assert.ok(Math.abs(taxes.csll - 50.976) < 0.001);
+  assert.ok(Math.abs(taxes.mensal - (94.4 + 30.68 + 141.6)) < 0.001);
+  assert.ok(Math.abs(taxes.trimestral - (56.64 + 50.976)) < 0.001);
+});
+
+test("trimestre agrega os meses certos e refs de guia são determinísticas", () => {
+  assert.equal(fin.quarterOfMonth("2026-06"), "2026-Q2");
+  assert.deepEqual([...fin.quarterMonths("2026-Q2")], ["2026-04", "2026-05", "2026-06"]);
+  assert.equal(fin.monthlyTaxExpenseRef("2026-06"), "fexp-imp-mensal-2026-06");
+  assert.equal(fin.quarterlyTaxExpenseRef("2026-Q2"), "fexp-imp-trim-2026-Q2");
+  const invoices = [
+    { id: "n1", saleRef: null, invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-04-10", comandaDate: null, patientName: "", amount: 1000, notes: "", createdAt: "" },
+    { id: "n2", saleRef: null, invoiceType: "CONSULTA", invoiceNumber: "2", issueDate: "2026-06-10", comandaDate: null, patientName: "", amount: 1000, notes: "", createdAt: "" },
+    { id: "n3", saleRef: null, invoiceType: "CONSULTA", invoiceNumber: "3", issueDate: "2026-07-10", comandaDate: null, patientName: "", amount: 1000, notes: "", createdAt: "" },
+  ];
+  const trimestral = fin.quarterTrimestralTotal(invoices, "2026-Q2");
+  assert.ok(Math.abs(trimestral - 2 * 1000 * (0.048 + 0.0288)) < 0.001);
+});
+
+test("fechamento das doutoras: plano soma Instituto→Dra e avulsa Dra→Instituto", () => {
+  const entries = [
+    { id: "p1", professional: "NUTRICIONISTA", entryDate: "2026-06-02", patientName: "Simone", saleItemRef: null, kind: "PLANO", amount: 110, notes: "", createdAt: "" },
+    { id: "p2", professional: "NUTRICIONISTA", entryDate: "2026-06-09", patientName: "Carlos", saleItemRef: null, kind: "AVULSA", amount: 150, notes: "", createdAt: "" },
+    { id: "p3", professional: "NUTRICIONISTA", entryDate: "2026-06-30", patientName: "Gabriela", saleItemRef: null, kind: "RETORNO", amount: 0, notes: "", createdAt: "" },
+    { id: "p4", professional: "PSICOLOGA", entryDate: "2026-06-10", patientName: "Outra", saleItemRef: null, kind: "PLANO", amount: 110, notes: "", createdAt: "" },
+    { id: "p5", professional: "NUTRICIONISTA", entryDate: "2026-07-01", patientName: "Fora do mês", saleItemRef: null, kind: "PLANO", amount: 110, notes: "", createdAt: "" },
+  ];
+  const summary = fin.partnerMonthSummary(entries, "NUTRICIONISTA", "2026-06");
+  assert.equal(summary.institutoParaDra, 110);
+  assert.equal(summary.draParaInstituto, 150);
+  assert.equal(summary.net, -40);
+  assert.equal(summary.entries.length, 3);
+  assert.equal(fin.partnerClosingExpenseRef("NUTRICIONISTA", "2026-06"), "fexp-repasse-nutricionista-2026-06");
+});
+
+test("comandas sem NF listam valores sugeridos por tipo e itens psi/nutri geram sugestões de repasse", () => {
+  const sales = [
+    sale("2026-07-02", [["CONSULTA", 500], ["TRATAMENTO", 2719.5], ["PSICOLOGA", 2180.5]], [["PIX", 5400]], "sA"),
+    sale("2026-07-03", [["PSICOLOGA", 300]], [["PIX", 300]], "sB"),
+  ];
+  const pending = fin.salesPendingInvoice(sales, [], "2026-07");
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].consulta, 500);
+  assert.equal(pending[0].tratamento, 2719.5);
+  const invoiced = fin.salesPendingInvoice(sales, [{ id: "n", saleRef: "sA", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 500, notes: "", createdAt: "" }], "2026-07");
+  assert.equal(invoiced.length, 0);
+  const suggestions = fin.partnerSuggestions(sales, [], "PSICOLOGA", "2026-07");
+  assert.equal(suggestions.length, 2);
+  assert.equal(fin.partnerSuggestions(sales, [{ id: "e", professional: "PSICOLOGA", entryDate: "2026-07-02", patientName: "", saleItemRef: suggestions[0].saleItemRef, kind: "PLANO", amount: 110, notes: "", createdAt: "" }], "PSICOLOGA", "2026-07").length, 1);
+});
