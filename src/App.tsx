@@ -15,6 +15,9 @@ const PopsFluxosPage = lazyRoute("popsFluxos");
 const ComprovantesPage = lazyRoute("comprovantes");
 const EstalecasPage = lazyRoute("estalecas");
 const PagamentosPage = lazyRoute("pagamentos");
+const FinanceiroLancarDiaPage = lazyRoute("finLancarDia");
+const FinanceiroContasPage = lazyRoute("finContas");
+const FinanceiroP12Page = lazyRoute("finP12");
 const CrmTasksPage = lazyRoute("crmTasks");
 const CrmKanbanPage = lazyRoute("crmKanban");
 const CrmContactProfilePage = lazyRoute("crmContact");
@@ -58,6 +61,10 @@ export function App() {
               <Route path="/comprovantes" element={<ComprovantesPage />} />
               <Route path="/estalecas" element={<EstalecasPage />} />
               <Route path="/lembretes-pagamento" element={<PagamentosPage />} />
+              <Route path="/financeiro" element={<Navigate to="/financeiro/lancar-dia" replace />} />
+              <Route path="/financeiro/lancar-dia" element={<FinanceiroLancarDiaPage />} />
+              <Route path="/financeiro/contas" element={<FinanceiroContasPage />} />
+              <Route path="/financeiro/p12" element={<FinanceiroP12Page />} />
               <Route path="/crm" element={<Navigate to="/crm/minhas-tarefas" replace />} />
               <Route path="/crm/minhas-tarefas" element={<CrmTasksPage />} />
               <Route path="/crm/vendas" element={<CrmKanbanPage />} />

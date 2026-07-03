@@ -15,6 +15,7 @@ import {
   type GamificationProfile,
 } from "@/features/estalecas/estalecasData";
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
+import type { FinCategory, FinExpense, FinSale } from "@/features/financeiro/financeiroData";
 import {
   defaultObsidianConfig,
   obsidianConfigFromSettingsRow,
@@ -2739,4 +2740,183 @@ export async function appendRemoteObsidianExport(values: {
       queueItems: values.queueItems.length,
     },
   });
+}
+
+// ---------------- Financeiro 360 ----------------
+
+export async function listRemoteFinCategories(): Promise<FinCategory[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_categories")
+    .select("client_ref, group_key, name, sort_order, is_capex, active")
+    .eq("active", true)
+    .order("group_key")
+    .order("sort_order");
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    groupKey: row.group_key as FinCategory["groupKey"],
+    name: String(row.name),
+    sortOrder: Number(row.sort_order ?? 0),
+    isCapex: Boolean(row.is_capex),
+    active: Boolean(row.active),
+  }));
+}
+
+export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_sales")
+    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, created_at, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine)")
+    .gte("sale_date", `${year}-01-01`)
+    .lte("sale_date", `${year}-12-31`)
+    .is("deleted_at", null)
+    .order("sale_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, any>[]).map((row) => ({
+    id: String(row.client_ref),
+    saleDate: String(row.sale_date),
+    patientName: String(row.patient_name ?? ""),
+    crmContactRef: String(row.crm_contact_ref ?? ""),
+    notes: String(row.notes ?? ""),
+    createdAt: String(row.created_at ?? ""),
+    items: ((row.fin_sale_items ?? []) as Record<string, unknown>[]).map((item) => ({
+      id: String(item.client_ref),
+      itemType: item.item_type as FinSale["items"][number]["itemType"],
+      amount: Number(item.amount ?? 0),
+      description: String(item.description ?? ""),
+    })),
+    payments: ((row.fin_sale_payments ?? []) as Record<string, unknown>[]).map((payment) => ({
+      id: String(payment.client_ref),
+      method: payment.method as FinSale["payments"][number]["method"],
+      amount: Number(payment.amount ?? 0),
+      installments: Number(payment.installments ?? 1),
+      cardMachine: (payment.card_machine as FinSale["payments"][number]["cardMachine"]) ?? null,
+    })),
+  }));
+}
+
+export async function createRemoteFinSale(sale: FinSale, createdBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_sales").insert({
+    client_ref: sale.id,
+    sale_date: sale.saleDate,
+    patient_name: sale.patientName,
+    crm_contact_ref: sale.crmContactRef || null,
+    notes: sale.notes,
+    created_by: uuidOrNull(createdBy),
+  });
+  if (error) throw error;
+
+  if (sale.items.length) {
+    const { error: itemsError } = await client.from("fin_sale_items").insert(
+      sale.items.map((item) => ({
+        client_ref: item.id,
+        sale_ref: sale.id,
+        item_type: item.itemType,
+        amount: item.amount,
+        description: item.description,
+      })),
+    );
+    if (itemsError) throw itemsError;
+  }
+
+  if (sale.payments.length) {
+    const { error: paymentsError } = await client.from("fin_sale_payments").insert(
+      sale.payments.map((payment) => ({
+        client_ref: payment.id,
+        sale_ref: sale.id,
+        method: payment.method,
+        amount: payment.amount,
+        installments: payment.installments,
+        card_machine: payment.cardMachine ?? null,
+      })),
+    );
+    if (paymentsError) throw paymentsError;
+  }
+
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.venda.lancar",
+    entity: "fin_sales",
+    metadata: { saleDate: sale.saleDate, items: sale.items.length, total: sale.items.reduce((sum, item) => sum + item.amount, 0) },
+  });
+}
+
+export async function deleteRemoteFinSale(saleRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_sales").update({ deleted_at: new Date().toISOString() }).eq("client_ref", saleRef);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "financeiro.venda.excluir", entity: "fin_sales", entityId: saleRef });
+}
+
+export async function listRemoteFinExpenses(year: number): Promise<FinExpense[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_expenses")
+    .select("client_ref, description, category_ref, amount, due_date, paid_at, method, supplier, installment_num, installment_total, document_note, is_capex, notes, created_at")
+    .gte("due_date", `${year}-01-01`)
+    .lte("due_date", `${year}-12-31`)
+    .is("deleted_at", null)
+    .order("due_date", { ascending: true });
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    description: String(row.description ?? ""),
+    categoryRef: String(row.category_ref ?? ""),
+    amount: Number(row.amount ?? 0),
+    dueDate: String(row.due_date),
+    paidAt: (row.paid_at as string | null) ?? null,
+    method: (row.method as FinExpense["method"]) ?? null,
+    supplier: String(row.supplier ?? ""),
+    installmentNum: row.installment_num == null ? null : Number(row.installment_num),
+    installmentTotal: row.installment_total == null ? null : Number(row.installment_total),
+    documentNote: String(row.document_note ?? ""),
+    isCapex: Boolean(row.is_capex),
+    notes: String(row.notes ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
+export async function createRemoteFinExpense(expense: FinExpense, createdBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_expenses").insert({
+    client_ref: expense.id,
+    description: expense.description,
+    category_ref: expense.categoryRef,
+    amount: expense.amount,
+    due_date: expense.dueDate,
+    paid_at: expense.paidAt,
+    method: expense.method,
+    supplier: expense.supplier,
+    installment_num: expense.installmentNum,
+    installment_total: expense.installmentTotal,
+    document_note: expense.documentNote,
+    is_capex: expense.isCapex,
+    notes: expense.notes,
+    created_by: uuidOrNull(createdBy),
+  });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.despesa.lancar",
+    entity: "fin_expenses",
+    entityId: expense.id,
+    metadata: { category: expense.categoryRef, amount: expense.amount, dueDate: expense.dueDate },
+  });
+}
+
+export async function markRemoteFinExpensePaid(expenseRef: string, paidAt: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_expenses").update({ paid_at: paidAt }).eq("client_ref", expenseRef);
+  if (error) throw error;
+}
+
+export async function deleteRemoteFinExpense(expenseRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_expenses").update({ deleted_at: new Date().toISOString() }).eq("client_ref", expenseRef);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "financeiro.despesa.excluir", entity: "fin_expenses", entityId: expenseRef });
 }

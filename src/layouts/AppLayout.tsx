@@ -107,11 +107,14 @@ const flowGroups: FlowGroup[] = [
   },
   {
     label: "Financeiro",
-    detail: "combinados e pendências",
-    href: "/lembretes-pagamento",
+    detail: "caixa, contas e P12",
+    href: "/financeiro/lancar-dia",
     icon: CalendarClock,
-    allowed: canLembretesPagamento,
+    allowed: canComprovantes,
     entries: [
+      { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canComprovantes },
+      { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento },
+      { label: "P12 ao vivo", shortLabel: "P12", href: "/financeiro/p12", icon: CircleDollarSign, allowed: canLembretesPagamento },
       { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
     ],
   },

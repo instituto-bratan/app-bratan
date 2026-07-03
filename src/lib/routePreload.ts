@@ -23,6 +23,9 @@ const routeLoaders = {
   comprovantes: namedPage(() => import("@/features/comprovantes/ComprovantesPage"), "ComprovantesPage"),
   estalecas: namedPage(() => import("@/features/estalecas/EstalecasPage"), "EstalecasPage"),
   pagamentos: namedPage(() => import("@/features/pagamentos/PagamentosPage"), "PagamentosPage"),
+  finLancarDia: namedPage(() => import("@/features/financeiro/FinanceiroLancarDiaPage"), "FinanceiroLancarDiaPage"),
+  finContas: namedPage(() => import("@/features/financeiro/FinanceiroContasPage"), "FinanceiroContasPage"),
+  finP12: namedPage(() => import("@/features/financeiro/FinanceiroP12Page"), "FinanceiroP12Page"),
   crmTasks: namedPage(() => import("@/features/crm/CrmTasksPage"), "CrmTasksPage"),
   crmKanban: namedPage(() => import("@/features/crm/CrmKanbanPage"), "CrmKanbanPage"),
   crmContact: namedPage(() => import("@/features/crm/CrmContactProfilePage"), "CrmContactProfilePage"),
@@ -63,6 +66,9 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/comprovantes") return "comprovantes";
   if (pathname === "/estalecas") return "estalecas";
   if (pathname === "/lembretes-pagamento") return "pagamentos";
+  if (pathname === "/financeiro" || pathname === "/financeiro/lancar-dia") return "finLancarDia";
+  if (pathname === "/financeiro/contas") return "finContas";
+  if (pathname === "/financeiro/p12") return "finP12";
   if (pathname === "/crm" || pathname === "/crm/minhas-tarefas") return "crmTasks";
   if (pathname === "/crm/vendas") return "crmKanban";
   if (pathname.startsWith("/crm/contatos/")) return "crmContact";
