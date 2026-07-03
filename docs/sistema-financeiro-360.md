@@ -36,13 +36,13 @@ O que sobra é **conciliação** (bater com extrato Itaú/comprovantes) e **vis�
 - `fin_payments` — venda × forma (PIX, CARTAO_CREDITO/DEBITO com bandeira/maquininha/parcelas, DINHEIRO), valor, taxa estimada, conciliado_em.
 - `fin_expenses` — descrição, categoria_id (P12), valor, vencimento, pagamento, forma, fornecedor, parcela n/N, NF (comprovante_id → módulo Comprovantes já existente!), recorrente, origem (MANUAL, CARTAO_FATURA, IMPOSTO_GUIA, REPASSE).
 - `fin_invoices` (NF) — sale_id, tipo (CONSULTA/TRATAMENTO), nº nota, data emissão, valor; alíquotas em `fin_tax_rates` versionadas; impostos calculados por trigger/derivação.
-- `fin_provisions` — regras mensais (valores da aba Provisionamentos) + `fin_savings_moves` (entrada/saída poupança com motivo) → saldo derivado.
+- `fin_provisions` — regras mensais (valores da aba Provisionamentos) usadas como **sugestão**: no fechamento do mês a coordenação revisa, edita ou zera cada linha e confirma manualmente (decisão do Lucas: nem sempre todos os valores são provisionados). + `fin_savings_moves` (entrada/saída poupança com motivo) → saldo derivado.
 - `fin_reconciliations` — dia × conta (Itaú/Safra/Santander): esperado (derivado) vs extrato (informado/CSV), status.
 - `fin_partner_rules` — regras de repasse (plano R$110 Instituto→Dra; avulso R$150 Dra→Instituto; retorno 0) versionadas.
 
 ## Telas (Financeiro 360)
 
-1. **Lançar dia** (recepção/financeiro): registrar comandas do dia em segundos — paciente (busca no CRM), itens, formas de pgto. Sem duplicar: se veio de deal do Kanban fechado, já sugere valores.
+1. **Lançar dia** (recepção/financeiro): a versão digital do cartão verde diário — uma linha por paciente (autocomplete do CRM), itens (consulta/tratamento/sinal/psi/nutri), forma de pagamento. O app calcula o cartão inteiro (totais por forma e por tipo, total diário) e alimenta ENTRADA, PDCA, NFs e repasses. Se veio de deal do Kanban fechado, já sugere valores. Notas livres por lançamento (ex.: "NF unificada", "+11% imposto").
 2. **Contas a pagar**: fila por vencimento com categoria P12 obrigatória, anexo de NF via módulo Comprovantes, recorrências.
 3. **Fechamento do dia** (o "bate"): esperado × Itaú por forma de pagamento, checklist de conciliação, divergências em vermelho.
 4. **P12 ao vivo**: a matriz categoria × mês idêntica à planilha, mas 100% derivada — clicou na célula, vê os lançamentos que a compõem (prova viva automática).
