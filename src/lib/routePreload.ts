@@ -26,6 +26,8 @@ const routeLoaders = {
   finLancarDia: namedPage(() => import("@/features/financeiro/FinanceiroLancarDiaPage"), "FinanceiroLancarDiaPage"),
   finContas: namedPage(() => import("@/features/financeiro/FinanceiroContasPage"), "FinanceiroContasPage"),
   finP12: namedPage(() => import("@/features/financeiro/FinanceiroP12Page"), "FinanceiroP12Page"),
+  finFechamento: namedPage(() => import("@/features/financeiro/FinanceiroFechamentoPage"), "FinanceiroFechamentoPage"),
+  finPoupanca: namedPage(() => import("@/features/financeiro/FinanceiroPoupancaPage"), "FinanceiroPoupancaPage"),
   crmTasks: namedPage(() => import("@/features/crm/CrmTasksPage"), "CrmTasksPage"),
   crmKanban: namedPage(() => import("@/features/crm/CrmKanbanPage"), "CrmKanbanPage"),
   crmContact: namedPage(() => import("@/features/crm/CrmContactProfilePage"), "CrmContactProfilePage"),
@@ -69,6 +71,8 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/financeiro" || pathname === "/financeiro/lancar-dia") return "finLancarDia";
   if (pathname === "/financeiro/contas") return "finContas";
   if (pathname === "/financeiro/p12") return "finP12";
+  if (pathname === "/financeiro/fechamento") return "finFechamento";
+  if (pathname === "/financeiro/poupanca") return "finPoupanca";
   if (pathname === "/crm" || pathname === "/crm/minhas-tarefas") return "crmTasks";
   if (pathname === "/crm/vendas") return "crmKanban";
   if (pathname.startsWith("/crm/contatos/")) return "crmContact";

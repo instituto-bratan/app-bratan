@@ -114,6 +114,8 @@ const flowGroups: FlowGroup[] = [
     entries: [
       { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canComprovantes },
       { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento },
+      { label: "Fechamento", href: "/financeiro/fechamento", icon: ShieldCheck, allowed: canLembretesPagamento },
+      { label: "Poupança", href: "/financeiro/poupanca", icon: Coins, allowed: canLembretesPagamento },
       { label: "P12 ao vivo", shortLabel: "P12", href: "/financeiro/p12", icon: CircleDollarSign, allowed: canLembretesPagamento },
       { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
     ],

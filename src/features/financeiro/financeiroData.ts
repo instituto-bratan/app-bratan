@@ -371,3 +371,141 @@ export const seedFinCategories: FinCategory[] = ([
   isCapex,
   active: true,
 }));
+
+// ---------------- Sprint 2: fechamento do dia e poupança ----------------
+
+export type FinReconciliationStatus = "PENDENTE" | "CONFERIDO" | "DIVERGENTE";
+export type FinSavingsDirection = "ENTRADA" | "SAIDA";
+export type FinSavingsSource = "MANUAL" | "PROVISAO" | "SALDO_INICIAL";
+
+export type FinReconciliation = {
+  id: string;
+  day: string;
+  expectedPix: number;
+  expectedCardItau: number;
+  expectedCardSafra: number;
+  expectedCardOutra: number;
+  expectedDinheiro: number;
+  feeItau: number;
+  feeSafra: number;
+  status: FinReconciliationStatus;
+  divergenceNote: string;
+  confirmedAt: string | null;
+};
+
+export type FinSavingsMove = {
+  id: string;
+  moveDate: string;
+  direction: FinSavingsDirection;
+  amount: number;
+  reason: string;
+  source: FinSavingsSource;
+  monthRef: string;
+  createdAt: string;
+};
+
+export type FinProvisionRule = {
+  id: string;
+  name: string;
+  monthlyAmount: number;
+  sortOrder: number;
+  active: boolean;
+};
+
+export const reconciliationStatusLabels: Record<FinReconciliationStatus, string> = {
+  PENDENTE: "Pendente",
+  CONFERIDO: "Conferido",
+  DIVERGENTE: "Divergente",
+};
+
+export type DayExpected = {
+  day: string;
+  pix: number;
+  cardItau: number;
+  cardSafra: number;
+  cardOutra: number;
+  dinheiro: number;
+  outros: number;
+  total: number;
+  salesCount: number;
+};
+
+// O que o app espera ter caído em cada dia, por forma/maquininha — para bater com o extrato.
+export function buildDayExpected(sales: FinSale[], day: string): DayExpected {
+  const expected: DayExpected = { day, pix: 0, cardItau: 0, cardSafra: 0, cardOutra: 0, dinheiro: 0, outros: 0, total: 0, salesCount: 0 };
+  for (const sale of sales) {
+    if (sale.saleDate !== day) continue;
+    expected.salesCount += 1;
+    for (const payment of sale.payments) {
+      const amount = payment.amount || 0;
+      expected.total += amount;
+      if (payment.method === "PIX") expected.pix += amount;
+      else if (payment.method === "DINHEIRO") expected.dinheiro += amount;
+      else if (payment.method === "CARTAO_CREDITO" || payment.method === "CARTAO_DEBITO") {
+        if (payment.cardMachine === "SAFRA") expected.cardSafra += amount;
+        else if (payment.cardMachine === "ITAU" || !payment.cardMachine) expected.cardItau += amount;
+        else expected.cardOutra += amount;
+      } else expected.outros += amount;
+    }
+  }
+  return expected;
+}
+
+export function monthDaysWithSales(sales: FinSale[], month: string) {
+  const days = new Set<string>();
+  for (const sale of sales) {
+    if (sale.saleDate.slice(0, 7) === month) days.add(sale.saleDate);
+  }
+  return [...days].sort();
+}
+
+export function savingsBalance(moves: FinSavingsMove[]) {
+  return moves.reduce((sum, move) => sum + (move.direction === "ENTRADA" ? move.amount : -move.amount), 0);
+}
+
+export function monthProvisionsDone(moves: FinSavingsMove[], month: string) {
+  return moves.some((move) => move.source === "PROVISAO" && move.monthRef === month);
+}
+
+export function provisionMoveRef(month: string, ruleId: string) {
+  return `fsav-prov-${month}-${ruleId}`;
+}
+
+export function monthFeesExpenseRef(month: string) {
+  return `fexp-tarifas-${month}`;
+}
+
+export function parseFinAmount(value: string) {
+  const normalized = String(value ?? "").replace(/\./g, "").replace(",", ".");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+export const seedProvisionRules: FinProvisionRule[] = [
+  { id: "prov-13-socios", name: "13º Sócios", monthlyAmount: 7272, sortOrder: 1, active: true },
+  { id: "prov-13-colaboradores", name: "13º Colaboradores", monthlyAmount: 2063, sortOrder: 2, active: true },
+  { id: "prov-rescisoes", name: "Rescisões", monthlyAmount: 1000, sortOrder: 3, active: true },
+  { id: "prov-ferias-colaboradores", name: "Férias + 1/3 colaboradores", monthlyAmount: 2743, sortOrder: 4, active: true },
+  { id: "prov-urgencias", name: "Urgências", monthlyAmount: 500, sortOrder: 5, active: true },
+  { id: "prov-inicio-janeiro", name: "Início de ano (salários + aluguel janeiro)", monthlyAmount: 1000, sortOrder: 6, active: true },
+  { id: "prov-festa-final-ano", name: "Festa de final de ano", monthlyAmount: 909.09, sortOrder: 7, active: true },
+];
+
+export const finReconciliationsStorageKey = "app-bratan-fin-reconciliations";
+export const finSavingsStorageKey = "app-bratan-fin-savings";
+
+export function loadLocalFinReconciliations() {
+  return readLocalValue<FinReconciliation[]>(finReconciliationsStorageKey, []);
+}
+
+export function saveLocalFinReconciliations(records: FinReconciliation[]) {
+  writeLocalValue(finReconciliationsStorageKey, records);
+}
+
+export function loadLocalFinSavings() {
+  return readLocalValue<FinSavingsMove[]>(finSavingsStorageKey, []);
+}
+
+export function saveLocalFinSavings(moves: FinSavingsMove[]) {
+  writeLocalValue(finSavingsStorageKey, moves);
+}

@@ -110,3 +110,36 @@ test("categorias seed cobrem os 4 grupos da P12 real", () => {
   const obras = fin.seedFinCategories.find((category) => category.id === "cat-compras-variaveis-obras-2026");
   assert.equal(obras.isCapex, true);
 });
+
+test("fechamento do dia separa esperado por forma e maquininha", () => {
+  const sales = [
+    sale("2026-07-02", [["TRATAMENTO", 5000]], [["PIX", 2000], ["CARTAO_CREDITO", 2000, "ITAU"], ["CARTAO_CREDITO", 1000, "SAFRA"]], "s1"),
+    sale("2026-07-02", [["CONSULTA", 300]], [["DINHEIRO", 300]], "s2"),
+    sale("2026-07-03", [["CONSULTA", 900]], [["PIX", 900]], "s3"),
+  ];
+  const expected = fin.buildDayExpected(sales, "2026-07-02");
+  assert.equal(expected.pix, 2000);
+  assert.equal(expected.cardItau, 2000);
+  assert.equal(expected.cardSafra, 1000);
+  assert.equal(expected.dinheiro, 300);
+  assert.equal(expected.total, 5300);
+  assert.equal(expected.salesCount, 2);
+  assert.deepEqual([...fin.monthDaysWithSales(sales, "2026-07")], ["2026-07-02", "2026-07-03"]);
+});
+
+test("saldo da poupança soma entradas e subtrai saídas", () => {
+  const moves = [
+    { id: "m1", moveDate: "2026-06-01", direction: "ENTRADA", amount: 15000.8, reason: "", source: "MANUAL", monthRef: "2026-06", createdAt: "" },
+    { id: "m2", moveDate: "2026-06-29", direction: "SAIDA", amount: 71507.42, reason: "obra", source: "MANUAL", monthRef: "2026-06", createdAt: "" },
+    { id: "m3", moveDate: "2026-06-18", direction: "ENTRADA", amount: 40001.64, reason: "", source: "MANUAL", monthRef: "2026-06", createdAt: "" },
+  ];
+  assert.ok(Math.abs(fin.savingsBalance(moves) - (15000.8 + 40001.64 - 71507.42)) < 0.001);
+});
+
+test("provisões do mês são idempotentes por referência determinística", () => {
+  assert.equal(fin.provisionMoveRef("2026-07", "prov-13-socios"), "fsav-prov-2026-07-prov-13-socios");
+  const moves = [{ id: "x", moveDate: "2026-07-28", direction: "ENTRADA", amount: 7272, reason: "", source: "PROVISAO", monthRef: "2026-07", createdAt: "" }];
+  assert.equal(fin.monthProvisionsDone(moves, "2026-07"), true);
+  assert.equal(fin.monthProvisionsDone(moves, "2026-08"), false);
+  assert.equal(fin.seedProvisionRules.length, 7);
+});

@@ -15,7 +15,7 @@ import {
   type GamificationProfile,
 } from "@/features/estalecas/estalecasData";
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
-import type { FinCategory, FinExpense, FinSale } from "@/features/financeiro/financeiroData";
+import type { FinCategory, FinExpense, FinProvisionRule, FinReconciliation, FinSale, FinSavingsMove } from "@/features/financeiro/financeiroData";
 import {
   defaultObsidianConfig,
   obsidianConfigFromSettingsRow,
@@ -2919,4 +2919,127 @@ export async function deleteRemoteFinExpense(expenseRef: string) {
   const { error } = await client.from("fin_expenses").update({ deleted_at: new Date().toISOString() }).eq("client_ref", expenseRef);
   if (error) throw error;
   await safeWriteRemoteAuditEvent({ action: "financeiro.despesa.excluir", entity: "fin_expenses", entityId: expenseRef });
+}
+
+export async function listRemoteFinReconciliations(year: number): Promise<FinReconciliation[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_reconciliations")
+    .select("client_ref, day, expected_pix, expected_card_itau, expected_card_safra, expected_card_outra, expected_dinheiro, fee_itau, fee_safra, status, divergence_note, confirmed_at")
+    .gte("day", `${year}-01-01`)
+    .lte("day", `${year}-12-31`);
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    day: String(row.day),
+    expectedPix: Number(row.expected_pix ?? 0),
+    expectedCardItau: Number(row.expected_card_itau ?? 0),
+    expectedCardSafra: Number(row.expected_card_safra ?? 0),
+    expectedCardOutra: Number(row.expected_card_outra ?? 0),
+    expectedDinheiro: Number(row.expected_dinheiro ?? 0),
+    feeItau: Number(row.fee_itau ?? 0),
+    feeSafra: Number(row.fee_safra ?? 0),
+    status: row.status as FinReconciliation["status"],
+    divergenceNote: String(row.divergence_note ?? ""),
+    confirmedAt: (row.confirmed_at as string | null) ?? null,
+  }));
+}
+
+export async function upsertRemoteFinReconciliation(record: FinReconciliation, confirmedBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_reconciliations").upsert(
+    {
+      client_ref: record.id,
+      day: record.day,
+      expected_pix: record.expectedPix,
+      expected_card_itau: record.expectedCardItau,
+      expected_card_safra: record.expectedCardSafra,
+      expected_card_outra: record.expectedCardOutra,
+      expected_dinheiro: record.expectedDinheiro,
+      fee_itau: record.feeItau,
+      fee_safra: record.feeSafra,
+      status: record.status,
+      divergence_note: record.divergenceNote,
+      confirmed_by: uuidOrNull(confirmedBy),
+      confirmed_at: record.confirmedAt,
+    },
+    { onConflict: "client_ref" },
+  );
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.fechamento.salvar",
+    entity: "fin_reconciliations",
+    entityId: record.id,
+    metadata: { day: record.day, status: record.status, feeItau: record.feeItau, feeSafra: record.feeSafra },
+  });
+}
+
+export async function listRemoteFinSavings(): Promise<FinSavingsMove[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_savings_moves")
+    .select("client_ref, move_date, direction, amount, reason, source, month_ref, created_at")
+    .is("deleted_at", null)
+    .order("move_date", { ascending: false });
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    moveDate: String(row.move_date),
+    direction: row.direction as FinSavingsMove["direction"],
+    amount: Number(row.amount ?? 0),
+    reason: String(row.reason ?? ""),
+    source: row.source as FinSavingsMove["source"],
+    monthRef: String(row.month_ref ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
+export async function createRemoteFinSavingsMoves(moves: FinSavingsMove[], createdBy: string | null) {
+  if (!moves.length) return;
+  const client = requireSupabase();
+  const { error } = await client.from("fin_savings_moves").upsert(
+    moves.map((move) => ({
+      client_ref: move.id,
+      move_date: move.moveDate,
+      direction: move.direction,
+      amount: move.amount,
+      reason: move.reason,
+      source: move.source,
+      month_ref: move.monthRef,
+      created_by: uuidOrNull(createdBy),
+    })),
+    { onConflict: "client_ref", ignoreDuplicates: true },
+  );
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.poupanca.lancar",
+    entity: "fin_savings_moves",
+    metadata: { moves: moves.length, source: moves[0]?.source },
+  });
+}
+
+export async function deleteRemoteFinSavingsMove(moveRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_savings_moves").update({ deleted_at: new Date().toISOString() }).eq("client_ref", moveRef);
+  if (error) throw error;
+}
+
+export async function listRemoteFinProvisionRules(): Promise<FinProvisionRule[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_provision_rules")
+    .select("client_ref, name, monthly_amount, sort_order, active")
+    .eq("active", true)
+    .order("sort_order");
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    name: String(row.name),
+    monthlyAmount: Number(row.monthly_amount ?? 0),
+    sortOrder: Number(row.sort_order ?? 0),
+    active: Boolean(row.active),
+  }));
 }

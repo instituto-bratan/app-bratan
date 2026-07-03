@@ -5,21 +5,34 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   createRemoteFinExpense,
   createRemoteFinSale,
+  createRemoteFinSavingsMoves,
   deleteRemoteFinExpense,
   deleteRemoteFinSale,
+  deleteRemoteFinSavingsMove,
   listRemoteFinCategories,
   listRemoteFinExpenses,
+  listRemoteFinProvisionRules,
+  listRemoteFinReconciliations,
   listRemoteFinSales,
+  listRemoteFinSavings,
   markRemoteFinExpensePaid,
+  upsertRemoteFinReconciliation,
 } from "@/lib/remoteData";
 import {
   loadLocalFinExpenses,
+  loadLocalFinReconciliations,
   loadLocalFinSales,
+  loadLocalFinSavings,
   saveLocalFinExpenses,
+  saveLocalFinReconciliations,
   saveLocalFinSales,
+  saveLocalFinSavings,
   seedFinCategories,
+  seedProvisionRules,
   type FinExpense,
+  type FinReconciliation,
   type FinSale,
+  type FinSavingsMove,
 } from "./financeiroData";
 
 export function useFinanceiro(year = new Date().getFullYear()) {
@@ -28,6 +41,8 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   const useRemote = Boolean(pessoa && session && !isPreview);
   const [sales, setSales] = useState<FinSale[]>(() => loadLocalFinSales());
   const [expenses, setExpenses] = useState<FinExpense[]>(() => loadLocalFinExpenses());
+  const [reconciliations, setReconciliations] = useState<FinReconciliation[]>(() => loadLocalFinReconciliations());
+  const [savingsMoves, setSavingsMoves] = useState<FinSavingsMove[]>(() => loadLocalFinSavings());
 
   const categoriesQuery = useQuery({
     queryKey: ["fin-categories"],
@@ -59,6 +74,37 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     setExpenses(expensesQuery.data);
     saveLocalFinExpenses(expensesQuery.data);
   }, [expensesQuery.data]);
+
+  const reconciliationsQuery = useQuery({
+    queryKey: ["fin-reconciliations", year],
+    queryFn: () => listRemoteFinReconciliations(year),
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+  const savingsQuery = useQuery({
+    queryKey: ["fin-savings"],
+    queryFn: listRemoteFinSavings,
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+  const provisionRulesQuery = useQuery({
+    queryKey: ["fin-provision-rules"],
+    queryFn: listRemoteFinProvisionRules,
+    enabled: useRemote,
+    staleTime: 5 * 60_000,
+  });
+
+  useEffect(() => {
+    if (!reconciliationsQuery.data) return;
+    setReconciliations(reconciliationsQuery.data);
+    saveLocalFinReconciliations(reconciliationsQuery.data);
+  }, [reconciliationsQuery.data]);
+
+  useEffect(() => {
+    if (!savingsQuery.data) return;
+    setSavingsMoves(savingsQuery.data);
+    saveLocalFinSavings(savingsQuery.data);
+  }, [savingsQuery.data]);
 
   const invalidate = (key: string) => void queryClient.invalidateQueries({ queryKey: [key, year] });
 
@@ -127,6 +173,44 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
+  function saveReconciliation(record: FinReconciliation) {
+    setReconciliations((current) => {
+      const next = [record, ...current.filter((item) => item.id !== record.id)];
+      saveLocalFinReconciliations(next);
+      return next;
+    });
+    if (useRemote) {
+      void upsertRemoteFinReconciliation(record, pessoa?.id ?? null)
+        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-reconciliations", year] }))
+        .catch((error) => console.warn("Fechamento não sincronizou.", error));
+    }
+  }
+
+  function addSavingsMoves(moves: FinSavingsMove[]) {
+    setSavingsMoves((current) => {
+      const existing = new Set(current.map((move) => move.id));
+      const next = [...moves.filter((move) => !existing.has(move.id)), ...current];
+      saveLocalFinSavings(next);
+      return next;
+    });
+    if (useRemote) {
+      void createRemoteFinSavingsMoves(moves, pessoa?.id ?? null)
+        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-savings"] }))
+        .catch((error) => console.warn("Poupança não sincronizou.", error));
+    }
+  }
+
+  function removeSavingsMove(moveId: string) {
+    setSavingsMoves((current) => {
+      const next = current.filter((move) => move.id !== moveId);
+      saveLocalFinSavings(next);
+      return next;
+    });
+    if (useRemote) {
+      void deleteRemoteFinSavingsMove(moveId).catch((error) => console.warn("Exclusão não sincronizou.", error));
+    }
+  }
+
   function removeExpense(expenseId: string) {
     setExpenses((current) => {
       const next = current.filter((expense) => expense.id !== expenseId);
@@ -142,12 +226,18 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     year,
     sales,
     expenses,
+    reconciliations,
+    savingsMoves,
+    provisionRules: provisionRulesQuery.data?.length ? provisionRulesQuery.data : seedProvisionRules,
     categories: categoriesQuery.data?.length ? categoriesQuery.data : seedFinCategories,
     addSale,
     removeSale,
     addExpense,
     setExpensePaid,
     removeExpense,
+    saveReconciliation,
+    addSavingsMoves,
+    removeSavingsMove,
     syncMode: useRemote ? "Supabase + local" : "Somente local",
     isSyncing: salesQuery.isFetching || expensesQuery.isFetching,
   };
