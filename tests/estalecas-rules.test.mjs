@@ -313,3 +313,48 @@ test("conquistas com prova têm valores padrão e rótulos definidos", async () 
   assert.equal(estalecaClaimConfig.OUTRO.defaultAmount, 0);
   assert.deepEqual(Object.keys(estalecaClaimStatusLabels).sort(), ["APPROVED", "PENDING", "REJECTED"]);
 });
+
+test("check-in de academia exige código do dia validado (anti-fraude)", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const vm = await import("node:vm");
+  const url = await import("node:url");
+  const ts = (await import("typescript")).default;
+  const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
+  const source = fs.readFileSync(path.resolve(root, "src/features/estalecas/estalecasData.ts"), "utf8");
+  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText;
+  const module = { exports: {} };
+  const localRequire = (request) => {
+    if (request === "@/lib/localStore") return { readLocalValue: (_k, fallback) => fallback, writeLocalValue: () => undefined, todayISO: () => "2026-07-06" };
+    if (request.startsWith("@/types")) return {};
+    throw new Error(`import inesperado: ${request}`);
+  };
+  vm.runInNewContext(output, { module, exports: module.exports, require: localRequire, console, Date, JSON, Object, String, Number, Math, Map, Array, Intl, crypto: globalThis.crypto }, { filename: "estalecasData.ts" });
+  const { performLocalCheckin, simpleCheckinCodeHash, defaultEstalecaConfig } = module.exports;
+
+  const now = new Date(2026, 6, 6, 12, 0, 0);
+  const eventDate = "2026-07-06";
+  const pessoa = { id: "u1" };
+  const profile = { userId: "u1", checkinsConsentAt: "2026-07-06T10:00:00.000Z", rankingOptIn: true };
+  const eventCodes = [{
+    id: "code-1",
+    checkinType: "gym",
+    label: "Treino do dia",
+    codeHash: simpleCheckinCodeHash("TREINO-0607"),
+    codePreview: "TR-07",
+    eventDate,
+    active: true,
+  }];
+  const base = { pessoa, transactions: [], checkins: [], rewards: [], eventCodes, profile, config: defaultEstalecaConfig, now };
+
+  assert.throws(() => performLocalCheckin({ ...base, checkinType: "gym" }), /gym_code_required/);
+  assert.throws(() => performLocalCheckin({ ...base, checkinType: "gym", validationCode: "QUALQUER-COISA" }), /invalid_checkin_code/);
+  assert.throws(() => performLocalCheckin({ ...base, checkinType: "church", validationCode: "TREINO-0607" }), /invalid_checkin_code/);
+
+  const ok = performLocalCheckin({ ...base, checkinType: "gym", validationCode: "treino 0607" });
+  assert.equal(!!ok.alreadyExists, false);
+  assert.equal(ok.checkin.checkinType, "gym");
+  assert.equal(ok.transaction.amount, defaultEstalecaConfig.gymCheckinEstalecas);
+  assert.equal(ok.transaction.metadata.validationMethod, "event_code");
+  assert.equal(ok.checkin.validationMethod, "event_code");
+});

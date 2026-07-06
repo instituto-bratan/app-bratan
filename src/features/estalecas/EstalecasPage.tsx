@@ -478,11 +478,12 @@ export function EstalecasPage() {
     onSuccess: (result) => {
       setMessage(result.message);
       setChurchCode("");
+      setGymCode("");
       invalidateEstalecasQueries();
     },
     onError: (error) => {
       const messageText = error instanceof Error ? error.message : "";
-      if (messageText.includes("church_code_required")) {
+      if (messageText.includes("church_code_required") || messageText.includes("gym_code_required")) {
         setMessage("Informe o código do dia/evento para confirmar este check-in.");
       } else if (messageText.includes("consent_required")) {
         setMessage("Ative o consentimento de check-ins antes de registrar atividades.");

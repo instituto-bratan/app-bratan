@@ -599,23 +599,21 @@ export function performLocalCheckin(values: {
     throw new Error("consent_required");
   }
 
-  if (values.checkinType === "church" && (!values.validationCode || values.validationCode.trim().length < 4)) {
-    throw new Error("church_code_required");
+  if (!values.validationCode || values.validationCode.trim().length < 4) {
+    throw new Error(values.checkinType === "gym" ? "gym_code_required" : "church_code_required");
   }
 
-  if (values.checkinType === "church") {
-    const validCode = (values.eventCodes ?? []).some((code) =>
-      isCheckinEventCodeActive(code, {
-        checkinType: values.checkinType,
-        validationCode: values.validationCode ?? "",
-        checkinDate,
-        now,
-      }),
-    );
+  const validCode = (values.eventCodes ?? []).some((code) =>
+    isCheckinEventCodeActive(code, {
+      checkinType: values.checkinType,
+      validationCode: values.validationCode ?? "",
+      checkinDate,
+      now,
+    }),
+  );
 
-    if (!validCode) {
-      throw new Error("invalid_checkin_code");
-    }
+  if (!validCode) {
+    throw new Error("invalid_checkin_code");
   }
 
   if (existing) {
@@ -635,7 +633,7 @@ export function performLocalCheckin(values: {
     now,
     config,
     metadata: {
-      validationMethod: values.checkinType === "gym" ? "self" : "event_code",
+      validationMethod: "event_code",
       deviceId: getLocalDeviceId(),
     },
   });
@@ -645,12 +643,12 @@ export function performLocalCheckin(values: {
     checkinType: values.checkinType,
     checkinDate,
     status: "valid",
-    validationMethod: values.checkinType === "gym" ? "self" : "event_code",
+    validationMethod: "event_code",
     rewardTransactionId: transaction.id,
     checkpointsAwarded: checkpoints,
     estalecasAwarded: amount,
     metadata: {
-      validationCodeProvided: values.checkinType === "church",
+      validationCodeProvided: true,
       deviceId: getLocalDeviceId(),
       userAgent: typeof navigator === "undefined" ? "indisponivel" : navigator.userAgent,
     },
