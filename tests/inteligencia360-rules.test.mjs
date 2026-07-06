@@ -302,7 +302,7 @@ test("lembrete de pagamento alimenta Recebíveis 360 e acompanha status", () => 
     id: "pag-360",
     pacienteNome: "Paciente Lembrete",
     valorPendente: 3200,
-    dataPrevista: "2026-07-05",
+    dataPrevista: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
     observacao: "Promessa de pagamento registrada.",
     status: "aberto",
     criadoPor: "Financeiro",

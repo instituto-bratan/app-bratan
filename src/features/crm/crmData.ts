@@ -303,7 +303,8 @@ export type CrmMoveDealOptions = {
   partialReason?: string;
 };
 
-export const crmStorageKey = "app-bratan-crm-sprint-1";
+// v2 (03/07/2026): chave trocada para descartar caches antigos que continham dados fictícios.
+export const crmStorageKey = "app-bratan-crm-v2";
 
 const baseNow = new Date().toISOString();
 

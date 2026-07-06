@@ -378,7 +378,8 @@ export type DataQualityItem = {
   impact: string;
 };
 
-export const inteligencia360StorageKey = "app-bratan-inteligencia-360";
+// v2 (03/07/2026): chave trocada para descartar caches antigos que continham dados fictícios.
+export const inteligencia360StorageKey = "app-bratan-inteligencia-360-v2";
 
 export const rootCauseLabels: Record<RootCauseCategory360, string> = {
   LEAD_MISALIGNMENT: "Lead desalinhado",
