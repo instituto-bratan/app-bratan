@@ -72,6 +72,42 @@ function encodeDrivePath(path: string) {
     .join("/");
 }
 
+// Garante que a hierarquia de pastas exista antes do upload. As pastas base já
+// existem no SharePoint do Instituto; isto cobre as subpastas de ano/mês.
+async function ensureFolderPath(token: string, driveId: string, folderPath: string, cache: Set<string>) {
+  const segments = folderPath.split("/").filter(Boolean);
+  let current = "";
+  for (const segment of segments) {
+    const parent = current;
+    current = current ? `${current}/${segment}` : segment;
+    if (cache.has(current)) continue;
+
+    const check = await fetch(`${GRAPH_BASE}/drives/${driveId}/root:/${encodeDrivePath(current)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (check.ok) {
+      cache.add(current);
+      continue;
+    }
+    if (check.status !== 404) {
+      throw new Error(`Consulta da pasta "${current}" falhou (${check.status}): ${await check.text()}`);
+    }
+
+    const createUrl = parent
+      ? `${GRAPH_BASE}/drives/${driveId}/root:/${encodeDrivePath(parent)}:/children`
+      : `${GRAPH_BASE}/drives/${driveId}/root/children`;
+    const created = await fetch(createUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: segment, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
+    });
+    if (!created.ok && created.status !== 409) {
+      throw new Error(`Criação da pasta "${current}" falhou (${created.status}): ${await created.text()}`);
+    }
+    cache.add(current);
+  }
+}
+
 async function uploadSmallFile(token: string, driveId: string, drivePath: string, bytes: Uint8Array, mimeType: string) {
   const response = await fetch(
     `${GRAPH_BASE}/drives/${driveId}/root:/${encodeDrivePath(drivePath)}:/content?@microsoft.graph.conflictBehavior=rename`,
@@ -172,6 +208,7 @@ Deno.serve(async (request) => {
   }
 
   const results: Array<{ id: string; status: string; error?: string }> = [];
+  const folderCache = new Set<string>();
 
   for (const row of pending as QueueRow[]) {
     await supabase
@@ -190,6 +227,8 @@ Deno.serve(async (request) => {
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const folder = rootFolder ? `${rootFolder}/${row.target_folder}` : row.target_folder;
       const drivePath = `${folder}/${sanitizeFileName(row.file_name)}`;
+
+      await ensureFolderPath(token, driveId, folder, folderCache);
 
       const item =
         bytes.length <= SIMPLE_UPLOAD_LIMIT

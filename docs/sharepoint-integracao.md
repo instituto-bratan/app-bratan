@@ -16,70 +16,42 @@ O mapa vive em [src/lib/sharepoint.ts](../src/lib/sharepoint.ts) (`sharePointFol
 
 ## Ativação (uma vez, pela coordenação/TI)
 
-### 1. Registrar o app no Azure AD
-1. [portal.azure.com](https://portal.azure.com) → Microsoft Entra ID → **App registrations** → **New registration** (nome: `APP BRATAN SharePoint`).
-2. Em **API permissions** → **Add a permission** → Microsoft Graph → **Application permissions** → `Sites.ReadWrite.All` → **Grant admin consent**.
-3. Em **Certificates & secrets** → **New client secret** — guarde o valor.
-4. Anote: **Directory (tenant) ID** e **Application (client) ID** (página Overview).
+Infraestrutura já no ar: a função `sharepoint-dispatch` está publicada e um job
+`pg_cron` (`sharepoint-dispatch-15min`) processa a fila a cada 15 minutos. Só
+faltam as credenciais.
 
-### 2. Descobrir o Drive ID da biblioteca de documentos
-Com o token do app (ou no [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer)):
+### 1. Registrar o app no Azure (Entra ID)
+1. [portal.azure.com](https://portal.azure.com) → Microsoft Entra ID → **App registrations** → **New registration** (nome: `APP BRATAN SharePoint`; o resto no padrão).
+2. Em **API permissions** → **Add a permission** → Microsoft Graph → **Application permissions** → `Sites.ReadWrite.All` → depois clique em **Grant admin consent** (exige administrador do Microsoft 365).
+3. Em **Certificates & secrets** → **New client secret** — copie o **Value** na hora (some depois).
+4. Na página **Overview**, copie **Directory (tenant) ID** e **Application (client) ID**.
 
-```
-GET https://graph.microsoft.com/v1.0/sites/{hostname}:/sites/{nome-do-site}
-GET https://graph.microsoft.com/v1.0/sites/{site-id}/drives
-```
-
-Use o `id` do drive "Documentos" (ou da biblioteca desejada).
-
-### 3. Configurar os segredos no Supabase
+### 2. Rodar o ativador
 
 ```bash
-supabase secrets set \
-  MS_TENANT_ID="..." \
-  MS_CLIENT_ID="..." \
-  MS_CLIENT_SECRET="..." \
-  SHAREPOINT_DRIVE_ID="..." \
-  SHAREPOINT_ROOT_FOLDER="APP BRATAN"
+node scripts/sharepoint-setup.mjs
 ```
 
-### 4. Publicar a função e aplicar a migration
+O script valida as credenciais no Graph, localiza o site, lista as bibliotecas
+e as pastas existentes, grava os segredos (`supabase secrets set`) e dispara um
+teste. Nenhum segredo sai da máquina de quem roda.
+
+### 3. Conferir o mapa de pastas
+As pastas listadas pelo script devem casar com o `sharePointFolderMap` em
+[src/lib/sharepoint.ts](../src/lib/sharepoint.ts). Ajustou o mapa → `git push`
+(o Vercel publica). Itens já enfileirados mantêm a pasta calculada no anexo.
+
+### Teste manual (opcional)
 
 ```bash
-supabase db push
-supabase functions deploy sharepoint-dispatch
-```
-
-### 5. Agendar o processamento (a cada 15 min)
-No SQL Editor do Supabase (pg_cron + pg_net):
-
-```sql
-select cron.schedule(
-  'sharepoint-dispatch-15min',
-  '*/15 * * * *',
-  $$
-  select net.http_post(
-    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/sharepoint-dispatch',
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || '<SERVICE_ROLE_KEY>'
-    ),
-    body := '{}'::jsonb
-  );
-  $$
-);
-```
-
-Ou dispare manualmente para testar:
-
-```bash
-curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/sharepoint-dispatch" \
-  -H "Authorization: Bearer <SERVICE_ROLE_KEY>"
+curl -X POST "https://xdccpfdoxrjbzfdvoonr.supabase.co/functions/v1/sharepoint-dispatch" \
+  -H "Authorization: Bearer <ANON_KEY do .env.local>"
 ```
 
 ## Comportamento
 
 - Lotes de 10 itens por execução, mais antigos primeiro.
+- As subpastas (ex.: ano/mês) são criadas automaticamente se não existirem; pastas já existentes são reutilizadas.
 - Arquivos até 4 MB sobem em chamada única; maiores usam sessão de upload em blocos de 5 MB.
 - Conflito de nome no SharePoint: renomeia automaticamente (`conflictBehavior=rename`).
 - Erro: volta para `PENDING` e tenta de novo na próxima execução; após 5 tentativas vira `FAILED` com o erro em `last_error`.
