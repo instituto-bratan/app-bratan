@@ -33,13 +33,13 @@ const sharepoint = loadSharePointModule();
 
 test("comprovante vai para pasta financeiro com ano e mês", () => {
   const folder = sharepoint.sharePointTargetFolder("COMPROVANTE", new Date("2026-07-01T12:00:00.000Z"));
-  assert.equal(folder, "Financeiro/Comprovantes/2026/07");
+  assert.equal(folder, "NOTA FISCAL E COMPROVANTES/2026/07");
 });
 
 test("módulos sem rotação mensal usam pasta fixa", () => {
-  assert.equal(sharepoint.sharePointTargetFolder("CRM_DOCUMENTO"), "CRM/Documentos");
-  assert.equal(sharepoint.sharePointTargetFolder("POP"), "Operacional/POPs");
-  assert.equal(sharepoint.sharePointTargetFolder("RELATORIO_360"), "Gestao/Relatorios 360");
+  assert.equal(sharepoint.sharePointTargetFolder("CRM_DOCUMENTO"), "CRM - Documentos");
+  assert.equal(sharepoint.sharePointTargetFolder("POP"), "POPs");
+  assert.equal(sharepoint.sharePointTargetFolder("RELATORIO_360"), "RELATORIOS 360");
 });
 
 test("nome de arquivo remove caracteres proibidos pelo SharePoint", () => {
@@ -52,7 +52,7 @@ test("dispatch inclui pasta destino e caminho completo", () => {
   const item = sharepoint.prepareSharePointDispatch("comp-1", "recibo pix.pdf", "COMPROVANTE", new Date("2026-07-01T12:00:00.000Z"));
   assert.equal(item.provider, "microsoft_graph");
   assert.equal(item.module, "COMPROVANTE");
-  assert.equal(item.targetFolder, "Financeiro/Comprovantes/2026/07");
-  assert.equal(item.targetPath, "Financeiro/Comprovantes/2026/07/recibo pix.pdf");
+  assert.equal(item.targetFolder, "NOTA FISCAL E COMPROVANTES/2026/07");
+  assert.equal(item.targetPath, "NOTA FISCAL E COMPROVANTES/2026/07/recibo pix.pdf");
   assert.equal(item.status, "pendente");
 });

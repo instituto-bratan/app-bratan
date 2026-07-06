@@ -27,31 +27,21 @@ function ask(question, fallback = "") {
 }
 
 function askHidden(question) {
+  // Silencia o eco do readline enquanto a resposta é digitada/colada: só o
+  // enunciado aparece na tela, nunca o valor.
   return new Promise((resolve) => {
-    const stdin = process.stdin;
-    process.stdout.write(`${question}: `);
-    rl.pause();
-    stdin.resume();
-    if (stdin.isTTY) stdin.setRawMode(true);
-    let value = "";
-    const onData = (chunk) => {
-      const char = chunk.toString("utf8");
-      if (char === "\r" || char === "\n") {
-        if (stdin.isTTY) stdin.setRawMode(false);
-        stdin.off("data", onData);
-        rl.resume();
-        process.stdout.write("\n");
-        resolve(value.trim());
-      } else if (char === "\u0003") {
-        process.stdout.write("\n");
-        process.exit(1);
-      } else if (char === "\u007f" || char === "\b") {
-        value = value.slice(0, -1);
-      } else {
-        value += char;
+    const prompt = `${question}: `;
+    const original = rl._writeToOutput;
+    rl._writeToOutput = function writeMuted(text) {
+      if (text.includes(prompt)) {
+        rl.output.write(prompt);
       }
     };
-    stdin.on("data", onData);
+    rl.question(prompt, (answer) => {
+      rl._writeToOutput = original;
+      rl.output.write("\n");
+      resolve(answer.trim());
+    });
   });
 }
 

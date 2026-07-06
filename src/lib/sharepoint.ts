@@ -8,15 +8,16 @@ export type SharePointModule =
 
 export type SharePointDispatchStatus = "PENDING" | "PROCESSING" | "SENT" | "FAILED" | "SKIPPED";
 
-// Pastas de destino dentro da biblioteca de documentos configurada no SharePoint.
-// Comprovantes e estornos ganham subpastas por ano/mês para não virar uma pasta gigante.
+// Pastas de destino na biblioteca "Documentos" do site Financeiro
+// (institutobratanribeiro.sharepoint.com/sites/Financeiro). Os nomes espelham
+// as pastas que já existem lá; subpastas de ano/mês são criadas pela função.
 export const sharePointFolderMap: Record<SharePointModule, string> = {
-  COMPROVANTE: "Financeiro/Comprovantes",
-  ESTORNO: "Financeiro/Estornos",
-  CRM_DOCUMENTO: "CRM/Documentos",
-  POP: "Operacional/POPs",
-  RELATORIO_360: "Gestao/Relatorios 360",
-  OUTRO: "Geral",
+  COMPROVANTE: "NOTA FISCAL E COMPROVANTES",
+  ESTORNO: "NOTA FISCAL E COMPROVANTES/ESTORNOS",
+  CRM_DOCUMENTO: "CRM - Documentos",
+  POP: "POPs",
+  RELATORIO_360: "RELATORIOS 360",
+  OUTRO: "APP BRATAN - Outros",
 };
 
 const monthlyModules: SharePointModule[] = ["COMPROVANTE", "ESTORNO"];

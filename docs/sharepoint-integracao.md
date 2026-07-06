@@ -4,13 +4,15 @@ Tudo que é anexado no APP BRATAN entra em uma fila (`sharepoint_dispatch_queue`
 
 ## Pastas de destino
 
+Site conectado: `institutobratanribeiro.sharepoint.com/sites/Financeiro`, biblioteca **Documentos**.
+
 | Origem no app | Pasta no SharePoint |
 | --- | --- |
-| Comprovantes | `Financeiro/Comprovantes/AAAA/MM` |
-| Estornos | `Financeiro/Estornos/AAAA/MM` |
-| Documentos do CRM | `CRM/Documentos` |
-| POPs | `Operacional/POPs` |
-| Relatórios 360 | `Gestao/Relatorios 360` |
+| Comprovantes | `NOTA FISCAL E COMPROVANTES/AAAA/MM` |
+| Estornos | `NOTA FISCAL E COMPROVANTES/ESTORNOS/AAAA/MM` |
+| Documentos do CRM | `CRM - Documentos` |
+| POPs | `POPs` |
+| Relatórios 360 | `RELATORIOS 360` |
 
 O mapa vive em [src/lib/sharepoint.ts](../src/lib/sharepoint.ts) (`sharePointFolderMap`). Para mudar uma pasta, altere ali — fila e função usam o valor gravado no momento do anexo. O segredo opcional `SHAREPOINT_ROOT_FOLDER` prefixa tudo (ex.: `APP BRATAN/Financeiro/...`).
 
