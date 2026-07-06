@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
+import { parseMoneyBR } from "@/lib/money";
 import { canLancarDia } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -38,8 +39,7 @@ type DraftItem = { itemType: FinSaleItemType; amount: string; description: strin
 type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine };
 
 function parseAmount(value: string) {
-  const normalized = value.replace(/\./g, "").replace(",", ".");
-  const amount = Number(normalized);
+  const amount = parseMoneyBR(value);
   return Number.isFinite(amount) ? amount : 0;
 }
 

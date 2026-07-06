@@ -12,6 +12,7 @@ import { MetalButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canComprovantes, cargoLabels, isCoordenacao } from "@/lib/access";
 import { formatShortTime, readLocalValue, writeLocalValue } from "@/lib/localStore";
+import { parseMoneyBR } from "@/lib/money";
 import {
   createRemoteEstorno,
   listRemoteComprovantes,
@@ -43,7 +44,7 @@ function createId() {
 }
 
 function parseMoneyInput(value: string) {
-  const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+  const parsed = parseMoneyBR(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 

@@ -12,6 +12,7 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canLembretesPagamento } from "@/lib/access";
 import { formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
+import { parseMoneyBR } from "@/lib/money";
 import { loadInteligencia360State, saveInteligencia360State } from "@/features/inteligencia360/inteligencia360Data";
 import {
   createRemotePagamento,
@@ -59,11 +60,6 @@ function createId() {
   return `pagamento-${crypto.randomUUID?.() ?? Date.now()}`;
 }
 
-function parseMoney(value: string) {
-  const normalized = value.replace(/\./g, "").replace(",", ".");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : NaN;
-}
 
 function dueBadge(record: PagamentoLembrete) {
   if (record.status !== "aberto") return pagamentoStatusLabels[record.status];
@@ -125,11 +121,23 @@ export function PagamentosPage() {
     setError(null);
 
     const pacienteNome = form.pacienteNome.trim();
-    const valorPendente = parseMoney(form.valorPendente);
+    const valorPendente = parseMoneyBR(form.valorPendente);
     const observacao = form.observacao.trim();
 
-    if (!pacienteNome || !form.dataPrevista || !Number.isFinite(valorPendente) || valorPendente <= 0) {
-      setError("Informe paciente, valor pendente e data combinada.");
+    if (!pacienteNome) {
+      setError("Falta o nome de quem deve.");
+      return;
+    }
+    if (!form.valorPendente.trim()) {
+      setError(`Falta o valor pendente de ${pacienteNome}.`);
+      return;
+    }
+    if (!Number.isFinite(valorPendente) || valorPendente <= 0) {
+      setError("Não entendi o valor — digite como 1.500,00.");
+      return;
+    }
+    if (!form.dataPrevista) {
+      setError("Falta a data combinada.");
       return;
     }
 
