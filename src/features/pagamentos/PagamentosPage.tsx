@@ -69,6 +69,12 @@ function dueBadge(record: PagamentoLembrete) {
   return "Em aberto";
 }
 
+function remoteErrorDetail(error: unknown) {
+  const message =
+    error && typeof error === "object" && "message" in error ? String((error as { message: unknown }).message) : "";
+  return message ? ` (${message.slice(0, 140)})` : "";
+}
+
 export function PagamentosPage() {
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
@@ -151,8 +157,8 @@ export function PagamentosPage() {
           observacao: observacao || undefined,
         });
         setForm({ ...emptyForm, dataPrevista: todayISO() });
-      } catch {
-        setError("Não foi possível salvar no Supabase. Confira RLS e tente novamente.");
+      } catch (saveError) {
+        setError(`Não foi possível salvar o lembrete${remoteErrorDetail(saveError)}. Tente de novo.`);
       }
       return;
     }
@@ -191,7 +197,7 @@ export function PagamentosPage() {
   function updateStatus(record: PagamentoLembrete, status: PagamentoLembreteStatus) {
     if (useRemote) {
       void statusMutation.mutateAsync({ id: record.id, status }).catch(() => {
-        setError("Não foi possível atualizar o lembrete no Supabase.");
+        setError("Não foi possível atualizar o lembrete. Tente de novo.");
       });
       return;
     }
@@ -213,7 +219,7 @@ export function PagamentosPage() {
 
     if (useRemote) {
       void postponeMutation.mutateAsync({ id: record.id, dataPrevista: postponeDate }).catch(() => {
-        setError("Não foi possível reagendar no Supabase.");
+        setError("Não foi possível reagendar. Tente de novo.");
       });
     } else {
       persist(
@@ -240,7 +246,7 @@ export function PagamentosPage() {
 
     if (useRemote) {
       void deleteMutation.mutateAsync(record.id).catch(() => {
-        setError("Não foi possível ocultar no Supabase.");
+        setError("Não foi possível ocultar. Tente de novo.");
       });
       return;
     }

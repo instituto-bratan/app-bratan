@@ -823,6 +823,14 @@ function remotePagamentoReceivableCollectionStatus(status: string) {
 }
 
 async function upsertRemoteReceivableFromPagamento(record: RemotePagamentoLembrete) {
+  try {
+    await upsertRemoteReceivableFromPagamentoStrict(record);
+  } catch (error) {
+    console.warn("Lembrete salvo, mas o espelho nos Recebíveis 360 não sincronizou.", error);
+  }
+}
+
+async function upsertRemoteReceivableFromPagamentoStrict(record: RemotePagamentoLembrete) {
   const client = requireSupabase();
   const totalAmount = Number(record.valor_pendente);
   const status = remotePagamentoReceivableStatus(record);
