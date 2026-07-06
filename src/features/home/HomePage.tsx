@@ -158,15 +158,6 @@ const modules = [
     allowed: canInteligencia360,
   },
   {
-    title: "Vault Obsidian",
-    href: "/configuracoes/obsidian",
-    icon: FileText,
-    label: "Documentação viva",
-    description: "Gere snapshots, playbooks, briefings e decisões em Markdown seguro para o Obsidian.",
-    action: "Configurar Vault",
-    allowed: canAdministracao,
-  },
-  {
     title: "Colaboradores",
     href: "/administracao/colaboradores",
     icon: UsersRound,

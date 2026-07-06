@@ -53,7 +53,7 @@ O que sobra é **conciliação** (bater com extrato Itaú/comprovantes) e **vis�
 
 ## Regras de ouro
 
-- Banco é fonte da verdade; planilhas viram **exportação** (botão exportar Excel/Obsidian por mês para auditoria/contador).
+- Banco é fonte da verdade; planilhas viram **exportação** (botão exportar Excel por mês para auditoria/contador).
 - Nada digitado duas vezes: NF nasce da comanda; guia de imposto nasce das NFs; fatura de cartão nasce das compras; repasse nasce das comandas; P12 nasce de tudo.
 - Obra/capex separado do operacional (flag `is_capex`) — recomendação central do Plano de Virada.
 - RLS: financeiro completo só coordenação (`gestor_financeiro`, `dr_daniel`, `ceo`, `gestor`); recepção lança comanda e vê o próprio dia.

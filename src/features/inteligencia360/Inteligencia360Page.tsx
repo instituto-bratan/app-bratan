@@ -6,6 +6,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  ArrowUpRight,
   BarChart3,
   BrainCircuit,
   CalendarClock,
@@ -34,13 +35,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { generateCadenceTasks, loadCrmState } from "@/features/crm/crmData";
-import {
-  exportDailyBriefing,
-  exportDashboardSnapshot,
-  exportDataQualityReport,
-  exportWeeklyKickoff,
-} from "@/features/obsidian/obsidianVault";
-import { useObsidianVault } from "@/features/obsidian/useObsidianVault";
 import { useAuth } from "@/hooks/useAuth";
 import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
@@ -472,7 +466,6 @@ function InsightCard({
 
 export function Inteligencia360DashboardPage() {
   const { state, persist, reset, syncMode, isSyncing, syncError } = useInteligenciaState();
-  const obsidianVault = useObsidianVault();
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   const insights = useMemo(() => generateActionRecommendations(state), [state]);
   const quality = useMemo(() => buildDataQuality(state), [state]);
@@ -485,21 +478,7 @@ export function Inteligencia360DashboardPage() {
     setCreatedAction(action.title);
   }
 
-  function exportSnapshotToObsidian() {
-    const config = obsidianVault.config;
-    const crm = generateCadenceTasks(loadCrmState());
-    const reference = new Date();
-    obsidianVault.downloadFiles(
-      [
-        exportDashboardSnapshot(state, config, reference),
-        exportDataQualityReport(state, config, reference),
-        exportWeeklyKickoff(state, config, reference),
-        exportDailyBriefing(crm, config, reference),
-      ],
-      `app-bratan-dashboard-360-${reference.toISOString().slice(0, 10)}.zip`,
-      "DASHBOARD_360_EXPORT",
-    );
-  }
+
 
   const cards = [
     {
@@ -606,10 +585,6 @@ export function Inteligencia360DashboardPage() {
           <Button type="button" variant="outline" className="gap-2" onClick={() => copyText(generateMorningGoalMessage(state))}>
             <Copy className="h-4 w-4" aria-hidden="true" />
             Copiar meta do dia
-          </Button>
-          <Button type="button" variant="outline" className="gap-2" onClick={exportSnapshotToObsidian}>
-            <Download className="h-4 w-4" aria-hidden="true" />
-            Exportar Obsidian
           </Button>
           <LiquidButton type="button" size="lg" onClick={() => copyText(generateWeeklyKickoffBrief(state))}>
             <FileText className="h-4 w-4" aria-hidden="true" />
@@ -999,6 +974,97 @@ function TicketModule({ state, persist }: { state: Inteligencia360State; persist
   );
 }
 
+// Formulários manuais recolhidos: os dados principais chegam sozinhos de outros módulos.
+function ManualEntry({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/40">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold text-brand-musgo"
+      >
+        <span className="flex items-center gap-2">
+          <Plus className={cn("h-4 w-4 transition-transform", open && "rotate-45")} aria-hidden="true" />
+          {title}
+        </span>
+        <span className="text-xs font-normal text-muted-foreground">{open ? "fechar" : "abrir"}</span>
+      </button>
+      {open ? <div className="border-t border-brand-oliva/15 p-1">{children}</div> : null}
+    </div>
+  );
+}
+
+type ModuleGuide = {
+  auto: string;
+  doHere: string;
+  links: { label: string; href: string }[];
+};
+
+// Guia de cada módulo em linguagem simples: o que chega sozinho, o que fazer aqui e onde está a origem.
+const moduleGuides: Partial<Record<ModuleSlug, ModuleGuide>> = {
+  "ticket-medio": {
+    auto: "Este é um registro semanal da gestão (kickoff): ainda não vem automático.",
+    doHere: "Uma vez por semana, registre o ticket do Dr. Daniel (novo × recorrente) e a hipótese se caiu.",
+    links: [{ label: "P12 ao vivo", href: "/financeiro/p12" }],
+  },
+  precificacao: {
+    auto: "Tabela de referência: preço, custo e margem de cada plano/procedimento.",
+    doHere: "Mantenha os preços atualizados — é a trava contra desconto que come margem.",
+    links: [],
+  },
+  comercial: {
+    auto: "Chega sozinho: cada movimentação no Kanban (fechou, parcial, não fechou) vira uma linha aqui, com valores e objeção.",
+    doHere: "Acompanhe a conversão prescrito × vendido (meta 70–80%). Só lance manualmente o que não passou pelo Kanban.",
+    links: [
+      { label: "Kanban Comercial", href: "/crm/vendas" },
+      { label: "PDCA Dr Daniel", href: "/financeiro/pdca" },
+    ],
+  },
+  "jornada-paciente": {
+    auto: "Chega sozinho: fechamento no Kanban cria a jornada do paciente (contrato, agendamentos, próximos passos).",
+    doHere: "Confira quem está com contrato pendente ou datas incompletas. Lançamento manual é exceção.",
+    links: [{ label: "Kanban Comercial", href: "/crm/vendas" }],
+  },
+  reguas: {
+    auto: "As réguas operam nas Cadências do CRM: os toques (D+1 concierge, enfermeira 14 dias, resgates) viram tarefas automaticamente.",
+    doHere: "Aqui fica só o histórico consolidado dos toques. Para agir, use Minhas Tarefas; para inscrever alguém, Cadências.",
+    links: [
+      { label: "Cadências", href: "/crm/cadencias" },
+      { label: "Minhas Tarefas", href: "/crm/minhas-tarefas" },
+    ],
+  },
+  "retencao-resgate": {
+    auto: "Os resgates operam no Kanban (coluna Resgate D60) e nas cadências de resgate — as tentativas viram tarefas.",
+    doHere: "Registre aqui o resultado das ligações de investigação de churn (Aline) e acompanhe as coortes de retorno.",
+    links: [{ label: "Kanban (Resgate D60)", href: "/crm/vendas" }],
+  },
+  experiencia: {
+    auto: "NPS e feedbacks são colhidos com o paciente — este registro é manual mesmo.",
+    doHere: "Após checkpoint ou contato do concierge, registre a nota e o comentário. Nota baixa vira ação automática no Dashboard.",
+    links: [],
+  },
+  recebiveis: {
+    auto: "Chega sozinho: comprovante pago, lembrete de pagamento e venda parcelada do Kanban viram recebíveis aqui.",
+    doHere: "Acompanhe o que está em aberto/vencido. Para cobrar, use Lembretes; para conferir o caixa do dia, o Fechamento.",
+    links: [
+      { label: "Lembretes", href: "/lembretes-pagamento" },
+      { label: "Comprovantes", href: "/comprovantes" },
+      { label: "Fechamento do dia", href: "/financeiro/fechamento" },
+    ],
+  },
+  acoes: {
+    auto: "Insights críticos do Dashboard viram ação com um clique; aqui também entram as ações criadas à mão.",
+    doHere: "Toda ação tem dono, prazo e status. Use os filtros para achar o que é seu e o que está atrasado.",
+    links: [{ label: "Dashboard 360", href: "/inteligencia-360" }],
+  },
+  configuracoes: {
+    auto: "Estas metas calibram os alertas do 360: meta mensal → farol de receita; conversão 70–80% → alerta comercial; mensagens por ciclo → antifadiga das réguas.",
+    doHere: "Ajuste apenas quando a estratégia mudar — os alertas do Dashboard seguem estes números.",
+    links: [{ label: "Dashboard 360", href: "/inteligencia-360" }],
+  },
+};
+
 function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: Inteligencia360State; persist: ReturnType<typeof useInteligenciaState>["persist"] }) {
   if (slug === "ticket-medio") return <TicketModule state={state} persist={persist} />;
 
@@ -1100,6 +1166,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     });
     return (
       <>
+        <ManualEntry title="Lançar prescrição manualmente (o Kanban já alimenta isto)">
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Registrar prescrição e fechamento</CardTitle></CardHeader>
           <CardContent>
@@ -1133,6 +1200,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
+        </ManualEntry>
         <DataTable headers={["Paciente", "Prescrito", "Vendido", "Recebido", "Conversão", "Objeção"]} rows={state.prescriptions.map((record) => [record.patientReference, money360(record.prescribedAmount), money360(record.soldAmount), money360(record.receivedAmount), percent360(record.prescribedAmount ? record.soldAmount / record.prescribedAmount * 100 : 0), objectionLabels[record.objectionCategory]])} />
       </>
     );
@@ -1142,6 +1210,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     const [form, setForm] = useState({ patientReference: "", currentStage: "SALES" as JourneyStage360, contractCreated: false, contractSent: false, contractSigned: false, allDatesScheduled: false });
     return (
       <>
+        <ManualEntry title="Lançar etapa manualmente (o Kanban já alimenta isto)">
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Registrar etapa da jornada</CardTitle></CardHeader>
           <CardContent>
@@ -1162,6 +1231,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
+        </ManualEntry>
         <DataTable headers={["Paciente", "Etapa", "Contrato", "Datas", "Próximo passo"]} rows={state.journeys.map((record) => [record.patientReference, stageLabels[record.currentStage], record.contractSigned ? "Assinado" : record.contractSent ? "Enviado" : record.contractCreated ? "Criado" : "Pendente", record.allDatesScheduled ? "Agendadas" : "Incompletas", record.contractSigned ? "Concierge / enfermagem" : "Administrativo conferir SuperSign"])} />
       </>
     );
@@ -1171,6 +1241,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     const [form, setForm] = useState({ patientReference: "", touchType: "D1_CONCIERGE" as TouchType360, scheduledDate: todayPlus(1), status: "PENDING" as TouchStatus360, manualMessageText: "Olá. Passando para saber como você está e se ficou alguma dúvida." });
     return (
       <>
+        <ManualEntry title="Registrar toque manualmente (as cadências do CRM já geram os toques)">
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Adicionar toque da régua</CardTitle></CardHeader>
           <CardContent>
@@ -1188,6 +1259,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
+        </ManualEntry>
         <DataTable headers={["Paciente", "Toque", "Data", "Status", "Mensagem"]} rows={state.touchpoints.map((record) => [record.patientReference, touchTypeLabels[record.touchType], record.scheduledDate, record.status, <Button key={record.id} type="button" size="sm" variant="outline" onClick={() => copyText(record.manualMessageText)}>Copiar</Button>])} />
       </>
     );
@@ -1197,6 +1269,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     const [form, setForm] = useState({ cohortMonth: new Date().toISOString().slice(0, 7), scheduledReturns: "", attendedReturns: "", missedReturns: "" });
     return (
       <>
+        <ManualEntry title="Registrar coorte/churn manualmente">
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Registrar coorte mensal</CardTitle></CardHeader>
           <CardContent>
@@ -1213,6 +1286,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
+        </ManualEntry>
         <DataTable headers={["Coorte", "Agendados", "Compareceram", "Faltaram", "Retenção"]} rows={state.retentionCohorts.map((record) => [record.cohortLabel, record.scheduledReturns, record.attendedReturns, record.missedReturns, percent360(record.scheduledReturns ? record.attendedReturns / record.scheduledReturns * 100 : 0)])} />
         <DataTable headers={["Paciente em resgate", "Tipo", "Tentativas", "Status", "Dono"]} rows={state.rescueWorkflows.map((record) => [record.patientReference, record.rescueType, `${record.attemptsDone}/${record.attemptsTotal}`, record.status as RescueStatus360, record.ownerUserId])} />
       </>
@@ -1274,6 +1348,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     const [form, setForm] = useState({ patientReference: "", totalAmount: "", receivedAmount: "", dueDate: todayPlus(7), status: "OPEN" as ReceivableStatus360 });
     return (
       <>
+        <ManualEntry title="Lançar recebível manualmente (comprovantes, lembretes e Kanban já alimentam)">
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Registrar recebível</CardTitle></CardHeader>
           <CardContent>
@@ -1291,6 +1366,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
+        </ManualEntry>
         <DataTable
           headers={["Paciente", "Vendido", "Recebido", "Aberto", "Vencimento", "Status", "Ações"]}
           rows={state.receivables.map((record) => [
@@ -1309,8 +1385,48 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
 
   if (slug === "acoes") {
     const [form, setForm] = useState({ title: "", description: "", sourceModule: "MANUAL" as ActionSourceModule360, priority: "MEDIUM" as ActionPriority360, ownerUserId: "Gestão", dueDate: todayPlus(5), expectedImpact: "PROCESS" as ExpectedImpact360 });
+    const [actionQuery, setActionQuery] = useState("");
+    const [actionStatusFilter, setActionStatusFilter] = useState("ABERTAS");
+    const [actionPriorityFilter, setActionPriorityFilter] = useState("");
+    const today = todayPlus(0);
+    const filteredActions = state.actions
+      .filter((record) => {
+        if (actionStatusFilter === "ABERTAS") return record.status !== "DONE" && record.status !== "CANCELED";
+        if (actionStatusFilter === "ATRASADAS") return record.status !== "DONE" && record.status !== "CANCELED" && record.dueDate < today;
+        if (actionStatusFilter === "CONCLUIDAS") return record.status === "DONE";
+        return true;
+      })
+      .filter((record) => (actionPriorityFilter ? record.priority === actionPriorityFilter : true))
+      .filter((record) => {
+        const term = actionQuery.trim().toLowerCase();
+        if (!term) return true;
+        return `${record.title} ${record.description} ${record.ownerUserId}`.toLowerCase().includes(term);
+      })
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    const overdueCount = state.actions.filter((record) => record.status !== "DONE" && record.status !== "CANCELED" && record.dueDate < today).length;
     return (
       <>
+        <section className="rounded-lg border border-brand-oliva/15 bg-white/50 p-2.5 backdrop-blur-xl">
+          <div className="grid gap-2 lg:grid-cols-[1.3fr_0.6fr_0.6fr_auto]">
+            <Input value={actionQuery} onChange={(event) => setActionQuery(event.target.value)} placeholder="Buscar por título, descrição ou dono" aria-label="Buscar ações" />
+            <select value={actionStatusFilter} onChange={(event) => setActionStatusFilter(event.target.value)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm" aria-label="Filtrar por status">
+              <option value="ABERTAS">Abertas</option>
+              <option value="ATRASADAS">Atrasadas</option>
+              <option value="CONCLUIDAS">Concluídas</option>
+              <option value="TODAS">Todas</option>
+            </select>
+            <select value={actionPriorityFilter} onChange={(event) => setActionPriorityFilter(event.target.value)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm" aria-label="Filtrar por prioridade">
+              <option value="">Toda prioridade</option>
+              {Object.entries(actionPriorityLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2 px-1 text-xs font-semibold">
+              <span className="text-brand-musgo">{filteredActions.length} no filtro</span>
+              {overdueCount ? <span className="rounded-full bg-red-100 px-2 py-1 text-red-800">{overdueCount} atrasadas</span> : null}
+            </div>
+          </div>
+        </section>
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Criar ação manual</CardTitle></CardHeader>
           <CardContent>
@@ -1331,7 +1447,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
         </Card>
         <DataTable
           headers={["Ação", "Prioridade", "Dono", "Prazo", "Status", "Impacto", "Ações"]}
-          rows={state.actions.map((record) => [
+          rows={filteredActions.map((record) => [
             record.title,
             actionPriorityLabels[record.priority],
             record.ownerUserId,
@@ -1382,6 +1498,7 @@ export function Inteligencia360ModulePage() {
   const module = moduleBySlug[slug] ?? moduleBySlug["ticket-medio"];
   const { state, persist, syncMode, isSyncing, syncError } = useInteligenciaState();
   const Icon = module.icon;
+  const guide = moduleGuides[module.slug];
 
   if (!moduleBySlug[slug]) {
     navigate(moduleRoutes360.ticket, { replace: true });
@@ -1408,18 +1525,34 @@ export function Inteligencia360ModulePage() {
       }
     >
       <ModuleNav active={module.slug} />
-      <Card className="border-brand-dourado/35 bg-brand-creme/35 shadow-none">
-        <CardContent className="flex items-start gap-3 p-4">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-musgo text-brand-papel">
-            <Icon className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-brand-oliva">Fonte da verdade</p>
-            <p className="mt-1 text-sm font-semibold leading-6 text-brand-tinta">{module.source}</p>
-          </div>
-        </CardContent>
-      </Card>
-      <SimpleModuleForms slug={module.slug} state={state} persist={persist} />
+      {guide ? (
+        <Card className="border-brand-dourado/35 bg-brand-creme/35 shadow-none">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-musgo text-brand-papel">
+                <Icon className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-6 text-brand-tinta">{guide.auto}</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{guide.doHere}</p>
+                {guide.links.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {guide.links.map((link) => (
+                      <Button key={link.href} asChild variant="outline" size="sm">
+                        <Link to={link.href}>
+                          {link.label}
+                          <ArrowUpRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+                        </Link>
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      <SimpleModuleForms key={module.slug} slug={module.slug} state={state} persist={persist} />
     </SectionShell>
   );
 }

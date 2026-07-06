@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   ClipboardCopy,
-  Download,
   MessageCircle,
   PauseCircle,
   PlayCircle,
@@ -18,8 +17,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { exportCadencePlaybooks, exportMessageTemplates } from "@/features/obsidian/obsidianVault";
-import { useObsidianVault } from "@/features/obsidian/useObsidianVault";
 import {
   applyMessageTemplate,
   canUserAccessCadence,
@@ -46,7 +43,6 @@ function statusTone(status: CrmCadenceStatus) {
 export function CrmCadencesPage() {
   const { pessoa } = useAuth();
   const { state, persist } = useCrmState();
-  const obsidianVault = useObsidianVault();
   const [cadenceId, setCadenceId] = useState("cad-cold-lead");
   const [contactId, setContactId] = useState(state.contacts[0]?.id ?? "");
   const [dealId, setDealId] = useState("");
@@ -110,15 +106,7 @@ export function CrmCadencesPage() {
     setFeedback("Mensagem modelo copiada.");
   }
 
-  function exportCadencesToObsidian() {
-    const config = obsidianVault.config;
-    obsidianVault.downloadFiles(
-      [...exportCadencePlaybooks(state, config), ...exportMessageTemplates(state.messageTemplates, config)],
-      `app-bratan-cadencias-${new Date().toISOString().slice(0, 10)}.zip`,
-      "CRM_CADENCE_EXPORT",
-    );
-    setFeedback("Playbooks e templates preparados em ZIP para o Obsidian.");
-  }
+
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
@@ -145,10 +133,6 @@ export function CrmCadencesPage() {
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">
               <Link to={crmModuleRoutes.tasks}>Minhas tarefas <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-            <Button type="button" variant="outline" onClick={exportCadencesToObsidian}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar Obsidian
             </Button>
             <LiquidButton type="button" size="sm" onClick={() => persist((current) => generateCadenceTasks(current))}>
               <RefreshCw className="h-4 w-4" />

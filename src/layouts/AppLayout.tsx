@@ -140,7 +140,6 @@ const flowGroups: FlowGroup[] = [
       { label: "Recebíveis", href: "/inteligencia-360/recebiveis", icon: ReceiptText, allowed: canInteligencia360 },
       { label: "Ações", href: "/inteligencia-360/acoes", icon: ClipboardList, allowed: canInteligencia360 },
       { label: "Configurações", href: "/inteligencia-360/configuracoes", icon: ShieldCheck, allowed: canAdministracao },
-      { label: "Vault Obsidian", shortLabel: "Vault", href: "/configuracoes/obsidian", icon: FileText, allowed: canAdministracao },
     ],
   },
   {

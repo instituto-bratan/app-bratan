@@ -6,7 +6,6 @@ import {
   ArrowRight,
   BrainCircuit,
   CircleDollarSign,
-  Download,
   GraduationCap,
   Maximize2,
   Minimize2,
@@ -25,8 +24,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { exportDailyBriefing, exportDealSummary } from "@/features/obsidian/obsidianVault";
-import { useObsidianVault } from "@/features/obsidian/useObsidianVault";
 import { useAuth } from "@/hooks/useAuth";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -136,7 +133,7 @@ const kanbanTourSteps: TourStep[] = [
     icon: BrainCircuit,
     title: "Tudo alimenta o Dashboard 360",
     description:
-      "Valores vendidos, conversão e objeções fluem daqui para a Inteligência 360 — sem digitar nada duas vezes. O botão Obsidian exporta um resumo em Markdown para documentação.",
+      "Valores vendidos, conversão e objeções fluem daqui para a Inteligência 360 — sem digitar nada duas vezes.",
   },
 ];
 
@@ -237,7 +234,6 @@ function DealCard({
 export function CrmKanbanPage() {
   const { pessoa } = useAuth();
   const { state, persist } = useCrmState();
-  const obsidianVault = useObsidianVault();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
@@ -318,19 +314,7 @@ export function CrmKanbanPage() {
     writeLocalValue("app-bratan-kanban-density", next);
   }
 
-  function exportKanbanToObsidian() {
-    const config = obsidianVault.config;
-    const files = [
-      exportDailyBriefing(state, config),
-      ...visibleDeals.slice(0, 60).map((deal) => exportDealSummary(deal, state, config)),
-    ];
-    obsidianVault.downloadFiles(
-      files,
-      `app-bratan-kanban-${new Date().toISOString().slice(0, 10)}.zip`,
-      "CRM_KANBAN_EXPORT",
-    );
-    setFeedback(`${files.length} arquivos do Kanban preparados para o Obsidian.`);
-  }
+
 
   function handleCreateLead(event: FormEvent) {
     event.preventDefault();
@@ -502,10 +486,6 @@ export function CrmKanbanPage() {
           <Button type="button" variant="outline" size="sm" onClick={() => { setTourOpen(true); markTourSeen(); }}>
             <GraduationCap className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Como usar
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={exportKanbanToObsidian}>
-            <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Obsidian
           </Button>
           {fullscreen ? (
             <Button type="button" variant="outline" size="sm" onClick={() => setFullscreen(false)}>

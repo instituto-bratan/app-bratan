@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   CalendarClock,
   CircleDollarSign,
-  Download,
   FileSignature,
   HeartPulse,
   History,
@@ -19,8 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { loadInteligencia360State, money360, stageLabels, touchTypeLabels } from "@/features/inteligencia360/inteligencia360Data";
-import { exportCrmContactSummary } from "@/features/obsidian/obsidianVault";
-import { useObsidianVault } from "@/features/obsidian/useObsidianVault";
 import {
   canUserAccessContact,
   canUserSeeFinancialValues,
@@ -69,7 +66,6 @@ export function CrmContactProfilePage() {
   const { id = "" } = useParams();
   const { pessoa } = useAuth();
   const { state } = useCrmState();
-  const obsidianVault = useObsidianVault();
   const [tab, setTab] = useState<ProfileTab>("resumo");
   const inteligencia = useMemo(() => loadInteligencia360State(), []);
   const contact = state.contacts.find((item) => item.id === id);
@@ -94,14 +90,7 @@ export function CrmContactProfilePage() {
     .slice()
     .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0];
 
-  function exportProfileToObsidian() {
-    if (!contact) return;
-    obsidianVault.downloadFiles(
-      [exportCrmContactSummary(contact, state, obsidianVault.config)],
-      `app-bratan-perfil-${contact.id}.zip`,
-      "CRM_PROFILE_EXPORT",
-    );
-  }
+
 
   const mergedTimeline = useMemo(() => {
     const crmEvents = contactTimeline.map((event) => ({
@@ -196,10 +185,6 @@ export function CrmContactProfilePage() {
                 <MessageCircle className="mr-2 h-4 w-4" />
                 WhatsApp
               </a>
-            </Button>
-            <Button type="button" variant="outline" onClick={exportProfileToObsidian}>
-              <Download className="mr-2 h-4 w-4" />
-              Exportar Obsidian
             </Button>
             <Button asChild>
               <Link to={crmModuleRoutes.deals}>Ver Kanban</Link>

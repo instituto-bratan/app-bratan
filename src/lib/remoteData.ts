@@ -16,21 +16,6 @@ import {
 } from "@/features/estalecas/estalecasData";
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
 import type { FinCategory, FinExpense, FinInvoice, FinPartnerEntry, FinProvisionRule, FinReconciliation, FinSale, FinSavingsMove } from "@/features/financeiro/financeiroData";
-import {
-  defaultObsidianConfig,
-  obsidianConfigFromSettingsRow,
-  obsidianConfigToSettingsRow,
-  obsidianLogFromRow,
-  obsidianLogRowFromLog,
-  obsidianQueueItemFromRow,
-  obsidianQueueRowFromItem,
-  type ObsidianExportQueueItem,
-  type ObsidianQueueRow,
-  type ObsidianSettingsRow,
-  type ObsidianSyncLog,
-  type ObsidianSyncLogRow,
-  type ObsidianVaultConfig,
-} from "@/features/obsidian/obsidianVault";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
   deriveInteligencia360FromCrm,
@@ -2678,93 +2663,6 @@ export async function updateRemoteCheckinEventCodeStatus(values: {
     entityId: values.id,
   });
 }
-
-export async function getRemoteObsidianVaultConfig(): Promise<ObsidianVaultConfig> {
-  const client = requireSupabase();
-  const { data, error } = await client
-    .from("obsidian_vault_settings")
-    .select("*")
-    .eq("id", true)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) return { ...defaultObsidianConfig };
-  return obsidianConfigFromSettingsRow(data as ObsidianSettingsRow);
-}
-
-export async function saveRemoteObsidianVaultConfig(config: ObsidianVaultConfig) {
-  const client = requireSupabase();
-  const { error } = await client
-    .from("obsidian_vault_settings")
-    .upsert(obsidianConfigToSettingsRow(config), { onConflict: "id" });
-
-  if (error) throw error;
-  await safeWriteRemoteAuditEvent({
-    action: "obsidian.settings.save",
-    entity: "obsidian_vault_settings",
-    metadata: {
-      enabled: config.enabled,
-      syncMode: config.syncMode,
-      redactionMode: config.defaultRedactionMode,
-      exportSensitiveData: config.exportSensitiveData,
-    },
-  });
-}
-
-export async function listRemoteObsidianQueue(limit = 50): Promise<ObsidianExportQueueItem[]> {
-  const client = requireSupabase();
-  const { data, error } = await client
-    .from("obsidian_export_queue")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) throw error;
-  return ((data ?? []) as ObsidianQueueRow[]).map(obsidianQueueItemFromRow);
-}
-
-export async function listRemoteObsidianSyncLogs(limit = 20): Promise<ObsidianSyncLog[]> {
-  const client = requireSupabase();
-  const { data, error } = await client
-    .from("obsidian_sync_logs")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) throw error;
-  return ((data ?? []) as ObsidianSyncLogRow[]).map(obsidianLogFromRow);
-}
-
-export async function appendRemoteObsidianExport(values: {
-  queueItems: ObsidianExportQueueItem[];
-  log: ObsidianSyncLog;
-}) {
-  const client = requireSupabase();
-
-  if (values.queueItems.length) {
-    const { error: queueError } = await client
-      .from("obsidian_export_queue")
-      .insert(values.queueItems.map(obsidianQueueRowFromItem));
-    if (queueError) throw queueError;
-  }
-
-  const { error: logError } = await client
-    .from("obsidian_sync_logs")
-    .insert(obsidianLogRowFromLog(values.log));
-  if (logError) throw logError;
-
-  await safeWriteRemoteAuditEvent({
-    action: "obsidian.export.record",
-    entity: "obsidian_sync_logs",
-    metadata: {
-      syncType: values.log.syncType,
-      filesCreated: values.log.filesCreated,
-      queueItems: values.queueItems.length,
-    },
-  });
-}
-
-// ---------------- Financeiro 360 ----------------
 
 export async function listRemoteFinCategories(): Promise<FinCategory[]> {
   const client = requireSupabase();
