@@ -210,3 +210,18 @@ test("comandas sem NF listam valores sugeridos por tipo e itens psi/nutri geram 
   assert.equal(suggestions.length, 2);
   assert.equal(fin.partnerSuggestions(sales, [{ id: "e", professional: "PSICOLOGA", entryDate: "2026-07-02", patientName: "", saleItemRef: suggestions[0].saleItemRef, kind: "PLANO", amount: 110, notes: "", createdAt: "" }], "PSICOLOGA", "2026-07").length, 1);
 });
+
+test("LUCRO da P12 segue a planilha: faturamento + entradas de poupança − despesas", () => {
+  const sales = [sale("2026-01-10", [["CONSULTA", 265051.20]], [["PIX", 265051.20]], "s1")];
+  const expenses = [
+    { id: "e1", description: "Despesas jan", categoryRef: "cat-salarios-fixos", amount: 219167.47, dueDate: "2026-01-28", paidAt: "2026-01-28", method: "PIX", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
+  ];
+  const savings = [
+    { id: "m1", moveDate: "2026-01-28", direction: "ENTRADA", amount: 13982.99, reason: "", source: "MANUAL", monthRef: "2026-01", createdAt: "" },
+    { id: "m2", moveDate: "2026-01-29", direction: "SAIDA", amount: 999, reason: "não conta no lucro", source: "MANUAL", monthRef: "2026-01", createdAt: "" },
+  ];
+  const matrix = fin.buildP12Matrix(sales, expenses, fin.seedFinCategories, 2026, savings);
+  assert.ok(Math.abs(matrix.savingsInMonths[0] - 13982.99) < 0.001);
+  assert.ok(Math.abs(matrix.profitMonths[0] - 59866.72) < 0.001);
+  assert.ok(Math.abs(matrix.profitYear - 59866.72) < 0.001);
+});

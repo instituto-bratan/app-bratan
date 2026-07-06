@@ -200,6 +200,8 @@ export type P12Matrix = {
   year: number;
   revenueMonths: P12Cell[];
   revenueYear: number;
+  savingsInMonths: number[];
+  savingsInYear: number;
   groups: P12Group[];
   totalExpensesMonths: number[];
   totalExpensesYear: number;
@@ -217,7 +219,8 @@ function emptyCells(): P12Cell[] {
 }
 
 // A P12 ao vivo: faturamento derivado das comandas, despesas por categoria × mês.
-export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categories: FinCategory[], year: number): P12Matrix {
+// LUCRO segue a fórmula da planilha (linha 74): faturamento + entradas de poupança − despesas.
+export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categories: FinCategory[], year: number, savingsMoves: FinSavingsMove[] = []): P12Matrix {
   const revenueMonths = emptyCells();
   for (const sale of sales) {
     if (Number(sale.saleDate.slice(0, 4)) !== year) continue;
@@ -262,19 +265,29 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
   const totalExpensesMonths = Array.from({ length: 12 }, (_, index) =>
     groups.reduce((sum, group) => sum + group.months[index].total, 0),
   );
+  const savingsInMonths = Array.from({ length: 12 }, () => 0);
+  for (const move of savingsMoves) {
+    if (move.direction !== "ENTRADA") continue;
+    if (Number(move.moveDate.slice(0, 4)) !== year) continue;
+    const month = monthIndex(move.moveDate);
+    if (month >= 0) savingsInMonths[month] += move.amount || 0;
+  }
   const revenueYear = revenueMonths.reduce((sum, cell) => sum + cell.total, 0);
+  const savingsInYear = savingsInMonths.reduce((sum, value) => sum + value, 0);
   const totalExpensesYear = totalExpensesMonths.reduce((sum, value) => sum + value, 0);
-  const profitMonths = totalExpensesMonths.map((expensesTotal, index) => revenueMonths[index].total - expensesTotal);
+  const profitMonths = totalExpensesMonths.map((expensesTotal, index) => revenueMonths[index].total + savingsInMonths[index] - expensesTotal);
 
   return {
     year,
     revenueMonths,
     revenueYear,
+    savingsInMonths,
+    savingsInYear,
     groups,
     totalExpensesMonths,
     totalExpensesYear,
     profitMonths,
-    profitYear: revenueYear - totalExpensesYear,
+    profitYear: revenueYear + savingsInYear - totalExpensesYear,
   };
 }
 

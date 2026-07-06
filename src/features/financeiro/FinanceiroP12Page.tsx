@@ -30,8 +30,8 @@ export function FinanceiroP12Page() {
   const [hideEmpty, setHideEmpty] = useState(true);
   const financeiro = useFinanceiro(year);
   const matrix = useMemo(
-    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, year],
+    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves),
+    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves],
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
@@ -165,6 +165,15 @@ export function FinanceiroP12Page() {
                   ))}
                   <td className="px-4 py-3 text-brand-musgo">{moneyFin(matrix.revenueYear)}</td>
                 </tr>
+                <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
+                  <td className="sticky left-0 z-10 bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
+                    Entrada de valores (Poupança)
+                  </td>
+                  {visibleMonths.map((month) => (
+                    <td key={month} className="px-2.5 py-2.5">{cellValue(matrix.savingsInMonths[month], true)}</td>
+                  ))}
+                  <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.savingsInYear)}</td>
+                </tr>
 
                 {matrix.groups.map((group) => (
                   <GroupRows
@@ -184,10 +193,13 @@ export function FinanceiroP12Page() {
                   <td className="px-4 py-3">{moneyFin(matrix.totalExpensesYear)}</td>
                 </tr>
                 <tr className="bg-brand-creme/70 font-bold">
-                  <td className="sticky left-0 z-10 bg-brand-creme px-4 py-3 text-left text-brand-musgo">LUCRO</td>
+                  <td className="sticky left-0 z-10 bg-brand-creme px-4 py-3 text-left text-brand-musgo">
+                    LUCRO
+                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(fatur. + poupança − despesas)</span>
+                  </td>
                   {visibleMonths.map((month) => (
                     <td key={month} className={cn("px-2.5 py-3", matrix.profitMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
-                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
+                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.savingsInMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
                     </td>
                   ))}
                   <td className={cn("px-4 py-3", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>
