@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
+  BadgeCheck,
   Calculator,
   CheckCircle2,
   Coins,
@@ -21,6 +22,16 @@ import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  estalecaClaimConfig,
+  estalecaClaimStatusLabels,
+  type EstalecaClaim,
+} from "@/features/estalecas/estalecasData";
+import {
+  getRemoteEstalecaClaimPhotoUrl,
+  listRemoteEstalecaClaims,
+  reviewRemoteEstalecaClaim,
+} from "@/lib/remoteData";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
@@ -270,6 +281,115 @@ function MetricCard({
         </div>
         <p className="text-2xl font-bold leading-tight text-brand-musgo">{value}</p>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+// Fila de aprovação das conquistas com prova (livro, alimentação...).
+function ClaimReviewCard({ pessoa, useRemote }: { pessoa: ReturnType<typeof useAuth>["pessoa"]; useRemote: boolean }) {
+  const queryClient = useQueryClient();
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const claimsQuery = useQuery({
+    queryKey: ["estaleca-claims"],
+    queryFn: listRemoteEstalecaClaims,
+    enabled: useRemote,
+    staleTime: 15_000,
+  });
+  const reviewMutation = useMutation({
+    mutationFn: reviewRemoteEstalecaClaim,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["estaleca-claims"] });
+      void queryClient.invalidateQueries({ queryKey: ["estalecas-transactions"] });
+    },
+  });
+
+  const pending = (claimsQuery.data ?? []).filter((claim) => claim.status === "PENDING");
+
+  async function openPhoto(claim: EstalecaClaim) {
+    const url = await getRemoteEstalecaClaimPhotoUrl(claim.photoPath);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function review(claim: EstalecaClaim, approve: boolean) {
+    if (!pessoa) return;
+    const amount = Number((amounts[claim.id] ?? String(claim.amountSuggested)).replace(",", ".")) || 0;
+    reviewMutation.mutate({ pessoa, claim, approve, amount: approve ? amount : 0, note: (notes[claim.id] ?? "").trim() });
+  }
+
+  return (
+    <Card className="border-brand-dourado/40 bg-brand-creme/25 shadow-none">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <BadgeCheck className="h-5 w-5" aria-hidden="true" />
+          Conquistas para aprovar
+          {pending.length ? <Badge variant="gold">{pending.length}</Badge> : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {!useRemote ? (
+          <p className="text-sm text-muted-foreground">Disponível ao entrar com login.</p>
+        ) : pending.length ? (
+          pending.map((claim) => (
+            <div key={claim.id} className="rounded-lg border border-brand-oliva/16 bg-white/70 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-brand-tinta">
+                    {claim.colaboradorNome} · {claim.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {estalecaClaimConfig[claim.claimType].label} · {claim.claimDate.split("-").reverse().join("/")}
+                    {claim.description ? ` — ${claim.description}` : ""}
+                  </p>
+                </div>
+                {claim.photoPath ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => void openPhoto(claim)}>
+                    Ver foto de prova
+                  </Button>
+                ) : (
+                  <Badge variant="muted">Sem foto</Badge>
+                )}
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)_auto_auto]">
+                <Input
+                  value={amounts[claim.id] ?? String(claim.amountSuggested)}
+                  onChange={(event) => setAmounts((current) => ({ ...current, [claim.id]: event.target.value }))}
+                  inputMode="decimal"
+                  aria-label="Estalecas a conceder"
+                  className="h-10"
+                />
+                <Input
+                  value={notes[claim.id] ?? ""}
+                  onChange={(event) => setNotes((current) => ({ ...current, [claim.id]: event.target.value }))}
+                  placeholder="Observação (opcional; obrigatória ao recusar)"
+                  className="h-10"
+                />
+                <Button type="button" size="sm" disabled={reviewMutation.isPending} onClick={() => review(claim, true)}>
+                  Aprovar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-red-300 text-red-800 hover:bg-red-50"
+                  disabled={reviewMutation.isPending || !(notes[claim.id] ?? "").trim()}
+                  onClick={() => review(claim, false)}
+                >
+                  Recusar
+                </Button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">Nenhuma conquista aguardando. ✓</p>
+        )}
+        {(claimsQuery.data ?? []).filter((claim) => claim.status !== "PENDING").slice(0, 4).map((claim) => (
+          <p key={claim.id} className="px-1 text-xs text-muted-foreground">
+            {claim.status === "APPROVED" ? "✓" : "✗"} {claim.colaboradorNome} · {claim.title} — {estalecaClaimStatusLabels[claim.status]}
+          </p>
+        ))}
       </CardContent>
     </Card>
   );
@@ -1106,6 +1226,7 @@ export function EstalecasAdminPage() {
 
         <div className="grid gap-5 xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
           <section className="space-y-5">
+            <ClaimReviewCard pessoa={pessoa} useRemote={useRemote} />
             <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">

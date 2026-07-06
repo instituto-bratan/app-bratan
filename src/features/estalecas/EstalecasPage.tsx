@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import {
+  BookOpen,
   CalendarCheck,
   CheckCircle2,
   Coins,
@@ -31,6 +32,12 @@ import {
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import type { CheckinType, Colaborador } from "@/types/database";
+import {
+  estalecaClaimConfig,
+  estalecaClaimStatusLabels,
+  type EstalecaClaimType,
+} from "./estalecasData";
+import { createRemoteEstalecaClaim, listRemoteEstalecaClaims } from "@/lib/remoteData";
 import {
   buildEstalecasSnapshot,
   buildMonthlyGymRanking,
@@ -127,6 +134,144 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
+
+// Conquistas com prova: livro lido, alimentação saudável etc. — entram pendentes e a coordenação aprova.
+function ConquistasSection({ pessoa, useRemote }: { pessoa: Colaborador | null; useRemote: boolean }) {
+  const queryClient = useQueryClient();
+  const [claimType, setClaimType] = useState<EstalecaClaimType>("LEITURA");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [message, setMessage] = useState("");
+
+  const claimsQuery = useQuery({
+    queryKey: ["estaleca-claims"],
+    queryFn: listRemoteEstalecaClaims,
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+  const createMutation = useMutation({
+    mutationFn: createRemoteEstalecaClaim,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["estaleca-claims"] });
+      setMessage("Conquista enviada! A coordenação vai revisar e aprovar.");
+      setTitle("");
+      setDescription("");
+      setPhoto(null);
+    },
+    onError: () => setMessage("Não foi possível enviar agora. Tente novamente."),
+  });
+
+  const config = estalecaClaimConfig[claimType];
+  const myClaims = (claimsQuery.data ?? []).filter((claim) => claim.colaboradorId === pessoa?.id).slice(0, 6);
+
+  return (
+    <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+      <Card className="border-brand-dourado/40 bg-brand-creme/30 shadow-none">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <BookOpen className="h-5 w-5" aria-hidden="true" />
+            Conquistas com prova
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Leu um livro? Manteve a alimentação saudável? Registre com a prova — a coordenação aprova e as Estalecas caem na
+            sua carteira.
+          </p>
+          {!useRemote ? (
+            <p className="mt-4 rounded-lg border border-brand-oliva/16 bg-white/60 p-3 text-sm text-muted-foreground">
+              Entre com seu login para enviar conquistas.
+            </p>
+          ) : (
+            <form
+              className="mt-4 grid gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!pessoa) return;
+                if (!title.trim()) return setMessage("Dê um título (ex.: nome do livro).");
+                if (!description.trim() && !photo) return setMessage("Conte como foi ou anexe uma foto de prova.");
+                createMutation.mutate({
+                  pessoa,
+                  claimType,
+                  title: title.trim(),
+                  description: description.trim(),
+                  claimDate: todayISO(),
+                  amountSuggested: config.defaultAmount,
+                  photoFile: photo,
+                });
+              }}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>Tipo</Label>
+                  <select
+                    value={claimType}
+                    onChange={(event) => setClaimType(event.target.value as EstalecaClaimType)}
+                    className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                  >
+                    {(Object.keys(estalecaClaimConfig) as EstalecaClaimType[]).map((type) => (
+                      <option key={type} value={type}>
+                        {estalecaClaimConfig[type].label}
+                        {estalecaClaimConfig[type].defaultAmount ? ` (+${estalecaClaimConfig[type].defaultAmount})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Foto de prova (opcional)</Label>
+                  <Input type="file" accept="image/*" className="mt-1 pt-2" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
+                </div>
+              </div>
+              <div>
+                <Label>Título</Label>
+                <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={config.titlePlaceholder} />
+              </div>
+              <div>
+                <Label>Como foi / o que aprendeu</Label>
+                <Input value={description} onChange={(event) => setDescription(event.target.value)} placeholder={config.hint} />
+              </div>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? "Enviando..." : "Enviar para aprovação"}
+              </Button>
+              {message ? <p className="text-sm font-semibold text-brand-musgo">{message}</p> : null}
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+        <CardHeader>
+          <CardTitle className="text-lg">Minhas conquistas enviadas</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-2">
+          {myClaims.length ? (
+            myClaims.map((claim) => (
+              <div key={claim.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-brand-tinta">{claim.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {estalecaClaimConfig[claim.claimType].label} · {claim.claimDate.split("-").reverse().join("/")}
+                    {claim.reviewNote ? ` · ${claim.reviewNote}` : ""}
+                  </p>
+                </div>
+                <Badge
+                  variant={claim.status === "APPROVED" ? "muted" : claim.status === "REJECTED" ? "outline" : "gold"}
+                  className={cn(claim.status === "REJECTED" && "border-red-300 text-red-800", claim.status === "APPROVED" && "bg-emerald-100 text-emerald-800")}
+                >
+                  {estalecaClaimStatusLabels[claim.status]}
+                </Badge>
+              </div>
+            ))
+          ) : (
+            <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma conquista enviada ainda. Comece pelo livro do mês!</p>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 export function EstalecasPage() {
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
@@ -134,6 +279,7 @@ export function EstalecasPage() {
   const [localRevision, setLocalRevision] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [churchCode, setChurchCode] = useState("");
+  const [gymCode, setGymCode] = useState("");
   const [displayNameDraft, setDisplayNameDraft] = useState("");
   const useRemote = Boolean(pessoa && session && !isPreview);
 
@@ -306,8 +452,8 @@ export function EstalecasPage() {
       if (useRemote) {
         return performRemoteEstalecasCheckin({
           checkinType,
-          validationCode: checkinType === "church" ? churchCode : undefined,
-          validationMethod: checkinType === "church" ? "event_code" : "self",
+          validationCode: checkinType === "church" ? churchCode : gymCode,
+          validationMethod: "event_code",
           deviceId: getLocalDeviceId(),
           userAgent: typeof navigator === "undefined" ? "indisponivel" : navigator.userAgent,
           consentAccepted: true,
@@ -322,7 +468,7 @@ export function EstalecasPage() {
         rewards: localRewards,
         eventCodes: localEventCodes,
         profile: profile ?? undefined,
-        validationCode: churchCode,
+        validationCode: checkinType === "church" ? churchCode : gymCode,
         config,
       });
       if (!result.alreadyExists) appendLocalGamification(result);
@@ -422,12 +568,22 @@ export function EstalecasPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-6 text-muted-foreground">
-              Confirme seu treino de hoje. Cada check-in válido gera {config.gymCheckinEstalecas} Estalecas e {config.gymCheckinCheckpoints} checkpoint de disciplina.
+              Confirme o treino com o código da semana (a coordenação divulga na academia/mural). Cada check-in válido gera {config.gymCheckinEstalecas} Estalecas e {config.gymCheckinCheckpoints} checkpoint de disciplina.
             </p>
+            <div className="mt-4 space-y-2">
+              <Label htmlFor="gym-code">Código do treino</Label>
+              <Input
+                id="gym-code"
+                value={gymCode}
+                onChange={(event) => setGymCode(event.target.value)}
+                placeholder="Ex.: TREINO-SEMANA"
+                disabled={!hasConsent || Boolean(gymToday)}
+              />
+            </div>
             <Button
               type="button"
               className="mt-5 w-full"
-              disabled={!hasConsent || checkinMutation.isPending || Boolean(gymToday)}
+              disabled={!hasConsent || checkinMutation.isPending || Boolean(gymToday) || !gymCode.trim()}
               onClick={() => checkinMutation.mutate("gym")}
             >
               Registrar treino de hoje
@@ -471,6 +627,8 @@ export function EstalecasPage() {
           </CardContent>
         </Card>
       </section>
+
+      <ConquistasSection pessoa={pessoa} useRemote={useRemote} />
 
       <section className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
         <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">

@@ -290,3 +290,26 @@ test("prêmio manual exige colaborador, descrição e motivo administrativo", ()
   assert.equal(canCreateManualReward({ userId: "u1", title: "Brinde", description: "Suplemento", reason: "meta batida" }), true);
   assert.equal(canCreateManualReward({ userId: "u1", title: "Brinde", description: "Suplemento", reason: "curto" }), false);
 });
+
+test("conquistas com prova têm valores padrão e rótulos definidos", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const vm = await import("node:vm");
+  const url = await import("node:url");
+  const ts = (await import("typescript")).default;
+  const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
+  const source = fs.readFileSync(path.resolve(root, "src/features/estalecas/estalecasData.ts"), "utf8");
+  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText;
+  const module = { exports: {} };
+  const localRequire = (request) => {
+    if (request === "@/lib/localStore") return { readLocalValue: (_k, fallback) => fallback, writeLocalValue: () => undefined, todayISO: () => "2026-07-06" };
+    if (request.startsWith("@/types")) return {};
+    throw new Error(`import inesperado: ${request}`);
+  };
+  vm.runInNewContext(output, { module, exports: module.exports, require: localRequire, console, Date, JSON, Object, String, Number, Math, Map, Array, Intl, crypto: globalThis.crypto }, { filename: "estalecasData.ts" });
+  const { estalecaClaimConfig, estalecaClaimStatusLabels } = module.exports;
+  assert.equal(estalecaClaimConfig.LEITURA.defaultAmount, 100);
+  assert.equal(estalecaClaimConfig.ALIMENTACAO.defaultAmount, 10);
+  assert.equal(estalecaClaimConfig.OUTRO.defaultAmount, 0);
+  assert.deepEqual(Object.keys(estalecaClaimStatusLabels).sort(), ["APPROVED", "PENDING", "REJECTED"]);
+});

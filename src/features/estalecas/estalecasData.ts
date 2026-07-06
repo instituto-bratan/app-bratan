@@ -723,3 +723,52 @@ export function createCashbackDraft(values: {
     expiresAt: expirationDate(config, now),
   };
 }
+
+// ---------------- Conquistas com prova (leitura, alimentação) ----------------
+
+export type EstalecaClaimType = "LEITURA" | "ALIMENTACAO" | "OUTRO";
+export type EstalecaClaimStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type EstalecaClaim = {
+  id: string;
+  colaboradorId: string;
+  colaboradorNome: string;
+  claimType: EstalecaClaimType;
+  title: string;
+  description: string;
+  photoPath: string;
+  claimDate: string;
+  amountSuggested: number;
+  status: EstalecaClaimStatus;
+  reviewNote: string;
+  reviewedAt: string | null;
+  createdAt: string;
+};
+
+// Regras padrão das conquistas (a coordenação pode ajustar o valor na aprovação).
+export const estalecaClaimConfig: Record<EstalecaClaimType, { label: string; defaultAmount: number; hint: string; titlePlaceholder: string }> = {
+  LEITURA: {
+    label: "Livro lido no mês",
+    defaultAmount: 100,
+    hint: "Conte o que aprendeu e, se puder, anexe uma foto do livro/resumo. Vale por livro concluído.",
+    titlePlaceholder: "Nome do livro (ex.: Essencialismo)",
+  },
+  ALIMENTACAO: {
+    label: "Alimentação saudável",
+    defaultAmount: 10,
+    hint: "Anexe a foto da refeição do dia. Vale 1 por dia.",
+    titlePlaceholder: "Ex.: Almoço saudável de hoje",
+  },
+  OUTRO: {
+    label: "Outra conquista",
+    defaultAmount: 0,
+    hint: "Descreva a conquista e a prova; a coordenação define o valor.",
+    titlePlaceholder: "Descreva a conquista",
+  },
+};
+
+export const estalecaClaimStatusLabels: Record<EstalecaClaimStatus, string> = {
+  PENDING: "Aguardando aprovação",
+  APPROVED: "Aprovada",
+  REJECTED: "Recusada",
+};
