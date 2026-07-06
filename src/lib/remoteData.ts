@@ -2766,6 +2766,59 @@ export async function createRemoteFinSale(sale: FinSale, createdBy: string | nul
   });
 }
 
+export async function updateRemoteFinSale(sale: FinSale) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_sales")
+    .update({
+      sale_date: sale.saleDate,
+      patient_name: sale.patientName,
+      crm_contact_ref: sale.crmContactRef || null,
+      notes: sale.notes,
+    })
+    .eq("client_ref", sale.id);
+  if (error) throw error;
+
+  const { error: clearItemsError } = await client.from("fin_sale_items").delete().eq("sale_ref", sale.id);
+  if (clearItemsError) throw clearItemsError;
+  const { error: clearPaymentsError } = await client.from("fin_sale_payments").delete().eq("sale_ref", sale.id);
+  if (clearPaymentsError) throw clearPaymentsError;
+
+  if (sale.items.length) {
+    const { error: itemsError } = await client.from("fin_sale_items").insert(
+      sale.items.map((item) => ({
+        client_ref: item.id,
+        sale_ref: sale.id,
+        item_type: item.itemType,
+        amount: item.amount,
+        description: item.description,
+      })),
+    );
+    if (itemsError) throw itemsError;
+  }
+
+  if (sale.payments.length) {
+    const { error: paymentsError } = await client.from("fin_sale_payments").insert(
+      sale.payments.map((payment) => ({
+        client_ref: payment.id,
+        sale_ref: sale.id,
+        method: payment.method,
+        amount: payment.amount,
+        installments: payment.installments,
+        card_machine: payment.cardMachine ?? null,
+      })),
+    );
+    if (paymentsError) throw paymentsError;
+  }
+
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.venda.editar",
+    entity: "fin_sales",
+    entityId: sale.id,
+    metadata: { saleDate: sale.saleDate, items: sale.items.length, total: sale.items.reduce((sum, item) => sum + item.amount, 0) },
+  });
+}
+
 export async function deleteRemoteFinSale(saleRef: string) {
   const client = requireSupabase();
   const { error } = await client.from("fin_sales").update({ deleted_at: new Date().toISOString() }).eq("client_ref", saleRef);

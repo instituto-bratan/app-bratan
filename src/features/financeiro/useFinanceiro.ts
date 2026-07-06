@@ -10,6 +10,7 @@ import {
   createRemoteFinSavingsMoves,
   deleteRemoteFinExpense,
   deleteRemoteFinSale,
+  updateRemoteFinSale,
   deleteRemoteFinInvoice,
   deleteRemoteFinPartnerEntry,
   deleteRemoteFinSavingsMove,
@@ -147,6 +148,10 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     mutationFn: deleteRemoteFinSale,
     onSuccess: () => invalidate("fin-sales"),
   });
+  const updateSaleMutation = useMutation({
+    mutationFn: updateRemoteFinSale,
+    onSuccess: () => invalidate("fin-sales"),
+  });
   const createExpenseMutation = useMutation({
     mutationFn: (expense: FinExpense) => createRemoteFinExpense(expense, pessoa?.id ?? null),
     onSuccess: () => invalidate("fin-expenses"),
@@ -168,6 +173,17 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     });
     if (useRemote) {
       void createSaleMutation.mutateAsync(sale).catch((error) => console.warn("Venda não sincronizou.", error));
+    }
+  }
+
+  function updateSale(sale: FinSale) {
+    setSales((current) => {
+      const next = current.map((existing) => (existing.id === sale.id ? sale : existing));
+      saveLocalFinSales(next);
+      return next;
+    });
+    if (useRemote) {
+      void updateSaleMutation.mutateAsync(sale).catch((error) => console.warn("Edição da comanda não sincronizou.", error));
     }
   }
 
@@ -296,6 +312,7 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     provisionRules: provisionRulesQuery.data?.length ? provisionRulesQuery.data : seedProvisionRules,
     categories: categoriesQuery.data?.length ? categoriesQuery.data : seedFinCategories,
     addSale,
+    updateSale,
     removeSale,
     addExpense,
     setExpensePaid,

@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CalendarDays, CheckCircle2, Plus, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ export function FinanceiroLancarDiaPage() {
   const [items, setItems] = useState<DraftItem[]>([{ itemType: "CONSULTA", amount: "", description: "" }]);
   const [payments, setPayments] = useState<DraftPayment[]>([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
   const [feedback, setFeedback] = useState("");
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   const summary = useMemo(() => buildDailyCardSummary(financeiro.sales, date), [financeiro.sales, date]);
   const daySales = useMemo(
@@ -83,11 +84,34 @@ export function FinanceiroLancarDiaPage() {
   const totalsMatch = Math.abs(itemsTotal - paymentsTotal) < 0.01;
 
   function resetForm() {
+    setEditingSaleId(null);
     setPatientName("");
     setPatientRef("");
     setNotes("");
     setItems([{ itemType: "CONSULTA", amount: "", description: "" }]);
     setPayments([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
+  }
+
+  function amountToDraft(amount: number) {
+    return amount.toFixed(2).replace(".", ",");
+  }
+
+  function startEditing(sale: FinSale) {
+    setEditingSaleId(sale.id);
+    setPatientName(sale.patientName);
+    setPatientRef(sale.crmContactRef);
+    setNotes(sale.notes);
+    setItems(sale.items.map((item) => ({ itemType: item.itemType, amount: amountToDraft(item.amount), description: item.description })));
+    setPayments(
+      sale.payments.map((payment) => ({
+        method: payment.method,
+        amount: amountToDraft(payment.amount),
+        installments: String(payment.installments),
+        cardMachine: payment.cardMachine ?? "ITAU",
+      })),
+    );
+    setFeedback(`Editando a comanda de ${sale.patientName} — ajuste e salve para aplicar.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleSubmit(event: FormEvent) {
@@ -111,18 +135,24 @@ export function FinanceiroLancarDiaPage() {
     if (!validPayments.length) return setFeedback("Informe como foi pago.");
     if (!totalsMatch) return setFeedback("Os pagamentos não fecham com os itens. Ajuste antes de salvar.");
 
+    const editingSale = editingSaleId ? financeiro.sales.find((existing) => existing.id === editingSaleId) : null;
     const sale: FinSale = {
-      id: createFinId("fsale"),
+      id: editingSale?.id ?? createFinId("fsale"),
       saleDate: date,
       patientName: patientName.trim(),
       crmContactRef: patientRef,
       notes: notes.trim(),
       items: validItems,
       payments: validPayments,
-      createdAt: new Date().toISOString(),
+      createdAt: editingSale?.createdAt ?? new Date().toISOString(),
     };
-    financeiro.addSale(sale);
-    setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}. Pode adicionar o próximo paciente.`);
+    if (editingSale) {
+      financeiro.updateSale(sale);
+      setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.`);
+    } else {
+      financeiro.addSale(sale);
+      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}. Pode adicionar o próximo paciente.`);
+    }
     resetForm();
   }
 
@@ -172,8 +202,8 @@ export function FinanceiroLancarDiaPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                  Nova comanda
+                  {editingSaleId ? <Pencil className="h-5 w-5 text-brand-dourado" aria-hidden="true" /> : <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />}
+                  {editingSaleId ? "Editar comanda" : "Nova comanda"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -313,9 +343,14 @@ export function FinanceiroLancarDiaPage() {
 
                   <div className="flex flex-wrap items-center gap-3">
                     <LiquidButton type="submit" size="sm">
-                      <Plus className="h-4 w-4" aria-hidden="true" />
-                      Lançar e adicionar próximo paciente
+                      {editingSaleId ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+                      {editingSaleId ? "Salvar alterações" : "Lançar e adicionar próximo paciente"}
                     </LiquidButton>
+                    {editingSaleId ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => { resetForm(); setFeedback(""); }}>
+                        Cancelar edição
+                      </Button>
+                    ) : null}
                     <span className={cn("text-sm font-semibold", totalsMatch ? "text-brand-musgo" : "text-destructive")}>
                       Itens {moneyFin(itemsTotal)} · Pagamentos {moneyFin(paymentsTotal)}
                       {totalsMatch ? " ✓" : " — não fecham"}
@@ -342,7 +377,20 @@ export function FinanceiroLancarDiaPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-brand-musgo">{moneyFin(saleTotal(sale))}</span>
-                        <Button type="button" variant="ghost" size="icon" aria-label={`Excluir lançamento de ${sale.patientName}`} onClick={() => financeiro.removeSale(sale.id)}>
+                        <Button type="button" variant="ghost" size="icon" aria-label={`Editar lançamento de ${sale.patientName}`} onClick={() => startEditing(sale)}>
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Excluir lançamento de ${sale.patientName}`}
+                          onClick={() => {
+                            if (!window.confirm(`Excluir a comanda de ${sale.patientName} (${moneyFin(saleTotal(sale))})? Os totais e a P12 se ajustam sozinhos.`)) return;
+                            if (editingSaleId === sale.id) resetForm();
+                            financeiro.removeSale(sale.id);
+                          }}
+                        >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </div>
