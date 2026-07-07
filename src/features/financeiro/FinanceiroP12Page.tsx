@@ -139,10 +139,10 @@ export function FinanceiroP12Page() {
 
         <section className="overflow-hidden rounded-xl border border-brand-oliva/15 bg-white/60 shadow-calm backdrop-blur-xl">
           <div className="kanban-scroll overflow-x-auto">
-            <table className={cn("w-full text-right text-xs", monthFilter === null ? "min-w-[1180px]" : "min-w-[520px]")}>
+            <table className={cn("w-full whitespace-nowrap text-right text-xs tabular-nums", monthFilter === null ? "min-w-[1180px]" : "min-w-[520px]")}>
               <thead>
                 <tr className="border-b border-brand-oliva/18 bg-brand-papel/80 text-[11px] uppercase tracking-wide text-brand-oliva">
-                  <th className="sticky left-0 z-10 bg-brand-papel px-4 py-3 text-left">Categoria</th>
+                  <th className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-3 text-left">Categoria</th>
                   {visibleMonths.map((month) => (
                     <th key={month} className="px-2.5 py-3">{p12MonthLabels[month]}</th>
                   ))}
@@ -151,7 +151,7 @@ export function FinanceiroP12Page() {
               </thead>
               <tbody>
                 <tr className="border-b border-brand-dourado/25 bg-brand-creme/45 font-semibold">
-                  <td className="sticky left-0 z-10 bg-brand-creme/95 px-4 py-3 text-left text-brand-musgo">FATURAMENTO BRUTO</td>
+                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/95 px-4 py-3 text-left text-brand-musgo">FATURAMENTO BRUTO</td>
                   {visibleMonths.map((month) => (
                     <td key={month} className="px-2.5 py-3">
                       <button
@@ -166,7 +166,7 @@ export function FinanceiroP12Page() {
                   <td className="px-4 py-3 text-brand-musgo">{moneyFin(matrix.revenueYear)}</td>
                 </tr>
                 <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
-                  <td className="sticky left-0 z-10 bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
+                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
                     Entrada de valores (Poupança)
                   </td>
                   {visibleMonths.map((month) => (
@@ -186,14 +186,14 @@ export function FinanceiroP12Page() {
                 ))}
 
                 <tr className="bg-brand-musgo font-semibold text-brand-papel">
-                  <td className="sticky left-0 z-10 bg-brand-musgo px-4 py-3 text-left">TOTAL DE DESPESAS</td>
+                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-musgo px-4 py-3 text-left">TOTAL DE DESPESAS</td>
                   {visibleMonths.map((month) => (
                     <td key={month} className="px-2.5 py-3">{matrix.totalExpensesMonths[month] ? moneyFin(matrix.totalExpensesMonths[month]) : "—"}</td>
                   ))}
                   <td className="px-4 py-3">{moneyFin(matrix.totalExpensesYear)}</td>
                 </tr>
                 <tr className="bg-brand-creme/70 font-bold">
-                  <td className="sticky left-0 z-10 bg-brand-creme px-4 py-3 text-left text-brand-musgo">
+                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme px-4 py-3 text-left text-brand-musgo">
                     LUCRO
                     <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(fatur. + poupança − despesas)</span>
                   </td>
@@ -271,7 +271,7 @@ function GroupRows({
   return (
     <>
       <tr className="border-y border-brand-oliva/12 bg-white/85 font-semibold">
-        <td className="sticky left-0 z-10 bg-brand-papel px-4 py-2.5 text-left">
+        <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-2.5 text-left">
           <button type="button" className="flex items-center gap-1.5 text-brand-musgo" onClick={() => setOpen((value) => !value)}>
             <span className={cn("text-[9px] text-brand-oliva transition-transform", open ? "rotate-90" : "")}>▶</span>
             {group.label}

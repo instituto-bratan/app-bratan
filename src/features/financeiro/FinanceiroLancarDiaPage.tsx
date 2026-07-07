@@ -46,8 +46,8 @@ function parseAmount(value: string) {
 function SummaryLine({ label, value, strong = false }: { label: string; value: number; strong?: boolean }) {
   return (
     <div className={cn("flex items-center justify-between gap-3 px-3 py-1.5", strong && "rounded-md bg-brand-musgo text-brand-papel")}>
-      <span className={cn("text-xs font-semibold uppercase", strong ? "text-brand-papel/80" : "text-brand-oliva")}>{label}</span>
-      <span className={cn("text-sm font-bold", strong ? "text-brand-papel" : "text-brand-tinta")}>{moneyFin(value)}</span>
+      <span className={cn("min-w-0 text-xs font-semibold uppercase leading-tight", strong ? "text-brand-papel/80" : "text-brand-oliva")}>{label}</span>
+      <span className={cn("shrink-0 whitespace-nowrap text-sm font-bold tabular-nums", strong ? "text-brand-papel" : "text-brand-tinta")}>{moneyFin(value)}</span>
     </div>
   );
 }

@@ -230,8 +230,19 @@ h3 {
     flex-shrink: 0;
   }
 
-  .mobile-app-shell :where(h1, h2, h3, h4, p, label, span, a, td, th) {
+  .mobile-app-shell :where(h1, h2, h3, h4, p, label, a) {
     overflow-wrap: anywhere;
+  }
+
+  /* Números e células de tabela nunca quebram no meio: tabelas têm scroll
+     horizontal próprio e valores monetários precisam ficar inteiros. */
+  .mobile-app-shell :where(table td, table th) {
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+
+  .mobile-app-shell :where(table td.cell-wrap, table th.cell-wrap) {
+    white-space: normal;
   }
 
   .mobile-app-shell :where(.rounded-lg, .rounded-xl, .rounded-2xl, .ios-glass, .ios-glass-quiet) {
