@@ -20,6 +20,8 @@ import {
 
 const actionFilters = [
   { label: "Tudo", value: "all" },
+  { label: "Financeiro", value: "financeiro" },
+  { label: "CRM & 360", value: "crm360" },
   { label: "Acessos", value: "auth" },
   { label: "Colaboradores", value: "colaborador" },
   { label: "Mural", value: "aviso" },
@@ -28,6 +30,29 @@ const actionFilters = [
   { label: "Estalecas", value: "estalecas" },
   { label: "Checklist", value: "checklist" },
 ];
+
+const estalecaEntities = [
+  "gamification_profile",
+  "estaleca_config",
+  "estaleca_transactions",
+  "estaleca_claims",
+  "checkins",
+  "checkin_event_codes",
+  "rewards",
+];
+
+function auditAreaPhrase(event: AuditEventRecord) {
+  if (event.action.startsWith("financeiro.")) return "no Financeiro";
+  if (event.action.startsWith("crm.") || event.action.startsWith("inteligencia_360.")) return "no CRM & 360";
+  if (event.action.startsWith("estalecas.") || estalecaEntities.includes(event.entity)) return "em Estalecas";
+  if (event.action.startsWith("checklist") || event.entity.includes("checklist")) return "no Checklist";
+  if (event.action.startsWith("pagamento_lembrete.")) return "em Lembretes";
+  if (event.action.startsWith("comprovante.")) return "em Comprovantes";
+  if (event.action.startsWith("aviso.")) return "no Mural";
+  if (event.action.startsWith("colaborador.")) return "em Colaboradores";
+  if (event.action.startsWith("auth.")) return "em Acessos";
+  return "em outras áreas";
+}
 
 function formatDateTime(dateString: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -41,9 +66,11 @@ function formatDateTime(dateString: string) {
 
 function isInsideFilter(event: AuditEventRecord, filter: string) {
   if (filter === "all") return true;
+  if (filter === "financeiro") return event.action.startsWith("financeiro.");
+  if (filter === "crm360") return event.action.startsWith("crm.") || event.action.startsWith("inteligencia_360.");
   if (filter === "auth") return event.action.startsWith("auth.");
   if (filter === "checklist") return event.entity.includes("checklist");
-  if (filter === "estalecas") return event.action.startsWith("estalecas.") || ["gamification_profile", "estaleca_config", "estaleca_transactions", "checkins", "checkin_event_codes", "rewards"].includes(event.entity);
+  if (filter === "estalecas") return event.action.startsWith("estalecas.") || estalecaEntities.includes(event.entity);
   return event.entity === filter;
 }
 
@@ -52,17 +79,54 @@ export function AuditoriaPage() {
   const useRemote = Boolean(pessoa && session && !isPreview);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [person, setPerson] = useState("all");
   const auditQuery = useQuery({
     queryKey: ["audit-events"],
     queryFn: listRemoteAuditEvents,
     enabled: useRemote,
   });
   const events = auditQuery.data ?? [];
+
+  const actors = useMemo(() => {
+    const names = new Set<string>();
+    for (const event of events) {
+      if (event.actorName) names.add(event.actorName);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [events]);
+
+  const personSummary = useMemo(() => {
+    const byActor = new Map<string, { name: string; total: number; areas: Map<string, number> }>();
+
+    for (const event of events) {
+      const name = event.actorName || "Sem identificação";
+      const entry = byActor.get(name) ?? { name, total: 0, areas: new Map<string, number>() };
+      const area = auditAreaPhrase(event);
+      entry.total += 1;
+      entry.areas.set(area, (entry.areas.get(area) ?? 0) + 1);
+      byActor.set(name, entry);
+    }
+
+    return [...byActor.values()]
+      .sort((a, b) => b.total - a.total)
+      .map((entry) => ({
+        name: entry.name,
+        total: entry.total,
+        description: [...entry.areas.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([area, count], index) =>
+            index === 0 ? `${count} ${count === 1 ? "ação" : "ações"} ${area}` : `${count} ${area}`,
+          )
+          .join(", "),
+      }));
+  }, [events]);
+
   const visibleEvents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
     return events.filter((event) => {
       if (!isInsideFilter(event, filter)) return false;
+      if (person !== "all" && event.actorName !== person) return false;
       if (!normalized) return true;
 
       const haystack = [
@@ -81,7 +145,7 @@ export function AuditoriaPage() {
 
       return haystack.includes(normalized);
     });
-  }, [events, filter, query]);
+  }, [events, filter, person, query]);
 
   const lastEvent = visibleEvents[0] ?? events[0] ?? null;
 
@@ -101,7 +165,7 @@ export function AuditoriaPage() {
               </Badge>
               <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Auditoria</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Registro de ações sensíveis do app: acessos, colaboradores, mural, checklist, comprovantes e lembretes.
+                Registro de ações sensíveis do app: financeiro, CRM & 360, acessos, colaboradores, mural, checklist, comprovantes, lembretes e Estalecas.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -116,6 +180,34 @@ export function AuditoriaPage() {
             </div>
           </div>
         </motion.section>
+
+        {personSummary.length ? (
+          <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Activity className="h-5 w-5" aria-hidden="true" />
+                Resumo por pessoa
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {personSummary.map((entry) => (
+                <div
+                  key={entry.name}
+                  className="flex flex-col gap-1 rounded-lg border border-brand-oliva/16 bg-white/65 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
+                      <UserRound className="h-4 w-4" aria-hidden="true" />
+                    </div>
+                    <p className="truncate font-semibold text-brand-tinta">{entry.name}</p>
+                  </div>
+                  <p className="text-sm leading-6 text-muted-foreground sm:text-right">{entry.description}</p>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">Contagem sobre os eventos carregados no período.</p>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {!useRemote ? (
           <Card className="border-brand-dourado/35 bg-brand-creme/35 shadow-none">
@@ -152,6 +244,24 @@ export function AuditoriaPage() {
                   placeholder="Buscar por pessoa, módulo ou ação"
                   onChange={(event) => setQuery(event.target.value)}
                 />
+                <div>
+                  <label htmlFor="auditoria-pessoa" className="mb-1.5 block text-xs font-semibold uppercase text-brand-oliva">
+                    Pessoa
+                  </label>
+                  <select
+                    id="auditoria-pessoa"
+                    value={person}
+                    onChange={(event) => setPerson(event.target.value)}
+                    className="flex h-12 w-full rounded-md border border-input bg-white/72 px-3.5 py-2 text-base text-foreground shadow-sm backdrop-blur-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-11 sm:text-sm"
+                  >
+                    <option value="all">Todas as pessoas</option>
+                    {actors.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {actionFilters.map((item) => (
                     <Button

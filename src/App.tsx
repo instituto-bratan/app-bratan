@@ -18,6 +18,7 @@ const PagamentosPage = lazyRoute("pagamentos");
 const FinanceiroLancarDiaPage = lazyRoute("finLancarDia");
 const FinanceiroContasPage = lazyRoute("finContas");
 const FinanceiroP12Page = lazyRoute("finP12");
+const FinanceiroMetasPage = lazyRoute("finMetas");
 const FinanceiroFechamentoPage = lazyRoute("finFechamento");
 const FinanceiroPoupancaPage = lazyRoute("finPoupanca");
 const FinanceiroImpostosPage = lazyRoute("finImpostos");
@@ -69,6 +70,7 @@ export function App() {
               <Route path="/financeiro/lancar-dia" element={<FinanceiroLancarDiaPage />} />
               <Route path="/financeiro/contas" element={<FinanceiroContasPage />} />
               <Route path="/financeiro/p12" element={<FinanceiroP12Page />} />
+              <Route path="/financeiro/metas" element={<FinanceiroMetasPage />} />
               <Route path="/financeiro/fechamento" element={<FinanceiroFechamentoPage />} />
               <Route path="/financeiro/poupanca" element={<FinanceiroPoupancaPage />} />
               <Route path="/financeiro/impostos" element={<FinanceiroImpostosPage />} />

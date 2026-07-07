@@ -26,6 +26,7 @@ const routeLoaders = {
   finLancarDia: namedPage(() => import("@/features/financeiro/FinanceiroLancarDiaPage"), "FinanceiroLancarDiaPage"),
   finContas: namedPage(() => import("@/features/financeiro/FinanceiroContasPage"), "FinanceiroContasPage"),
   finP12: namedPage(() => import("@/features/financeiro/FinanceiroP12Page"), "FinanceiroP12Page"),
+  finMetas: namedPage(() => import("@/features/financeiro/FinanceiroMetasPage"), "FinanceiroMetasPage"),
   finFechamento: namedPage(() => import("@/features/financeiro/FinanceiroFechamentoPage"), "FinanceiroFechamentoPage"),
   finPoupanca: namedPage(() => import("@/features/financeiro/FinanceiroPoupancaPage"), "FinanceiroPoupancaPage"),
   finImpostos: namedPage(() => import("@/features/financeiro/FinanceiroImpostosPage"), "FinanceiroImpostosPage"),
@@ -73,6 +74,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/financeiro" || pathname === "/financeiro/lancar-dia") return "finLancarDia";
   if (pathname === "/financeiro/contas") return "finContas";
   if (pathname === "/financeiro/p12") return "finP12";
+  if (pathname === "/financeiro/metas") return "finMetas";
   if (pathname === "/financeiro/fechamento") return "finFechamento";
   if (pathname === "/financeiro/poupanca") return "finPoupanca";
   if (pathname === "/financeiro/impostos") return "finImpostos";

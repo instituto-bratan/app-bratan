@@ -36,6 +36,10 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { generateCadenceTasks, loadCrmState } from "@/features/crm/crmData";
 import { useAuth } from "@/hooks/useAuth";
+import { exportBrandedPdf } from "@/lib/brandedPdf";
+import { readLocalValue } from "@/lib/localStore";
+import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasConfig } from "@/features/financeiro/metasData";
+import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import {
@@ -272,8 +276,27 @@ function useInteligenciaState() {
   };
 }
 
-function copyText(text: string) {
-  void navigator.clipboard?.writeText(text);
+function copyText(text: string, onDone?: (message: string) => void) {
+  navigator.clipboard
+    ?.writeText(text)
+    .then(() => onDone?.("Copiado! Cole no WhatsApp ou onde precisar."))
+    .catch(() => onDone?.("Não consegui copiar automaticamente — tente de novo."));
+}
+
+// Converte o texto do resumo em um PDF com a identidade visual do Instituto.
+function exportBriefPdf(title: string, brief: string, author?: string) {
+  const blocks = brief.split("\n\n");
+  return exportBrandedPdf({
+    title,
+    subtitle: "Resumo gerado automaticamente pela Inteligência 360",
+    author,
+    sections: blocks.map((block, index) => {
+      const lines = block.split("\n");
+      const heading = index === 0 ? lines[0] : lines[0]?.replace(/[:：]\s*$/, "");
+      const body = lines.slice(1);
+      return { heading: heading || `Seção ${index + 1}`, lines: body.length ? body : [" "] };
+    }),
+  });
 }
 
 function todayPlus(days: number) {
@@ -466,6 +489,18 @@ function InsightCard({
 
 export function Inteligencia360DashboardPage() {
   const { state, persist, reset, syncMode, isSyncing, syncError } = useInteligenciaState();
+  const { pessoa } = useAuth();
+  const hoje = new Date().toISOString().slice(0, 10);
+  const financeiro = useFinanceiro(Number(hoje.slice(0, 4)));
+  const [copyFeedback, setCopyFeedback] = useState("");
+  const metasConfig = useMemo<MetasConfig>(
+    () => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>("app-bratan-fin-metas-config-v1", {}) }),
+    [],
+  );
+  const metasBoard = useMemo(
+    () => buildMetasBoard(financeiro.sales, metasConfig, hoje.slice(0, 7)),
+    [financeiro.sales, metasConfig, hoje],
+  );
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   const insights = useMemo(() => generateActionRecommendations(state), [state]);
   const quality = useMemo(() => buildDataQuality(state), [state]);
@@ -582,17 +617,36 @@ export function Inteligencia360DashboardPage() {
           <Badge variant={syncError ? "gold" : "outline"} className={syncError ? "text-destructive" : undefined}>
             {syncError ? "Sem sincronizar" : isSyncing ? "Sincronizando" : syncMode}
           </Badge>
-          <Button type="button" variant="outline" className="gap-2" onClick={() => copyText(generateMorningGoalMessage(state))}>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => copyText(buildMetaDoDiaMessage(metasBoard, metasConfig, hoje), setCopyFeedback)}
+          >
             <Copy className="h-4 w-4" aria-hidden="true" />
             Copiar meta do dia
           </Button>
-          <LiquidButton type="button" size="lg" onClick={() => copyText(generateWeeklyKickoffBrief(state))}>
+          <LiquidButton
+            type="button"
+            size="lg"
+            onClick={() => {
+              const brief = generateWeeklyKickoffBrief(state);
+              copyText(brief, () => undefined);
+              const ok = exportBriefPdf("Resumo Executivo 360", brief, pessoa?.nome);
+              setCopyFeedback(ok ? "Resumo copiado e aberto para salvar em PDF." : "Resumo copiado. Libere pop-ups para gerar o PDF.");
+            }}
+          >
             <FileText className="h-4 w-4" aria-hidden="true" />
             Gerar resumo
           </LiquidButton>
         </>
       }
     >
+      {copyFeedback ? (
+        <div className="mb-4 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
+          {copyFeedback}
+        </div>
+      ) : null}
       <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
         <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
           <SelectField
@@ -1497,6 +1551,8 @@ export function Inteligencia360ModulePage() {
   const slug = (section ?? "ticket-medio") as ModuleSlug;
   const module = moduleBySlug[slug] ?? moduleBySlug["ticket-medio"];
   const { state, persist, syncMode, isSyncing, syncError } = useInteligenciaState();
+  const { pessoa } = useAuth();
+  const [moduleCopyFeedback, setModuleCopyFeedback] = useState("");
   const Icon = module.icon;
   const guide = moduleGuides[module.slug];
 
@@ -1517,7 +1573,16 @@ export function Inteligencia360ModulePage() {
           <Button asChild variant="outline">
             <Link to={moduleRoutes360.dashboard}>Dashboard 360</Link>
           </Button>
-          <Button type="button" variant="outline" className="gap-2" onClick={() => copyText(generateWeeklyKickoffBrief(state))}>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              const brief = generateWeeklyKickoffBrief(state);
+              copyText(brief, setModuleCopyFeedback);
+              exportBriefPdf("Resumo Executivo 360", brief, pessoa?.nome);
+            }}
+          >
             <Copy className="h-4 w-4" aria-hidden="true" />
             Copiar resumo
           </Button>
@@ -1525,6 +1590,11 @@ export function Inteligencia360ModulePage() {
       }
     >
       <ModuleNav active={module.slug} />
+      {moduleCopyFeedback ? (
+        <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
+          {moduleCopyFeedback}
+        </div>
+      ) : null}
       {guide ? (
         <Card className="border-brand-dourado/35 bg-brand-creme/35 shadow-none">
           <CardContent className="p-4">

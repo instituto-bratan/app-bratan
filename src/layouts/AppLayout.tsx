@@ -27,11 +27,13 @@ import {
   UserRound,
   UsersRound,
   X,
+  Goal,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import DockMorph from "@/components/ui/dock-morph";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { PageGuideButton } from "@/components/ui/page-guide";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvatar } from "@/features/perfil/avatarStore";
 import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
@@ -110,15 +112,16 @@ const flowGroups: FlowGroup[] = [
     detail: "caixa, contas e P12",
     href: "/financeiro/lancar-dia",
     icon: CalendarClock,
-    allowed: canComprovantes,
+    allowed: (cargo) => canLancarDia(cargo) || canFinanceiroView(cargo),
     entries: [
-      { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canComprovantes },
+      { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canLancarDia },
       { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento },
       { label: "Fechamento", href: "/financeiro/fechamento", icon: ShieldCheck, allowed: canLembretesPagamento },
       { label: "Poupança", href: "/financeiro/poupanca", icon: Coins, allowed: canLembretesPagamento },
       { label: "Impostos & NFs", shortLabel: "NFs", href: "/financeiro/impostos", icon: FileText, allowed: canLembretesPagamento },
       { label: "Repasses Nutri/Psi", shortLabel: "Repasses", href: "/financeiro/repasses", icon: UsersRound, allowed: canLembretesPagamento },
       { label: "P12 ao vivo", shortLabel: "P12", href: "/financeiro/p12", icon: CircleDollarSign, allowed: canLembretesPagamento },
+      { label: "Metas do Mês", shortLabel: "Metas", href: "/financeiro/metas", icon: Goal, allowed: canFinanceiroView },
       { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
     ],
   },
@@ -468,6 +471,7 @@ function FlowLauncher({
 
 export function AppLayout() {
   const { pessoa, isPreview, signOut } = useAuth();
+  const location = useLocation();
   const [flowLauncherOpen, setFlowLauncherOpen] = useState(false);
   const avatar = useAvatar(pessoa?.id);
 
@@ -529,9 +533,17 @@ export function AppLayout() {
 
         <main className="app-content-frame relative z-10 flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
           <Suspense fallback={<PageFallback />}>
-            <Outlet />
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Outlet />
+            </motion.div>
           </Suspense>
         </main>
+        <PageGuideButton pathname={location.pathname} />
       </div>
 
       <FlowLauncher cargo={pessoa?.cargo} open={flowLauncherOpen} onClose={() => setFlowLauncherOpen(false)} />

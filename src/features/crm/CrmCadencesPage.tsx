@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,8 +26,10 @@ import {
   contactDisplayName,
   crmModuleRoutes,
   crmRoleLabels,
+  dealStageLabels,
   enrollContactInCadence,
   generateCadenceTasks,
+  moneyCrm,
   taskTypeLabels,
   type CrmCadence,
   type CrmCadenceStatus,
@@ -44,12 +47,20 @@ export function CrmCadencesPage() {
   const { pessoa } = useAuth();
   const { state, persist } = useCrmState();
   const [cadenceId, setCadenceId] = useState("cad-cold-lead");
-  const [contactId, setContactId] = useState(state.contacts[0]?.id ?? "");
+  const [contactId, setContactId] = useState("");
+  const [contactQuery, setContactQuery] = useState("");
   const [dealId, setDealId] = useState("");
   const [feedback, setFeedback] = useState("");
 
   const visibleCadences = state.cadences.filter((cadence) => !pessoa || canUserAccessCadence(pessoa, cadence));
   const visibleContacts = state.contacts.filter((contact) => !pessoa || canUserAccessContact(pessoa, contact));
+  const contactSuggestions = useMemo(() => {
+    const term = contactQuery.trim().toLowerCase();
+    if (term.length < 2) return [];
+    return visibleContacts
+      .filter((contact) => contactDisplayName(contact).toLowerCase().includes(term))
+      .slice(0, 8);
+  }, [visibleContacts, contactQuery]);
   const stepsByCadence = useMemo(() => {
     return new Map(
       state.cadences.map((cadence) => [
@@ -64,21 +75,34 @@ export function CrmCadencesPage() {
 
   function handleEnroll(event: FormEvent) {
     event.preventDefault();
-    if (!selectedContact || !cadenceId) return;
+    if (!selectedContact) {
+      setFeedback("Busque e selecione um contato antes de inscrever.");
+      return;
+    }
+    if (!cadenceId) return;
     const cadence = state.cadences.find((item) => item.id === cadenceId);
     if (!cadence) return;
+    const alreadyEnrolled = state.cadenceEnrollments.some(
+      (enrollment) => enrollment.contactId === selectedContact.id && enrollment.cadenceId === cadenceId && enrollment.status === "ACTIVE",
+    );
+    if (alreadyEnrolled) {
+      setFeedback("Este contato já está inscrito nesta cadência.");
+      return;
+    }
     persist((current) =>
       enrollContactInCadence(current, {
         cadenceId,
         contactId: selectedContact.id,
-        dealId: dealId || dealsForContact[0]?.id || "",
+        dealId,
         triggerSource: "manual sprint 1",
         triggerDate: new Date().toISOString().slice(0, 10),
         ownerUserId: pessoa?.id ?? cadence.defaultOwnerRole.toLowerCase(),
         ownerRole: cadence.defaultOwnerRole,
       }),
     );
-    setFeedback("Contato inscrito. As tarefas aparecem em Minhas Tarefas sem novo preenchimento.");
+    setFeedback(
+      `${contactDisplayName(selectedContact)} foi inscrito(a) na cadência "${cadence.name}". As tarefas aparecem em Minhas Tarefas sem novo preenchimento.`,
+    );
   }
 
   function updateEnrollment(id: string, status: CrmCadenceStatus) {
@@ -149,18 +173,67 @@ export function CrmCadencesPage() {
           </CardHeader>
           <CardContent>
             <form className="grid gap-3" onSubmit={handleEnroll}>
-              <div>
+              <div className="relative">
                 <Label>Contato</Label>
-                <select value={contactId} onChange={(event) => { setContactId(event.target.value); setDealId(""); }} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                  {visibleContacts.map((contact) => <option key={contact.id} value={contact.id}>{contactDisplayName(contact)}</option>)}
-                </select>
+                <Input
+                  value={contactQuery}
+                  onChange={(event) => {
+                    setContactQuery(event.target.value);
+                    setContactId("");
+                    setDealId("");
+                  }}
+                  placeholder="Digite o nome para buscar (a partir de 2 letras)"
+                  autoComplete="off"
+                  className="mt-1"
+                />
+                {contactSuggestions.length && !contactId ? (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-brand-oliva/18 bg-brand-papel shadow-calm">
+                    {contactSuggestions.map((contact) => (
+                      <button
+                        key={contact.id}
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-sm text-brand-tinta hover:bg-brand-creme/50"
+                        onClick={() => {
+                          setContactQuery(contactDisplayName(contact));
+                          setContactId(contact.id);
+                          setDealId("");
+                        }}
+                      >
+                        {contactDisplayName(contact)}
+                        <span className="ml-2 text-xs text-muted-foreground">{contact.lifecycleStage}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <div>
-                <Label>Negociação vinculada</Label>
+                <Label className="flex items-center gap-1">
+                  Negociação vinculada
+                  <InfoTip title="De onde vêm as negociações?">
+                    As negociações nascem no Kanban de Vendas — pelo botão "Novo lead" ou direto no card do lead. Aqui você só
+                    vincula a cadência a uma negociação já existente, para o histórico ficar amarrado no lugar certo.
+                  </InfoTip>
+                </Label>
                 <select value={dealId} onChange={(event) => setDealId(event.target.value)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
                   <option value="">Sem negociação específica</option>
-                  {dealsForContact.map((deal) => <option key={deal.id} value={deal.id}>{deal.title}</option>)}
+                  {dealsForContact.map((deal) => {
+                    const dealValue = deal.soldAmount || deal.estimatedValue;
+                    return (
+                      <option key={deal.id} value={deal.id}>
+                        {deal.title} · {dealStageLabels[deal.stage]}{dealValue ? ` · ${moneyCrm(dealValue)}` : ""}
+                      </option>
+                    );
+                  })}
                 </select>
+                {selectedContact && !dealsForContact.length ? (
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Este contato ainda não tem negociação. Crie uma no{" "}
+                    <Link to={crmModuleRoutes.deals} className="font-semibold text-brand-musgo underline">
+                      Kanban de Vendas
+                    </Link>{" "}
+                    e volte aqui para vincular.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <Label>Cadência</Label>

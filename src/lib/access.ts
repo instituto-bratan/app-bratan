@@ -19,19 +19,21 @@ export const cargoLabels: Record<Cargo, string> = {
   gestor: "Gestor",
   gestor_financeiro: "Gestor Financeiro",
   marketing: "Marketing",
-  secretaria_executiva: "Secretaria Executiva / Concierge",
+  secretaria_executiva: "Concierge / Secretária Executiva",
   recepcionista: "Recepcionista",
   enfermeira: "Enfermeira",
   nutricionista: "Nutricionista",
   limpeza: "Limpeza",
 };
 
+// Decisão do Lucas (06/07/2026): marketing passa a ser operacional restrito
+// (vê só Hoje, Carteira, CRM e Documentos), igual recepção/enfermagem/nutrição/limpeza.
+// A concierge (secretaria_executiva) tem os mesmos acessos do gestor.
 export const coordenacaoCargos: Cargo[] = [
   "dr_daniel",
   "ceo",
   "gestor",
   "gestor_financeiro",
-  "marketing",
   "secretaria_executiva",
 ];
 
@@ -165,7 +167,7 @@ export function canFinanceiroFull(cargo: Cargo | null | undefined) {
 }
 
 export function canFinanceiroView(cargo: Cargo | null | undefined) {
-  return canFinanceiroFull(cargo) || cargo === "gestor";
+  return canFinanceiroFull(cargo) || cargo === "gestor" || cargo === "secretaria_executiva";
 }
 
 export function canLancarDia(cargo: Cargo | null | undefined) {
@@ -181,11 +183,11 @@ export function canLembretesPagamento(cargo: Cargo | null | undefined) {
 }
 
 export function canInteligencia360(cargo: Cargo | null | undefined) {
-  return Boolean(cargo);
+  return isCoordenacao(cargo);
 }
 
 export function canCrmBratan(cargo: Cargo | null | undefined) {
-  return Boolean(cargo && cargo !== "limpeza");
+  return Boolean(cargo);
 }
 
 export function canManageInteligencia360(cargo: Cargo | null | undefined) {
@@ -199,6 +201,6 @@ export function canBaseModules(cargo: Cargo | null | undefined) {
 export function cargoGroup(cargo: Cargo | null | undefined) {
   if (!cargo) return "Sem cargo";
   if (isCoordenacao(cargo)) return "Coordenação";
-  if (cargo === "recepcionista") return "Operacional + Comprovantes";
+  if (cargo === "recepcionista") return "Operacional + Lançar Dia";
   return "Operacional";
 }

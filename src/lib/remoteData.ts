@@ -2693,6 +2693,20 @@ export async function listRemoteFinCategories(): Promise<FinCategory[]> {
   }));
 }
 
+export async function loadRemoteFinMetasConfig(): Promise<Record<string, unknown> | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("fin_metas_config").select("config").eq("id", true).maybeSingle();
+  if (error) throw error;
+  return (data?.config as Record<string, unknown>) ?? null;
+}
+
+export async function saveRemoteFinMetasConfig(config: Record<string, unknown>) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_metas_config").upsert({ id: true, config }, { onConflict: "id" });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "financeiro.metas.configurar", entity: "fin_metas_config", metadata: {} });
+}
+
 export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   const client = requireSupabase();
   const { data, error } = await client
