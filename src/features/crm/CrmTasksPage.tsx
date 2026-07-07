@@ -45,6 +45,7 @@ import {
   type CrmTaskResult,
   type CrmTaskStatus,
   type CrmTaskType,
+  roleRuleExplainers,
 } from "./crmData";
 import { useCrmState } from "./useCrmState";
 
@@ -176,6 +177,16 @@ export function CrmTasksPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
+        {(() => {
+          const roleExplainer = roleRuleExplainers[cargoToCrmRole(pessoa?.cargo) ?? "ADMINISTRATIVO"];
+          if (!roleExplainer) return null;
+          return (
+            <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/55 px-4 py-3">
+              <p className="text-sm font-bold text-brand-musgo">{roleExplainer.title}</p>
+              <p className="mt-1 text-sm leading-6 text-brand-tinta">{roleExplainer.rule}</p>
+            </div>
+          );
+        })()}
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}

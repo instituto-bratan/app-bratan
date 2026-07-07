@@ -534,6 +534,35 @@ export function canUserAccessCadence(pessoa: Pessoa | null | undefined, cadence:
   return cargoToCrmRole(pessoa.cargo) === cadence.defaultOwnerRole;
 }
 
+// "Quem faz o quê" das Réguas de Relacionamento — cada papel vê a sua regra
+// em linguagem simples, para ninguém se perder no CRM.
+export const roleRuleExplainers: Partial<Record<CrmRole, { title: string; rule: string }>> = {
+  ENFERMAGEM: {
+    title: "Sua régua: a cada 14 dias, sempre",
+    rule: "Todo paciente que passou há 14 dias recebe sua mensagem — sem exceção. A régua repete de 14 em 14 dias enquanto o paciente estiver em acompanhamento, e as tarefas aparecem aqui no dia certo.",
+  },
+  CONCIERGE: {
+    title: "Suas réguas: D+1, resgates (5 tentativas) e churn",
+    rule: "Você faz o D+1 de boas-vindas após a 1ª consulta e conduz os resgates de 60 dias, 6 meses e 1 ano — 5 tentativas cada, em horários diferentes. Se o paciente responder, a régua pausa. Quem não volta depois das 5 tentativas vira churn: você liga e registra o motivo.",
+  },
+  ADMIN_GESTAO: {
+    title: "Sua régua: 3·1·3·1",
+    rule: "Follow-up do gestor em 3 dias, 1 semana, 3 semanas e 1 mês após o gatilho — negociações paradas e recuperação. Você também entra no D+2 quando o médico não fecha no D+1.",
+  },
+  RECEPCAO: {
+    title: "Sua régua: ciclo de retorno (a cada 60 dias)",
+    rule: "Exames 3 semanas antes, exames 1 semana antes, confirmação 3 dias antes e lembrete na véspera. O ciclo recomeça a cada 60 dias.",
+  },
+  MEDICO: {
+    title: "Sua régua: D+1 de quem não fechou",
+    rule: "No dia seguinte à consulta sem fechamento, você entende a objeção com calma. Se não resolver, o gestor assume no D+2.",
+  },
+  SDR_LEADS: {
+    title: "Sua régua: D1 · D5 · D7 · D60",
+    rule: "Lead frio: primeiro contato no D1, novo ângulo da dor no D5, prova/conteúdo no D7 e reativação no D60.",
+  },
+};
+
 export function contactDisplayName(contact: CrmContact | undefined) {
   if (!contact) return "Contato sem nome";
   return contact.preferredName || contact.fullName || contact.phone || contact.whatsapp || "Contato sem nome";
@@ -648,6 +677,46 @@ const cadences: CrmCadence[] = [
     updatedAt: baseNow,
   },
   {
+    id: "cad-rescue-60d",
+    name: "Resgate tradicional (60 dias) — Aline",
+    description: "Paciente sumiu do ciclo de retorno: 5 tentativas em horários diferentes. Resposta pausa a régua; sem resposta vira churn e a Aline liga.",
+    cadenceType: "RESCUE_60_DAYS",
+    defaultOwnerRole: "CONCIERGE",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
+    id: "cad-rescue-6m",
+    name: "Resgate 6 meses — Aline",
+    description: "Sumiu há 6 meses: 5 tentativas, conteúdo de valor primeiro, depois a pergunta do porquê não voltou.",
+    cadenceType: "RESCUE_60_DAYS",
+    defaultOwnerRole: "CONCIERGE",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
+    id: "cad-rescue-1y",
+    name: "Resgate 1 ano + parabéns — Aline",
+    description: "Um ano de clínica: parabéns, convite ao Instagram e 5 tentativas de reaproximação com propósito.",
+    cadenceType: "RESCUE_60_DAYS",
+    defaultOwnerRole: "CONCIERGE",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
+    id: "cad-gestor-3131",
+    name: "3·1·3·1 do Gestor (Estevão)",
+    description: "Follow-up do gestor: 3 dias, 1 semana, 3 semanas e 1 mês após o gatilho — negociações paradas e recuperações.",
+    cadenceType: "POST_CONSULTATION_NOT_CLOSED",
+    defaultOwnerRole: "ADMIN_GESTAO",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
     id: "cad-return-cycle",
     name: "Ciclo de retorno",
     description: "Exames, confirmação e lembrete final sem excesso de toque.",
@@ -670,6 +739,25 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-concierge-reenvio", "cad-concierge-d1", 2, "Reenvio acolhimento", 2, "tpl-concierge-reenvio", "CONCIERGE"],
   ["step-nurse-14", "cad-nursing-14", 1, "Enfermagem 14 dias", 14, "tpl-enfermagem-14", "ENFERMAGEM"],
   ["step-post-application", "cad-post-application", 1, "Pós-aplicação", 1, "tpl-pos-aplicacao", "ENFERMAGEM"],
+  ["step-rescue60-1", "cad-rescue-60d", 1, "Resgate 60d - tentativa 1", 0, "tpl-resgate-60", "CONCIERGE"],
+  ["step-rescue60-2", "cad-rescue-60d", 2, "Resgate 60d - tentativa 2", 2, "tpl-resgate-60", "CONCIERGE"],
+  ["step-rescue60-3", "cad-rescue-60d", 3, "Resgate 60d - tentativa 3", 4, "tpl-resgate-60", "CONCIERGE"],
+  ["step-rescue60-4", "cad-rescue-60d", 4, "Resgate 60d - tentativa 4", 7, "tpl-resgate-60", "CONCIERGE"],
+  ["step-rescue60-5", "cad-rescue-60d", 5, "Resgate 60d - tentativa 5 (última)", 10, "tpl-resgate-60", "CONCIERGE"],
+  ["step-rescue6m-1", "cad-rescue-6m", 1, "Resgate 6m - tentativa 1 (conteúdo)", 0, "tpl-resgate-6m", "CONCIERGE"],
+  ["step-rescue6m-2", "cad-rescue-6m", 2, "Resgate 6m - tentativa 2", 3, "tpl-resgate-6m", "CONCIERGE"],
+  ["step-rescue6m-3", "cad-rescue-6m", 3, "Resgate 6m - tentativa 3", 6, "tpl-resgate-6m", "CONCIERGE"],
+  ["step-rescue6m-4", "cad-rescue-6m", 4, "Resgate 6m - tentativa 4", 10, "tpl-resgate-6m", "CONCIERGE"],
+  ["step-rescue6m-5", "cad-rescue-6m", 5, "Resgate 6m - tentativa 5 (última)", 14, "tpl-resgate-6m", "CONCIERGE"],
+  ["step-rescue1y-1", "cad-rescue-1y", 1, "1 ano - parabéns + Instagram", 0, "tpl-resgate-1a", "CONCIERGE"],
+  ["step-rescue1y-2", "cad-rescue-1y", 2, "Resgate 1a - tentativa 2", 3, "tpl-resgate-1a", "CONCIERGE"],
+  ["step-rescue1y-3", "cad-rescue-1y", 3, "Resgate 1a - tentativa 3", 6, "tpl-resgate-1a", "CONCIERGE"],
+  ["step-rescue1y-4", "cad-rescue-1y", 4, "Resgate 1a - tentativa 4", 10, "tpl-resgate-1a", "CONCIERGE"],
+  ["step-rescue1y-5", "cad-rescue-1y", 5, "Resgate 1a - tentativa 5 (última)", 14, "tpl-resgate-1a", "CONCIERGE"],
+  ["step-3131-3d", "cad-gestor-3131", 1, "Gestor - 3 dias", 3, "tpl-gestor-3131", "ADMIN_GESTAO"],
+  ["step-3131-1s", "cad-gestor-3131", 2, "Gestor - 1 semana", 7, "tpl-gestor-3131", "ADMIN_GESTAO"],
+  ["step-3131-3s", "cad-gestor-3131", 3, "Gestor - 3 semanas", 21, "tpl-gestor-3131", "ADMIN_GESTAO"],
+  ["step-3131-1m", "cad-gestor-3131", 4, "Gestor - 1 mês", 30, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-exams-21", "cad-return-cycle", 1, "Exames 3 semanas antes", -21, "tpl-exames-3-semanas", "RECEPCAO"],
   ["step-exams-7", "cad-return-cycle", 2, "Exames 1 semana antes", -7, "tpl-exames-1-semana", "RECEPCAO"],
   ["step-confirm-3", "cad-return-cycle", 3, "Confirmar consulta 3 dias", -3, "tpl-confirmacao-3", "RECEPCAO"],
@@ -696,6 +784,10 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-lead-d5", "Lead D5", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, passando com outro olhar: o que mais tem pesado hoje, energia, composição corporal, sono ou rotina? Posso te orientar o melhor próximo passo."],
   ["tpl-lead-d7", "Lead D7", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, se fizer sentido, posso te enviar um conteúdo curto do Dr. Daniel explicando como avaliamos longevidade e performance aqui no Instituto."],
   ["tpl-lead-d60", "Lead D60", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, retomando com cuidado. Ainda faz sentido conversarmos sobre seu plano de saúde e performance neste momento?"],
+  ["tpl-resgate-60", "Resgate 60 dias", "Aline", "CONCIERGE", "RESGATE_D60", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Sentimos sua falta no ciclo de retorno! Posso te ajudar a reagendar num horário que encaixe na sua rotina?"],
+  ["tpl-resgate-6m", "Resgate 6 meses", "Aline", "CONCIERGE", "RESGATE_D60", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. O Dr. Daniel gravou um conteúdo novo que lembrei de você. Como está sua saúde nesses últimos meses? Adoraria te ver por aqui de novo."],
+  ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESGATE_D60", "{{primeiro_nome}}, hoje faz 1 ano que você chegou ao Instituto Bratan — parabéns por ter cuidado de você! Segue nosso Instagram para acompanhar as novidades. Que tal uma avaliação para ver sua evolução?"],
+  ["tpl-gestor-3131", "Gestor 3·1·3·1", "Gestão", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Estevão, gestor do Instituto Bratan. Passando para saber se ficou alguma dúvida e como posso facilitar seu próximo passo com a gente."],
   ["tpl-medico-d1", "Médico D+1", "Recuperação", "MEDICO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Dr. Daniel. Queria entender com calma o que ficou como dúvida ou barreira para ajustarmos o caminho sem perder o objetivo principal."],
   ["tpl-gestor-d2", "Gestor D+2", "Recuperação", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é da gestão do Instituto Bratan. Passei para entender como podemos facilitar sua decisão e deixar o próximo passo claro."],
   ["tpl-concierge-d1", "Concierge D+1", "Concierge", "CONCIERGE", "POST_SALE_CONCIERGE", "Bom dia, {{primeiro_nome}}. Seja muito bem-vindo ao acompanhamento Bratan. Estou por aqui para qualquer dúvida e para cuidar da sua experiência conosco."],
