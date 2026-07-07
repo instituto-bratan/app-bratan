@@ -566,7 +566,7 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
   const client = requireSupabase();
   const { data, error } = await client
     .from("comprovante")
-    .select("id, tipo, original_filename, mime_type, file_size_bytes, uploaded_at, paciente_referencia, pagamento_lembrete_id, inteligencia_360_receivable_ref, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
+    .select("id, tipo, storage_path, original_filename, mime_type, file_size_bytes, uploaded_at, paciente_referencia, pagamento_lembrete_id, inteligencia_360_receivable_ref, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
     .is("deleted_at", null)
     .order("uploaded_at", { ascending: false });
 
@@ -575,6 +575,7 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
   return ((data ?? []) as RemoteComprovante[]).map((record) => ({
     id: record.id,
     tipo: record.tipo,
+    storagePath: (record as { storage_path?: string }).storage_path ?? undefined,
     arquivoNome: record.original_filename,
     arquivoTipo: record.mime_type,
     arquivoTamanho: record.file_size_bytes,
@@ -3208,6 +3209,13 @@ export async function createRemoteEstalecaClaim(values: {
     entity: "estaleca_claims",
     metadata: { claimType: values.claimType, title: values.title, amountSuggested: values.amountSuggested },
   });
+}
+
+export async function getRemoteComprovanteUrl(storagePath: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("comprovantes").createSignedUrl(storagePath, 60 * 10);
+  if (error) throw error;
+  return data.signedUrl as string;
 }
 
 export async function getRemoteEstalecaClaimPhotoUrl(photoPath: string) {

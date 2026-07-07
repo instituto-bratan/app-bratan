@@ -14,6 +14,7 @@ import { canComprovantes, cargoLabels, isCoordenacao } from "@/lib/access";
 import { formatShortTime, readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { parseMoneyBR } from "@/lib/money";
 import {
+  getRemoteComprovanteUrl,
   createRemoteEstorno,
   listRemoteComprovantes,
   listRemotePagamentos,
@@ -474,6 +475,19 @@ export function ComprovantesPage() {
                           <span className="text-xs font-semibold uppercase text-brand-oliva">{formatShortTime(record.anexadoEm)}</span>
                         </div>
                         <p className="mt-2 truncate font-semibold text-brand-tinta">{record.arquivoNome}</p>
+                        {record.storagePath ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-sm font-semibold text-brand-musgo underline underline-offset-2 hover:text-brand-oliva"
+                            onClick={() => {
+                              void getRemoteComprovanteUrl(record.storagePath as string)
+                                .then((url) => window.open(url, "_blank", "noopener"))
+                                .catch(() => window.alert("Não consegui abrir o arquivo agora. Tente de novo."));
+                            }}
+                          >
+                            Ver comprovante
+                          </button>
+                        ) : null}
                         <p className="mt-1 text-sm text-muted-foreground">
                           {record.anexadoPor} · {cargoLabels[record.anexadoPorCargo]} · {formatFileSize(record.arquivoTamanho)}
                         </p>

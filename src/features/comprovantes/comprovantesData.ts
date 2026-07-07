@@ -7,6 +7,7 @@ export type PeriodoFiltro = "dia" | "semana" | "mes" | "ano";
 
 export type ComprovanteRecord = {
   id: string;
+  storagePath?: string;
   tipo: ComprovanteTipo;
   arquivoNome: string;
   arquivoTipo: string;
