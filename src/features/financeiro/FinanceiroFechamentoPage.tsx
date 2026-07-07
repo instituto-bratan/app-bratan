@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
+import { parseMoneyBR } from "@/lib/money";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -141,6 +142,7 @@ export function FinanceiroFechamentoPage() {
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
   const [feedback, setFeedback] = useState("");
+  const [bankYield, setBankYield] = useState("");
 
   const days = useMemo(() => monthDaysWithSales(financeiro.sales, month).reverse(), [financeiro.sales, month]);
   const monthRecs = financeiro.reconciliations.filter((record) => record.day.slice(0, 7) === month);
@@ -171,6 +173,29 @@ export function FinanceiroFechamentoPage() {
     };
     financeiro.addExpense(expense);
     setFeedback(`Despesa de tarifas (${moneyFin(feesTotal)}) lançada na P12 em "Tarifa bancária (rede)".`);
+  }
+
+  function registrarRendimento() {
+    const amount = parseMoneyBR(bankYield);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setFeedback("Não entendi o valor do rendimento — digite como 152,37.");
+      return;
+    }
+    const moveDate = `${month}-28` <= todayISO() ? `${month}-28` : todayISO();
+    financeiro.addSavingsMoves([
+      {
+        id: createFinId("fsav"),
+        moveDate,
+        direction: "ENTRADA",
+        amount: Math.round(amount * 100) / 100,
+        reason: "Rendimento do banco",
+        source: "MANUAL",
+        monthRef: month,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    setBankYield("");
+    setFeedback(`Rendimento do banco de ${moneyFin(amount)} registrado em ${month.split("-").reverse().join("/")} — entra na linha "Entrada de valores" da P12 e na Poupança.`);
   }
 
   return (
@@ -236,6 +261,32 @@ export function FinanceiroFechamentoPage() {
             {feedback}
           </div>
         ) : null}
+
+        <Card className="border-brand-dourado/30 bg-brand-creme/35 shadow-none">
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-brand-musgo">Rendimento do banco no mês</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Quando a conta render, lance aqui: o valor entra como "Entrada de valores" na P12 e no histórico da Poupança — sem virar comanda.
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Input
+                  value={bankYield}
+                  onChange={(event) => setBankYield(event.target.value)}
+                  placeholder="Ex.: 152,37"
+                  inputMode="decimal"
+                  className="w-32"
+                  aria-label="Valor do rendimento do banco"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={registrarRendimento} disabled={readOnly}>
+                  Registrar
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

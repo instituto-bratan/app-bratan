@@ -70,6 +70,28 @@ export function FinanceiroLancarDiaPage() {
     () => financeiro.sales.filter((sale) => sale.saleDate === date),
     [financeiro.sales, date],
   );
+  const dayZeroMark = useMemo(
+    () => financeiro.reconciliations.find((rec) => rec.day === date && rec.divergenceNote === "Dia sem atendimentos (zerado)"),
+    [financeiro.reconciliations, date],
+  );
+
+  function markDayAsZero() {
+    financeiro.saveReconciliation({
+      id: `frec-${date}`,
+      day: date,
+      expectedPix: 0,
+      expectedCardItau: 0,
+      expectedCardSafra: 0,
+      expectedCardOutra: 0,
+      expectedDinheiro: 0,
+      feeItau: 0,
+      feeSafra: 0,
+      status: "CONFERIDO",
+      divergenceNote: "Dia sem atendimentos (zerado)",
+      confirmedAt: new Date().toISOString(),
+    });
+    setFeedback(`Dia ${date.split("-").reverse().join("/")} marcado como zerado: nenhum atendimento, R$ 0,00 recebido. O fechamento e a P12 já sabem.`);
+  }
 
   const patientSuggestions = useMemo(() => {
     const term = patientName.trim().toLowerCase();
@@ -396,8 +418,21 @@ export function FinanceiroLancarDiaPage() {
                       </div>
                     </div>
                   ))
+                ) : dayZeroMark ? (
+                  <div className="rounded-lg border border-brand-musgo/25 bg-[#f2f5ec] px-4 py-4 text-center">
+                    <p className="text-sm font-bold text-brand-musgo">Dia zerado ✓</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Nenhum atendimento neste dia — R$ 0,00 recebido, confirmado no fechamento.</p>
+                  </div>
                 ) : (
-                  <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma comanda lançada neste dia ainda.</p>
+                  <div className="flex flex-col items-center gap-3 py-4">
+                    <p className="text-center text-sm text-muted-foreground">Nenhuma comanda lançada neste dia ainda.</p>
+                    <Button type="button" variant="outline" size="sm" onClick={markDayAsZero}>
+                      Dia sem atendimentos — marcar R$ 0,00
+                    </Button>
+                    <p className="max-w-md text-center text-xs text-muted-foreground">
+                      Use quando ninguém passou no dia: o dia fica registrado como zerado de propósito, e não como esquecido.
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>
