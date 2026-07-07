@@ -250,7 +250,7 @@ export function FinanceiroContasPage() {
           </CardHeader>
           <CardContent>
             <div className="mobile-scrollbar-none overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
+              <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="text-xs uppercase text-brand-oliva">
                   <tr>
                     <th className="px-3 py-2">Vencimento</th>
@@ -281,8 +281,8 @@ export function FinanceiroContasPage() {
                           </td>
                           <td className="px-3 py-2.5 text-xs">{category?.name ?? expense.categoryRef}{expense.isCapex ? <Badge className="ml-1.5 bg-brand-creme text-brand-tinta">CAPEX</Badge> : null}</td>
                           <td className="px-3 py-2.5 text-xs">{expense.method ? paymentMethodLabels[expense.method] : "—"}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold text-brand-musgo">{moneyFin(expense.amount)}</td>
-                          <td className="px-3 py-2.5">
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-brand-musgo">{moneyFin(expense.amount)}</td>
+                          <td className="whitespace-nowrap px-3 py-2.5">
                             {readOnly ? (
                               expense.paidAt ? <Badge className="bg-emerald-100 text-emerald-800">Paga</Badge> : <Badge variant="muted">Pendente</Badge>
                             ) : expense.paidAt ? (

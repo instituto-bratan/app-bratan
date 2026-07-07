@@ -234,11 +234,12 @@ h3 {
     overflow-wrap: anywhere;
   }
 
-  /* Números e células de tabela nunca quebram no meio: tabelas têm scroll
-     horizontal próprio e valores monetários precisam ficar inteiros. */
+  /* Células de tabela nunca quebram no MEIO de palavra ou número (o espaço
+     do "R$" é inseparável, então valores ficam inteiros), mas textos longos
+     continuam quebrando nos espaços para a tabela caber no card. */
   .mobile-app-shell :where(table td, table th) {
     overflow-wrap: normal;
-    white-space: nowrap;
+    word-break: normal;
   }
 
   .mobile-app-shell :where(table td.cell-wrap, table th.cell-wrap) {
