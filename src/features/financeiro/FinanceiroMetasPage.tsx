@@ -22,6 +22,7 @@ import {
   buildMetaDoDiaMessage,
   buildMetasBoard,
   defaultMetasConfig,
+  doctorAttendsOn,
   type MetasConfig,
 } from "./metasData";
 import { useFinanceiro } from "./useFinanceiro";
@@ -81,12 +82,11 @@ export function FinanceiroMetasPage() {
 
   function toggleDoctorDay(date: string) {
     if (!canEdit) return;
-    const current = new Set(config.doctorOffDays[monthKey] ?? []);
-    if (current.has(date)) current.delete(date);
-    else current.add(date);
+    const attends = doctorAttendsOn(date, config);
+    const monthOverrides = { ...(config.doctorDayOverrides?.[monthKey] ?? {}), [date]: !attends };
     persistConfig({
       ...config,
-      doctorOffDays: { ...config.doctorOffDays, [monthKey]: [...current].sort() },
+      doctorDayOverrides: { ...(config.doctorDayOverrides ?? {}), [monthKey]: monthOverrides },
     });
   }
 
@@ -300,7 +300,9 @@ export function FinanceiroMetasPage() {
               </CardTitle>
               <div className="flex items-center gap-2">
                 {canEdit ? (
-                  <p className="text-xs text-muted-foreground">Clique em Sim/Não para marcar os dias do Dr. Daniel.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Sextas já vêm como "Não" (Dr. Daniel não atende). Clique em Sim/Não para ajustar qualquer dia.
+                  </p>
                 ) : null}
                 <Button type="button" variant="ghost" size="sm" onClick={() => setShowConfig((value) => !value)}>
                   {showConfig ? "Fechar valores das metas" : "Valores das metas"}

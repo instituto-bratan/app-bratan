@@ -12,8 +12,11 @@ export type MetasConfig = {
   dailyGoalWithDoctor: number;
   dailyGoalWithoutDoctor: number;
   // Dias em que o Dr. Daniel NÃO atende, por mês ("YYYY-MM" → ["YYYY-MM-DD", ...]).
-  // Padrão: atende todo dia útil; a exceção é o que se marca.
+  // Campo legado — prefira doctorDayOverrides.
   doctorOffDays: Record<string, string[]>;
+  // Ajustes explícitos por dia ("YYYY-MM" → { "YYYY-MM-DD": atende? }).
+  // Padrão sem ajuste: Dr. Daniel atende seg–qui e NÃO atende às sextas.
+  doctorDayOverrides?: Record<string, Record<string, boolean>>;
 };
 
 export const defaultMetasConfig: MetasConfig = {
@@ -24,6 +27,7 @@ export const defaultMetasConfig: MetasConfig = {
   dailyGoalWithDoctor: 17948.72,
   dailyGoalWithoutDoctor: 8974.36,
   doctorOffDays: {},
+  doctorDayOverrides: {},
 };
 
 export type MetasDay = {
@@ -95,8 +99,17 @@ export function meritocracyStatusText(accumulated: number, config: MetasConfig) 
   return "Ainda abaixo da meta mínima — vamos juntos, um dia de cada vez.";
 }
 
+// Regra combinada com a CEO: sexta-feira o Dr. Daniel não atende; nos outros
+// dias úteis atende, salvo ajuste manual daquele dia (doctorDayOverrides).
+export function doctorAttendsOn(date: string, config: MetasConfig): boolean {
+  const monthKey = date.slice(0, 7);
+  const override = config.doctorDayOverrides?.[monthKey]?.[date];
+  if (override !== undefined) return override;
+  if ((config.doctorOffDays[monthKey] ?? []).includes(date)) return false;
+  return toDate(date).getDay() !== 5;
+}
+
 export function buildMetasBoard(sales: FinSale[], config: MetasConfig, monthKey: string): MetasBoard {
-  const offDays = new Set(config.doctorOffDays[monthKey] ?? []);
   const dayList = businessDaysOfMonth(monthKey);
 
   const revenueByDay = new Map<string, number>();
@@ -123,7 +136,7 @@ export function buildMetasBoard(sales: FinSale[], config: MetasConfig, monthKey:
       lastWeekOfYear = anchorKey;
     }
 
-    const withDoctor = !offDays.has(date);
+    const withDoctor = doctorAttendsOn(date, config);
     const dailyGoal = withDoctor ? config.dailyGoalWithDoctor : config.dailyGoalWithoutDoctor;
     const revenue = revenueByDay.get(date) ?? 0;
     const patients = patientsByDay.get(date) ?? 0;
