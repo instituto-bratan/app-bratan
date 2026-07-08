@@ -41,6 +41,9 @@ import { exportBrandedPdf } from "@/lib/brandedPdf";
 import { readLocalValue } from "@/lib/localStore";
 import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasConfig } from "@/features/financeiro/metasData";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
+import { saleTotal as saleTotal360 } from "@/features/financeiro/financeiroData";
+import { findOrCreateCrmContact } from "@/features/crm/crmData";
+import { useCrmState } from "@/features/crm/useCrmState";
 import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import {
@@ -483,6 +486,100 @@ function InsightCard({
             Criar ação
           </Button>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Pacientes que passaram na comanda mas não existem no Kanban/CRM.
+// Um clique cria todos como pacientes, sem duplicar (dedupe por nome/telefone).
+function ComandaKanbanReconciliation() {
+  const { pessoa } = useAuth();
+  const year = Number(new Date().toISOString().slice(0, 4));
+  const financeiro = useFinanceiro(year);
+  const { state: crmState, persist: persistCrm } = useCrmState();
+  const [reconcileFeedback, setReconcileFeedback] = useState("");
+
+  const missing = useMemo(() => {
+    const normalize = (name: string) => name.trim().toLowerCase().replace(/\s+/g, " ");
+    const contactIds = new Set(crmState.contacts.map((contact) => contact.id));
+    const contactNames = new Set(
+      crmState.contacts.flatMap((contact) => [normalize(contact.fullName || ""), normalize(contact.preferredName || "")]).filter(Boolean),
+    );
+    const byName = new Map<string, { name: string; lastDate: string; total: number }>();
+    for (const sale of financeiro.sales) {
+      if (!sale.patientName) continue;
+      const key = normalize(sale.patientName);
+      if (!key || contactNames.has(key)) continue;
+      if (sale.crmContactRef && contactIds.has(sale.crmContactRef)) continue;
+      const existing = byName.get(key);
+      const total = (existing?.total ?? 0) + saleTotal360(sale);
+      byName.set(key, {
+        name: sale.patientName,
+        lastDate: existing && existing.lastDate > sale.saleDate ? existing.lastDate : sale.saleDate,
+        total,
+      });
+    }
+    return [...byName.values()].sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+  }, [financeiro.sales, crmState.contacts]);
+
+  function createAll() {
+    persistCrm((current) => {
+      let next = current;
+      let created = 0;
+      for (const patient of missing) {
+        const result = findOrCreateCrmContact(
+          next,
+          {
+            fullName: patient.name,
+            contactType: "PATIENT",
+            lifecycleStage: "ACTIVE_PATIENT",
+            sourceChannel: "Comanda / Lançar Dia",
+            ownerUserId: pessoa?.id ?? "sistema",
+          },
+          pessoa?.id ?? "sistema",
+        );
+        next = result.state;
+        if (result.created) created += 1;
+      }
+      setReconcileFeedback(`${created} paciente(s) criados no CRM; os demais já existiam e foram vinculados por nome.`);
+      return next;
+    });
+  }
+
+  if (!missing.length) {
+    return (
+      <Card className="border-emerald-200/70 bg-emerald-50/40 shadow-none">
+        <CardContent className="p-4 text-sm font-semibold text-emerald-800">
+          Comandas × Kanban conferidos: todo paciente que passou na comanda existe no CRM. ✓
+          {reconcileFeedback ? ` ${reconcileFeedback}` : ""}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-brand-dourado/45 bg-brand-creme/40 shadow-none">
+      <CardHeader>
+        <CardTitle className="text-lg">Pacientes da comanda fora do Kanban ({missing.length})</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm leading-6 text-muted-foreground">
+          Passaram no Lançar Dia mas não existem no CRM — por isso o Comercial não os enxerga. Um clique cria todos como
+          pacientes ativos, sem duplicar cadastro.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {missing.slice(0, 12).map((patient) => (
+            <Badge key={patient.name} variant="outline">
+              {patient.name} · {patient.lastDate.split("-").reverse().slice(0, 2).join("/")}
+            </Badge>
+          ))}
+          {missing.length > 12 ? <Badge variant="muted">+{missing.length - 12}</Badge> : null}
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <Button type="button" onClick={createAll}>Criar todos no CRM</Button>
+          {reconcileFeedback ? <p className="text-sm font-semibold text-brand-musgo">{reconcileFeedback}</p> : null}
+        </div>
       </CardContent>
     </Card>
   );
@@ -1235,6 +1332,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     });
     return (
       <>
+        <ComandaKanbanReconciliation />
         <ManualEntry title="Lançar prescrição manualmente (o Kanban já alimenta isto)">
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Registrar prescrição e fechamento</CardTitle></CardHeader>

@@ -1300,7 +1300,10 @@ export function findPotentialDuplicateContacts(state: CrmState, values: Partial<
   const name = normalizeText(values.fullName || "");
 
   return state.contacts.filter((contact) => {
-    if (phone && [contact.phone, contact.whatsapp].some((value) => normalizePhone(value).endsWith(phone) || phone.endsWith(normalizePhone(value)))) return true;
+    if (phone && phone.length >= 8) {
+      const candidates = [contact.phone, contact.whatsapp].map((value) => normalizePhone(value)).filter((value) => value.length >= 8);
+      if (candidates.some((value) => value.endsWith(phone) || phone.endsWith(value))) return true;
+    }
     if (email && normalizeText(contact.email) === email) return true;
     const contactName = normalizeText(contact.fullName);
     return Boolean(name && contactName && (contactName.includes(name) || name.includes(contactName)));

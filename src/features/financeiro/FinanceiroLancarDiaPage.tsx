@@ -15,6 +15,7 @@ import { canLancarDia } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { contactDisplayName } from "@/features/crm/crmData";
+import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
   buildDailyCardSummary,
@@ -56,7 +57,7 @@ function SummaryLine({ label, value, strong = false }: { label: string; value: n
 
 export function FinanceiroLancarDiaPage() {
   const { pessoa } = useAuth();
-  const { state: crmState } = useCrmState();
+  const { state: crmState, persist: persistCrm } = useCrmState();
   const [date, setDate] = useState(todayISO());
   const financeiro = useFinanceiro(Number(date.slice(0, 4)));
   const [patientName, setPatientName] = useState("");
@@ -174,12 +175,34 @@ export function FinanceiroLancarDiaPage() {
       adhesion,
       createdAt: editingSale?.createdAt ?? new Date().toISOString(),
     };
+    // Paciente da comanda sempre existe no CRM: sem vínculo escolhido, o app
+    // acha (sem duplicar) ou cria o contato como paciente e amarra a comanda.
+    let crmNote = "";
+    if (!sale.crmContactRef && sale.patientName) {
+      persistCrm((current) => {
+        const result = findOrCreateCrmContact(
+          current,
+          {
+            fullName: sale.patientName,
+            contactType: "PATIENT",
+            lifecycleStage: "ACTIVE_PATIENT",
+            sourceChannel: "Comanda / Lançar Dia",
+            ownerUserId: pessoa?.id ?? "recepcao",
+          },
+          pessoa?.id ?? "recepcao",
+        );
+        sale.crmContactRef = result.contact.id;
+        crmNote = result.created ? " Paciente criado no CRM automaticamente." : " Vinculado ao cadastro já existente no CRM.";
+        return result.state;
+      });
+    }
+
     if (editingSale) {
       financeiro.updateSale(sale);
-      setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.`);
+      setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.${crmNote}`);
     } else {
       financeiro.addSale(sale);
-      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}. Pode adicionar o próximo paciente.`);
+      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}.${crmNote} Pode adicionar o próximo paciente.`);
     }
     resetForm();
   }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import {
+import { Upload,
   AlertTriangle,
   ArrowRight,
   BrainCircuit,
@@ -316,6 +316,77 @@ export function CrmKanbanPage() {
 
 
 
+  const [importOpen, setImportOpen] = useState(false);
+  const [importAs, setImportAs] = useState<"PATIENT" | "LEAD">("PATIENT");
+  const [importFeedback, setImportFeedback] = useState("");
+
+  // Importa a exportação de pacientes do Feegow (CSV): acha as colunas de
+  // nome/telefone/e-mail pelo cabeçalho e cria sem duplicar cadastro.
+  function handleFeegowFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 2) {
+        setImportFeedback("Arquivo vazio ou sem linhas de dados. Exporte a lista de pacientes do Feegow em CSV.");
+        return;
+      }
+      const separator = (lines[0].match(/;/g) ?? []).length >= (lines[0].match(/,/g) ?? []).length ? ";" : ",";
+      const parseLine = (line: string) => {
+        const cells: string[] = [];
+        let current = "";
+        let quoted = false;
+        for (const char of line) {
+          if (char === '"') quoted = !quoted;
+          else if (char === separator && !quoted) {
+            cells.push(current.trim());
+            current = "";
+          } else current += char;
+        }
+        cells.push(current.trim());
+        return cells;
+      };
+      const header = parseLine(lines[0]).map((cell) => cell.toLowerCase());
+      const nameIdx = header.findIndex((cell) => /nome|paciente|name/.test(cell));
+      const phoneIdx = header.findIndex((cell) => /celular|telefone|fone|whats|phone/.test(cell));
+      const emailIdx = header.findIndex((cell) => /e-?mail/.test(cell));
+      if (nameIdx === -1) {
+        setImportFeedback(`Não achei a coluna de nome no cabeçalho (${header.slice(0, 6).join(" | ")}...). Exporte com a coluna Nome/Paciente.`);
+        return;
+      }
+      const rows = lines.slice(1, 2001).map(parseLine).filter((cells) => (cells[nameIdx] ?? "").trim().length >= 3);
+      persist((current) => {
+        let next = current;
+        let created = 0;
+        let existing = 0;
+        for (const cells of rows) {
+          const result = findOrCreateCrmContact(
+            next,
+            {
+              fullName: cells[nameIdx],
+              phone: phoneIdx >= 0 ? cells[phoneIdx] ?? "" : "",
+              whatsapp: phoneIdx >= 0 ? cells[phoneIdx] ?? "" : "",
+              email: emailIdx >= 0 ? cells[emailIdx] ?? "" : "",
+              contactType: importAs,
+              lifecycleStage: importAs === "PATIENT" ? "ACTIVE_PATIENT" : "COLD_LEAD",
+              sourceChannel: "Importação Feegow",
+              ownerUserId: pessoa?.id ?? "importacao",
+            },
+            pessoa?.id ?? "importacao",
+          );
+          next = result.state;
+          if (result.created) created += 1;
+          else existing += 1;
+        }
+        setImportFeedback(
+          `${created} ${importAs === "PATIENT" ? "paciente(s)" : "lead(s)"} importados do Feegow · ${existing} já existiam (não duplicados).${importAs === "LEAD" ? " Agora é inscrever nas cadências." : ""}`,
+        );
+        return next;
+      });
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
   function handleCreateLead(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
@@ -483,6 +554,10 @@ export function CrmKanbanPage() {
             <Plus className="h-4 w-4" aria-hidden="true" />
             Novo lead
           </LiquidButton>
+          <Button type="button" variant="outline" size="sm" onClick={() => { setImportFeedback(""); setImportOpen(true); }}>
+            <Upload className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            Importar do Feegow
+          </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => { setTourOpen(true); markTourSeen(); }}>
             <GraduationCap className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Como usar
@@ -836,6 +911,51 @@ export function CrmKanbanPage() {
       </AnimatePresence>
 
       <GuidedTour open={tourOpen} steps={kanbanTourSteps} title="Como usar o Kanban" onClose={() => setTourOpen(false)} />
-    </div>
+          {importOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-brand-tinta/35 p-4 backdrop-blur-sm" onClick={() => setImportOpen(false)}>
+          <div className="w-[min(30rem,94vw)] rounded-xl border border-brand-oliva/25 bg-brand-papel p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <h2 className="text-xl font-bold text-brand-musgo">Importar do Feegow</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              No Feegow, exporte a lista de pacientes (ou leads) e salve como <strong>CSV</strong>. O app acha as colunas de
+              nome, telefone e e-mail sozinho e não duplica quem já existe.
+            </p>
+            <div className="mt-4 flex gap-2">
+              {([["PATIENT", "Pacientes (já atendidos)"], ["LEAD", "Leads (para cadências)"]] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setImportAs(value)}
+                  className={cn(
+                    "rounded-full border px-3.5 py-1.5 text-sm font-semibold",
+                    importAs === value ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/60 text-brand-oliva",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="mt-4 w-full text-sm"
+              aria-label="Arquivo CSV do Feegow"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) handleFeegowFile(file);
+                event.target.value = "";
+              }}
+            />
+            {importFeedback ? (
+              <p className="mt-3 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-3 py-2 text-sm font-semibold text-brand-tinta">
+                {importFeedback}
+              </p>
+            ) : null}
+            <div className="mt-4 text-right">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setImportOpen(false)}>Fechar</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+</div>
   );
 }
