@@ -124,6 +124,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Repasses Nutri/Psi", shortLabel: "Repasses", href: "/financeiro/repasses", icon: UsersRound, allowed: canLembretesPagamento },
       { label: "P12 ao vivo", shortLabel: "P12", href: "/financeiro/p12", icon: CircleDollarSign, allowed: canLembretesPagamento },
       { label: "Metas do Mês", shortLabel: "Metas", href: "/financeiro/metas", icon: Goal, allowed: canFinanceiroView },
+      { label: "PDCA do Dr. Daniel", shortLabel: "PDCA", href: "/financeiro/pdca", icon: RefreshCw, allowed: canLembretesPagamento },
       { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
     ],
   },

@@ -27,6 +27,7 @@ import {
   TrendingUp,
   UserRoundCheck,
   UsersRound,
+  Goal,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -517,12 +518,26 @@ export function Inteligencia360DashboardPage() {
 
   const cards = [
     {
-      label: "Faturamento vendido",
+      label: "Faturamento do mês (comandas)",
+      value: money360(metasBoard.accumulatedRevenue),
+      detail: "Fonte: Lançar Dia — dado oficial do caixa",
+      href: "/financeiro/metas",
+      icon: Target,
+      tone: "gold" as const,
+    },
+    {
+      label: "Meta do mês (CEO)",
+      value: `${Math.round(metasBoard.superGoalPercent * 100)}% da super meta`,
+      detail: `Falta ${money360(metasBoard.missingToSuper)} para ${money360(metasConfig.goalSuperRevenue)}`,
+      href: "/financeiro/metas",
+      icon: Goal,
+    },
+    {
+      label: "Faturamento vendido (360)",
       value: money360(snapshot.totalSoldAmount),
       detail: "Fonte: Comercial e Prescrições",
       href: moduleRoutes360.commercial,
       icon: Target,
-      tone: "gold" as const,
     },
     {
       label: "Receita recebida",
