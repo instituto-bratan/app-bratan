@@ -46,6 +46,14 @@ export type FinSalePayment = {
   cardMachine?: FinCardMachine | null;
 };
 
+export type FinAdhesion = "ABERTO" | "SIM" | "NAO";
+
+export const adhesionLabels: Record<FinAdhesion, string> = {
+  ABERTO: "Em aberto",
+  SIM: "Aderiu",
+  NAO: "Não aderiu",
+};
+
 export type FinSale = {
   id: string;
   saleDate: string;
@@ -54,6 +62,9 @@ export type FinSale = {
   notes: string;
   items: FinSaleItem[];
   payments: FinSalePayment[];
+  // Aderiu ao plano de acompanhamento? Marcado na comanda (recepção/Lucas);
+  // sinal NÃO significa adesão — pode ser sinal só de consulta.
+  adhesion?: FinAdhesion;
   createdAt: string;
 };
 

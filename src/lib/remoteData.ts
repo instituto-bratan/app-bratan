@@ -2718,6 +2718,7 @@ export async function listRemoteFinPurchases(year: number): Promise<FinPurchase[
     receivedAt: (row.received_at as string | null) ?? null,
     expenseRef: (row.expense_ref as string | null) ?? null,
     notes: String(row.notes ?? ""),
+    adhesion: (row.adhesion as FinSale["adhesion"]) ?? "ABERTO",
     createdAt: String(row.created_at ?? new Date().toISOString()),
   }));
 }
@@ -2823,7 +2824,7 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_sales")
-    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, created_at, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine)")
+    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, adhesion, created_at, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine)")
     .gte("sale_date", `${year}-01-01`)
     .lte("sale_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -2862,6 +2863,7 @@ export async function createRemoteFinSale(sale: FinSale, createdBy: string | nul
     patient_name: sale.patientName,
     crm_contact_ref: sale.crmContactRef || null,
     notes: sale.notes,
+    adhesion: sale.adhesion ?? "ABERTO",
     created_by: uuidOrNull(createdBy),
   });
   if (error) throw error;
@@ -2909,6 +2911,7 @@ export async function updateRemoteFinSale(sale: FinSale) {
       patient_name: sale.patientName,
       crm_contact_ref: sale.crmContactRef || null,
       notes: sale.notes,
+      adhesion: sale.adhesion ?? "ABERTO",
     })
     .eq("client_ref", sale.id);
   if (error) throw error;
@@ -3020,6 +3023,34 @@ export async function markRemoteFinExpensePaid(expenseRef: string, paidAt: strin
   const client = requireSupabase();
   const { error } = await client.from("fin_expenses").update({ paid_at: paidAt }).eq("client_ref", expenseRef);
   if (error) throw error;
+}
+
+export async function updateRemoteFinExpense(expense: FinExpense) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_expenses")
+    .update({
+      description: expense.description,
+      category_ref: expense.categoryRef,
+      amount: expense.amount,
+      due_date: expense.dueDate,
+      paid_at: expense.paidAt,
+      method: expense.method,
+      supplier: expense.supplier,
+      installment_num: expense.installmentNum,
+      installment_total: expense.installmentTotal,
+      document_note: expense.documentNote,
+      is_capex: expense.isCapex,
+      notes: expense.notes,
+    })
+    .eq("client_ref", expense.id);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.despesa.editar",
+    entity: "fin_expenses",
+    entityId: expense.id,
+    metadata: { amount: expense.amount, dueDate: expense.dueDate },
+  });
 }
 
 export async function deleteRemoteFinExpense(expenseRef: string) {

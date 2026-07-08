@@ -27,6 +27,7 @@ import {
   listRemoteFinSales,
   listRemoteFinSavings,
   markRemoteFinExpensePaid,
+  updateRemoteFinExpense,
   upsertRemoteFinReconciliation,
 } from "@/lib/remoteData";
 import {
@@ -192,6 +193,10 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     mutationFn: ({ id, paidAt }: { id: string; paidAt: string | null }) => markRemoteFinExpensePaid(id, paidAt),
     onSuccess: () => invalidate("fin-expenses"),
   });
+  const updateExpenseMutation = useMutation({
+    mutationFn: updateRemoteFinExpense,
+    onSuccess: () => invalidate("fin-expenses"),
+  });
   const deleteExpenseMutation = useMutation({
     mutationFn: deleteRemoteFinExpense,
     onSuccess: () => invalidate("fin-expenses"),
@@ -355,6 +360,17 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
+  function updateExpense(expense: FinExpense) {
+    setExpenses((current) => {
+      const next = current.map((existing) => (existing.id === expense.id ? expense : existing)).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      saveLocalFinExpenses(next);
+      return next;
+    });
+    if (useRemote) {
+      void updateExpenseMutation.mutateAsync(expense).catch((error) => console.warn("Edição da conta não sincronizou.", error));
+    }
+  }
+
   function removeExpense(expenseId: string) {
     setExpenses((current) => {
       const next = current.filter((expense) => expense.id !== expenseId);
@@ -384,6 +400,7 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     updateSale,
     removeSale,
     addExpense,
+    updateExpense,
     setExpensePaid,
     removeExpense,
     saveReconciliation,

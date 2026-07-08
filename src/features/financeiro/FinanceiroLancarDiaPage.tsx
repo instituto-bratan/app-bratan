@@ -28,6 +28,8 @@ import {
   saleTotal,
   type FinCardMachine,
   type FinPaymentMethod,
+  adhesionLabels,
+  type FinAdhesion,
   type FinSale,
   type FinSaleItem,
   type FinSaleItemType,
@@ -62,6 +64,7 @@ export function FinanceiroLancarDiaPage() {
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DraftItem[]>([{ itemType: "CONSULTA", amount: "", description: "" }]);
   const [payments, setPayments] = useState<DraftPayment[]>([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
+  const [adhesion, setAdhesion] = useState<FinAdhesion>("ABERTO");
   const [feedback, setFeedback] = useState("");
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
@@ -107,6 +110,7 @@ export function FinanceiroLancarDiaPage() {
 
   function resetForm() {
     setEditingSaleId(null);
+    setAdhesion("ABERTO");
     setPatientName("");
     setPatientRef("");
     setNotes("");
@@ -123,6 +127,7 @@ export function FinanceiroLancarDiaPage() {
     setPatientName(sale.patientName);
     setPatientRef(sale.crmContactRef);
     setNotes(sale.notes);
+    setAdhesion(sale.adhesion ?? "ABERTO");
     setItems(sale.items.map((item) => ({ itemType: item.itemType, amount: amountToDraft(item.amount), description: item.description })));
     setPayments(
       sale.payments.map((payment) => ({
@@ -166,6 +171,7 @@ export function FinanceiroLancarDiaPage() {
       notes: notes.trim(),
       items: validItems,
       payments: validPayments,
+      adhesion,
       createdAt: editingSale?.createdAt ?? new Date().toISOString(),
     };
     if (editingSale) {
@@ -361,6 +367,34 @@ export function FinanceiroLancarDiaPage() {
                   <div>
                     <Label>Observações (ex.: NF unificada, +11% imposto)</Label>
                     <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Opcional" />
+                  </div>
+
+                  <div>
+                    <Label>Aderiu ao plano de acompanhamento?</Label>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Sinal pode ser só da consulta — marque a adesão aqui quando souber. "Em aberto" pode ser corrigido depois, por você ou pela recepção.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {(["ABERTO", "SIM", "NAO"] as FinAdhesion[]).map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setAdhesion(option)}
+                          className={cn(
+                            "rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors",
+                            adhesion === option
+                              ? option === "SIM"
+                                ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                : option === "NAO"
+                                  ? "border-red-300 bg-red-100 text-red-700"
+                                  : "border-brand-dourado/50 bg-brand-creme text-brand-tinta"
+                              : "border-brand-oliva/25 bg-white/60 text-brand-oliva hover:bg-brand-creme/50",
+                          )}
+                        >
+                          {adhesionLabels[option]}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">

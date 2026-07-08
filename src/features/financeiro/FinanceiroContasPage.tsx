@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { CalendarClock, CheckCircle2, CircleDollarSign, Plus, Trash2 } from "lucide-react";
+import { Pencil, CalendarClock, CheckCircle2, CircleDollarSign, Plus, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ export function FinanceiroContasPage() {
   const [documentNote, setDocumentNote] = useState("");
   const [feedback, setFeedback] = useState("");
   const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas">("todas");
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
   const categoriesByGroup = useMemo(
     () => finGroupOrder.map((groupKey) => ({
@@ -90,29 +91,54 @@ export function FinanceiroContasPage() {
 
     const [num, total] = installment.split("/").map((part) => Number(part.trim()) || null);
     const category = categoryById.get(categoryRef);
+    const editingExpense = editingExpenseId ? financeiro.expenses.find((existing) => existing.id === editingExpenseId) : null;
     const expense: FinExpense = {
-      id: createFinId("fexp"),
+      id: editingExpense?.id ?? createFinId("fexp"),
       description: description.trim(),
       categoryRef,
       amount: value,
       dueDate,
-      paidAt: null,
+      paidAt: editingExpense?.paidAt ?? null,
       method,
       supplier: supplier.trim(),
       installmentNum: num,
       installmentTotal: total,
       documentNote: documentNote.trim(),
       isCapex: category?.isCapex ?? false,
-      notes: "",
-      createdAt: new Date().toISOString(),
+      notes: editingExpense?.notes ?? "",
+      createdAt: editingExpense?.createdAt ?? new Date().toISOString(),
     };
-    financeiro.addExpense(expense);
-    setFeedback(`Conta lançada em "${category?.name}" · ${moneyFin(value)}.`);
+    if (editingExpense) {
+      financeiro.updateExpense(expense);
+      setFeedback(`Conta "${expense.description}" corrigida: ${moneyFin(value)} em "${category?.name}". A P12 já refletiu.`);
+    } else {
+      financeiro.addExpense(expense);
+      setFeedback(`Conta lançada em "${category?.name}" · ${moneyFin(value)}.`);
+    }
+    resetForm();
+  }
+
+  function resetForm() {
+    setEditingExpenseId(null);
     setDescription("");
     setAmount("");
     setSupplier("");
     setInstallment("");
     setDocumentNote("");
+  }
+
+  function startEditing(expense: FinExpense) {
+    setEditingExpenseId(expense.id);
+    setDescription(expense.description);
+    setAmount(expense.amount.toFixed(2).replace(".", ","));
+    setDueDate(expense.dueDate);
+    setCategoryRef(expense.categoryRef);
+    setMethod(expense.method ?? "BOLETO");
+    setSupplier(expense.supplier);
+    setInstallment(expense.installmentNum && expense.installmentTotal ? `${expense.installmentNum}/${expense.installmentTotal}` : "");
+    setDocumentNote(expense.documentNote);
+    setFeedback(`Editando a conta "${expense.description}" — corrija e salve para aplicar.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
@@ -175,7 +201,7 @@ export function FinanceiroContasPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-              Nova conta
+              {editingExpenseId ? "Corrigir conta" : "Nova conta"}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -228,8 +254,13 @@ export function FinanceiroContasPage() {
               <div className="sm:col-span-2 lg:col-span-4">
                 <LiquidButton type="submit" size="sm">
                   <Plus className="h-4 w-4" aria-hidden="true" />
-                  Lançar conta
+                  {editingExpenseId ? "Salvar correção" : "Lançar conta"}
                 </LiquidButton>
+                {editingExpenseId ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => { resetForm(); setFeedback(""); }}>
+                    Cancelar edição
+                  </Button>
+                ) : null}
               </div>
             </form>
           </CardContent>
@@ -295,11 +326,26 @@ export function FinanceiroContasPage() {
                               </Button>
                             )}
                           </td>
-                          <td className="px-3 py-2.5">
+                          <td className="whitespace-nowrap px-3 py-2.5">
                             {readOnly ? null : (
-                              <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${expense.description}`} onClick={() => financeiro.removeExpense(expense.id)}>
-                                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                              </Button>
+                              <>
+                                <Button type="button" variant="ghost" size="icon" aria-label={`Editar ${expense.description}`} onClick={() => startEditing(expense)}>
+                                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Excluir ${expense.description}`}
+                                  onClick={() => {
+                                    if (!window.confirm(`Excluir a conta "${expense.description}" (${moneyFin(expense.amount)})? A P12 se ajusta sozinha.`)) return;
+                                    if (editingExpenseId === expense.id) resetForm();
+                                    financeiro.removeExpense(expense.id);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                </Button>
+                              </>
                             )}
                           </td>
                         </tr>

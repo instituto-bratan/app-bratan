@@ -22,7 +22,7 @@ import { useFinanceiro } from "./useFinanceiro";
 
 const pdcaMarksStorageKey = "app-bratan-fin-pdca-marks";
 
-type PdcaStatus = "ADERIU" | "ADERIU_SINAL" | "ADERIU_DEPOIS" | "EM_DECISAO" | "NAO_ADERIU";
+type PdcaStatus = "ADERIU" | "ADERIU_DEPOIS" | "EM_DECISAO" | "NAO_ADERIU";
 
 type PdcaRow = {
   sale: FinSale;
@@ -37,14 +37,16 @@ function normalizeName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-// Classificação por comanda:
-// 1. tratamento na comanda → aderiu; 2. sinal → aderiu (fechou com sinal);
-// 3. o mesmo paciente tem tratamento/sinal em comanda POSTERIOR → aderiu depois;
-// 4. marcação manual de não adesão (com objeção); 5. senão → em decisão.
+// Classificação por comanda (regra combinada com o Lucas em 08/07/2026):
+// 1. tratamento na comanda → aderiu; 2. adesão marcada na PRÓPRIA comanda
+// (campo "Aderiu ao plano?") manda; 3. o mesmo paciente tem tratamento em
+// comanda POSTERIOR ou comanda posterior marcada como SIM → aderiu depois;
+// 4. marcação manual aqui no PDCA (com objeção); 5. senão → em decisão.
+// Sinal NÃO significa adesão: pode ser sinal só de consulta.
 function buildPdcaRows(sales: FinSale[], month: string, marks: Map<string, FinPdcaMark>): PdcaRow[] {
   const adhesionDates = new Map<string, string>();
   for (const sale of sales) {
-    const hasAdhesion = sale.items.some((item) => item.itemType === "TRATAMENTO" || item.itemType === "SINAL");
+    const hasAdhesion = sale.items.some((item) => item.itemType === "TRATAMENTO") || sale.adhesion === "SIM";
     if (!hasAdhesion) continue;
     for (const key of [sale.crmContactRef, normalizeName(sale.patientName)]) {
       if (!key) continue;
@@ -58,7 +60,6 @@ function buildPdcaRows(sales: FinSale[], month: string, marks: Map<string, FinPd
     .map((sale) => {
       const consulta = sale.items.filter((item) => consultaLikeTypes.includes(item.itemType)).reduce((sum, item) => sum + item.amount, 0);
       const tratamento = sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
-      const sinal = sale.items.filter((item) => item.itemType === "SINAL").reduce((sum, item) => sum + item.amount, 0);
       const mark = marks.get(sale.id);
 
       let status: PdcaStatus = "EM_DECISAO";
@@ -66,9 +67,12 @@ function buildPdcaRows(sales: FinSale[], month: string, marks: Map<string, FinPd
       if (tratamento > 0) {
         status = "ADERIU";
         detail = `tratamento ${moneyFin(tratamento)}`;
-      } else if (sinal > 0) {
-        status = "ADERIU_SINAL";
-        detail = `fechou com sinal de ${moneyFin(sinal)}`;
+      } else if (sale.adhesion === "SIM") {
+        status = "ADERIU";
+        detail = "marcado na comanda";
+      } else if (sale.adhesion === "NAO") {
+        status = "NAO_ADERIU";
+        detail = sale.notes ? `objeção: ${sale.notes}` : "marcado na comanda";
       } else {
         const laterDate = [sale.crmContactRef, normalizeName(sale.patientName)]
           .filter(Boolean)
@@ -136,7 +140,7 @@ export function FinanceiroPdcaPage() {
   const rows = useMemo(() => buildPdcaRows(financeiro.sales, month, marksMap), [financeiro.sales, month, marksMap]);
 
   const totalTratamentos = rows.reduce((sum, row) => sum + row.tratamento, 0);
-  const aderiram = rows.filter((row) => row.status === "ADERIU" || row.status === "ADERIU_SINAL" || row.status === "ADERIU_DEPOIS");
+  const aderiram = rows.filter((row) => row.status === "ADERIU" || row.status === "ADERIU_DEPOIS");
   const emDecisao = rows.filter((row) => row.status === "EM_DECISAO");
   const naoAderiram = rows.filter((row) => row.status === "NAO_ADERIU");
   const decididos = aderiram.length + naoAderiram.length;
@@ -144,7 +148,6 @@ export function FinanceiroPdcaPage() {
 
   const statusBadge: Record<PdcaStatus, { label: string; className: string }> = {
     ADERIU: { label: "Aderiu", className: "bg-emerald-100 text-emerald-800" },
-    ADERIU_SINAL: { label: "Fechou com sinal", className: "bg-emerald-100 text-emerald-800" },
     ADERIU_DEPOIS: { label: "Aderiu depois", className: "bg-brand-creme text-brand-musgo" },
     EM_DECISAO: { label: "Em decisão", className: "bg-amber-100 text-amber-800" },
     NAO_ADERIU: { label: "Não aderiu", className: "bg-red-100 text-red-700" },
@@ -167,10 +170,10 @@ export function FinanceiroPdcaPage() {
               <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
                 PDCA · Adesão Dr Daniel
                 <InfoTip title="Como o app classifica cada paciente">
-                  Tudo vem das comandas: tratamento ou sinal na comanda = aderiu; se o paciente voltar e fechar depois, o app
-                  reclassifica sozinho como "aderiu depois". Quem fez só consulta fica "em decisão" — ninguém é dado como
-                  perdido automaticamente. Só vira "não aderiu" quando você marcar, registrando a objeção. A taxa de adesão
-                  conta apenas os casos decididos. Meta da Operação 360: 70% a 80%.
+                  Tudo vem das comandas: tratamento lançado = aderiu, e a resposta do campo "Aderiu ao plano?" da comanda
+                  manda aqui. Sinal NÃO conta como adesão (pode ser sinal só de consulta) — fica "em decisão" até você ou a
+                  recepção marcarem na comanda ou aqui. Se o paciente voltar e fechar depois, o app reclassifica sozinho.
+                  A taxa de adesão conta apenas os casos decididos. Meta da Operação 360: 70% a 80%.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
