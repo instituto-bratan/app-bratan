@@ -55,7 +55,7 @@ import {
   formatEstalecas,
   type EstalecaTransaction,
 } from "@/features/estalecas/estalecasData";
-import { listRemoteEstalecaTransactions, listRemotePagamentos } from "@/lib/remoteData";
+import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemotePagamentos } from "@/lib/remoteData";
 
 const modules = [
   {
@@ -309,21 +309,43 @@ export function HomePage() {
     enabled: useRemote && Boolean(pessoa),
   });
 
+  const checklistQuery = useQuery({
+    queryKey: ["checklist-items", "home"],
+    queryFn: () => listRemoteChecklistItems(),
+    enabled: useRemote,
+  });
   const checklist = useMemo(() => {
-    const items = readLocalValue(checklistStorageKey(), createChecklistRun());
+    // Mesma fonte da tela Tarefas: logado usa o banco; prévia usa o local.
+    const items = useRemote && checklistQuery.data
+      ? checklistQuery.data.items
+      : readLocalValue(checklistStorageKey(), createChecklistRun());
     return checklistSummary(filterChecklistItemsByCargo(items, cargo));
-  }, [cargo]);
+  }, [cargo, checklistQuery.data, useRemote]);
 
   const lunch = useMemo(() => lunchSummary(now), [now]);
 
+  const avisosQuery = useQuery({
+    queryKey: ["avisos", "home"],
+    queryFn: listRemoteAvisos,
+    enabled: useRemote,
+  });
   const avisos = useMemo(() => {
-    return activeAvisos(readLocalValue(muralStorageKey, initialAvisos));
-  }, []);
+    const records = useRemote && avisosQuery.data ? avisosQuery.data : readLocalValue(muralStorageKey, initialAvisos);
+    return activeAvisos(records);
+  }, [avisosQuery.data, useRemote]);
 
+  const comprovantesQuery = useQuery({
+    queryKey: ["comprovantes", "home"],
+    queryFn: () => listRemoteComprovantes(cargo ?? "recepcionista"),
+    enabled: useRemote && canComprovantes(cargo),
+  });
   const comprovantes = useMemo(() => {
     if (!canComprovantes(cargo)) return null;
-    return comprovantesSummary(readLocalValue<ComprovanteRecord[]>(comprovantesStorageKey, []));
-  }, [cargo]);
+    const records = useRemote && comprovantesQuery.data
+      ? comprovantesQuery.data
+      : readLocalValue<ComprovanteRecord[]>(comprovantesStorageKey, []);
+    return comprovantesSummary(records);
+  }, [cargo, comprovantesQuery.data, useRemote]);
 
   const pagamentos = useMemo(() => {
     if (!canLembretesPagamento(cargo)) return null;
