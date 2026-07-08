@@ -16,7 +16,7 @@ import {
   type GamificationProfile,
 } from "@/features/estalecas/estalecasData";
 import type { AuditEventRecord } from "@/features/admin/auditoriaData";
-import type { FinCategory, FinExpense, FinInvoice, FinPartnerEntry, FinProvisionRule, FinReconciliation, FinSale, FinSavingsMove } from "@/features/financeiro/financeiroData";
+import type { FinCategory, FinExpense, FinInvoice, FinPartnerEntry, FinProvisionRule, FinPurchase, FinReconciliation, FinSale, FinSavingsMove } from "@/features/financeiro/financeiroData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
   deriveInteligencia360FromCrm,
@@ -2692,6 +2692,90 @@ export async function listRemoteFinCategories(): Promise<FinCategory[]> {
     isCapex: Boolean(row.is_capex),
     active: Boolean(row.active),
   }));
+}
+
+export async function listRemoteFinPurchases(year: number): Promise<FinPurchase[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_purchases")
+    .select("client_ref, purchase_date, description, supplier, amount, method, card, installments, nf_note, delivery_eta, received_at, expense_ref, notes, created_at")
+    .gte("purchase_date", `${year}-01-01`)
+    .lte("purchase_date", `${year}-12-31`)
+    .is("deleted_at", null)
+    .order("purchase_date", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    purchaseDate: String(row.purchase_date),
+    description: String(row.description ?? ""),
+    supplier: String(row.supplier ?? ""),
+    amount: Number(row.amount ?? 0),
+    method: row.method as FinPurchase["method"],
+    card: (row.card as FinPurchase["card"]) ?? null,
+    installments: Number(row.installments ?? 1),
+    nfNote: String(row.nf_note ?? ""),
+    deliveryEta: (row.delivery_eta as string | null) ?? null,
+    receivedAt: (row.received_at as string | null) ?? null,
+    expenseRef: (row.expense_ref as string | null) ?? null,
+    notes: String(row.notes ?? ""),
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  }));
+}
+
+export async function createRemoteFinPurchase(purchase: FinPurchase, createdBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_purchases").insert({
+    client_ref: purchase.id,
+    purchase_date: purchase.purchaseDate,
+    description: purchase.description,
+    supplier: purchase.supplier,
+    amount: purchase.amount,
+    method: purchase.method,
+    card: purchase.card,
+    installments: purchase.installments,
+    nf_note: purchase.nfNote,
+    delivery_eta: purchase.deliveryEta,
+    received_at: purchase.receivedAt,
+    expense_ref: purchase.expenseRef,
+    notes: purchase.notes,
+    created_by: uuidOrNull(createdBy),
+  });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.compra.registrar",
+    entity: "fin_purchases",
+    entityId: purchase.id,
+    metadata: { purchaseDate: purchase.purchaseDate, amount: purchase.amount, method: purchase.method },
+  });
+}
+
+export async function updateRemoteFinPurchase(purchase: FinPurchase) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_purchases")
+    .update({
+      purchase_date: purchase.purchaseDate,
+      description: purchase.description,
+      supplier: purchase.supplier,
+      amount: purchase.amount,
+      method: purchase.method,
+      card: purchase.card,
+      installments: purchase.installments,
+      nf_note: purchase.nfNote,
+      delivery_eta: purchase.deliveryEta,
+      received_at: purchase.receivedAt,
+      expense_ref: purchase.expenseRef,
+      notes: purchase.notes,
+    })
+    .eq("client_ref", purchase.id);
+  if (error) throw error;
+}
+
+export async function deleteRemoteFinPurchase(purchaseRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_purchases").update({ deleted_at: new Date().toISOString() }).eq("client_ref", purchaseRef);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "financeiro.compra.excluir", entity: "fin_purchases", entityId: purchaseRef });
 }
 
 export async function loadRemoteFinMetasConfig(): Promise<Record<string, unknown> | null> {

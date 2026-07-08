@@ -4,12 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import {
   createRemoteFinExpense,
+  createRemoteFinPurchase,
   createRemoteFinSale,
   createRemoteFinInvoice,
   createRemoteFinPartnerEntry,
   createRemoteFinSavingsMoves,
   deleteRemoteFinExpense,
+  deleteRemoteFinPurchase,
   deleteRemoteFinSale,
+  updateRemoteFinPurchase,
   updateRemoteFinSale,
   deleteRemoteFinInvoice,
   deleteRemoteFinPartnerEntry,
@@ -20,6 +23,7 @@ import {
   listRemoteFinPartnerEntries,
   listRemoteFinProvisionRules,
   listRemoteFinReconciliations,
+  listRemoteFinPurchases,
   listRemoteFinSales,
   listRemoteFinSavings,
   markRemoteFinExpensePaid,
@@ -28,10 +32,12 @@ import {
 import {
   loadLocalFinExpenses,
   loadLocalFinReconciliations,
+  loadLocalFinPurchases,
   loadLocalFinSales,
   loadLocalFinSavings,
   saveLocalFinExpenses,
   saveLocalFinReconciliations,
+  saveLocalFinPurchases,
   saveLocalFinSales,
   saveLocalFinSavings,
   seedFinCategories,
@@ -40,6 +46,7 @@ import {
   type FinInvoice,
   type FinPartnerEntry,
   type FinReconciliation,
+  type FinPurchase,
   type FinSale,
   type FinSavingsMove,
 } from "./financeiroData";
@@ -49,6 +56,7 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
   const [sales, setSales] = useState<FinSale[]>(() => loadLocalFinSales());
+  const [purchases, setPurchases] = useState<FinPurchase[]>(() => loadLocalFinPurchases());
   const [expenses, setExpenses] = useState<FinExpense[]>(() => loadLocalFinExpenses());
   const [reconciliations, setReconciliations] = useState<FinReconciliation[]>(() => loadLocalFinReconciliations());
   const [savingsMoves, setSavingsMoves] = useState<FinSavingsMove[]>(() => loadLocalFinSavings());
@@ -140,6 +148,30 @@ export function useFinanceiro(year = new Date().getFullYear()) {
 
   const invalidate = (key: string) => void queryClient.invalidateQueries({ queryKey: [key, year] });
 
+  const purchasesQuery = useQuery({
+    queryKey: ["fin-purchases", year],
+    queryFn: () => listRemoteFinPurchases(year),
+    enabled: useRemote,
+  });
+  useEffect(() => {
+    if (!purchasesQuery.data) return;
+    setPurchases(purchasesQuery.data);
+    saveLocalFinPurchases(purchasesQuery.data);
+  }, [purchasesQuery.data]);
+
+  const createPurchaseMutation = useMutation({
+    mutationFn: (purchase: FinPurchase) => createRemoteFinPurchase(purchase, pessoa?.id ?? null),
+    onSuccess: () => invalidate("fin-purchases"),
+  });
+  const updatePurchaseMutation = useMutation({
+    mutationFn: updateRemoteFinPurchase,
+    onSuccess: () => invalidate("fin-purchases"),
+  });
+  const deletePurchaseMutation = useMutation({
+    mutationFn: deleteRemoteFinPurchase,
+    onSuccess: () => invalidate("fin-purchases"),
+  });
+
   const createSaleMutation = useMutation({
     mutationFn: (sale: FinSale) => createRemoteFinSale(sale, pessoa?.id ?? null),
     onSuccess: () => invalidate("fin-sales"),
@@ -164,6 +196,39 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     mutationFn: deleteRemoteFinExpense,
     onSuccess: () => invalidate("fin-expenses"),
   });
+
+  function addPurchase(purchase: FinPurchase) {
+    setPurchases((current) => {
+      const next = [purchase, ...current];
+      saveLocalFinPurchases(next);
+      return next;
+    });
+    if (useRemote) {
+      void createPurchaseMutation.mutateAsync(purchase).catch((error) => console.warn("Compra não sincronizou.", error));
+    }
+  }
+
+  function updatePurchase(purchase: FinPurchase) {
+    setPurchases((current) => {
+      const next = current.map((existing) => (existing.id === purchase.id ? purchase : existing));
+      saveLocalFinPurchases(next);
+      return next;
+    });
+    if (useRemote) {
+      void updatePurchaseMutation.mutateAsync(purchase).catch((error) => console.warn("Edição da compra não sincronizou.", error));
+    }
+  }
+
+  function removePurchase(purchaseId: string) {
+    setPurchases((current) => {
+      const next = current.filter((purchase) => purchase.id !== purchaseId);
+      saveLocalFinPurchases(next);
+      return next;
+    });
+    if (useRemote) {
+      void deletePurchaseMutation.mutateAsync(purchaseId).catch((error) => console.warn("Exclusão da compra não sincronizou.", error));
+    }
+  }
 
   function addSale(sale: FinSale) {
     setSales((current) => {
@@ -311,6 +376,10 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     partnerEntries,
     provisionRules: provisionRulesQuery.data?.length ? provisionRulesQuery.data : seedProvisionRules,
     categories: categoriesQuery.data?.length ? categoriesQuery.data : seedFinCategories,
+    purchases,
+    addPurchase,
+    updatePurchase,
+    removePurchase,
     addSale,
     updateSale,
     removeSale,

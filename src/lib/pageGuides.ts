@@ -303,6 +303,25 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/financeiro/compras",
+    guide: {
+      title: "Controle de Compras",
+      whatIs:
+        "A planilha CONTROLE DE COMPRAS dentro do app: tudo que o Instituto compra, com forma de pagamento, NF e previsão de entrega — sem digitar duas vezes na P12.",
+      steps: [
+        "Preencha data, descrição da compra e valor total.",
+        "Escolha a forma de pagamento: crédito pede o cartão (Itaú/Santander/Safra) e as parcelas.",
+        "Se NÃO for crédito, escolha a categoria P12 — a conta a pagar é criada sozinha, já no lugar certo.",
+        "Compra no crédito entra na P12 pela fatura do cartão no fim do mês — não lance de novo.",
+        "Quando o pedido chegar, clique em 'A caminho' para marcar como recebido.",
+      ],
+      tips: [
+        "O selo 'P12 OK' mostra que a conta vinculada existe; 'Via fatura' significa que entra pela fatura do cartão.",
+        "Excluir uma compra também exclui a conta a pagar que ela criou.",
+      ],
+    },
+  },
+  {
     pattern: "/financeiro/metas",
     guide: {
       title: "Controle de Metas",

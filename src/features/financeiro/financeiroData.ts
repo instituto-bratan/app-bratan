@@ -297,6 +297,53 @@ export function createFinId(prefix: string) {
   return `${prefix}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
 }
 
+export type FinPurchaseCard = "ITAU" | "SANTANDER" | "SAFRA" | "OUTRO";
+
+export type FinPurchase = {
+  id: string;
+  purchaseDate: string;
+  description: string;
+  supplier: string;
+  amount: number;
+  method: FinPaymentMethod;
+  card: FinPurchaseCard | null;
+  installments: number;
+  nfNote: string;
+  deliveryEta: string | null;
+  receivedAt: string | null;
+  expenseRef: string | null;
+  notes: string;
+  createdAt: string;
+};
+
+export const purchaseCardLabels: Record<FinPurchaseCard, string> = {
+  ITAU: "Itaú",
+  SANTANDER: "Santander",
+  SAFRA: "Safra",
+  OUTRO: "Outro",
+};
+
+export const finPurchasesStorageKey = "app-bratan-fin-purchases";
+
+export function loadLocalFinPurchases() {
+  return readLocalValue<FinPurchase[]>(finPurchasesStorageKey, []);
+}
+
+export function saveLocalFinPurchases(purchases: FinPurchase[]) {
+  writeLocalValue(finPurchasesStorageKey, purchases);
+}
+
+export function purchaseMonthTotals(purchases: FinPurchase[], monthKey: string) {
+  const monthPurchases = purchases.filter((purchase) => purchase.purchaseDate.startsWith(monthKey));
+  const byMethod = new Map<FinPaymentMethod, number>();
+  let total = 0;
+  for (const purchase of monthPurchases) {
+    total += purchase.amount;
+    byMethod.set(purchase.method, (byMethod.get(purchase.method) ?? 0) + purchase.amount);
+  }
+  return { monthPurchases, total, byMethod };
+}
+
 export const finSalesStorageKey = "app-bratan-fin-sales";
 export const finExpensesStorageKey = "app-bratan-fin-expenses";
 
