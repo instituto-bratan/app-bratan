@@ -2778,6 +2778,33 @@ export async function deleteRemoteFinPurchase(purchaseRef: string) {
   await safeWriteRemoteAuditEvent({ action: "financeiro.compra.excluir", entity: "fin_purchases", entityId: purchaseRef });
 }
 
+export type FinPdcaMark = { saleRef: string; status: "NAO_ADERIU" | "ADERIU_MANUAL"; objection: string };
+
+export async function listRemoteFinPdcaMarks(): Promise<FinPdcaMark[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("fin_pdca_status").select("sale_ref, status, objection");
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    saleRef: String(row.sale_ref),
+    status: row.status as FinPdcaMark["status"],
+    objection: String(row.objection ?? ""),
+  }));
+}
+
+export async function saveRemoteFinPdcaMark(mark: FinPdcaMark) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_pdca_status")
+    .upsert({ sale_ref: mark.saleRef, status: mark.status, objection: mark.objection }, { onConflict: "sale_ref" });
+  if (error) throw error;
+}
+
+export async function deleteRemoteFinPdcaMark(saleRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_pdca_status").delete().eq("sale_ref", saleRef);
+  if (error) throw error;
+}
+
 export async function loadRemoteFinMetasConfig(): Promise<Record<string, unknown> | null> {
   const client = requireSupabase();
   const { data, error } = await client.from("fin_metas_config").select("config").eq("id", true).maybeSingle();

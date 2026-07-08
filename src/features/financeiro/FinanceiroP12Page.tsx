@@ -139,7 +139,7 @@ export function FinanceiroP12Page() {
 
         <section className="overflow-hidden rounded-xl border border-brand-oliva/15 bg-white/60 shadow-calm backdrop-blur-xl">
           <div className="kanban-scroll overflow-x-auto">
-            <table className={cn("w-full whitespace-nowrap text-right text-xs tabular-nums", monthFilter === null ? "min-w-[1180px]" : "min-w-[520px]")}>
+            <table className={cn("w-full whitespace-nowrap text-right text-sm tabular-nums", monthFilter === null ? "min-w-[1280px]" : "min-w-[560px]")}>
               <thead>
                 <tr className="border-b border-brand-oliva/18 bg-brand-papel/80 text-[11px] uppercase tracking-wide text-brand-oliva">
                   <th className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-3 text-left">Categoria</th>
