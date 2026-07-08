@@ -1,3 +1,4 @@
+import { personNamesMatch } from "./nameMatch";
 import { isCoordenacao } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import type { Cargo, Pessoa } from "@/types/database";
@@ -1305,8 +1306,7 @@ export function findPotentialDuplicateContacts(state: CrmState, values: Partial<
       if (candidates.some((value) => value.endsWith(phone) || phone.endsWith(value))) return true;
     }
     if (email && normalizeText(contact.email) === email) return true;
-    const contactName = normalizeText(contact.fullName);
-    return Boolean(name && contactName && (contactName.includes(name) || name.includes(contactName)));
+    return Boolean(values.fullName && contact.fullName && personNamesMatch(values.fullName, contact.fullName));
   });
 }
 

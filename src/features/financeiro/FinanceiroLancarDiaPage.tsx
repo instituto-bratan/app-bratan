@@ -16,6 +16,7 @@ import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { contactDisplayName } from "@/features/crm/crmData";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
+import { extractPersonName } from "@/features/crm/nameMatch";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
   buildDailyCardSummary,
@@ -178,12 +179,13 @@ export function FinanceiroLancarDiaPage() {
     // Paciente da comanda sempre existe no CRM: sem vínculo escolhido, o app
     // acha (sem duplicar) ou cria o contato como paciente e amarra a comanda.
     let crmNote = "";
-    if (!sale.crmContactRef && sale.patientName) {
+    const cleanName = extractPersonName(sale.patientName);
+    if (!sale.crmContactRef && cleanName) {
       persistCrm((current) => {
         const result = findOrCreateCrmContact(
           current,
           {
-            fullName: sale.patientName,
+            fullName: cleanName,
             contactType: "PATIENT",
             lifecycleStage: "ACTIVE_PATIENT",
             sourceChannel: "Comanda / Lançar Dia",

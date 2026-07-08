@@ -43,6 +43,7 @@ import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasC
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { saleTotal as saleTotal360 } from "@/features/financeiro/financeiroData";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
+import { clusterPersonNames, extractPersonName, personNamesMatch } from "@/features/crm/nameMatch";
 import { useCrmState } from "@/features/crm/useCrmState";
 import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
@@ -501,21 +502,30 @@ function ComandaKanbanReconciliation() {
   const [reconcileFeedback, setReconcileFeedback] = useState("");
 
   const missing = useMemo(() => {
-    const normalize = (name: string) => name.trim().toLowerCase().replace(/\s+/g, " ");
     const contactIds = new Set(crmState.contacts.map((contact) => contact.id));
-    const contactNames = new Set(
-      crmState.contacts.flatMap((contact) => [normalize(contact.fullName || ""), normalize(contact.preferredName || "")]).filter(Boolean),
-    );
+    // Limpa anotações da recepção ("NF unificada", datas, obs) e agrupa
+    // variações do mesmo nome ("Fulana de Tal" + "Fulana Almeida") no mais completo.
+    const cleanBySale = new Map<string, string>();
+    for (const sale of financeiro.sales) {
+      const clean = extractPersonName(sale.patientName || "");
+      if (clean) cleanBySale.set(sale.id, clean);
+    }
+    const canonicalMap = clusterPersonNames([...cleanBySale.values()]);
+    const existsInCrm = (name: string) =>
+      crmState.contacts.some(
+        (contact) => personNamesMatch(name, contact.fullName || "") || personNamesMatch(name, contact.preferredName || ""),
+      );
     const byName = new Map<string, { name: string; lastDate: string; total: number }>();
     for (const sale of financeiro.sales) {
-      if (!sale.patientName) continue;
-      const key = normalize(sale.patientName);
-      if (!key || contactNames.has(key)) continue;
+      const clean = cleanBySale.get(sale.id);
+      if (!clean) continue;
       if (sale.crmContactRef && contactIds.has(sale.crmContactRef)) continue;
-      const existing = byName.get(key);
+      const canonical = canonicalMap.get(clean) ?? clean;
+      if (existsInCrm(canonical)) continue;
+      const existing = byName.get(canonical.toLowerCase());
       const total = (existing?.total ?? 0) + saleTotal360(sale);
-      byName.set(key, {
-        name: sale.patientName,
+      byName.set(canonical.toLowerCase(), {
+        name: canonical,
         lastDate: existing && existing.lastDate > sale.saleDate ? existing.lastDate : sale.saleDate,
         total,
       });
@@ -565,8 +575,9 @@ function ComandaKanbanReconciliation() {
       </CardHeader>
       <CardContent>
         <p className="text-sm leading-6 text-muted-foreground">
-          Passaram no Lançar Dia mas não existem no CRM — por isso o Comercial não os enxerga. Um clique cria todos como
-          pacientes ativos, sem duplicar cadastro.
+          Passaram no Lançar Dia mas não existem no CRM — por isso o Comercial não os enxerga. O app já limpou as
+          anotações da recepção (NF, datas, obs) e juntou variações do mesmo nome. Um clique cria todos como pacientes
+          ativos, sem duplicar cadastro.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {missing.slice(0, 12).map((patient) => (
