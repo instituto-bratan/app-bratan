@@ -595,15 +595,44 @@ export function Inteligencia360DashboardPage() {
     () => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>("app-bratan-fin-metas-config-v1", {}) }),
     [],
   );
+  const [period, setPeriod] = useState("semana");
   const metasBoard = useMemo(
     () => buildMetasBoard(financeiro.sales, metasConfig, hoje.slice(0, 7)),
     [financeiro.sales, metasConfig, hoje],
+  );
+  // Faixa de datas do filtro de período — aplicada ao que é temporal
+  // (comandas e vendido); indicadores de estado (recebíveis, NPS) não mudam.
+  const periodRange = useMemo(() => {
+    const today = new Date(`${hoje}T12:00:00`);
+    const toISO = (date: Date) => date.toISOString().slice(0, 10);
+    if (period === "dia") return { start: hoje, end: hoje, label: "hoje" };
+    if (period === "mes") return { start: `${hoje.slice(0, 7)}-01`, end: hoje, label: "no mês" };
+    if (period === "ano") return { start: `${hoje.slice(0, 4)}-01-01`, end: hoje, label: "no ano" };
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    return { start: toISO(monday), end: hoje, label: "na semana" };
+  }, [period, hoje]);
+  const periodRevenue = useMemo(
+    () =>
+      financeiro.sales
+        .filter((sale) => sale.saleDate >= periodRange.start && sale.saleDate <= periodRange.end)
+        .reduce((sum, sale) => sum + saleTotal360(sale), 0),
+    [financeiro.sales, periodRange],
+  );
+  const periodSold = useMemo(
+    () =>
+      state.prescriptions
+        .filter((record) => {
+          const date = (record.consultationDate || record.createdAt || "").slice(0, 10);
+          return date >= periodRange.start && date <= periodRange.end;
+        })
+        .reduce((sum, record) => sum + record.soldAmount, 0),
+    [state.prescriptions, periodRange],
   );
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   const insights = useMemo(() => generateActionRecommendations(state), [state]);
   const quality = useMemo(() => buildDataQuality(state), [state]);
   const [createdAction, setCreatedAction] = useState<string | null>(null);
-  const [period, setPeriod] = useState("semana");
 
   function createActionFromInsight(insight: ReturnType<typeof generateActionRecommendations>[number]) {
     const action = actionFromInsight(insight);
@@ -615,8 +644,8 @@ export function Inteligencia360DashboardPage() {
 
   const cards = [
     {
-      label: "Faturamento do mês (comandas)",
-      value: money360(metasBoard.accumulatedRevenue),
+      label: `Faturamento ${periodRange.label} (comandas)`,
+      value: money360(periodRevenue),
       detail: "Fonte: Lançar Dia — dado oficial do caixa",
       href: "/financeiro/metas",
       icon: Target,
@@ -630,8 +659,8 @@ export function Inteligencia360DashboardPage() {
       icon: Goal,
     },
     {
-      label: "Faturamento vendido (360)",
-      value: money360(snapshot.totalSoldAmount),
+      label: `Vendido ${periodRange.label} (360)`,
+      value: money360(periodSold),
       detail: "Fonte: Comercial e Prescrições",
       href: moduleRoutes360.commercial,
       icon: Target,
@@ -760,21 +789,24 @@ export function Inteligencia360DashboardPage() {
         </div>
       ) : null}
       <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
-          <SelectField
-            label="Período"
-            value={period}
-            onChange={setPeriod}
-            options={[
-              { value: "dia", label: "Dia" },
-              { value: "semana", label: "Semana" },
-              { value: "mes", label: "Mês" },
-              { value: "ano", label: "Ano" },
-            ]}
-          />
-          <Field label="Médico" value="Todos" onChange={() => undefined} />
-          <Field label="Tipo de paciente" value="Todos" onChange={() => undefined} />
-          <Field label="Canal" value="Todos" onChange={() => undefined} />
+        <CardContent className="flex flex-wrap items-end gap-4 p-4">
+          <div className="w-full sm:w-56">
+            <SelectField
+              label="Período"
+              value={period}
+              onChange={setPeriod}
+              options={[
+                { value: "dia", label: "Hoje" },
+                { value: "semana", label: "Esta semana" },
+                { value: "mes", label: "Este mês" },
+                { value: "ano", label: "Este ano" },
+              ]}
+            />
+          </div>
+          <p className="pb-1 text-sm leading-6 text-muted-foreground">
+            O período muda o faturamento das comandas e o vendido do Comercial. Recebíveis, resgates e NPS são retratos do
+            momento — não mudam com o filtro.
+          </p>
         </CardContent>
       </Card>
 
