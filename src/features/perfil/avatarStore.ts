@@ -26,8 +26,27 @@ function subscribe(callback: () => void) {
   };
 }
 
+// Foto no bucket público de avatares — visível para toda a equipe.
+export function publicAvatarUrl(pessoaId: string | null | undefined) {
+  const base = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  if (!base || !pessoaId) return null;
+  const version = readLocalValue<string>(`app-bratan-avatar-v-${pessoaId}`, "");
+  return `${base}/storage/v1/object/public/avatars/${pessoaId}.jpg${version ? `?v=${version}` : ""}`;
+}
+
+export function bumpAvatarVersion(pessoaId: string) {
+  writeLocalValue(`app-bratan-avatar-v-${pessoaId}`, String(Date.now()));
+  window.dispatchEvent(new Event(avatarChangeEvent));
+}
+
 export function useAvatar(pessoaId: string | null | undefined) {
   return useSyncExternalStore(subscribe, () => loadAvatar(pessoaId), () => null);
+}
+
+// Melhor fonte disponível: a foto local (deste aparelho) ou a do bucket da equipe.
+export function useAvatarSrc(pessoaId: string | null | undefined) {
+  const local = useAvatar(pessoaId);
+  return local ?? publicAvatarUrl(pessoaId);
 }
 
 export async function fileToAvatarDataUrl(file: File, size = 256): Promise<string> {

@@ -13,6 +13,7 @@ import {
   Trophy,
   WalletCards,
 } from "lucide-react";
+import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -666,10 +667,11 @@ export function EstalecasPage() {
           <CardContent className="space-y-3">
             {ranking.length ? (
               ranking.slice(0, 6).map((entry) => (
-                <div key={entry.userId} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+                <div key={entry.userId} className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
                   <div className={cn("grid h-9 w-9 place-items-center rounded-lg text-sm font-bold", entry.position === 1 ? "bg-brand-creme text-brand-tinta" : "bg-brand-papel text-brand-musgo")}>
                     {entry.position}
                   </div>
+                  <AvatarBadge pessoaId={entry.userId} nome={entry.displayName} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-brand-tinta">{entry.displayName}</p>
                     <p className="text-xs text-muted-foreground">{entry.validGymCheckins} treinos · sequência {entry.currentStreak}</p>

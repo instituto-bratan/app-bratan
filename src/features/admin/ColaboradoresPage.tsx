@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Eye, KeyRound, RotateCcw, Save, Search, ShieldCheck, Trash2, UserRoundPlus, UsersRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -566,9 +567,7 @@ export function ColaboradoresPage() {
                 >
                   <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-                        <UsersRound className="h-5 w-5" aria-hidden="true" />
-                      </div>
+                      <AvatarBadge pessoaId={colaborador.id} nome={colaborador.nome} className="h-11 w-11" />
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-brand-tinta">{colaborador.nome}</p>
                         <p className="truncate text-sm text-muted-foreground">{colaborador.email}</p>

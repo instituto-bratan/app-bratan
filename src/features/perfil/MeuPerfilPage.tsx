@@ -8,7 +8,8 @@ import { useImageUpload } from "@/hooks/use-image-upload";
 import { cargoGroup, cargoLabels } from "@/lib/access";
 import { cn } from "@/lib/utils";
 import { accessMatrix, allowedModuleCount } from "@/features/admin/colaboradoresData";
-import { fileToAvatarDataUrl, saveAvatar, useAvatar } from "./avatarStore";
+import { bumpAvatarVersion, fileToAvatarDataUrl, saveAvatar, useAvatar } from "./avatarStore";
+import { uploadRemoteAvatar } from "@/lib/remoteData";
 
 export function avatarInitials(nome: string) {
   const parts = nome.trim().split(/\s+/).filter(Boolean);
@@ -19,13 +20,29 @@ export function avatarInitials(nome: string) {
 
 function AvatarUpload({ pessoaId, nome }: { pessoaId: string; nome: string }) {
   const avatar = useAvatar(pessoaId);
+  const { session, isPreview } = useAuth();
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
+  const [shared, setShared] = useState("");
+
+  // Salva no aparelho e publica no bucket da equipe — todos passam a ver.
+  function persistAvatar(dataUrl: string) {
+    saveAvatar(pessoaId, dataUrl);
+    setShared("");
+    if (session && !isPreview) {
+      uploadRemoteAvatar(pessoaId, dataUrl)
+        .then(() => {
+          bumpAvatarVersion(pessoaId);
+          setShared("Foto publicada — visível para toda a equipe.");
+        })
+        .catch(() => setShared("Foto salva neste aparelho, mas não sincronizou — tente de novo com internet."));
+    }
+  }
   const { fileInputRef, handleThumbnailClick, handleFileChange } = useImageUpload({
     onUpload: (_url, file) => {
       setError("");
       fileToAvatarDataUrl(file)
-        .then((dataUrl) => saveAvatar(pessoaId, dataUrl))
+        .then(persistAvatar)
         .catch(() => setError("Não foi possível processar a foto. Tente JPG ou PNG."));
     },
   });
@@ -48,7 +65,7 @@ function AvatarUpload({ pessoaId, nome }: { pessoaId: string; nome: string }) {
           if (file?.type.startsWith("image/")) {
             setError("");
             fileToAvatarDataUrl(file)
-              .then((dataUrl) => saveAvatar(pessoaId, dataUrl))
+              .then(persistAvatar)
               .catch(() => setError("Não foi possível processar a foto. Tente JPG ou PNG."));
           }
         }}
@@ -77,9 +94,10 @@ function AvatarUpload({ pessoaId, nome }: { pessoaId: string; nome: string }) {
           Remover foto
         </button>
       ) : (
-        <p className="text-xs text-muted-foreground">Toque para adicionar</p>
+        <p className="text-xs text-muted-foreground">Toque para adicionar — fica visível para toda a equipe</p>
       )}
       {error ? <p className="max-w-40 text-center text-xs text-destructive">{error}</p> : null}
+      {shared ? <p className="text-xs font-semibold text-brand-musgo">{shared}</p> : null}
     </div>
   );
 }

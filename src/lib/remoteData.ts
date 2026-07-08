@@ -3353,6 +3353,17 @@ export async function createRemoteEstalecaClaim(values: {
   });
 }
 
+export async function uploadRemoteAvatar(pessoaId: string, dataUrl: string) {
+  const client = requireSupabase();
+  const blob = await (await fetch(dataUrl)).blob();
+  const { error } = await client.storage.from("avatars").upload(`${pessoaId}.jpg`, blob, {
+    upsert: true,
+    contentType: "image/jpeg",
+    cacheControl: "3600",
+  });
+  if (error) throw error;
+}
+
 export async function getRemoteComprovanteUrl(storagePath: string) {
   const client = requireSupabase();
   const { data, error } = await client.storage.from("comprovantes").createSignedUrl(storagePath, 60 * 10);
