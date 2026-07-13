@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { isCoordenacao } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
-import { createRemoteChecklistItem, listRemoteChecklistItems, resetRemoteChecklistRun, updateRemoteChecklistItem } from "@/lib/remoteData";
+import { createRemoteChecklistItem, createRemoteChecklistTask, listRemoteChecklistItems, resetRemoteChecklistRun, updateRemoteChecklistItem, type ChecklistTaskKind } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import {
   checklistGroupsForCargo,
@@ -119,6 +119,8 @@ export function ChecklistPage() {
 
   const [newTask, setNewTask] = useState("");
   const [newTaskGroup, setNewTaskGroup] = useState("");
+  const [newTaskKind, setNewTaskKind] = useState<"DIA" | ChecklistTaskKind>("DIA");
+  const [taskFeedback, setTaskFeedback] = useState("");
   const allGroups = useMemo(() => [...new Set(createChecklistRun().map((item) => item.grupo))], []);
   const defaultGroup = sectorGroups[0] ?? allGroups[0] ?? "Gestão";
 
@@ -126,23 +128,41 @@ export function ChecklistPage() {
     const descricao = newTask.trim();
     if (!descricao) return;
     const grupo = newTaskGroup || defaultGroup;
-    setNewTask("");
-    if (useRemote && runId) {
-      await createRemoteChecklistItem({ runId, grupo, descricao, responsavel: pessoa?.nome ?? "Equipe" });
-      await queryClient.invalidateQueries({ queryKey: ["checklist", dateRef] });
-      return;
+    setTaskFeedback("");
+    const kindPrefix = newTaskKind === "ROTINA" ? "🔁 " : newTaskKind === "ATE_CONCLUIR" ? "📌 " : "";
+    const kindLabel =
+      newTaskKind === "ROTINA"
+        ? "Rotina criada: aparece todos os dias."
+        : newTaskKind === "ATE_CONCLUIR"
+          ? "Tarefa fixa criada: fica na lista até alguém concluir."
+          : "Tarefa de hoje criada.";
+    try {
+      if (useRemote && runId) {
+        if (newTaskKind === "DIA") {
+          await createRemoteChecklistItem({ runId, grupo, descricao, responsavel: pessoa?.nome ?? "Equipe" });
+        } else {
+          await createRemoteChecklistTask({ titulo: descricao, grupo, kind: newTaskKind, createdBy: pessoa?.id ?? null });
+        }
+        await queryClient.invalidateQueries({ queryKey: ["checklist", dateRef] });
+      } else {
+        persist([
+          ...allItems,
+          {
+            id: `custom-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+            grupo,
+            descricao: `${kindPrefix}${descricao}`,
+            responsavel: pessoa?.nome ?? "Equipe",
+            ordem: 999,
+            concluido: false,
+          },
+        ]);
+      }
+      setNewTask("");
+      const visivel = filterChecklistItemsByCargo([{ id: "x", grupo, descricao, responsavel: "", ordem: 0, concluido: false }], pessoa?.cargo).length > 0;
+      setTaskFeedback(visivel ? `${kindLabel} Setor: ${grupo}.` : `${kindLabel} Criada no setor "${grupo}" — aparece para quem é desse setor.`);
+    } catch {
+      setTaskFeedback("Não consegui salvar a tarefa agora. Confira a internet e tente de novo.");
     }
-    persist([
-      ...allItems,
-      {
-        id: `custom-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
-        grupo,
-        descricao,
-        responsavel: pessoa?.nome ?? "Equipe",
-        ordem: 999,
-        concluido: false,
-      },
-    ]);
   }
 
   async function resetDay() {
@@ -243,11 +263,26 @@ export function ChecklistPage() {
                     <option key={grupo} value={grupo}>{grupo}</option>
                   ))}
                 </select>
+                <select
+                  value={newTaskKind}
+                  onChange={(event) => setNewTaskKind(event.target.value as "DIA" | ChecklistTaskKind)}
+                  className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                  aria-label="Duração da tarefa"
+                >
+                  <option value="DIA">Só hoje</option>
+                  <option value="ATE_CONCLUIR">📌 Até concluir (fica todo dia)</option>
+                  <option value="ROTINA">🔁 Rotina (todos os dias)</option>
+                </select>
                 <Button type="submit" disabled={!newTask.trim()}>
                   <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
                   Adicionar
                 </Button>
               </form>
+              {taskFeedback ? (
+                <p className="mt-3 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-3 py-2 text-sm font-semibold text-brand-tinta">
+                  {taskFeedback}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 

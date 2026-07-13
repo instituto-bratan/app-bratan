@@ -16,8 +16,10 @@ import { parseMoneyBR } from "@/lib/money";
 import { loadInteligencia360State, saveInteligencia360State } from "@/features/inteligencia360/inteligencia360Data";
 import {
   createRemotePagamento,
+  listRemotePagamentoRecebimentos,
   listRemotePagamentos,
   postponeRemotePagamento,
+  registerRemotePagamentoRecebimento,
   softDeleteRemotePagamento,
   updateRemotePagamentoStatus,
 } from "@/lib/remoteData";
@@ -194,6 +196,78 @@ export function PagamentosPage() {
     );
   }
 
+  type Recebimento = { id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string };
+  const [localReceipts, setLocalReceipts] = useState<Recebimento[]>(() => readLocalValue("app-bratan-pagamento-recebimentos", []));
+  const receiptsQuery = useQuery({
+    queryKey: ["pagamento-recebimentos"],
+    queryFn: listRemotePagamentoRecebimentos,
+    enabled: useRemote,
+  });
+  const receipts = useRemote ? receiptsQuery.data ?? [] : localReceipts;
+  const cashMonth = receipts
+    .filter((receipt) => receipt.forma === "DINHEIRO" && receipt.recebidoEm.slice(0, 7) === todayISO().slice(0, 7))
+    .reduce((sum, receipt) => sum + receipt.valor, 0);
+  const cashTotal = receipts.filter((receipt) => receipt.forma === "DINHEIRO").reduce((sum, receipt) => sum + receipt.valor, 0);
+
+  async function pagouParte(record: PagamentoLembrete) {
+    setError(null);
+    const raw = window.prompt(`Quanto ${record.pacienteNome} pagou agora? (pendente: ${money(record.valorPendente)})`);
+    if (raw === null) return;
+    const valor = parseMoneyBR(raw);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      setError("Não entendi o valor — digite como 500,00.");
+      return;
+    }
+    const emDinheiro = window.confirm("Foi em DINHEIRO (crediário)? OK = dinheiro · Cancelar = outra forma (pix/cartão)");
+    const forma = emDinheiro ? "DINHEIRO" : "OUTRO";
+    const novoPendente = Math.round((record.valorPendente - valor) * 100) / 100;
+    const quitou = novoPendente <= 0;
+
+    if (useRemote) {
+      try {
+        await registerRemotePagamentoRecebimento({
+          lembreteId: record.id,
+          valor,
+          forma: forma as "DINHEIRO" | "OUTRO",
+          novoPendente,
+          recebidoPor: pessoa?.id ?? null,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["pagamentos-lembretes"] });
+        void queryClient.invalidateQueries({ queryKey: ["pagamento-recebimentos"] });
+      } catch (saveError) {
+        setError(`Não foi possível registrar o pagamento${remoteErrorDetail(saveError)}. Tente de novo.`);
+        return;
+      }
+    } else {
+      const receipt: Recebimento = {
+        id: `rec-${Date.now()}`,
+        lembreteId: record.id,
+        valor,
+        forma,
+        recebidoEm: todayISO(),
+      };
+      const nextReceipts = [receipt, ...localReceipts];
+      setLocalReceipts(nextReceipts);
+      writeLocalValue("app-bratan-pagamento-recebimentos", nextReceipts);
+      persist(
+        records.map((existing) =>
+          existing.id === record.id
+            ? {
+                ...existing,
+                valorPendente: quitou ? 0 : novoPendente,
+                status: quitou ? ("pago" as PagamentoLembreteStatus) : existing.status,
+                pagoEm: quitou ? new Date().toISOString() : existing.pagoEm,
+              }
+            : existing,
+        ),
+      );
+    }
+    setError(null);
+    window.setTimeout(() => {
+      setError(null);
+    }, 0);
+  }
+
   function updateStatus(record: PagamentoLembrete, status: PagamentoLembreteStatus) {
     if (useRemote) {
       void statusMutation.mutateAsync({ id: record.id, status }).catch(() => {
@@ -293,6 +367,32 @@ export function PagamentosPage() {
             </div>
           </div>
         </motion.section>
+
+        <Card className="border-brand-dourado/40 bg-brand-creme/35 shadow-none">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-bold text-brand-musgo">
+                  <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
+                  Crediário — recebido em dinheiro
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Faturamento separado e exclusivo do dinheiro do crediário — não entra na P12 nem se mistura com as comandas.
+                </p>
+              </div>
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Neste mês</p>
+                  <p className="text-xl font-bold text-brand-tinta">{money(cashMonth)}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Acumulado</p>
+                  <p className="text-xl font-bold text-brand-tinta">{money(cashTotal)}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {pagamentosQuery.isError ? (
           <Card className="border-destructive/30 bg-destructive/5 shadow-none">
@@ -422,6 +522,10 @@ export function PagamentosPage() {
                               <Button type="button" size="sm" onClick={() => updateStatus(record, "pago")}>
                                 <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
                                 Pago
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" onClick={() => void pagouParte(record)}>
+                                <CircleDollarSign className="mr-2 h-4 w-4" aria-hidden="true" />
+                                Pagou parte
                               </Button>
                               <Button type="button" variant="outline" size="sm" onClick={() => openPostpone(record)}>
                                 <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />

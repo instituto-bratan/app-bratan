@@ -446,8 +446,41 @@ export function CrmKanbanPage() {
     });
   }
 
+  const [editName, setEditName] = useState("");
+  const [editPreferred, setEditPreferred] = useState("");
+  const [editDealTitle, setEditDealTitle] = useState("");
+  const [nameFeedback, setNameFeedback] = useState("");
+
+  function saveLeadName() {
+    if (!selectedDeal) return;
+    const fullName = editName.trim();
+    if (!fullName) {
+      setNameFeedback("O nome não pode ficar vazio.");
+      return;
+    }
+    persist((current) => ({
+      ...current,
+      contacts: current.contacts.map((contact) =>
+        contact.id === selectedDeal.contactId
+          ? { ...contact, fullName, preferredName: editPreferred.trim() || fullName.split(" ")[0], updatedAt: new Date().toISOString() }
+          : contact,
+      ),
+      deals: current.deals.map((deal) =>
+        deal.id === selectedDeal.id && editDealTitle.trim()
+          ? { ...deal, title: editDealTitle.trim(), updatedAt: new Date().toISOString() }
+          : deal,
+      ),
+    }));
+    setNameFeedback("Nome atualizado — vale para o card, as tarefas e as cadências.");
+  }
+
   function selectDeal(deal: CrmDeal, stageOverride?: CrmDealStage) {
     setSelectedDealId(deal.id);
+    const dealContact = contactsById.get(deal.contactId);
+    setEditName(dealContact?.fullName ?? "");
+    setEditPreferred(dealContact?.preferredName ?? "");
+    setEditDealTitle(deal.title);
+    setNameFeedback("");
     setTargetStage(stageOverride ?? deal.stage);
     setPrescribed(deal.prescribedAmount ? String(deal.prescribedAmount) : "");
     setSold(deal.soldAmount ? String(deal.soldAmount) : "");
@@ -641,6 +674,14 @@ export function CrmKanbanPage() {
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">Sem próxima ação. Ao mover etapa, o app cria a pendência correta.</p>
                 )}
+                {(() => {
+                  const lastDone = state.tasks
+                    .filter((task) => task.dealId === selectedDeal.id && taskEffectiveStatus(task) === "DONE")
+                    .sort((a, b) => (b.completedAt ?? b.dueAt ?? "").localeCompare(a.completedAt ?? a.dueAt ?? ""))[0];
+                  return lastDone ? (
+                    <p className="mt-2 text-xs text-emerald-700">✓ Última concluída: {lastDone.title}</p>
+                  ) : null;
+                })()}
               </div>
               <div className="rounded-lg border border-brand-oliva/14 bg-white/64 p-3">
                 <p className="text-xs font-semibold uppercase text-brand-oliva">Qualidade</p>
@@ -662,6 +703,21 @@ export function CrmKanbanPage() {
                   </a>
                 </Button>
               ) : null}
+            </div>
+
+            <div className="mt-5 rounded-lg border border-brand-oliva/16 bg-white/64 p-3">
+              <p className="text-xs font-semibold uppercase text-brand-oliva">Corrigir nome do lead</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <Input value={editName} onChange={(event) => setEditName(event.target.value)} placeholder="Nome completo" aria-label="Nome completo do lead" />
+                <Input value={editPreferred} onChange={(event) => setEditPreferred(event.target.value)} placeholder="Apelido (no card)" aria-label="Apelido do lead" />
+                <Input value={editDealTitle} onChange={(event) => setEditDealTitle(event.target.value)} placeholder="Título da negociação" aria-label="Título da negociação" />
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <Button type="button" size="sm" variant="outline" onClick={saveLeadName}>
+                  Salvar nome
+                </Button>
+                {nameFeedback ? <p className="text-xs font-semibold text-brand-musgo">{nameFeedback}</p> : null}
+              </div>
             </div>
 
             <form className="mt-5 grid gap-3 sm:grid-cols-2" onSubmit={handleMoveDeal}>

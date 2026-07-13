@@ -386,6 +386,11 @@ export async function getOrCreateRemoteChecklistRun(dateRef = todayISO()) {
 export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ runId: string; items: ChecklistItem[] }> {
   const client = requireSupabase();
   const run = await getOrCreateRemoteChecklistRun(dateRef);
+  try {
+    await ensurePersistentChecklistItems(run.id);
+  } catch (error) {
+    console.warn("Tarefas de rotina não sincronizaram.", error);
+  }
   const mapRunItem = (item: RemoteChecklistItemRun): ChecklistItem => ({
     id: item.id,
     grupo: item.grupo,
@@ -478,6 +483,65 @@ export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ 
   };
 }
 
+export type ChecklistTaskKind = "ATE_CONCLUIR" | "ROTINA";
+
+export async function createRemoteChecklistTask(values: {
+  titulo: string;
+  grupo: string;
+  kind: ChecklistTaskKind;
+  createdBy: string | null;
+}) {
+  const client = requireSupabase();
+  const { error } = await client.from("checklist_task").insert({
+    titulo: values.titulo,
+    grupo: values.grupo,
+    kind: values.kind,
+    created_by: uuidOrNull(values.createdBy),
+  });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "checklist.item.adicionar",
+    entity: "checklist_task",
+    metadata: { grupo: values.grupo, descricao: values.titulo, kind: values.kind },
+  });
+}
+
+// Garante que rotinas e tarefas "até concluir" apareçam no dia: cria no run
+// do dia os itens que faltam (rotina sempre; até-concluir enquanto não feita).
+async function ensurePersistentChecklistItems(runId: string) {
+  const client = requireSupabase();
+  const { data: tasks, error: tasksError } = await client
+    .from("checklist_task")
+    .select("id, titulo, grupo, kind, done_at")
+    .eq("active", true);
+  if (tasksError) throw tasksError;
+  const pending = ((tasks ?? []) as { id: string; titulo: string; grupo: string; kind: string; done_at: string | null }[])
+    .filter((task) => task.kind === "ROTINA" || !task.done_at);
+  if (!pending.length) return;
+
+  const { data: existing, error: existingError } = await client
+    .from("checklist_item_run")
+    .select("source_task_id")
+    .eq("run_id", runId)
+    .not("source_task_id", "is", null);
+  if (existingError) throw existingError;
+  const present = new Set(((existing ?? []) as { source_task_id: string }[]).map((row) => row.source_task_id));
+
+  const missing = pending.filter((task) => !present.has(task.id));
+  if (!missing.length) return;
+  const { error: insertError } = await client.from("checklist_item_run").insert(
+    missing.map((task) => ({
+      run_id: runId,
+      grupo: task.grupo,
+      descricao: `${task.kind === "ROTINA" ? "🔁" : "📌"} ${task.titulo}`,
+      responsavel: "Equipe",
+      ordem: 500,
+      source_task_id: task.id,
+    })),
+  );
+  if (insertError) throw insertError;
+}
+
 export async function createRemoteChecklistItem(values: {
   runId: string;
   grupo: string;
@@ -516,6 +580,22 @@ export async function updateRemoteChecklistItem(values: {
     .eq("id", values.id);
 
   if (error) throw error;
+
+  // Item vindo de tarefa persistente: concluir "até concluir" encerra a tarefa
+  // (para de reaparecer); desmarcar reabre.
+  const { data: itemRow } = await client
+    .from("checklist_item_run")
+    .select("source_task_id")
+    .eq("id", values.id)
+    .maybeSingle();
+  const sourceTaskId = (itemRow as { source_task_id?: string | null } | null)?.source_task_id;
+  if (sourceTaskId) {
+    await client
+      .from("checklist_task")
+      .update({ done_at: values.concluido ? new Date().toISOString() : null })
+      .eq("id", sourceTaskId)
+      .eq("kind", "ATE_CONCLUIR");
+  }
   await safeWriteRemoteAuditEvent({
     action: "checklist_item.toggle",
     entity: "checklist_item_run",
@@ -915,6 +995,62 @@ export async function createRemotePagamento(values: {
     entityId: data.id,
     metadata: { dataPrevista: values.dataPrevista, hasContato: Boolean(values.contato) },
   });
+}
+
+export async function registerRemotePagamentoRecebimento(values: {
+  lembreteId: string;
+  valor: number;
+  forma: "DINHEIRO" | "PIX" | "CARTAO" | "OUTRO";
+  novoPendente: number;
+  recebidoPor: string | null;
+}) {
+  const client = requireSupabase();
+  const { error } = await client.from("pagamento_recebimento").insert({
+    lembrete_id: values.lembreteId,
+    valor: values.valor,
+    forma: values.forma,
+    recebido_por: uuidOrNull(values.recebidoPor),
+  });
+  if (error) throw error;
+
+  const quitou = values.novoPendente <= 0;
+  const { data, error: updateError } = await client
+    .from("pagamento_lembrete")
+    .update({
+      valor_pendente: quitou ? 0 : values.novoPendente,
+      status: quitou ? "pago" : "aberto",
+      pago_em: quitou ? new Date().toISOString() : null,
+    })
+    .eq("id", values.lembreteId)
+    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .single();
+  if (updateError) throw updateError;
+  await upsertRemoteReceivableFromPagamento(data as RemotePagamentoLembrete);
+  await safeWriteRemoteAuditEvent({
+    action: "pagamento_lembrete.recebimento",
+    entity: "pagamento_lembrete",
+    entityId: values.lembreteId,
+    metadata: { valor: values.valor, forma: values.forma, quitou },
+  });
+}
+
+export async function listRemotePagamentoRecebimentos(): Promise<
+  { id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string }[]
+> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("pagamento_recebimento")
+    .select("id, lembrete_id, valor, forma, recebido_em")
+    .order("recebido_em", { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    lembreteId: String(row.lembrete_id),
+    valor: Number(row.valor ?? 0),
+    forma: String(row.forma ?? "DINHEIRO"),
+    recebidoEm: String(row.recebido_em),
+  }));
 }
 
 export async function updateRemotePagamentoStatus(values: {

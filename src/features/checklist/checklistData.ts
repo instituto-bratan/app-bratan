@@ -197,6 +197,11 @@ export function checklistGroupsForCargo(cargo: Cargo | null | undefined) {
 }
 
 export function filterChecklistItemsByCargo(items: ChecklistItem[], cargo: Cargo | null | undefined) {
+  // Coordenação (Lucas, Dr. Daniel, Andrya, gestor, concierge) vê todos os
+  // setores — inclusive tarefas que delegou para outro setor.
+  if (cargo && ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "secretaria_executiva"].includes(cargo)) {
+    return items;
+  }
   const allowedGroups = checklistGroupsForCargo(cargo);
 
   if (!allowedGroups.length) {
