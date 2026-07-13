@@ -997,6 +997,58 @@ export async function createRemotePagamento(values: {
   });
 }
 
+export type FinCashEntry = {
+  id: string;
+  entryDate: string;
+  direction: "ENTRADA" | "SAIDA";
+  description: string;
+  amount: number;
+};
+
+export async function listRemoteFinCashEntries(): Promise<FinCashEntry[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_cash_entries")
+    .select("client_ref, entry_date, direction, description, amount")
+    .is("deleted_at", null)
+    .order("entry_date", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    entryDate: String(row.entry_date),
+    direction: row.direction as FinCashEntry["direction"],
+    description: String(row.description ?? ""),
+    amount: Number(row.amount ?? 0),
+  }));
+}
+
+export async function createRemoteFinCashEntry(entry: FinCashEntry, createdBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_cash_entries").insert({
+    client_ref: entry.id,
+    entry_date: entry.entryDate,
+    direction: entry.direction,
+    description: entry.description,
+    amount: entry.amount,
+    created_by: uuidOrNull(createdBy),
+  });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.crediario.lancar",
+    entity: "fin_cash_entries",
+    entityId: entry.id,
+    metadata: { direction: entry.direction, amount: entry.amount, entryDate: entry.entryDate },
+  });
+}
+
+export async function deleteRemoteFinCashEntry(entryRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_cash_entries").update({ deleted_at: new Date().toISOString() }).eq("client_ref", entryRef);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "financeiro.crediario.excluir", entity: "fin_cash_entries", entityId: entryRef });
+}
+
 export async function registerRemotePagamentoRecebimento(values: {
   lembreteId: string;
   valor: number;

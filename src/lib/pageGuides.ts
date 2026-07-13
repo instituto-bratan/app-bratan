@@ -322,6 +322,24 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/financeiro/crediario",
+    guide: {
+      title: "Crediário (Dinheiro)",
+      whatIs:
+        "O livro-caixa do dinheiro vivo: tudo que entra e sai do crediário em espécie, com saldo sempre em dia — separado da P12 e das comandas.",
+      steps: [
+        "Escolha Entrada ou Saída, descreva o lançamento (quem pagou, sangria, troco) e informe o valor.",
+        "Os recebimentos em dinheiro marcados nos Lembretes entram aqui sozinhos, com o selo 'automático'.",
+        "Acompanhe o saldo em caixa e os totais do mês nos cartões do topo.",
+        "Use o filtro de mês para revisar meses anteriores.",
+      ],
+      tips: [
+        "Este caixa não entra na P12 de propósito: é a visão exclusiva do dinheiro físico.",
+        "Sangrias (dinheiro levado ao banco) são saídas — descreva para onde foi.",
+      ],
+    },
+  },
+  {
     pattern: "/financeiro/metas",
     guide: {
       title: "Controle de Metas",

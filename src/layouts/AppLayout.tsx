@@ -118,6 +118,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canLancarDia },
       { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento },
       { label: "Compras", href: "/financeiro/compras", icon: ShoppingCart, allowed: canFinanceiroView },
+      { label: "Crediário (Dinheiro)", shortLabel: "Crediário", href: "/financeiro/crediario", icon: HandCoins, allowed: canLembretesPagamento },
       { label: "Fechamento", href: "/financeiro/fechamento", icon: ShieldCheck, allowed: canLembretesPagamento },
       { label: "Poupança", href: "/financeiro/poupanca", icon: Coins, allowed: canLembretesPagamento },
       { label: "Impostos & NFs", shortLabel: "NFs", href: "/financeiro/impostos", icon: FileText, allowed: canLembretesPagamento },
