@@ -197,11 +197,8 @@ export function checklistGroupsForCargo(cargo: Cargo | null | undefined) {
 }
 
 export function filterChecklistItemsByCargo(items: ChecklistItem[], cargo: Cargo | null | undefined) {
-  // Coordenação (Lucas, Dr. Daniel, Andrya, gestor, concierge) vê todos os
-  // setores — inclusive tarefas que delegou para outro setor.
-  if (cargo && ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "secretaria_executiva"].includes(cargo)) {
-    return items;
-  }
+  // Regra do Lucas (09/07/2026): cada um vê e adiciona APENAS as tarefas do
+  // próprio setor — sem visão cruzada, para ninguém se perder.
   const allowedGroups = checklistGroupsForCargo(cargo);
 
   if (!allowedGroups.length) {

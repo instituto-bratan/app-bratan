@@ -158,8 +158,7 @@ export function ChecklistPage() {
         ]);
       }
       setNewTask("");
-      const visivel = filterChecklistItemsByCargo([{ id: "x", grupo, descricao, responsavel: "", ordem: 0, concluido: false }], pessoa?.cargo).length > 0;
-      setTaskFeedback(visivel ? `${kindLabel} Setor: ${grupo}.` : `${kindLabel} Criada no setor "${grupo}" — aparece para quem é desse setor.`);
+      setTaskFeedback(`${kindLabel} Setor: ${grupo}.`);
     } catch {
       setTaskFeedback("Não consegui salvar a tarefa agora. Confira a internet e tente de novo.");
     }
@@ -259,7 +258,7 @@ export function ChecklistPage() {
                   className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
                   aria-label="Setor da tarefa"
                 >
-                  {(isCoordenacao(pessoa?.cargo) ? allGroups : sectorGroups.length ? sectorGroups : allGroups).map((grupo) => (
+                  {(sectorGroups.length ? sectorGroups : allGroups).map((grupo) => (
                     <option key={grupo} value={grupo}>{grupo}</option>
                   ))}
                 </select>
