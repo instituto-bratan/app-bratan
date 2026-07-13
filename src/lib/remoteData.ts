@@ -3500,6 +3500,24 @@ export async function uploadRemoteAvatar(pessoaId: string, dataUrl: string) {
   if (error) throw error;
 }
 
+export async function hardDeleteRemoteComprovante(values: { id: string; storagePath?: string }) {
+  const client = requireSupabase();
+  // Itens ainda não enviados ao SharePoint saem da fila para não subirem depois.
+  await client.from("sharepoint_dispatch_queue").delete().eq("entity_id", values.id).eq("status", "PENDING");
+  if (values.storagePath) {
+    const { error: storageError } = await client.storage.from("comprovantes").remove([values.storagePath]);
+    if (storageError) console.warn("Arquivo do Storage não pôde ser removido.", storageError);
+  }
+  const { error } = await client.from("comprovante").delete().eq("id", values.id);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "comprovante.excluir",
+    entity: "comprovante",
+    entityId: values.id,
+    metadata: { storagePath: values.storagePath ?? null },
+  });
+}
+
 export async function getRemoteComprovanteUrl(storagePath: string) {
   const client = requireSupabase();
   const { data, error } = await client.storage.from("comprovantes").createSignedUrl(storagePath, 60 * 10);

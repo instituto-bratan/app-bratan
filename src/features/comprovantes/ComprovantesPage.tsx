@@ -18,6 +18,7 @@ import {
   createRemoteEstorno,
   listRemoteComprovantes,
   listRemotePagamentos,
+  hardDeleteRemoteComprovante,
   softDeleteRemoteComprovante,
   uploadRemoteComprovante,
 } from "@/lib/remoteData";
@@ -283,6 +284,26 @@ export function ComprovantesPage() {
     persist(records.map((item) => (item.id === record.id ? { ...item, deletedAt: new Date().toISOString() } : item)));
   }
 
+  function hardDelete(record: ComprovanteRecord) {
+    const sharepointNote =
+      record.sharePoint.status === "pendente"
+        ? " Ele ainda não subiu para o SharePoint e será removido da fila."
+        : " A cópia que já subiu para o SharePoint permanece lá.";
+    const confirmed = window.confirm(
+      `EXCLUIR DE VEZ "${record.arquivoNome}"? O arquivo e o registro serão apagados do app — sem volta.${sharepointNote}`,
+    );
+    if (!confirmed) return;
+
+    if (useRemote) {
+      hardDeleteRemoteComprovante({ id: record.id, storagePath: record.storagePath })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["comprovantes"] }))
+        .catch(() => setError("Não foi possível excluir o comprovante. Tente de novo."));
+      return;
+    }
+
+    persist(records.filter((item) => item.id !== record.id));
+  }
+
   return (
     <AccessGate allowed={canComprovantes} label="Comprovantes">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -512,9 +533,20 @@ export function ComprovantesPage() {
                         </Button>
                       ) : null}
                       {isCoordenacao(pessoa?.cargo) ? (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => softDelete(record)}>
-                          Ocultar
-                        </Button>
+                        <>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => softDelete(record)}>
+                            Ocultar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:bg-red-50 hover:text-destructive"
+                            onClick={() => hardDelete(record)}
+                          >
+                            Excluir de vez
+                          </Button>
+                        </>
                       ) : null}
                     </div>
                   </CardContent>
