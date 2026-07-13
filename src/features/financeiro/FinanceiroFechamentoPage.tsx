@@ -143,6 +143,7 @@ export function FinanceiroFechamentoPage() {
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
   const [feedback, setFeedback] = useState("");
   const [bankYield, setBankYield] = useState("");
+  const [bankYieldDate, setBankYieldDate] = useState(todayISO());
 
   const days = useMemo(() => monthDaysWithSales(financeiro.sales, month).reverse(), [financeiro.sales, month]);
   const monthRecs = financeiro.reconciliations.filter((record) => record.day.slice(0, 7) === month);
@@ -181,7 +182,8 @@ export function FinanceiroFechamentoPage() {
       setFeedback("Não entendi o valor do rendimento — digite como 152,37.");
       return;
     }
-    const moveDate = `${month}-28` <= todayISO() ? `${month}-28` : todayISO();
+    // A data vem do extrato — é ela que alinha a conciliação.
+    const moveDate = bankYieldDate || todayISO();
     financeiro.addSavingsMoves([
       {
         id: createFinId("fsav"),
@@ -190,12 +192,13 @@ export function FinanceiroFechamentoPage() {
         amount: Math.round(amount * 100) / 100,
         reason: "Rendimento do banco",
         source: "MANUAL",
-        monthRef: month,
+        monthRef: moveDate.slice(0, 7),
         createdAt: new Date().toISOString(),
       },
     ]);
     setBankYield("");
-    setFeedback(`Rendimento do banco de ${moneyFin(amount)} registrado em ${month.split("-").reverse().join("/")} — entra na linha "Entrada de valores" da P12 e na Poupança.`);
+    setBankYieldDate(todayISO());
+    setFeedback(`Rendimento do banco de ${moneyFin(amount)} registrado em ${moveDate.split("-").reverse().join("/")} — entra na linha "Entrada de valores" da P12 e na Poupança.`);
   }
 
   return (
@@ -272,6 +275,13 @@ export function FinanceiroFechamentoPage() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <Input
+                  type="date"
+                  value={bankYieldDate}
+                  onChange={(event) => setBankYieldDate(event.target.value)}
+                  className="w-40"
+                  aria-label="Data do rendimento (a mesma do extrato)"
+                />
                 <Input
                   value={bankYield}
                   onChange={(event) => setBankYield(event.target.value)}
