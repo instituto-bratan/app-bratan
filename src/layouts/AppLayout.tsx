@@ -16,6 +16,7 @@ import {
   Home,
   LayoutGrid,
   LogOut,
+  Megaphone,
   MessageCircle,
   ReceiptText,
   RefreshCw,
@@ -37,7 +38,7 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { PageGuideButton } from "@/components/ui/page-guide";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvatar } from "@/features/perfil/avatarStore";
-import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
+import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canMarketing, cargoGroup, cargoLabels } from "@/lib/access";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
@@ -127,6 +128,16 @@ const flowGroups: FlowGroup[] = [
       { label: "Metas do Mês", shortLabel: "Metas", href: "/financeiro/metas", icon: Goal, allowed: canFinanceiroView },
       { label: "PDCA do Dr. Daniel", shortLabel: "PDCA", href: "/financeiro/pdca", icon: RefreshCw, allowed: canLembretesPagamento },
       { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
+    ],
+  },
+  {
+    label: "Marketing",
+    detail: "briefing do mês e plano de conteúdo",
+    href: "/marketing",
+    icon: Megaphone,
+    allowed: canMarketing,
+    entries: [
+      { label: "Briefing do Mês", shortLabel: "Briefing", href: "/marketing", icon: Megaphone, allowed: canMarketing },
     ],
   },
   {

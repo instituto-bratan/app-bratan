@@ -340,6 +340,26 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/marketing",
+    guide: {
+      title: "Marketing — Briefing do Mês",
+      whatIs:
+        "O briefing mensal de conteúdo vira plano dentro do app: você manda a foto ou o documento e a IA preenche sozinha a cadência, os temas da semana e o calendário de peças.",
+      steps: [
+        "Escolha o mês e anexe a foto ou o PDF do briefing.",
+        "Clique em 'Preencher com IA' e aguarde — a tela atualiza sozinha em menos de um minuto.",
+        "Revise o plano: estratégia, cadência por formato, temas da semana e todas as peças do calendário.",
+        "Toque no status de cada peça para avançar: A produzir → Gravado → Editado → Postado.",
+        "Faltou algo no briefing? Adicione peças na mão no formulário do fim do calendário.",
+      ],
+      tips: [
+        "Quanto mais legível a foto, melhor a extração — prefira o PDF original quando tiver.",
+        "O contador 'X de Y postadas' mostra o avanço do mês de relance.",
+        "Se der erro, o motivo aparece no cartão vermelho e dá para tentar de novo com um clique.",
+      ],
+    },
+  },
+  {
     pattern: "/financeiro/metas",
     guide: {
       title: "Controle de Metas",

@@ -190,6 +190,12 @@ export function canCrmBratan(cargo: Cargo | null | undefined) {
   return Boolean(cargo);
 }
 
+// Aba de Marketing (13/07/2026): o time de marketing e a coordenação veem o
+// briefing do mês e o plano de conteúdo preenchido pela IA.
+export function canMarketing(cargo: Cargo | null | undefined) {
+  return cargo === "marketing" || isCoordenacao(cargo);
+}
+
 export function canManageInteligencia360(cargo: Cargo | null | undefined) {
   return isCoordenacao(cargo);
 }
