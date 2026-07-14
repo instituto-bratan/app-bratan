@@ -1067,13 +1067,49 @@ export type MarketingPiece = {
   status: "A_PRODUZIR" | "GRAVADO" | "EDITADO" | "POSTADO";
 };
 
+// Detalhe rico do briefing (estilo painel executivo). Tudo opcional p/ compatibilidade
+// com planos antigos gerados pela IA (que só tinham summary/cadence/weeklyThemes/pieces).
+export type MarketingAnchor = { title: string; description: string };
+export type MarketingCadenceTotal = { format: string; count: string; detail?: string };
+export type MarketingLegendItem = { format: string; role: string };
+export type MarketingCalendarItem = { format: string; title: string };
+export type MarketingCalendarDay = { day: number; week?: string; rest?: boolean; items: MarketingCalendarItem[] };
+export type MarketingStoryBlock = { n: number; title: string; description: string };
+export type MarketingReel = { n: number; title: string; description?: string; cta?: string };
+export type MarketingCarrossel = { n: number; telas?: number; title: string; roteiro?: string; tag?: string };
+export type MarketingWeek = {
+  id: string;
+  label: string;
+  dateRange?: string;
+  theme: string;
+  angle?: string;
+  mediaHook?: string;
+  reels?: MarketingReel[];
+  carrosseis?: MarketingCarrossel[];
+  youtube?: { title: string; description?: string };
+  stories?: string;
+};
+export type MarketingProductionNote = { title: string; description: string };
+
 export type MarketingPlan = {
   monthRef: string;
   monthLabel?: string;
+  title?: string;
+  subtitle?: string;
   summary?: string;
   cadence: { format: string; target: string }[];
   weeklyThemes: { week: number; theme: string; notes?: string }[];
   pieces: MarketingPiece[];
+  // Campos do briefing completo (opcionais).
+  cadenceHeader?: { format: string; target: string }[];
+  howToUse?: string;
+  climate?: { intro?: string; anchors: MarketingAnchor[] };
+  cadenceTotals?: MarketingCadenceTotal[];
+  legend?: MarketingLegendItem[];
+  calendar?: MarketingCalendarDay[];
+  storiesEngine?: MarketingStoryBlock[];
+  weeks?: MarketingWeek[];
+  production?: MarketingProductionNote[];
   generatedAt?: string;
   generatedBy?: string;
 };
@@ -1168,7 +1204,7 @@ export async function updateRemoteMarketingBriefingContent(id: string, content: 
     action: "marketing.plano.editar",
     entity: "marketing_briefings",
     entityId: id,
-    metadata: { pieces: content.pieces.length },
+    metadata: { pieces: content.pieces?.length ?? 0 },
   });
 }
 
