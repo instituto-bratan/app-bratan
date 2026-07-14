@@ -340,6 +340,7 @@ type RemoteChecklistItemRun = {
   concluido: boolean;
   concluido_por: string | null;
   concluido_em: string | null;
+  source_task_id?: string | null;
 };
 
 export async function getOrCreateRemoteChecklistRun(dateRef = todayISO()) {
@@ -446,8 +447,13 @@ export async function listRemoteChecklistItems(dateRef = todayISO()): Promise<{ 
       createdItems = (syncedItems ?? []) as RemoteChecklistItemRun[];
     }
 
+    // O expurgo vale só para itens de template que saíram do template atual.
+    // Tarefas adicionadas pela equipe (ordem 999) e as fixas/rotinas
+    // (source_task_id) NÃO podem sumir — era isso que fazia a tarefa nova
+    // "não ser adicionada": ela era criada e escondida no recarregamento.
+    const keepAlways = (item: RemoteChecklistItemRun) => item.ordem >= 999 || Boolean(item.source_task_id);
     const visibleExistingItems = currentTemplateKeys.size
-      ? existingRunItems.filter((item) => currentTemplateKeys.has(itemKey(item)))
+      ? existingRunItems.filter((item) => keepAlways(item) || currentTemplateKeys.has(itemKey(item)))
       : existingRunItems;
     const mergedItems = [...visibleExistingItems, ...createdItems].sort((a, b) => a.ordem - b.ordem);
 

@@ -225,3 +225,32 @@ test("LUCRO da P12 segue a planilha: faturamento + entradas de poupança − des
   assert.ok(Math.abs(matrix.profitMonths[0] - 59866.72) < 0.001);
   assert.ok(Math.abs(matrix.profitYear - 59866.72) < 0.001);
 });
+
+// --- P12 por mês (14/07/2026): vencimento manda + crediário no lucro ---
+
+test("P12: conta de junho paga em julho continua sendo despesa de JUNHO", () => {
+  const expenses = [
+    { id: "e-jun", description: "Boleto de junho pago atrasado", categoryRef: "cat-salarios-fixos", amount: 1000, dueDate: "2026-06-28", paidAt: "2026-07-07", method: "BOLETO", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
+  ];
+  const matrix = fin.buildP12Matrix([], expenses, fin.seedFinCategories, 2026);
+  assert.equal(matrix.totalExpensesMonths[5], 1000, "junho carrega a despesa");
+  assert.equal(matrix.totalExpensesMonths[6], 0, "julho NÃO herda o acumulado de junho");
+});
+
+test("P12: crediário (dinheiro) entra no lucro do mês, no padrão da Poupança", () => {
+  const sales = [sale("2026-06-10", [["CONSULTA", 2000]], [["PIX", 2000]], "s1")];
+  const expenses = [
+    { id: "e1", description: "Despesa junho", categoryRef: "cat-salarios-fixos", amount: 5000, dueDate: "2026-06-05", paidAt: "2026-06-05", method: "PIX", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
+  ];
+  const cashInflows = [
+    { date: "2026-06-15", amount: 4000 },
+    { date: "2026-07-02", amount: 100 },
+    { date: "2025-06-15", amount: 999 },
+  ];
+  const matrix = fin.buildP12Matrix(sales, expenses, fin.seedFinCategories, 2026, [], cashInflows);
+  assert.equal(matrix.cashInMonths[5], 4000, "entrada do crediário no mês certo");
+  assert.equal(matrix.cashInMonths[6], 100);
+  assert.equal(matrix.profitMonths[5], 2000 + 4000 - 5000, "junho fecha positivo com o crediário");
+  assert.equal(matrix.cashInYear, 4100, "ano ignora entradas de outros anos");
+});
+

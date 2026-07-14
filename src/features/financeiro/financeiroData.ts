@@ -207,12 +207,15 @@ export function buildDailyCardSummary(sales: FinSale[], date: string): DailyCard
 export type P12Cell = { total: number; count: number };
 export type P12Row = { category: FinCategory; months: P12Cell[]; yearTotal: number };
 export type P12Group = { groupKey: FinCategoryGroup; label: string; months: P12Cell[]; yearTotal: number; rows: P12Row[] };
+export type P12CashInflow = { date: string; amount: number };
 export type P12Matrix = {
   year: number;
   revenueMonths: P12Cell[];
   revenueYear: number;
   savingsInMonths: number[];
   savingsInYear: number;
+  cashInMonths: number[];
+  cashInYear: number;
   groups: P12Group[];
   totalExpensesMonths: number[];
   totalExpensesYear: number;
@@ -230,8 +233,20 @@ function emptyCells(): P12Cell[] {
 }
 
 // A P12 ao vivo: faturamento derivado das comandas, despesas por categoria × mês.
-// LUCRO segue a fórmula da planilha (linha 74): faturamento + entradas de poupança − despesas.
-export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categories: FinCategory[], year: number, savingsMoves: FinSavingsMove[] = []): P12Matrix {
+// Regra do Lucas (14/07/2026): tudo POR MÊS, sem arrastar acumulado.
+// - Despesa conta no mês do VENCIMENTO (competência): conta de junho paga em
+//   julho continua sendo despesa de junho.
+// - O crediário (dinheiro vivo) entra como linha de entrada do mês — foi ele
+//   que fechou junho — no mesmo padrão da Poupança.
+// LUCRO do mês = faturamento + poupança + crediário − despesas do mês.
+export function buildP12Matrix(
+  sales: FinSale[],
+  expenses: FinExpense[],
+  categories: FinCategory[],
+  year: number,
+  savingsMoves: FinSavingsMove[] = [],
+  cashInflows: P12CashInflow[] = [],
+): P12Matrix {
   const revenueMonths = emptyCells();
   for (const sale of sales) {
     if (Number(sale.saleDate.slice(0, 4)) !== year) continue;
@@ -248,7 +263,8 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
   }
 
   for (const expense of expenses) {
-    const reference = expense.paidAt || expense.dueDate;
+    // Competência mensal: o mês da despesa é o do vencimento, não o do pagamento.
+    const reference = expense.dueDate || expense.paidAt || "";
     if (Number(reference.slice(0, 4)) !== year) continue;
     const month = monthIndex(reference);
     if (month < 0) continue;
@@ -283,10 +299,20 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     const month = monthIndex(move.moveDate);
     if (month >= 0) savingsInMonths[month] += move.amount || 0;
   }
+  const cashInMonths = Array.from({ length: 12 }, () => 0);
+  for (const inflow of cashInflows) {
+    if (Number(inflow.date.slice(0, 4)) !== year) continue;
+    const month = monthIndex(inflow.date);
+    if (month >= 0) cashInMonths[month] += inflow.amount || 0;
+  }
+
   const revenueYear = revenueMonths.reduce((sum, cell) => sum + cell.total, 0);
   const savingsInYear = savingsInMonths.reduce((sum, value) => sum + value, 0);
+  const cashInYear = cashInMonths.reduce((sum, value) => sum + value, 0);
   const totalExpensesYear = totalExpensesMonths.reduce((sum, value) => sum + value, 0);
-  const profitMonths = totalExpensesMonths.map((expensesTotal, index) => revenueMonths[index].total + savingsInMonths[index] - expensesTotal);
+  const profitMonths = totalExpensesMonths.map(
+    (expensesTotal, index) => revenueMonths[index].total + savingsInMonths[index] + cashInMonths[index] - expensesTotal,
+  );
 
   return {
     year,
@@ -294,11 +320,13 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     revenueYear,
     savingsInMonths,
     savingsInYear,
+    cashInMonths,
+    cashInYear,
     groups,
     totalExpensesMonths,
     totalExpensesYear,
     profitMonths,
-    profitYear: revenueYear + savingsInYear - totalExpensesYear,
+    profitYear: revenueYear + savingsInYear + cashInYear - totalExpensesYear,
   };
 }
 
