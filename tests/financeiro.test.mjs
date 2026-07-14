@@ -237,20 +237,13 @@ test("P12: conta de junho paga em julho continua sendo despesa de JUNHO", () => 
   assert.equal(matrix.totalExpensesMonths[6], 0, "julho NÃO herda o acumulado de junho");
 });
 
-test("P12: crediário (dinheiro) entra no lucro do mês, no padrão da Poupança", () => {
+test("P12: crediário fica FORA da P12 (caixa separado, decisão do Lucas)", () => {
   const sales = [sale("2026-06-10", [["CONSULTA", 2000]], [["PIX", 2000]], "s1")];
   const expenses = [
     { id: "e1", description: "Despesa junho", categoryRef: "cat-salarios-fixos", amount: 5000, dueDate: "2026-06-05", paidAt: "2026-06-05", method: "PIX", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
   ];
-  const cashInflows = [
-    { date: "2026-06-15", amount: 4000 },
-    { date: "2026-07-02", amount: 100 },
-    { date: "2025-06-15", amount: 999 },
-  ];
-  const matrix = fin.buildP12Matrix(sales, expenses, fin.seedFinCategories, 2026, [], cashInflows);
-  assert.equal(matrix.cashInMonths[5], 4000, "entrada do crediário no mês certo");
-  assert.equal(matrix.cashInMonths[6], 100);
-  assert.equal(matrix.profitMonths[5], 2000 + 4000 - 5000, "junho fecha positivo com o crediário");
-  assert.equal(matrix.cashInYear, 4100, "ano ignora entradas de outros anos");
+  const matrix = fin.buildP12Matrix(sales, expenses, fin.seedFinCategories, 2026, []);
+  assert.equal("cashInMonths" in matrix, false, "matriz não tem crediário");
+  assert.equal(matrix.profitMonths[5], 2000 - 5000, "lucro do mês = faturamento + poupança − despesas, sem crediário");
 });
 

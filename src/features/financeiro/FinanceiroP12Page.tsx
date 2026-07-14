@@ -1,15 +1,11 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { BrainCircuit, Eye, EyeOff, X } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
-import { useAuth } from "@/hooks/useAuth";
 import { canFinanceiroView } from "@/lib/access";
-import { readLocalValue } from "@/lib/localStore";
-import { listRemoteFinCashEntries, listRemotePagamentoRecebimentos, type FinCashEntry } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import {
   buildP12Matrix,
@@ -33,25 +29,9 @@ export function FinanceiroP12Page() {
   const [monthFilter, setMonthFilter] = useState<number | null>(null);
   const [hideEmpty, setHideEmpty] = useState(true);
   const financeiro = useFinanceiro(year);
-  const { pessoa, session, isPreview } = useAuth();
-  const useRemote = Boolean(pessoa && session && !isPreview);
-  // Crediário (dinheiro vivo) do mês: entradas manuais + recebimentos em
-  // dinheiro dos Lembretes — as mesmas fontes da aba Crediário.
-  const cashEntriesQuery = useQuery({ queryKey: ["fin-cash-entries"], queryFn: listRemoteFinCashEntries, enabled: useRemote });
-  const receiptsQuery = useQuery({ queryKey: ["pagamento-recebimentos"], queryFn: listRemotePagamentoRecebimentos, enabled: useRemote });
-  const cashInflows = useMemo(() => {
-    const manual = useRemote ? cashEntriesQuery.data ?? [] : readLocalValue<FinCashEntry[]>("app-bratan-fin-crediario", []);
-    const receipts = useRemote
-      ? receiptsQuery.data ?? []
-      : readLocalValue<{ id: string; valor: number; forma: string; recebidoEm: string }[]>("app-bratan-pagamento-recebimentos", []);
-    return [
-      ...manual.filter((entry) => entry.direction === "ENTRADA").map((entry) => ({ date: entry.entryDate, amount: entry.amount })),
-      ...receipts.filter((receipt) => receipt.forma === "DINHEIRO").map((receipt) => ({ date: receipt.recebidoEm, amount: receipt.valor })),
-    ];
-  }, [useRemote, cashEntriesQuery.data, receiptsQuery.data]);
   const matrix = useMemo(
-    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, cashInflows),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, cashInflows],
+    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves),
+    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves],
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
@@ -80,9 +60,14 @@ export function FinanceiroP12Page() {
       })
       .map((expense) => ({
         id: expense.id,
-        date: expense.paidAt || expense.dueDate,
+        date: expense.dueDate || expense.paidAt || "",
         label: expense.description,
-        detail: [expense.supplier, expense.paidAt ? "paga" : "pendente"].filter(Boolean).join(" · "),
+        detail: [
+          expense.supplier,
+          expense.paidAt ? `paga em ${expense.paidAt.slice(0, 10).split("-").reverse().join("/")}` : "pendente",
+        ]
+          .filter(Boolean)
+          .join(" · "),
         amount: expense.amount,
       }));
   }, [selection, financeiro.sales, financeiro.expenses, year]);
@@ -106,8 +91,8 @@ export function FinanceiroP12Page() {
                 <InfoTip title="O que é a P12 ao vivo?">
                   A matriz categoria × mês 100% derivada dos lançamentos: faturamento vem das comandas e cada categoria soma as
                   contas lançadas nela, SEMPRE no mês do vencimento (conta de junho paga em julho continua em junho). O lucro é
-                  do próprio mês: faturamento + poupança + crediário − despesas. Clique em qualquer valor para ver a "prova
-                  viva" — os lançamentos que o compõem.
+                  do próprio mês: faturamento + poupança − despesas. O crediário (dinheiro vivo) é caixa separado, com aba
+                  própria — de propósito, ele não entra aqui. Clique em qualquer valor para ver a "prova viva".
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -195,15 +180,6 @@ export function FinanceiroP12Page() {
                   ))}
                   <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.savingsInYear)}</td>
                 </tr>
-                <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
-                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
-                    Entrada Crediário (dinheiro)
-                  </td>
-                  {visibleMonths.map((month) => (
-                    <td key={month} className="px-2.5 py-2.5">{cellValue(matrix.cashInMonths[month], true)}</td>
-                  ))}
-                  <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.cashInYear)}</td>
-                </tr>
 
                 {matrix.groups.map((group) => (
                   <GroupRows
@@ -225,11 +201,11 @@ export function FinanceiroP12Page() {
                 <tr className="bg-brand-creme/70 font-bold">
                   <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme px-4 py-3 text-left text-brand-musgo">
                     LUCRO DO MÊS
-                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(fatur. + poupança + crediário − despesas do mês, pelo vencimento)</span>
+                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(fatur. + poupança − despesas do mês, pelo vencimento)</span>
                   </td>
                   {visibleMonths.map((month) => (
                     <td key={month} className={cn("px-2.5 py-3", matrix.profitMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
-                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.savingsInMonths[month] || matrix.cashInMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
+                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.savingsInMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
                     </td>
                   ))}
                   <td className={cn("px-4 py-3", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>

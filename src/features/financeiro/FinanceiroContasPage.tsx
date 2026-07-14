@@ -63,7 +63,8 @@ export function FinanceiroContasPage() {
 
   const monthExpenses = useMemo(
     () => financeiro.expenses
-      .filter((expense) => (expense.paidAt || expense.dueDate).slice(0, 7) === month)
+      // Mesmo critério da P12: a conta pertence ao mês do VENCIMENTO.
+      .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month)
       .filter((expense) => {
         if (statusFilter === "pendentes") return !expense.paidAt;
         if (statusFilter === "pagas") return Boolean(expense.paidAt);
@@ -73,7 +74,7 @@ export function FinanceiroContasPage() {
   );
 
   const totals = useMemo(() => {
-    const all = financeiro.expenses.filter((expense) => (expense.paidAt || expense.dueDate).slice(0, 7) === month);
+    const all = financeiro.expenses.filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month);
     return {
       total: all.reduce((sum, expense) => sum + expense.amount, 0),
       pending: all.filter((expense) => !expense.paidAt).reduce((sum, expense) => sum + expense.amount, 0),
