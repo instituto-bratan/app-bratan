@@ -32,6 +32,7 @@ import {
   contactDisplayName,
   createDealForContact,
   crmModuleRoutes,
+  dealStageHints,
   dealStageLabels,
   dealStages,
   findOrCreateCrmContact,
@@ -848,7 +849,12 @@ export function CrmKanbanPage() {
                 )}
               >
                 <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
-                  <p className="text-sm font-semibold">{dealStageLabels[stage]}</p>
+                  <p className="flex items-center gap-1.5 text-sm font-semibold" title={dealStageHints[stage]}>
+                    {dealStageLabels[stage]}
+                    <InfoTip title={dealStageLabels[stage]} className="text-brand-papel/80">
+                      {dealStageHints[stage]}
+                    </InfoTip>
+                  </p>
                   <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
                     <span>{stageDeals.length} cards</span>
                     {canSeeValue ? <span>{moneyCrm(total)}</span> : null}

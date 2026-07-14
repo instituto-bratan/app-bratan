@@ -98,6 +98,15 @@ function roleFocus(role: string | null) {
   return "Ver gargalos, atrasos e execução por responsável.";
 }
 
+function taskMatchesTab(task: CrmTask, tab: TaskTab, today: Date, seven: Date) {
+  const due = new Date(task.dueAt);
+  if (tab === "hoje") return !["DONE", "CANCELED", "SKIPPED"].includes(task.status) && due >= today && due <= endOfDay(today);
+  if (tab === "atrasadas") return isTaskOverdue(task);
+  if (tab === "proximos") return !["DONE", "CANCELED", "SKIPPED"].includes(task.status) && due > endOfDay(today) && due <= endOfDay(seven);
+  if (tab === "concluidas") return task.status === "DONE";
+  return true;
+}
+
 function useFilteredTasks(tasks: CrmTask[], tab: TaskTab, query: string, type: string, priority: string) {
   return useMemo(() => {
     const today = startOfToday();
@@ -106,14 +115,7 @@ function useFilteredTasks(tasks: CrmTask[], tab: TaskTab, query: string, type: s
     const normalized = query.trim().toLowerCase();
 
     return tasks
-      .filter((task) => {
-        const due = new Date(task.dueAt);
-        if (tab === "hoje") return !["DONE", "CANCELED", "SKIPPED"].includes(task.status) && due >= today && due <= endOfDay(today);
-        if (tab === "atrasadas") return isTaskOverdue(task);
-        if (tab === "proximos") return !["DONE", "CANCELED", "SKIPPED"].includes(task.status) && due > endOfDay(today) && due <= endOfDay(seven);
-        if (tab === "concluidas") return task.status === "DONE";
-        return true;
-      })
+      .filter((task) => taskMatchesTab(task, tab, today, seven))
       .filter((task) => (type ? task.taskType === type : true))
       .filter((task) => (priority ? task.priority === priority : true))
       .filter((task) => {
@@ -138,6 +140,17 @@ export function CrmTasksPage() {
   const [result, setResult] = useState<CrmTaskResult>("SENT");
   const [notes, setNotes] = useState("");
   const tasks = useFilteredTasks(visibleTasks, tab, query, type, priority);
+  const tabCounts = useMemo(() => {
+    const today = startOfToday();
+    const seven = new Date(today);
+    seven.setDate(today.getDate() + 7);
+    const counts = {} as Record<TaskTab, number>;
+    (Object.keys(tabLabels) as TaskTab[]).forEach((item) => {
+      counts[item] = visibleTasks.filter((task) => taskMatchesTab(task, item, today, seven)).length;
+    });
+    return counts;
+  }, [visibleTasks]);
+  const cadencesById = useMemo(() => new Map(state.cadences.map((cadence) => [cadence.id, cadence])), [state.cadences]);
 
   const contactsById = useMemo(() => new Map(state.contacts.map((contact) => [contact.id, contact])), [state.contacts]);
   const templatesById = useMemo(() => new Map(state.messageTemplates.map((template) => [template.id, template])), [state.messageTemplates]);
@@ -189,6 +202,15 @@ export function CrmTasksPage() {
             </div>
           );
         })()}
+      <div className="rounded-lg border border-brand-oliva/20 bg-white/65 px-4 py-3">
+        <p className="text-sm font-bold text-brand-musgo">Como trabalhar uma tarefa — sempre nesta ordem:</p>
+        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-brand-tinta">
+          <span><strong className="text-brand-dourado">1.</strong> Copie a mensagem pronta</span>
+          <span><strong className="text-brand-dourado">2.</strong> Envie no WhatsApp</span>
+          <span><strong className="text-brand-dourado">3.</strong> Registre o que aconteceu</span>
+          <span className="text-muted-foreground">— o resto (pausar régua, próximo passo, histórico) o app faz sozinho.</span>
+        </div>
+      </div>
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -240,6 +262,9 @@ export function CrmTasksPage() {
           {(Object.keys(tabLabels) as TaskTab[]).map((item) => (
             <Button key={item} type="button" variant={tab === item ? "default" : "outline"} size="sm" onClick={() => setTab(item)}>
               {tabLabels[item]}
+              <span className={cn("ml-1.5 rounded-full px-1.5 text-xs font-bold", tab === item ? "bg-white/25" : "bg-brand-creme text-brand-musgo")}>
+                {tabCounts[item]}
+              </span>
             </Button>
           ))}
         </div>
@@ -269,7 +294,7 @@ export function CrmTasksPage() {
       {selectedTask && selectedContact ? (
         <Card className="border-brand-dourado/40 bg-brand-creme/72">
           <CardHeader>
-            <CardTitle>Registrar resposta</CardTitle>
+            <CardTitle>Passo 3 · O que aconteceu com esta tarefa?</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
@@ -324,17 +349,24 @@ export function CrmTasksPage() {
                       <Badge variant="muted">{taskTypeLabels[task.taskType]}</Badge>
                       <Badge variant="outline">{crmRoleLabels[task.assignedToRole]}</Badge>
                     </div>
-                    <h2 className="mt-3 text-xl font-semibold text-brand-musgo">{task.title}</h2>
+                    <h2 className="mt-3 flex flex-wrap items-center gap-2 text-xl font-semibold text-brand-musgo">
+                      <UserRound className="h-5 w-5 shrink-0 text-brand-oliva" aria-hidden="true" />
+                      {contactDisplayName(contact)}
+                    </h2>
+                    <p className="mt-0.5 text-base font-medium text-brand-tinta">{task.title}</p>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">{task.description}</p>
                     <div className="mt-3 flex flex-wrap gap-3 text-sm">
-                      <span className="inline-flex items-center gap-1 text-brand-tinta">
-                        <UserRound className="h-4 w-4" />
-                        {contactDisplayName(contact)}
-                      </span>
-                      <span className={cn("inline-flex items-center gap-1", effectiveStatus === "OVERDUE" ? "text-red-700" : "text-muted-foreground")}>
+                      <span className={cn("inline-flex items-center gap-1 font-semibold", effectiveStatus === "OVERDUE" ? "text-red-700" : "text-brand-tinta")}>
                         <CalendarClock className="h-4 w-4" />
+                        {effectiveStatus === "OVERDUE" ? "Atrasada — era para " : "Fazer até "}
                         {formatCrmDateTime(task.dueAt)}
                       </span>
+                      {task.cadenceId && cadencesById.get(task.cadenceId) ? (
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          <RefreshCw className="h-4 w-4" />
+                          Régua: {cadencesById.get(task.cadenceId)!.name}
+                        </span>
+                      ) : null}
                     </div>
                     {message ? (
                       <p className="mt-3 rounded-lg border border-brand-oliva/12 bg-brand-papel/70 p-3 text-sm leading-6 text-brand-tinta">{message}</p>
@@ -342,26 +374,26 @@ export function CrmTasksPage() {
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-2 lg:w-72 lg:grid-cols-1">
-                    <Button asChild variant="outline" size="sm">
-                      <Link to={crmModuleRoutes.contact(task.contactId)}>
-                        Ver perfil <ArrowRight className="ml-2 h-4 w-4" />
-                      </Link>
-                    </Button>
                     <Button type="button" variant="outline" size="sm" onClick={() => copyMessage(task)}>
                       <ClipboardCopy className="mr-2 h-4 w-4" />
-                      Copiar mensagem
+                      1 · Copiar mensagem
                     </Button>
                     <Button type="button" variant="outline" size="sm" onClick={() => openWhatsapp(task)}>
                       <MessageCircle className="mr-2 h-4 w-4" />
-                      Abrir WhatsApp
+                      2 · Enviar no WhatsApp
                     </Button>
                     <Button type="button" size="sm" onClick={() => setSelectedTaskId(task.id)}>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Registrar resposta
+                      3 · Registrar o que aconteceu
+                    </Button>
+                    <Button asChild variant="outline" size="sm">
+                      <Link to={crmModuleRoutes.contact(task.contactId)}>
+                        Ver perfil da pessoa <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
                     </Button>
                     <Button type="button" variant="subtle" size="sm" onClick={() => createNextTask(task)}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Próxima tarefa
+                      Criar tarefa para amanhã
                     </Button>
                   </div>
                 </div>
@@ -372,8 +404,18 @@ export function CrmTasksPage() {
           <Card>
             <CardContent className="py-10 text-center">
               <CheckCircle2 className="mx-auto h-10 w-10 text-brand-musgo" />
-              <p className="mt-3 font-semibold text-brand-musgo">Nada nesta visão.</p>
-              <p className="mt-1 text-sm text-muted-foreground">Quando o Kanban ou as cadências gerarem novas ações, elas aparecem aqui automaticamente.</p>
+              <p className="mt-3 font-semibold text-brand-musgo">
+                {tab === "hoje" && "Nada para hoje — tudo em dia!"}
+                {tab === "atrasadas" && "Nenhuma tarefa atrasada. Excelente!"}
+                {tab === "proximos" && "Nada agendado para os próximos 7 dias."}
+                {tab === "concluidas" && "Nenhuma tarefa concluída ainda."}
+                {tab === "todas" && "Nenhuma tarefa por aqui."}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {tab === "hoje"
+                  ? "Espie a aba 'Próximos 7 dias' para se adiantar, ou o Kanban para ver as negociações."
+                  : "Quando alguém entrar numa cadência ou o Kanban andar, as tarefas aparecem aqui sozinhas."}
+              </p>
             </CardContent>
           </Card>
         )}

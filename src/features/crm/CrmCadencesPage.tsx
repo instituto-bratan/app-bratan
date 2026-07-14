@@ -22,6 +22,7 @@ import {
   applyMessageTemplate,
   canUserAccessCadence,
   canUserAccessContact,
+  cadenceNeedsEventDate,
   cadenceTypeLabels,
   contactDisplayName,
   crmModuleRoutes,
@@ -56,6 +57,7 @@ export function CrmCadencesPage() {
   const [contactQuery, setContactQuery] = useState("");
   const [dealId, setDealId] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [eventDate, setEventDate] = useState("");
   const [feedback, setFeedback] = useState("");
 
   const visibleCadences = state.cadences.filter((cadence) => !pessoa || canUserAccessCadence(pessoa, cadence));
@@ -77,6 +79,7 @@ export function CrmCadencesPage() {
   }, [state.cadenceSteps, state.cadences]);
   const templatesById = useMemo(() => new Map(state.messageTemplates.map((template) => [template.id, template])), [state.messageTemplates]);
   const dealsForContact = state.deals.filter((deal) => deal.contactId === contactId);
+  const needsEventDate = cadenceNeedsEventDate(state, cadenceId);
   const selectedContact = state.contacts.find((contact) => contact.id === contactId);
 
   async function enrollContact(contactIdToEnroll: string, displayName: string, createValues?: { fullName: string; phone: string }) {
@@ -119,7 +122,7 @@ export function CrmCadencesPage() {
         contactId: targetId,
         dealId,
         triggerSource: "inscricao manual",
-        triggerDate: todayISO(),
+        triggerDate: needsEventDate ? eventDate : todayISO(),
         ownerUserId: pessoa?.id ?? cadence.defaultOwnerRole.toLowerCase(),
         ownerRole: cadence.defaultOwnerRole,
       });
@@ -144,6 +147,10 @@ export function CrmCadencesPage() {
   function handleEnroll(event: FormEvent) {
     event.preventDefault();
     if (!cadenceId) return;
+    if (needsEventDate && !eventDate) {
+      setFeedback("Informe a data da consulta de retorno: os lembretes desta cadência contam para trás dela.");
+      return;
+    }
     if (selectedContact) {
       void enrollContact(selectedContact.id, contactDisplayName(selectedContact));
       return;
@@ -319,6 +326,18 @@ export function CrmCadencesPage() {
                   {visibleCadences.map((cadence) => <option key={cadence.id} value={cadence.id}>{cadence.name}</option>)}
                 </select>
               </div>
+              {needsEventDate ? (
+                <div>
+                  <Label className="flex items-center gap-1">
+                    Data da consulta de retorno
+                    <InfoTip title="Por que pedir a data?">
+                      Esta cadência conta PARA TRÁS da consulta: exames 15 e 7 dias antes, confirmação 3 dias antes e
+                      lembrete na véspera. Sem a data certa, os lembretes nasceriam atrasados.
+                    </InfoTip>
+                  </Label>
+                  <Input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} className="mt-1" required />
+                </div>
+              ) : null}
               <Button type="submit">
                 <PlayCircle className="mr-2 h-4 w-4" />
                 {!contactId && contactQuery.trim().length >= 3 && !contactSuggestions.length

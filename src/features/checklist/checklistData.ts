@@ -42,6 +42,14 @@ export const checklistTemplate: Omit<ChecklistItem, "concluido" | "concluidoPor"
     ordem: 4,
   },
   {
+    id: "recepcao-rotina-segunda",
+    grupo: "Recepção / Comercial",
+    descricao: "🔁 Segunda-feira: revisar pacientes dos próximos 15 dias — cobrar exames, conferir coleta e sanar dúvidas do pós-venda (POP)",
+    responsavel: "Recepção",
+    // ordem é INTEIRA no banco (checklist_item_template) — nada de 4.5 aqui.
+    ordem: 5,
+  },
+  {
     id: "gestao-pre-consulta",
     grupo: "Gestão",
     descricao: "Validar pré-consulta: cadastro, assinatura, documentos e bioimpedância",

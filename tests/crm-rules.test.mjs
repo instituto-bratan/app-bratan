@@ -323,3 +323,119 @@ test("catálogo novo em código entra em estados salvos antigos (merge de seeds)
   assert.ok(merged.cadences.some((cadence) => cadence.id === "cad-gestor-3131"), "cadência do gestor reaparece");
 });
 
+// --- POP Caminhada do Paciente v2 (14/07/2026) ---
+
+test("fechar 1ª consulta cria tarefa de presente pela faixa do POP", () => {
+  const cases = [
+    { sold: 8000, gift: "caixa PillBox" },
+    { sold: 10000, gift: "caixa PillBox" },
+    { sold: 12000, gift: "garrafa Stanley" },
+  ];
+  for (const { sold, gift } of cases) {
+    const state = cloneState();
+    // POP: presente é da 1ª consulta.
+    state.deals = state.deals.map((deal) => (deal.id === "crm-deal-lead-quente" ? { ...deal, dealType: "FIRST_CONSULTATION" } : deal));
+    const moved = crm.moveDealStage(state, "crm-deal-lead-quente", {
+      actorId: "vendedor",
+      stage: "FECHOU_COMPLETO",
+      prescribedAmount: sold,
+      soldAmount: sold,
+      receivedAmount: sold,
+    });
+    const giftTask = moved.state.tasks.find((task) => task.title.startsWith("Entregar presente"));
+    assert.ok(giftTask, `presente criado para ${sold}`);
+    assert.ok(giftTask.title.includes(gift), `faixa certa para ${sold}: esperava ${gift}, veio ${giftTask.title}`);
+  }
+
+  // Abaixo de R$7 mil não tem presente.
+  const small = cloneState();
+  small.deals = small.deals.map((deal) => (deal.id === "crm-deal-lead-quente" ? { ...deal, dealType: "FIRST_CONSULTATION" } : deal));
+  const movedSmall = crm.moveDealStage(small, "crm-deal-lead-quente", {
+    actorId: "vendedor",
+    stage: "FECHOU_COMPLETO",
+    soldAmount: 5000,
+    receivedAmount: 5000,
+  });
+  assert.ok(!movedSmall.state.tasks.some((task) => task.title.startsWith("Entregar presente")));
+
+  // Renovação/plano de tratamento (não é 1ª consulta) também não ganha presente.
+  const renewal = cloneState();
+  const movedRenewal = crm.moveDealStage(renewal, "crm-deal-lead-quente", {
+    actorId: "vendedor",
+    stage: "FECHOU_COMPLETO",
+    soldAmount: 15000,
+    receivedAmount: 15000,
+  });
+  assert.ok(!movedRenewal.state.tasks.some((task) => task.title.startsWith("Entregar presente")));
+});
+
+test("fechar cria as tarefas da recepção do POP (contrato + mensagem com todas as datas)", () => {
+  const state = cloneState();
+  const moved = crm.moveDealStage(state, "crm-deal-lead-quente", {
+    actorId: "vendedor",
+    stage: "FECHOU_COMPLETO",
+    soldAmount: 9000,
+    receivedAmount: 9000,
+  });
+  const titles = moved.state.tasks.filter((task) => task.dealId === "crm-deal-lead-quente").map((task) => task.title);
+  assert.ok(titles.includes("Fazer o contrato e enviar à administradora"), "contrato da recepção");
+  assert.ok(titles.includes("Mensagem D+1 com TODAS as datas agendadas"), "mensagem D+1");
+  assert.ok(titles.includes("Conferir contrato e SuperSign"), "conferência do administrativo");
+});
+
+test("resposta ao médico D+1 pula o gestor D+2 automaticamente (POP)", () => {
+  const state = cloneState();
+  const moved = crm.moveDealStage(state, "crm-deal-lead-quente", {
+    actorId: "vendedor",
+    stage: "NAO_FECHOU",
+    objection: "Vai pensar com a família",
+    objectionCategory: "SPOUSE_OR_FAMILY",
+  });
+  const medTask = moved.state.tasks.find((task) => task.dealId === "crm-deal-lead-quente" && task.title.startsWith("Médico D+1"));
+  const gestorBefore = moved.state.tasks.find((task) => task.dealId === "crm-deal-lead-quente" && task.title.startsWith("Gestor D+2"));
+  assert.ok(medTask && gestorBefore, "as duas tarefas nascem");
+
+  const done = crm.completeCrmTask(moved.state, medTask.id, { result: "RESPONDED", actorId: "dr-daniel" });
+  const gestorAfter = done.tasks.find((task) => task.id === gestorBefore.id);
+  assert.equal(gestorAfter.status, "SKIPPED", "gestor D+2 pulado quando o paciente respondeu ao médico");
+
+  // Sem resposta, o gestor continua de pé.
+  const moved2 = crm.moveDealStage(cloneState(), "crm-deal-lead-quente", {
+    actorId: "vendedor",
+    stage: "NAO_FECHOU",
+    objection: "Preço",
+    objectionCategory: "PRICE",
+  });
+  const medTask2 = moved2.state.tasks.find((task) => task.title.startsWith("Médico D+1"));
+  const done2 = crm.completeCrmTask(moved2.state, medTask2.id, { result: "NO_RESPONSE", actorId: "dr-daniel" });
+  const gestor2 = done2.tasks.find((task) => task.title.startsWith("Gestor D+2"));
+  assert.equal(gestor2.status, "PENDING", "sem resposta o gestor D+2 continua");
+});
+
+test("ciclo de retorno conta para trás da data da consulta", () => {
+  const state = cloneState();
+  assert.equal(crm.cadenceNeedsEventDate(state, "cad-return-cycle"), true);
+  assert.equal(crm.cadenceNeedsEventDate(state, "cad-cold-lead"), false);
+
+  const next = crm.enrollContactInCadence(state, {
+    cadenceId: "cad-return-cycle",
+    contactId: "crm-contact-lead-quente",
+    dealId: "",
+    triggerSource: "teste",
+    triggerDate: "2026-08-30",
+    ownerUserId: "recepcao",
+    ownerRole: "RECEPCAO",
+  });
+  const tasks = next.tasks
+    .filter((task) => task.contactId === "crm-contact-lead-quente" && task.cadenceId === "cad-return-cycle")
+    .map((task) => task.dueAt.slice(0, 10))
+    .sort();
+  assert.ok(tasks.includes("2026-08-15"), `exames 15 dias antes (veio ${tasks.join(", ")})`);
+});
+
+test("mensagem do concierge pede avaliação no Google (POP)", () => {
+  const state = cloneState();
+  const template = state.messageTemplates.find((item) => item.id === "tpl-concierge-d1");
+  assert.match(template.body, /Google/);
+});
+

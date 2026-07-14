@@ -381,6 +381,26 @@ export const priorityLabels: Record<CrmPriority, string> = {
   CRITICAL: "Crítica",
 };
 
+// Explicação de cada coluna do Kanban em linguagem simples (para quem é leigo).
+export const dealStageHints: Record<CrmDealStage, string> = {
+  LEAD_FRIO: "Pessoa que demonstrou interesse mas ainda não conversamos de verdade.",
+  LEAD_NOVO: "Acabou de chegar (indicação, Instagram, cadência). Primeiro contato ainda não foi feito.",
+  CONTATADO: "Já falamos com a pessoa pelo menos uma vez. Aguardando ela evoluir.",
+  QUALIFICADO: "Tem perfil e interesse reais. Hora de puxar para a consulta.",
+  CONSULTA_AGENDADA: "Consulta marcada. A recepção confirma e orienta a chegada.",
+  CONSULTA_CONFIRMADA: "Paciente confirmou presença. É garantir o acolhimento.",
+  CONSULTA_REALIZADA: "Passou pelo Dr. Daniel. Aguardando a proposta do plano.",
+  PRESCRICAO_FEITA: "Médico prescreveu. Vendas apresenta o valor cheio e o preço Bratan.",
+  EM_NEGOCIACAO: "Proposta na mesa. Follow-up até decidir.",
+  FECHOU_COMPLETO: "Comprou o plano inteiro! Presente, concierge D+1, agendamentos e contrato saem sozinhos.",
+  FECHOU_PARCIAL: "Fechou uma parte. Registre o motivo — o resto do fluxo é igual ao completo.",
+  NAO_FECHOU: "Não fechou (objeção registrada). O médico entra em D+1 e, se não responder, o gestor em D+2.",
+  RECUPERACAO_D1_MEDICO: "Dr. Daniel está tentando reverter a objeção (dia seguinte à consulta).",
+  RECUPERACAO_D2_GESTOR: "Médico não reverteu: agora é o Estevão quem conversa (2 dias depois).",
+  PERDIDO: "Não vai fechar agora. Entra nos resgates futuros (60 dias, 6 meses, 1 ano).",
+  RESGATE_D60: "Sumiu do ciclo: a Aline faz as 5 tentativas de resgate.",
+};
+
 export const dealStageLabels: Record<CrmDealStage, string> = {
   LEAD_FRIO: "Lead frio",
   LEAD_NOVO: "Lead novo",
@@ -759,7 +779,7 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-3131-1s", "cad-gestor-3131", 2, "Gestor - 1 semana", 7, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-3s", "cad-gestor-3131", 3, "Gestor - 3 semanas", 21, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-1m", "cad-gestor-3131", 4, "Gestor - 1 mês", 30, "tpl-gestor-3131", "ADMIN_GESTAO"],
-  ["step-exams-21", "cad-return-cycle", 1, "Exames 3 semanas antes", -21, "tpl-exames-3-semanas", "RECEPCAO"],
+  ["step-exams-21", "cad-return-cycle", 1, "Exames 15 dias antes", -15, "tpl-exames-3-semanas", "RECEPCAO"],
   ["step-exams-7", "cad-return-cycle", 2, "Exames 1 semana antes", -7, "tpl-exames-1-semana", "RECEPCAO"],
   ["step-confirm-3", "cad-return-cycle", 3, "Confirmar consulta 3 dias", -3, "tpl-confirmacao-3", "RECEPCAO"],
   ["step-reminder-1", "cad-return-cycle", 4, "Lembrete 1 dia", -1, "tpl-lembrete-1", "RECEPCAO"],
@@ -791,11 +811,11 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-gestor-3131", "Gestor 3·1·3·1", "Gestão", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Estevão, gestor do Instituto Bratan. Passando para saber se ficou alguma dúvida e como posso facilitar seu próximo passo com a gente."],
   ["tpl-medico-d1", "Médico D+1", "Recuperação", "MEDICO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Dr. Daniel. Queria entender com calma o que ficou como dúvida ou barreira para ajustarmos o caminho sem perder o objetivo principal."],
   ["tpl-gestor-d2", "Gestor D+2", "Recuperação", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é da gestão do Instituto Bratan. Passei para entender como podemos facilitar sua decisão e deixar o próximo passo claro."],
-  ["tpl-concierge-d1", "Concierge D+1", "Concierge", "CONCIERGE", "POST_SALE_CONCIERGE", "Bom dia, {{primeiro_nome}}. Seja muito bem-vindo ao acompanhamento Bratan. Estou por aqui para qualquer dúvida e para cuidar da sua experiência conosco."],
+  ["tpl-concierge-d1", "Concierge D+1", "Concierge", "CONCIERGE", "POST_SALE_CONCIERGE", "Bom dia, {{primeiro_nome}}. Seja muito bem-vindo ao acompanhamento Bratan! Estou por aqui para qualquer dúvida e para cuidar da sua experiência conosco. Se puder, sua avaliação no Google nos ajuda demais: {{link_google_review}}"],
   ["tpl-concierge-reenvio", "Concierge reenvio", "Concierge", "CONCIERGE", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, reforçando que ficamos à disposição. Quando puder, me diga se está tudo claro para o início do seu plano."],
   ["tpl-enfermagem-14", "Enfermagem 14 dias", "Enfermagem", "ENFERMAGEM", "NURSING_14_DAYS", "Olá, {{primeiro_nome}}. Passando para acompanhar como você está se sentindo no tratamento e se apareceu alguma dúvida ou intercorrência."],
   ["tpl-pos-aplicacao", "Pós-aplicação", "Enfermagem", "ENFERMAGEM", "POST_APPLICATION_NURSING", "Olá, {{primeiro_nome}}. Como você está hoje após a aplicação/bioimpedância de ontem? Teve alguma reação ou dúvida?"],
-  ["tpl-exames-3-semanas", "Exames 3 semanas", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, seu retorno está se aproximando. Estou reenviando o lembrete dos exames para chegarmos na consulta com tudo pronto."],
+  ["tpl-exames-3-semanas", "Exames 15 dias", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, seu retorno está se aproximando. Estou reenviando o lembrete dos exames para chegarmos na consulta com tudo pronto."],
   ["tpl-exames-1-semana", "Exames 1 semana", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, passando para confirmar se os exames foram feitos e quando ficam disponíveis para o Dr. Daniel avaliar."],
   ["tpl-confirmacao-3", "Confirmação 3 dias", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, confirmando sua consulta em {{data_consulta}} às {{hora_consulta}}. Podemos contar com você?"],
   ["tpl-lembrete-1", "Lembrete 1 dia", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, passando só para lembrar da consulta de amanhã. Esperamos você no Instituto Bratan."],
@@ -1492,6 +1512,15 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
   return tasksToAdd.length ? { ...state, tasks: [...tasksToAdd, ...state.tasks] } : state;
 }
 
+// Cadências que contam PARA TRÁS da consulta futura (ciclo de retorno)
+// precisam da data do evento como gatilho — inscrever "a partir de hoje"
+// criaria tarefas no passado.
+export function cadenceNeedsEventDate(state: CrmState, cadenceId: string) {
+  return state.cadenceSteps.some(
+    (step) => step.cadenceId === cadenceId && step.active && (step.offsetType === "BEFORE_EVENT_DATE" || step.offsetValue < 0),
+  );
+}
+
 export function enrollContactInCadence(state: CrmState, values: Omit<CrmCadenceEnrollment, "id" | "status" | "enrolledAt" | "completedAt" | "canceledReason" | "createdAt" | "updatedAt">) {
   const existing = state.cadenceEnrollments.find(
     (item) => item.contactId === values.contactId && item.cadenceId === values.cadenceId && item.status === "ACTIVE",
@@ -1596,6 +1625,7 @@ export function completeCrmTask(
       : item,
   );
 
+  let pausedThisCadence = false;
   const updatedEnrollments = state.cadenceEnrollments.map((enrollment) => {
     // Resposta pausa apenas a régua DESTE contato — antes, pausava a cadência
     // inteira e travava os recém-inscritos de todo mundo.
@@ -1603,12 +1633,32 @@ export function completeCrmTask(
     if (enrollment.contactId !== task.contactId || enrollment.status !== "ACTIVE") return enrollment;
     const step = state.cadenceSteps.find((item) => item.id === task.cadenceStepId);
     if (!step?.pauseIfContactResponded || !responseReceived) return enrollment;
+    pausedThisCadence = true;
     return { ...enrollment, status: "PAUSED" as CrmCadenceStatus, updatedAt: now };
   });
 
+  // POP: os próximos toques da régua só acontecem se o paciente NÃO respondeu
+  // (ex.: gestor D+2 só entra se o médico D+1 não reverteu). Ao pausar,
+  // as tarefas futuras pendentes desta régua são puladas automaticamente.
+  const finalTasks = pausedThisCadence
+    ? updatedTasks.map((item) =>
+        item.id !== taskId &&
+        item.cadenceId === task.cadenceId &&
+        item.contactId === task.contactId &&
+        !["DONE", "CANCELED", "SKIPPED"].includes(item.status)
+          ? {
+              ...item,
+              status: "SKIPPED" as CrmTaskStatus,
+              resultNotes: "Pulada: paciente respondeu e a régua pausou.",
+              updatedAt: now,
+            }
+          : item,
+      )
+    : updatedTasks;
+
   return {
     ...state,
-    tasks: updatedTasks,
+    tasks: finalTasks,
     cadenceEnrollments: updatedEnrollments,
     touchpoints: [touchpoint, ...state.touchpoints],
     timelineEvents: [
@@ -1765,14 +1815,59 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
         cadenceId: "",
         cadenceStepId: "",
         title: "Conferir contrato e SuperSign",
-        description: "Administrativo confere documento jurídico e envia assinatura em até 24h.",
+        description: "Administrativo confere o documento jurídico item a item e envia para assinatura — contrato em mãos em até 24h (POP).",
         taskType: "CONTRACT",
         assignedToUserId: "administrativo",
         assignedToRole: "ADMINISTRATIVO",
         dueAt: atLocalTime(addDays(today, 1), 12),
         priority: "HIGH",
       }),
+      createTask({
+        ...taskBase,
+        cadenceId: "",
+        cadenceStepId: "",
+        title: "Fazer o contrato e enviar à administradora",
+        description: "Recepção monta o contrato no modelo do SharePoint (medicação/implante/ácido/implanon, CID, cláusulas, valor, pagamento), salva em PDF com o nº do caderno azul e envia à administradora (POP).",
+        taskType: "CONTRACT",
+        assignedToUserId: "recepcao",
+        assignedToRole: "RECEPCAO",
+        dueAt: atLocalTime(today, 17),
+        priority: "HIGH",
+      }),
+      createTask({
+        ...taskBase,
+        cadenceId: "",
+        cadenceStepId: "",
+        title: "Mensagem D+1 com TODAS as datas agendadas",
+        description: "Recepção envia a mensagem de início de tratamento (não é boas-vindas) com todas as datas: nutricionista, consultas do médico e 1ª dose (POP).",
+        taskType: "WHATSAPP",
+        assignedToUserId: "recepcao",
+        assignedToRole: "RECEPCAO",
+        dueAt: atLocalTime(addDays(today, 1), 9),
+        priority: "HIGH",
+      }),
     );
+
+    // POP · Vendas: presente por faixa de fechamento, SOMENTE na 1ª consulta.
+    // R$7 mil a R$10 mil → caixa PillBox; acima de R$10 mil → garrafa Stanley.
+    const closedAmount = options.soldAmount ?? deal.soldAmount;
+    if (deal.dealType === "FIRST_CONSULTATION" && closedAmount >= 7000) {
+      const gift = closedAmount > 10000 ? "garrafa Stanley" : "caixa PillBox";
+      tasks.push(
+        createTask({
+          ...taskBase,
+          cadenceId: "",
+          cadenceStepId: "",
+          title: `Entregar presente de fechamento: ${gift}`,
+          description: `Fechamento de ${moneyCrm(closedAmount)} na 1ª consulta. Parabenize e entregue a ${gift} antes de o paciente ir embora (POP: presente somente na 1ª consulta).`,
+          taskType: "IN_PERSON",
+          assignedToUserId: deal.ownerUserId || "vendedor",
+          assignedToRole: "COMERCIAL_VENDEDOR",
+          dueAt: atLocalTime(today, 17),
+          priority: "HIGH",
+        }),
+      );
+    }
   }
 
   if (options.stage === "NAO_FECHOU") {
