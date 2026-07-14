@@ -785,9 +785,9 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-lead-d5", "Lead D5", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, passando com outro olhar: o que mais tem pesado hoje, energia, composição corporal, sono ou rotina? Posso te orientar o melhor próximo passo."],
   ["tpl-lead-d7", "Lead D7", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, se fizer sentido, posso te enviar um conteúdo curto do Dr. Daniel explicando como avaliamos longevidade e performance aqui no Instituto."],
   ["tpl-lead-d60", "Lead D60", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, retomando com cuidado. Ainda faz sentido conversarmos sobre seu plano de saúde e performance neste momento?"],
-  ["tpl-resgate-60", "Resgate 60 dias", "Aline", "CONCIERGE", "RESGATE_D60", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Sentimos sua falta no ciclo de retorno! Posso te ajudar a reagendar num horário que encaixe na sua rotina?"],
-  ["tpl-resgate-6m", "Resgate 6 meses", "Aline", "CONCIERGE", "RESGATE_D60", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. O Dr. Daniel gravou um conteúdo novo que lembrei de você. Como está sua saúde nesses últimos meses? Adoraria te ver por aqui de novo."],
-  ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESGATE_D60", "{{primeiro_nome}}, hoje faz 1 ano que você chegou ao Instituto Bratan — parabéns por ter cuidado de você! Segue nosso Instagram para acompanhar as novidades. Que tal uma avaliação para ver sua evolução?"],
+  ["tpl-resgate-60", "Resgate 60 dias", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Sentimos sua falta no ciclo de retorno! Posso te ajudar a reagendar num horário que encaixe na sua rotina?"],
+  ["tpl-resgate-6m", "Resgate 6 meses", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. O Dr. Daniel gravou um conteúdo novo que lembrei de você. Como está sua saúde nesses últimos meses? Adoraria te ver por aqui de novo."],
+  ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, hoje faz 1 ano que você chegou ao Instituto Bratan — parabéns por ter cuidado de você! Segue nosso Instagram para acompanhar as novidades. Que tal uma avaliação para ver sua evolução?"],
   ["tpl-gestor-3131", "Gestor 3·1·3·1", "Gestão", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Estevão, gestor do Instituto Bratan. Passando para saber se ficou alguma dúvida e como posso facilitar seu próximo passo com a gente."],
   ["tpl-medico-d1", "Médico D+1", "Recuperação", "MEDICO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Dr. Daniel. Queria entender com calma o que ficou como dúvida ou barreira para ajustarmos o caminho sem perder o objetivo principal."],
   ["tpl-gestor-d2", "Gestor D+2", "Recuperação", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é da gestão do Instituto Bratan. Passei para entender como podemos facilitar sua decisão e deixar o próximo passo claro."],
@@ -1275,15 +1275,27 @@ export const demoCrmFixtures: CrmState = {
   ),
 };
 
-export function loadCrmState() {
-  const state = readLocalValue<CrmState>(crmStorageKey, seedCrmState);
+function unionById<T extends { id: string }>(primary: T[], extras: T[]): T[] {
+  const seen = new Set(primary.map((item) => item.id));
+  return [...primary, ...extras.filter((item) => !seen.has(item.id))];
+}
+
+// Cadências/passos/mensagens novos entram por código: qualquer estado salvo
+// (local ou vindo do Supabase) precisa ganhar os itens de catálogo que ainda
+// não conhece, senão réguas novas nunca aparecem para quem já tem dados.
+export function mergeCrmCatalogWithSeeds(state: CrmState): CrmState {
   return {
     ...seedCrmState,
     ...state,
-    cadences: state.cadences?.length ? state.cadences : seedCrmState.cadences,
-    cadenceSteps: state.cadenceSteps?.length ? state.cadenceSteps : seedCrmState.cadenceSteps,
-    messageTemplates: state.messageTemplates?.length ? state.messageTemplates : seedCrmState.messageTemplates,
+    cadences: unionById(state.cadences ?? [], seedCrmState.cadences),
+    cadenceSteps: unionById(state.cadenceSteps ?? [], seedCrmState.cadenceSteps),
+    messageTemplates: unionById(state.messageTemplates ?? [], seedCrmState.messageTemplates),
   };
+}
+
+export function loadCrmState() {
+  const state = readLocalValue<CrmState>(crmStorageKey, seedCrmState);
+  return mergeCrmCatalogWithSeeds(state);
 }
 
 export function saveCrmState(state: CrmState) {
@@ -1378,20 +1390,37 @@ export function findOrCreateCrmContact(
   };
 }
 
-function hasEquivalentOpenTask(state: CrmState, values: Pick<CrmTask, "contactId" | "cadenceId" | "cadenceStepId" | "taskType">) {
-  return state.tasks.some(
-    (task) =>
-      task.contactId === values.contactId &&
-      task.cadenceId === values.cadenceId &&
-      task.cadenceStepId === values.cadenceStepId &&
-      task.taskType === values.taskType &&
-      !["DONE", "CANCELED", "SKIPPED"].includes(task.status),
-  );
+// Passos únicos: qualquer tarefa já criada para o passo bloqueia recriação
+// (antes, concluir a tarefa fazia o motor recriá-la no próximo carregamento).
+// Passos recorrentes (ex.: enfermagem 14 em 14 dias): deduplica pela data do
+// ciclo, para a próxima ocorrência nascer sem duplicar a atual.
+function hasTaskForStep(
+  state: CrmState,
+  values: Pick<CrmTask, "contactId" | "cadenceId" | "cadenceStepId">,
+  recurring: boolean,
+  dueDate: string,
+) {
+  return state.tasks.some((task) => {
+    if (task.contactId !== values.contactId || task.cadenceId !== values.cadenceId || task.cadenceStepId !== values.cadenceStepId) {
+      return false;
+    }
+    if (!recurring) return true;
+    // Recorrente: o próximo ciclo só nasce quando o atual foi resolvido, e o
+    // mesmo dia nunca repete (antifadiga).
+    const open = !["DONE", "CANCELED", "SKIPPED"].includes(task.status);
+    return open || task.dueAt.slice(0, 10) === dueDate;
+  });
 }
 
-function dueDateForStep(enrollment: CrmCadenceEnrollment, step: CrmCadenceStep) {
-  if (step.offsetType === "RECURRING_EVERY_X_DAYS") {
-    return addDays(enrollment.triggerDate, step.offsetValue);
+function dueDateForStep(enrollment: CrmCadenceEnrollment, step: CrmCadenceStep, reference = new Date()) {
+  if (step.offsetType === "RECURRING_EVERY_X_DAYS" && step.offsetValue > 0) {
+    // Próxima ocorrência do ciclo (a cada X dias) que ainda não passou.
+    const refDate = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+    let date = addDays(enrollment.triggerDate, step.offsetValue);
+    for (let i = 0; i < 400 && date < refDate; i += 1) {
+      date = addDays(date, step.offsetValue);
+    }
+    return date;
   }
   return addDays(enrollment.triggerDate, step.offsetValue);
 }
@@ -1399,9 +1428,10 @@ function dueDateForStep(enrollment: CrmCadenceEnrollment, step: CrmCadenceStep) 
 function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment, step: CrmCadenceStep): CrmTask | null {
   const contact = state.contacts.find((item) => item.id === enrollment.contactId);
   if (!contact || contact.optOut) return null;
-  if (hasEquivalentOpenTask(state, { contactId: enrollment.contactId, cadenceId: enrollment.cadenceId, cadenceStepId: step.id, taskType: step.taskType })) return null;
-
   const date = dueDateForStep(enrollment, step);
+  const recurring = step.offsetType === "RECURRING_EVERY_X_DAYS";
+  if (hasTaskForStep(state, { contactId: enrollment.contactId, cadenceId: enrollment.cadenceId, cadenceStepId: step.id }, recurring, date)) return null;
+
   const hour = step.preferredTimeWindow === "MORNING" ? 9 : step.preferredTimeWindow === "AFTERNOON" ? 15 : 10;
   return createTask({
     contactId: enrollment.contactId,
@@ -1428,10 +1458,33 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
       .filter((step) => step.cadenceId === enrollment.cadenceId && step.active)
       .sort((a, b) => a.stepOrder - b.stepOrder);
 
+    let materializedForEnrollment = false;
+    const pendingBeyondWindow: { step: CrmCadenceStep; dueTime: number }[] = [];
     for (const step of steps) {
-      const due = new Date(`${dueDateForStep(enrollment, step)}T23:59:59`);
-      if (due.getTime() > reference.getTime() + 7 * 24 * 60 * 60 * 1000) continue;
-      const task = createTaskFromCadence({ ...state, tasks: [...state.tasks, ...tasksToAdd] }, enrollment, step);
+      const workingState = { ...state, tasks: [...state.tasks, ...tasksToAdd] };
+      const due = new Date(`${dueDateForStep(enrollment, step, reference)}T23:59:59`);
+      if (due.getTime() > reference.getTime() + 7 * 24 * 60 * 60 * 1000) {
+        pendingBeyondWindow.push({ step, dueTime: due.getTime() });
+        continue;
+      }
+      const task = createTaskFromCadence(workingState, enrollment, step);
+      if (task) {
+        tasksToAdd.push(task);
+        materializedForEnrollment = true;
+      } else if (
+        workingState.tasks.some(
+          (item) => item.contactId === enrollment.contactId && item.cadenceId === enrollment.cadenceId && item.cadenceStepId === step.id,
+        )
+      ) {
+        materializedForEnrollment = true;
+      }
+    }
+
+    // Cadências cujo primeiro toque cai longe (D+14, D+60, resgates) não podem
+    // ficar invisíveis: sem nada na janela, a PRÓXIMA tarefa nasce mesmo assim.
+    if (!materializedForEnrollment && pendingBeyondWindow.length) {
+      pendingBeyondWindow.sort((a, b) => a.dueTime - b.dueTime);
+      const task = createTaskFromCadence({ ...state, tasks: [...state.tasks, ...tasksToAdd] }, enrollment, pendingBeyondWindow[0].step);
       if (task) tasksToAdd.push(task);
     }
   }
@@ -1445,6 +1498,30 @@ export function enrollContactInCadence(state: CrmState, values: Omit<CrmCadenceE
   );
   if (existing) return state;
   const now = new Date().toISOString();
+
+  // Regra do Lucas (14/07/2026): quem entra em cadência tem que aparecer no
+  // Kanban Comercial. Sem negociação vinculada, reaproveita a aberta do
+  // contato ou cria uma nova em "Lead novo".
+  let nextState = state;
+  let dealId = values.dealId;
+  if (!dealId) {
+    const openDeal = state.deals.find((deal) => deal.contactId === values.contactId && deal.status === "OPEN");
+    if (openDeal) {
+      dealId = openDeal.id;
+    } else {
+      const contact = state.contacts.find((item) => item.id === values.contactId);
+      const cadence = state.cadences.find((item) => item.id === values.cadenceId);
+      nextState = createDealForContact(state, {
+        contactId: values.contactId,
+        title: `${contact ? contactDisplayName(contact) : "Contato"} — ${cadence?.name ?? "cadência"}`,
+        ownerUserId: values.ownerUserId,
+        estimatedValue: 0,
+        sourceChannel: "Cadência",
+      });
+      dealId = nextState.deals[0]?.id ?? "";
+    }
+  }
+
   const enrollment: CrmCadenceEnrollment = {
     id: createCrmId("enroll"),
     status: "ACTIVE",
@@ -1454,8 +1531,9 @@ export function enrollContactInCadence(state: CrmState, values: Omit<CrmCadenceE
     createdAt: now,
     updatedAt: now,
     ...values,
+    dealId,
   };
-  return generateCadenceTasks({ ...state, cadenceEnrollments: [enrollment, ...state.cadenceEnrollments] });
+  return generateCadenceTasks({ ...nextState, cadenceEnrollments: [enrollment, ...nextState.cadenceEnrollments] });
 }
 
 export function checkContactFatigue(state: CrmState, contactId: string, reference = new Date()) {
@@ -1519,7 +1597,10 @@ export function completeCrmTask(
   );
 
   const updatedEnrollments = state.cadenceEnrollments.map((enrollment) => {
-    if (enrollment.id !== task.cadenceId && enrollment.cadenceId !== task.cadenceId) return enrollment;
+    // Resposta pausa apenas a régua DESTE contato — antes, pausava a cadência
+    // inteira e travava os recém-inscritos de todo mundo.
+    if (!task.cadenceId || enrollment.cadenceId !== task.cadenceId) return enrollment;
+    if (enrollment.contactId !== task.contactId || enrollment.status !== "ACTIVE") return enrollment;
     const step = state.cadenceSteps.find((item) => item.id === task.cadenceStepId);
     if (!step?.pauseIfContactResponded || !responseReceived) return enrollment;
     return { ...enrollment, status: "PAUSED" as CrmCadenceStatus, updatedAt: now };

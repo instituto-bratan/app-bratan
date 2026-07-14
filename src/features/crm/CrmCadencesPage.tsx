@@ -28,6 +28,7 @@ import {
   crmRoleLabels,
   dealStageLabels,
   enrollContactInCadence,
+  findOrCreateCrmContact,
   generateCadenceTasks,
   moneyCrm,
   taskTypeLabels,
@@ -36,6 +37,8 @@ import {
   cargoToCrmRole,
   roleRuleExplainers,
 } from "./crmData";
+import { todayISO } from "@/lib/localStore";
+import { CrmSyncBanner } from "./CrmSyncBanner";
 import { useCrmState } from "./useCrmState";
 
 function statusTone(status: CrmCadenceStatus) {
@@ -47,11 +50,12 @@ function statusTone(status: CrmCadenceStatus) {
 
 export function CrmCadencesPage() {
   const { pessoa } = useAuth();
-  const { state, persist } = useCrmState();
+  const { state, persist, syncFailed, retrySync } = useCrmState();
   const [cadenceId, setCadenceId] = useState("cad-cold-lead");
   const [contactId, setContactId] = useState("");
   const [contactQuery, setContactQuery] = useState("");
   const [dealId, setDealId] = useState("");
+  const [newPhone, setNewPhone] = useState("");
   const [feedback, setFeedback] = useState("");
 
   const visibleCadences = state.cadences.filter((cadence) => !pessoa || canUserAccessCadence(pessoa, cadence));
@@ -75,36 +79,81 @@ export function CrmCadencesPage() {
   const dealsForContact = state.deals.filter((deal) => deal.contactId === contactId);
   const selectedContact = state.contacts.find((contact) => contact.id === contactId);
 
-  function handleEnroll(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedContact) {
-      setFeedback("Busque e selecione um contato antes de inscrever.");
-      return;
-    }
-    if (!cadenceId) return;
+  async function enrollContact(contactIdToEnroll: string, displayName: string, createValues?: { fullName: string; phone: string }) {
     const cadence = state.cadences.find((item) => item.id === cadenceId);
     if (!cadence) return;
     const alreadyEnrolled = state.cadenceEnrollments.some(
-      (enrollment) => enrollment.contactId === selectedContact.id && enrollment.cadenceId === cadenceId && enrollment.status === "ACTIVE",
+      (enrollment) => enrollment.contactId === contactIdToEnroll && enrollment.cadenceId === cadenceId && enrollment.status === "ACTIVE",
     );
-    if (alreadyEnrolled) {
+    if (alreadyEnrolled && !createValues) {
       setFeedback("Este contato já está inscrito nesta cadência.");
       return;
     }
-    persist((current) =>
-      enrollContactInCadence(current, {
+
+    setFeedback("Inscrevendo…");
+    let createdName = "";
+    const saved = await persist((current) => {
+      let next = current;
+      let targetId = contactIdToEnroll;
+      if (createValues) {
+        // Pessoa nova direto da cadência: cria o contato (com deduplicação) e
+        // inscreve na sequência — antes não existia caminho para gente nova aqui.
+        const result = findOrCreateCrmContact(
+          next,
+          {
+            fullName: createValues.fullName,
+            phone: createValues.phone,
+            whatsapp: createValues.phone,
+            contactType: "LEAD",
+            lifecycleStage: "COLD_LEAD",
+            sourceChannel: "Cadência (inscrição manual)",
+          },
+          pessoa?.id ?? "sistema",
+        );
+        next = result.state;
+        targetId = result.contact.id;
+        createdName = contactDisplayName(result.contact);
+      }
+      return enrollContactInCadence(next, {
         cadenceId,
-        contactId: selectedContact.id,
+        contactId: targetId,
         dealId,
-        triggerSource: "manual sprint 1",
-        triggerDate: new Date().toISOString().slice(0, 10),
+        triggerSource: "inscricao manual",
+        triggerDate: todayISO(),
         ownerUserId: pessoa?.id ?? cadence.defaultOwnerRole.toLowerCase(),
         ownerRole: cadence.defaultOwnerRole,
-      }),
-    );
-    setFeedback(
-      `${contactDisplayName(selectedContact)} foi inscrito(a) na cadência "${cadence.name}". As tarefas aparecem em Minhas Tarefas sem novo preenchimento.`,
-    );
+      });
+    });
+
+    const who = createdName || displayName;
+    if (saved) {
+      setFeedback(
+        `${who} está na cadência "${cadence.name}": a negociação já aparece no Kanban Comercial e a primeira tarefa está em Minhas Tarefas (aba "Próximos 7 dias" quando o toque é D+1).`,
+      );
+      setContactQuery("");
+      setContactId("");
+      setDealId("");
+      setNewPhone("");
+    } else {
+      setFeedback(
+        `${who} foi inscrito(a) neste aparelho, mas NÃO sincronizou com o Supabase. Confira a internet e toque em "Tentar sincronizar" no aviso acima antes de sair desta tela.`,
+      );
+    }
+  }
+
+  function handleEnroll(event: FormEvent) {
+    event.preventDefault();
+    if (!cadenceId) return;
+    if (selectedContact) {
+      void enrollContact(selectedContact.id, contactDisplayName(selectedContact));
+      return;
+    }
+    const typedName = contactQuery.trim();
+    if (typedName.length < 3) {
+      setFeedback("Busque um contato existente ou digite o nome completo da pessoa nova.");
+      return;
+    }
+    void enrollContact("", typedName, { fullName: typedName, phone: newPhone.trim() });
   }
 
   function updateEnrollment(id: string, status: CrmCadenceStatus) {
@@ -178,6 +227,8 @@ export function CrmCadencesPage() {
         </div>
       </motion.section>
 
+      <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
+
       <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
         <Card>
           <CardHeader>
@@ -217,6 +268,20 @@ export function CrmCadencesPage() {
                     ))}
                   </div>
                 ) : null}
+                {contactQuery.trim().length >= 3 && !contactId && !contactSuggestions.length ? (
+                  <div className="mt-2 rounded-lg border border-dashed border-brand-oliva/35 bg-brand-creme/40 p-3">
+                    <p className="text-xs font-semibold text-brand-musgo">
+                      Pessoa nova! Ao inscrever, o contato é criado, entra no Kanban Comercial e as tarefas nascem sozinhas.
+                    </p>
+                    <Label className="mt-2 block text-xs">WhatsApp (opcional, ajuda a evitar duplicados)</Label>
+                    <Input
+                      value={newPhone}
+                      onChange={(event) => setNewPhone(event.target.value)}
+                      placeholder="(11) 9…"
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                ) : null}
               </div>
               <div>
                 <Label className="flex items-center gap-1">
@@ -239,11 +304,12 @@ export function CrmCadencesPage() {
                 </select>
                 {selectedContact && !dealsForContact.length ? (
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Este contato ainda não tem negociação. Crie uma no{" "}
+                    Este contato ainda não tem negociação — sem problema: ao inscrever, uma negociação nova é criada em
+                    "Lead novo" no{" "}
                     <Link to={crmModuleRoutes.deals} className="font-semibold text-brand-musgo underline">
                       Kanban de Vendas
-                    </Link>{" "}
-                    e volte aqui para vincular.
+                    </Link>
+                    .
                   </p>
                 ) : null}
               </div>
@@ -255,7 +321,9 @@ export function CrmCadencesPage() {
               </div>
               <Button type="submit">
                 <PlayCircle className="mr-2 h-4 w-4" />
-                Inscrever e criar tarefas
+                {!contactId && contactQuery.trim().length >= 3 && !contactSuggestions.length
+                  ? "Criar contato e inscrever"
+                  : "Inscrever e criar tarefas"}
               </Button>
             </form>
           </CardContent>

@@ -47,6 +47,7 @@ import {
   type CrmPersonaFit,
   type CrmTask,
 } from "./crmData";
+import { CrmSyncBanner } from "./CrmSyncBanner";
 import { useCrmState } from "./useCrmState";
 
 const objectionOptions: CrmObjectionCategory[] = [
@@ -233,7 +234,7 @@ function DealCard({
 
 export function CrmKanbanPage() {
   const { pessoa } = useAuth();
-  const { state, persist } = useCrmState();
+  const { state, persist, syncFailed, retrySync } = useCrmState();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
@@ -571,6 +572,7 @@ export function CrmKanbanPage() {
           : "lg:h-[calc(100dvh-9.5rem)] lg:min-h-[540px]",
       )}
     >
+      <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge variant="gold">CRM Bratan</Badge>

@@ -2154,8 +2154,12 @@ export async function listRemoteCrmState(): Promise<CrmState> {
   };
 }
 
-export async function saveRemoteCrmState(state: CrmState) {
+export async function saveRemoteCrmState(state: CrmState, options?: { includeCatalog?: boolean }) {
   const now = new Date().toISOString();
+  // Catálogo (cadências/passos/mensagens) tem RLS de gestão (can_crm_manage).
+  // Quem não é coordenação pula essas tabelas: antes o sync inteiro morria
+  // nelas e inscrições/tarefas (que vêm depois) nunca chegavam ao banco.
+  const includeCatalog = options?.includeCatalog ?? true;
 
   await upsertCrmTable(
     "crm_contacts",
@@ -2189,6 +2193,7 @@ export async function saveRemoteCrmState(state: CrmState) {
     })),
   );
 
+  if (includeCatalog) {
   await upsertCrmTable(
     "crm_cadences",
     state.cadences.map((record) => ({
@@ -2239,6 +2244,7 @@ export async function saveRemoteCrmState(state: CrmState) {
       updated_at: record.updatedAt || now,
     })),
   );
+  }
 
   await upsertCrmTable(
     "crm_deals",

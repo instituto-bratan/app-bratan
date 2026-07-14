@@ -17,11 +17,20 @@ const ANNOTATION_WORDS = new Set([
   "avulsa", "plano", "bioimpedancia", "bioimpedância", "exame", "exames",
 ]);
 
+// Linhas de comanda que NÃO são pessoas — não podem virar contato no CRM
+// (ex.: "Fechamento do dia" virou paciente em 13/07/2026).
+const NON_PERSON_LINES = [
+  "fechamento do dia", "fechamento", "dia zerado", "dia sem atendimentos",
+  "total do dia", "total", "caixa", "abertura", "sangria", "troco",
+  "rendimento", "ajuste", "teste",
+];
+
 function stripAccents(value: string) {
   return value.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
 // Extrai só o nome da pessoa: corta na primeira anotação, número, data ou símbolo.
+// Devolve "" quando a linha não é uma pessoa (fechamento, sangria, totais…).
 export function extractPersonName(raw: string): string {
   const words = (raw ?? "").replace(/\s+/g, " ").trim().split(" ");
   const kept: string[] = [];
@@ -31,7 +40,10 @@ export function extractPersonName(raw: string): string {
     if (!bare || hasDigitOrSymbol || ANNOTATION_WORDS.has(bare)) break;
     kept.push(word.replace(/[.,;:]+$/, ""));
   }
-  return kept.join(" ").trim();
+  const name = kept.join(" ").trim();
+  const normalized = stripAccents(name.toLowerCase());
+  if (NON_PERSON_LINES.some((line) => normalized === line || normalized.startsWith(`${line} `))) return "";
+  return name;
 }
 
 export function personNameTokens(name: string): string[] {

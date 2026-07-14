@@ -36,6 +36,16 @@ test("extractPersonName tira as anotações da recepção e deixa só o nome", (
   assert.equal(extractPersonName("Carlos 12/07 obs: pagou metade"), "Carlos");
 });
 
+test("extractPersonName descarta linhas de comanda que não são pessoas", () => {
+  assert.equal(extractPersonName("Fechamento do dia"), "");
+  assert.equal(extractPersonName("FECHAMENTO"), "");
+  assert.equal(extractPersonName("Dia zerado"), "");
+  assert.equal(extractPersonName("Total do dia"), "");
+  assert.equal(extractPersonName("Sangria"), "");
+  assert.equal(extractPersonName("Rendimento do banco"), "");
+  assert.equal(extractPersonName("Renata Torres"), "Renata Torres");
+});
+
 test("personNamesMatch reconhece variações do mesmo nome", () => {
   assert.equal(personNamesMatch("Fulana de Tal", "Fulana de Tal Almeida"), true);
   assert.equal(personNamesMatch("Fulana Almeida", "Fulana de Tal Almeida"), true);
