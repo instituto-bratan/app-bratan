@@ -34,6 +34,7 @@ import {
   createDealForContact,
   crmModuleRoutes,
   dealStageHints,
+  objectionCategoryLabels,
   dealStageLabels,
   dealStages,
   findOrCreateCrmContact,
@@ -76,7 +77,7 @@ const sectionLabels: Record<KanbanSection, string> = {
 const stageSections: Record<KanbanSection, CrmDealStage[]> = {
   all: dealStages,
   captacao: ["LEAD_FRIO", "LEAD_NOVO", "CONTATADO", "QUALIFICADO", "CONSULTA_AGENDADA", "CONSULTA_CONFIRMADA", "CONSULTA_REALIZADA"],
-  negociacao: ["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "RECUPERACAO_D1_MEDICO", "RECUPERACAO_D2_GESTOR", "PERDIDO", "RESGATE_D60"],
+  negociacao: ["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "RECUPERACAO_D1_MEDICO", "RECUPERACAO_D2_GESTOR", "PERDIDO", "RESGATE_D60", "CHURN"],
 };
 
 const densityLabels: Record<KanbanDensity, string> = {
@@ -782,12 +783,12 @@ export function CrmKanbanPage() {
               <div>
                 <Label>Categoria da objeção</Label>
                 <select value={objectionCategory} onChange={(event) => setObjectionCategory(event.target.value as CrmObjectionCategory)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                  {objectionOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                  {objectionOptions.map((item) => <option key={item} value={item}>{objectionCategoryLabels[item]}</option>)}
                 </select>
               </div>
               <div>
                 <Label>Objeção / motivo</Label>
-                <Input value={objection} onChange={(event) => setObjection(event.target.value)} placeholder="Obrigatório se não fechou" />
+                <Input value={objection} onChange={(event) => setObjection(event.target.value)} placeholder="Obrigatório se não fechou ou churn" />
               </div>
               <div className="sm:col-span-2">
                 <Label>Motivo do parcial</Label>

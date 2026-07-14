@@ -544,3 +544,61 @@ test("inscrever no resgate de 1 ano gera a tentativa 1 e cria negociação", () 
   assert.ok(next.deals.some((d) => d.contactId === "crm-contact-lead-quente" && d.status === "OPEN"), "aparece no Kanban");
 });
 
+// --- Churn no Kanban (14/07/2026) ---
+
+test("churn exige motivo e agenda o resgate de 6 meses para o futuro", () => {
+  const state = cloneState();
+  const semMotivo = crm.moveDealStage(state, "crm-deal-fechou-completo", { actorId: "gestor", stage: "CHURN" });
+  assert.equal(semMotivo.ok, false, "sem motivo não vira churn");
+
+  const moved = crm.moveDealStage(state, "crm-deal-fechou-completo", {
+    actorId: "gestor",
+    stage: "CHURN",
+    objection: "Sem condições financeiras agora",
+    objectionCategory: "PRICE",
+  });
+  assert.equal(moved.ok, true);
+
+  const deal = moved.state.deals.find((item) => item.id === "crm-deal-fechou-completo");
+  assert.equal(deal.stage, "CHURN");
+
+  // Tarefa imediata da Aline para investigar
+  const investigacao = moved.state.tasks.find((task) => task.dealId === deal.id && task.taskType === "CHURN_INVESTIGATION");
+  assert.ok(investigacao, "tarefa de investigação criada");
+  assert.equal(investigacao.assignedToRole, "CONCIERGE");
+
+  // Resgate agendado para ~6 meses (gatilho futuro)
+  const enrollment = moved.state.cadenceEnrollments.find(
+    (item) => item.contactId === deal.contactId && item.cadenceId === "cad-rescue-6m" && item.status === "ACTIVE",
+  );
+  assert.ok(enrollment, "inscrição no resgate de 6 meses");
+  // O harness congela todayISO em 2026-06-30: +180 dias = 2026-12-27.
+  assert.equal(enrollment.triggerDate, "2026-12-27", "gatilho exatamente 6 meses (180 dias) à frente");
+
+  // A 1ª tentativa do resgate nasce com a data futura
+  const rescueTask = moved.state.tasks.find((task) => task.contactId === deal.contactId && task.cadenceId === "cad-rescue-6m");
+  assert.ok(rescueTask, "primeira tentativa do resgate materializada");
+  assert.ok(rescueTask.dueAt.slice(0, 10) >= enrollment.triggerDate, "vencimento no futuro");
+});
+
+test("churn preserva o status da venda (fechado continua contando no 360)", () => {
+  const state = cloneState();
+  const dealBefore = state.deals.find((item) => item.id === "crm-deal-fechou-completo");
+  const statusBefore = dealBefore.status;
+
+  const moved = crm.moveDealStage(state, "crm-deal-fechou-completo", {
+    actorId: "gestor",
+    stage: "CHURN",
+    objection: "Mudou de cidade",
+    objectionCategory: "TIMING",
+  });
+  const deal = moved.state.deals.find((item) => item.id === "crm-deal-fechou-completo");
+  assert.equal(deal.status, statusBefore, "status financeiro intacto");
+
+  const next360 = crm.deriveInteligencia360FromCrm(moved.state, clone360());
+  assert.ok(
+    next360.prescriptions.some((record) => record.id === "crm-rx-crm-deal-fechou-completo"),
+    "venda segue no Dashboard 360 mesmo em churn",
+  );
+});
+

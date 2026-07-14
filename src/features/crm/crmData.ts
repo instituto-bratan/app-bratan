@@ -88,7 +88,8 @@ export type CrmDealStage =
   | "RECUPERACAO_D1_MEDICO"
   | "RECUPERACAO_D2_GESTOR"
   | "PERDIDO"
-  | "RESGATE_D60";
+  | "RESGATE_D60"
+  | "CHURN";
 export type CrmDealStatus = "OPEN" | "WON_FULL" | "WON_PARTIAL" | "LOST" | "PAUSED";
 export type CrmObjectionCategory =
   | "PRICE"
@@ -100,6 +101,18 @@ export type CrmObjectionCategory =
   | "NO_PERCEIVED_VALUE"
   | "NO_RESPONSE"
   | "OTHER";
+
+export const objectionCategoryLabels: Record<CrmObjectionCategory, string> = {
+  PRICE: "Preço / condição financeira",
+  TRUST: "Confiança",
+  TIMING: "Momento de vida",
+  SPOUSE_OR_FAMILY: "Precisa falar com família",
+  PAYMENT_METHOD: "Forma de pagamento",
+  NEEDS_MORE_INFORMATION: "Quer mais informações",
+  NO_PERCEIVED_VALUE: "Não viu valor ainda",
+  NO_RESPONSE: "Sem resposta",
+  OTHER: "Outro motivo",
+};
 export type CrmCadenceType =
   | "COLD_LEAD"
   | "COMMERCIAL_FOLLOW_UP"
@@ -400,6 +413,7 @@ export const dealStageHints: Record<CrmDealStage, string> = {
   RECUPERACAO_D2_GESTOR: "Médico não reverteu: agora é o Estevão quem conversa (2 dias depois).",
   PERDIDO: "Não vai fechar agora. Entra nos resgates futuros (60 dias, 6 meses, 1 ano).",
   RESGATE_D60: "Sumiu do ciclo: a Aline faz as 5 tentativas de resgate.",
+  CHURN: "Pausou por condição real (dinheiro, momento de vida). Não é perdido: a Aline investiga o motivo e o resgate fica agendado sozinho para daqui a 6 meses.",
 };
 
 export const dealStageLabels: Record<CrmDealStage, string> = {
@@ -419,6 +433,7 @@ export const dealStageLabels: Record<CrmDealStage, string> = {
   RECUPERACAO_D2_GESTOR: "Recuperação D+2 Gestor",
   PERDIDO: "Perdido",
   RESGATE_D60: "Resgate D60",
+  CHURN: "Churn (pausou)",
 };
 
 export const dealStages: CrmDealStage[] = [
@@ -438,6 +453,7 @@ export const dealStages: CrmDealStage[] = [
   "RECUPERACAO_D2_GESTOR",
   "PERDIDO",
   "RESGATE_D60",
+  "CHURN",
 ];
 
 export const cadenceTypeLabels: Record<CrmCadenceType, string> = {
@@ -1554,6 +1570,7 @@ export const stageDefaultCadence: Partial<Record<CrmDealStage, string>> = {
   FECHOU_PARCIAL: "cad-nursing-14",
   PERDIDO: "cad-rescue-60d",
   RESGATE_D60: "cad-rescue-60d",
+  CHURN: "cad-rescue-6m",
 };
 
 // Um contato está "coberto" quando tem régua ativa/pausada ou tarefa aberta.
@@ -1826,6 +1843,7 @@ function updateContactStageForDealStage(contact: CrmContact, stage: CrmDealStage
     RECUPERACAO_D2_GESTOR: "FOLLOW_UP",
     PERDIDO: "INACTIVE",
     RESGATE_D60: "RESCUE",
+    CHURN: "INACTIVE",
   };
   return {
     ...contact,
@@ -1966,6 +1984,26 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
     }
   }
 
+
+  if (options.stage === "CHURN") {
+    tasks.push(
+      createTask({
+        ...taskBase,
+        cadenceId: "",
+        cadenceStepId: "",
+        title: "Churn — investigar o motivo e acolher",
+        description: options.objection
+          ? `Motivo registrado: ${options.objection}. Aline entende a situação com carinho e registra o que souber — o resgate de 6 meses já ficou agendado sozinho.`
+          : "Aline entende a situação com carinho e registra o que souber — o resgate de 6 meses já ficou agendado sozinho.",
+        taskType: "CHURN_INVESTIGATION",
+        assignedToUserId: "concierge",
+        assignedToRole: "CONCIERGE",
+        dueAt: atLocalTime(addDays(today, 1), 9),
+        priority: "HIGH",
+      }),
+    );
+  }
+
   if (options.stage === "NAO_FECHOU") {
     tasks.push(
       createTask({
@@ -2013,6 +2051,7 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   const deal = state.deals.find((item) => item.id === dealId);
   if (!deal) return { state, ok: false, message: "Negociação não encontrada." };
   if (options.stage === "NAO_FECHOU" && !options.objection?.trim()) return { state, ok: false, message: "Informe a objeção/motivo antes de marcar como não fechou." };
+  if (options.stage === "CHURN" && !options.objection?.trim()) return { state, ok: false, message: "Informe o motivo do churn (ex.: sem condições financeiras agora) — é ele que orienta o resgate futuro." };
   if (options.stage === "FECHOU_COMPLETO" && !options.soldAmount) return { state, ok: false, message: "Informe o valor vendido antes de fechar completo." };
   if (options.stage === "FECHOU_PARCIAL" && (!options.soldAmount || !options.partialReason?.trim())) return { state, ok: false, message: "Informe valor vendido e motivo do parcial." };
 
@@ -2025,7 +2064,18 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
     receivedAmount: options.receivedAmount ?? deal.receivedAmount,
     mainObjection: options.objection ?? deal.mainObjection,
     objectionCategory: options.objectionCategory ?? deal.objectionCategory,
-    status: options.stage === "FECHOU_COMPLETO" ? "WON_FULL" : options.stage === "FECHOU_PARCIAL" ? "WON_PARTIAL" : options.stage === "PERDIDO" ? "LOST" : "OPEN",
+    // Churn preserva o status: quem fechou continua contando como fechado no
+    // 360 — churn é pausa do PACIENTE, não cancelamento da venda.
+    status:
+      options.stage === "FECHOU_COMPLETO"
+        ? "WON_FULL"
+        : options.stage === "FECHOU_PARCIAL"
+          ? "WON_PARTIAL"
+          : options.stage === "PERDIDO"
+            ? "LOST"
+            : options.stage === "CHURN"
+              ? deal.status
+              : "OPEN",
     probability: options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL" ? 100 : options.stage === "PERDIDO" ? 0 : deal.probability,
     closedAt: options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL" ? now : deal.closedAt,
     updatedAt: now,
@@ -2072,6 +2122,20 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
       triggerDate: todayISO(),
       ownerUserId: "enfermagem",
       ownerRole: "ENFERMAGEM",
+    });
+  }
+
+  if (options.stage === "CHURN") {
+    // POP/Réguas: churn → a Aline investiga agora e o resgate fica agendado
+    // para daqui a ~6 meses (o motor gera a 1ª tentativa já com a data futura).
+    nextState = enrollContactInCadence(nextState, {
+      cadenceId: "cad-rescue-6m",
+      contactId: deal.contactId,
+      dealId: deal.id,
+      triggerSource: "churn no kanban",
+      triggerDate: addDays(todayISO(), 180),
+      ownerUserId: "concierge",
+      ownerRole: "CONCIERGE",
     });
   }
 
@@ -2162,7 +2226,7 @@ export function crmSummary(state: CrmState, pessoa?: Pessoa | null) {
 }
 
 function crmPrescriptionFromDeal(deal: CrmDeal, contact: CrmContact): PrescriptionSale | null {
-  if (!["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU"].includes(deal.stage)) return null;
+  if (!["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "CHURN"].includes(deal.stage)) return null;
   return {
     id: `crm-rx-${deal.id}`,
     patientReference: contact.id,
