@@ -1183,6 +1183,26 @@ export async function getRemoteMarketingBriefingUrl(storagePath: string) {
   return data.signedUrl;
 }
 
+// Exclusão definitiva de um lead do CRM: sem isso, o upsert do sync nunca
+// apaga nada e o lead "ressuscita" no próximo carregamento.
+export async function deleteRemoteCrmLead(values: { contactRef: string; dealRefs: string[] }) {
+  const client = requireSupabase();
+  const byContact = ["crm_tasks", "crm_touchpoints", "crm_timeline_events", "crm_cadence_enrollments"] as const;
+  for (const table of byContact) {
+    const { error } = await client.from(table).delete().eq("contact_id", values.contactRef);
+    if (error) throw error;
+  }
+  if (values.dealRefs.length) {
+    const { error } = await client.from("crm_deals").delete().in("client_ref", values.dealRefs);
+    if (error) throw error;
+  }
+  const { error: dealsByContact } = await client.from("crm_deals").delete().eq("contact_id", values.contactRef);
+  if (dealsByContact) throw dealsByContact;
+  const { error } = await client.from("crm_contacts").delete().eq("client_ref", values.contactRef);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "crm.lead.excluir", entity: "crm_contacts", entityId: values.contactRef });
+}
+
 export async function registerRemotePagamentoRecebimento(values: {
   lembreteId: string;
   valor: number;

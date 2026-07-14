@@ -1512,6 +1512,86 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
   return tasksToAdd.length ? { ...state, tasks: [...tasksToAdd, ...state.tasks] } : state;
 }
 
+// Rótulos em português para o status das inscrições (tela é usada por leigos).
+export const enrollmentStatusLabels: Record<CrmCadenceStatus, string> = {
+  ACTIVE: "Ativa",
+  PAUSED: "Pausada (respondeu)",
+  COMPLETED: "Concluída",
+  CANCELED: "Cancelada",
+};
+
+// POP Caminhada do Paciente: qual régua cuida de cada fase do Kanban.
+// Comercial/SDR aquece leads; negociação parada é do gestor (3·1·3·1);
+// não fechou é médico D+1 → gestor D+2; fechado vira paciente da
+// enfermagem (14 em 14); perdido/sumido entra nos resgates da Aline.
+export const stageDefaultCadence: Partial<Record<CrmDealStage, string>> = {
+  LEAD_FRIO: "cad-cold-lead",
+  LEAD_NOVO: "cad-cold-lead",
+  CONTATADO: "cad-cold-lead",
+  QUALIFICADO: "cad-cold-lead",
+  PRESCRICAO_FEITA: "cad-gestor-3131",
+  EM_NEGOCIACAO: "cad-gestor-3131",
+  NAO_FECHOU: "cad-not-closed",
+  RECUPERACAO_D1_MEDICO: "cad-not-closed",
+  RECUPERACAO_D2_GESTOR: "cad-gestor-3131",
+  FECHOU_COMPLETO: "cad-nursing-14",
+  FECHOU_PARCIAL: "cad-nursing-14",
+  PERDIDO: "cad-rescue-60d",
+  RESGATE_D60: "cad-rescue-60d",
+};
+
+// Um contato está "coberto" quando tem régua ativa/pausada ou tarefa aberta.
+export function contactHasCoverage(state: CrmState, contactId: string) {
+  const hasEnrollment = state.cadenceEnrollments.some(
+    (enrollment) => enrollment.contactId === contactId && (enrollment.status === "ACTIVE" || enrollment.status === "PAUSED"),
+  );
+  if (hasEnrollment) return true;
+  return state.tasks.some(
+    (task) => task.contactId === contactId && !["DONE", "CANCELED", "SKIPPED"].includes(task.status),
+  );
+}
+
+// Regra do Lucas (14/07/2026): NENHUM perfil do Kanban fica sem cadência e
+// sem tarefa. Todo deal em fase mapeada cujo contato está descoberto entra
+// automaticamente na régua da fase (e o motor gera as tarefas na sequência).
+export function ensureCadenceCoverage(state: CrmState) {
+  let nextState = state;
+  for (const deal of state.deals) {
+    const cadenceId = stageDefaultCadence[deal.stage];
+    if (!cadenceId) continue;
+    const cadence = nextState.cadences.find((item) => item.id === cadenceId);
+    if (!cadence) continue;
+    if (contactHasCoverage(nextState, deal.contactId)) continue;
+    nextState = enrollContactInCadence(nextState, {
+      cadenceId,
+      contactId: deal.contactId,
+      dealId: deal.id,
+      triggerSource: "cobertura automatica (POP)",
+      triggerDate: todayISO(),
+      ownerUserId: deal.ownerUserId || cadence.defaultOwnerRole.toLowerCase(),
+      ownerRole: cadence.defaultOwnerRole,
+    });
+  }
+  return nextState;
+}
+
+// Exclui um lead por completo: contato, negociações, inscrições, tarefas,
+// toques e histórico. Devolve as referências para apagar também no Supabase.
+export function removeLeadFromCrm(state: CrmState, contactId: string) {
+  const dealIds = state.deals.filter((deal) => deal.contactId === contactId).map((deal) => deal.id);
+  const taskIds = state.tasks.filter((task) => task.contactId === contactId).map((task) => task.id);
+  const nextState: CrmState = {
+    ...state,
+    contacts: state.contacts.filter((contact) => contact.id !== contactId),
+    deals: state.deals.filter((deal) => deal.contactId !== contactId),
+    tasks: state.tasks.filter((task) => task.contactId !== contactId),
+    cadenceEnrollments: state.cadenceEnrollments.filter((enrollment) => enrollment.contactId !== contactId),
+    touchpoints: state.touchpoints.filter((touch) => touch.contactId !== contactId),
+    timelineEvents: state.timelineEvents.filter((event) => event.contactId !== contactId),
+  };
+  return { state: nextState, dealIds, taskIds };
+}
+
 // Cadências que contam PARA TRÁS da consulta futura (ciclo de retorno)
 // precisam da data do evento como gatilho — inscrever "a partir de hoje"
 // criaria tarefas no passado.

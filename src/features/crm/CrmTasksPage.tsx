@@ -32,6 +32,7 @@ import {
   crmRoleLabels,
   crmSummary,
   formatCrmDateTime,
+  isCrmManagement,
   isTaskOverdue,
   priorityLabels,
   taskEffectiveStatus,
@@ -130,8 +131,16 @@ export function CrmTasksPage() {
   const { pessoa } = useAuth();
   const { state, persist, syncMode, syncFailed, retrySync } = useCrmState();
   const role = cargoToCrmRole(pessoa?.cargo);
+  const isManagement = isCrmManagement(pessoa?.cargo);
+  // Regra do Lucas (14/07/2026): cada um vê as SUAS tarefas. A coordenação
+  // abre por padrão na visão do próprio papel e alterna para a visão geral.
+  const [scope, setScope] = useState<"minhas" | "todas">("minhas");
   const summary = crmSummary(state, pessoa);
-  const visibleTasks = state.tasks.filter((task) => !pessoa || canUserAccessTask(pessoa, task));
+  const accessibleTasks = state.tasks.filter((task) => !pessoa || canUserAccessTask(pessoa, task));
+  const visibleTasks =
+    isManagement && scope === "minhas"
+      ? accessibleTasks.filter((task) => (role && task.assignedToRole === role) || task.assignedToUserId === pessoa?.id)
+      : accessibleTasks;
   const [tab, setTab] = useState<TaskTab>("hoje");
   const [query, setQuery] = useState("");
   const [type, setType] = useState("");
@@ -258,6 +267,19 @@ export function CrmTasksPage() {
       </motion.section>
 
       <section className="rounded-lg border border-brand-oliva/15 bg-white/45 p-3 shadow-sm backdrop-blur-xl">
+        {isManagement ? (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Button type="button" variant={scope === "minhas" ? "default" : "outline"} size="sm" onClick={() => setScope("minhas")}>
+              Só as minhas
+            </Button>
+            <Button type="button" variant={scope === "todas" ? "default" : "outline"} size="sm" onClick={() => setScope("todas")}>
+              Todas do Instituto
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {scope === "minhas" ? "Mostrando só as tarefas do seu papel." : "Visão de coordenação: tarefas de todos os setores."}
+            </span>
+          </div>
+        ) : null}
         <div className="mobile-scrollbar-none flex gap-2 overflow-x-auto pb-1">
           {(Object.keys(tabLabels) as TaskTab[]).map((item) => (
             <Button key={item} type="button" variant={tab === item ? "default" : "outline"} size="sm" onClick={() => setTab(item)}>

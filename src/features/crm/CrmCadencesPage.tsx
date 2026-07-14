@@ -29,6 +29,8 @@ import {
   crmRoleLabels,
   dealStageLabels,
   enrollContactInCadence,
+  enrollmentStatusLabels,
+  isCrmManagement,
   findOrCreateCrmContact,
   generateCadenceTasks,
   moneyCrm,
@@ -60,7 +62,16 @@ export function CrmCadencesPage() {
   const [eventDate, setEventDate] = useState("");
   const [feedback, setFeedback] = useState("");
 
-  const visibleCadences = state.cadences.filter((cadence) => !pessoa || canUserAccessCadence(pessoa, cadence));
+  const isManagement = isCrmManagement(pessoa?.cargo);
+  const myRole = cargoToCrmRole(pessoa?.cargo);
+  const [onlyMine, setOnlyMine] = useState(true);
+  const cadenceInvolvesMyRole = (cadenceId: string, ownerRole: string) =>
+    myRole === ownerRole || state.cadenceSteps.some((step) => step.cadenceId === cadenceId && step.assignedToRole === myRole);
+  const accessibleCadences = state.cadences.filter((cadence) => !pessoa || canUserAccessCadence(pessoa, cadence));
+  const visibleCadences =
+    isManagement && onlyMine
+      ? accessibleCadences.filter((cadence) => cadenceInvolvesMyRole(cadence.id, cadence.defaultOwnerRole))
+      : accessibleCadences;
   const visibleContacts = state.contacts.filter((contact) => !pessoa || canUserAccessContact(pessoa, contact));
   const contactSuggestions = useMemo(() => {
     const term = contactQuery.trim().toLowerCase();
@@ -235,6 +246,21 @@ export function CrmCadencesPage() {
       </motion.section>
 
       <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
+      {isManagement ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant={onlyMine ? "default" : "outline"} size="sm" onClick={() => setOnlyMine(true)}>
+            Só as minhas réguas
+          </Button>
+          <Button type="button" variant={!onlyMine ? "default" : "outline"} size="sm" onClick={() => setOnlyMine(false)}>
+            Todas as réguas
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {onlyMine
+              ? "Mostrando só as cadências em que o seu papel atua."
+              : "Visão de coordenação: todas as cadências e inscrições do Instituto."}
+          </span>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
         <Card>
@@ -428,7 +454,7 @@ export function CrmCadencesPage() {
                             <Link to={crmModuleRoutes.contact(enrollment.contactId)} className="font-semibold text-brand-musgo hover:underline">
                               {contactDisplayName(contact)}
                             </Link>
-                            <Badge className={statusTone(enrollment.status)}>{enrollment.status}</Badge>
+                            <Badge className={statusTone(enrollment.status)}>{enrollmentStatusLabels[enrollment.status]}</Badge>
                           </div>
                           <p className="mt-1 text-xs text-muted-foreground">Gatilho: {enrollment.triggerDate} - {enrollment.triggerSource}</p>
                           <div className="mt-2 flex flex-wrap gap-2">

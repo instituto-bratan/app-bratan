@@ -16,6 +16,7 @@ import { Upload,
   Target,
   UserPlus,
   X,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -159,10 +160,12 @@ function DealCard({
   onSelect,
   onDragStart,
   onDragEnd,
+  hasCadence,
 }: {
   deal: CrmDeal;
   contact?: CrmContact;
   nextTask?: CrmTask;
+  hasCadence?: boolean;
   density: KanbanDensity;
   canSeeValue: boolean;
   isDragging: boolean;
@@ -197,6 +200,7 @@ function DealCard({
         <Badge variant="outline">{deal.sourceChannel || "Manual"}</Badge>
         {contact?.leadTemperature ? <Badge variant={contact.leadTemperature === "HOT" ? "gold" : "muted"}>{temperatureLabels[contact.leadTemperature]}</Badge> : null}
         {!hasNextTask ? <Badge className="bg-red-100 text-red-800">Sem próxima ação</Badge> : null}
+        {hasCadence === false ? <Badge className="bg-amber-100 text-amber-800">Sem régua</Badge> : null}
         {deal.mainObjection ? <Badge className="bg-brand-creme text-brand-tinta">{deal.mainObjection}</Badge> : null}
       </div>
       <div className="mt-3 grid gap-2">
@@ -235,7 +239,7 @@ function DealCard({
 
 export function CrmKanbanPage() {
   const { pessoa } = useAuth();
-  const { state, persist, syncFailed, retrySync } = useCrmState();
+  const { state, persist, syncFailed, retrySync, deleteLead } = useCrmState();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
@@ -280,6 +284,17 @@ export function CrmKanbanPage() {
 
   const canSeeValue = Boolean(pessoa?.cargo && ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "marketing", "secretaria_executiva", "recepcionista"].includes(pessoa.cargo));
   const contactsById = useMemo(() => new Map(state.contacts.map((contact) => [contact.id, contact])), [state.contacts]);
+  const coveredContactIds = useMemo(() => {
+    const covered = new Set<string>();
+    for (const enrollment of state.cadenceEnrollments) {
+      if (enrollment.status === "ACTIVE" || enrollment.status === "PAUSED") covered.add(enrollment.contactId);
+    }
+    for (const task of state.tasks) {
+      if (!["DONE", "CANCELED", "SKIPPED"].includes(task.status)) covered.add(task.contactId);
+    }
+    return covered;
+  }, [state.cadenceEnrollments, state.tasks]);
+
   const nextTaskByDealId = useMemo(() => {
     const map = new Map<string, CrmTask>();
     state.tasks
@@ -564,6 +579,19 @@ export function CrmKanbanPage() {
     (deal) => deal.status === "OPEN" && !state.tasks.some((task) => task.dealId === deal.id && !["DONE", "CANCELED", "SKIPPED"].includes(task.status)),
   ).length;
 
+  async function handleDeleteLead() {
+    if (!selectedDeal) return;
+    const contact = contactsById.get(selectedDeal.contactId);
+    const name = contactDisplayName(contact);
+    const ok = window.confirm(
+      `Excluir ${name} de vez?\n\nIsso apaga o lead, as negociações, as tarefas, as cadências e o histórico dele — em todos os aparelhos. Não tem como desfazer.`,
+    );
+    if (!ok) return;
+    setSelectedDealId("");
+    const success = await deleteLead(selectedDeal.contactId);
+    setFeedback(success ? `${name} foi excluído do CRM.` : `${name} foi excluído neste aparelho, mas a exclusão NÃO chegou ao Supabase — confira a internet e tente de novo.`);
+  }
+
   return (
     <div
       className={cn(
@@ -706,6 +734,15 @@ export function CrmKanbanPage() {
                   </a>
                 </Button>
               ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-50"
+                onClick={() => void handleDeleteLead()}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir lead
+              </Button>
             </div>
 
             <div className="mt-5 rounded-lg border border-brand-oliva/16 bg-white/64 p-3">
@@ -870,6 +907,7 @@ export function CrmKanbanPage() {
                           deal={deal}
                           contact={contact}
                           nextTask={nextTaskByDealId.get(deal.id)}
+                          hasCadence={coveredContactIds.has(deal.contactId)}
                           density={density}
                           canSeeValue={canSeeValue}
                           isDragging={draggingDealId === deal.id}

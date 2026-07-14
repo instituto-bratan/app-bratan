@@ -439,3 +439,57 @@ test("mensagem do concierge pede avaliação no Google (POP)", () => {
   assert.match(template.body, /Google/);
 });
 
+// --- Cobertura automática e exclusão de lead (14/07/2026) ---
+
+test("nenhum card fica sem régua: cobertura automática pela fase do POP", () => {
+  const state = cloneState();
+  // Contato/deal órfãos: sem inscrição e sem tarefa aberta.
+  state.contacts = [...state.contacts, { ...state.contacts[0], id: "contact-orfao", fullName: "Orfao Teste" }];
+  state.deals = [...state.deals, { ...state.deals[0], id: "deal-orfao", contactId: "contact-orfao", stage: "LEAD_NOVO", status: "OPEN" }];
+  const dealsBefore = state.deals.length;
+
+  const next = crm.ensureCadenceCoverage(state);
+  const enrollment = next.cadenceEnrollments.find((item) => item.contactId === "contact-orfao");
+  assert.ok(enrollment, "órfão entrou em cadência");
+  assert.equal(enrollment.cadenceId, "cad-cold-lead", "lead novo cai na régua comercial");
+  assert.equal(enrollment.dealId, "deal-orfao", "usa a negociação existente");
+  assert.equal(next.deals.length, dealsBefore, "não cria negociação nova");
+  assert.ok(next.tasks.some((task) => task.contactId === "contact-orfao"), "tarefa nasce junto");
+});
+
+test("cobertura automática: perdido cai no resgate da Aline; coberto não duplica", () => {
+  const state = cloneState();
+  state.contacts = [...state.contacts, { ...state.contacts[0], id: "contact-perdido", fullName: "Perdido Teste" }];
+  state.deals = [...state.deals, { ...state.deals[0], id: "deal-perdido", contactId: "contact-perdido", stage: "PERDIDO", status: "LOST" }];
+
+  const next = crm.ensureCadenceCoverage(state);
+  const enrollment = next.cadenceEnrollments.find((item) => item.contactId === "contact-perdido");
+  assert.equal(enrollment.cadenceId, "cad-rescue-60d", "perdido entra no resgate 60d (CONCIERGE/Aline)");
+
+  // Rodar de novo não duplica nada (idempotente).
+  const again = crm.ensureCadenceCoverage(next);
+  const count = again.cadenceEnrollments.filter((item) => item.contactId === "contact-perdido").length;
+  assert.equal(count, 1);
+});
+
+test("excluir lead limpa contato, negociações, tarefas, inscrições e histórico", () => {
+  const base = cloneState();
+  const enrolled = crm.enrollContactInCadence(base, {
+    cadenceId: "cad-cold-lead",
+    contactId: "crm-contact-lead-quente",
+    dealId: "",
+    triggerSource: "teste",
+    triggerDate: "2026-06-30",
+    ownerUserId: "tester",
+    ownerRole: "SDR_LEADS",
+  });
+
+  const { state: cleaned, dealIds } = crm.removeLeadFromCrm(enrolled, "crm-contact-lead-quente");
+  assert.ok(dealIds.length >= 1, "devolve refs das negociações para apagar no banco");
+  assert.ok(!cleaned.contacts.some((item) => item.id === "crm-contact-lead-quente"));
+  assert.ok(!cleaned.deals.some((item) => item.contactId === "crm-contact-lead-quente"));
+  assert.ok(!cleaned.tasks.some((item) => item.contactId === "crm-contact-lead-quente"));
+  assert.ok(!cleaned.cadenceEnrollments.some((item) => item.contactId === "crm-contact-lead-quente"));
+  assert.ok(!cleaned.timelineEvents.some((item) => item.contactId === "crm-contact-lead-quente"));
+});
+
