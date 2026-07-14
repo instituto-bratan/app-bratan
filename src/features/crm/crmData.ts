@@ -110,6 +110,7 @@ export type CrmCadenceType =
   | "MONTHLY_CHECKPOINT"
   | "RETURN_CYCLE"
   | "RESCUE_60_DAYS"
+  | "ANNIVERSARY_1Y"
   | "GOOGLE_REVIEW";
 export type CrmCadenceStatus = "ACTIVE" | "PAUSED" | "COMPLETED" | "CANCELED";
 export type CrmOffsetType = "DAYS_AFTER_TRIGGER" | "BEFORE_EVENT_DATE" | "AFTER_EVENT_DATE" | "RECURRING_EVERY_X_DAYS" | "RECURRING_EVERY_X_MONTHS";
@@ -449,6 +450,7 @@ export const cadenceTypeLabels: Record<CrmCadenceType, string> = {
   MONTHLY_CHECKPOINT: "Checkpoint mensal",
   RETURN_CYCLE: "Ciclo de retorno",
   RESCUE_60_DAYS: "Resgate D60",
+  ANNIVERSARY_1Y: "Aniversário 1 ano",
   GOOGLE_REVIEW: "Avaliação Google",
 };
 
@@ -719,9 +721,19 @@ const cadences: CrmCadence[] = [
   },
   {
     id: "cad-rescue-1y",
-    name: "Resgate 1 ano + parabéns — Aline",
-    description: "Um ano de clínica: parabéns, convite ao Instagram e 5 tentativas de reaproximação com propósito.",
+    name: "Resgate 1 ano — Aline",
+    description: "Paciente sumiu há cerca de 1 ano: 5 tentativas de reaproximação com propósito. Resposta pausa a régua; sem resposta a Aline liga. (Isto é resgate, não é a mensagem de aniversário.)",
     cadenceType: "RESCUE_60_DAYS",
+    defaultOwnerRole: "CONCIERGE",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
+    id: "cad-anniversary-1y",
+    name: "Aniversário de 1 ano — Aline",
+    description: "Comemoração de 1 ano de Instituto: parabéns, convite ao Instagram e proposta de avaliação de evolução. É celebração, não resgate — enfileira só quem segue ativo/recente.",
+    cadenceType: "ANNIVERSARY_1Y",
     defaultOwnerRole: "CONCIERGE",
     active: true,
     createdAt: baseNow,
@@ -770,11 +782,13 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-rescue6m-3", "cad-rescue-6m", 3, "Resgate 6m - tentativa 3", 6, "tpl-resgate-6m", "CONCIERGE"],
   ["step-rescue6m-4", "cad-rescue-6m", 4, "Resgate 6m - tentativa 4", 10, "tpl-resgate-6m", "CONCIERGE"],
   ["step-rescue6m-5", "cad-rescue-6m", 5, "Resgate 6m - tentativa 5 (última)", 14, "tpl-resgate-6m", "CONCIERGE"],
-  ["step-rescue1y-1", "cad-rescue-1y", 1, "1 ano - parabéns + Instagram", 0, "tpl-resgate-1a", "CONCIERGE"],
+  ["step-rescue1y-1", "cad-rescue-1y", 1, "Resgate 1a - tentativa 1", 0, "tpl-resgate-1a", "CONCIERGE"],
   ["step-rescue1y-2", "cad-rescue-1y", 2, "Resgate 1a - tentativa 2", 3, "tpl-resgate-1a", "CONCIERGE"],
   ["step-rescue1y-3", "cad-rescue-1y", 3, "Resgate 1a - tentativa 3", 6, "tpl-resgate-1a", "CONCIERGE"],
   ["step-rescue1y-4", "cad-rescue-1y", 4, "Resgate 1a - tentativa 4", 10, "tpl-resgate-1a", "CONCIERGE"],
   ["step-rescue1y-5", "cad-rescue-1y", 5, "Resgate 1a - tentativa 5 (última)", 14, "tpl-resgate-1a", "CONCIERGE"],
+  ["step-aniversario1y-1", "cad-anniversary-1y", 1, "Aniversário - parabéns + Instagram", 0, "tpl-aniversario-1a", "CONCIERGE"],
+  ["step-aniversario1y-2", "cad-anniversary-1y", 2, "Aniversário - convite para avaliação de evolução", 3, "tpl-aniversario-1a-2", "CONCIERGE"],
   ["step-3131-3d", "cad-gestor-3131", 1, "Gestor - 3 dias", 3, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-1s", "cad-gestor-3131", 2, "Gestor - 1 semana", 7, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-3s", "cad-gestor-3131", 3, "Gestor - 3 semanas", 21, "tpl-gestor-3131", "ADMIN_GESTAO"],
@@ -807,7 +821,9 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-lead-d60", "Lead D60", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, retomando com cuidado. Ainda faz sentido conversarmos sobre seu plano de saúde e performance neste momento?"],
   ["tpl-resgate-60", "Resgate 60 dias", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Sentimos sua falta no ciclo de retorno! Posso te ajudar a reagendar num horário que encaixe na sua rotina?"],
   ["tpl-resgate-6m", "Resgate 6 meses", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. O Dr. Daniel gravou um conteúdo novo que lembrei de você. Como está sua saúde nesses últimos meses? Adoraria te ver por aqui de novo."],
-  ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, hoje faz 1 ano que você chegou ao Instituto Bratan — parabéns por ter cuidado de você! Segue nosso Instagram para acompanhar as novidades. Que tal uma avaliação para ver sua evolução?"],
+  ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Faz quase um ano que não nos falamos e você não saiu do meu radar. Como está sua saúde hoje? Adoraria retomar seu acompanhamento com a gente."],
+  ["tpl-aniversario-1a", "Aniversário 1 ano", "Aline", "CONCIERGE", "ANNIVERSARY_1Y", "{{primeiro_nome}}, hoje faz 1 ano que você chegou ao Instituto Bratan — parabéns por ter cuidado de você! Segue nosso Instagram para acompanhar as novidades. Que tal marcarmos uma avaliação para ver sua evolução?"],
+  ["tpl-aniversario-1a-2", "Aniversário 1 ano - reforço", "Aline", "CONCIERGE", "ANNIVERSARY_1Y", "{{primeiro_nome}}, reforçando o convite: montar uma avaliação de evolução dos seus 12 meses seria lindo de ver juntos. Quando encaixa na sua semana?"],
   ["tpl-gestor-3131", "Gestor 3·1·3·1", "Gestão", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Estevão, gestor do Instituto Bratan. Passando para saber se ficou alguma dúvida e como posso facilitar seu próximo passo com a gente."],
   ["tpl-medico-d1", "Médico D+1", "Recuperação", "MEDICO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Dr. Daniel. Queria entender com calma o que ficou como dúvida ou barreira para ajustarmos o caminho sem perder o objetivo principal."],
   ["tpl-gestor-d2", "Gestor D+2", "Recuperação", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é da gestão do Instituto Bratan. Passei para entender como podemos facilitar sua decisão e deixar o próximo passo claro."],

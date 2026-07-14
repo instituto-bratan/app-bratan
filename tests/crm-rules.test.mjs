@@ -493,3 +493,54 @@ test("excluir lead limpa contato, negociações, tarefas, inscrições e histór
   assert.ok(!cleaned.timelineEvents.some((item) => item.contactId === "crm-contact-lead-quente"));
 });
 
+// --- Resgate de 1 ano x Aniversário separados (14/07/2026) ---
+
+test("Aline tem resgate de 60d, 6m e 1 ano, cada um com 5 tentativas", () => {
+  const state = cloneState();
+  for (const cid of ["cad-rescue-60d", "cad-rescue-6m", "cad-rescue-1y"]) {
+    const cad = state.cadences.find((c) => c.id === cid);
+    assert.ok(cad, `cadência ${cid} existe`);
+    assert.equal(cad.defaultOwnerRole, "CONCIERGE", `${cid} é da Aline/Concierge`);
+    const steps = state.cadenceSteps.filter((step) => step.cadenceId === cid);
+    assert.equal(steps.length, 5, `${cid} tem 5 tentativas`);
+  }
+});
+
+test("resgate de 1 ano é resgate puro (sem parabéns/aniversário)", () => {
+  const state = cloneState();
+  const cad = state.cadences.find((c) => c.id === "cad-rescue-1y");
+  assert.match(cad.name, /Resgate 1 ano/);
+  assert.ok(!/parab[ée]ns/i.test(cad.name), "nome não mistura aniversário");
+  const tpl = state.messageTemplates.find((t) => t.id === "tpl-resgate-1a");
+  assert.ok(!/parab[ée]ns|anivers/i.test(tpl.body), "mensagem de resgate não fala de aniversário");
+});
+
+test("aniversário de 1 ano é cadência própria e distinta do resgate", () => {
+  const state = cloneState();
+  const cad = state.cadences.find((c) => c.id === "cad-anniversary-1y");
+  assert.ok(cad, "cadência de aniversário existe");
+  assert.equal(cad.cadenceType, "ANNIVERSARY_1Y", "tipo próprio de aniversário (selo não diz Resgate)");
+  assert.equal(cad.defaultOwnerRole, "CONCIERGE");
+  const steps = state.cadenceSteps.filter((step) => step.cadenceId === "cad-anniversary-1y");
+  assert.ok(steps.length >= 1, "tem passos");
+  const tpl = state.messageTemplates.find((t) => t.id === "tpl-aniversario-1a");
+  assert.match(tpl.body, /parab[ée]ns/i, "mensagem de aniversário fala parabéns");
+  assert.match(tpl.body, /Instagram/i, "convida para o Instagram");
+});
+
+test("inscrever no resgate de 1 ano gera a tentativa 1 e cria negociação", () => {
+  const state = cloneState();
+  const next = crm.enrollContactInCadence(state, {
+    cadenceId: "cad-rescue-1y",
+    contactId: "crm-contact-lead-quente",
+    dealId: "",
+    triggerSource: "teste",
+    triggerDate: "2026-06-30",
+    ownerUserId: "aline",
+    ownerRole: "CONCIERGE",
+  });
+  const tasks = next.tasks.filter((t) => t.contactId === "crm-contact-lead-quente" && t.cadenceId === "cad-rescue-1y");
+  assert.ok(tasks.length >= 1, "primeira tentativa nasce");
+  assert.ok(next.deals.some((d) => d.contactId === "crm-contact-lead-quente" && d.status === "OPEN"), "aparece no Kanban");
+});
+
