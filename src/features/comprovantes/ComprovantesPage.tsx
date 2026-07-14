@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { FileText, ImageIcon, RotateCcw, UploadCloud } from "lucide-react";
+import { FileText, ImageIcon, RotateCcw, Search, UploadCloud, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,13 +31,19 @@ import {
   applyComprovanteToPagamentos,
   comprovantesAccept,
   comprovantesStorageKey,
+  countActiveComprovanteFiltros,
+  defaultComprovanteFiltros,
+  filterComprovantes,
   formatFileSize,
   formaLabels,
   isAcceptedComprovante,
-  isInsideFilter,
+  listComprovanteAutores,
   money,
   receivableFromComprovante,
+  somaComprovantes,
+  type ComprovanteFiltros,
   type ComprovanteRecord,
+  type OrdenacaoComprovante,
   type PeriodoFiltro,
 } from "./comprovantesData";
 
@@ -57,7 +63,7 @@ export function ComprovantesPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localRecords, setLocalRecords] = useState<ComprovanteRecord[]>(() => readLocalValue(comprovantesStorageKey, []));
   const [localPagamentos, setLocalPagamentos] = useState<PagamentoLembrete[]>(() => readLocalValue(pagamentosStorageKey, []));
-  const [filter, setFilter] = useState<PeriodoFiltro>("dia");
+  const [filtros, setFiltros] = useState<ComprovanteFiltros>(defaultComprovanteFiltros);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pacienteReferencia, setPacienteReferencia] = useState("");
@@ -96,14 +102,14 @@ export function ComprovantesPage() {
     [pagamentos],
   );
 
-  const visibleRecords = useMemo(
-    () =>
-      records
-        .filter((record) => !record.deletedAt)
-        .filter((record) => isInsideFilter(record.anexadoEm, filter))
-        .sort((a, b) => new Date(b.anexadoEm).getTime() - new Date(a.anexadoEm).getTime()),
-    [filter, records],
-  );
+  const visibleRecords = useMemo(() => filterComprovantes(records, filtros), [filtros, records]);
+  const totalNoFiltro = useMemo(() => somaComprovantes(visibleRecords), [visibleRecords]);
+  const autores = useMemo(() => listComprovanteAutores(records), [records]);
+  const activeFiltros = countActiveComprovanteFiltros(filtros);
+
+  function updateFiltros(patch: Partial<ComprovanteFiltros>) {
+    setFiltros((current) => ({ ...current, ...patch }));
+  }
 
   function persist(nextRecords: ComprovanteRecord[]) {
     setLocalRecords(nextRecords);
@@ -325,7 +331,7 @@ export function ComprovantesPage() {
             </div>
             <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
               <p className="text-2xl font-bold text-brand-musgo">{visibleRecords.length}</p>
-              <p className="text-xs font-semibold uppercase text-brand-oliva">{useRemote ? "Supabase" : "no filtro"}</p>
+              <p className="text-xs font-semibold uppercase text-brand-oliva">no filtro</p>
             </div>
           </div>
         </motion.section>
@@ -455,19 +461,156 @@ export function ComprovantesPage() {
           </CardContent>
         </Card>
 
-        <div className="flex flex-wrap gap-2">
-          {(["dia", "semana", "mes", "ano"] as PeriodoFiltro[]).map((periodo) => (
-            <Button
-              key={periodo}
-              type="button"
-              variant={filter === periodo ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilter(periodo)}
-            >
-              {periodo === "mes" ? "Mês" : periodo[0].toUpperCase() + periodo.slice(1)}
-            </Button>
-          ))}
-        </div>
+        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+          <CardContent className="space-y-4 p-4 sm:p-5">
+            {/* Busca + limpar */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-oliva" aria-hidden="true" />
+                <Input
+                  value={filtros.busca}
+                  onChange={(event) => updateFiltros({ busca: event.target.value })}
+                  placeholder="Buscar por paciente, nome do arquivo, observação ou quem anexou"
+                  className="pl-9"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setFiltros(defaultComprovanteFiltros)}
+                disabled={activeFiltros === 0}
+                className="shrink-0"
+              >
+                <X className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                Limpar filtros{activeFiltros > 0 ? ` (${activeFiltros})` : ""}
+              </Button>
+            </div>
+
+            {/* Período: presets + mês específico */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase text-brand-oliva">Período:</span>
+              {(["dia", "semana", "mes", "ano", "tudo"] as (PeriodoFiltro | "tudo")[]).map((periodo) => {
+                const active = !filtros.mes && filtros.periodo === periodo;
+                return (
+                  <Button
+                    key={periodo}
+                    type="button"
+                    variant={active ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => updateFiltros({ periodo, mes: "" })}
+                  >
+                    {periodo === "mes"
+                      ? "Este mês"
+                      : periodo === "dia"
+                        ? "Hoje"
+                        : periodo === "semana"
+                          ? "Semana"
+                          : periodo === "ano"
+                            ? "Este ano"
+                            : "Tudo"}
+                  </Button>
+                );
+              })}
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="filtro-mes" className="text-xs font-semibold uppercase text-brand-oliva">
+                  ou mês:
+                </Label>
+                <Input
+                  id="filtro-mes"
+                  type="month"
+                  value={filtros.mes}
+                  onChange={(event) => updateFiltros({ mes: event.target.value })}
+                  className="h-9 w-[150px]"
+                />
+                {filtros.mes ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => updateFiltros({ mes: "" })}>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Tipo · Forma · Autor · Ordenar */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1">
+                <Label htmlFor="filtro-tipo" className="text-xs font-semibold uppercase text-brand-oliva">
+                  Tipo
+                </Label>
+                <select
+                  id="filtro-tipo"
+                  value={filtros.tipo}
+                  onChange={(event) => updateFiltros({ tipo: event.target.value as ComprovanteFiltros["tipo"] })}
+                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="todos">Todos</option>
+                  <option value="entrada">Comprovantes</option>
+                  <option value="estorno">Estornos</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="filtro-forma" className="text-xs font-semibold uppercase text-brand-oliva">
+                  Forma de pagamento
+                </Label>
+                <select
+                  id="filtro-forma"
+                  value={filtros.forma}
+                  onChange={(event) => updateFiltros({ forma: event.target.value as ComprovanteFiltros["forma"] })}
+                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="todas">Todas</option>
+                  {Object.entries(formaLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="filtro-autor" className="text-xs font-semibold uppercase text-brand-oliva">
+                  Quem anexou
+                </Label>
+                <select
+                  id="filtro-autor"
+                  value={filtros.autor}
+                  onChange={(event) => updateFiltros({ autor: event.target.value })}
+                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="todos">Todos</option>
+                  {autores.map((autor) => (
+                    <option key={autor} value={autor}>
+                      {autor}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="filtro-ordem" className="text-xs font-semibold uppercase text-brand-oliva">
+                  Ordenar
+                </Label>
+                <select
+                  id="filtro-ordem"
+                  value={filtros.ordenacao}
+                  onChange={(event) => updateFiltros({ ordenacao: event.target.value as OrdenacaoComprovante })}
+                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="recentes">Mais recentes</option>
+                  <option value="antigos">Mais antigos</option>
+                  <option value="maior_valor">Maior valor</option>
+                  <option value="menor_valor">Menor valor</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Resumo do filtro */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-brand-oliva/15 pt-3 text-sm">
+              <span className="font-semibold text-brand-musgo">
+                {visibleRecords.length} {visibleRecords.length === 1 ? "comprovante" : "comprovantes"} no filtro
+              </span>
+              <span className="font-semibold text-brand-musgo">Total no filtro: {money(totalNoFiltro)}</span>
+            </div>
+          </CardContent>
+        </Card>
 
         <section className="space-y-3">
           {visibleRecords.length ? (
@@ -556,11 +699,13 @@ export function ComprovantesPage() {
           ) : (
             <Card className="border-brand-oliva/20 bg-white/55 shadow-none">
               <CardHeader>
-                <CardTitle className="text-lg">Nenhum comprovante neste período</CardTitle>
+                <CardTitle className="text-lg">Nenhum comprovante com esses filtros</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Use o botão de anexo ou arraste um arquivo para iniciar a captura. Os registros são imutáveis; correções entram como estorno.
+                  {activeFiltros > 0
+                    ? "Nada bate com os filtros atuais. Toque em “Limpar filtros” para ver todos, ou ajuste o período/busca."
+                    : "Use o botão de anexo ou arraste um arquivo para iniciar a captura. Os registros são imutáveis; correções entram como estorno."}
                 </p>
               </CardContent>
             </Card>

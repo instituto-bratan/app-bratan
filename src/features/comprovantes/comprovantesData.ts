@@ -81,6 +81,105 @@ export function money(value?: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
+// ---- Filtros da lista de comprovantes ----------------------------------------
+export type OrdenacaoComprovante = "recentes" | "antigos" | "maior_valor" | "menor_valor";
+
+export type ComprovanteFiltros = {
+  periodo: PeriodoFiltro | "tudo";
+  mes: string; // "YYYY-MM"; quando preenchido tem prioridade sobre `periodo`
+  busca: string;
+  tipo: "todos" | ComprovanteTipo;
+  forma: FormaPagamento | "todas";
+  autor: string; // "todos" ou o nome exato de quem anexou
+  ordenacao: OrdenacaoComprovante;
+};
+
+export const defaultComprovanteFiltros: ComprovanteFiltros = {
+  periodo: "mes",
+  mes: "",
+  busca: "",
+  tipo: "todos",
+  forma: "todas",
+  autor: "todos",
+  ordenacao: "recentes",
+};
+
+export function matchesComprovanteFiltros(record: ComprovanteRecord, filtros: ComprovanteFiltros): boolean {
+  if (record.deletedAt) return false;
+
+  // Período: mês específico tem prioridade; "tudo" ignora data.
+  if (filtros.mes) {
+    if (record.anexadoEm.slice(0, 7) !== filtros.mes) return false;
+  } else if (filtros.periodo !== "tudo") {
+    if (!isInsideFilter(record.anexadoEm, filtros.periodo)) return false;
+  }
+
+  if (filtros.tipo !== "todos" && record.tipo !== filtros.tipo) return false;
+  if (filtros.forma !== "todas" && record.formaPagamento !== filtros.forma) return false;
+  if (filtros.autor !== "todos" && record.anexadoPor !== filtros.autor) return false;
+
+  const termo = filtros.busca.trim().toLowerCase();
+  if (termo) {
+    const alvo = [record.arquivoNome, record.pacienteReferencia, record.observacao, record.anexadoPor]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (!alvo.includes(termo)) return false;
+  }
+
+  return true;
+}
+
+export function sortComprovantes(records: ComprovanteRecord[], ordenacao: OrdenacaoComprovante): ComprovanteRecord[] {
+  return [...records].sort((a, b) => {
+    switch (ordenacao) {
+      case "antigos":
+        return new Date(a.anexadoEm).getTime() - new Date(b.anexadoEm).getTime();
+      case "maior_valor":
+        return (b.valor ?? 0) - (a.valor ?? 0);
+      case "menor_valor":
+        return (a.valor ?? 0) - (b.valor ?? 0);
+      case "recentes":
+      default:
+        return new Date(b.anexadoEm).getTime() - new Date(a.anexadoEm).getTime();
+    }
+  });
+}
+
+export function filterComprovantes(records: ComprovanteRecord[], filtros: ComprovanteFiltros): ComprovanteRecord[] {
+  return sortComprovantes(
+    records.filter((record) => matchesComprovanteFiltros(record, filtros)),
+    filtros.ordenacao,
+  );
+}
+
+// Quantos filtros estão diferentes do padrão — usado no botão "Limpar filtros".
+export function countActiveComprovanteFiltros(filtros: ComprovanteFiltros): number {
+  let count = 0;
+  if (filtros.busca.trim()) count += 1;
+  if (filtros.mes) count += 1;
+  else if (filtros.periodo !== defaultComprovanteFiltros.periodo) count += 1;
+  if (filtros.tipo !== "todos") count += 1;
+  if (filtros.forma !== "todas") count += 1;
+  if (filtros.autor !== "todos") count += 1;
+  if (filtros.ordenacao !== "recentes") count += 1;
+  return count;
+}
+
+// Lista de autores (quem anexou) presentes nos registros, para o seletor.
+export function listComprovanteAutores(records: ComprovanteRecord[]): string[] {
+  const set = new Set<string>();
+  for (const record of records) {
+    if (!record.deletedAt && record.anexadoPor) set.add(record.anexadoPor);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+// Soma líquida (entradas menos estornos) de uma lista já filtrada.
+export function somaComprovantes(records: ComprovanteRecord[]): number {
+  return records.reduce((sum, record) => sum + (record.valor ?? 0), 0);
+}
+
 export function activeComprovantes(records: ComprovanteRecord[]) {
   return records
     .filter((record) => !record.deletedAt)
