@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { todayISO } from "@/lib/localStore";
 
 import { useAuth } from "@/hooks/useAuth";
 import {
   createRemoteFinExpense,
+  createRemoteFinExpensesIgnoreDuplicates,
   createRemoteFinPurchase,
   createRemoteFinSale,
   createRemoteFinInvoice,
@@ -36,6 +38,7 @@ import {
   loadLocalFinPurchases,
   loadLocalFinSales,
   loadLocalFinSavings,
+  materializeRecurringExpenses,
   saveLocalFinExpenses,
   saveLocalFinReconciliations,
   saveLocalFinPurchases,
@@ -94,6 +97,37 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     setExpenses(expensesQuery.data);
     saveLocalFinExpenses(expensesQuery.data);
   }, [expensesQuery.data]);
+
+  // Contas recorrentes: materializa as ocorrências que faltam (até o mês que
+  // vem). `attemptedRecRefs` impede loop: uma cópia excluída de propósito não
+  // volta (o upsert ignora client_ref existente) e não re-tentamos sem parar.
+  const attemptedRecRefs = useRef(new Set<string>());
+  useEffect(() => {
+    if (!useRemote || !expensesQuery.data) return;
+    const generated = materializeRecurringExpenses(expensesQuery.data, todayISO()).filter(
+      (expense) => !attemptedRecRefs.current.has(expense.id),
+    );
+    if (!generated.length) return;
+    for (const expense of generated) attemptedRecRefs.current.add(expense.id);
+    void createRemoteFinExpensesIgnoreDuplicates(generated, pessoa?.id ?? null)
+      .then(() => invalidate("fin-expenses"))
+      .catch((error) => console.warn("Contas recorrentes não sincronizaram.", error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expensesQuery.data, useRemote]);
+
+  // Modo demonstração (sem login): materializa uma vez a partir do local.
+  const localRecDone = useRef(false);
+  useEffect(() => {
+    if (useRemote || localRecDone.current) return;
+    localRecDone.current = true;
+    setExpenses((current) => {
+      const generated = materializeRecurringExpenses(current, todayISO());
+      if (!generated.length) return current;
+      const next = [...current, ...generated];
+      saveLocalFinExpenses(next);
+      return next;
+    });
+  }, [useRemote]);
 
   const reconciliationsQuery = useQuery({
     queryKey: ["fin-reconciliations", year],

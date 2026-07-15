@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bell,
+  BellRing,
   BrainCircuit,
   CalendarClock,
   CheckSquare,
@@ -29,8 +30,8 @@ import { GetStartedButton } from "@/components/ui/get-started-button";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { Spotlight } from "@/components/ui/spotlight";
 import { useAuth } from "@/hooks/useAuth";
-import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
-import { formatLongDate, formatShortTime, readLocalValue } from "@/lib/localStore";
+import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
+import { formatLongDate, formatShortTime, readLocalValue, todayISO } from "@/lib/localStore";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import { lunchSummary, statusLabel } from "@/features/almoco/almocoData";
@@ -55,7 +56,8 @@ import {
   formatEstalecas,
   type EstalecaTransaction,
 } from "@/features/estalecas/estalecasData";
-import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemotePagamentos } from "@/lib/remoteData";
+import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemotePagamentos } from "@/lib/remoteData";
+import { loadLocalFinExpenses, moneyFin, upcomingExpenses } from "@/features/financeiro/financeiroData";
 
 const modules = [
   {
@@ -355,6 +357,19 @@ export function HomePage() {
     return pagamentosSummary(records);
   }, [cargo, pagamentosQuery.data, useRemote]);
 
+  // Contas a pagar chegando (3 dias) + vencidas — só para quem vê o financeiro.
+  const finExpensesQuery = useQuery({
+    queryKey: ["fin-expenses", new Date().getFullYear()],
+    queryFn: () => listRemoteFinExpenses(new Date().getFullYear()),
+    enabled: useRemote && canFinanceiroView(cargo),
+    staleTime: 60_000,
+  });
+  const contasChegando = useMemo(() => {
+    if (!canFinanceiroView(cargo)) return null;
+    const records = useRemote ? finExpensesQuery.data ?? [] : loadLocalFinExpenses();
+    return upcomingExpenses(records, todayISO(), 3);
+  }, [cargo, finExpensesQuery.data, useRemote]);
+
   const estalecas = useMemo(() => {
     if (!pessoa) return null;
     const records = useRemote
@@ -506,6 +521,35 @@ export function HomePage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            {contasChegando && (contasChegando.vencidas.length > 0 || contasChegando.chegando.length > 0) ? (
+              <Link
+                to="/financeiro/contas"
+                {...warmRouteProps("/financeiro/contas")}
+                className="block rounded-lg border border-amber-300 bg-amber-50/80 p-4 transition hover:border-amber-400"
+              >
+                <div className="flex items-start gap-3">
+                  <BellRing className="mt-1 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-900">
+                      {contasChegando.vencidas.length > 0
+                        ? `${contasChegando.vencidas.length} conta${contasChegando.vencidas.length > 1 ? "s" : ""} vencida${contasChegando.vencidas.length > 1 ? "s" : ""}`
+                        : ""}
+                      {contasChegando.vencidas.length > 0 && contasChegando.chegando.length > 0 ? " · " : ""}
+                      {contasChegando.chegando.length > 0
+                        ? `${contasChegando.chegando.length} conta${contasChegando.chegando.length > 1 ? "s" : ""} vencendo em até 3 dias`
+                        : ""}
+                    </p>
+                    {[...contasChegando.vencidas, ...contasChegando.chegando].slice(0, 3).map((expense) => (
+                      <p key={expense.id} className="mt-1 truncate text-sm text-amber-900/80">
+                        {expense.dueDate.split("-").reverse().slice(0, 2).join("/")} · {expense.description} · {moneyFin(expense.amount)}
+                      </p>
+                    ))}
+                    <p className="mt-1 text-xs font-semibold uppercase text-amber-700">Toque para abrir Contas a Pagar</p>
+                  </div>
+                </div>
+              </Link>
+            ) : null}
+
             <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4">
               <div className="flex items-start gap-3">
                 <CheckSquare className="mt-1 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />

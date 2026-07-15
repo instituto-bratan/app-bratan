@@ -83,7 +83,106 @@ export type FinExpense = {
   isCapex: boolean;
   notes: string;
   createdAt: string;
+  // "MENSAL" = repete todo mês (o app materializa a cópia do mês seguinte).
+  recorrencia?: "MENSAL" | null;
 };
+
+// ---- Contas recorrentes -------------------------------------------------------
+// Uma conta marcada como recorrente gera sozinha a ocorrência do mês seguinte.
+// Cada ocorrência é uma conta de verdade (editável), com id determinístico
+// `<raiz>~rec-YYYY-MM` — o que impede duplicar em qualquer dispositivo.
+
+const REC_SEP = "~rec-";
+
+export function recurringRootId(id: string) {
+  const index = id.indexOf(REC_SEP);
+  return index === -1 ? id : id.slice(0, index);
+}
+
+function daysInFinMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
+// Próximo vencimento mensal preservando o dia (clampado em meses curtos).
+export function nextMonthlyDueDate(dateISO: string, anchorDay?: number) {
+  const [year, month, day] = dateISO.split("-").map(Number);
+  const wantedDay = anchorDay ?? day;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const clamped = Math.min(wantedDay, daysInFinMonth(nextYear, nextMonth));
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`;
+}
+
+// Gera as ocorrências que faltam de cada conta recorrente, até o mês seguinte
+// ao atual (horizonte). Retorna SÓ as contas novas — quem chama persiste.
+export function materializeRecurringExpenses(expenses: FinExpense[], todayISO: string): FinExpense[] {
+  const [todayYear, todayMonth] = todayISO.split("-").map(Number);
+  const horizonMonth = todayMonth === 12 ? 1 : todayMonth + 1;
+  const horizonYear = todayMonth === 12 ? todayYear + 1 : todayYear;
+  const horizon = `${horizonYear}-${String(horizonMonth).padStart(2, "0")}`;
+
+  const chains = new Map<string, FinExpense[]>();
+  for (const expense of expenses) {
+    const root = recurringRootId(expense.id);
+    const chain = chains.get(root);
+    if (chain) chain.push(expense);
+    else chains.set(root, [expense]);
+  }
+
+  const generated: FinExpense[] = [];
+  for (const [root, chain] of chains) {
+    const monthsInChain = new Set(chain.map((expense) => expense.dueDate.slice(0, 7)));
+    let latest = chain[0];
+    for (const expense of chain) {
+      if (expense.dueDate > latest.dueDate) latest = expense;
+    }
+    // A corrente só continua se a ÚLTIMA ocorrência ainda estiver marcada
+    // como recorrente — desmarcar a última encerra a repetição.
+    if (latest.recorrencia !== "MENSAL") continue;
+
+    const anchorDay = Number(latest.dueDate.slice(8, 10));
+    let cursor = latest;
+    while (true) {
+      const nextDue = nextMonthlyDueDate(cursor.dueDate, anchorDay);
+      const nextMonthRef = nextDue.slice(0, 7);
+      if (nextMonthRef > horizon) break;
+      if (!monthsInChain.has(nextMonthRef)) {
+        const copy: FinExpense = {
+          ...cursor,
+          id: `${root}${REC_SEP}${nextMonthRef}`,
+          dueDate: nextDue,
+          paidAt: null,
+          installmentNum: null,
+          installmentTotal: null,
+          createdAt: new Date().toISOString(),
+          recorrencia: "MENSAL",
+        };
+        generated.push(copy);
+        monthsInChain.add(nextMonthRef);
+        cursor = copy;
+      } else {
+        // O mês já existe na corrente (ex.: cópia editada) — só avança o cursor.
+        const existing = chain.find((expense) => expense.dueDate.slice(0, 7) === nextMonthRef);
+        cursor = existing ?? { ...cursor, dueDate: nextDue };
+      }
+    }
+  }
+  return generated;
+}
+
+// Contas em aberto separadas em vencidas e chegando (vencem em até `days` dias).
+export function upcomingExpenses(expenses: FinExpense[], todayISO: string, days: number) {
+  const limit = new Date(`${todayISO}T12:00:00`);
+  limit.setDate(limit.getDate() + days);
+  const limitISO = `${limit.getFullYear()}-${String(limit.getMonth() + 1).padStart(2, "0")}-${String(limit.getDate()).padStart(2, "0")}`;
+
+  const open = expenses.filter((expense) => !expense.paidAt);
+  const byDue = (a: FinExpense, b: FinExpense) => a.dueDate.localeCompare(b.dueDate);
+  return {
+    vencidas: open.filter((expense) => expense.dueDate < todayISO).sort(byDue),
+    chegando: open.filter((expense) => expense.dueDate >= todayISO && expense.dueDate <= limitISO).sort(byDue),
+  };
+}
 
 export const finGroupLabels: Record<FinCategoryGroup, string> = {
   CUSTO_FIXO: "1. Custo Fixo",

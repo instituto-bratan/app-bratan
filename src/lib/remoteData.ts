@@ -3357,7 +3357,7 @@ export async function listRemoteFinExpenses(year: number): Promise<FinExpense[]>
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_expenses")
-    .select("client_ref, description, category_ref, amount, due_date, paid_at, method, supplier, installment_num, installment_total, document_note, is_capex, notes, created_at")
+    .select("client_ref, description, category_ref, amount, due_date, paid_at, method, supplier, installment_num, installment_total, document_note, is_capex, notes, created_at, recurrence")
     .gte("due_date", `${year}-01-01`)
     .lte("due_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -3379,6 +3379,7 @@ export async function listRemoteFinExpenses(year: number): Promise<FinExpense[]>
     isCapex: Boolean(row.is_capex),
     notes: String(row.notes ?? ""),
     createdAt: String(row.created_at ?? ""),
+    recorrencia: (row.recurrence as FinExpense["recorrencia"]) ?? null,
   }));
 }
 
@@ -3398,6 +3399,7 @@ export async function createRemoteFinExpense(expense: FinExpense, createdBy: str
     document_note: expense.documentNote,
     is_capex: expense.isCapex,
     notes: expense.notes,
+    recurrence: expense.recorrencia ?? null,
     created_by: uuidOrNull(createdBy),
   });
   if (error) throw error;
@@ -3407,6 +3409,34 @@ export async function createRemoteFinExpense(expense: FinExpense, createdBy: str
     entityId: expense.id,
     metadata: { category: expense.categoryRef, amount: expense.amount, dueDate: expense.dueDate },
   });
+}
+
+// Materialização de recorrentes: insere ignorando client_refs que já existem
+// (inclusive cópias apagadas/soft-deleted — assim uma cópia excluída não renasce).
+export async function createRemoteFinExpensesIgnoreDuplicates(expenses: FinExpense[], createdBy: string | null) {
+  if (!expenses.length) return;
+  const client = requireSupabase();
+  const { error } = await client.from("fin_expenses").upsert(
+    expenses.map((expense) => ({
+      client_ref: expense.id,
+      description: expense.description,
+      category_ref: expense.categoryRef,
+      amount: expense.amount,
+      due_date: expense.dueDate,
+      paid_at: expense.paidAt,
+      method: expense.method,
+      supplier: expense.supplier,
+      installment_num: expense.installmentNum,
+      installment_total: expense.installmentTotal,
+      document_note: expense.documentNote,
+      is_capex: expense.isCapex,
+      notes: expense.notes,
+      recurrence: expense.recorrencia ?? null,
+      created_by: uuidOrNull(createdBy),
+    })),
+    { onConflict: "client_ref", ignoreDuplicates: true },
+  );
+  if (error) throw error;
 }
 
 export async function markRemoteFinExpensePaid(expenseRef: string, paidAt: string | null) {
@@ -3432,6 +3462,7 @@ export async function updateRemoteFinExpense(expense: FinExpense) {
       document_note: expense.documentNote,
       is_capex: expense.isCapex,
       notes: expense.notes,
+      recurrence: expense.recorrencia ?? null,
     })
     .eq("client_ref", expense.id);
   if (error) throw error;

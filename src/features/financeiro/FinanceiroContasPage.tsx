@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Pencil, CalendarClock, CheckCircle2, CircleDollarSign, Plus, Trash2 } from "lucide-react";
+import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, Plus, Repeat, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,13 @@ import {
   finGroupOrder,
   moneyFin,
   paymentMethodLabels,
+  upcomingExpenses,
   type FinExpense,
   type FinPaymentMethod,
 } from "./financeiroData";
+
+// Aviso de vencimento: contas em aberto que vencem em até 3 dias.
+const AVISO_DIAS = 3;
 import { useFinanceiro } from "./useFinanceiro";
 
 function parseAmount(value: string) {
@@ -45,6 +49,7 @@ export function FinanceiroContasPage() {
   const [supplier, setSupplier] = useState("");
   const [installment, setInstallment] = useState("");
   const [documentNote, setDocumentNote] = useState("");
+  const [recorrente, setRecorrente] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas">("todas");
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
@@ -82,6 +87,9 @@ export function FinanceiroContasPage() {
     };
   }, [financeiro.expenses, month, now]);
 
+  // Aviso de vencimento olha o ANO inteiro, não só o mês da tela.
+  const avisos = useMemo(() => upcomingExpenses(financeiro.expenses, now, AVISO_DIAS), [financeiro.expenses, now]);
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
@@ -108,13 +116,18 @@ export function FinanceiroContasPage() {
       isCapex: category?.isCapex ?? false,
       notes: editingExpense?.notes ?? "",
       createdAt: editingExpense?.createdAt ?? new Date().toISOString(),
+      recorrencia: recorrente ? "MENSAL" : null,
     };
     if (editingExpense) {
       financeiro.updateExpense(expense);
       setFeedback(`Conta "${expense.description}" corrigida: ${moneyFin(value)} em "${category?.name}". A P12 já refletiu.`);
     } else {
       financeiro.addExpense(expense);
-      setFeedback(`Conta lançada em "${category?.name}" · ${moneyFin(value)}.`);
+      setFeedback(
+        recorrente
+          ? `Conta recorrente lançada em "${category?.name}" · ${moneyFin(value)}. A do mês que vem nasce sozinha — edite o valor dela se mudar.`
+          : `Conta lançada em "${category?.name}" · ${moneyFin(value)}.`,
+      );
     }
     resetForm();
   }
@@ -126,6 +139,7 @@ export function FinanceiroContasPage() {
     setSupplier("");
     setInstallment("");
     setDocumentNote("");
+    setRecorrente(false);
   }
 
   function startEditing(expense: FinExpense) {
@@ -138,6 +152,7 @@ export function FinanceiroContasPage() {
     setSupplier(expense.supplier);
     setInstallment(expense.installmentNum && expense.installmentTotal ? `${expense.installmentNum}/${expense.installmentTotal}` : "");
     setDocumentNote(expense.documentNote);
+    setRecorrente(expense.recorrencia === "MENSAL");
     setFeedback(`Editando a conta "${expense.description}" — corrija e salve para aplicar.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -190,6 +205,52 @@ export function FinanceiroContasPage() {
             <p className={cn("text-2xl font-bold", totals.overdue ? "text-red-800" : "text-brand-tinta")}>{totals.overdue}</p>
           </div>
         </div>
+
+        {avisos.vencidas.length || avisos.chegando.length ? (
+          <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/80 p-4">
+            <p className="flex items-center gap-2 text-sm font-bold text-amber-900">
+              <BellRing className="h-4 w-4" aria-hidden="true" />
+              Contas chegando ({AVISO_DIAS} dias) e vencidas
+            </p>
+            <div className="space-y-1.5">
+              {avisos.vencidas.map((expense) => (
+                <div key={expense.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm">
+                  <span className="font-semibold text-red-800">
+                    VENCIDA {expense.dueDate.split("-").reverse().slice(0, 2).join("/")} · {expense.description}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-bold tabular-nums text-red-800">{moneyFin(expense.amount)}</span>
+                    {!readOnly ? (
+                      <Button type="button" size="sm" variant="outline" onClick={() => financeiro.setExpensePaid(expense.id, now)}>
+                        Marcar paga
+                      </Button>
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+              {avisos.chegando.map((expense) => (
+                <div key={expense.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-white/70 px-3 py-1.5 text-sm">
+                  <div className="flex flex-wrap items-center gap-1.5 font-semibold text-amber-900">
+                    <span>
+                      {expense.dueDate === now ? "VENCE HOJE" : `Vence ${expense.dueDate.split("-").reverse().slice(0, 2).join("/")}`} · {expense.description}
+                    </span>
+                    {expense.recorrencia === "MENSAL" ? (
+                      <Badge className="bg-brand-creme text-brand-tinta"><Repeat className="mr-1 h-3 w-3" aria-hidden="true" />Recorrente</Badge>
+                    ) : null}
+                  </div>
+                  <span className="flex items-center gap-2">
+                    <span className="font-bold tabular-nums text-amber-900">{moneyFin(expense.amount)}</span>
+                    {!readOnly ? (
+                      <Button type="button" size="sm" variant="outline" onClick={() => financeiro.setExpensePaid(expense.id, now)}>
+                        Marcar paga
+                      </Button>
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {feedback ? (
           <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
@@ -252,6 +313,23 @@ export function FinanceiroContasPage() {
                 <Label>NF / documento</Label>
                 <Input value={documentNote} onChange={(event) => setDocumentNote(event.target.value)} placeholder="Nome do arquivo ou nº da nota (opcional)" />
               </div>
+              <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6 sm:col-span-2 lg:col-span-4">
+                <input
+                  type="checkbox"
+                  checked={recorrente}
+                  onChange={(event) => setRecorrente(event.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="flex items-center gap-1.5 font-semibold text-brand-tinta">
+                    <Repeat className="h-4 w-4 text-brand-musgo" aria-hidden="true" /> Repete todo mês
+                  </span>
+                  <span className="text-muted-foreground">
+                    Aluguel, energia, assinaturas… A conta do mês seguinte nasce sozinha no mesmo dia de vencimento (o valor
+                    pode ser editado depois). Para encerrar, edite a última e desmarque.
+                  </span>
+                </span>
+              </label>
               <div className="sm:col-span-2 lg:col-span-4">
                 <LiquidButton type="submit" size="sm">
                   <Plus className="h-4 w-4" aria-hidden="true" />
@@ -303,10 +381,17 @@ export function FinanceiroContasPage() {
                         <tr key={expense.id} className={cn(overdue && "bg-red-50/60")}>
                           <td className="px-3 py-2.5 whitespace-nowrap">{expense.dueDate.split("-").reverse().join("/")}</td>
                           <td className="px-3 py-2.5">
-                            <p className="font-semibold text-brand-tinta">
-                              {expense.description}
-                              {expense.installmentNum && expense.installmentTotal ? ` · ${expense.installmentNum}/${expense.installmentTotal}` : ""}
-                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5 font-semibold text-brand-tinta">
+                              <span>
+                                {expense.description}
+                                {expense.installmentNum && expense.installmentTotal ? ` · ${expense.installmentNum}/${expense.installmentTotal}` : ""}
+                              </span>
+                              {expense.recorrencia === "MENSAL" ? (
+                                <Badge className="bg-brand-creme text-brand-tinta">
+                                  <Repeat className="mr-1 h-3 w-3" aria-hidden="true" />Recorrente
+                                </Badge>
+                              ) : null}
+                            </div>
                             {expense.supplier || expense.documentNote ? (
                               <p className="text-xs text-muted-foreground">{[expense.supplier, expense.documentNote].filter(Boolean).join(" · ")}</p>
                             ) : null}
