@@ -171,15 +171,21 @@ export function materializeRecurringExpenses(expenses: FinExpense[], todayISO: s
 }
 
 // Contas em aberto separadas em vencidas e chegando (vencem em até `days` dias).
-export function upcomingExpenses(expenses: FinExpense[], todayISO: string, days: number) {
-  const limit = new Date(`${todayISO}T12:00:00`);
-  limit.setDate(limit.getDate() + days);
-  const limitISO = `${limit.getFullYear()}-${String(limit.getMonth() + 1).padStart(2, "0")}-${String(limit.getDate()).padStart(2, "0")}`;
+// Vencidas olham no máximo `maxOverdueDays` para trás — histórico importado ou
+// esquecido de meses fechados não inunda o aviso.
+export function upcomingExpenses(expenses: FinExpense[], todayISO: string, days: number, maxOverdueDays = 60) {
+  const shift = (base: string, deltaDays: number) => {
+    const date = new Date(`${base}T12:00:00`);
+    date.setDate(date.getDate() + deltaDays);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+  const limitISO = shift(todayISO, days);
+  const oldestISO = shift(todayISO, -maxOverdueDays);
 
   const open = expenses.filter((expense) => !expense.paidAt);
   const byDue = (a: FinExpense, b: FinExpense) => a.dueDate.localeCompare(b.dueDate);
   return {
-    vencidas: open.filter((expense) => expense.dueDate < todayISO).sort(byDue),
+    vencidas: open.filter((expense) => expense.dueDate < todayISO && expense.dueDate >= oldestISO).sort(byDue),
     chegando: open.filter((expense) => expense.dueDate >= todayISO && expense.dueDate <= limitISO).sort(byDue),
   };
 }

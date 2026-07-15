@@ -146,6 +146,17 @@ test("upcomingExpenses separa vencidas e chegando (3 dias), só não pagas", () 
   assert.deepEqual(ids(out.chegando), ["hoje", "amanha", "em3"]);
 });
 
+test("upcomingExpenses limita vencidas a 60 dias (histórico antigo fica de fora)", () => {
+  const list = [
+    expense({ id: "janeiro", dueDate: "2026-01-30" }),
+    expense({ id: "recente", dueDate: "2026-07-05" }),
+    expense({ id: "borda-ok", dueDate: "2026-05-16" }), // 60 dias antes de 15/07
+    expense({ id: "borda-fora", dueDate: "2026-05-15" }),
+  ];
+  const out = fin.upcomingExpenses(list, "2026-07-15", 3);
+  assert.deepEqual(ids(out.vencidas), ["borda-ok", "recente"]);
+});
+
 test("upcomingExpenses ordena por vencimento", () => {
   const list = [
     expense({ id: "b", dueDate: "2026-07-17" }),
