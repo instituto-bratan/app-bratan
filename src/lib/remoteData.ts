@@ -2112,6 +2112,8 @@ export async function listRemoteCrmState(): Promise<CrmState> {
         updatedAt: row.updated_at,
         archivedAt: row.archived_at ?? null,
         optOut: row.opt_out ?? false,
+        referrerContactId: row.referrer_contact_id ?? null,
+        referralRewardPaidAt: row.referral_reward_paid_at ?? null,
       }),
     ),
     deals: (deals as any[]).map(
@@ -2264,6 +2266,8 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       created_at: record.createdAt || now,
       updated_at: record.updatedAt || now,
       archived_at: record.archivedAt || null,
+      referrer_contact_id: record.referrerContactId ?? null,
+      referral_reward_paid_at: record.referralRewardPaidAt ?? null,
     })),
   );
 

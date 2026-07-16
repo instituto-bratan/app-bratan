@@ -174,6 +174,10 @@ export type CrmContact = {
   updatedAt: string;
   archivedAt: string | null;
   optOut?: boolean;
+  // Canais de venda / indicação: quem indicou este contato ganha R$500 quando
+  // ele fecha o plano. Opcionais → retrocompatível.
+  referrerContactId?: string | null;
+  referralRewardPaidAt?: string | null;
 };
 
 export type CrmTask = {
@@ -1800,6 +1804,163 @@ export function activeProgramPatients(state: CrmState): ProgramRow[] {
       };
     })
     .sort((a, b) => contactDisplayName(a.contact).localeCompare(contactDisplayName(b.contact), "pt-BR"));
+}
+
+// ---- Canais de venda + programa de indicação (R$500) --------------------------
+// Quem indica um paciente que FECHA o plano ganha R$500. O canal de cada
+// contato vem do sourceChannel (texto livre, normalizado aqui); quem tem
+// referrerContactId conta SEMPRE como "Indicação".
+
+export const REFERRAL_REWARD_VALUE = 500;
+
+const channelAliases: [RegExp, string][] = [
+  [/indica/i, "Indicação"],
+  [/instagram|insta\b/i, "Instagram"],
+  [/google ads|adwords/i, "Google Ads"],
+  [/google/i, "Google"],
+  [/feegow/i, "Importação Feegow"],
+  [/whats/i, "WhatsApp"],
+  [/face/i, "Facebook"],
+  [/site|landing/i, "Site"],
+  [/retorno|renova/i, "Retorno"],
+  [/cad[eê]ncia/i, "Cadência"],
+];
+
+export function normalizeSalesChannel(raw: string | null | undefined): string {
+  const value = (raw ?? "").trim();
+  if (!value) return "Não informado";
+  for (const [pattern, label] of channelAliases) {
+    if (pattern.test(value)) return label;
+  }
+  // Título simples: primeira letra maiúscula, resto preservado.
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+export type SalesChannelStat = {
+  channel: string;
+  contacts: number;
+  won: number;
+  soldTotal: number;
+  investment: number; // hoje: R$500 × indicados que fecharam (outros canais: 0)
+};
+
+function contactChannel(contact: CrmContact): string {
+  if (contact.referrerContactId) return "Indicação";
+  return normalizeSalesChannel(contact.sourceChannel);
+}
+
+function contactHasWonDeal(state: CrmState, contactId: string) {
+  return state.deals.some((deal) => deal.contactId === contactId && (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL"));
+}
+
+export function salesChannelStats(state: CrmState): SalesChannelStat[] {
+  const byChannel = new Map<string, SalesChannelStat>();
+  for (const contact of state.contacts) {
+    if (contact.archivedAt) continue;
+    const channel = contactChannel(contact);
+    const stat = byChannel.get(channel) ?? { channel, contacts: 0, won: 0, soldTotal: 0, investment: 0 };
+    stat.contacts += 1;
+    const wonDeals = state.deals.filter(
+      (deal) => deal.contactId === contact.id && (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL"),
+    );
+    if (wonDeals.length) {
+      stat.won += 1;
+      stat.soldTotal += wonDeals.reduce((sum, deal) => sum + (deal.soldAmount || 0), 0);
+      if (channel === "Indicação") stat.investment += REFERRAL_REWARD_VALUE;
+    }
+    byChannel.set(channel, stat);
+  }
+  return [...byChannel.values()].sort((a, b) => b.contacts - a.contacts);
+}
+
+export type ReferralRewardStatus = "AGUARDANDO" | "A_PAGAR" | "PAGO";
+export type ReferralReward = {
+  referred: CrmContact;
+  referrer: CrmContact | null;
+  status: ReferralRewardStatus;
+  soldTotal: number;
+};
+
+export const referralRewardStatusLabels: Record<ReferralRewardStatus, string> = {
+  AGUARDANDO: "Aguardando fechar",
+  A_PAGAR: "A pagar R$500",
+  PAGO: "Pago",
+};
+
+export function referralRewards(state: CrmState): ReferralReward[] {
+  return state.contacts
+    .filter((contact) => contact.referrerContactId && !contact.archivedAt)
+    .map((referred) => {
+      const referrer = state.contacts.find((item) => item.id === referred.referrerContactId) ?? null;
+      const won = contactHasWonDeal(state, referred.id);
+      const soldTotal = state.deals
+        .filter((deal) => deal.contactId === referred.id && (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL"))
+        .reduce((sum, deal) => sum + (deal.soldAmount || 0), 0);
+      const status: ReferralRewardStatus = referred.referralRewardPaidAt ? "PAGO" : won ? "A_PAGAR" : "AGUARDANDO";
+      return { referred, referrer, status, soldTotal };
+    })
+    .sort((a, b) => (a.status === "A_PAGAR" ? -1 : 1) - (b.status === "A_PAGAR" ? -1 : 1));
+}
+
+export function referralRewardTotals(rewards: ReferralReward[]) {
+  return {
+    aguardando: rewards.filter((r) => r.status === "AGUARDANDO").length,
+    aPagar: rewards.filter((r) => r.status === "A_PAGAR").length * REFERRAL_REWARD_VALUE,
+    pago: rewards.filter((r) => r.status === "PAGO").length * REFERRAL_REWARD_VALUE,
+  };
+}
+
+// Registra quem indicou (e marca o canal como Indicação). Auto-indicação é ignorada.
+export function setContactReferrer(state: CrmState, contactId: string, referrerId: string, actorId: string): CrmState {
+  if (!referrerId || contactId === referrerId) return state;
+  const contact = state.contacts.find((item) => item.id === contactId);
+  const referrer = state.contacts.find((item) => item.id === referrerId);
+  if (!contact || !referrer) return state;
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    contacts: state.contacts.map((item) =>
+      item.id === contactId ? { ...item, referrerContactId: referrerId, sourceChannel: "Indicação", updatedAt: now } : item,
+    ),
+    timelineEvents: [
+      createTimelineEvent({
+        contactId,
+        eventType: "REFERRAL_SET",
+        eventTitle: `Indicado por ${contactDisplayName(referrer)}`,
+        eventDescription: `Canal: Indicação. Quando fechar o plano, ${contactDisplayName(referrer)} ganha R$${REFERRAL_REWARD_VALUE}.`,
+        sourceModule: "COMERCIAL",
+        sourceId: referrerId,
+        createdBy: actorId,
+      }),
+      ...state.timelineEvents,
+    ],
+  };
+}
+
+// Marca o prêmio de R$500 como pago (coordenação/financeiro).
+export function markReferralRewardPaid(state: CrmState, referredContactId: string, actorId: string): CrmState {
+  const contact = state.contacts.find((item) => item.id === referredContactId);
+  if (!contact?.referrerContactId) return state;
+  const now = new Date().toISOString();
+  const referrer = state.contacts.find((item) => item.id === contact.referrerContactId);
+  return {
+    ...state,
+    contacts: state.contacts.map((item) =>
+      item.id === referredContactId ? { ...item, referralRewardPaidAt: now, updatedAt: now } : item,
+    ),
+    timelineEvents: [
+      createTimelineEvent({
+        contactId: referredContactId,
+        eventType: "REFERRAL_REWARD_PAID",
+        eventTitle: `Prêmio de indicação pago (R$${REFERRAL_REWARD_VALUE})`,
+        eventDescription: `Pago a ${referrer ? contactDisplayName(referrer) : "indicador"} pela indicação de ${contactDisplayName(contact)}.`,
+        sourceModule: "COMERCIAL",
+        sourceId: contact.referrerContactId,
+        createdBy: actorId,
+      }),
+      ...state.timelineEvents,
+    ],
+  };
 }
 
 // Rótulos em português para o status das inscrições (tela é usada por leigos).
