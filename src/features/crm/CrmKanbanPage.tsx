@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
+import { isCoordenacao } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -33,6 +34,7 @@ import {
   contactDisplayName,
   createDealForContact,
   crmModuleRoutes,
+  crmRoleLabels,
   dealStageHints,
   objectionCategoryLabels,
   dealStageLabels,
@@ -41,13 +43,25 @@ import {
   formatCrmDateTime,
   moneyCrm,
   moveDealStage,
+  programGateStatus,
+  programOutcomeLabels,
+  programPhaseSpecs,
+  programPhaseHints,
+  programPhaseLabels,
+  programPhases,
+  setProgramPhase,
   taskEffectiveStatus,
+  type CrmAdhesionChannel,
   type CrmDeal,
   type CrmDealStage,
   type CrmContact,
   type CrmLeadTemperature,
   type CrmObjectionCategory,
   type CrmPersonaFit,
+  type CrmProgramOutcome,
+  type CrmProgramPhase,
+  type CrmRole,
+  type CrmState,
   type CrmTask,
 } from "./crmData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
@@ -77,7 +91,34 @@ const sectionLabels: Record<KanbanSection, string> = {
 const stageSections: Record<KanbanSection, CrmDealStage[]> = {
   all: dealStages,
   captacao: ["LEAD_FRIO", "LEAD_NOVO", "CONTATADO", "QUALIFICADO", "CONSULTA_AGENDADA", "CONSULTA_CONFIRMADA", "CONSULTA_REALIZADA"],
-  negociacao: ["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "RECUPERACAO_D1_MEDICO", "RECUPERACAO_D2_GESTOR", "PERDIDO", "RESGATE_D60", "CHURN"],
+  negociacao: ["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "RECUPERACAO_D1_MEDICO", "RECUPERACAO_D2_GESTOR", "NAO_ADESAO", "PERDIDO", "RESGATE_D60", "CHURN"],
+};
+
+// Quadros do Kanban (POP v3.1): Comercial (até fechar) e Programa (pós-fechamento).
+type KanbanBoard = "comercial" | "programa";
+const boardLabels: Record<KanbanBoard, string> = { comercial: "Comercial", programa: "Programa" };
+
+// Cores por papel — a mesma linguagem visual da Régua de Relacionamento.
+const roleTones: Partial<Record<CrmRole, { chip: string; dot: string }>> = {
+  RECEPCAO: { chip: "border-emerald-300 bg-emerald-50 text-emerald-800", dot: "bg-emerald-500" },
+  CONCIERGE: { chip: "border-amber-300 bg-amber-50 text-amber-800", dot: "bg-amber-500" },
+  ENFERMAGEM: { chip: "border-violet-300 bg-violet-50 text-violet-800", dot: "bg-violet-500" },
+  MEDICO: { chip: "border-brand-musgo/40 bg-brand-musgo/10 text-brand-musgo", dot: "bg-brand-musgo" },
+  ADMIN_GESTAO: { chip: "border-slate-300 bg-slate-50 text-slate-700", dot: "bg-slate-500" },
+  ADMINISTRATIVO: { chip: "border-slate-300 bg-slate-50 text-slate-700", dot: "bg-slate-500" },
+  COMERCIAL_VENDEDOR: { chip: "border-sky-300 bg-sky-50 text-sky-800", dot: "bg-sky-500" },
+};
+const roleTone = (role: CrmRole) => roleTones[role] ?? { chip: "border-slate-300 bg-slate-50 text-slate-700", dot: "bg-slate-400" };
+
+const channelLabels: Record<CrmAdhesionChannel, string> = {
+  PROGRAMA_ACOMPANHAMENTO: "Programa de Acompanhamento",
+  CLUBE_BRATAN: "Clube Bratan",
+  SOMENTE_TRATAMENTO: "Somente Tratamento",
+};
+const channelShort: Record<CrmAdhesionChannel, string> = {
+  PROGRAMA_ACOMPANHAMENTO: "Programa",
+  CLUBE_BRATAN: "Clube",
+  SOMENTE_TRATAMENTO: "Tratamento",
 };
 
 const densityLabels: Record<KanbanDensity, string> = {
@@ -238,11 +279,123 @@ function DealCard({
   );
 }
 
+// Card do quadro PROGRAMA: mostra a faixa do gate (quem já agiu ✓ / quem falta ⏳)
+// e o "próximo passo" — a trilha fica óbvia para qualquer pessoa da equipe.
+function ProgramCard({
+  deal,
+  contact,
+  state,
+  density,
+  canDrag,
+  isDragging,
+  onSelect,
+  onDragStart,
+  onDragEnd,
+}: {
+  deal: CrmDeal;
+  contact?: CrmContact;
+  state: CrmState;
+  density: KanbanDensity;
+  canDrag: boolean;
+  isDragging: boolean;
+  onSelect: () => void;
+  onDragStart: (event: DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
+}) {
+  const contactName = contactDisplayName(contact);
+  const contactPhone = contact ? (contact.whatsapp || contact.phone).replace(/\D/g, "") : "";
+  const phase = deal.programPhase as CrmProgramPhase;
+  const spec = programPhaseSpecs[phase];
+  const gate = programGateStatus(state, deal.id);
+  const missingRoles = new Set(gate.missing.map((item) => item.role));
+  const nextLabel = spec.next ? programPhaseLabels[spec.next] : null;
+
+  return (
+    <article
+      data-deal-card
+      draggable={canDrag}
+      onDragStart={canDrag ? onDragStart : undefined}
+      onDragEnd={canDrag ? onDragEnd : undefined}
+      className={cn(
+        "rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl transition-opacity",
+        canDrag && "cursor-grab active:cursor-grabbing",
+        density === "compact" ? "p-3" : "p-4",
+        isDragging && "opacity-45",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className={cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg")}>{contactName}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{deal.title}</p>
+        </div>
+        {deal.adhesionChannel ? <Badge variant="gold">{channelShort[deal.adhesionChannel]}</Badge> : null}
+      </div>
+
+      {/* Faixa do GATE: cada setor exigido nesta fase, com ✓ ou ⏳ */}
+      {gate.total > 0 ? (
+        <div className="mt-3 rounded-md border border-brand-oliva/15 bg-brand-papel/60 px-2.5 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-brand-oliva">
+            Para avançar · {gate.done} de {gate.total}
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {spec.gate.map((gateSpec) => {
+              const done = !missingRoles.has(gateSpec.role);
+              const tone = roleTone(gateSpec.role);
+              return (
+                <span
+                  key={gateSpec.key}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                    done ? tone.chip : "border-dashed border-slate-300 bg-white text-slate-500",
+                  )}
+                >
+                  <span className={cn("h-1.5 w-1.5 rounded-full", done ? tone.dot : "bg-slate-300")} aria-hidden="true" />
+                  {crmRoleLabels[gateSpec.role]} {done ? "✓" : "⏳"}
+                </span>
+              );
+            })}
+          </div>
+          {nextLabel ? (
+            <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+              {gate.done === gate.total ? "Gate completo — avançando…" : `Quando todos concluírem → ${nextLabel}`}
+            </p>
+          ) : null}
+        </div>
+      ) : nextLabel ? (
+        <p className="mt-3 rounded-md bg-brand-papel/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+          Próxima fase: <span className="font-semibold text-brand-musgo">{nextLabel}</span>
+        </p>
+      ) : null}
+
+      {deal.programOutcome ? (
+        <Badge className="mt-2 bg-emerald-100 text-emerald-800">Desfecho: {programOutcomeLabels[deal.programOutcome]}</Badge>
+      ) : null}
+
+      <div className="mt-3 flex gap-2">
+        <Button asChild variant="outline" size="sm" className="flex-1">
+          <Link to={crmModuleRoutes.contact(deal.contactId)}>Perfil</Link>
+        </Button>
+        {contactPhone ? (
+          <Button asChild variant="outline" size="sm" className="flex-1">
+            <a href={`https://wa.me/55${contactPhone.replace(/^55/, "")}`} target="_blank" rel="noreferrer">
+              WhatsApp
+            </a>
+          </Button>
+        ) : null}
+        <Button type="button" size="sm" variant="outline" onClick={onSelect}>
+          Detalhes
+        </Button>
+      </div>
+    </article>
+  );
+}
+
 export function CrmKanbanPage() {
   const { pessoa } = useAuth();
   const { state, persist, syncFailed, retrySync, deleteLead } = useCrmState();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board", "comercial"));
   const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
   const [density, setDensity] = useState<KanbanDensity>(() => readLocalValue<KanbanDensity>("app-bratan-kanban-density", "comfortable"));
   const [fullscreen, setFullscreen] = useState(false);
@@ -254,6 +407,7 @@ export function CrmKanbanPage() {
   const [objection, setObjection] = useState("");
   const [objectionCategory, setObjectionCategory] = useState<CrmObjectionCategory>("OTHER");
   const [partialReason, setPartialReason] = useState("");
+  const [adhesion, setAdhesion] = useState<CrmAdhesionChannel>("PROGRAMA_ACOMPANHAMENTO");
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newSource, setNewSource] = useState("Manual");
@@ -321,6 +475,39 @@ export function CrmKanbanPage() {
   const selectedDeal = state.deals.find((deal) => deal.id === selectedDealId) ?? null;
   const selectedContact = selectedDeal ? contactsById.get(selectedDeal.contactId) : undefined;
   const selectedNextTask = selectedDeal ? nextTaskByDealId.get(selectedDeal.id) : undefined;
+
+  // Divisão dos quadros: quem entrou na jornada do Programa sai do Comercial.
+  const comercialDeals = useMemo(() => visibleDeals.filter((deal) => !deal.programPhase), [visibleDeals]);
+  const programDeals = useMemo(() => visibleDeals.filter((deal) => deal.programPhase), [visibleDeals]);
+  const canOverridePhase = isCoordenacao(pessoa?.cargo);
+  const [dragOverPhase, setDragOverPhase] = useState<CrmProgramPhase | null>(null);
+
+  function changeBoard(next: KanbanBoard) {
+    setBoard(next);
+    writeLocalValue("app-bratan-kanban-board", next);
+  }
+
+  function onProgramColumnDrop(event: DragEvent<HTMLElement>, phase: CrmProgramPhase) {
+    event.preventDefault();
+    const dealId = event.dataTransfer.getData("text/plain") || draggingDealId;
+    setDragOverPhase(null);
+    setDraggingDealId("");
+    if (!dealId || !canOverridePhase) return;
+    const deal = state.deals.find((item) => item.id === dealId);
+    if (!deal || deal.programPhase === phase) return;
+    persist((current) => setProgramPhase(current, dealId, phase, pessoa?.id ?? "coordenacao"));
+    setFeedback(`Card movido manualmente para "${programPhaseLabels[phase]}" (registrado no histórico).`);
+  }
+
+  function setOutcome(dealId: string, outcome: CrmProgramOutcome) {
+    persist((current) => ({
+      ...current,
+      deals: current.deals.map((deal) =>
+        deal.id === dealId ? { ...deal, programOutcome: outcome, updatedAt: new Date().toISOString() } : deal,
+      ),
+    }));
+    setFeedback(`Desfecho registrado: ${programOutcomeLabels[outcome]}.`);
+  }
 
   function changeSection(next: KanbanSection) {
     setSection(next);
@@ -458,6 +645,7 @@ export function CrmKanbanPage() {
         objection,
         objectionCategory,
         partialReason,
+        adhesionChannel: targetStage === "FECHOU_COMPLETO" || targetStage === "FECHOU_PARCIAL" ? adhesion : undefined,
       });
       setFeedback(moved.message);
       return moved.state;
@@ -606,13 +794,34 @@ export function CrmKanbanPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge variant="gold">CRM Bratan</Badge>
-          <h1 className={cn("text-brand-musgo", fullscreen ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl")}>Kanban Comercial</h1>
-          <InfoTip title="O que é o Kanban Comercial?">
-            É o mapa de todas as negociações do Instituto: cada card é um lead ou paciente, cada coluna é uma etapa da caminhada
-            — da captação ao fechamento e resgate. Arraste os cards para mover de etapa; o app cria as tarefas certas para cada
-            setor e alimenta o Dashboard 360 sozinho.
+          <h1 className={cn("text-brand-musgo", fullscreen ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl")}>Kanban</h1>
+          {/* Dois quadros ligados: a venda acontece no Comercial; ao fechar, o
+              paciente PASSA para o Programa (a régua de cuidado de 6-9 meses). */}
+          <div className="flex rounded-full border border-brand-oliva/25 bg-white/60 p-0.5" role="tablist" aria-label="Quadro">
+            {(Object.keys(boardLabels) as KanbanBoard[]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                role="tab"
+                aria-selected={board === item}
+                onClick={() => changeBoard(item)}
+                className={cn(
+                  "rounded-full px-4 py-1.5 text-sm font-semibold transition",
+                  board === item ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-oliva hover:text-brand-musgo",
+                )}
+              >
+                {boardLabels[item]}
+                <span className="ml-1.5 text-xs font-normal opacity-75">
+                  {item === "comercial" ? comercialDeals.length : programDeals.length}
+                </span>
+              </button>
+            ))}
+          </div>
+          <InfoTip title={board === "comercial" ? "Quadro Comercial" : "Quadro Programa"}>
+            {board === "comercial"
+              ? "A caminhada da VENDA: da captação ao fechamento. Ao marcar \"Fechou\", o paciente ganha um card no quadro Programa e a régua de cuidado começa sozinha."
+              : "A régua PÓS-FECHAMENTO em 5 fases. O card avança sozinho quando os setores do gate concluem (ex.: no D+1, Recepção + Concierge + Enfermeira marcam \"enviado\"). A coordenação pode arrastar para corrigir."}
           </InfoTip>
-          <span className="hidden text-xs text-muted-foreground xl:inline">{visibleDeals.length} negociações</span>
         </div>
         <div className="flex flex-wrap gap-2">
           <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={() => setLeadModalOpen(true)}>
@@ -724,6 +933,46 @@ export function CrmKanbanPage() {
               </div>
             </div>
 
+            {selectedDeal.programPhase ? (
+              <div className="mt-4 rounded-lg border border-brand-dourado/30 bg-brand-creme/40 p-3">
+                <p className="text-xs font-semibold uppercase text-brand-oliva">Jornada do Programa</p>
+                <p className="mt-1 font-semibold text-brand-musgo">
+                  Fase: {programPhaseLabels[selectedDeal.programPhase]}
+                  {selectedDeal.adhesionChannel ? ` · ${channelShort[selectedDeal.adhesionChannel]}` : ""}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{programPhaseHints[selectedDeal.programPhase]}</p>
+                {(() => {
+                  const gate = programGateStatus(state, selectedDeal.id);
+                  if (!gate.total) return null;
+                  return (
+                    <div className="mt-2">
+                      <p className="text-[11px] font-bold uppercase text-brand-oliva">Gate: {gate.done} de {gate.total} concluídos</p>
+                      {gate.missing.length ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Faltam: {gate.missing.map((item) => crmRoleLabels[item.role]).join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+                {selectedDeal.programPhase === "ENCERRAMENTO" && canOverridePhase && !selectedDeal.programOutcome ? (
+                  <div className="mt-3">
+                    <p className="text-[11px] font-bold uppercase text-brand-oliva">Ponto de decisão — desfecho:</p>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {(Object.keys(programOutcomeLabels) as CrmProgramOutcome[]).map((outcome) => (
+                        <Button key={outcome} type="button" variant="outline" size="sm" onClick={() => setOutcome(selectedDeal.id, outcome)}>
+                          {programOutcomeLabels[outcome]}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {selectedDeal.programOutcome ? (
+                  <Badge className="mt-2 bg-emerald-100 text-emerald-800">Desfecho: {programOutcomeLabels[selectedDeal.programOutcome]}</Badge>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="mt-4 flex flex-wrap gap-2">
               <Button asChild variant="outline">
                 <Link to={crmModuleRoutes.contact(selectedDeal.contactId)}>Abrir Perfil 360</Link>
@@ -768,6 +1017,23 @@ export function CrmKanbanPage() {
                   {dealStages.map((stage) => <option key={stage} value={stage}>{dealStageLabels[stage]}</option>)}
                 </select>
               </div>
+              {targetStage === "FECHOU_COMPLETO" || targetStage === "FECHOU_PARCIAL" ? (
+                <div>
+                  <Label>O que o paciente fechou? (canal)</Label>
+                  <select
+                    value={adhesion}
+                    onChange={(event) => setAdhesion(event.target.value as CrmAdhesionChannel)}
+                    className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                  >
+                    {(Object.keys(channelLabels) as CrmAdhesionChannel[]).map((channel) => (
+                      <option key={channel} value={channel}>{channelLabels[channel]}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                    Define quem age no D+1: Programa/Clube → recepção agenda · Somente Tratamento → enfermeira agenda as doses.
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <Label>Valor prescrito</Label>
                 <Input value={prescribed} onChange={(event) => setPrescribed(event.target.value)} inputMode="decimal" />
@@ -809,11 +1075,25 @@ export function CrmKanbanPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Buscar lead, paciente, origem ou objeção" />
           </label>
-          <select value={section} onChange={(event) => changeSection(event.target.value as KanbanSection)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Seção do funil">
-            {(Object.keys(sectionLabels) as KanbanSection[]).map((item) => (
-              <option key={item} value={item}>{sectionLabels[item]}</option>
-            ))}
-          </select>
+          {board === "comercial" ? (
+            <select value={section} onChange={(event) => changeSection(event.target.value as KanbanSection)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Seção do funil">
+              {(Object.keys(sectionLabels) as KanbanSection[]).map((item) => (
+                <option key={item} value={item}>{sectionLabels[item]}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="flex h-12 items-center gap-2 overflow-x-auto rounded-md border border-brand-oliva/16 bg-white/60 px-3" aria-label="Legenda de papéis">
+              {(["RECEPCAO", "CONCIERGE", "ENFERMAGEM", "MEDICO"] as CrmRole[]).map((role) => {
+                const tone = roleTone(role);
+                return (
+                  <span key={role} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-brand-musgo">
+                    <span className={cn("h-2 w-2 rounded-full", tone.dot)} aria-hidden="true" />
+                    {crmRoleLabels[role]}
+                  </span>
+                );
+              })}
+            </div>
+          )}
           <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Densidade dos cards">
             {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
               <option key={item} value={item}>{densityLabels[item]}</option>
@@ -862,71 +1142,143 @@ export function CrmKanbanPage() {
         )}
       >
         <div className={cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen ? "h-full items-stretch" : "lg:h-full lg:items-stretch")}>
-          {visibleStages.map((stage) => {
-            const stageDeals = visibleDeals.filter((deal) => deal.stage === stage);
-            const total = stageDeals.reduce((sum, deal) => sum + (deal.soldAmount || deal.estimatedValue * (stageProbability(stage) / 100)), 0);
-            const isDropTarget = dragOverStage === stage;
+          {board === "comercial"
+            ? visibleStages.map((stage, stageIndex) => {
+                const stageDeals = comercialDeals.filter((deal) => deal.stage === stage);
+                const total = stageDeals.reduce((sum, deal) => sum + (deal.soldAmount || deal.estimatedValue * (stageProbability(stage) / 100)), 0);
+                const isDropTarget = dragOverStage === stage;
+                const nextStage = visibleStages[stageIndex + 1];
+                const isClosing = stage === "FECHOU_COMPLETO" || stage === "FECHOU_PARCIAL";
 
-            return (
-              <section
-                key={stage}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                  if (dragOverStage !== stage) setDragOverStage(stage);
-                }}
-                onDragLeave={(event) => {
-                  if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-                  setDragOverStage((current) => (current === stage ? null : current));
-                }}
-                onDrop={(event) => onColumnDrop(event, stage)}
-                className={cn(
-                  "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
-                  fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none",
-                  isDropTarget && "border-brand-dourado/70 bg-brand-creme/45 ring-2 ring-brand-dourado/30",
-                )}
-              >
-                <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
-                  <p className="flex items-center gap-1.5 text-sm font-semibold" title={dealStageHints[stage]}>
-                    {dealStageLabels[stage]}
-                    <InfoTip title={dealStageLabels[stage]} className="text-brand-papel/80">
-                      {dealStageHints[stage]}
-                    </InfoTip>
-                  </p>
-                  <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
-                    <span>{stageDeals.length} cards</span>
-                    {canSeeValue ? <span>{moneyCrm(total)}</span> : null}
-                  </div>
-                </div>
-                <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
-                  {stageDeals.length ? (
-                    stageDeals.map((deal) => {
-                      const contact = contactsById.get(deal.contactId);
-                      return (
-                        <DealCard
-                          key={deal.id}
-                          deal={deal}
-                          contact={contact}
-                          nextTask={nextTaskByDealId.get(deal.id)}
-                          hasCadence={coveredContactIds.has(deal.contactId)}
-                          density={density}
-                          canSeeValue={canSeeValue}
-                          isDragging={draggingDealId === deal.id}
-                          onSelect={() => selectDeal(deal)}
-                          onDragStart={(event) => onCardDragStart(event, deal.id)}
-                          onDragEnd={onCardDragEnd}
-                        />
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
-                      Solte um card aqui
+                return (
+                  <section
+                    key={stage}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      if (dragOverStage !== stage) setDragOverStage(stage);
+                    }}
+                    onDragLeave={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                      setDragOverStage((current) => (current === stage ? null : current));
+                    }}
+                    onDrop={(event) => onColumnDrop(event, stage)}
+                    className={cn(
+                      "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
+                      fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none",
+                      isDropTarget && "border-brand-dourado/70 bg-brand-creme/45 ring-2 ring-brand-dourado/30",
+                    )}
+                  >
+                    <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
+                      <p className="flex items-center gap-1.5 text-sm font-semibold" title={dealStageHints[stage]}>
+                        {dealStageLabels[stage]}
+                        <InfoTip title={dealStageLabels[stage]} className="text-brand-papel/80">
+                          {dealStageHints[stage]}
+                        </InfoTip>
+                      </p>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
+                        <span>{stageDeals.length} cards{canSeeValue ? ` · ${moneyCrm(total)}` : ""}</span>
+                        {isClosing ? (
+                          <span className="font-semibold text-brand-creme">→ vai p/ Programa</span>
+                        ) : nextStage ? (
+                          <span>→ {dealStageLabels[nextStage]}</span>
+                        ) : null}
+                      </div>
                     </div>
-                  )}
-                </div>
-              </section>
-            );
-          })}
+                    <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
+                      {stageDeals.length ? (
+                        stageDeals.map((deal) => {
+                          const contact = contactsById.get(deal.contactId);
+                          return (
+                            <DealCard
+                              key={deal.id}
+                              deal={deal}
+                              contact={contact}
+                              nextTask={nextTaskByDealId.get(deal.id)}
+                              hasCadence={coveredContactIds.has(deal.contactId)}
+                              density={density}
+                              canSeeValue={canSeeValue}
+                              isDragging={draggingDealId === deal.id}
+                              onSelect={() => selectDeal(deal)}
+                              onDragStart={(event) => onCardDragStart(event, deal.id)}
+                              onDragEnd={onCardDragEnd}
+                            />
+                          );
+                        })
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
+                          Solte um card aqui
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                );
+              })
+            : programPhases.map((phase, phaseIndex) => {
+                const phaseDeals = programDeals.filter((deal) => deal.programPhase === phase);
+                const isDropTarget = dragOverPhase === phase;
+                const nextPhase = programPhases[phaseIndex + 1];
+
+                return (
+                  <section
+                    key={phase}
+                    onDragOver={(event) => {
+                      if (!canOverridePhase) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      if (dragOverPhase !== phase) setDragOverPhase(phase);
+                    }}
+                    onDragLeave={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                      setDragOverPhase((current) => (current === phase ? null : current));
+                    }}
+                    onDrop={(event) => onProgramColumnDrop(event, phase)}
+                    className={cn(
+                      "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
+                      fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none",
+                      isDropTarget && "border-brand-dourado/70 bg-brand-creme/45 ring-2 ring-brand-dourado/30",
+                    )}
+                  >
+                    <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
+                      <p className="flex items-center gap-1.5 text-sm font-semibold" title={programPhaseHints[phase]}>
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-papel/20 text-[11px] font-bold">
+                          {phaseIndex + 1}
+                        </span>
+                        {programPhaseLabels[phase]}
+                        <InfoTip title={programPhaseLabels[phase]} className="text-brand-papel/80">
+                          {programPhaseHints[phase]}
+                        </InfoTip>
+                      </p>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
+                        <span>{phaseDeals.length} pacientes</span>
+                        {nextPhase ? <span>→ {programPhaseLabels[nextPhase]}</span> : <span>fim da trilha</span>}
+                      </div>
+                    </div>
+                    <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
+                      {phaseDeals.length ? (
+                        phaseDeals.map((deal) => (
+                          <ProgramCard
+                            key={deal.id}
+                            deal={deal}
+                            contact={contactsById.get(deal.contactId)}
+                            state={state}
+                            density={density}
+                            canDrag={canOverridePhase}
+                            isDragging={draggingDealId === deal.id}
+                            onSelect={() => selectDeal(deal)}
+                            onDragStart={(event) => onCardDragStart(event, deal.id)}
+                            onDragEnd={onCardDragEnd}
+                          />
+                        ))
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
+                          {phase === "FECHAMENTO_D0" ? "Ninguém fechou hoje ainda" : "Nenhum paciente nesta fase"}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
         </div>
       </div>
 

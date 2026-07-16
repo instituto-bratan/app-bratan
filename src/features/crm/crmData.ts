@@ -340,6 +340,8 @@ export type CrmMoveDealOptions = {
   objection?: string;
   objectionCategory?: CrmObjectionCategory;
   partialReason?: string;
+  // POP v3.1: canal escolhido no fechamento (Programa / Clube / Tratamento).
+  adhesionChannel?: CrmAdhesionChannel;
 };
 
 // v2 (03/07/2026): chave trocada para descartar caches antigos que continham dados fictícios.
@@ -480,6 +482,7 @@ export const dealStages: CrmDealStage[] = [
   "PERDIDO",
   "RESGATE_D60",
   "CHURN",
+  "NAO_ADESAO",
 ];
 
 export const cadenceTypeLabels: Record<CrmCadenceType, string> = {
@@ -2282,6 +2285,7 @@ function updateContactStageForDealStage(contact: CrmContact, stage: CrmDealStage
     PERDIDO: "INACTIVE",
     RESGATE_D60: "RESCUE",
     CHURN: "INACTIVE",
+    NAO_ADESAO: "INACTIVE",
   };
   return {
     ...contact,
@@ -2337,31 +2341,10 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
   }
 
   if (options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL") {
+    // POP v3.1: os contatos do D+1 (Recepção, Concierge e Enfermeira) agora são
+    // TAREFAS-GATE da fase "Boas-vindas (D+1)" do Programa — nascem via
+    // startProgramJourney, não aqui (evita duplicar).
     tasks.push(
-      createTask({
-        ...taskBase,
-        cadenceId: "cad-concierge-d1",
-        cadenceStepId: "step-concierge-d1",
-        title: "Concierge D+1 - acolhimento",
-        description: "Vendas fechou. Enviar boas-vindas e registrar experiência.",
-        taskType: "WHATSAPP",
-        assignedToUserId: "concierge",
-        assignedToRole: "CONCIERGE",
-        dueAt: atLocalTime(addDays(today, 1), 8, 30),
-        priority: "HIGH",
-      }),
-      createTask({
-        ...taskBase,
-        cadenceId: "",
-        cadenceStepId: "",
-        title: "Agendar primeira dose e bioimpedância",
-        description: "Recepção agenda datas iniciais e registra observação do plano.",
-        taskType: "SCHEDULE",
-        assignedToUserId: "recepcao",
-        assignedToRole: "RECEPCAO",
-        dueAt: atLocalTime(today, 16),
-        priority: "HIGH",
-      }),
       createTask({
         ...taskBase,
         cadenceId: "",
@@ -2386,25 +2369,13 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
         dueAt: atLocalTime(today, 17),
         priority: "HIGH",
       }),
-      createTask({
-        ...taskBase,
-        cadenceId: "",
-        cadenceStepId: "",
-        title: "Mensagem D+1 com TODAS as datas agendadas",
-        description: "Recepção envia a mensagem de início de tratamento (não é boas-vindas) com todas as datas: nutricionista, consultas do médico e 1ª dose (POP).",
-        taskType: "WHATSAPP",
-        assignedToUserId: "recepcao",
-        assignedToRole: "RECEPCAO",
-        dueAt: atLocalTime(addDays(today, 1), 9),
-        priority: "HIGH",
-      }),
     );
 
-    // POP · Vendas: presente por faixa de fechamento, SOMENTE na 1ª consulta.
-    // R$7 mil a R$10 mil → caixa PillBox; acima de R$10 mil → garrafa Stanley.
+    // POP v3.1 · Vendas: presente por faixa, SOMENTE na 1ª compra, entregue
+    // NO DIA do pagamento. R$8.000–10.999 → caixa PillBox; R$11.000+ → Stanley.
     const closedAmount = options.soldAmount ?? deal.soldAmount;
-    if (deal.dealType === "FIRST_CONSULTATION" && closedAmount >= 7000) {
-      const gift = closedAmount > 10000 ? "garrafa Stanley" : "caixa PillBox";
+    if (deal.dealType === "FIRST_CONSULTATION" && closedAmount >= 8000) {
+      const gift = closedAmount >= 11000 ? "garrafa Stanley" : "caixa PillBox";
       tasks.push(
         createTask({
           ...taskBase,
@@ -2509,12 +2480,17 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
         ? "WON_FULL"
         : options.stage === "FECHOU_PARCIAL"
           ? "WON_PARTIAL"
-          : options.stage === "PERDIDO"
+          : options.stage === "PERDIDO" || options.stage === "NAO_ADESAO"
             ? "LOST"
             : options.stage === "CHURN"
               ? deal.status
               : "OPEN",
-    probability: options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL" ? 100 : options.stage === "PERDIDO" ? 0 : deal.probability,
+    probability:
+      options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL"
+        ? 100
+        : options.stage === "PERDIDO" || options.stage === "NAO_ADESAO"
+          ? 0
+          : deal.probability,
     closedAt: options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL" ? now : deal.closedAt,
     updatedAt: now,
   };
@@ -2543,34 +2519,23 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   }
 
   if (options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL") {
-    nextState = enrollContactInCadence(nextState, {
-      cadenceId: "cad-concierge-d1",
-      contactId: deal.contactId,
-      dealId: deal.id,
-      triggerSource: "kanban fechado",
-      triggerDate: todayISO(),
-      ownerUserId: "concierge",
-      ownerRole: "CONCIERGE",
-    });
-    nextState = enrollContactInCadence(nextState, {
-      cadenceId: "cad-nursing-14",
-      contactId: deal.contactId,
-      dealId: deal.id,
-      triggerSource: "tratamento ativo",
-      triggerDate: todayISO(),
-      ownerUserId: "enfermagem",
-      ownerRole: "ENFERMAGEM",
-    });
+    // POP v3.1: fechar inicia a JORNADA DO PROGRAMA. A fase 1 (Fechamento) tem
+    // gate vazio, então o avanço imediato leva para "Boas-vindas (D+1)" e cria
+    // as 3 tarefas-gate (Recepção, Concierge, Enfermeira). A enfermagem 14d
+    // entra sozinha quando o card chega em "Em acompanhamento".
+    nextState = startProgramJourney(nextState, deal.id, options.adhesionChannel ?? null, options.actorId);
+    nextState = advancePhaseIfGateComplete(nextState, deal.id, { actorId: options.actorId });
   }
 
-  if (options.stage === "CHURN") {
-    // POP/Réguas: churn → a Aline investiga agora e o resgate fica agendado
-    // para daqui a ~6 meses (o motor gera a 1ª tentativa já com a data futura).
+  if (options.stage === "CHURN" || options.stage === "NAO_ADESAO") {
+    // POP/Réguas: churn e não adesão → encerra agora, mas o paciente fica na
+    // base e o resgate de ~6 meses fica agendado sozinho (1ª tentativa já
+    // nasce com a data futura).
     nextState = enrollContactInCadence(nextState, {
       cadenceId: "cad-rescue-6m",
       contactId: deal.contactId,
       dealId: deal.id,
-      triggerSource: "churn no kanban",
+      triggerSource: options.stage === "CHURN" ? "churn no kanban" : "não adesão",
       triggerDate: addDays(todayISO(), 180),
       ownerUserId: "concierge",
       ownerRole: "CONCIERGE",

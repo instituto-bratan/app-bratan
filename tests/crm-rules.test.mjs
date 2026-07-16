@@ -369,18 +369,26 @@ test("fechar 1ª consulta cria tarefa de presente pela faixa do POP", () => {
   assert.ok(!movedRenewal.state.tasks.some((task) => task.title.startsWith("Entregar presente")));
 });
 
-test("fechar cria as tarefas da recepção do POP (contrato + mensagem com todas as datas)", () => {
+test("fechar cria contrato + inicia o Programa com as 3 tarefas-gate do D+1 (POP v3.1)", () => {
   const state = cloneState();
   const moved = crm.moveDealStage(state, "crm-deal-lead-quente", {
     actorId: "vendedor",
     stage: "FECHOU_COMPLETO",
     soldAmount: 9000,
     receivedAmount: 9000,
+    adhesionChannel: "PROGRAMA_ACOMPANHAMENTO",
   });
-  const titles = moved.state.tasks.filter((task) => task.dealId === "crm-deal-lead-quente").map((task) => task.title);
+  const dealTasks = moved.state.tasks.filter((task) => task.dealId === "crm-deal-lead-quente");
+  const titles = dealTasks.map((task) => task.title);
   assert.ok(titles.includes("Fazer o contrato e enviar à administradora"), "contrato da recepção");
-  assert.ok(titles.includes("Mensagem D+1 com TODAS as datas agendadas"), "mensagem D+1");
   assert.ok(titles.includes("Conferir contrato e SuperSign"), "conferência do administrativo");
+  // Jornada do Programa: entrou e já está em Boas-vindas (D+1) com as 3 gates.
+  const deal = moved.state.deals.find((d) => d.id === "crm-deal-lead-quente");
+  assert.equal(deal.programPhase, "TRES_CONTATOS_D1");
+  assert.equal(deal.adhesionChannel, "PROGRAMA_ACOMPANHAMENTO");
+  const gates = dealTasks.filter((task) => task.isGate && task.gatePhase === "TRES_CONTATOS_D1");
+  assert.equal(gates.length, 3);
+  assert.deepEqual(Array.from(gates, (g) => g.assignedToRole).sort(), ["CONCIERGE", "ENFERMAGEM", "RECEPCAO"]);
 });
 
 test("resposta ao médico D+1 pula o gestor D+2 automaticamente (POP)", () => {

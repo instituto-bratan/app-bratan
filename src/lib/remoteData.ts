@@ -2136,6 +2136,11 @@ export async function listRemoteCrmState(): Promise<CrmState> {
         closedAt: row.closed_at ?? null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        programPhase: row.program_phase ?? null,
+        programPhaseEnteredAt: row.program_phase_entered_at ?? undefined,
+        programPhaseActorId: row.program_phase_actor_id ?? undefined,
+        programOutcome: row.program_outcome ?? null,
+        adhesionChannel: row.adhesion_channel ?? null,
       }),
     ),
     tasks: (tasks as any[]).map(
@@ -2161,6 +2166,8 @@ export async function listRemoteCrmState(): Promise<CrmState> {
         createdBy: remoteText(row.created_by),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        isGate: row.is_gate ?? undefined,
+        gatePhase: row.gate_phase ?? undefined,
       }),
     ),
     cadences: mappedCadences.length ? mappedCadences : seedCrmState.cadences,
@@ -2336,6 +2343,11 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       closed_at: record.closedAt || null,
       created_at: record.createdAt || now,
       updated_at: record.updatedAt || now,
+      program_phase: record.programPhase ?? null,
+      program_phase_entered_at: record.programPhaseEnteredAt || null,
+      program_phase_actor_id: record.programPhaseActorId || null,
+      program_outcome: record.programOutcome ?? null,
+      adhesion_channel: record.adhesionChannel ?? null,
     })),
   );
 
@@ -2383,6 +2395,8 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       created_by: record.createdBy || null,
       created_at: record.createdAt || now,
       updated_at: record.updatedAt || now,
+      is_gate: record.isGate ?? false,
+      gate_phase: record.gatePhase ?? null,
     })),
   );
 
@@ -3414,6 +3428,22 @@ export async function createRemoteFinExpense(expense: FinExpense, createdBy: str
     entityId: expense.id,
     metadata: { category: expense.categoryRef, amount: expense.amount, dueDate: expense.dueDate },
   });
+}
+
+// Tempo real do CRM: assina mudanças nas tabelas-chave e avisa o chamador.
+// Postgres Changes respeita as RLS existentes; para o tamanho da equipe é a
+// opção recomendada quando a integridade do dado importa (docs Supabase 2026).
+export function subscribeRemoteCrmState(onChange: () => void): () => void {
+  const client = requireSupabase();
+  const channel = client
+    .channel("crm-stream")
+    .on("postgres_changes", { event: "*", schema: "public", table: "crm_deals" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "crm_cadence_enrollments" }, onChange)
+    .subscribe();
+  return () => {
+    void client.removeChannel(channel);
+  };
 }
 
 // Materialização de recorrentes: insere ignorando client_refs que já existem

@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
 import { isCoordenacao } from "@/lib/access";
-import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState } from "@/lib/remoteData";
+import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState, subscribeRemoteCrmState } from "@/lib/remoteData";
 import {
+  advanceAllProgramGates,
   dedupeCrmState,
   ensureCadenceCoverage,
   generateCadenceTasks,
@@ -17,10 +18,11 @@ import {
 } from "./crmData";
 
 // Pipeline padrão de saneamento do estado: catálogo novo entra, todo card do
-// Kanban ganha régua (POP), o motor materializa as tarefas e, por fim, colapsa
-// qualquer duplicata (IDs antigos aleatórios ou corrida entre aparelhos).
+// Kanban ganha régua (POP), o motor materializa as tarefas, os gates completos
+// avançam de fase (Programa) e, por fim, colapsa qualquer duplicata (IDs
+// antigos aleatórios ou corrida entre aparelhos).
 function prepareCrmState(state: CrmState) {
-  return dedupeCrmState(generateCadenceTasks(ensureCadenceCoverage(state)));
+  return dedupeCrmState(advanceAllProgramGates(generateCadenceTasks(ensureCadenceCoverage(state))));
 }
 
 export function useCrmState() {
@@ -100,6 +102,27 @@ export function useCrmState() {
     saveCrmStateWithIntelligence(state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // TEMPO REAL: quando qualquer colega grava (tarefa concluída, card movido,
+  // inscrição nova), o Supabase avisa e recarregamos o estado — com debounce
+  // para agrupar a rajada de upserts do diff-save. O guard de dirty/pending é
+  // o mesmo do effect acima: trabalho local nunca é sobrescrito.
+  useEffect(() => {
+    if (!useRemote) return;
+    let timer: number | undefined;
+    const unsubscribe = subscribeRemoteCrmState(() => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (dirtyRef.current || saveRemoteMutation.isPending) return;
+        void queryClient.invalidateQueries({ queryKey: ["crm-state"] });
+      }, 600);
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useRemote]);
 
   function persist(updater: (current: CrmState) => CrmState): Promise<boolean> {
     let promise: Promise<boolean> = Promise.resolve(true);
