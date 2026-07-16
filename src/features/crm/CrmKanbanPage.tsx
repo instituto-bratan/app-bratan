@@ -409,6 +409,9 @@ export function CrmKanbanPage() {
   const [objectionCategory, setObjectionCategory] = useState<CrmObjectionCategory>("OTHER");
   const [partialReason, setPartialReason] = useState("");
   const [adhesion, setAdhesion] = useState<CrmAdhesionChannel>("PROGRAMA_ACOMPANHAMENTO");
+  // Feedback DENTRO do drawer: o banner da página fica atrás do painel e o
+  // usuário não via a validação — parecia que o botão "não estava indo".
+  const [drawerFeedback, setDrawerFeedback] = useState("");
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newSource, setNewSource] = useState("Manual");
@@ -636,6 +639,11 @@ export function CrmKanbanPage() {
     event.preventDefault();
     if (!selectedDeal) return;
     setFeedback("");
+    setDrawerFeedback("");
+    if (targetStage === selectedDeal.stage) {
+      setDrawerFeedback('O card já está nesta etapa — escolha em "Nova etapa" para onde ele vai.');
+      return;
+    }
     persist((current) => {
       const moved = moveDealStage(current, selectedDeal.id, {
         actorId: pessoa?.id ?? "preview",
@@ -648,7 +656,14 @@ export function CrmKanbanPage() {
         partialReason,
         adhesionChannel: targetStage === "FECHOU_COMPLETO" || targetStage === "FECHOU_PARCIAL" ? adhesion : undefined,
       });
+      if (!moved.ok) {
+        // Validação barrou: o aviso precisa aparecer DENTRO do painel.
+        setDrawerFeedback(moved.message);
+        return current;
+      }
+      // Sucesso: fecha o painel para o card ser visto mudando de coluna.
       setFeedback(moved.message);
+      setSelectedDealId("");
       return moved.state;
     });
   }
@@ -683,6 +698,7 @@ export function CrmKanbanPage() {
 
   function selectDeal(deal: CrmDeal, stageOverride?: CrmDealStage) {
     setSelectedDealId(deal.id);
+    setDrawerFeedback("");
     const dealContact = contactsById.get(deal.contactId);
     setEditName(dealContact?.fullName ?? "");
     setEditPreferred(dealContact?.preferredName ?? "");
@@ -713,7 +729,8 @@ export function CrmKanbanPage() {
       });
       if (!moved.ok) {
         selectDeal(deal, stage);
-        setFeedback(`${moved.message} Complete no painel lateral para concluir a movimentação.`);
+        // O painel abre por cima da página: o motivo tem que aparecer NELE.
+        setDrawerFeedback(`${moved.message} Complete os campos abaixo e toque em "Mover e gerar tarefas".`);
         return current;
       }
       setFeedback(moved.message);
@@ -1061,6 +1078,12 @@ export function CrmKanbanPage() {
                 <Label>Motivo do parcial</Label>
                 <Input value={partialReason} onChange={(event) => setPartialReason(event.target.value)} placeholder="Obrigatório se fechou parcial" />
               </div>
+              {drawerFeedback ? (
+                <div className="sm:col-span-2 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  {drawerFeedback}
+                </div>
+              ) : null}
               <div className="sm:col-span-2 flex flex-wrap gap-2">
                 <Button type="submit">Mover e gerar tarefas</Button>
                 <Button type="button" variant="outline" onClick={() => setSelectedDealId("")}>Fechar</Button>
