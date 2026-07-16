@@ -20,6 +20,7 @@ import type { FinCategory, FinExpense, FinInvoice, FinPartnerEntry, FinProvision
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
   deriveInteligencia360FromCrm,
+  diffCrmStates,
   seedCrmState,
   type CrmCadence,
   type CrmCadenceEnrollment,
@@ -2216,16 +2217,20 @@ export async function listRemoteCrmState(): Promise<CrmState> {
   };
 }
 
-export async function saveRemoteCrmState(state: CrmState, options?: { includeCatalog?: boolean }) {
+export async function saveRemoteCrmState(state: CrmState, options?: { includeCatalog?: boolean; baseline?: CrmState }) {
   const now = new Date().toISOString();
   // Catálogo (cadências/passos/mensagens) tem RLS de gestão (can_crm_manage).
   // Quem não é coordenação pula essas tabelas: antes o sync inteiro morria
   // nelas e inscrições/tarefas (que vêm depois) nunca chegavam ao banco.
   const includeCatalog = options?.includeCatalog ?? true;
+  // Sync por DIFERENÇA: com um baseline (último estado carregado), só sobem as
+  // linhas que mudaram. Sem baseline, sobe tudo (primeira carga / retry).
+  // Isso reduz muito o "um usuário reverte o trabalho do outro" (LWW).
+  const pick = options?.baseline ? diffCrmStates(options.baseline, state) : state;
 
   await upsertCrmTable(
     "crm_contacts",
-    state.contacts.map((record) => ({
+    pick.contacts.map((record) => ({
       client_ref: record.id,
       contact_type: record.contactType,
       lifecycle_stage: record.lifecycleStage,
@@ -2258,7 +2263,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
   if (includeCatalog) {
   await upsertCrmTable(
     "crm_cadences",
-    state.cadences.map((record) => ({
+    pick.cadences.map((record) => ({
       client_ref: record.id,
       name: record.name,
       description: record.description || null,
@@ -2272,7 +2277,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_cadence_steps",
-    state.cadenceSteps.map((record) => ({
+    pick.cadenceSteps.map((record) => ({
       client_ref: record.id,
       cadence_id: record.cadenceId,
       step_order: record.stepOrder,
@@ -2292,7 +2297,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_message_templates",
-    state.messageTemplates.map((record) => ({
+    pick.messageTemplates.map((record) => ({
       client_ref: record.id,
       name: record.name,
       category: record.category || null,
@@ -2310,7 +2315,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_deals",
-    state.deals.map((record) => ({
+    pick.deals.map((record) => ({
       client_ref: record.id,
       contact_id: record.contactId,
       title: record.title,
@@ -2336,7 +2341,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_cadence_enrollments",
-    state.cadenceEnrollments.map((record) => ({
+    pick.cadenceEnrollments.map((record) => ({
       client_ref: record.id,
       cadence_id: record.cadenceId,
       contact_id: record.contactId,
@@ -2356,7 +2361,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_tasks",
-    state.tasks.map((record) => ({
+    pick.tasks.map((record) => ({
       client_ref: record.id,
       contact_id: record.contactId || null,
       deal_id: record.dealId || null,
@@ -2383,7 +2388,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_touchpoints",
-    state.touchpoints.map((record) => ({
+    pick.touchpoints.map((record) => ({
       client_ref: record.id,
       contact_id: record.contactId,
       task_id: record.taskId || null,
@@ -2402,7 +2407,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_timeline_events",
-    state.timelineEvents.map((record) => ({
+    pick.timelineEvents.map((record) => ({
       client_ref: record.id,
       contact_id: record.contactId,
       event_type: record.eventType,

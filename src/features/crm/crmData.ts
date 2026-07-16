@@ -1442,25 +1442,37 @@ export function findOrCreateCrmContact(
   };
 }
 
-// Passos únicos: qualquer tarefa já criada para o passo bloqueia recriação
-// (antes, concluir a tarefa fazia o motor recriá-la no próximo carregamento).
-// Passos recorrentes (ex.: enfermagem 14 em 14 dias): deduplica pela data do
-// ciclo, para a próxima ocorrência nascer sem duplicar a atual.
-function hasTaskForStep(
-  state: CrmState,
-  values: Pick<CrmTask, "contactId" | "cadenceId" | "cadenceStepId">,
-  recurring: boolean,
-  dueDate: string,
-) {
+// IDs DETERMINÍSTICOS do motor. Antes eram aleatórios (crypto.randomUUID), o
+// que, com o sync de "estado inteiro" por upsert, fazia cada aparelho/recarga
+// criar linhas NOVAS para a mesma coisa — daí a explosão de duplicatas e a
+// sensação de inscrição "sumindo". Agora a mesma inscrição/tarefa converge
+// para o mesmo id em qualquer dispositivo, então o upsert é idempotente.
+export function enrollmentIdFor(contactId: string, cadenceId: string, triggerDate: string) {
+  return `enroll-${contactId}-${cadenceId}-${triggerDate}`;
+}
+export function cadenceTaskIdFor(contactId: string, cadenceId: string, stepId: string, dueDate: string) {
+  return `task-${contactId}-${cadenceId}-${stepId}-${dueDate}`;
+}
+
+// Chave natural de uma tarefa de cadência (para deduplicar independentemente do
+// id). Passos recorrentes têm uma tarefa POR DIA (ciclo), então a data entra na
+// chave; passos únicos têm uma tarefa por execução, então a data fica de fora.
+function cadenceTaskKey(task: Pick<CrmTask, "contactId" | "cadenceId" | "cadenceStepId" | "dueAt">, recurring: boolean) {
+  const cycle = recurring ? (task.dueAt || "").slice(0, 10) : "unico";
+  return `${task.contactId}|${task.cadenceId}|${task.cadenceStepId}|${cycle}`;
+}
+
+// Uma tarefa de passo único bloqueia recriação se estiver ABERTA ou se pertence
+// a ESTA execução da régua (criada a partir da inscrição atual). Assim, concluir
+// a tarefa não faz o motor recriá-la, mas uma NOVA inscrição (resgate rodando de
+// novo meses depois) gera tarefas novas. Recorrentes: aberta ou mesmo dia.
+function hasTaskForStep(state: CrmState, enrollment: CrmCadenceEnrollment, step: CrmCadenceStep, recurring: boolean, dueDate: string) {
+  const runStart = enrollment.enrolledAt || enrollment.createdAt || "";
   return state.tasks.some((task) => {
-    if (task.contactId !== values.contactId || task.cadenceId !== values.cadenceId || task.cadenceStepId !== values.cadenceStepId) {
-      return false;
-    }
-    if (!recurring) return true;
-    // Recorrente: o próximo ciclo só nasce quando o atual foi resolvido, e o
-    // mesmo dia nunca repete (antifadiga).
+    if (task.contactId !== enrollment.contactId || task.cadenceId !== enrollment.cadenceId || task.cadenceStepId !== step.id) return false;
     const open = !["DONE", "CANCELED", "SKIPPED"].includes(task.status);
-    return open || task.dueAt.slice(0, 10) === dueDate;
+    if (recurring) return open || task.dueAt.slice(0, 10) === dueDate;
+    return open || (task.createdAt || "") >= runStart;
   });
 }
 
@@ -1477,15 +1489,22 @@ function dueDateForStep(enrollment: CrmCadenceEnrollment, step: CrmCadenceStep, 
   return addDays(enrollment.triggerDate, step.offsetValue);
 }
 
-function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment, step: CrmCadenceStep): CrmTask | null {
+function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment, step: CrmCadenceStep, reference = new Date()): CrmTask | null {
   const contact = state.contacts.find((item) => item.id === enrollment.contactId);
   if (!contact || contact.optOut) return null;
-  const date = dueDateForStep(enrollment, step);
+  const date = dueDateForStep(enrollment, step, reference);
   const recurring = step.offsetType === "RECURRING_EVERY_X_DAYS";
-  if (hasTaskForStep(state, { contactId: enrollment.contactId, cadenceId: enrollment.cadenceId, cadenceStepId: step.id }, recurring, date)) return null;
+  // Ciclo do id: recorrente usa a data do ciclo; único usa a data de gatilho da
+  // inscrição (estável na execução, novo a cada nova inscrição).
+  const cycleTag = recurring ? date : enrollment.triggerDate;
+  const id = cadenceTaskIdFor(enrollment.contactId, enrollment.cadenceId, step.id, cycleTag);
+  // Idempotência do id (mesma execução em qualquer aparelho) + dedup por passo.
+  if (state.tasks.some((task) => task.id === id)) return null;
+  if (hasTaskForStep(state, enrollment, step, recurring, date)) return null;
 
   const hour = step.preferredTimeWindow === "MORNING" ? 9 : step.preferredTimeWindow === "AFTERNOON" ? 15 : 10;
   return createTask({
+    id,
     contactId: enrollment.contactId,
     dealId: enrollment.dealId,
     cadenceId: enrollment.cadenceId,
@@ -1519,7 +1538,7 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
         pendingBeyondWindow.push({ step, dueTime: due.getTime() });
         continue;
       }
-      const task = createTaskFromCadence(workingState, enrollment, step);
+      const task = createTaskFromCadence(workingState, enrollment, step, reference);
       if (task) {
         tasksToAdd.push(task);
         materializedForEnrollment = true;
@@ -1536,12 +1555,161 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
     // ficar invisíveis: sem nada na janela, a PRÓXIMA tarefa nasce mesmo assim.
     if (!materializedForEnrollment && pendingBeyondWindow.length) {
       pendingBeyondWindow.sort((a, b) => a.dueTime - b.dueTime);
-      const task = createTaskFromCadence({ ...state, tasks: [...state.tasks, ...tasksToAdd] }, enrollment, pendingBeyondWindow[0].step);
+      const task = createTaskFromCadence({ ...state, tasks: [...state.tasks, ...tasksToAdd] }, enrollment, pendingBeyondWindow[0].step, reference);
       if (task) tasksToAdd.push(task);
     }
   }
 
   return tasksToAdd.length ? { ...state, tasks: [...tasksToAdd, ...state.tasks] } : state;
+}
+
+// Sanea duplicatas que já entraram no banco (IDs aleatórios do modelo antigo)
+// ou que dois aparelhos criaram ao mesmo tempo. Colapsa:
+//  - inscrições ATIVAS repetidas do mesmo (contato+cadência): mantém a mais antiga;
+//  - tarefas de cadência do mesmo passo/ciclo: mantém a mais avançada (concluída
+//    ganha da pendente), depois a mais antiga.
+// Estável: se nada muda, devolve o MESMO objeto (não dispara re-render/save).
+export function dedupeCrmState(state: CrmState): CrmState {
+  let changed = false;
+
+  // Inscrições ativas duplicadas.
+  const activeSeen = new Map<string, CrmCadenceEnrollment>();
+  const droppedEnrollmentIds = new Set<string>();
+  for (const enrollment of state.cadenceEnrollments) {
+    if (enrollment.status !== "ACTIVE") continue;
+    const key = `${enrollment.contactId}|${enrollment.cadenceId}`;
+    const kept = activeSeen.get(key);
+    if (!kept) {
+      activeSeen.set(key, enrollment);
+      continue;
+    }
+    // Mantém a mais antiga (enrolledAt); descarta a outra.
+    const older = (enrollment.enrolledAt || enrollment.createdAt) < (kept.enrolledAt || kept.createdAt) ? enrollment : kept;
+    const drop = older === enrollment ? kept : enrollment;
+    activeSeen.set(key, older);
+    droppedEnrollmentIds.add(drop.id);
+    changed = true;
+  }
+  const cadenceEnrollments = droppedEnrollmentIds.size
+    ? state.cadenceEnrollments.filter((enrollment) => !droppedEnrollmentIds.has(enrollment.id))
+    : state.cadenceEnrollments;
+
+  // Tarefas de cadência duplicadas (mesma chave natural).
+  const recurringStepIds = new Set(
+    state.cadenceSteps.filter((step) => step.offsetType === "RECURRING_EVERY_X_DAYS").map((step) => step.id),
+  );
+  const rankStatus = (status: CrmTaskStatus) => (status === "DONE" ? 3 : status === "SKIPPED" || status === "CANCELED" ? 2 : 1);
+  const bestByKey = new Map<string, CrmTask>();
+  const dropTaskIds = new Set<string>();
+  for (const task of state.tasks) {
+    if (!task.cadenceStepId) continue; // tarefas manuais nunca são deduplicadas
+    const key = cadenceTaskKey(task, recurringStepIds.has(task.cadenceStepId));
+    const kept = bestByKey.get(key);
+    if (!kept) {
+      bestByKey.set(key, task);
+      continue;
+    }
+    let winner = kept;
+    let loser = task;
+    if (rankStatus(task.status) > rankStatus(kept.status)) {
+      winner = task;
+      loser = kept;
+    } else if (rankStatus(task.status) === rankStatus(kept.status)) {
+      // empate de status: mantém a mais antiga (createdAt)
+      winner = (task.createdAt || "") < (kept.createdAt || "") ? task : kept;
+      loser = winner === task ? kept : task;
+    }
+    bestByKey.set(key, winner);
+    dropTaskIds.add(loser.id);
+    changed = true;
+  }
+  const tasks = dropTaskIds.size ? state.tasks.filter((task) => !dropTaskIds.has(task.id)) : state.tasks;
+
+  if (!changed) return state;
+  return { ...state, cadenceEnrollments, tasks };
+}
+
+const CRM_DIFF_COLLECTIONS = [
+  "contacts",
+  "deals",
+  "cadenceEnrollments",
+  "tasks",
+  "touchpoints",
+  "timelineEvents",
+  "cadences",
+  "cadenceSteps",
+  "messageTemplates",
+] as const;
+
+type CrmDiff = { [K in (typeof CRM_DIFF_COLLECTIONS)[number]]: CrmState[K] };
+
+// Diferença entre dois estados: por coleção, devolve só as linhas NOVAS ou
+// ALTERADAS (comparação por id + JSON). Usado no sync para salvar apenas o que
+// mudou — reduz drasticamente o "um usuário reverte o trabalho do outro".
+export function diffCrmStates(prev: CrmState, next: CrmState): CrmDiff {
+  const diff = {} as CrmDiff;
+  for (const key of CRM_DIFF_COLLECTIONS) {
+    const prevById = new Map((prev[key] as { id: string }[]).map((row) => [row.id, JSON.stringify(row)]));
+    diff[key] = (next[key] as { id: string }[]).filter((row) => {
+      const before = prevById.get(row.id);
+      return before === undefined || before !== JSON.stringify(row);
+    }) as never;
+  }
+  return diff;
+}
+
+// ---- Listas para o Dr. Daniel (resumo à Géssica) ----------------------------
+export type NotClosedRow = { deal: CrmDeal; contact: CrmContact | null; dateISO: string; objection: string };
+export type ProgramRow = { contact: CrmContact; deal: CrmDeal | null; sinceISO: string; planAmount: number };
+
+const NOT_CLOSED_STAGES: CrmDealStage[] = ["NAO_FECHOU", "RECUPERACAO_D1_MEDICO", "RECUPERACAO_D2_GESTOR"];
+
+// Pacientes que NÃO fecharam nos últimos `days` dias (default 7 = "desde a
+// semana passada"): negociação em fase de não-fechou/recuperação ou perdida,
+// com a data do fato dentro da janela. Uma linha por contato (a mais recente).
+export function notClosedRecently(state: CrmState, referenceISO: string, days = 7): NotClosedRow[] {
+  const cutoff = addDays(referenceISO, -days);
+  const rows: NotClosedRow[] = [];
+  for (const deal of state.deals) {
+    const isNotClosed = NOT_CLOSED_STAGES.includes(deal.stage) || deal.status === "LOST";
+    if (!isNotClosed) continue;
+    const dateISO = (deal.closedAt || deal.updatedAt || deal.createdAt || "").slice(0, 10);
+    if (!dateISO || dateISO < cutoff) continue;
+    const contact = state.contacts.find((item) => item.id === deal.contactId) ?? null;
+    const objection = deal.mainObjection || (deal.objectionCategory ? objectionCategoryLabels[deal.objectionCategory] : "");
+    rows.push({ deal, contact, dateISO, objection });
+  }
+  // Uma linha por contato: mantém a data mais recente.
+  const latestByContact = new Map<string, NotClosedRow>();
+  for (const row of rows) {
+    const key = row.deal.contactId;
+    const kept = latestByContact.get(key);
+    if (!kept || row.dateISO > kept.dateISO) latestByContact.set(key, row);
+  }
+  return [...latestByContact.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+}
+
+// Pacientes ATIVOS no programa de acompanhamento (contato ACTIVE_PATIENT).
+// Traz a negociação fechada (para valor/plano) e desde quando.
+export function activeProgramPatients(state: CrmState): ProgramRow[] {
+  const wonByContact = new Map<string, CrmDeal>();
+  for (const deal of state.deals) {
+    if (deal.status !== "WON_FULL" && deal.status !== "WON_PARTIAL") continue;
+    const kept = wonByContact.get(deal.contactId);
+    if (!kept || (deal.closedAt || deal.createdAt) > (kept.closedAt || kept.createdAt)) wonByContact.set(deal.contactId, deal);
+  }
+  return state.contacts
+    .filter((contact) => contact.lifecycleStage === "ACTIVE_PATIENT" && !contact.archivedAt)
+    .map((contact) => {
+      const deal = wonByContact.get(contact.id) ?? null;
+      return {
+        contact,
+        deal,
+        sinceISO: (deal?.closedAt || contact.updatedAt || contact.createdAt || "").slice(0, 10),
+        planAmount: deal?.soldAmount || deal?.prescribedAmount || 0,
+      };
+    })
+    .sort((a, b) => contactDisplayName(a.contact).localeCompare(contactDisplayName(b.contact), "pt-BR"));
 }
 
 // Rótulos em português para o status das inscrições (tela é usada por leigos).
@@ -1665,7 +1833,6 @@ export function enrollContactInCadence(state: CrmState, values: Omit<CrmCadenceE
   }
 
   const enrollment: CrmCadenceEnrollment = {
-    id: createCrmId("enroll"),
     status: "ACTIVE",
     enrolledAt: now,
     completedAt: null,
@@ -1673,6 +1840,10 @@ export function enrollContactInCadence(state: CrmState, values: Omit<CrmCadenceE
     createdAt: now,
     updatedAt: now,
     ...values,
+    // Id determinístico: mesma inscrição (contato+cadência+data) converge em
+    // qualquer aparelho, então o upsert não duplica. Depois do spread p/ vencer
+    // qualquer id que venha em `values`.
+    id: enrollmentIdFor(values.contactId, values.cadenceId, values.triggerDate),
     dealId,
   };
   return generateCadenceTasks({ ...nextState, cadenceEnrollments: [enrollment, ...nextState.cadenceEnrollments] });
@@ -1708,7 +1879,10 @@ export function completeCrmTask(
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) return state;
   const now = new Date().toISOString();
-  const responseReceived = ["RESPONDED", "SCHEDULED", "RESCHEDULED", "SOLD", "NOT_SOLD", "NEEDS_MANAGER"].includes(values.result);
+  // Só uma resposta REAL do paciente (ou a venda) pausa a régua. "Não vendeu" e
+  // "Precisa de gestor" NÃO pausam: são o gatilho para o próximo toque do POP
+  // (ex.: médico D+1 marca "precisa de gestor" → o Gestor D+2 TEM de continuar).
+  const responseReceived = ["RESPONDED", "SCHEDULED", "RESCHEDULED", "SOLD"].includes(values.result);
   const touchpoint: CrmTouchpoint = {
     id: createCrmId("touch"),
     contactId: task.contactId,

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -54,7 +54,10 @@ function statusTone(status: CrmCadenceStatus) {
 export function CrmCadencesPage() {
   const { pessoa } = useAuth();
   const { state, persist, syncFailed, retrySync } = useCrmState();
-  const [cadenceId, setCadenceId] = useState("cad-cold-lead");
+  // Sem default fixo: a régua abre na do PRÓPRIO papel (concierge → Concierge D+1),
+  // para ninguém inscrever sem querer na cadência comercial (bug "coloco no D1 e
+  // não vai" — a Comercial se chamava 'D1' e era o default).
+  const [cadenceId, setCadenceId] = useState("");
   const [contactId, setContactId] = useState("");
   const [contactQuery, setContactQuery] = useState("");
   const [dealId, setDealId] = useState("");
@@ -72,6 +75,16 @@ export function CrmCadencesPage() {
     isManagement && onlyMine
       ? accessibleCadences.filter((cadence) => cadenceInvolvesMyRole(cadence.id, cadence.defaultOwnerRole))
       : accessibleCadences;
+
+  // Abre (e mantém) o seletor na régua do próprio papel; se a selecionada sumir
+  // da lista visível, cai para a primeira disponível.
+  useEffect(() => {
+    if (!accessibleCadences.length) return;
+    if (cadenceId && accessibleCadences.some((cadence) => cadence.id === cadenceId)) return;
+    const mine = accessibleCadences.find((cadence) => cadence.defaultOwnerRole === myRole);
+    setCadenceId((mine ?? accessibleCadences[0]).id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessibleCadences.length, myRole]);
   const visibleContacts = state.contacts.filter((contact) => !pessoa || canUserAccessContact(pessoa, contact));
   const contactSuggestions = useMemo(() => {
     const term = contactQuery.trim().toLowerCase();
@@ -141,8 +154,14 @@ export function CrmCadencesPage() {
 
     const who = createdName || displayName;
     if (saved) {
+      // Se a régua não estiver na vista "Só as minhas", abre a visão completa
+      // para a inscrição recém-criada aparecer (antes ela "sumia" da tela).
+      if (isManagement && onlyMine && !cadenceInvolvesMyRole(cadence.id, cadence.defaultOwnerRole)) {
+        setOnlyMine(false);
+      }
+      const responsavel = crmRoleLabels[cadence.defaultOwnerRole];
       setFeedback(
-        `${who} está na cadência "${cadence.name}": a negociação já aparece no Kanban Comercial e a primeira tarefa está em Minhas Tarefas (aba "Próximos 7 dias" quando o toque é D+1).`,
+        `✅ ${who} foi inscrito(a) em "${cadence.name}". A negociação aparece no Kanban Comercial e a 1ª tarefa foi para Minhas Tarefas de ${responsavel} (veja na aba "Próximos 7 dias" se o toque é amanhã). Role a página para ver a inscrição no cartão da régua.`,
       );
       setContactQuery("");
       setContactId("");
@@ -349,8 +368,15 @@ export function CrmCadencesPage() {
               <div>
                 <Label>Cadência</Label>
                 <select value={cadenceId} onChange={(event) => setCadenceId(event.target.value)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                  {visibleCadences.map((cadence) => <option key={cadence.id} value={cadence.id}>{cadence.name}</option>)}
+                  {visibleCadences.map((cadence) => (
+                    <option key={cadence.id} value={cadence.id}>
+                      {cadence.name} · {crmRoleLabels[cadence.defaultOwnerRole]}
+                    </option>
+                  ))}
                 </select>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Responsável pela régua: <span className="font-semibold text-brand-musgo">{crmRoleLabels[state.cadences.find((c) => c.id === cadenceId)?.defaultOwnerRole ?? myRole ?? "CONCIERGE"]}</span>. O primeiro toque cai em Minhas Tarefas de quem cuida deste passo.
+                </p>
               </div>
               {needsEventDate ? (
                 <div>

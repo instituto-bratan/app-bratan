@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { isCoordenacao } from "@/lib/access";
 import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState } from "@/lib/remoteData";
 import {
+  dedupeCrmState,
   ensureCadenceCoverage,
   generateCadenceTasks,
   loadCrmState,
@@ -16,9 +17,10 @@ import {
 } from "./crmData";
 
 // Pipeline padrão de saneamento do estado: catálogo novo entra, todo card do
-// Kanban ganha régua (POP) e o motor materializa as tarefas.
+// Kanban ganha régua (POP), o motor materializa as tarefas e, por fim, colapsa
+// qualquer duplicata (IDs antigos aleatórios ou corrida entre aparelhos).
 function prepareCrmState(state: CrmState) {
-  return generateCadenceTasks(ensureCadenceCoverage(state));
+  return dedupeCrmState(generateCadenceTasks(ensureCadenceCoverage(state)));
 }
 
 export function useCrmState() {
@@ -29,11 +31,18 @@ export function useCrmState() {
   // coordenação (RLS can_crm_manage). Quem não é coordenação pula essas
   // tabelas — antes, o sync inteiro morria nelas e nada era salvo.
   const canSyncCatalog = isCoordenacao(pessoa?.cargo);
+  // Só quem tem VISÃO COMPLETA (coordenação) empurra a cobertura automática:
+  // um cliente de visão parcial (recepção/enfermagem) não enxerga as tarefas
+  // dos outros papéis e não deve regravar o estado a partir de um retrato torto.
+  const canPushCoverage = isCoordenacao(pessoa?.cargo);
   const [state, setState] = useState<CrmState>(() => prepareCrmState(loadCrmState()));
   // Enquanto houver mudança local ainda não confirmada no Supabase, o snapshot
   // remoto NÃO pode sobrescrever o estado — era isso que fazia inscrições
   // recém-criadas "sumirem" ao navegar entre as telas do CRM.
   const dirtyRef = useRef(false);
+  // Último estado confirmado no banco — base do sync por diferença (salvar só o
+  // que mudou, em vez de reescrever tudo e reverter o trabalho dos colegas).
+  const baselineRef = useRef<CrmState | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
 
   const remoteStateQuery = useQuery({
@@ -43,11 +52,16 @@ export function useCrmState() {
     staleTime: 30_000,
   });
   const saveRemoteMutation = useMutation({
-    mutationFn: (next: CrmState) => saveRemoteCrmState(next, { includeCatalog: canSyncCatalog }),
-    onSuccess: () => {
+    mutationFn: (next: CrmState) =>
+      saveRemoteCrmState(next, { includeCatalog: canSyncCatalog, baseline: baselineRef.current ?? undefined }).then(() => next),
+    onSuccess: (saved) => {
+      // O que acabou de subir É a verdade agora: vira a nova base e entra no
+      // cache. Assim o refetch não traz um retrato ANTIGO que apagaria da tela
+      // a inscrição recém-criada (a causa do "coloco no D1 e some").
+      baselineRef.current = saved;
       dirtyRef.current = false;
       setSyncFailed(false);
-      void queryClient.invalidateQueries({ queryKey: ["crm-state"] });
+      queryClient.setQueryData(["crm-state"], saved);
       void queryClient.invalidateQueries({ queryKey: ["inteligencia-360-state"] });
     },
     onError: () => {
@@ -57,16 +71,21 @@ export function useCrmState() {
 
   useEffect(() => {
     if (!remoteStateQuery.data) return;
+    // Há mudança local não sincronizada ou um save em voo: não deixa o snapshot
+    // remoto sobrescrever o que o usuário acabou de fazer.
     if (dirtyRef.current || saveRemoteMutation.isPending) return;
     const merged = mergeCrmCatalogWithSeeds(remoteStateQuery.data);
+    baselineRef.current = merged;
     const next = prepareCrmState(merged);
     setState(next);
     saveCrmStateWithIntelligence(next);
     // A cobertura automática (POP) pode ter criado inscrições/tarefas novas a
-    // partir dos dados do banco — sobe uma vez para valer para todo mundo.
-    // Converge: na volta, nada novo é criado e nenhum save extra dispara.
+    // partir dos dados do banco. Só a coordenação (visão completa) sobe isso —
+    // e apenas o DIFF, para não reescrever o estado inteiro. Converge: na volta
+    // nada novo nasce e nenhum save extra dispara.
     if (
       useRemote &&
+      canPushCoverage &&
       (next.cadenceEnrollments.length !== merged.cadenceEnrollments.length || next.tasks.length !== merged.tasks.length)
     ) {
       dirtyRef.current = true;
@@ -75,7 +94,7 @@ export function useCrmState() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteStateQuery.data, saveRemoteMutation.isPending]);
+  }, [remoteStateQuery.dataUpdatedAt]);
 
   useEffect(() => {
     saveCrmStateWithIntelligence(state);

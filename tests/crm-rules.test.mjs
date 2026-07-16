@@ -410,6 +410,18 @@ test("resposta ao médico D+1 pula o gestor D+2 automaticamente (POP)", () => {
   const done2 = crm.completeCrmTask(moved2.state, medTask2.id, { result: "NO_RESPONSE", actorId: "dr-daniel" });
   const gestor2 = done2.tasks.find((task) => task.title.startsWith("Gestor D+2"));
   assert.equal(gestor2.status, "PENDING", "sem resposta o gestor D+2 continua");
+
+  // "Precisa de gestor" NÃO pausa: é justamente o gatilho do D+2 (POP).
+  const moved3 = crm.moveDealStage(cloneState(), "crm-deal-lead-quente", {
+    actorId: "vendedor",
+    stage: "NAO_FECHOU",
+    objection: "Preço",
+    objectionCategory: "PRICE",
+  });
+  const medTask3 = moved3.state.tasks.find((task) => task.title.startsWith("Médico D+1"));
+  const done3 = crm.completeCrmTask(moved3.state, medTask3.id, { result: "NEEDS_MANAGER", actorId: "dr-daniel" });
+  const gestor3 = done3.tasks.find((task) => task.title.startsWith("Gestor D+2"));
+  assert.equal(gestor3.status, "PENDING", "'precisa de gestor' mantém o Gestor D+2 de pé");
 });
 
 test("ciclo de retorno conta para trás da data da consulta", () => {

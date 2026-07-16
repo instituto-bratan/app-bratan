@@ -38,6 +38,7 @@ const routeLoaders = {
   crmKanban: namedPage(() => import("@/features/crm/CrmKanbanPage"), "CrmKanbanPage"),
   crmContact: namedPage(() => import("@/features/crm/CrmContactProfilePage"), "CrmContactProfilePage"),
   crmCadences: namedPage(() => import("@/features/crm/CrmCadencesPage"), "CrmCadencesPage"),
+  crmListas: namedPage(() => import("@/features/crm/CrmListasPage"), "CrmListasPage"),
   colaboradores: namedPage(() => import("@/features/admin/ColaboradoresPage"), "ColaboradoresPage"),
   colaboradorPerfil: namedPage(() => import("@/features/admin/ColaboradorPerfilPage"), "ColaboradorPerfilPage"),
   estalecasAdmin: namedPage(() => import("@/features/admin/EstalecasAdminPage"), "EstalecasAdminPage"),
@@ -89,6 +90,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/crm/vendas") return "crmKanban";
   if (pathname.startsWith("/crm/contatos/")) return "crmContact";
   if (pathname === "/crm/cadencias") return "crmCadences";
+  if (pathname === "/crm/listas") return "crmListas";
   if (pathname.startsWith("/administracao/colaboradores/")) return "colaboradorPerfil";
   if (pathname === "/administracao" || pathname === "/administracao/colaboradores") return "colaboradores";
   if (pathname === "/administracao/estalecas") return "estalecasAdmin";
