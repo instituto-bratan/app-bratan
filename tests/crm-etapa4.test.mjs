@@ -125,13 +125,19 @@ test("cadência esgotada sem resposta escala para a trilha de 5 ligações do ge
   const gateId = crm.programGateTaskIdFor(DEAL, "TRES_CONTATOS_D1", "recepcao");
   s = crm.completeCrmTask(s, gateId, { result: "SENT", actorId: "recepcao" });
   const contactId = s.deals.find((d) => d.id === DEAL).contactId;
-  // materializa e esgota todos os passos do follow-up sem resposta
-  s = crm.generateCadenceTasks(s, new Date("2026-07-10T09:00:00"));
-  const followupTasks = s.tasks.filter((t) => t.cadenceId === "cad-pos-fechamento-d2d5" && t.contactId === contactId);
-  assert.ok(followupTasks.length >= 4, `follow-ups materializados (veio ${followupTasks.length})`);
-  for (const task of followupTasks) {
-    s = crm.completeCrmTask(s, task.id, { result: "NO_RESPONSE", actorId: "recepcao" });
+  const genRef = new Date("2026-07-10T09:00:00");
+  // Uma tentativa por vez: conclui sem resposta e deixa a próxima nascer, até esgotar.
+  let done = 0;
+  for (let i = 0; i < 8; i += 1) {
+    s = crm.generateCadenceTasks(s, genRef);
+    const open = s.tasks.find(
+      (t) => t.cadenceId === "cad-pos-fechamento-d2d5" && t.contactId === contactId && !["DONE", "SKIPPED", "CANCELED"].includes(t.status),
+    );
+    if (!open) break;
+    s = crm.completeCrmTask(s, open.id, { result: "NO_RESPONSE", actorId: "recepcao" });
+    done += 1;
   }
+  assert.ok(done >= 4, `esgotou os follow-ups (concluídos ${done})`);
   const escalated = crm.escalateExhaustedCadences(s, new Date("2026-07-10T09:00:00"));
   const gestor = escalated.cadenceEnrollments.find((e) => e.cadenceId === "cad-gestor-5lig" && e.contactId === contactId);
   assert.ok(gestor, "inscrição na trilha do gestor");

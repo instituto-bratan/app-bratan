@@ -1583,10 +1583,10 @@ function dueDateForStep(enrollment: CrmCadenceEnrollment, step: CrmCadenceStep, 
   return addDays(enrollment.triggerDate, step.offsetValue);
 }
 
-function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment, step: CrmCadenceStep, reference = new Date()): CrmTask | null {
+function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment, step: CrmCadenceStep, reference = new Date(), dueOverride?: string): CrmTask | null {
   const contact = state.contacts.find((item) => item.id === enrollment.contactId);
   if (!contact || contact.optOut) return null;
-  const date = dueDateForStep(enrollment, step, reference);
+  const date = dueOverride ?? dueDateForStep(enrollment, step, reference);
   const recurring = step.offsetType === "RECURRING_EVERY_X_DAYS";
   // Ciclo do id: recorrente usa a data do ciclo; único usa a data de gatilho da
   // inscrição (estável na execução, novo a cada nova inscrição).
@@ -1618,14 +1618,49 @@ function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment
 
 export function generateCadenceTasks(state: CrmState, reference = new Date()) {
   const tasksToAdd: CrmTask[] = [];
+  const todayStr = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+  const isOpen = (task: CrmTask) => !["DONE", "CANCELED", "SKIPPED"].includes(task.status);
+
   for (const enrollment of state.cadenceEnrollments.filter((item) => item.status === "ACTIVE")) {
     const steps = state.cadenceSteps
       .filter((step) => step.cadenceId === enrollment.cadenceId && step.active)
       .sort((a, b) => a.stepOrder - b.stepOrder);
 
-    let materializedForEnrollment = false;
+    // Passos SEQUENCIAIS (tentativas em dias após o gatilho: leads, resgates,
+    // 3·1·3·1, D+1→D+2). Regra: UMA tentativa aberta por vez e ela NUNCA nasce
+    // atrasada — o próximo toque só surge quando o anterior é resolvido, com a
+    // data no dia (ou depois), nunca no passado. Isso impede a enxurrada de
+    // "atrasadas" que renasce sozinha.
+    const sequentialSteps = steps.filter((step) => step.offsetType === "DAYS_AFTER_TRIGGER");
+    let sequentialHandled = false;
+    for (const step of sequentialSteps) {
+      const workingState = { ...state, tasks: [...state.tasks, ...tasksToAdd] };
+      const existing = workingState.tasks.find(
+        (item) => item.contactId === enrollment.contactId && item.cadenceId === enrollment.cadenceId && item.cadenceStepId === step.id,
+      );
+      if (existing) {
+        if (isOpen(existing)) {
+          sequentialHandled = true; // já há uma tentativa aberta → não cria outra
+          break;
+        }
+        continue; // resolvida → procura a próxima tentativa
+      }
+      // Próxima tentativa: cria uma só. Data no passado vira "para hoje".
+      const rawDue = dueDateForStep(enrollment, step, reference);
+      const due = rawDue < todayStr ? todayStr : rawDue;
+      const task = createTaskFromCadence(workingState, enrollment, step, reference, due);
+      if (task) tasksToAdd.push(task);
+      sequentialHandled = true;
+      break;
+    }
+
+    // Passos ANCORADOS EM DATA (recorrente 14d; ciclo de retorno = antes da
+    // consulta). Mantêm a data real (uma confirmação perdida é atraso de
+    // verdade) e a janela de 7 dias.
+    const anchoredSteps = steps.filter((step) => step.offsetType !== "DAYS_AFTER_TRIGGER");
+    let anchoredMaterialized = false;
     const pendingBeyondWindow: { step: CrmCadenceStep; dueTime: number }[] = [];
-    for (const step of steps) {
+    for (const step of anchoredSteps) {
       const workingState = { ...state, tasks: [...state.tasks, ...tasksToAdd] };
       const due = new Date(`${dueDateForStep(enrollment, step, reference)}T23:59:59`);
       if (due.getTime() > reference.getTime() + 7 * 24 * 60 * 60 * 1000) {
@@ -1635,19 +1670,17 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
       const task = createTaskFromCadence(workingState, enrollment, step, reference);
       if (task) {
         tasksToAdd.push(task);
-        materializedForEnrollment = true;
+        anchoredMaterialized = true;
       } else if (
         workingState.tasks.some(
           (item) => item.contactId === enrollment.contactId && item.cadenceId === enrollment.cadenceId && item.cadenceStepId === step.id,
         )
       ) {
-        materializedForEnrollment = true;
+        anchoredMaterialized = true;
       }
     }
-
-    // Cadências cujo primeiro toque cai longe (D+14, D+60, resgates) não podem
-    // ficar invisíveis: sem nada na janela, a PRÓXIMA tarefa nasce mesmo assim.
-    if (!materializedForEnrollment && pendingBeyondWindow.length) {
+    // Nada sequencial e nada ancorado na janela: garante a próxima ancorada.
+    if (!sequentialHandled && !anchoredMaterialized && pendingBeyondWindow.length) {
       pendingBeyondWindow.sort((a, b) => a.dueTime - b.dueTime);
       const task = createTaskFromCadence({ ...state, tasks: [...state.tasks, ...tasksToAdd] }, enrollment, pendingBeyondWindow[0].step, reference);
       if (task) tasksToAdd.push(task);
