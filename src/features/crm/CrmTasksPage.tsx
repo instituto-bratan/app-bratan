@@ -148,6 +148,7 @@ export function CrmTasksPage() {
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [result, setResult] = useState<CrmTaskResult>("SENT");
   const [notes, setNotes] = useState("");
+  const [unhappy, setUnhappy] = useState(false);
   const tasks = useFilteredTasks(visibleTasks, tab, query, type, priority);
   const tabCounts = useMemo(() => {
     const today = startOfToday();
@@ -188,10 +189,19 @@ export function CrmTasksPage() {
 
   function completeSelected() {
     if (!selectedTask) return;
-    persist((current) => completeCrmTask(current, selectedTask.id, { actorId: pessoa?.id ?? "preview", result, resultNotes: notes }));
+    persist((current) =>
+      completeCrmTask(current, selectedTask.id, {
+        actorId: pessoa?.id ?? "preview",
+        result,
+        resultNotes: notes,
+        // Regra 2.3 do POP: insatisfação → a Concierge recebe a tarefa HOJE.
+        sentiment: unhappy ? "NEGATIVE" : undefined,
+      }),
+    );
     setSelectedTaskId("");
     setNotes("");
     setResult("SENT");
+    setUnhappy(false);
   }
 
   function createNextTask(task: CrmTask) {
@@ -336,6 +346,15 @@ export function CrmTasksPage() {
                   <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Resumo curto" />
                 </div>
               </div>
+              <label className="mt-2 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50/50 p-2.5 text-sm leading-5">
+                <input type="checkbox" checked={unhappy} onChange={(event) => setUnhappy(event.target.checked)} className="mt-0.5" />
+                <span>
+                  <span className="font-semibold text-red-800">Paciente insatisfeito / relatou problema</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Regra de ouro (POP 2.3): a Concierge recebe o caso HOJE. Descreva o ocorrido na observação acima.
+                  </span>
+                </span>
+              </label>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button type="button" onClick={completeSelected}>

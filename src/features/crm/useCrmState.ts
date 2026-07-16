@@ -8,6 +8,8 @@ import {
   advanceAllProgramGates,
   dedupeCrmState,
   ensureCadenceCoverage,
+  ensureMondaySafetyTask,
+  escalateExhaustedCadences,
   generateCadenceTasks,
   loadCrmState,
   mergeCrmCatalogWithSeeds,
@@ -17,12 +19,14 @@ import {
   type CrmState,
 } from "./crmData";
 
-// Pipeline padrão de saneamento do estado: catálogo novo entra, todo card do
-// Kanban ganha régua (POP), o motor materializa as tarefas, os gates completos
-// avançam de fase (Programa) e, por fim, colapsa qualquer duplicata (IDs
-// antigos aleatórios ou corrida entre aparelhos).
+// Pipeline padrão de saneamento do estado (POP v3.1): rotina de segurança de
+// segunda nasce sozinha, todo card ganha régua, o motor materializa as
+// tarefas, cadências esgotadas escalam ao gestor, gates completos avançam de
+// fase e, por fim, colapsa qualquer duplicata.
 function prepareCrmState(state: CrmState) {
-  return dedupeCrmState(advanceAllProgramGates(generateCadenceTasks(ensureCadenceCoverage(state))));
+  return dedupeCrmState(
+    advanceAllProgramGates(escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(state))))),
+  );
 }
 
 export function useCrmState() {

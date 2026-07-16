@@ -26,7 +26,8 @@ export type CrmRole =
   | "RECEPCAO"
   | "ENFERMAGEM"
   | "CONCIERGE"
-  | "ADMINISTRATIVO";
+  | "ADMINISTRATIVO"
+  | "PERFORMANCE"; // POP v3.1: a nutricionista como Assistente de Performance do Dr.
 
 export type CrmContactType = "LEAD" | "PATIENT" | "FORMER_PATIENT" | "OTHER";
 export type CrmLifecycleStage =
@@ -361,6 +362,7 @@ export const crmRoleLabels: Record<CrmRole, string> = {
   ENFERMAGEM: "Enfermagem",
   CONCIERGE: "Concierge",
   ADMINISTRATIVO: "Administrativo",
+  PERFORMANCE: "Assistente de Performance",
 };
 
 export const lifecycleLabels: Record<CrmLifecycleStage, string> = {
@@ -556,7 +558,10 @@ export function cargoToCrmRole(cargo: Cargo | null | undefined): CrmRole | null 
   if (cargo === "marketing") return "SDR_LEADS";
   if (cargo === "secretaria_executiva") return "CONCIERGE";
   if (cargo === "recepcionista") return "RECEPCAO";
-  if (cargo === "enfermeira" || cargo === "nutricionista") return "ENFERMAGEM";
+  if (cargo === "enfermeira") return "ENFERMAGEM";
+  // POP v3.1: a nutricionista atua como Assistente de Performance do Dr. Daniel
+  // (6 checkpoints mensais + 6 bioimpedâncias).
+  if (cargo === "nutricionista") return "PERFORMANCE";
   return null;
 }
 
@@ -590,7 +595,7 @@ export function canUserAccessContact(pessoa: Pessoa | null | undefined, contact:
   if ([contact.ownerUserId, contact.commercialOwnerId, contact.conciergeOwnerId, contact.nurseOwnerId, contact.doctorId].includes(pessoa.id)) return true;
   const role = cargoToCrmRole(pessoa.cargo);
   if (role === "COMERCIAL_VENDEDOR" || role === "SDR_LEADS" || role === "RECEPCAO") return ["LEAD", "PATIENT"].includes(contact.contactType);
-  if (role === "ENFERMAGEM") return contact.nurseOwnerId || contact.lifecycleStage === "ACTIVE_PATIENT";
+  if (role === "ENFERMAGEM" || role === "PERFORMANCE") return contact.nurseOwnerId || contact.lifecycleStage === "ACTIVE_PATIENT";
   if (role === "CONCIERGE") return contact.conciergeOwnerId || ["CLOSED_PATIENT", "ACTIVE_PATIENT"].includes(contact.lifecycleStage);
   if (role === "MEDICO") return contact.doctorId || ["CONSULTED", "PRESCRIBED", "NEGOTIATION"].includes(contact.lifecycleStage);
   return false;
@@ -785,6 +790,39 @@ const cadences: CrmCadence[] = [
     updatedAt: baseNow,
   },
   {
+    id: "cad-pos-fechamento-d2d5",
+    name: "Follow-up pós-fechamento D2–D5 (Recepção)",
+    description:
+      "Paciente não respondeu ao D+1 do fechamento: a Recepção conduz os follow-ups D2–D5 (POP: máx. 1 cadência ativa por paciente — a pauta mais urgente é agendar). Resposta encerra; sem resposta no D5 → Gestor.",
+    cadenceType: "POST_SALE_CONCIERGE",
+    defaultOwnerRole: "RECEPCAO",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
+    id: "cad-assinatura-d1d5",
+    name: "Assinatura do contrato D1–D5 (SuperSign)",
+    description:
+      "Contrato enviado pelo SuperSign: a recepcionista verifica a plataforma todo dia e manda o lembrete-padrão (POP 5.4). No D5 sem assinar, liga; sem atender → Gestor de Vendas conduz até a assinatura.",
+    cadenceType: "COMMERCIAL_FOLLOW_UP",
+    defaultOwnerRole: "RECEPCAO",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
+    id: "cad-gestor-5lig",
+    name: "Trilha de resgate do Gestor — 5 ligações (Estevão)",
+    description:
+      "Cadência D1–D5 esgotada sem resposta: 5 ligações em dias alternados e horários diferentes. Sem contato na 5ª → mensagem-padrão de encerramento (POP 5.1); o paciente segue para os resgates de 6 meses e 1 ano.",
+    cadenceType: "COMMERCIAL_FOLLOW_UP",
+    defaultOwnerRole: "ADMIN_GESTAO",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
     id: "cad-gestor-3131",
     name: "3·1·3·1 do Gestor (Estevão)",
     description: "Follow-up do gestor: 3 dias, 1 semana, 3 semanas e 1 mês após o gatilho — negociações paradas e recuperações.",
@@ -834,6 +872,21 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-rescue1y-5", "cad-rescue-1y", 5, "Resgate 1a - tentativa 5 (última)", 14, "tpl-resgate-1a", "CONCIERGE"],
   ["step-aniversario1y-1", "cad-anniversary-1y", 1, "Aniversário - parabéns + Instagram", 0, "tpl-aniversario-1a", "CONCIERGE"],
   ["step-aniversario1y-2", "cad-anniversary-1y", 2, "Aniversário - convite para avaliação de evolução", 3, "tpl-aniversario-1a-2", "CONCIERGE"],
+  ["step-posf-d2", "cad-pos-fechamento-d2d5", 1, "Follow-up D2 - viu minha mensagem?", 1, "tpl-followup-d2", "RECEPCAO"],
+  ["step-posf-d3", "cad-pos-fechamento-d2d5", 2, "Follow-up D3 - à disposição", 2, "tpl-followup-d3", "RECEPCAO"],
+  ["step-posf-d4", "cad-pos-fechamento-d2d5", 3, "Follow-up D4 - posso ligar?", 3, "tpl-followup-d4", "RECEPCAO"],
+  ["step-posf-d5", "cad-pos-fechamento-d2d5", 4, "Follow-up D5 - última mensagem", 4, "tpl-followup-d5", "RECEPCAO"],
+  ["step-assin-d1", "cad-assinatura-d1d5", 1, "Assinatura D1 - verificar e lembrar", 1, "tpl-lembrete-assinatura", "RECEPCAO"],
+  ["step-assin-d2", "cad-assinatura-d1d5", 2, "Assinatura D2 - lembrete", 2, "tpl-lembrete-assinatura", "RECEPCAO"],
+  ["step-assin-d3", "cad-assinatura-d1d5", 3, "Assinatura D3 - lembrete", 3, "tpl-lembrete-assinatura", "RECEPCAO"],
+  ["step-assin-d4", "cad-assinatura-d1d5", 4, "Assinatura D4 - lembrete", 4, "tpl-lembrete-assinatura", "RECEPCAO"],
+  ["step-assin-ligar", "cad-assinatura-d1d5", 5, "Assinatura D5 - LIGAR para o paciente", 5, "tpl-lembrete-assinatura", "RECEPCAO"],
+  ["step-g5l-1", "cad-gestor-5lig", 1, "Ligação 1 (ex.: seg 10h)", 0, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
+  ["step-g5l-2", "cad-gestor-5lig", 2, "Ligação 2 (ex.: qua 16h)", 2, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
+  ["step-g5l-3", "cad-gestor-5lig", 3, "Ligação 3 (ex.: sex 12h)", 4, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
+  ["step-g5l-4", "cad-gestor-5lig", 4, "Ligação 4 (ex.: ter 18h)", 7, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
+  ["step-g5l-5", "cad-gestor-5lig", 5, "Ligação 5 (última, ex.: qui 9h)", 9, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
+  ["step-g5l-encerramento", "cad-gestor-5lig", 6, "Mensagem de encerramento (POP 5.1)", 11, "tpl-encerramento-gestor", "ADMIN_GESTAO"],
   ["step-3131-3d", "cad-gestor-3131", 1, "Gestor - 3 dias", 3, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-1s", "cad-gestor-3131", 2, "Gestor - 1 semana", 7, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-3s", "cad-gestor-3131", 3, "Gestor - 3 semanas", 21, "tpl-gestor-3131", "ADMIN_GESTAO"],
@@ -850,7 +903,8 @@ const cadenceSteps: CrmCadenceStep[] = [
   offsetType: (cadenceId === "cad-return-cycle" ? "BEFORE_EVENT_DATE" : cadenceId === "cad-nursing-14" ? "RECURRING_EVERY_X_DAYS" : "DAYS_AFTER_TRIGGER") as CrmOffsetType,
   offsetValue: offsetValue as number,
   preferredTimeWindow: (id === "step-post-application" ? "AFTERNOON" : id === "step-concierge-d1" ? "MORNING" : "ANY") as CrmTimeWindow,
-  taskType: "WHATSAPP" as CrmTaskType,
+  // Ligações do gestor e a ligação do D5 da assinatura são CALL; o resto é WhatsApp.
+  taskType: ((String(id).startsWith("step-g5l-") && id !== "step-g5l-encerramento") || id === "step-assin-ligar" ? "CALL" : "WHATSAPP") as CrmTaskType,
   assignedToRole: assignedToRole as CrmRole,
   messageTemplateId: messageTemplateId as string,
   required: true,
@@ -869,6 +923,13 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Faz quase um ano que não nos falamos e você não saiu do meu radar. Como está sua saúde hoje? Adoraria retomar seu acompanhamento com a gente."],
   ["tpl-aniversario-1a", "Aniversário 1 ano", "Aline", "CONCIERGE", "ANNIVERSARY_1Y", "{{primeiro_nome}}, hoje faz 1 ano que você chegou ao Instituto Bratan — parabéns por ter cuidado de você! Segue nosso Instagram para acompanhar as novidades. Que tal marcarmos uma avaliação para ver sua evolução?"],
   ["tpl-aniversario-1a-2", "Aniversário 1 ano - reforço", "Aline", "CONCIERGE", "ANNIVERSARY_1Y", "{{primeiro_nome}}, reforçando o convite: montar uma avaliação de evolução dos seus 12 meses seria lindo de ver juntos. Quando encaixa na sua semana?"],
+  ["tpl-followup-d2", "Follow-up D2 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "Oi, {{primeiro_nome}}! Passando para saber se você viu a minha mensagem de ontem. Qualquer coisa, estou por aqui. 🌿"],
+  ["tpl-followup-d3", "Follow-up D3 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, tudo bem por aí? Sigo à disposição para agendar suas consultas. É só me responder por aqui!"],
+  ["tpl-followup-d4", "Follow-up D4 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "Oi, {{primeiro_nome}}! Para facilitar, posso te ligar? Me diz o melhor horário que eu te ligo rapidinho. 😊"],
+  ["tpl-followup-d5", "Follow-up D5 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, essa é a minha última mensagem por aqui para não te incomodar. Se preferir, nosso coordenador pode te ligar para resolver tudo de uma vez — é só me confirmar. Estamos à disposição!"],
+  ["tpl-lembrete-assinatura", "Lembrete de assinatura (POP 5.4)", "Recepção", "RECEPCAO", "COMMERCIAL_FOLLOW_UP", "Olá, {{primeiro_nome}}, tudo bem? Aqui é a Isabela, do Instituto Bratan. 😊 Passando para lembrar do seu contrato, que está prontinho no SuperSign aguardando a sua assinatura — é rapidinho, direto do celular, pelo link: {{link_contrato}}. Ele garante o registro de todo o seu tratamento e dos valores combinados, para a sua segurança. Qualquer dúvida sobre o documento, me chama por aqui que eu te ajudo!"],
+  ["tpl-gestor-ligacao", "Ligação do gestor (roteiro)", "Gestão", "ADMIN_GESTAO", "COMMERCIAL_FOLLOW_UP", "LIGAR para {{nome}} (não é mensagem): entender com escuta por que não está respondendo — agendamento, aplicação, concierge ou contrato. Dias alternados, horários diferentes. Registrar data, hora e status na planilha do gestor."],
+  ["tpl-encerramento-gestor", "Encerramento do gestor (POP 5.1)", "Gestão", "ADMIN_GESTAO", "COMMERCIAL_FOLLOW_UP", "Olá, {{primeiro_nome}}, tudo bem? Aqui é o Estevão, coordenador do Instituto Bratan. 🌿 Nos últimos dias, nossa equipe tentou falar com você por mensagem e eu tentei algumas ligações em dias e horários diferentes, mas infelizmente não conseguimos contato. Por respeito ao seu tempo e ao seu espaço, estou encerrando por aqui as nossas tentativas. Quero que saiba que as portas do Instituto continuam abertas para você: a qualquer momento, é só responder esta mensagem ou ligar para a nossa equipe no 11 91752-3530 que retomamos de onde paramos — seja para agendar, tirar uma dúvida ou dar continuidade ao seu tratamento. Estamos aguardando o seu contato para prestar a você um trabalho de excelência e uma experiência completa na transformação da sua saúde. Um abraço, Estevão · Instituto Bratan."],
   ["tpl-gestor-3131", "Gestor 3·1·3·1", "Gestão", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Estevão, gestor do Instituto Bratan. Passando para saber se ficou alguma dúvida e como posso facilitar seu próximo passo com a gente."],
   ["tpl-medico-d1", "Médico D+1", "Recuperação", "MEDICO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Dr. Daniel. Queria entender com calma o que ficou como dúvida ou barreira para ajustarmos o caminho sem perder o objetivo principal."],
   ["tpl-gestor-d2", "Gestor D+2", "Recuperação", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é da gestão do Instituto Bratan. Passei para entender como podemos facilitar sua decisão e deixar o próximo passo claro."],
@@ -2037,6 +2098,93 @@ export function setProgramPhase(state: CrmState, dealId: string, phase: CrmProgr
   return next;
 }
 
+// ---------------------------------------------------------------------------
+// POP v3.1 · Rotina de segurança (toda segunda-feira, do secretário-vendedor):
+// mensagem a todos os pacientes dos próximos 15 dias — cobra exames, confere
+// coleta e sana dúvidas. Id determinístico por segunda → nunca duplica.
+export function ensureMondaySafetyTask(state: CrmState, reference = new Date()): CrmState {
+  const refISO = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+  const delta = (8 - reference.getDay()) % 7; // dias até a próxima segunda (0 se hoje é segunda)
+  const monday = addDays(refISO, delta);
+  const id = `task-seguranca-${monday}`;
+  if (state.tasks.some((task) => task.id === id)) return state;
+  const task = createTask({
+    id,
+    contactId: "",
+    dealId: "",
+    cadenceId: "",
+    cadenceStepId: "",
+    title: "Rotina de segurança — pacientes dos próximos 15 dias",
+    description:
+      "Toda segunda: envie mensagem a TODOS os pacientes com consulta nos próximos 15 dias — cobre os exames, confira a coleta e sane dúvidas sobre a consulta. Sem resposta → cadência D1–D5; persistindo no D5, o coordenador liga (POP, Fluxo 7).",
+    taskType: "WHATSAPP",
+    assignedToUserId: "vendedor",
+    assignedToRole: "COMERCIAL_VENDEDOR",
+    dueAt: atLocalTime(monday, 9),
+    priority: "HIGH",
+    visibilityScope: "ROLE",
+    generatedBy: "CADENCE_ENGINE",
+    createdBy: "pop-engine",
+  });
+  return { ...state, tasks: [task, ...state.tasks] };
+}
+
+// POP v3.1 · Escalonamento: cadência D1–D5 esgotada SEM resposta → o caso vai
+// para o Gestor de Vendas (Estevão): trilha de 5 ligações em dias alternados,
+// encerrando com a mensagem-padrão (POP 5.1) se ninguém atender.
+const ESCALATE_TO_MANAGER_CADENCES = ["cad-pos-fechamento-d2d5", "cad-assinatura-d1d5", "cad-return-cycle"];
+
+export function escalateExhaustedCadences(state: CrmState, reference = new Date()): CrmState {
+  let next = state;
+  const refISO = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+  for (const enrollment of state.cadenceEnrollments) {
+    if (enrollment.status !== "ACTIVE" || !ESCALATE_TO_MANAGER_CADENCES.includes(enrollment.cadenceId)) continue;
+    const steps = next.cadenceSteps.filter((step) => step.cadenceId === enrollment.cadenceId && step.active);
+    if (!steps.length) continue;
+    // Esgotada: TODOS os passos têm tarefa correspondente e todas foram
+    // resolvidas (feitas/puladas) — e a régua segue ACTIVE (resposta pausaria).
+    const exhausted = steps.every((step) => {
+      const task = next.tasks.find(
+        (item) => item.contactId === enrollment.contactId && item.cadenceId === enrollment.cadenceId && item.cadenceStepId === step.id,
+      );
+      return task && ["DONE", "SKIPPED", "CANCELED"].includes(task.status);
+    });
+    if (!exhausted) continue;
+    const now = new Date().toISOString();
+    next = {
+      ...next,
+      cadenceEnrollments: next.cadenceEnrollments.map((item) =>
+        item.id === enrollment.id ? { ...item, status: "COMPLETED" as CrmCadenceStatus, completedAt: now, updatedAt: now } : item,
+      ),
+    };
+    next = enrollContactInCadence(next, {
+      cadenceId: "cad-gestor-5lig",
+      contactId: enrollment.contactId,
+      dealId: enrollment.dealId,
+      triggerSource: `escalonado: ${enrollment.cadenceId} sem resposta no D5`,
+      triggerDate: refISO,
+      ownerUserId: "gestao",
+      ownerRole: "ADMIN_GESTAO",
+    });
+    next = {
+      ...next,
+      timelineEvents: [
+        createTimelineEvent({
+          contactId: enrollment.contactId,
+          eventType: "ESCALATED_TO_MANAGER",
+          eventTitle: "Escalonado ao Gestor de Vendas",
+          eventDescription: "Cadência D1–D5 esgotada sem resposta — Estevão assume com a trilha de 5 ligações (POP, Fluxo 7).",
+          sourceModule: "CRM",
+          sourceId: enrollment.id,
+          createdBy: "pop-engine",
+        }),
+        ...next.timelineEvents,
+      ],
+    };
+  }
+  return next;
+}
+
 // Exclui um lead por completo: contato, negociações, inscrições, tarefas,
 // toques e histórico. Devolve as referências para apagar também no Supabase.
 export function removeLeadFromCrm(state: CrmState, contactId: string) {
@@ -2204,7 +2352,7 @@ export function completeCrmTask(
       )
     : updatedTasks;
 
-  const completed: CrmState = {
+  let completed: CrmState = {
     ...state,
     tasks: finalTasks,
     cadenceEnrollments: updatedEnrollments,
@@ -2222,6 +2370,81 @@ export function completeCrmTask(
       ...state.timelineEvents,
     ],
   };
+
+  // POP 2.3 — Regra de ouro das reclamações: paciente insatisfeito em QUALQUER
+  // canal → o contato vai à Concierge NO MESMO DIA (caso crítico → Abraço
+  // Bratan; grave → Dr. Daniel → CEO).
+  if (values.sentiment === "NEGATIVE" && task.contactId) {
+    const complaintId = `task-reclamacao-${task.id}`;
+    if (!completed.tasks.some((item) => item.id === complaintId)) {
+      const complaint = createTask({
+        id: complaintId,
+        contactId: task.contactId,
+        dealId: task.dealId,
+        cadenceId: "",
+        cadenceStepId: "",
+        title: "Reclamação — acolher HOJE (regra 2.3)",
+        description: `Relato vindo de ${crmRoleLabels[task.assignedToRole]}: ${values.resultNotes || "paciente insatisfeito"}. Acolha e resolva; caso crítico → Abraço Bratan (caixa verde na casa em até 24h + carta sua); grave → Dr. Daniel → CEO.`,
+        taskType: "WHATSAPP",
+        assignedToUserId: "concierge",
+        assignedToRole: "CONCIERGE",
+        dueAt: atLocalTime(now.slice(0, 10), 17),
+        priority: "CRITICAL",
+        visibilityScope: "ROLE",
+        generatedBy: "PIPELINE_STAGE",
+        createdBy: values.actorId,
+      });
+      completed = {
+        ...completed,
+        tasks: [complaint, ...completed.tasks],
+        timelineEvents: [
+          createTimelineEvent({
+            contactId: task.contactId,
+            eventType: "COMPLAINT_TO_CONCIERGE",
+            eventTitle: "Reclamação encaminhada à Concierge",
+            eventDescription: values.resultNotes || "Paciente relatou insatisfação — regra 2.3 do POP.",
+            sourceModule: "EXPERIENCIA",
+            sourceId: task.id,
+            createdBy: values.actorId,
+          }),
+          ...completed.timelineEvents,
+        ],
+      };
+    }
+  }
+
+  // POP 3.6 — Administrativo enviou o contrato pelo SuperSign: abre a régua de
+  // assinatura D1–D5 da recepção (verificação diária + lembrete-padrão 5.4).
+  if (task.taskType === "CONTRACT" && task.assignedToRole === "ADMINISTRATIVO" && values.result === "SENT" && task.contactId) {
+    completed = enrollContactInCadence(completed, {
+      cadenceId: "cad-assinatura-d1d5",
+      contactId: task.contactId,
+      dealId: task.dealId,
+      triggerSource: "contrato enviado (SuperSign)",
+      triggerDate: now.slice(0, 10),
+      ownerUserId: "recepcao",
+      ownerRole: "RECEPCAO",
+    });
+  }
+
+  // POP 3.3 — Gate da Recepção no D+1 enviado SEM resposta do paciente: abre o
+  // follow-up D2–D5 (a Recepção conduz — máx. 1 cadência ativa por paciente).
+  if (
+    task.isGate &&
+    task.gatePhase === "TRES_CONTATOS_D1" &&
+    task.assignedToRole === "RECEPCAO" &&
+    (values.result === "SENT" || values.result === "NO_RESPONSE")
+  ) {
+    completed = enrollContactInCadence(completed, {
+      cadenceId: "cad-pos-fechamento-d2d5",
+      contactId: task.contactId,
+      dealId: task.dealId,
+      triggerSource: "D+1 do fechamento sem resposta",
+      triggerDate: now.slice(0, 10),
+      ownerUserId: "recepcao",
+      ownerRole: "RECEPCAO",
+    });
+  }
 
   // Concluir uma tarefa-gate pode fechar o gate da fase → avança o Programa.
   if (task.isGate && task.dealId) {
