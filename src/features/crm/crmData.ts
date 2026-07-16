@@ -89,7 +89,22 @@ export type CrmDealStage =
   | "RECUPERACAO_D2_GESTOR"
   | "PERDIDO"
   | "RESGATE_D60"
-  | "CHURN";
+  | "CHURN"
+  | "NAO_ADESAO"; // POP v3.1: não aderiu nem após o contato do médico (comercial encerrado)
+
+// Jornada PROGRAMA (régua pós-fechamento): eixo SEPARADO do stage comercial.
+// O stage do deal registra a história comercial (ficou em FECHOU_*); a fase do
+// programa é o que anda na trilha de cuidado. Ver programPhaseSpecs.
+export type CrmProgramPhase =
+  | "FECHAMENTO_D0" // fase 1
+  | "TRES_CONTATOS_D1" // fase 2 — GATE: recepção + concierge + enfermeira
+  | "AGENDAMENTO" // fase 3 — recepção monta a agenda no Feegow
+  | "CADENCIA_PROGRAMA" // fase 4 — 6 a 9 meses
+  | "ENCERRAMENTO"; // fase 5 — renovação / manutenção / alta
+export type CrmProgramOutcome = "RENOVACAO" | "MANUTENCAO" | "ALTA";
+export type CrmJourney = "COMERCIAL" | "PROGRAMA";
+// Canal escolhido no fechamento (POP v3.1).
+export type CrmAdhesionChannel = "PROGRAMA_ACOMPANHAMENTO" | "CLUBE_BRATAN" | "SOMENTE_TRATAMENTO";
 export type CrmDealStatus = "OPEN" | "WON_FULL" | "WON_PARTIAL" | "LOST" | "PAUSED";
 export type CrmObjectionCategory =
   | "PRICE"
@@ -182,6 +197,9 @@ export type CrmTask = {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  // Tarefa que compõe o GATE de uma fase do Programa (ex.: os 3 contatos do D+1).
+  isGate?: boolean;
+  gatePhase?: CrmProgramPhase; // a qual fase este gate pertence
 };
 
 export type CrmDeal = {
@@ -205,6 +223,12 @@ export type CrmDeal = {
   closedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // --- Jornada PROGRAMA (pós-fechamento). Opcionais → retrocompatível. ---
+  programPhase?: CrmProgramPhase | null; // null/ausente = ainda na jornada comercial
+  programPhaseEnteredAt?: string; // quando entrou na fase atual (auditoria)
+  programPhaseActorId?: string; // quem disparou a entrada (auditoria)
+  programOutcome?: CrmProgramOutcome | null; // desfecho ao encerrar
+  adhesionChannel?: CrmAdhesionChannel | null; // canal escolhido no fechamento
 };
 
 export type CrmCadence = {
@@ -414,6 +438,7 @@ export const dealStageHints: Record<CrmDealStage, string> = {
   PERDIDO: "Não vai fechar agora. Entra nos resgates futuros (60 dias, 6 meses, 1 ano).",
   RESGATE_D60: "Sumiu do ciclo: a Aline faz as 5 tentativas de resgate.",
   CHURN: "Pausou por condição real (dinheiro, momento de vida). Não é perdido: a Aline investiga o motivo e o resgate fica agendado sozinho para daqui a 6 meses.",
+  NAO_ADESAO: "Não aderiu nem após o contato do Dr. Daniel. Vendas encerra aqui; o paciente segue na base para os resgates futuros.",
 };
 
 export const dealStageLabels: Record<CrmDealStage, string> = {
@@ -434,6 +459,7 @@ export const dealStageLabels: Record<CrmDealStage, string> = {
   PERDIDO: "Perdido",
   RESGATE_D60: "Resgate D60",
   CHURN: "Churn (pausou)",
+  NAO_ADESAO: "Não adesão",
 };
 
 export const dealStages: CrmDealStage[] = [
@@ -1776,6 +1802,238 @@ export function ensureCadenceCoverage(state: CrmState) {
   return nextState;
 }
 
+// ============================================================================
+// PROGRAMA — trilha de 5 fases pós-fechamento com GATE de avanço (POP v3.1)
+// ============================================================================
+// A jornada de cuidado roda num eixo próprio (deal.programPhase), separado do
+// stage comercial. Cada fase pode exigir tarefas-GATE (uma por papel); o card
+// só AVANÇA quando TODAS as tarefas-gate obrigatórias estão concluídas.
+// Ex.: no D+1, Recepção + Concierge + Enfermeira precisam marcar "enviado".
+
+export const programPhases: CrmProgramPhase[] = [
+  "FECHAMENTO_D0",
+  "TRES_CONTATOS_D1",
+  "AGENDAMENTO",
+  "CADENCIA_PROGRAMA",
+  "ENCERRAMENTO",
+];
+
+export const programPhaseLabels: Record<CrmProgramPhase, string> = {
+  FECHAMENTO_D0: "Fechamento",
+  TRES_CONTATOS_D1: "Boas-vindas (D+1)",
+  AGENDAMENTO: "Agendamento",
+  CADENCIA_PROGRAMA: "Em acompanhamento",
+  ENCERRAMENTO: "Encerramento",
+};
+
+export const programPhaseHints: Record<CrmProgramPhase, string> = {
+  FECHAMENTO_D0: "Acabou de fechar. Vendas acionou Recepção, Concierge e Enfermagem.",
+  TRES_CONTATOS_D1:
+    "No dia seguinte, três pessoas falam com o paciente: Recepção (agenda tudo), Concierge (experiência + Google) e Enfermeira (bem-estar). O card só avança quando os TRÊS marcarem \"mensagem enviada\".",
+  AGENDAMENTO:
+    "A Recepção monta a agenda no Feegow (3 consultas do médico, 6 checkpoints da Performance, 1ª dose). Confirmada a agenda, avança sozinho.",
+  CADENCIA_PROGRAMA:
+    "Programa rodando (6 a 9 meses): enfermeira nas doses e a cada 14 dias, Performance mensal, médico a cada 60 dias.",
+  ENCERRAMENTO: "Mês 6/9: decisão — renovar, manter (mais leve) ou dar alta.",
+};
+
+export const programOutcomeLabels: Record<CrmProgramOutcome, string> = {
+  RENOVACAO: "Renovação",
+  MANUTENCAO: "Manutenção",
+  ALTA: "Alta",
+};
+
+type ProgramGateSpec = {
+  key: string;
+  role: CrmRole;
+  userId: string;
+  title: string;
+  description: string;
+  taskType: CrmTaskType;
+  dueOffsetDays: number;
+};
+type ProgramPhaseSpec = {
+  order: number;
+  gate: ProgramGateSpec[]; // TODAS obrigatórias para avançar
+  enrollCadences: string[]; // cadências materializadas ao ENTRAR na fase
+  autoAdvance: boolean; // gate fechado avança sozinho
+  next: CrmProgramPhase | null;
+};
+
+export const programPhaseSpecs: Record<CrmProgramPhase, ProgramPhaseSpec> = {
+  FECHAMENTO_D0: { order: 1, gate: [], enrollCadences: [], autoAdvance: true, next: "TRES_CONTATOS_D1" },
+  TRES_CONTATOS_D1: {
+    order: 2,
+    gate: [
+      { key: "recepcao", role: "RECEPCAO", userId: "recepcao", title: "Recepção D+1 — agendar o programa", description: "Envie 1 mensagem com todas as datas (consultas, checkpoints e doses). Marque como enviada quando mandar.", taskType: "WHATSAPP", dueOffsetDays: 1 },
+      { key: "concierge", role: "CONCIERGE", userId: "concierge", title: "Concierge D+1 — experiência + avaliação Google", description: "Pergunte como foi a experiência e peça a avaliação no Google. Marque como enviada quando mandar.", taskType: "WHATSAPP", dueOffsetDays: 1 },
+      { key: "enfermeira", role: "ENFERMAGEM", userId: "enfermagem", title: "Enfermeira D+1 — bem-estar e efeitos", description: "Pergunte como o paciente está se sentindo e se teve efeitos colaterais. Marque como enviada quando mandar.", taskType: "WHATSAPP", dueOffsetDays: 1 },
+    ],
+    enrollCadences: [],
+    autoAdvance: true,
+    next: "AGENDAMENTO",
+  },
+  AGENDAMENTO: {
+    order: 3,
+    gate: [
+      { key: "recepcao-agenda", role: "RECEPCAO", userId: "recepcao", title: "Montar a agenda no Feegow", description: "Agende as 3 consultas do Dr. Daniel (1 a cada 2 meses), os 6 checkpoints da Assistente de Performance (1/mês) e a 1ª dose/bioimpedância. Confirme aqui quando a agenda estiver montada.", taskType: "SCHEDULE", dueOffsetDays: 1 },
+    ],
+    enrollCadences: [],
+    autoAdvance: true,
+    next: "CADENCIA_PROGRAMA",
+  },
+  CADENCIA_PROGRAMA: { order: 4, gate: [], enrollCadences: ["cad-nursing-14"], autoAdvance: false, next: "ENCERRAMENTO" },
+  ENCERRAMENTO: { order: 5, gate: [], enrollCadences: [], autoAdvance: false, next: null },
+};
+
+// Id determinístico da tarefa-gate (converge entre aparelhos; upsert idempotente).
+export function programGateTaskIdFor(dealId: string, phase: CrmProgramPhase, key: string) {
+  return `gate-${dealId}-${phase}-${key}`;
+}
+
+// Cria (idempotente) as tarefas-gate da fase e inscreve as cadências da fase.
+function materializeProgramPhase(state: CrmState, deal: CrmDeal, phase: CrmProgramPhase, reference: Date): CrmState {
+  const spec = programPhaseSpecs[phase];
+  let next = state;
+  const tasksToAdd: CrmTask[] = [];
+  const enteredISO = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+  for (const gate of spec.gate) {
+    const id = programGateTaskIdFor(deal.id, phase, gate.key);
+    if (next.tasks.some((task) => task.id === id)) continue;
+    tasksToAdd.push(
+      createTask({
+        id,
+        contactId: deal.contactId,
+        dealId: deal.id,
+        cadenceId: "",
+        cadenceStepId: "",
+        title: gate.title,
+        description: gate.description,
+        taskType: gate.taskType,
+        assignedToUserId: gate.userId,
+        assignedToRole: gate.role,
+        dueAt: atLocalTime(addDays(enteredISO, gate.dueOffsetDays), 9),
+        priority: "HIGH",
+        visibilityScope: "ROLE",
+        generatedBy: "PIPELINE_STAGE",
+        createdBy: "program-engine",
+        isGate: true,
+        gatePhase: phase,
+      }),
+    );
+  }
+  if (tasksToAdd.length) next = { ...next, tasks: [...tasksToAdd, ...next.tasks] };
+  for (const cadenceId of spec.enrollCadences) {
+    const cadence = next.cadences.find((item) => item.id === cadenceId);
+    next = enrollContactInCadence(next, {
+      cadenceId,
+      contactId: deal.contactId,
+      dealId: deal.id,
+      triggerSource: "programa (fase)",
+      triggerDate: enteredISO,
+      ownerUserId: deal.ownerUserId || (cadence?.defaultOwnerRole ?? "CONCIERGE").toLowerCase(),
+      ownerRole: cadence?.defaultOwnerRole ?? "CONCIERGE",
+    });
+  }
+  return next;
+}
+
+// Coloca um deal no início da jornada PROGRAMA (chamado no fechamento).
+export function startProgramJourney(state: CrmState, dealId: string, channel: CrmAdhesionChannel | null, actorId: string, reference = new Date()): CrmState {
+  const deal = state.deals.find((item) => item.id === dealId);
+  if (!deal || deal.programPhase) return state;
+  const now = new Date().toISOString();
+  const started: CrmDeal = { ...deal, programPhase: "FECHAMENTO_D0", programPhaseEnteredAt: now, programPhaseActorId: actorId, adhesionChannel: channel ?? deal.adhesionChannel ?? null, updatedAt: now };
+  let next: CrmState = { ...state, deals: state.deals.map((item) => (item.id === dealId ? started : item)) };
+  next = materializeProgramPhase(next, started, "FECHAMENTO_D0", reference);
+  next = {
+    ...next,
+    timelineEvents: [
+      createTimelineEvent({ contactId: deal.contactId, eventType: "PROGRAM_STARTED", eventTitle: "Entrou no Programa", eventDescription: `Fase: ${programPhaseLabels.FECHAMENTO_D0}`, sourceModule: "JORNADA", sourceId: dealId, createdBy: actorId }),
+      ...next.timelineEvents,
+    ],
+  };
+  return next;
+}
+
+// Situação do gate da fase atual: quais papéis faltam concluir.
+export function programGateStatus(state: CrmState, dealId: string): { phase: CrmProgramPhase | null; total: number; done: number; missing: { role: CrmRole; title: string }[] } {
+  const deal = state.deals.find((item) => item.id === dealId);
+  if (!deal?.programPhase) return { phase: null, total: 0, done: 0, missing: [] };
+  const spec = programPhaseSpecs[deal.programPhase];
+  const missing: { role: CrmRole; title: string }[] = [];
+  let done = 0;
+  for (const gate of spec.gate) {
+    const id = programGateTaskIdFor(deal.id, deal.programPhase, gate.key);
+    const task = state.tasks.find((item) => item.id === id);
+    if (task && task.status === "DONE") done += 1;
+    else missing.push({ role: gate.role, title: gate.title });
+  }
+  return { phase: deal.programPhase, total: spec.gate.length, done, missing };
+}
+
+// Avança UMA fase se o gate estiver completo (idempotente, determinística).
+export function advancePhaseIfGateComplete(state: CrmState, dealId: string, options?: { actorId?: string; reference?: Date }): CrmState {
+  const reference = options?.reference ?? new Date();
+  const actorId = options?.actorId ?? "program-engine";
+  const deal = state.deals.find((item) => item.id === dealId);
+  if (!deal?.programPhase) return state;
+  const spec = programPhaseSpecs[deal.programPhase];
+  if (!spec.autoAdvance || !spec.next) return state;
+  const gateComplete = spec.gate.every((gate) => {
+    const id = programGateTaskIdFor(deal.id, deal.programPhase as CrmProgramPhase, gate.key);
+    const task = state.tasks.find((item) => item.id === id);
+    return task?.status === "DONE";
+  });
+  if (!gateComplete) return state;
+  const now = new Date().toISOString();
+  const nextPhase = spec.next;
+  const movedDeal: CrmDeal = { ...deal, programPhase: nextPhase, programPhaseEnteredAt: now, programPhaseActorId: actorId, updatedAt: now };
+  let next: CrmState = { ...state, deals: state.deals.map((item) => (item.id === dealId ? movedDeal : item)) };
+  next = materializeProgramPhase(next, movedDeal, nextPhase, reference);
+  next = {
+    ...next,
+    timelineEvents: [
+      createTimelineEvent({ contactId: deal.contactId, eventType: "PHASE_ADVANCED", eventTitle: `Avançou para ${programPhaseLabels[nextPhase]}`, eventDescription: "Gate completo — todas as tarefas do setor concluídas.", sourceModule: "JORNADA", sourceId: dealId, createdBy: actorId }),
+      ...next.timelineEvents,
+    ],
+  };
+  return next;
+}
+
+// Roda o avanço em TODOS os deals do programa até estabilizar (usado no pipeline).
+export function advanceAllProgramGates(state: CrmState, reference = new Date()): CrmState {
+  let next = state;
+  const dealIds = state.deals.filter((deal) => deal.programPhase).map((deal) => deal.id);
+  for (const dealId of dealIds) {
+    // no máximo programPhases.length passos por deal (barreira contra loop)
+    for (let i = 0; i < programPhases.length; i += 1) {
+      const before = next;
+      next = advancePhaseIfGateComplete(next, dealId, { reference });
+      if (next === before) break;
+    }
+  }
+  return next;
+}
+
+// Override manual da coordenação (arrastar o card): grava a fase e materializa.
+export function setProgramPhase(state: CrmState, dealId: string, phase: CrmProgramPhase, actorId: string, reference = new Date()): CrmState {
+  const deal = state.deals.find((item) => item.id === dealId);
+  if (!deal) return state;
+  const now = new Date().toISOString();
+  const movedDeal: CrmDeal = { ...deal, programPhase: phase, programPhaseEnteredAt: now, programPhaseActorId: actorId, updatedAt: now };
+  let next: CrmState = { ...state, deals: state.deals.map((item) => (item.id === dealId ? movedDeal : item)) };
+  next = materializeProgramPhase(next, movedDeal, phase, reference);
+  next = {
+    ...next,
+    timelineEvents: [
+      createTimelineEvent({ contactId: deal.contactId, eventType: "PHASE_OVERRIDE", eventTitle: `Movido para ${programPhaseLabels[phase]}`, eventDescription: "Ajuste manual da coordenação.", sourceModule: "JORNADA", sourceId: dealId, createdBy: actorId }),
+      ...next.timelineEvents,
+    ],
+  };
+  return next;
+}
+
 // Exclui um lead por completo: contato, negociações, inscrições, tarefas,
 // toques e histórico. Devolve as referências para apagar também no Supabase.
 export function removeLeadFromCrm(state: CrmState, contactId: string) {
@@ -1943,7 +2201,7 @@ export function completeCrmTask(
       )
     : updatedTasks;
 
-  return {
+  const completed: CrmState = {
     ...state,
     tasks: finalTasks,
     cadenceEnrollments: updatedEnrollments,
@@ -1961,6 +2219,12 @@ export function completeCrmTask(
       ...state.timelineEvents,
     ],
   };
+
+  // Concluir uma tarefa-gate pode fechar o gate da fase → avança o Programa.
+  if (task.isGate && task.dealId) {
+    return advancePhaseIfGateComplete(completed, task.dealId, { actorId: values.actorId });
+  }
+  return completed;
 }
 
 export function createFollowUpTask(state: CrmState, taskId: string, actorId: string) {
