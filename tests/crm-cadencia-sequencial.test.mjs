@@ -159,6 +159,29 @@ test("dedupe NÃO destrói a tarefa da re-inscrição por causa da conclusão an
   assert.ok(beforeDedupe >= 1, "há uma tentativa aberta da re-inscrição");
 });
 
+test("collapseSequentialLadders: várias tentativas abertas viram UMA (mantém a de menor ordem)", () => {
+  // Escada legada: tentativas 1..4 abertas ao mesmo tempo (materializadas antes
+  // da correção do motor). O auto-cura mantém a 1 e cancela 2,3,4.
+  let state = crm.generateCadenceTasks(stateWithRescue("2026-07-10"), REF);
+  // força a escada abrindo manualmente os próximos passos (simula histórico)
+  const steps = crm.demoCrmFixtures.cadenceSteps.filter((s) => s.cadenceId === "cad-rescue-60d").sort((a, b) => a.stepOrder - b.stepOrder);
+  const extra = steps.slice(1, 4).map((s, i) => ({
+    ...state.tasks[0],
+    id: `extra-${i}`,
+    cadenceStepId: s.id,
+    status: "PENDING",
+    dueAt: "2026-07-1" + (2 + i) + "T10:00:00.000Z",
+  }));
+  state = { ...state, tasks: [...state.tasks, ...extra] };
+  assert.equal(openRescueTasks(state).length, 4, "escada montada com 4 abertas");
+  const healed = crm.collapseSequentialLadders(state);
+  const open = openRescueTasks(healed);
+  assert.equal(open.length, 1, "uma tentativa aberta por vez após o colapso");
+  assert.equal(open[0].cadenceStepId, steps[0].id, "manteve a tentativa de menor ordem");
+  // idempotente
+  assert.equal(openRescueTasks(crm.collapseSequentialLadders(healed)).length, 1);
+});
+
 test("tarefa PULADA (régua pausou) não conta como atrasada mesmo com data no passado", () => {
   let state = crm.generateCadenceTasks(stateWithRescue("2026-07-10"), REF);
   const first = openRescueTasks(state)[0];

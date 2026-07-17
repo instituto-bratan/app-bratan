@@ -6,6 +6,7 @@ import { isCoordenacao } from "@/lib/access";
 import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState, subscribeRemoteCrmState } from "@/lib/remoteData";
 import {
   advanceAllProgramGates,
+  collapseSequentialLadders,
   dedupeCrmState,
   ensureCadenceCoverage,
   ensureMondaySafetyTask,
@@ -24,8 +25,13 @@ import {
 // tarefas, cadências esgotadas escalam ao gestor, gates completos avançam de
 // fase e, por fim, colapsa qualquer duplicata.
 function prepareCrmState(state: CrmState) {
-  return dedupeCrmState(
-    advanceAllProgramGates(escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(state))))),
+  // collapseSequentialLadders roda por ÚLTIMO (após o dedupe deixar 1 inscrição
+  // ativa por régua): garante uma única tentativa aberta por vez — a escada não
+  // reaparece nem no Kanban nem em Minhas Tarefas, sem limpeza manual.
+  return collapseSequentialLadders(
+    dedupeCrmState(
+      advanceAllProgramGates(escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(state))))),
+    ),
   );
 }
 

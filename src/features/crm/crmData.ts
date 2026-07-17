@@ -1793,6 +1793,48 @@ export function dedupeCrmState(state: CrmState): CrmState {
   return { ...state, cadenceEnrollments, tasks };
 }
 
+// Auto-cura das ESCADAS: uma régua de tentativas em dias (resgate, lead frio,
+// 3·1·3·1, D+1→D+2) só pode ter UMA tarefa aberta por vez. Se o histórico deixou
+// várias tentativas abertas ao mesmo tempo (materializadas antes da correção do
+// motor), mantém a de menor ordem (a tentativa da vez) e cancela as demais.
+// Roda no prepareCrmState → o Kanban e "Minhas Tarefas" nunca mais mostram a
+// escada, sem depender de limpeza manual. Não apaga: cancela (auditável).
+export function collapseSequentialLadders(state: CrmState): CrmState {
+  const seqStepIds = new Set(
+    state.cadenceSteps.filter((step) => step.offsetType === "DAYS_AFTER_TRIGGER").map((step) => step.id),
+  );
+  if (!seqStepIds.size) return state;
+  const stepOrderById = new Map(state.cadenceSteps.map((step) => [step.id, step.stepOrder]));
+  const isOpen = (task: CrmTask) => !["DONE", "CANCELED", "SKIPPED"].includes(task.status);
+
+  const openByKey = new Map<string, CrmTask[]>();
+  for (const task of state.tasks) {
+    if (!task.cadenceStepId || !seqStepIds.has(task.cadenceStepId) || !isOpen(task)) continue;
+    const key = `${task.contactId}|${task.cadenceId}`;
+    const list = openByKey.get(key);
+    if (list) list.push(task);
+    else openByKey.set(key, [task]);
+  }
+
+  const cancelIds = new Set<string>();
+  for (const list of openByKey.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => (stepOrderById.get(a.cadenceStepId) ?? 0) - (stepOrderById.get(b.cadenceStepId) ?? 0));
+    for (const task of list.slice(1)) cancelIds.add(task.id);
+  }
+  if (!cancelIds.size) return state;
+
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    tasks: state.tasks.map((task) =>
+      cancelIds.has(task.id)
+        ? { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: "Cancelada: uma tentativa por vez (régua sequencial).", updatedAt: now }
+        : task,
+    ),
+  };
+}
+
 const CRM_DIFF_COLLECTIONS = [
   "contacts",
   "deals",
@@ -2792,8 +2834,10 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
         title: "Follow-up da prescrição",
         description: "Registrar objeção, valor vendido e próximo passo sem duplicar no 360.",
         taskType: "FOLLOW_UP",
-        assignedToUserId: deal.ownerUserId || "vendedor",
-        assignedToRole: "COMERCIAL_VENDEDOR",
+        // O follow-up comercial pós-prescrição é conduzido pela gestão (Estevão);
+        // COMERCIAL_VENDEDOR não corresponde a nenhum cargo, então ninguém via.
+        assignedToUserId: deal.ownerUserId || "gestao",
+        assignedToRole: "ADMIN_GESTAO",
         dueAt: atLocalTime(addDays(today, 1), 10),
         priority: "HIGH",
       }),
