@@ -339,12 +339,19 @@ export function MarketingPage() {
 
   async function savePlan(briefing: MarketingBriefing, nextPlan: MarketingPlan) {
     if (useRemote) {
+      // Atualização otimista do cache: cliques seguidos ("Adicionar" duas vezes,
+      // mudar status de várias peças) passam a ler o plano JÁ atualizado. Antes o
+      // cache só mudava depois do refetch, então o 2º clique partia do plano
+      // antigo e apagava a alteração do 1º.
+      queryClient.setQueryData<MarketingBriefing[]>(["marketing-briefings"], (old) =>
+        (old ?? []).map((item) => (item.id === briefing.id ? { ...item, content: nextPlan } : item)),
+      );
       try {
         await updateRemoteMarketingBriefingContent(briefing.id, nextPlan);
-        await refresh();
       } catch (error) {
         console.warn("[marketing] salvar plano falhou", error);
         setFeedback("Não consegui salvar a alteração no Supabase. Tente de novo.");
+        await refresh(); // reverte o otimismo para o estado do servidor
       }
       return;
     }

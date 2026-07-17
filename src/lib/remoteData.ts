@@ -3836,6 +3836,14 @@ export async function uploadRemoteAvatar(pessoaId: string, dataUrl: string) {
   if (error) throw error;
 }
 
+// Remove a foto do bucket público. Sem isto, "Remover foto" só apagava a cópia
+// local e a equipe continuava vendo a foto publicada.
+export async function deleteRemoteAvatar(pessoaId: string) {
+  const client = requireSupabase();
+  const { error } = await client.storage.from("avatars").remove([`${pessoaId}.jpg`]);
+  if (error) throw error;
+}
+
 export async function hardDeleteRemoteComprovante(values: { id: string; storagePath?: string }) {
   const client = requireSupabase();
   // Itens ainda não enviados ao SharePoint saem da fila para não subirem depois.

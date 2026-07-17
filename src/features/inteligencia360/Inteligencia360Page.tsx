@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -231,6 +231,11 @@ function useInteligenciaState() {
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
   const [state, setState] = useState<Inteligencia360State>(() => loadInteligencia360State());
+  // Enquanto houver edição local não confirmada (ou save em voo), o snapshot
+  // remoto NÃO sobrescreve o estado — mesmo padrão do useCrmState. Sem isto, o
+  // refetch disparado pelo próprio save trazia um retrato antigo e apagava
+  // edições rápidas (ex.: iniciar/concluir ação em sequência).
+  const dirtyRef = useRef(false);
   const remoteStateQuery = useQuery({
     queryKey: ["inteligencia-360-state"],
     queryFn: listRemoteInteligencia360State,
@@ -239,20 +244,28 @@ function useInteligenciaState() {
   });
   const saveRemoteMutation = useMutation({
     mutationFn: saveRemoteInteligencia360State,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inteligencia-360-state"] }),
+    onSuccess: (_result, saved) => {
+      // O que subiu É a verdade: entra no cache e vira base, sem refetch que
+      // pudesse ecoar um estado anterior por cima de uma edição mais nova.
+      dirtyRef.current = false;
+      queryClient.setQueryData(["inteligencia-360-state"], saved);
+    },
   });
 
   useEffect(() => {
     if (!remoteStateQuery.data) return;
+    if (dirtyRef.current || saveRemoteMutation.isPending) return;
     setState(remoteStateQuery.data);
     saveInteligencia360State(remoteStateQuery.data);
-  }, [remoteStateQuery.data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteStateQuery.dataUpdatedAt]);
 
   function persist(updater: (current: Inteligencia360State) => Inteligencia360State) {
     setState((current) => {
       const next = updater(current);
       saveInteligencia360State(next);
       if (useRemote) {
+        dirtyRef.current = true;
         void saveRemoteMutation.mutateAsync(next).catch((error) => {
           console.warn("Inteligência 360 não sincronizou com o Supabase.", error);
         });

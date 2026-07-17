@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AccessGate } from "@/components/access/AccessGate";
 import { LiquidGlassFilterDefs } from "@/components/ui/liquid-glass-button";
 import { AppLayout } from "@/layouts/AppLayout";
+import { canInteligencia360 } from "@/lib/access";
 import { lazyRoute } from "@/lib/routePreload";
 import { LoginPage } from "@/routes/LoginPage";
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
@@ -97,8 +99,22 @@ export function App() {
               <Route path="/administracao/seguranca" element={<SegurancaPage />} />
               <Route path="/administracao/auditoria" element={<AuditoriaPage />} />
               <Route path="/marketing" element={<MarketingPage />} />
-              <Route path="/inteligencia-360" element={<Inteligencia360DashboardPage />} />
-              <Route path="/inteligencia-360/:section" element={<Inteligencia360ModulePage />} />
+              <Route
+                path="/inteligencia-360"
+                element={
+                  <AccessGate allowed={canInteligencia360} label="Inteligência 360">
+                    <Inteligencia360DashboardPage />
+                  </AccessGate>
+                }
+              />
+              <Route
+                path="/inteligencia-360/:section"
+                element={
+                  <AccessGate allowed={canInteligencia360} label="Inteligência 360">
+                    <Inteligencia360ModulePage />
+                  </AccessGate>
+                }
+              />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

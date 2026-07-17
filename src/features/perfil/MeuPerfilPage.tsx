@@ -9,7 +9,7 @@ import { cargoGroup, cargoLabels } from "@/lib/access";
 import { cn } from "@/lib/utils";
 import { accessMatrix, allowedModuleCount } from "@/features/admin/colaboradoresData";
 import { bumpAvatarVersion, fileToAvatarDataUrl, saveAvatar, useAvatar } from "./avatarStore";
-import { uploadRemoteAvatar } from "@/lib/remoteData";
+import { deleteRemoteAvatar, uploadRemoteAvatar } from "@/lib/remoteData";
 
 export function avatarInitials(nome: string) {
   const parts = nome.trim().split(/\s+/).filter(Boolean);
@@ -36,6 +36,21 @@ function AvatarUpload({ pessoaId, nome }: { pessoaId: string; nome: string }) {
           setShared("Foto publicada — visível para toda a equipe.");
         })
         .catch(() => setShared("Foto salva neste aparelho, mas não sincronizou — tente de novo com internet."));
+    }
+  }
+  // Remover: apaga no aparelho E despublica do bucket — senão a equipe continuava
+  // vendo a foto "removida" (o arquivo seguia no Storage).
+  function removeAvatar() {
+    saveAvatar(pessoaId, null);
+    if (session && !isPreview) {
+      deleteRemoteAvatar(pessoaId)
+        .then(() => {
+          bumpAvatarVersion(pessoaId);
+          setShared("Foto removida — a equipe não a vê mais.");
+        })
+        .catch(() => setShared("Removida deste aparelho, mas não despublicou — tente de novo com internet."));
+    } else {
+      setShared("");
     }
   }
   const { fileInputRef, handleThumbnailClick, handleFileChange } = useImageUpload({
@@ -87,7 +102,7 @@ function AvatarUpload({ pessoaId, nome }: { pessoaId: string; nome: string }) {
       {avatar ? (
         <button
           type="button"
-          onClick={() => saveAvatar(pessoaId, null)}
+          onClick={removeAvatar}
           className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-white/70 hover:text-brand-tinta"
         >
           <X className="h-3 w-3" aria-hidden="true" />
