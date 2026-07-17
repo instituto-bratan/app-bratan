@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { parseMoneyBR } from "@/lib/money";
-import { canLancarDia } from "@/lib/access";
+import { canFinanceiroFull, canLancarDia } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { contactDisplayName } from "@/features/crm/crmData";
@@ -485,12 +485,25 @@ export function FinanceiroLancarDiaPage() {
                 ) : (
                   <div className="flex flex-col items-center gap-3 py-4">
                     <p className="text-center text-sm text-muted-foreground">Nenhuma comanda lançada neste dia ainda.</p>
-                    <Button type="button" variant="outline" size="sm" onClick={markDayAsZero}>
-                      Dia sem atendimentos — marcar R$ 0,00
-                    </Button>
-                    <p className="max-w-md text-center text-xs text-muted-foreground">
-                      Use quando ninguém passou no dia: o dia fica registrado como zerado de propósito, e não como esquecido.
-                    </p>
+                    {/* Marcar dia zerado grava um fechamento (fin_reconciliations),
+                        que a RLS só libera para o financeiro completo. Para a
+                        recepção o botão sumia de forma útil: sem isto, o clique
+                        era bloqueado em silêncio e a marca "Dia zerado" sumia no
+                        refetch. */}
+                    {canFinanceiroFull(pessoa?.cargo) ? (
+                      <>
+                        <Button type="button" variant="outline" size="sm" onClick={markDayAsZero}>
+                          Dia sem atendimentos — marcar R$ 0,00
+                        </Button>
+                        <p className="max-w-md text-center text-xs text-muted-foreground">
+                          Use quando ninguém passou no dia: o dia fica registrado como zerado de propósito, e não como esquecido.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="max-w-md text-center text-xs text-muted-foreground">
+                        Sem comandas hoje? O fechamento (marcar o dia como zerado) é feito pelo financeiro.
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>
