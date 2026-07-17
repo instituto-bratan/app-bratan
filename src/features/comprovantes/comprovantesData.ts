@@ -86,6 +86,7 @@ export type OrdenacaoComprovante = "recentes" | "antigos" | "maior_valor" | "men
 
 export type ComprovanteFiltros = {
   periodo: PeriodoFiltro | "tudo";
+  data: string; // "YYYY-MM-DD"; dia específico — tem prioridade sobre `mes` e `periodo`
   mes: string; // "YYYY-MM"; quando preenchido tem prioridade sobre `periodo`
   busca: string;
   tipo: "todos" | ComprovanteTipo;
@@ -96,6 +97,7 @@ export type ComprovanteFiltros = {
 
 export const defaultComprovanteFiltros: ComprovanteFiltros = {
   periodo: "mes",
+  data: "",
   mes: "",
   busca: "",
   tipo: "todos",
@@ -107,8 +109,10 @@ export const defaultComprovanteFiltros: ComprovanteFiltros = {
 export function matchesComprovanteFiltros(record: ComprovanteRecord, filtros: ComprovanteFiltros): boolean {
   if (record.deletedAt) return false;
 
-  // Período: mês específico tem prioridade; "tudo" ignora data.
-  if (filtros.mes) {
+  // Período: dia específico tem a maior prioridade; depois o mês; depois o preset.
+  if (filtros.data) {
+    if (record.anexadoEm.slice(0, 10) !== filtros.data) return false;
+  } else if (filtros.mes) {
     if (record.anexadoEm.slice(0, 7) !== filtros.mes) return false;
   } else if (filtros.periodo !== "tudo") {
     if (!isInsideFilter(record.anexadoEm, filtros.periodo)) return false;
@@ -157,7 +161,8 @@ export function filterComprovantes(records: ComprovanteRecord[], filtros: Compro
 export function countActiveComprovanteFiltros(filtros: ComprovanteFiltros): number {
   let count = 0;
   if (filtros.busca.trim()) count += 1;
-  if (filtros.mes) count += 1;
+  if (filtros.data) count += 1;
+  else if (filtros.mes) count += 1;
   else if (filtros.periodo !== defaultComprovanteFiltros.periodo) count += 1;
   if (filtros.tipo !== "todos") count += 1;
   if (filtros.forma !== "todas") count += 1;

@@ -491,14 +491,14 @@ export function ComprovantesPage() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold uppercase text-brand-oliva">Período:</span>
               {(["dia", "semana", "mes", "ano", "tudo"] as (PeriodoFiltro | "tudo")[]).map((periodo) => {
-                const active = !filtros.mes && filtros.periodo === periodo;
+                const active = !filtros.mes && !filtros.data && filtros.periodo === periodo;
                 return (
                   <Button
                     key={periodo}
                     type="button"
                     variant={active ? "default" : "outline"}
                     size="sm"
-                    onClick={() => updateFiltros({ periodo, mes: "" })}
+                    onClick={() => updateFiltros({ periodo, mes: "", data: "" })}
                   >
                     {periodo === "mes"
                       ? "Este mês"
@@ -513,6 +513,23 @@ export function ComprovantesPage() {
                 );
               })}
               <div className="flex items-center gap-1.5">
+                <Label htmlFor="filtro-dia" className="text-xs font-semibold uppercase text-brand-oliva">
+                  dia:
+                </Label>
+                <Input
+                  id="filtro-dia"
+                  type="date"
+                  value={filtros.data}
+                  onChange={(event) => updateFiltros({ data: event.target.value, mes: "" })}
+                  className="h-9 w-[160px]"
+                />
+                {filtros.data ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => updateFiltros({ data: "" })}>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-1.5">
                 <Label htmlFor="filtro-mes" className="text-xs font-semibold uppercase text-brand-oliva">
                   ou mês:
                 </Label>
@@ -520,7 +537,7 @@ export function ComprovantesPage() {
                   id="filtro-mes"
                   type="month"
                   value={filtros.mes}
-                  onChange={(event) => updateFiltros({ mes: event.target.value })}
+                  onChange={(event) => updateFiltros({ mes: event.target.value, data: "" })}
                   className="h-9 w-[150px]"
                 />
                 {filtros.mes ? (

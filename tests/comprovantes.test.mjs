@@ -64,6 +64,22 @@ test("filtro por mês específico isola o mês", () => {
   assert.equal(out[0].id, "jun");
 });
 
+test("filtro por DIA específico isola o dia (e tem prioridade sobre mês/período)", () => {
+  const records = [
+    rec({ id: "d16", anexadoEm: "2026-07-16T08:00:00.000Z" }),
+    rec({ id: "d16-tarde", anexadoEm: "2026-07-16T20:30:00.000Z" }),
+    rec({ id: "d17", anexadoEm: "2026-07-17T09:00:00.000Z" }),
+    rec({ id: "jun", anexadoEm: "2026-06-16T09:00:00.000Z" }),
+  ];
+  const out = comp.filterComprovantes(records, { ...base, data: "2026-07-16" });
+  assert.deepEqual(ids(out).sort(), ["d16", "d16-tarde"]);
+  // dia vence mês, mesmo com mês preenchido em outro valor
+  const out2 = comp.filterComprovantes(records, { ...base, data: "2026-07-16", mes: "2026-06" });
+  assert.deepEqual(ids(out2).sort(), ["d16", "d16-tarde"]);
+  // conta como filtro ativo
+  assert.ok(comp.countActiveComprovanteFiltros({ ...comp.defaultComprovanteFiltros, data: "2026-07-16" }) >= 1);
+});
+
 test("busca casa paciente, arquivo, observação e autor", () => {
   const records = [
     rec({ id: "a", pacienteReferencia: "João Silva" }),
