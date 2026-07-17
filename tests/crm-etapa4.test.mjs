@@ -63,7 +63,7 @@ test("rotina de segurança nasce para a próxima segunda-feira, uma vez só", ()
   const once = crm.ensureMondaySafetyTask(state, ref); // ter 30/06 → segunda 06/07
   const tasks = once.tasks.filter((t) => t.id.startsWith("task-seguranca-"));
   assert.equal(tasks.length, 1);
-  assert.equal(tasks[0].assignedToRole, "COMERCIAL_VENDEDOR");
+  assert.equal(tasks[0].assignedToRole, "RECEPCAO");
   assert.equal(tasks[0].dueAt.slice(0, 10), "2026-07-06");
   const twice = crm.ensureMondaySafetyTask(once, ref);
   assert.equal(twice.tasks.filter((t) => t.id.startsWith("task-seguranca-")).length, 1, "não duplica");
@@ -94,7 +94,7 @@ test("gate Recepção concluído com RESPOSTA não abre follow-up (paciente resp
 
 test("administrativo envia o contrato (SuperSign) → abre a régua de assinatura da recepção", () => {
   let s = closeDeal(clone());
-  const contractTask = s.tasks.find((t) => t.dealId === DEAL && t.taskType === "CONTRACT" && t.assignedToRole === "ADMINISTRATIVO");
+  const contractTask = s.tasks.find((t) => t.dealId === DEAL && t.taskType === "CONTRACT" && t.assignedToRole === "RECEPCAO");
   assert.ok(contractTask, "tarefa de conferir contrato existe");
   s = crm.completeCrmTask(s, contractTask.id, { result: "SENT", actorId: "administrativo" });
   const contactId = s.deals.find((d) => d.id === DEAL).contactId;

@@ -1291,8 +1291,8 @@ const seedTasks: CrmTask[] = [
     title: "Conferir contrato e enviar SuperSign",
     description: "Documento jurídico deve ficar em mãos em até 24h.",
     taskType: "CONTRACT",
-    assignedToUserId: "administrativo",
-    assignedToRole: "ADMINISTRATIVO",
+    assignedToUserId: "recepcao",
+    assignedToRole: "RECEPCAO",
     dueAt: atLocalTime(todayISO(), 16),
     priority: "HIGH",
     visibilityScope: "ROLE",
@@ -2335,8 +2335,11 @@ export function ensureMondaySafetyTask(state: CrmState, reference = new Date()):
     description:
       "Toda segunda: envie mensagem a TODOS os pacientes com consulta nos próximos 15 dias — cobre os exames, confira a coleta e sane dúvidas sobre a consulta. Sem resposta → cadência D1–D5; persistindo no D5, o coordenador liga (POP, Fluxo 7).",
     taskType: "WHATSAPP",
-    assignedToUserId: "vendedor",
-    assignedToRole: "COMERCIAL_VENDEDOR",
+    // Decisão do Lucas (17/07): a Rotina de Segurança é da RECEPÇÃO (e o gestor,
+    // como coordenação, também a enxerga). Antes ia para COMERCIAL_VENDEDOR, que
+    // não corresponde a nenhum cargo → só a coordenação via.
+    assignedToUserId: "recepcao",
+    assignedToRole: "RECEPCAO",
     dueAt: atLocalTime(monday, 9),
     priority: "HIGH",
     visibilityScope: "ROLE",
@@ -2630,9 +2633,11 @@ export function completeCrmTask(
     }
   }
 
-  // POP 3.6 — Administrativo enviou o contrato pelo SuperSign: abre a régua de
-  // assinatura D1–D5 da recepção (verificação diária + lembrete-padrão 5.4).
-  if (task.taskType === "CONTRACT" && task.assignedToRole === "ADMINISTRATIVO" && values.result === "SENT" && task.contactId) {
+  // POP 3.6 — Contrato enviado pelo SuperSign: abre a régua de assinatura D1–D5
+  // da recepção (verificação diária + lembrete-padrão 5.4). Dispara em qualquer
+  // tarefa de contrato marcada como ENVIADA (a régua é idempotente); antes exigia
+  // o papel ADMINISTRATIVO, que deixou de existir na atribuição das tarefas.
+  if (task.taskType === "CONTRACT" && values.result === "SENT" && task.contactId) {
     completed = enrollContactInCadence(completed, {
       cadenceId: "cad-assinatura-d1d5",
       contactId: task.contactId,
@@ -2790,10 +2795,11 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
         cadenceId: "",
         cadenceStepId: "",
         title: "Conferir contrato e SuperSign",
-        description: "Administrativo confere o documento jurídico item a item e envia para assinatura — contrato em mãos em até 24h (POP).",
+        description: "Recepção confere o documento jurídico item a item e envia para assinatura — contrato em mãos em até 24h (POP).",
         taskType: "CONTRACT",
-        assignedToUserId: "administrativo",
-        assignedToRole: "ADMINISTRATIVO",
+        // Decisão do Lucas (17/07): conferir contrato é da RECEPÇÃO.
+        assignedToUserId: "recepcao",
+        assignedToRole: "RECEPCAO",
         dueAt: atLocalTime(addDays(today, 1), 12),
         priority: "HIGH",
       }),
@@ -2824,8 +2830,9 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
           title: `Entregar presente de fechamento: ${gift}`,
           description: `Fechamento de ${moneyCrm(closedAmount)} na 1ª consulta. Parabenize e entregue a ${gift} antes de o paciente ir embora (POP: presente somente na 1ª consulta).`,
           taskType: "IN_PERSON",
-          assignedToUserId: deal.ownerUserId || "vendedor",
-          assignedToRole: "COMERCIAL_VENDEDOR",
+          // Decisão do Lucas (17/07): a entrega do presente é da CONCIERGE.
+          assignedToUserId: "concierge",
+          assignedToRole: "CONCIERGE",
           dueAt: atLocalTime(today, 17),
           priority: "HIGH",
         }),

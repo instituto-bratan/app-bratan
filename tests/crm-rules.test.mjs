@@ -113,7 +113,7 @@ test("mover para fechou completo cria tarefas setoriais e alimenta o 360", () =>
 
   assert.ok(roles.includes("CONCIERGE"));
   assert.ok(roles.includes("RECEPCAO"));
-  assert.ok(roles.includes("ADMINISTRATIVO"));
+  assert.ok(roles.includes("ENFERMAGEM"));
   assert.equal(moved.state.contacts.find((contact) => contact.id === "crm-contact-lead-quente").lifecycleStage, "ACTIVE_PATIENT");
 
   const next360 = crm.deriveInteligencia360FromCrm(moved.state, clone360());
