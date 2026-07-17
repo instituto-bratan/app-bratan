@@ -154,16 +154,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mounted) return;
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (!mounted) return;
 
-      setSession(data.session);
-      if (data.session?.user.id) {
-        await loadAndStorePessoa(data.session.user.id, true);
-      } else {
-        setLoading(false);
-      }
-    });
+        setSession(data.session);
+        if (data.session?.user.id) {
+          await loadAndStorePessoa(data.session.user.id, true);
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        // Sem isto, uma falha de rede no getSession inicial deixava o app preso
+        // eternamente na tela de carregando (setLoading(false) nunca rodava).
+        if (mounted) setLoading(false);
+      });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
