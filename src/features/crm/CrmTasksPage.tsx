@@ -34,6 +34,7 @@ import {
   formatCrmDateTime,
   isCrmManagement,
   isTaskOverdue,
+  moveDealStage,
   priorityLabels,
   taskEffectiveStatus,
   taskResultLabels,
@@ -208,6 +209,50 @@ export function CrmTasksPage() {
     persist((current) => createFollowUpTask(current, task.id, pessoa?.id ?? "preview"));
   }
 
+  // --- Login da concierge: fluxo à prova de erro ---------------------------
+  // A concierge é coordenação (secretaria_executiva) → isManagement é true e ela
+  // vê o toggle "Só as minhas / Todas". As melhorias abaixo valem só na visão
+  // dela ("minhas"); em "Todas do Instituto" ela cai no layout normal.
+  const isConcierge = role === "CONCIERGE";
+  const isConciergeView = isConcierge && scope === "minhas";
+  const isRescueTask = (task: CrmTask) => (task.cadenceId ?? "").startsWith("cad-rescue");
+  const [armedTaskId, setArmedTaskId] = useState("");
+  const [conciergeFeedback, setConciergeFeedback] = useState("");
+
+  // "Enviei" conclui a tarefa num toque (result SENT não pausa a régua → o
+  // próximo toque nasce sozinho). Fim do "mandei mas reaparece".
+  function confirmSent(task: CrmTask) {
+    persist((current) => completeCrmTask(current, task.id, { actorId: pessoa?.id ?? "preview", result: "SENT" }));
+    setArmedTaskId("");
+    setConciergeFeedback(`✓ ${contactDisplayName(contactsById.get(task.contactId))} — registrada como enviada e fora da sua lista de hoje.`);
+  }
+
+  // "Já agendou / foi atendida" tira do resgate: pausa a régua DESTE contato
+  // (SCHEDULED — cobre até o resgate de 1 ano) e move o card para fora do
+  // resgate, sem deslinkar. Só move se houver deal em etapa de resgate e que não
+  // esteja fechado (mover um deal fechado o reabriria como OPEN).
+  function resolveRescue(task: CrmTask, stage: "CONSULTA_AGENDADA" | "CONSULTA_REALIZADA") {
+    persist((current) => {
+      let next = completeCrmTask(current, task.id, {
+        actorId: pessoa?.id ?? "preview",
+        result: "SCHEDULED",
+        resultNotes: "Já agendou / foi atendida — retirada do resgate pela concierge.",
+      });
+      if (task.dealId) {
+        const deal = next.deals.find((item) => item.id === task.dealId);
+        const rescueStages = ["PERDIDO", "NAO_ADESAO", "RESGATE_D60", "CHURN", "NAO_FECHOU"];
+        const isWon = deal?.status === "WON_FULL" || deal?.status === "WON_PARTIAL";
+        if (deal && rescueStages.includes(deal.stage) && !isWon) {
+          const moved = moveDealStage(next, deal.id, { stage, actorId: pessoa?.id ?? "preview" });
+          if (moved.ok) next = moved.state;
+        }
+      }
+      return next;
+    });
+    setArmedTaskId("");
+    setConciergeFeedback(`✓ ${contactDisplayName(contactsById.get(task.contactId))} saiu do resgate. A recepção assume a confirmação da consulta.`);
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
         <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
@@ -221,15 +266,26 @@ export function CrmTasksPage() {
             </div>
           );
         })()}
-      <div className="rounded-lg border border-brand-oliva/20 bg-white/65 px-4 py-3">
-        <p className="text-sm font-bold text-brand-musgo">Como trabalhar uma tarefa — sempre nesta ordem:</p>
-        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-brand-tinta">
-          <span><strong className="text-brand-dourado">1.</strong> Copie a mensagem pronta</span>
-          <span><strong className="text-brand-dourado">2.</strong> Envie no WhatsApp</span>
-          <span><strong className="text-brand-dourado">3.</strong> Registre o que aconteceu</span>
-          <span className="text-muted-foreground">— o resto (pausar régua, próximo passo, histórico) o app faz sozinho.</span>
+      {isConciergeView ? (
+        <div className="rounded-lg border border-emerald-300/60 bg-emerald-50/50 px-4 py-3">
+          <p className="text-sm font-bold text-brand-musgo">Como funciona a sua fila — simples assim:</p>
+          <div className="mt-1.5 flex flex-col gap-1 text-sm text-brand-tinta">
+            <span><strong className="text-emerald-700">Mandei a mensagem</strong> → toque em <strong>WhatsApp</strong> e depois <strong>Confirmar envio ✓</strong> (ou <strong>Enviei ✓</strong>). Some da sua lista — não volta.</span>
+            <span><strong className="text-amber-700">Paciente já agendou ou foi atendido</strong> → toque em <strong>Já agendou / Já foi atendida</strong>. Ele sai do resgate e para de te cobrar.</span>
+            <span><strong className="text-brand-musgo">Respondeu algo ou teve problema</strong> → use <strong>“Respondeu / problema? registrar”</strong>. O resto (pausar régua, histórico, 360) o app faz sozinho.</span>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-lg border border-brand-oliva/20 bg-white/65 px-4 py-3">
+          <p className="text-sm font-bold text-brand-musgo">Como trabalhar uma tarefa — sempre nesta ordem:</p>
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-brand-tinta">
+            <span><strong className="text-brand-dourado">1.</strong> Copie a mensagem pronta</span>
+            <span><strong className="text-brand-dourado">2.</strong> Envie no WhatsApp</span>
+            <span><strong className="text-brand-dourado">3.</strong> Registre o que aconteceu</span>
+            <span className="text-muted-foreground">— o resto (pausar régua, próximo passo, histórico) o app faz sozinho.</span>
+          </div>
+        </div>
+      )}
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -367,53 +423,123 @@ export function CrmTasksPage() {
         </Card>
       ) : null}
 
-      <div className="grid gap-3">
-        {tasks.length ? (
-          tasks.map((task, index) => {
-            const contact = contactsById.get(task.contactId);
-            const effectiveStatus = taskEffectiveStatus(task);
-            const message = messageForTask(task);
+      {conciergeFeedback ? (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-300 bg-emerald-50/80 px-4 py-3">
+          <p className="text-sm font-semibold leading-6 text-emerald-900">{conciergeFeedback}</p>
+          <button type="button" onClick={() => setConciergeFeedback("")} className="text-emerald-700 hover:text-emerald-900" aria-label="Fechar aviso">
+            ✕
+          </button>
+        </div>
+      ) : null}
 
-            return (
-              <motion.article
-                key={task.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.18, delay: Math.min(index * 0.025, 0.2) }}
-                className="rounded-lg border border-brand-oliva/15 bg-white/70 p-4 shadow-sm backdrop-blur-xl"
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={statusTone(effectiveStatus)}>{taskStatusLabels[effectiveStatus]}</Badge>
-                      <Badge className={priorityTone(task.priority)}>{priorityLabels[task.priority]}</Badge>
-                      <Badge variant="muted">{taskTypeLabels[task.taskType]}</Badge>
-                      <Badge variant="outline">{crmRoleLabels[task.assignedToRole]}</Badge>
-                    </div>
-                    <h2 className="mt-3 flex flex-wrap items-center gap-2 text-xl font-semibold text-brand-musgo">
-                      <UserRound className="h-5 w-5 shrink-0 text-brand-oliva" aria-hidden="true" />
-                      {contactDisplayName(contact)}
-                    </h2>
-                    <p className="mt-0.5 text-base font-medium text-brand-tinta">{task.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{task.description}</p>
-                    <div className="mt-3 flex flex-wrap gap-3 text-sm">
-                      <span className={cn("inline-flex items-center gap-1 font-semibold", effectiveStatus === "OVERDUE" ? "text-red-700" : "text-brand-tinta")}>
-                        <CalendarClock className="h-4 w-4" />
-                        {effectiveStatus === "OVERDUE" ? "Atrasada — era para " : "Fazer até "}
-                        {formatCrmDateTime(task.dueAt)}
+      {(() => {
+        const renderTaskCard = (task: CrmTask, index: number) => {
+          const contact = contactsById.get(task.contactId);
+          const effectiveStatus = taskEffectiveStatus(task);
+          const message = messageForTask(task);
+          const rescue = isRescueTask(task);
+          const armed = armedTaskId === task.id;
+
+          return (
+            <motion.article
+              key={task.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, delay: Math.min(index * 0.025, 0.2) }}
+              className={cn(
+                "rounded-lg border bg-white/70 p-4 shadow-sm backdrop-blur-xl",
+                rescue && isConciergeView ? "border-amber-300/70" : "border-brand-oliva/15",
+              )}
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge className={statusTone(effectiveStatus)}>{taskStatusLabels[effectiveStatus]}</Badge>
+                    <Badge className={priorityTone(task.priority)}>{priorityLabels[task.priority]}</Badge>
+                    <Badge variant="muted">{taskTypeLabels[task.taskType]}</Badge>
+                    {rescue ? <Badge className="bg-amber-100 text-amber-800">Resgate</Badge> : <Badge variant="outline">{crmRoleLabels[task.assignedToRole]}</Badge>}
+                  </div>
+                  <h2 className="mt-3 flex flex-wrap items-center gap-2 text-xl font-semibold text-brand-musgo">
+                    <UserRound className="h-5 w-5 shrink-0 text-brand-oliva" aria-hidden="true" />
+                    {contactDisplayName(contact)}
+                  </h2>
+                  <p className="mt-0.5 text-base font-medium text-brand-tinta">{task.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{task.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                    <span className={cn("inline-flex items-center gap-1 font-semibold", effectiveStatus === "OVERDUE" ? "text-red-700" : "text-brand-tinta")}>
+                      <CalendarClock className="h-4 w-4" />
+                      {effectiveStatus === "OVERDUE" ? "Atrasada — era para " : "Fazer até "}
+                      {formatCrmDateTime(task.dueAt)}
+                    </span>
+                    {task.cadenceId && cadencesById.get(task.cadenceId) ? (
+                      <span className="inline-flex items-center gap-1 text-muted-foreground">
+                        <RefreshCw className="h-4 w-4" />
+                        Régua: {cadencesById.get(task.cadenceId)!.name}
                       </span>
-                      {task.cadenceId && cadencesById.get(task.cadenceId) ? (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <RefreshCw className="h-4 w-4" />
-                          Régua: {cadencesById.get(task.cadenceId)!.name}
-                        </span>
-                      ) : null}
-                    </div>
-                    {message ? (
-                      <p className="mt-3 rounded-lg border border-brand-oliva/12 bg-brand-papel/70 p-3 text-sm leading-6 text-brand-tinta">{message}</p>
                     ) : null}
                   </div>
+                  {message ? (
+                    <p className="mt-3 rounded-lg border border-brand-oliva/12 bg-brand-papel/70 p-3 text-sm leading-6 text-brand-tinta">{message}</p>
+                  ) : null}
+                </div>
 
+                {isConciergeView ? (
+                  <div className="grid gap-2 lg:w-80">
+                    {armed ? (
+                      <>
+                        <p className="rounded-lg border border-emerald-300 bg-emerald-50/70 p-2 text-xs leading-5 text-emerald-900">
+                          Abri o WhatsApp com a mensagem pronta. Já mandou? Confirme para tirar da sua lista.
+                        </p>
+                        <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => confirmSent(task)}>
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Confirmar envio ✓
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setArmedTaskId("")}>
+                          Ainda não enviei
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => copyMessage(task)}>
+                            <ClipboardCopy className="mr-1.5 h-4 w-4" />
+                            Copiar
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => { openWhatsapp(task); setArmedTaskId(task.id); }}>
+                            <MessageCircle className="mr-1.5 h-4 w-4" />
+                            WhatsApp
+                          </Button>
+                        </div>
+                        <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => confirmSent(task)}>
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Enviei ✓
+                        </Button>
+                        {rescue ? (
+                          <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-2">
+                            <p className="text-xs font-semibold leading-5 text-amber-900">Já agendou ou foi atendida? Tire do resgate:</p>
+                            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                              <Button type="button" variant="outline" size="sm" className="border-amber-300 text-amber-900 hover:bg-amber-100" onClick={() => resolveRescue(task, "CONSULTA_AGENDADA")}>
+                                <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                                Vai ser atendida
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" className="border-amber-300 text-amber-900 hover:bg-amber-100" onClick={() => resolveRescue(task, "CONSULTA_REALIZADA")}>
+                                Já foi atendida
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-sm">
+                          <Link to={crmModuleRoutes.contact(task.contactId)} className="inline-flex items-center gap-1 font-medium text-brand-musgo hover:underline">
+                            Ver perfil <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                          <button type="button" onClick={() => setSelectedTaskId(task.id)} className="text-muted-foreground hover:text-brand-tinta hover:underline">
+                            Respondeu / problema? registrar
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
                   <div className="grid gap-2 sm:grid-cols-2 lg:w-72 lg:grid-cols-1">
                     <Button type="button" variant="outline" size="sm" onClick={() => copyMessage(task)}>
                       <ClipboardCopy className="mr-2 h-4 w-4" />
@@ -437,30 +563,55 @@ export function CrmTasksPage() {
                       Criar tarefa para amanhã
                     </Button>
                   </div>
-                </div>
-              </motion.article>
-            );
-          })
-        ) : (
-          <Card>
-            <CardContent className="py-10 text-center">
-              <CheckCircle2 className="mx-auto h-10 w-10 text-brand-musgo" />
-              <p className="mt-3 font-semibold text-brand-musgo">
-                {tab === "hoje" && "Nada para hoje — tudo em dia!"}
-                {tab === "atrasadas" && "Nenhuma tarefa atrasada. Excelente!"}
-                {tab === "proximos" && "Nada agendado para os próximos 7 dias."}
-                {tab === "concluidas" && "Nenhuma tarefa concluída ainda."}
-                {tab === "todas" && "Nenhuma tarefa por aqui."}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {tab === "hoje"
-                  ? "Espie a aba 'Próximos 7 dias' para se adiantar, ou o Kanban para ver as negociações."
-                  : "Quando alguém entrar numa cadência ou o Kanban andar, as tarefas aparecem aqui sozinhas."}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                )}
+              </div>
+            </motion.article>
+          );
+        };
+
+        if (!tasks.length) {
+          return (
+            <Card>
+              <CardContent className="py-10 text-center">
+                <CheckCircle2 className="mx-auto h-10 w-10 text-brand-musgo" />
+                <p className="mt-3 font-semibold text-brand-musgo">
+                  {tab === "hoje" && "Nada para hoje — tudo em dia!"}
+                  {tab === "atrasadas" && "Nenhuma tarefa atrasada. Excelente!"}
+                  {tab === "proximos" && "Nada agendado para os próximos 7 dias."}
+                  {tab === "concluidas" && "Nenhuma tarefa concluída ainda."}
+                  {tab === "todas" && "Nenhuma tarefa por aqui."}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {tab === "hoje"
+                    ? "Espie a aba 'Próximos 7 dias' para se adiantar, ou o Kanban para ver as negociações."
+                    : "Quando alguém entrar numa cadência ou o Kanban andar, as tarefas aparecem aqui sozinhas."}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        if (isConciergeView) {
+          const rescueTasks = tasks.filter(isRescueTask);
+          const otherTasks = tasks.filter((task) => !isRescueTask(task));
+          return (
+            <div className="grid gap-3">
+              {otherTasks.map((task, index) => renderTaskCard(task, index))}
+              {rescueTasks.length ? (
+                <>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-4 py-2">
+                    <Badge className="bg-amber-100 text-amber-800">Resgates — reativação</Badge>
+                    <span className="text-sm text-amber-900">Já agendou ou foi atendida? Tire do resgate em 1 toque.</span>
+                  </div>
+                  {rescueTasks.map((task, index) => renderTaskCard(task, index))}
+                </>
+              ) : null}
+            </div>
+          );
+        }
+
+        return <div className="grid gap-3">{tasks.map((task, index) => renderTaskCard(task, index))}</div>;
+      })()}
 
       <p className="text-center text-xs text-muted-foreground">Sincronização: {syncMode}. O Dashboard 360 recebe os dados derivados, sem preenchimento duplicado.</p>
     </div>
