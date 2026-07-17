@@ -3131,7 +3131,6 @@ export async function listRemoteFinPurchases(year: number): Promise<FinPurchase[
     receivedAt: (row.received_at as string | null) ?? null,
     expenseRef: (row.expense_ref as string | null) ?? null,
     notes: String(row.notes ?? ""),
-    adhesion: (row.adhesion as FinSale["adhesion"]) ?? "ABERTO",
     createdAt: String(row.created_at ?? new Date().toISOString()),
   }));
 }
@@ -3251,6 +3250,10 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
     patientName: String(row.patient_name ?? ""),
     crmContactRef: String(row.crm_contact_ref ?? ""),
     notes: String(row.notes ?? ""),
+    // A adesão é da COMANDA (fin_sales) — o SELECT já a traz. Faltava mapear aqui:
+    // sem isto, todo refetch trazia adhesion=undefined, o estado local era
+    // sobrescrito e ao reeditar a comanda a adesão marcada virava "ABERTO".
+    adhesion: (row.adhesion as FinSale["adhesion"]) ?? "ABERTO",
     createdAt: String(row.created_at ?? ""),
     items: ((row.fin_sale_items ?? []) as Record<string, unknown>[]).map((item) => ({
       id: String(item.client_ref),
@@ -3608,8 +3611,13 @@ export async function createRemoteFinSavingsMoves(moves: FinSavingsMove[], creat
       source: move.source,
       month_ref: move.monthRef,
       created_by: uuidOrNull(createdBy),
+      // Reconfirmar provisões após excluir os movimentos do mês usa os MESMOS ids
+      // determinísticos (fsav-prov-<mês>-<regra>). Com ignoreDuplicates a linha
+      // soft-deletada não voltava e a provisão sumia do saldo/P12. Upsert real +
+      // deleted_at:null a ressuscita.
+      deleted_at: null,
     })),
-    { onConflict: "client_ref", ignoreDuplicates: true },
+    { onConflict: "client_ref" },
   );
   if (error) throw error;
   await safeWriteRemoteAuditEvent({
@@ -3734,8 +3742,12 @@ export async function createRemoteFinPartnerEntry(entry: FinPartnerEntry, create
       amount: entry.amount,
       notes: entry.notes,
       created_by: uuidOrNull(createdBy),
+      // Reclassificar um repasse é excluir (soft delete) e recriar com o MESMO id
+      // determinístico. Com ignoreDuplicates a linha soft-deletada não voltava e
+      // o repasse sumia no refetch. Upsert real + deleted_at:null a ressuscita.
+      deleted_at: null,
     },
-    { onConflict: "client_ref", ignoreDuplicates: true },
+    { onConflict: "client_ref" },
   );
   if (error) throw error;
 }

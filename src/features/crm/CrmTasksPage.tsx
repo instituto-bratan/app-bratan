@@ -323,7 +323,7 @@ export function CrmTasksPage() {
         </div>
       </section>
 
-      {selectedTask && selectedContact ? (
+      {selectedTask ? (
         <Card className="border-brand-dourado/40 bg-brand-creme/72">
           <CardHeader>
             <CardTitle>Passo 3 · O que aconteceu com esta tarefa?</CardTitle>
@@ -332,7 +332,7 @@ export function CrmTasksPage() {
             <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
               <div>
                 <p className="text-sm font-semibold text-brand-musgo">{selectedTask.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{contactDisplayName(selectedContact)} - {formatCrmDateTime(selectedTask.dueAt)}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{selectedContact ? contactDisplayName(selectedContact) : "Tarefa interna (sem contato)"} - {formatCrmDateTime(selectedTask.dueAt)}</p>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <div>

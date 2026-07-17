@@ -646,7 +646,10 @@ export function contactDisplayName(contact: CrmContact | undefined) {
 }
 
 export function isTaskOverdue(task: CrmTask, reference = new Date()) {
-  if (task.status === "DONE" || task.status === "CANCELED") return false;
+  // PULADA também NÃO é atraso: quando o paciente responde e a régua pausa, as
+  // tarefas futuras viram SKIPPED. Sem isto, elas reapareciam em "Atrasadas"
+  // assim que a data passava e a equipe recontatava quem já havia respondido.
+  if (task.status === "DONE" || task.status === "CANCELED" || task.status === "SKIPPED") return false;
   return new Date(task.dueAt).getTime() < reference.getTime();
 }
 
@@ -1549,11 +1552,19 @@ export function cadenceTaskIdFor(contactId: string, cadenceId: string, stepId: s
 }
 
 // Chave natural de uma tarefa de cadência (para deduplicar independentemente do
-// id). Passos recorrentes têm uma tarefa POR DIA (ciclo), então a data entra na
-// chave; passos únicos têm uma tarefa por execução, então a data fica de fora.
-function cadenceTaskKey(task: Pick<CrmTask, "contactId" | "cadenceId" | "cadenceStepId" | "dueAt">, recurring: boolean) {
-  const cycle = recurring ? (task.dueAt || "").slice(0, 10) : "unico";
-  return `${task.contactId}|${task.cadenceId}|${task.cadenceStepId}|${cycle}`;
+// id). Passos recorrentes têm uma tarefa POR DIA (ciclo), então a data do ciclo
+// entra na chave. Passos únicos têm uma tarefa POR EXECUÇÃO: a identidade da
+// execução é o cycleTag (triggerDate da inscrição) embutido no id determinístico
+// — `task-{contato}-{cadência}-{passo}-{cycleTag}`. Usar "unico" fixo colidia
+// execuções diferentes (ex.: 2º "não fechou" meses depois): a tarefa nova
+// PENDING era destruída pela DONE antiga no dedupe, e o médico nunca recebia o
+// novo D+1. Extrair o cycleTag do id separa as execuções sem quebrar o dedupe de
+// duplicatas exatas (mesma execução → mesmo cycleTag → mesma chave).
+function cadenceTaskKey(task: Pick<CrmTask, "id" | "contactId" | "cadenceId" | "cadenceStepId" | "dueAt">, recurring: boolean) {
+  if (recurring) return `${task.contactId}|${task.cadenceId}|${task.cadenceStepId}|${(task.dueAt || "").slice(0, 10)}`;
+  const prefix = `task-${task.contactId}-${task.cadenceId}-${task.cadenceStepId}-`;
+  const execTag = task.id.startsWith(prefix) ? task.id.slice(prefix.length) : (task.dueAt || "").slice(0, 10);
+  return `${task.contactId}|${task.cadenceId}|${task.cadenceStepId}|${execTag}`;
 }
 
 // Uma tarefa de passo único bloqueia recriação se estiver ABERTA ou se pertence
@@ -1632,11 +1643,23 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
     // data no dia (ou depois), nunca no passado. Isso impede a enxurrada de
     // "atrasadas" que renasce sozinha.
     const sequentialSteps = steps.filter((step) => step.offsetType === "DAYS_AFTER_TRIGGER");
+    // Só contam as tarefas DESTA execução (como hasTaskForStep): abertas, ou
+    // criadas a partir desta inscrição. Sem isto, uma NOVA inscrição (resgate
+    // rodando de novo, re-inscrição manual) via as tarefas RESOLVIDAS da execução
+    // antiga, seguia com `continue` em todos os passos e não gerava NADA — a
+    // régua re-inscrita ficava inerte para sempre.
+    const runStart = enrollment.enrolledAt || enrollment.createdAt || "";
+    const belongsToRun = (item: CrmTask) =>
+      !["DONE", "CANCELED", "SKIPPED"].includes(item.status) || (item.createdAt || "") >= runStart;
     let sequentialHandled = false;
     for (const step of sequentialSteps) {
       const workingState = { ...state, tasks: [...state.tasks, ...tasksToAdd] };
       const existing = workingState.tasks.find(
-        (item) => item.contactId === enrollment.contactId && item.cadenceId === enrollment.cadenceId && item.cadenceStepId === step.id,
+        (item) =>
+          item.contactId === enrollment.contactId &&
+          item.cadenceId === enrollment.cadenceId &&
+          item.cadenceStepId === step.id &&
+          belongsToRun(item),
       );
       if (existing) {
         if (isOpen(existing)) {

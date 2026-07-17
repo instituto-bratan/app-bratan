@@ -98,3 +98,74 @@ test("gerar duas vezes é estável (idempotente) — não acumula tarefas", () =
   const twice = crm.generateCadenceTasks(once, REF);
   assert.equal(once.tasks.length, twice.tasks.length);
 });
+
+test("uma NOVA inscrição (resgate rodando de novo) gera tarefa nova mesmo com execução antiga toda concluída", () => {
+  // Execução 1: gatilho antigo, todas as tentativas concluídas/puladas.
+  let state = crm.generateCadenceTasks(stateWithRescue("2026-05-01"), REF);
+  for (let i = 0; i < 8; i += 1) {
+    const open = openRescueTasks(state);
+    if (!open.length) break;
+    state = crm.completeCrmTask(state, open[0].id, { result: "NO_RESPONSE", actorId: "aline" });
+    state = crm.generateCadenceTasks(state, REF);
+  }
+  assert.equal(openRescueTasks(state).length, 0, "execução 1 encerrada");
+  // As tarefas da execução 1 foram criadas em maio (createTask carimba com o
+  // relógio real nos testes; em produção o createdAt é a data real de criação).
+  state = { ...state, tasks: state.tasks.map((t) => ({ ...t, createdAt: "2026-05-01T10:00:00.000Z" })) };
+  // Nova inscrição (mesmo contato+cadência, gatilho novo) — deve renascer.
+  const novaInscricao = {
+    id: "enr-resg-2",
+    cadenceId: "cad-rescue-60d",
+    contactId: "c-resg",
+    dealId: "",
+    status: "ACTIVE",
+    enrolledAt: "2026-07-17T10:00:00.000Z",
+    triggerSource: "teste",
+    triggerDate: "2026-07-17",
+    ownerUserId: "aline",
+    ownerRole: "CONCIERGE",
+    completedAt: null,
+    canceledReason: "",
+    createdAt: "2026-07-17T10:00:00.000Z",
+    updatedAt: "2026-07-17T10:00:00.000Z",
+  };
+  state = { ...state, cadenceEnrollments: [...state.cadenceEnrollments, novaInscricao] };
+  state = crm.generateCadenceTasks(state, REF);
+  const open = openRescueTasks(state);
+  assert.equal(open.length, 1, "a re-inscrição gera UMA tentativa nova (não fica inerte)");
+  assert.equal(crm.isTaskOverdue(open[0], REF), false, "e não nasce atrasada");
+});
+
+test("dedupe NÃO destrói a tarefa da re-inscrição por causa da conclusão antiga (chave por execução)", () => {
+  // Execução 1 concluída.
+  let state = crm.generateCadenceTasks(stateWithRescue("2026-05-01"), REF);
+  const first = openRescueTasks(state)[0];
+  state = crm.completeCrmTask(state, first.id, { result: "NO_RESPONSE", actorId: "aline" });
+  state = { ...state, tasks: state.tasks.map((t) => ({ ...t, createdAt: "2026-05-01T10:00:00.000Z" })) };
+  // Nova inscrição + geração.
+  const novaInscricao = {
+    ...state.cadenceEnrollments[0],
+    id: "enr-resg-2",
+    triggerDate: "2026-07-17",
+    enrolledAt: "2026-07-17T10:00:00.000Z",
+    createdAt: "2026-07-17T10:00:00.000Z",
+    status: "ACTIVE",
+  };
+  state = { ...state, cadenceEnrollments: [...state.cadenceEnrollments, novaInscricao] };
+  state = crm.generateCadenceTasks(state, REF);
+  const beforeDedupe = openRescueTasks(state).length;
+  const deduped = crm.dedupeCrmState(state);
+  assert.equal(openRescueTasks(deduped).length, beforeDedupe, "o dedupe preserva a tarefa nova (não colide com a DONE antiga)");
+  assert.ok(beforeDedupe >= 1, "há uma tentativa aberta da re-inscrição");
+});
+
+test("tarefa PULADA (régua pausou) não conta como atrasada mesmo com data no passado", () => {
+  let state = crm.generateCadenceTasks(stateWithRescue("2026-07-10"), REF);
+  const first = openRescueTasks(state)[0];
+  state = crm.completeCrmTask(state, first.id, { result: "RESPONDED", actorId: "aline" });
+  const skipped = state.tasks.filter((t) => t.status === "SKIPPED");
+  const past = new Date("2027-01-01T09:00:00");
+  for (const t of skipped) {
+    assert.equal(crm.isTaskOverdue(t, past), false, "pulada nunca é atrasada");
+  }
+});

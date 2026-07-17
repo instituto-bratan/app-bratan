@@ -1701,15 +1701,15 @@ export function EstalecasAdminPage() {
                           <div className="flex flex-wrap gap-2">
                             {transaction.status === "pending" ? (
                               <>
-                                <Button type="button" size="sm" onClick={() => updateTransactionStatus(transaction, "approved")}>Aprovar</Button>
-                                <Button type="button" size="sm" variant="outline" onClick={() => updateTransactionStatus(transaction, "rejected")}>Recusar</Button>
+                                <Button type="button" size="sm" disabled={createTransactionMutation.isPending || transactionStatusMutation.isPending} onClick={() => updateTransactionStatus(transaction, "approved")}>Aprovar</Button>
+                                <Button type="button" size="sm" variant="outline" disabled={createTransactionMutation.isPending || transactionStatusMutation.isPending} onClick={() => updateTransactionStatus(transaction, "rejected")}>Recusar</Button>
                               </>
                             ) : null}
                             {transaction.status === "approved" ? (
                               reversedTransactionIds.has(transaction.id) ? (
                                 <Badge variant="muted">Estorno registrado</Badge>
                               ) : (
-                                <Button type="button" size="sm" variant="outline" className="gap-2" onClick={() => updateTransactionStatus(transaction, "reversed")}>
+                                <Button type="button" size="sm" variant="outline" className="gap-2" disabled={createTransactionMutation.isPending || transactionStatusMutation.isPending} onClick={() => updateTransactionStatus(transaction, "reversed")}>
                                   <RotateCcw className="h-4 w-4" aria-hidden="true" />
                                   Estornar
                                 </Button>
