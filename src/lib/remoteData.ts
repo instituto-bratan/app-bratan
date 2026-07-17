@@ -3878,16 +3878,26 @@ export async function reviewRemoteEstalecaClaim(values: {
   const client = requireSupabase();
 
   if (values.approve && values.amount > 0) {
-    await createRemoteEstalecaTransaction({
-      targetUserId: values.claim.colaboradorId,
-      createdBy: values.pessoa.id,
-      type: "earn",
-      source: "admin_bonus",
-      amount: values.amount,
-      status: "approved",
-      description: `Conquista aprovada: ${values.claim.title}`,
-      metadata: { claimId: values.claim.id, claimType: values.claim.claimType, reviewNote: values.note },
-    });
+    // Idempotência: a aprovação NÃO é atômica (credita e depois marca APROVADA).
+    // Se o update da claim falhou antes, a claim continua PENDENTE e reaprovar
+    // creditaria de novo. Só credita se ainda não houver transação desta claim.
+    const { data: existing } = await client
+      .from("estaleca_transactions")
+      .select("id")
+      .eq("metadata->>claimId", values.claim.id)
+      .limit(1);
+    if (!existing || !existing.length) {
+      await createRemoteEstalecaTransaction({
+        targetUserId: values.claim.colaboradorId,
+        createdBy: values.pessoa.id,
+        type: "earn",
+        source: "admin_bonus",
+        amount: values.amount,
+        status: "approved",
+        description: `Conquista aprovada: ${values.claim.title}`,
+        metadata: { claimId: values.claim.id, claimType: values.claim.claimType, reviewNote: values.note },
+      });
+    }
   }
 
   const { error } = await client

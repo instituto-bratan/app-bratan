@@ -2953,6 +2953,47 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
     ],
   };
 
+  // POP: ao mudar de etapa, as réguas de ETAPA obsoletas são encerradas (o campo
+  // cancelIfStageChanged existia mas nunca era lido). Sem isto, um lead que fecha
+  // continuava recebendo "D60 reativação" da régua de lead frio, e um deal
+  // perdido seguia gerando follow-up de negociação. Só toca nas cadências de
+  // etapa (stageDefaultCadence) — nunca nas de programa/resgate — e preserva a
+  // régua da NOVA etapa (criada logo abaixo para NAO_FECHOU/CHURN/FECHOU).
+  const newStageCadence = stageDefaultCadence[options.stage];
+  const stageCadenceIds = new Set(Object.values(stageDefaultCadence));
+  const cadenceHasStageGuard = (cadenceId: string) =>
+    nextState.cadenceSteps.some((step) => step.cadenceId === cadenceId && step.cancelIfStageChanged);
+  const staleCadenceIds = new Set(
+    nextState.cadenceEnrollments
+      .filter(
+        (enrollment) =>
+          enrollment.contactId === deal.contactId &&
+          enrollment.status === "ACTIVE" &&
+          stageCadenceIds.has(enrollment.cadenceId) &&
+          enrollment.cadenceId !== newStageCadence &&
+          cadenceHasStageGuard(enrollment.cadenceId),
+      )
+      .map((enrollment) => enrollment.cadenceId),
+  );
+  if (staleCadenceIds.size) {
+    nextState = {
+      ...nextState,
+      cadenceEnrollments: nextState.cadenceEnrollments.map((enrollment) =>
+        enrollment.contactId === deal.contactId && enrollment.status === "ACTIVE" && staleCadenceIds.has(enrollment.cadenceId)
+          ? { ...enrollment, status: "CANCELED" as CrmCadenceStatus, canceledReason: `Etapa mudou para ${dealStageLabels[options.stage]}`, updatedAt: now }
+          : enrollment,
+      ),
+      tasks: nextState.tasks.map((task) =>
+        task.contactId === deal.contactId &&
+        task.cadenceId &&
+        staleCadenceIds.has(task.cadenceId) &&
+        !["DONE", "CANCELED", "SKIPPED"].includes(task.status)
+          ? { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: `Cancelada: etapa mudou para ${dealStageLabels[options.stage]}.`, updatedAt: now }
+          : task,
+      ),
+    };
+  }
+
   const pipelineTasks = addPipelineTasksForStage(nextState, updatedDeal, options);
   if (pipelineTasks.length) {
     nextState = { ...nextState, tasks: [...pipelineTasks, ...nextState.tasks] };

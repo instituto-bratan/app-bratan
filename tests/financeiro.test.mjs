@@ -204,8 +204,19 @@ test("comandas sem NF listam valores sugeridos por tipo e itens psi/nutri geram 
   assert.equal(pending.length, 1);
   assert.equal(pending[0].consulta, 500);
   assert.equal(pending[0].tratamento, 2719.5);
-  const invoiced = fin.salesPendingInvoice(sales, [{ id: "n", saleRef: "sA", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 500, notes: "", createdAt: "" }], "2026-07");
-  assert.equal(invoiced.length, 0);
+  // Faturar SÓ a consulta mantém a comanda na fila com a NF de TRATAMENTO
+  // ainda pendente (antes o bug removia a comanda inteira e a 2ª nota — base do
+  // IRPJ/CSLL — ficava impossível de lançar).
+  const soConsulta = fin.salesPendingInvoice(sales, [{ id: "n", saleRef: "sA", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 500, notes: "", createdAt: "" }], "2026-07");
+  assert.equal(soConsulta.length, 1, "comanda continua na fila pela nota de tratamento");
+  assert.equal(soConsulta[0].consulta, 0, "consulta já faturada");
+  assert.equal(soConsulta[0].tratamento, 2719.5, "tratamento ainda pendente");
+  // Faturadas AMBAS as notas → sai da fila.
+  const ambas = fin.salesPendingInvoice(sales, [
+    { id: "n1", saleRef: "sA", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 500, notes: "", createdAt: "" },
+    { id: "n2", saleRef: "sA", invoiceType: "TRATAMENTO", invoiceNumber: "2", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 2719.5, notes: "", createdAt: "" },
+  ], "2026-07");
+  assert.equal(ambas.length, 0, "as duas notas lançadas → comanda sai da fila");
   const suggestions = fin.partnerSuggestions(sales, [], "PSICOLOGA", "2026-07");
   assert.equal(suggestions.length, 2);
   assert.equal(fin.partnerSuggestions(sales, [{ id: "e", professional: "PSICOLOGA", entryDate: "2026-07-02", patientName: "", saleItemRef: suggestions[0].saleItemRef, kind: "PLANO", amount: 110, notes: "", createdAt: "" }], "PSICOLOGA", "2026-07").length, 1);

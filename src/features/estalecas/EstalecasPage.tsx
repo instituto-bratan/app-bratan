@@ -393,6 +393,10 @@ export function EstalecasPage() {
       setChurchCode(urlCheckinCode);
       setMessage("Código recebido pelo link. Confirme a presença para concluir o check-in.");
     } else if (urlCheckinType === "gym") {
+      // O link direto de academia traz o código; sem aplicá-lo, o botão
+      // "Registrar treino" ficava desabilitado (exige gymCode) e o link não
+      // concluía nada.
+      if (urlCheckinCode) setGymCode(urlCheckinCode);
       setMessage("Link de academia recebido. Confirme o treino para concluir o check-in.");
     }
 

@@ -49,6 +49,10 @@ export function useCrmState() {
   // Último estado confirmado no banco — base do sync por diferença (salvar só o
   // que mudou, em vez de reescrever tudo e reverter o trabalho dos colegas).
   const baselineRef = useRef<CrmState | null>(null);
+  // Exclusões que falharam no remoto: o upsert NUNCA apaga linha, então
+  // "Tentar sincronizar" precisa reexecutar o delete — senão o lead ressuscitava
+  // no próximo refetch e o banner sumia dando falsa sensação de sucesso.
+  const pendingDeletesRef = useRef<{ contactRef: string; dealRefs: string[] }[]>([]);
   const [syncFailed, setSyncFailed] = useState(false);
 
   const remoteStateQuery = useQuery({
@@ -157,18 +161,37 @@ export function useCrmState() {
       .then(() => true)
       .catch((error) => {
         console.warn("Não consegui excluir o lead no Supabase.", error);
+        // Guarda a exclusão para o "Tentar sincronizar" reexecutar.
+        pendingDeletesRef.current = [...pendingDeletesRef.current, { contactRef: contactId, dealRefs: dealIds }];
         setSyncFailed(true);
         return false;
       });
     return Promise.all([local, remote]).then(([a, b]) => a && b);
   }
 
-  function retrySync() {
+  async function retrySync() {
     if (!useRemote) return;
+    // Primeiro reexecuta as exclusões pendentes (o save por upsert não apaga).
+    const deletes = pendingDeletesRef.current;
+    const stillPending: typeof deletes = [];
+    for (const item of deletes) {
+      try {
+        await deleteRemoteCrmLead(item);
+      } catch (error) {
+        console.warn("Não consegui excluir o lead no Supabase.", error);
+        stillPending.push(item);
+      }
+    }
+    pendingDeletesRef.current = stillPending;
     dirtyRef.current = true;
-    void saveRemoteMutation
-      .mutateAsync(state)
-      .catch((error) => console.warn("CRM não sincronizou com o Supabase.", error));
+    try {
+      await saveRemoteMutation.mutateAsync(state);
+    } catch (error) {
+      console.warn("CRM não sincronizou com o Supabase.", error);
+      return;
+    }
+    // Só limpa o alerta quando não sobrou exclusão pendente.
+    if (stillPending.length) setSyncFailed(true);
   }
 
   function reset() {

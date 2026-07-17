@@ -817,15 +817,24 @@ export function quarterTrimestralTotal(invoices: FinInvoice[], quarterRef: strin
 
 // Comandas do mês que ainda não têm NF registrada (itens do Instituto; psi/nutri ficam fora).
 export function salesPendingInvoice(sales: FinSale[], invoices: FinInvoice[], month: string) {
-  const invoicedSales = new Set(invoices.filter((invoice) => invoice.saleRef).map((invoice) => invoice.saleRef));
+  // Uma comanda pode gerar DUAS notas (consulta + tratamento). Antes marcávamos
+  // a comanda inteira como "faturada" quando QUALQUER NF a referenciava, então
+  // registrar a 1ª nota removia a comanda da fila e a 2ª (base do IRPJ/CSLL
+  // trimestral) ficava impossível de lançar. Agora o controle é por TIPO.
+  const invoicedByType = new Set(
+    invoices.filter((invoice) => invoice.saleRef).map((invoice) => `${invoice.saleRef}:${invoice.invoiceType}`),
+  );
   return sales
     .filter((sale) => sale.saleDate.slice(0, 7) === month)
-    .filter((sale) => !invoicedSales.has(sale.id))
     .map((sale) => {
-      const consulta = sale.items
-        .filter((item) => consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO")
-        .reduce((sum, item) => sum + item.amount, 0);
-      const tratamento = sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
+      const consulta = invoicedByType.has(`${sale.id}:CONSULTA`)
+        ? 0
+        : sale.items
+            .filter((item) => consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO")
+            .reduce((sum, item) => sum + item.amount, 0);
+      const tratamento = invoicedByType.has(`${sale.id}:TRATAMENTO`)
+        ? 0
+        : sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
       return { sale, consulta, tratamento };
     })
     .filter((entry) => entry.consulta > 0 || entry.tratamento > 0);
