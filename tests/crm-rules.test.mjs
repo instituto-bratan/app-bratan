@@ -122,6 +122,25 @@ test("mover para fechou completo cria tarefas setoriais e alimenta o 360", () =>
   assert.ok(next360.journeys.some((record) => record.id === "crm-journey-crm-deal-lead-quente"));
 });
 
+test("marcar 'consulta realizada' gera o D+1 da concierge (lista automática de quem passou com o Dr.)", () => {
+  const state = cloneState();
+  const deal = state.deals.find((d) => d.stage !== "FECHOU_COMPLETO" && d.stage !== "FECHOU_PARCIAL");
+  const moved = crm.moveDealStage(state, deal.id, { actorId: "recepcao", stage: "CONSULTA_REALIZADA" });
+  assert.equal(moved.ok, true);
+  // Inscrição da concierge criada na régua de pós-consulta.
+  const enrollment = moved.state.cadenceEnrollments.find(
+    (e) => e.cadenceId === "cad-pos-consulta-d1" && e.contactId === deal.contactId && e.status === "ACTIVE",
+  );
+  assert.ok(enrollment, "inscrição pós-consulta da concierge existe");
+  assert.equal(enrollment.ownerRole, "CONCIERGE");
+  // O motor materializa a tarefa D+1 da concierge (aparece em Minhas Tarefas).
+  const withTasks = crm.generateCadenceTasks(moved.state, new Date("2026-06-30T09:00:00"));
+  const task = withTasks.tasks.find(
+    (t) => t.cadenceId === "cad-pos-consulta-d1" && t.contactId === deal.contactId && t.assignedToRole === "CONCIERGE",
+  );
+  assert.ok(task, "tarefa D+1 da concierge criada");
+});
+
 test("não fechou exige objeção e com objeção cria médico D+1 e gestor D+2", () => {
   const state = cloneState();
   const invalid = crm.moveDealStage(state, "crm-deal-lead-quente", {

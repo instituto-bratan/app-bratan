@@ -737,6 +737,16 @@ const cadences: CrmCadence[] = [
     updatedAt: baseNow,
   },
   {
+    id: "cad-pos-consulta-d1",
+    name: "Pós-consulta D+1 (Concierge)",
+    description: "Assim que a recepção marca a consulta como REALIZADA, a concierge recebe o D+1 no dia seguinte — a lista de quem passou com o Dr. aparece em Minhas Tarefas, sem caçar no Kanban.",
+    cadenceType: "POST_SALE_CONCIERGE",
+    defaultOwnerRole: "CONCIERGE",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
+  {
     id: "cad-nursing-14",
     name: "Enfermagem 14 em 14 dias",
     description: "Acompanhamento humano, sem sobrepor contato do mesmo dia.",
@@ -860,6 +870,8 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-gestor-d2", "cad-not-closed", 2, "Gestor D+2", 2, "tpl-gestor-d2", "ADMIN_GESTAO"],
   ["step-concierge-d1", "cad-concierge-d1", 1, "Concierge D+1", 1, "tpl-concierge-d1", "CONCIERGE"],
   ["step-concierge-reenvio", "cad-concierge-d1", 2, "Reenvio acolhimento", 2, "tpl-concierge-reenvio", "CONCIERGE"],
+  ["step-posc-d1", "cad-pos-consulta-d1", 1, "Pós-consulta D+1 — como foi a consulta?", 1, "tpl-pos-consulta-d1", "CONCIERGE"],
+  ["step-posc-d3", "cad-pos-consulta-d1", 2, "Pós-consulta D+3 — apoiar a decisão", 3, "tpl-pos-consulta-d3", "CONCIERGE"],
   ["step-nurse-14", "cad-nursing-14", 1, "Enfermagem 14 dias", 14, "tpl-enfermagem-14", "ENFERMAGEM"],
   ["step-post-application", "cad-post-application", 1, "Pós-aplicação", 1, "tpl-pos-aplicacao", "ENFERMAGEM"],
   ["step-rescue60-1", "cad-rescue-60d", 1, "Resgate 60d - tentativa 1", 0, "tpl-resgate-60", "CONCIERGE"],
@@ -930,6 +942,8 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Faz quase um ano que não nos falamos e você não saiu do meu radar. Como está sua saúde hoje? Adoraria retomar seu acompanhamento com a gente."],
   ["tpl-aniversario-1a", "Aniversário 1 ano", "Aline", "CONCIERGE", "ANNIVERSARY_1Y", "{{primeiro_nome}}, hoje faz 1 ano que você chegou ao Instituto Bratan — parabéns por ter cuidado de você! Segue nosso Instagram para acompanhar as novidades. Que tal marcarmos uma avaliação para ver sua evolução?"],
   ["tpl-aniversario-1a-2", "Aniversário 1 ano - reforço", "Aline", "CONCIERGE", "ANNIVERSARY_1Y", "{{primeiro_nome}}, reforçando o convite: montar uma avaliação de evolução dos seus 12 meses seria lindo de ver juntos. Quando encaixa na sua semana?"],
+  ["tpl-pos-consulta-d1", "Pós-consulta D+1 (Concierge)", "Aline", "CONCIERGE", "POST_SALE_CONCIERGE", "Oi, {{primeiro_nome}}! Aqui é a Aline, do Instituto Bratan. 🌿 Que bom ter você com a gente ontem na consulta com o Dr. Daniel! Passando para saber como você saiu de lá e se ficou alguma dúvida sobre o que foi conversado. Estou por aqui para o que precisar."],
+  ["tpl-pos-consulta-d3", "Pós-consulta D+3 (Concierge)", "Aline", "CONCIERGE", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, tudo bem? Só passando de novo para saber como você está pensando sobre o seu plano de cuidado. Qualquer dúvida para dar o próximo passo, é só me chamar por aqui. 😊"],
   ["tpl-followup-d2", "Follow-up D2 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "Oi, {{primeiro_nome}}! Passando para saber se você viu a minha mensagem de ontem. Qualquer coisa, estou por aqui. 🌿"],
   ["tpl-followup-d3", "Follow-up D3 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, tudo bem por aí? Sigo à disposição para agendar suas consultas. É só me responder por aqui!"],
   ["tpl-followup-d4", "Follow-up D4 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "Oi, {{primeiro_nome}}! Para facilitar, posso te ligar? Me diz o melhor horário que eu te ligo rapidinho. 😊"],
@@ -2036,6 +2050,7 @@ export const stageDefaultCadence: Partial<Record<CrmDealStage, string>> = {
   LEAD_NOVO: "cad-cold-lead",
   CONTATADO: "cad-cold-lead",
   QUALIFICADO: "cad-cold-lead",
+  CONSULTA_REALIZADA: "cad-pos-consulta-d1",
   PRESCRICAO_FEITA: "cad-gestor-3131",
   EM_NEGOCIACAO: "cad-gestor-3131",
   NAO_FECHOU: "cad-not-closed",
@@ -3039,6 +3054,21 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
       triggerDate: todayISO(),
       ownerUserId: "dr-daniel",
       ownerRole: "MEDICO",
+    });
+  }
+
+  if (options.stage === "CONSULTA_REALIZADA") {
+    // A recepção marcou "consulta realizada" → a concierge recebe o D+1 no dia
+    // seguinte. Assim a lista de quem passou com o Dr. aparece sozinha em Minhas
+    // Tarefas da concierge, sem ela precisar caçar no Kanban.
+    nextState = enrollContactInCadence(nextState, {
+      cadenceId: "cad-pos-consulta-d1",
+      contactId: deal.contactId,
+      dealId: deal.id,
+      triggerSource: "consulta realizada (kanban)",
+      triggerDate: todayISO(),
+      ownerUserId: "concierge",
+      ownerRole: "CONCIERGE",
     });
   }
 
