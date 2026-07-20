@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -35,7 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { generateCadenceTasks, loadCrmState } from "@/features/crm/crmData";
+import { deriveInteligencia360FromCrm, loadCrmState } from "@/features/crm/crmData";
 import { useAuth } from "@/hooks/useAuth";
 import { exportBrandedPdf } from "@/lib/brandedPdf";
 import { readLocalValue } from "@/lib/localStore";
@@ -259,6 +259,17 @@ function useInteligenciaState() {
     saveInteligencia360State(remoteStateQuery.data);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteStateQuery.dataUpdatedAt]);
+
+  // Modo LOCAL (preview/offline): deriva do CRM no load, igual o remoto re-deriva
+  // a cada fetch. Sem isto, abrir o 360 sem ter tocado no CRM mostrava um retrato
+  // possivelmente defasado. O remoto ignora (já vem derivado do servidor).
+  useEffect(() => {
+    if (useRemote) return;
+    const derived = deriveInteligencia360FromCrm(loadCrmState(), loadInteligencia360State());
+    setState(derived);
+    saveInteligencia360State(derived);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useRemote]);
 
   function persist(updater: (current: Inteligencia360State) => Inteligencia360State) {
     setState((current) => {
@@ -1687,7 +1698,17 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
   }
 
   if (slug === "configuracoes") {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const [form, setForm] = useState({ ...state.settings });
+    // Re-semeia quando as metas reais mudam (ex.: chegou o fetch remoto depois do
+    // mount). Sem isto, o form ficava com os defaults e, ao salvar, sobrescrevia
+    // as metas reais. Depende do VALOR (serializado), não da referência, para não
+    // apagar edição em andamento a cada re-render.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {
+      setForm({ ...state.settings });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(state.settings)]);
     return (
       <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
         <CardHeader><CardTitle>Metas e limites do motor 360</CardTitle></CardHeader>
@@ -1716,7 +1737,6 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
 
 export function Inteligencia360ModulePage() {
   const { section } = useParams();
-  const navigate = useNavigate();
   const slug = (section ?? "ticket-medio") as ModuleSlug;
   const module = moduleBySlug[slug] ?? moduleBySlug["ticket-medio"];
   const { state, persist, syncMode, isSyncing, syncError } = useInteligenciaState();
@@ -1726,7 +1746,7 @@ export function Inteligencia360ModulePage() {
   const guide = moduleGuides[module.slug];
 
   if (!moduleBySlug[slug]) {
-    navigate(moduleRoutes360.ticket, { replace: true });
+    return <Navigate to={moduleRoutes360.ticket} replace />;
   }
 
   return (

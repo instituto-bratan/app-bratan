@@ -120,6 +120,9 @@ test("mover para fechou completo cria tarefas setoriais e alimenta o 360", () =>
   assert.ok(next360.prescriptions.some((record) => record.id === "crm-rx-crm-deal-lead-quente" && record.status === "CLOSED_FULL"));
   assert.ok(next360.receivables.some((record) => record.id === "crm-recv-crm-deal-lead-quente"));
   assert.ok(next360.journeys.some((record) => record.id === "crm-journey-crm-deal-lead-quente"));
+  // Caixa NÃO pode dobrar: uma venda fechada = UM recebível (não crm-recv + recv-sale-crm-rx).
+  const recsDoDeal = next360.receivables.filter((record) => (record.saleId || "").includes("crm-deal-lead-quente") || record.id.includes("crm-deal-lead-quente"));
+  assert.equal(recsDoDeal.length, 1, "um único recebível por venda do CRM (sem dobrar)");
 });
 
 test("marcar 'consulta realizada' gera o D+1 da concierge (lista automática de quem passou com o Dr.)", () => {

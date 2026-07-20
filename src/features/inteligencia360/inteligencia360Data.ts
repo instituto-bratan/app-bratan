@@ -883,12 +883,20 @@ export function receivableFromPrescriptionSale(record: PrescriptionSale): Receiv
 }
 
 export function mergePrescriptionReceivables(receivables: Receivable[], prescriptions: PrescriptionSale[]) {
+  // Recebíveis que NÃO são gerados de prescrição (inclui os do CRM: crm-recv-*).
+  const kept = receivables.filter((record) => !isSaleReceivable(record));
+  // Toda venda já coberta por um recebível existente (pelo saleId) — ex.: o
+  // crm-recv-<deal> aponta para saleId crm-rx-<deal>. Sem esta dedupe, a mesma
+  // venda fechada no CRM virava DOIS recebíveis (crm-recv-* + recv-sale-crm-rx-*)
+  // → caixa e linhas dobrados no Dashboard 360.
+  const cobertas = new Set(kept.map((record) => record.saleId).filter(Boolean));
   const saleReceivables = prescriptions.flatMap((record) => {
     const receivable = receivableFromPrescriptionSale(record);
-    return receivable ? [receivable] : [];
+    if (!receivable || cobertas.has(receivable.saleId)) return [];
+    return [receivable];
   });
 
-  return [...saleReceivables, ...receivables.filter((record) => !isSaleReceivable(record))];
+  return [...saleReceivables, ...kept];
 }
 
 // Sem dados fictícios: o 360 real começa vazio e é alimentado pelo CRM e Financeiro.
