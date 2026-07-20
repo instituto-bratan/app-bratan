@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
+import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { LiquidGlassFilterDefs } from "@/components/ui/liquid-glass-button";
 import { AppLayout } from "@/layouts/AppLayout";
 import { canInteligencia360 } from "@/lib/access";
@@ -58,6 +59,7 @@ export function App() {
   return (
     <>
       <LiquidGlassFilterDefs />
+      <UpdatePrompt />
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

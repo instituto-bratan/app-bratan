@@ -42,6 +42,9 @@ self.addEventListener("fetch", (event) => {
   // Só cuidamos do próprio domínio. Supabase e qualquer host externo passam direto.
   if (url.origin !== self.location.origin) return;
 
+  // O version.json é o sinal de "saiu versão nova" — nunca cachear, sempre rede.
+  if (url.pathname === "/version.json") return;
+
   // Navegação (carregar uma página/rota): rede primeiro, cache como rede de segurança.
   if (request.mode === "navigate") {
     event.respondWith(
