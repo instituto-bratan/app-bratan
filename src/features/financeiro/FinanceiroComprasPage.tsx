@@ -51,7 +51,7 @@ export function FinanceiroComprasPage() {
   const [supplier, setSupplier] = useState("");
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<FinPaymentMethod>("CARTAO_CREDITO");
-  const [card, setCard] = useState<FinPurchaseCard>("SANTANDER");
+  const [card, setCard] = useState<FinPurchaseCard>("ITAU");
   const [installments, setInstallments] = useState("1");
   const [nfNote, setNfNote] = useState("");
   const [deliveryEta, setDeliveryEta] = useState("");
