@@ -258,3 +258,40 @@ test("P12: crediário fica FORA da P12 (caixa separado, decisão do Lucas)", () 
   assert.equal(matrix.profitMonths[5], 2000 - 5000, "lucro do mês = faturamento + poupança − despesas, sem crediário");
 });
 
+
+// --- Compras: controle puro, não entra no P12 (17/07/2026) ---
+
+test("Compras: purchaseAccounting separa fatura / contas a pagar / caixa", () => {
+  const credito = fin.purchaseAccounting({ method: "CARTAO_CREDITO", card: "SANTANDER" });
+  assert.equal(credito.label, "Fatura Santander");
+  assert.equal(credito.tone, "credito");
+  const boleto = fin.purchaseAccounting({ method: "BOLETO", card: null });
+  assert.equal(boleto.label, "Contas a Pagar");
+  assert.equal(boleto.tone, "boleto");
+  assert.equal(fin.purchaseAccounting({ method: "DINHEIRO", card: null }).tone, "caixa");
+  assert.equal(fin.purchaseAccounting({ method: "PIX", card: null }).tone, "caixa");
+});
+
+test("Compras: totais por cartão, crédito/boleto e 'vai chegar'", () => {
+  const buy = (over) => ({
+    id: over.id, purchaseDate: over.purchaseDate ?? "2026-07-10", description: over.description ?? "x", supplier: "",
+    amount: over.amount, method: over.method, card: over.card ?? null, installments: over.installments ?? 1,
+    nfNote: "", deliveryEta: over.deliveryEta ?? null, receivedAt: over.receivedAt ?? null, expenseRef: null, notes: "", createdAt: "",
+  });
+  const purchases = [
+    buy({ id: "a", amount: 1000, method: "CARTAO_CREDITO", card: "SANTANDER" }),
+    buy({ id: "b", amount: 500, method: "CARTAO_CREDITO", card: "SANTANDER", deliveryEta: "2026-07-20" }),
+    buy({ id: "c", amount: 300, method: "CARTAO_CREDITO", card: "ITAU" }),
+    buy({ id: "d", amount: 2000, method: "BOLETO", deliveryEta: "2026-07-22" }),
+    buy({ id: "e", amount: 80, method: "DINHEIRO" }),
+    buy({ id: "f", amount: 999, method: "CARTAO_CREDITO", card: "ITAU", purchaseDate: "2026-06-30" }), // outro mês
+  ];
+  const t = fin.purchaseMonthTotals(purchases, "2026-07");
+  assert.equal(t.total, 1000 + 500 + 300 + 2000 + 80);
+  assert.equal(t.creditTotal, 1800);
+  assert.equal(t.boletoTotal, 2000);
+  assert.equal(t.byCard.get("SANTANDER"), 1500);
+  assert.equal(t.byCard.get("ITAU"), 300, "compra de junho não conta em julho");
+  assert.equal(t.toArrive.length, 2, "duas com previsão e não recebidas");
+  assert.equal(t.toArriveTotal, 500 + 2000);
+});

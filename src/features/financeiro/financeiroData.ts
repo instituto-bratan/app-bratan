@@ -457,14 +457,46 @@ export function saveLocalFinPurchases(purchases: FinPurchase[]) {
 }
 
 export function purchaseMonthTotals(purchases: FinPurchase[], monthKey: string) {
-  const monthPurchases = purchases.filter((purchase) => purchase.purchaseDate.startsWith(monthKey));
+  const monthPurchases = purchases
+    .filter((purchase) => purchase.purchaseDate.startsWith(monthKey))
+    .sort((a, b) => (a.purchaseDate < b.purchaseDate ? 1 : a.purchaseDate > b.purchaseDate ? -1 : 0));
   const byMethod = new Map<FinPaymentMethod, number>();
+  const byCard = new Map<FinPurchaseCard, number>();
   let total = 0;
+  let creditTotal = 0;
+  let boletoTotal = 0;
+  let toArriveTotal = 0;
+  const toArrive: FinPurchase[] = [];
   for (const purchase of monthPurchases) {
     total += purchase.amount;
     byMethod.set(purchase.method, (byMethod.get(purchase.method) ?? 0) + purchase.amount);
+    if (purchase.method === "CARTAO_CREDITO") creditTotal += purchase.amount;
+    if (purchase.method === "BOLETO") boletoTotal += purchase.amount;
+    // Cada cartão de CRÉDITO acumula numa fatura futura (é a fatura inteira que
+    // entra no P12, não a compra individual).
+    if (purchase.method === "CARTAO_CREDITO" && purchase.card) {
+      byCard.set(purchase.card, (byCard.get(purchase.card) ?? 0) + purchase.amount);
+    }
+    // "Vai chegar": tem previsão de entrega e ainda não foi recebido.
+    if (!purchase.receivedAt && purchase.deliveryEta) {
+      toArrive.push(purchase);
+      toArriveTotal += purchase.amount;
+    }
   }
-  return { monthPurchases, total, byMethod };
+  return { monthPurchases, total, byMethod, byCard, creditTotal, boletoTotal, toArrive, toArriveTotal };
+}
+
+// Onde a compra é REALMENTE contabilizada (Compras é só controle — nada aqui
+// entra no P12 sozinho, para não duplicar):
+//  - Crédito → está na FATURA do cartão; a fatura inteira entra no P12 (Contas a Pagar).
+//  - Boleto → você lança em Contas a Pagar (é lá que entra no P12).
+//  - Débito/PIX/Dinheiro → saída direta do caixa/conta; o fechamento já reflete.
+export function purchaseAccounting(purchase: Pick<FinPurchase, "method" | "card">): { label: string; tone: "credito" | "boleto" | "caixa" } {
+  if (purchase.method === "CARTAO_CREDITO") {
+    return { label: `Fatura ${purchase.card ? purchaseCardLabels[purchase.card] : "cartão"}`, tone: "credito" };
+  }
+  if (purchase.method === "BOLETO") return { label: "Contas a Pagar", tone: "boleto" };
+  return { label: "Saída direta (caixa)", tone: "caixa" };
 }
 
 export const finSalesStorageKey = "app-bratan-fin-sales";
