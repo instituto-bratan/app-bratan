@@ -94,19 +94,33 @@ test("Dashboard 360 consolida dados das fontes sem modificar o estado operaciona
   assert.equal(JSON.stringify(state), before);
 });
 
-test("qualidade dos dados marca fonte ausente e reduz score executivo", () => {
+test("qualidade dos dados separa fontes derivadas de manuais e o score conta só as linkadas", () => {
   const state = cloneState();
-  state.weeklyTickets = [];
+  const refDate = new Date("2026-06-30T12:00:00.000Z");
 
-  const ticketInsight = engine.analyzeWeeklyTicket(state)[0];
+  // Ticket vazio não gera mais alerta crítico — o ticket do painel vem das comandas.
+  assert.equal(engine.analyzeWeeklyTicket({ ...state, weeklyTickets: [] }).length, 0);
+
+  // O registro semanal de ticket é classificado como manual (opcional).
   const quality = engine.buildDataQuality(state);
-  const ticketQuality = quality.find((item) => item.module === "Ticket Médio Semanal");
-  const snapshot = engine.buildDashboard360Snapshot(state, new Date("2026-06-30T12:00:00.000Z"));
+  const ticketQuality = quality.find((item) => item.module.startsWith("Ticket"));
+  assert.equal(ticketQuality.kind, "manual");
 
-  assert.equal(ticketInsight.severity, "critical");
-  assert.equal(ticketInsight.sourceHref, data.moduleRoutes360.ticket);
-  assert.equal(ticketQuality.status, "missing");
-  assert.ok(snapshot.dataCompletenessScore < 100);
+  const fullScore = engine.buildDashboard360Snapshot(state, refDate).dataCompletenessScore;
+
+  // Zerar fontes MANUAIS não mexe no score de linkagem.
+  const withoutManual = engine.buildDashboard360Snapshot(
+    { ...state, weeklyTickets: [], retentionCohorts: [], experiences: [] },
+    refDate,
+  ).dataCompletenessScore;
+  assert.equal(withoutManual, fullScore);
+
+  // Zerar uma fonte DERIVADA derruba o score.
+  const withoutDerived = engine.buildDashboard360Snapshot(
+    { ...state, prescriptions: [] },
+    refDate,
+  ).dataCompletenessScore;
+  assert.ok(withoutDerived < fullScore);
 });
 
 test("conversão de prescrição gera alerta crítico abaixo de 70% e atenção acima de 95%", () => {

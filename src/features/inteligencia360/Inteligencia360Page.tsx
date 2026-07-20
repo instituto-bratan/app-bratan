@@ -672,6 +672,37 @@ export function Inteligencia360DashboardPage() {
         .reduce((sum, record) => sum + record.soldAmount, 0),
     [state.prescriptions, periodRange],
   );
+  // Ticket médio DERIVADO das comandas (Lançar Dia) — antes vinha do formulário
+  // manual "Ticket Médio Semanal" e vivia zerado/pendente. Geral = média das
+  // comandas do período; novo = paciente cuja 1ª comanda registrada cai no
+  // período; recorrente = já tinha comanda antes.
+  const ticketDerived = useMemo(() => {
+    const patientKey = (sale: (typeof financeiro.sales)[number]) =>
+      sale.crmContactRef || (sale.patientName || "").trim().toLowerCase();
+    const firstSaleDate = new Map<string, string>();
+    for (const sale of financeiro.sales) {
+      const key = patientKey(sale);
+      if (!key) continue;
+      const current = firstSaleDate.get(key);
+      if (!current || sale.saleDate < current) firstSaleDate.set(key, sale.saleDate);
+    }
+    let geralSum = 0, geralN = 0, novoSum = 0, novoN = 0, recSum = 0, recN = 0;
+    for (const sale of financeiro.sales) {
+      if (sale.saleDate < periodRange.start || sale.saleDate > periodRange.end) continue;
+      const total = saleTotal360(sale);
+      if (total <= 0) continue;
+      geralSum += total; geralN += 1;
+      const key = patientKey(sale);
+      const isNovo = Boolean(key) && firstSaleDate.get(key) === sale.saleDate;
+      if (isNovo) { novoSum += total; novoN += 1; } else { recSum += total; recN += 1; }
+    }
+    return {
+      geral: geralN ? geralSum / geralN : 0,
+      novos: novoN ? novoSum / novoN : 0,
+      recorrentes: recN ? recSum / recN : 0,
+      count: geralN,
+    };
+  }, [financeiro.sales, periodRange]);
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   const insights = useMemo(() => generateActionRecommendations(state), [state]);
   const quality = useMemo(() => buildDataQuality(state), [state]);
@@ -716,24 +747,24 @@ export function Inteligencia360DashboardPage() {
       icon: ReceiptText,
     },
     {
-      label: "Ticket médio geral",
-      value: money360(snapshot.averageTicketGeneral),
-      detail: "Fonte: Ticket Médio Semanal",
-      href: moduleRoutes360.ticket,
+      label: `Ticket médio geral ${periodRange.label}`,
+      value: money360(ticketDerived.geral),
+      detail: `Fonte: comandas (Lançar Dia) · ${ticketDerived.count} comanda(s)`,
+      href: "/financeiro/lancar-dia",
       icon: TrendingUp,
     },
     {
       label: "Ticket novos",
-      value: money360(snapshot.averageTicketNewPatients),
-      detail: "Separado obrigatoriamente por tipo",
-      href: moduleRoutes360.ticket,
+      value: money360(ticketDerived.novos),
+      detail: "Derivado das comandas — 1ª comanda do paciente",
+      href: "/financeiro/lancar-dia",
       icon: UsersRound,
     },
     {
       label: "Ticket recorrentes",
-      value: money360(snapshot.averageTicketReturningPatients),
-      detail: "Leitura de renovação e esteira",
-      href: moduleRoutes360.ticket,
+      value: money360(ticketDerived.recorrentes),
+      detail: "Derivado das comandas — paciente que já comprou",
+      href: "/financeiro/lancar-dia",
       icon: RefreshCw,
     },
     {
@@ -782,9 +813,9 @@ export function Inteligencia360DashboardPage() {
       tone: snapshot.totalOverdueReceivables > 0 ? "critical" as const : undefined,
     },
     {
-      label: "Qualidade dos dados",
+      label: "Linkagem ativa",
       value: `${snapshot.dataCompletenessScore}%`,
-      detail: "Dashboard parcial quando faltar origem",
+      detail: "Fontes automáticas com dado fluindo",
       href: moduleRoutes360.settings,
       icon: ShieldCheck,
       tone: snapshot.dataCompletenessScore < 75 ? "gold" as const : undefined,
@@ -893,11 +924,15 @@ export function Inteligencia360DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-lg border border-brand-dourado/25 bg-brand-creme/35 p-4">
-              <p className="text-xs font-semibold uppercase text-brand-oliva">Score</p>
+              <p className="text-xs font-semibold uppercase text-brand-oliva">Linkagem ativa</p>
               <p className="mt-1 text-4xl font-bold leading-tight text-brand-musgo">{snapshot.dataCompletenessScore}%</p>
-              <p className="mt-2 text-sm text-muted-foreground">Indicadores incompletos ficam marcados antes de virar decisão.</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Mede as fontes que enchem sozinhas (CRM/Financeiro). Registros manuais são opcionais e não entram na conta.
+              </p>
             </div>
-            {quality.map((item) => (
+
+            <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-brand-oliva">Fontes automáticas (linkadas)</p>
+            {quality.filter((item) => item.kind === "derived").map((item) => (
               <Link key={item.module} to={item.sourceHref} className="block rounded-lg border border-brand-oliva/16 bg-white/65 p-4 transition hover:bg-white">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -905,7 +940,21 @@ export function Inteligencia360DashboardPage() {
                     <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
                     <p className="mt-1 text-xs text-brand-oliva">{item.impact}</p>
                   </div>
-                  <Badge variant={item.status === "complete" ? "muted" : "gold"}>{item.status === "complete" ? "Completo" : "Pendente"}</Badge>
+                  <Badge variant={item.status === "complete" ? "muted" : "gold"}>{item.status === "complete" ? "Fluindo" : "Aguardando"}</Badge>
+                </div>
+              </Link>
+            ))}
+
+            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-brand-oliva">Registros manuais (opcionais)</p>
+            {quality.filter((item) => item.kind === "manual").map((item) => (
+              <Link key={item.module} to={item.sourceHref} className="block rounded-lg border border-brand-oliva/12 bg-white/50 p-4 transition hover:bg-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-brand-tinta">{item.module}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
+                    <p className="mt-1 text-xs text-brand-oliva">{item.impact}</p>
+                  </div>
+                  <Badge variant={item.status === "complete" ? "muted" : "outline"}>{item.status === "complete" ? "Preenchido" : "Opcional"}</Badge>
                 </div>
               </Link>
             ))}

@@ -372,6 +372,9 @@ export type IntelligenceInsight = {
 export type DataQualityItem = {
   module: string;
   sourceHref: string;
+  // "derived" = enche sozinho a partir do CRM/Financeiro (conta no score de linkagem).
+  // "manual" = registro executivo opcional (não derruba o score).
+  kind: "derived" | "manual";
   status: "complete" | "partial" | "missing";
   lastUpdated: string | null;
   message: string;

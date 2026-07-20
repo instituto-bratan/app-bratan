@@ -42,18 +42,11 @@ function sourceInsight(
 }
 
 export function analyzeWeeklyTicket(state: Inteligencia360State): IntelligenceInsight[] {
+  // O ticket médio do Dashboard 360 é DERIVADO das comandas (Lançar Dia). O
+  // registro semanal manual é opcional — por isso "não preenchido" não é mais um
+  // alerta crítico (antes gritava "preencha" e contradizia o modelo derivado).
   if (!state.weeklyTickets.length) {
-    return [
-      sourceInsight({
-        id: "ticket-missing",
-        sourceModule: "TICKET_AVERAGE",
-        sourceHref: moduleRoutes360.ticket,
-        severity: "critical",
-        title: "Ticket Médio Semanal ainda não foi preenchido",
-        description: "Sem esse dado o Dashboard 360 fica parcial e perde leitura de margem, conversão e meta.",
-        recommendation: "Preencher a semana atual separando paciente novo, recorrente e médico.",
-      }),
-    ];
+    return [];
   }
 
   return state.weeklyTickets
@@ -89,11 +82,11 @@ export function analyzePrescriptionConversion(state: Inteligencia360State): Inte
       sourceInsight({
         id: "prescriptions-missing",
         sourceModule: "PRESCRIPTION_CONVERSION",
-        sourceHref: moduleRoutes360.commercial,
-        severity: "critical",
-        title: "Comercial ainda não registrou prescrições",
-        description: "Sem prescrito x vendido não existe leitura de dinheiro deixado na mesa.",
-        recommendation: "Registrar prescrição, venda, objeção principal e próximo follow-up.",
+        sourceHref: "/crm/vendas",
+        severity: "attention",
+        title: "Ainda não há vendas fechadas no CRM",
+        description: "Prescrito × vendido vem do Kanban Comercial — aparece aqui sozinho quando houver negócios fechados.",
+        recommendation: "Trabalhe os negócios no Kanban Comercial; as prescrições e a conversão preenchem sozinhas.",
       }),
     ];
   }
@@ -138,9 +131,9 @@ export function analyzeRetention(state: Inteligencia360State): IntelligenceInsig
         sourceModule: "RETENTION",
         sourceHref: moduleRoutes360.retention,
         severity: "attention",
-        title: "Coorte de retenção ainda não foi preenchida",
-        description: "Sem coorte mensal o time não enxerga quem voltou, quem sumiu e quem precisa de resgate.",
-        recommendation: "Preencher a coorte do mês com retornos agendados, comparecimentos e faltas.",
+        title: "Coorte de retenção é registro manual (opcional)",
+        description: "A coorte mensal (quem voltou, quem sumiu) é um registro manual da gestão — não vem de outra aba.",
+        recommendation: "Se quiser essa leitura, preencha a coorte do mês; caso contrário, pode ignorar.",
       }),
     ];
   }
@@ -316,77 +309,109 @@ export function buildDashboard360Snapshot(state: Inteligencia360State, date = ne
     npsAverage: average(npsValues),
     criticalActionsCount: state.actions.filter((record) => record.priority === "CRITICAL" && record.status !== "DONE").length,
     overdueActionsCount: state.actions.filter((record) => record.status !== "DONE" && isOverdue(record.dueDate)).length,
-    dataCompletenessScore: Math.round((quality.filter((item) => item.status === "complete").length / Math.max(quality.length, 1)) * 100),
+    // O score mede a saúde da LINKAGEM: só as fontes derivadas (que enchem
+    // sozinhas). Registros manuais são opcionais e não derrubam o número.
+    dataCompletenessScore: (() => {
+      const derived = quality.filter((item) => item.kind === "derived");
+      const complete = derived.filter((item) => item.status === "complete").length;
+      return Math.round((complete / Math.max(derived.length, 1)) * 100);
+    })(),
     generatedAt: new Date().toISOString(),
   };
 }
 
 export function buildDataQuality(state: Inteligencia360State): DataQualityItem[] {
-  const modules = [
-    {
-      module: "Ticket Médio Semanal",
-      sourceHref: moduleRoutes360.ticket,
-      records: state.weeklyTickets,
-      missing: "Ticket Médio Semanal ainda não foi preenchido para esta semana.",
-      impact: "Ticket, metas e queda semanal podem estar incompletos.",
-    },
+  const modules: Array<{
+    module: string;
+    sourceHref: string;
+    kind: "derived" | "manual";
+    records: Array<{ updatedAt?: string; createdAt?: string }>;
+    empty: string;
+    impact: string;
+  }> = [
+    // ---- Fontes DERIVADAS (enchem sozinhas conforme o time trabalha) ----
     {
       module: "Comercial e Prescrições",
       sourceHref: moduleRoutes360.commercial,
+      kind: "derived",
       records: state.prescriptions,
-      missing: "Comercial ainda não registrou prescrito x vendido.",
-      impact: "Conversão e dinheiro deixado na mesa ficam invisíveis.",
+      empty: "Aparece sozinho quando houver negócios fechados no Kanban Comercial.",
+      impact: "Conversão prescrito × vendido e dinheiro deixado na mesa.",
     },
     {
       module: "Jornada do Paciente",
       sourceHref: moduleRoutes360.journey,
+      kind: "derived",
       records: state.journeys,
-      missing: "Há poucos registros de jornada do paciente.",
-      impact: "Gargalos e contratos pendentes podem não aparecer.",
+      empty: "Aparece sozinho conforme os pacientes avançam nas fases do Programa.",
+      impact: "Gargalos e contratos pendentes.",
     },
     {
       module: "Réguas de Relacionamento",
       sourceHref: moduleRoutes360.touchpoints,
+      kind: "derived",
       records: state.touchpoints,
-      missing: "Toques de relacionamento não foram registrados.",
-      impact: "Risco de silêncio ou excesso de contato fica sem leitura.",
-    },
-    {
-      module: "Retenção e Resgate",
-      sourceHref: moduleRoutes360.retention,
-      records: [...state.retentionCohorts, ...state.rescueWorkflows],
-      missing: "Coorte/resgate ainda não foram atualizados.",
-      impact: "Retenção, resgate e churn podem estar parciais.",
-    },
-    {
-      module: "Experiência do Paciente",
-      sourceHref: moduleRoutes360.experience,
-      records: state.experiences,
-      missing: "NPS e feedbacks ainda não foram preenchidos.",
-      impact: "Reputação, críticas e avaliações Google ficam incompletas.",
+      empty: "Aparece sozinho conforme as cadências disparam toques.",
+      impact: "Risco de silêncio ou excesso de contato.",
     },
     {
       module: "Recebíveis e Caixa",
       sourceHref: moduleRoutes360.receivables,
+      kind: "derived",
       records: state.receivables,
-      missing: "Recebíveis não foram atualizados.",
-      impact: "Caixa real e valores vencidos podem estar distorcidos.",
+      empty: "Aparece sozinho a partir das vendas fechadas e comandas.",
+      impact: "Caixa real e valores vencidos.",
+    },
+    {
+      module: "Resgate e Churn",
+      sourceHref: moduleRoutes360.retention,
+      kind: "derived",
+      records: [...state.rescueWorkflows, ...state.churnInvestigations],
+      empty: "Aparece sozinho quando um paciente para de responder ou dá sinal de saída.",
+      impact: "Quem precisa de resgate antes de virar churn.",
     },
     {
       module: "Ações e Plano de Melhoria",
       sourceHref: moduleRoutes360.actions,
+      kind: "derived",
       records: state.actions,
-      missing: "Não há ações com dono e prazo.",
-      impact: "Insights podem não virar execução.",
+      empty: "Aparece sozinho conforme os insights viram ações com dono e prazo.",
+      impact: "Insights viram execução.",
+    },
+    // ---- Registros MANUAIS (entrada opcional da gestão; não contam no score) ----
+    {
+      module: "Ticket (registro semanal)",
+      sourceHref: moduleRoutes360.ticket,
+      kind: "manual",
+      records: state.weeklyTickets,
+      empty: "Opcional — o ticket do painel já vem das comandas (Lançar Dia). Este registro semanal é um complemento manual.",
+      impact: "Leitura semanal por médico (novo × recorrente).",
+    },
+    {
+      module: "Retenção (coorte mensal)",
+      sourceHref: moduleRoutes360.retention,
+      kind: "manual",
+      records: state.retentionCohorts,
+      empty: "Opcional — coorte mensal digitada pela gestão (quem voltou, quem faltou).",
+      impact: "Retorno, faltas e churn por coorte.",
+    },
+    {
+      module: "Experiência (NPS)",
+      sourceHref: moduleRoutes360.experience,
+      kind: "manual",
+      records: state.experiences,
+      empty: "Opcional — NPS e feedbacks digitados pela gestão.",
+      impact: "Reputação, críticas e avaliações Google.",
     },
   ];
 
   return modules.map((module) => ({
     module: module.module,
     sourceHref: module.sourceHref,
+    kind: module.kind,
     status: module.records.length ? "complete" : "missing",
     lastUpdated: lastUpdated(module.records),
-    message: module.records.length ? "Dados disponíveis para consolidação." : module.missing,
+    message: module.records.length ? "Dados disponíveis para consolidação." : module.empty,
     impact: module.impact,
   }));
 }
