@@ -9,11 +9,10 @@ import {
   ArrowUpRight,
   BarChart3,
   BrainCircuit,
-  CalendarClock,
+  CalendarRange,
   CheckCircle2,
   ClipboardList,
   Copy,
-  Download,
   FileText,
   HandCoins,
   HeartPulse,
@@ -24,6 +23,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Target,
+  Trash2,
   TrendingUp,
   UserRoundCheck,
   UsersRound,
@@ -74,7 +74,6 @@ import {
   receivableOpenAmount,
   rootCauseLabels,
   saveInteligencia360State,
-  seedInteligencia360State,
   stageLabels,
   ticketStatus,
   ticketVariationPercentage,
@@ -105,7 +104,6 @@ import {
   buildDashboard360Snapshot,
   buildDataQuality,
   generateActionRecommendations,
-  generateMorningGoalMessage,
   generateWeeklyKickoffBrief,
 } from "./intelligenceEngine";
 
@@ -127,16 +125,17 @@ type ModuleConfig = {
   slug: ModuleSlug;
   group: ModuleGroupKey;
   title: string;
+  navLabel: string;
   description: string;
   href: string;
   source: string;
   icon: typeof BarChart3;
 };
 
-const moduleGroups: { key: ModuleGroupKey; label: string; detail: string }[] = [
-  { key: "resultado", label: "Resultado", detail: "venda, margem e caixa" },
-  { key: "paciente", label: "Paciente", detail: "jornada, retenção e experiência" },
-  { key: "execucao", label: "Execução", detail: "ações, metas e governança" },
+const moduleGroups: { key: ModuleGroupKey; label: string }[] = [
+  { key: "resultado", label: "Resultado" },
+  { key: "paciente", label: "Paciente" },
+  { key: "execucao", label: "Execução" },
 ];
 
 const modules: ModuleConfig[] = [
@@ -144,6 +143,7 @@ const modules: ModuleConfig[] = [
     slug: "ticket-medio",
     group: "resultado",
     title: "Ticket Médio Semanal",
+    navLabel: "Ticket",
     description: "Preenchimento por semana, médico e tipo de paciente.",
     href: moduleRoutes360.ticket,
     source: "Fonte do ticket médio, metas e variação semanal.",
@@ -153,6 +153,7 @@ const modules: ModuleConfig[] = [
     slug: "precificacao",
     group: "resultado",
     title: "Precificação e Margem",
+    navLabel: "Precificação",
     description: "Preço, custo, repasse, desconto permitido e margem.",
     href: moduleRoutes360.pricing,
     source: "Fonte de preço mínimo, margem e política comercial.",
@@ -162,6 +163,7 @@ const modules: ModuleConfig[] = [
     slug: "comercial",
     group: "resultado",
     title: "Comercial e Prescrições",
+    navLabel: "Comercial",
     description: "Prescrito x vendido, objeções, descontos e follow-up.",
     href: moduleRoutes360.commercial,
     source: "Fonte de receita vendida, conversão e objeções.",
@@ -171,6 +173,7 @@ const modules: ModuleConfig[] = [
     slug: "jornada-paciente",
     group: "paciente",
     title: "Jornada do Paciente",
+    navLabel: "Jornada",
     description: "Etapa, contrato, agenda, grupos e gargalos por setor.",
     href: moduleRoutes360.journey,
     source: "Fonte de contratos pendentes e pacientes sem próximo passo.",
@@ -180,6 +183,7 @@ const modules: ModuleConfig[] = [
     slug: "reguas",
     group: "paciente",
     title: "Réguas de Relacionamento",
+    navLabel: "Réguas",
     description: "Toques, mensagens, responsáveis, opt-out e fadiga.",
     href: moduleRoutes360.touchpoints,
     source: "Fonte de contato, resgate e excesso de mensagens.",
@@ -189,6 +193,7 @@ const modules: ModuleConfig[] = [
     slug: "retencao-resgate",
     group: "paciente",
     title: "Retenção, Resgate e Churn",
+    navLabel: "Retenção",
     description: "Coortes, tentativas, investigação e motivos de evasão.",
     href: moduleRoutes360.retention,
     source: "Fonte de retenção, pacientes em resgate e churn.",
@@ -198,6 +203,7 @@ const modules: ModuleConfig[] = [
     slug: "experiencia",
     group: "paciente",
     title: "Experiência do Paciente",
+    navLabel: "Experiência",
     description: "NPS, Google, feedback e contato de liderança.",
     href: moduleRoutes360.experience,
     source: "Fonte de reputação, críticas abertas e ações corretivas.",
@@ -207,6 +213,7 @@ const modules: ModuleConfig[] = [
     slug: "recebiveis",
     group: "resultado",
     title: "Recebíveis e Caixa",
+    navLabel: "Recebíveis",
     description: "Vendido não é caixa: aberto, vencido e recebido.",
     href: moduleRoutes360.receivables,
     source: "Fonte de receita recebida, aberto, vencido e aging.",
@@ -216,6 +223,7 @@ const modules: ModuleConfig[] = [
     slug: "acoes",
     group: "execucao",
     title: "Ações e Plano de Melhoria",
+    navLabel: "Ações",
     description: "Dono, prazo, prioridade, status e impacto esperado.",
     href: moduleRoutes360.actions,
     source: "Fonte de execução gerada por insights e gestão.",
@@ -225,6 +233,7 @@ const modules: ModuleConfig[] = [
     slug: "configuracoes",
     group: "execucao",
     title: "Configurações Operacionais",
+    navLabel: "Configurações",
     description: "Metas, limites, responsáveis e origem dos dados.",
     href: moduleRoutes360.settings,
     source: "Fonte das metas, alertas e regras do motor 360.",
@@ -293,20 +302,9 @@ function useInteligenciaState() {
     });
   }
 
-  function reset() {
-    setState(seedInteligencia360State);
-    saveInteligencia360State(seedInteligencia360State);
-    if (useRemote) {
-      void saveRemoteMutation.mutateAsync(seedInteligencia360State).catch((error) => {
-        console.warn("Inteligência 360 não sincronizou com o Supabase.", error);
-      });
-    }
-  }
-
   return {
     state,
     persist,
-    reset,
     syncMode: useRemote ? "Supabase" : "Local",
     isSyncing: remoteStateQuery.isFetching || saveRemoteMutation.isPending,
     syncError: remoteStateQuery.error || saveRemoteMutation.error,
@@ -451,6 +449,7 @@ function MetricCard({
   detail,
   href,
   tone = "default",
+  periodic = false,
 }: {
   icon: typeof BarChart3;
   label: string;
@@ -458,6 +457,8 @@ function MetricCard({
   detail: string;
   href: string;
   tone?: "default" | "gold" | "critical";
+  // true = o valor muda quando o gestor troca o filtro de período (Hoje/Semana/…).
+  periodic?: boolean;
 }) {
   return (
     <Link to={href} className="group block">
@@ -475,7 +476,15 @@ function MetricCard({
             <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
               <Icon className="h-5 w-5" aria-hidden="true" />
             </div>
-            <ArrowRight className="h-4 w-4 text-brand-oliva transition group-hover:translate-x-1" aria-hidden="true" />
+            <div className="flex items-center gap-2">
+              {periodic ? (
+                <span className="inline-flex items-center gap-1 rounded-sm bg-brand-creme/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-oliva ring-1 ring-brand-dourado/35">
+                  <CalendarRange className="h-3 w-3" aria-hidden="true" />
+                  no período
+                </span>
+              ) : null}
+              <ArrowRight className="h-4 w-4 text-brand-oliva transition group-hover:translate-x-1" aria-hidden="true" />
+            </div>
           </div>
           <p className="text-xs font-semibold uppercase text-brand-oliva">{label}</p>
           <p className="mt-2 text-2xl font-bold leading-tight text-brand-tinta">{value}</p>
@@ -629,7 +638,7 @@ function ComandaKanbanReconciliation() {
 }
 
 export function Inteligencia360DashboardPage() {
-  const { state, persist, reset, syncMode, isSyncing, syncError } = useInteligenciaState();
+  const { state, persist, syncMode, isSyncing, syncError } = useInteligenciaState();
   const { pessoa } = useAuth();
   const hoje = new Date().toISOString().slice(0, 10);
   const financeiro = useFinanceiro(Number(hoje.slice(0, 4)));
@@ -724,6 +733,7 @@ export function Inteligencia360DashboardPage() {
       href: "/financeiro/metas",
       icon: Target,
       tone: "gold" as const,
+      periodic: true,
     },
     {
       label: "Meta do mês (CEO)",
@@ -738,6 +748,7 @@ export function Inteligencia360DashboardPage() {
       detail: "Fonte: Comercial e Prescrições",
       href: moduleRoutes360.commercial,
       icon: Target,
+      periodic: true,
     },
     {
       label: "Receita recebida",
@@ -752,25 +763,28 @@ export function Inteligencia360DashboardPage() {
       detail: `Fonte: comandas (Lançar Dia) · ${ticketDerived.count} comanda(s)`,
       href: "/financeiro/lancar-dia",
       icon: TrendingUp,
+      periodic: true,
     },
     {
       label: "Ticket novos",
       value: money360(ticketDerived.novos),
-      detail: "Derivado das comandas — 1ª comanda do paciente",
+      detail: "Fonte: comandas — 1ª comanda do paciente",
       href: "/financeiro/lancar-dia",
       icon: UsersRound,
+      periodic: true,
     },
     {
       label: "Ticket recorrentes",
       value: money360(ticketDerived.recorrentes),
-      detail: "Derivado das comandas — paciente que já comprou",
+      detail: "Fonte: comandas — paciente que já comprou",
       href: "/financeiro/lancar-dia",
       icon: RefreshCw,
+      periodic: true,
     },
     {
       label: "Conversão prescrição",
       value: percent360(snapshot.prescriptionConversionRate),
-      detail: "Faixa saudável: 70% a 80%",
+      detail: "Fonte: Comercial · faixa saudável 70–80%",
       href: moduleRoutes360.commercial,
       icon: LineChart,
       tone: snapshot.prescriptionConversionRate < state.settings.prescriptionConversionMin ? "critical" as const : undefined,
@@ -785,7 +799,7 @@ export function Inteligencia360DashboardPage() {
     {
       label: "Em resgate",
       value: `${snapshot.rescueOpenCount}`,
-      detail: "Pacientes antes de churn",
+      detail: "Fonte: CRM — pacientes antes de churn",
       href: moduleRoutes360.retention,
       icon: MessageCircle,
       tone: snapshot.rescueOpenCount ? "gold" as const : undefined,
@@ -800,14 +814,14 @@ export function Inteligencia360DashboardPage() {
     {
       label: "Recebíveis em aberto",
       value: money360(snapshot.totalOpenReceivables),
-      detail: "Vendido não é caixa",
+      detail: "Fonte: Recebíveis — vendido não é caixa",
       href: moduleRoutes360.receivables,
       icon: HandCoins,
     },
     {
       label: "Recebíveis vencidos",
       value: money360(snapshot.totalOverdueReceivables),
-      detail: "Risco direto de caixa",
+      detail: "Fonte: Recebíveis — risco direto de caixa",
       href: moduleRoutes360.receivables,
       icon: AlertTriangle,
       tone: snapshot.totalOverdueReceivables > 0 ? "critical" as const : undefined,
@@ -862,6 +876,7 @@ export function Inteligencia360DashboardPage() {
           {copyFeedback}
         </div>
       ) : null}
+      <Module360Nav active="dashboard" />
       <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
         <CardContent className="flex flex-wrap items-end gap-4 p-4">
           <div className="w-full sm:w-56">
@@ -965,64 +980,89 @@ export function Inteligencia360DashboardPage() {
   );
 }
 
-function ModuleNav({ active }: { active: ModuleSlug }) {
+// Navegação única da Inteligência 360: mesma barra na Dashboard e em todos os
+// módulos (antes: sidebar plana + grade de 3 colunas só no módulo + dashboard só
+// por cards). Pílula do Dashboard + módulos agrupados por Resultado/Paciente/Execução.
+function Module360Nav({ active }: { active: ModuleSlug | "dashboard" }) {
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
-      {moduleGroups.map((group) => {
-        const groupModules = modules.filter((module) => module.group === group.key);
-        const isActiveGroup = groupModules.some((module) => module.slug === active);
-
-        return (
-          <section
-            key={group.key}
-            className={cn(
-              "rounded-lg border p-3 transition duration-200",
-              isActiveGroup ? "border-brand-dourado/45 bg-brand-creme/42 shadow-sm" : "border-brand-oliva/16 bg-white/62",
-            )}
+    <nav
+      aria-label="Navegação da Inteligência 360"
+      className="rounded-xl border border-brand-oliva/16 bg-white/62 p-3 backdrop-blur"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-4">
+        <div className="flex items-center lg:border-r lg:border-brand-oliva/16 lg:pr-4">
+          <Button
+            asChild
+            size="sm"
+            variant={active === "dashboard" ? "default" : "outline"}
+            className="h-auto gap-2 px-3 py-2"
           >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold leading-tight text-brand-musgo">{group.label}</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{group.detail}</p>
+            <Link to={moduleRoutes360.dashboard} aria-current={active === "dashboard" ? "page" : undefined}>
+              <BrainCircuit className="h-4 w-4" aria-hidden="true" />
+              <span>Dashboard 360</span>
+            </Link>
+          </Button>
+        </div>
+
+        <div className="grid flex-1 gap-3 sm:grid-cols-3">
+          {moduleGroups.map((group) => {
+            const groupModules = modules.filter((module) => module.group === group.key);
+            return (
+              <div key={group.key} className="min-w-0">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{group.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {groupModules.map((module) => {
+                    const Icon = module.icon;
+                    const isActive = module.slug === active;
+                    return (
+                      <Button
+                        key={module.slug}
+                        asChild
+                        size="sm"
+                        variant={isActive ? "default" : "outline"}
+                        className="h-auto gap-1.5 px-2.5 py-1.5 text-xs"
+                      >
+                        <Link to={module.href} aria-current={isActive ? "page" : undefined}>
+                          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>{module.navLabel}</span>
+                        </Link>
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
-              <Badge variant={isActiveGroup ? "gold" : "muted"}>{groupModules.length}</Badge>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-              {groupModules.map((module) => {
-                const Icon = module.icon;
-
-                return (
-                  <Button
-                    key={module.slug}
-                    asChild
-                    size="sm"
-                    variant={module.slug === active ? "default" : "outline"}
-                    className="h-auto justify-start gap-2 whitespace-normal px-3 py-2 text-left leading-tight"
-                  >
-                    <Link to={module.href}>
-                      <Icon className="h-4 w-4" aria-hidden="true" />
-                      <span className="min-w-0">{module.title}</span>
-                    </Link>
-                  </Button>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
-    </div>
+            );
+          })}
+        </div>
+      </div>
+    </nav>
   );
 }
 
 // Mensagem de tabela vazia para os módulos DERIVADOS (não se preenche à mão aqui).
 const DERIVED_360_EMPTY = "Estes dados vêm do CRM/Financeiro e aparecem sozinhos conforme o time trabalha (Kanban, comandas, cadências) — nada a preencher aqui.";
 
-function DataTable({ headers, rows, emptyMessage }: { headers: string[]; rows: ReactNode[][]; emptyMessage?: ReactNode }) {
+function DataTable({
+  headers,
+  rows,
+  emptyMessage,
+  onDeleteRow,
+  deleteLabel = "linha",
+}: {
+  headers: string[];
+  rows: ReactNode[][];
+  emptyMessage?: ReactNode;
+  // Quando informado, adiciona uma coluna "Ações" com botão de remover por linha.
+  // O índice corresponde à ordem em que as linhas foram passadas.
+  onDeleteRow?: (index: number) => void;
+  deleteLabel?: string;
+}) {
+  const showActions = Boolean(onDeleteRow);
+  const totalCols = headers.length + (showActions ? 1 : 0);
   return (
     <div className="overflow-hidden rounded-lg border border-brand-oliva/16 bg-white/65">
       <div className="mobile-scrollbar-none overflow-x-auto">
-        <table className="text-left text-sm" style={{ minWidth: Math.max(headers.length * 160, 680) }}>
+        <table className="text-left text-sm" style={{ minWidth: Math.max(totalCols * 160, 680) }}>
           <thead className="bg-brand-papel/70 text-xs uppercase text-brand-oliva">
             <tr>
               {headers.map((header) => (
@@ -1030,6 +1070,7 @@ function DataTable({ headers, rows, emptyMessage }: { headers: string[]; rows: R
                   {header}
                 </th>
               ))}
+              {showActions ? <th className="px-4 py-3 text-right font-semibold">Ações</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-brand-oliva/10">
@@ -1041,11 +1082,29 @@ function DataTable({ headers, rows, emptyMessage }: { headers: string[]; rows: R
                       {cell}
                     </td>
                   ))}
+                  {showActions ? (
+                    <td className="px-4 py-3 text-right align-top">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 gap-1 px-2 text-xs text-destructive hover:bg-destructive/10"
+                        onClick={() => {
+                          if (window.confirm(`Remover esta ${deleteLabel}? Esta ação não pode ser desfeita.`)) {
+                            onDeleteRow?.(rowIndex);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        Remover
+                      </Button>
+                    </td>
+                  ) : null}
                 </tr>
               ))
             ) : (
               <tr>
-                <td className="px-4 py-6 text-muted-foreground" colSpan={headers.length}>
+                <td className="px-4 py-6 text-muted-foreground" colSpan={totalCols}>
                   {emptyMessage ?? "Nada registrado ainda. Preencha este módulo para alimentar o Dashboard 360."}
                 </td>
               </tr>
@@ -1251,6 +1310,12 @@ function TicketModule({ state, persist }: { state: Inteligencia360State; persist
       </Card>
       <DataTable
         headers={["Semana", "Médico", "Tipo", "Ticket vendido", "Recebido", "Variação", "Status"]}
+        deleteLabel="semana"
+        onDeleteRow={(index) => {
+          const target = state.weeklyTickets[index];
+          if (!target) return;
+          persist((current) => ({ ...current, weeklyTickets: current.weeklyTickets.filter((row) => row.id !== target.id) }));
+        }}
         rows={state.weeklyTickets.map((record) => [
           `${record.weekStartDate} a ${record.weekEndDate}`,
           record.doctorName,
@@ -1429,6 +1494,12 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
         </Card>
         <DataTable
           headers={["Serviço", "Preço", "Custo estimado", "Margem", "Preço mínimo", "Alerta"]}
+          deleteLabel="linha de preço"
+          onDeleteRow={(index) => {
+            const target = state.pricing[index];
+            if (!target) return;
+            persist((current) => ({ ...current, pricing: current.pricing.filter((row) => row.id !== target.id) }));
+          }}
           rows={state.pricing.map((item) => {
             const computed = pricingComputed(item);
             return [
@@ -1586,7 +1657,16 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
           </CardContent>
         </Card>
         </ManualEntry>
-        <DataTable headers={["Coorte", "Agendados", "Compareceram", "Faltaram", "Retenção"]} rows={state.retentionCohorts.map((record) => [record.cohortLabel, record.scheduledReturns, record.attendedReturns, record.missedReturns, percent360(record.scheduledReturns ? record.attendedReturns / record.scheduledReturns * 100 : 0)])} />
+        <DataTable
+          headers={["Coorte", "Agendados", "Compareceram", "Faltaram", "Retenção"]}
+          deleteLabel="coorte"
+          onDeleteRow={(index) => {
+            const target = state.retentionCohorts[index];
+            if (!target) return;
+            persist((current) => ({ ...current, retentionCohorts: current.retentionCohorts.filter((row) => row.id !== target.id) }));
+          }}
+          rows={state.retentionCohorts.map((record) => [record.cohortLabel, record.scheduledReturns, record.attendedReturns, record.missedReturns, percent360(record.scheduledReturns ? record.attendedReturns / record.scheduledReturns * 100 : 0)])}
+        />
         <DataTable emptyMessage={DERIVED_360_EMPTY} headers={["Paciente em resgate", "Tipo", "Tentativas", "Status", "Dono"]} rows={state.rescueWorkflows.map((record) => [record.patientReference, rescueTypeLabels[record.rescueType], `${record.attemptsDone}/${record.attemptsTotal}`, rescueStatusLabels[record.status as RescueStatus360], record.ownerUserId])} />
       </>
     );
@@ -1638,7 +1718,16 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             </form>
           </CardContent>
         </Card>
-        <DataTable headers={["Paciente", "NPS", "Satisfação", "Tipo", "Ação obrigatória"]} rows={state.experiences.map((record) => [record.patientReference, record.npsScore, record.satisfactionScore, feedbackTypeLabels[record.feedbackType], record.actionRequired ? <Badge key={record.id} variant="gold" className="text-destructive">Sim</Badge> : <Badge key={record.id} variant="muted">Não</Badge>])} />
+        <DataTable
+          headers={["Paciente", "NPS", "Satisfação", "Tipo", "Ação obrigatória"]}
+          deleteLabel="avaliação"
+          onDeleteRow={(index) => {
+            const target = state.experiences[index];
+            if (!target) return;
+            persist((current) => ({ ...current, experiences: current.experiences.filter((row) => row.id !== target.id) }));
+          }}
+          rows={state.experiences.map((record) => [record.patientReference, record.npsScore, record.satisfactionScore, feedbackTypeLabels[record.feedbackType], record.actionRequired ? <Badge key={record.id} variant="gold" className="text-destructive">Sim</Badge> : <Badge key={record.id} variant="muted">Não</Badge>])}
+        />
       </>
     );
   }
@@ -1844,7 +1933,7 @@ export function Inteligencia360ModulePage() {
         </>
       }
     >
-      <ModuleNav active={module.slug} />
+      <Module360Nav active={module.slug} />
       {moduleCopyFeedback ? (
         <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
           {moduleCopyFeedback}
