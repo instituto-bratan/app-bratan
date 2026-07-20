@@ -650,6 +650,9 @@ export function isTaskOverdue(task: CrmTask, reference = new Date()) {
   // tarefas futuras viram SKIPPED. Sem isto, elas reapareciam em "Atrasadas"
   // assim que a data passava e a equipe recontatava quem já havia respondido.
   if (task.status === "DONE" || task.status === "CANCELED" || task.status === "SKIPPED") return false;
+  // SEM PRAZO = tarefa parada (ex.: leads do LinkedIn aguardando movimentação):
+  // nunca é atrasada; só aparece em "Todas", fora da fila do dia.
+  if (!task.dueAt) return false;
   return new Date(task.dueAt).getTime() < reference.getTime();
 }
 

@@ -2157,7 +2157,11 @@ export async function listRemoteCrmState(): Promise<CrmState> {
         taskType: row.task_type ?? "FOLLOW_UP",
         assignedToUserId: remoteText(row.assigned_to_user_id),
         assignedToRole: row.assigned_to_role ?? "ADMIN_GESTAO",
-        dueAt: row.due_at,
+        // due_at pode ser NULL (tarefa "parada", sem prazo, ativa só quando houver
+        // movimentação). null → "" para o motor tratar como sem prazo (nunca
+        // atrasada). NÃO usar row.due_at direto: new Date(null) vira 1970 (falsa
+        // atrasada).
+        dueAt: remoteText(row.due_at),
         completedAt: row.completed_at ?? null,
         status: row.status ?? "PENDING",
         priority: row.priority ?? "MEDIUM",
@@ -2388,7 +2392,8 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       task_type: record.taskType,
       assigned_to_user_id: record.assignedToUserId || null,
       assigned_to_role: record.assignedToRole,
-      due_at: record.dueAt,
+      // "" → NULL: tarefa sem prazo (parada). Enviar "" para timestamptz falharia.
+      due_at: record.dueAt || null,
       completed_at: record.completedAt || null,
       status: record.status,
       priority: record.priority,

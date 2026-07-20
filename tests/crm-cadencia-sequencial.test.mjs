@@ -192,3 +192,11 @@ test("tarefa PULADA (régua pausou) não conta como atrasada mesmo com data no p
     assert.equal(crm.isTaskOverdue(t, past), false, "pulada nunca é atrasada");
   }
 });
+
+test("tarefa SEM PRAZO (dueAt vazio) nunca é atrasada — leads parados aguardando movimentação", () => {
+  const parked = { status: "PENDING", dueAt: "" };
+  const future = new Date("2030-01-01T00:00:00");
+  assert.equal(crm.isTaskOverdue(parked, future), false, "sem prazo não atrasa nem no futuro distante");
+  // sanidade: com prazo no passado, atrasa
+  assert.equal(crm.isTaskOverdue({ status: "PENDING", dueAt: "2026-01-01T00:00:00.000Z" }, future), true);
+});

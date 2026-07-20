@@ -468,8 +468,9 @@ export function CrmTasksPage() {
                   <div className="mt-3 flex flex-wrap gap-3 text-sm">
                     <span className={cn("inline-flex items-center gap-1 font-semibold", effectiveStatus === "OVERDUE" ? "text-red-700" : "text-brand-tinta")}>
                       <CalendarClock className="h-4 w-4" />
-                      {effectiveStatus === "OVERDUE" ? "Atrasada — era para " : "Fazer até "}
-                      {formatCrmDateTime(task.dueAt)}
+                      {!task.dueAt
+                        ? "Sem prazo — ativa quando houver movimentação"
+                        : `${effectiveStatus === "OVERDUE" ? "Atrasada — era para " : "Fazer até "}${formatCrmDateTime(task.dueAt)}`}
                     </span>
                     {task.cadenceId && cadencesById.get(task.cadenceId) ? (
                       <span className="inline-flex items-center gap-1 text-muted-foreground">
