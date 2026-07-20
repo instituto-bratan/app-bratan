@@ -50,6 +50,14 @@ import { cn } from "@/lib/utils";
 import {
   actionPriorityLabels,
   actionStatusLabels,
+  receivableStatusLabels,
+  rescueTypeLabels,
+  rescueStatusLabels,
+  ticketStatusLabels,
+  feedbackTypeLabels,
+  prescriptionStatusLabels,
+  expectedImpactLabels,
+  touchStatusLabels,
   averageTicketReceived,
   averageTicketSold,
   createId360,
@@ -958,7 +966,10 @@ function ModuleNav({ active }: { active: ModuleSlug }) {
   );
 }
 
-function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) {
+// Mensagem de tabela vazia para os módulos DERIVADOS (não se preenche à mão aqui).
+const DERIVED_360_EMPTY = "Estes dados vêm do CRM/Financeiro e aparecem sozinhos conforme o time trabalha (Kanban, comandas, cadências) — nada a preencher aqui.";
+
+function DataTable({ headers, rows, emptyMessage }: { headers: string[]; rows: ReactNode[][]; emptyMessage?: ReactNode }) {
   return (
     <div className="overflow-hidden rounded-lg border border-brand-oliva/16 bg-white/65">
       <div className="mobile-scrollbar-none overflow-x-auto">
@@ -986,7 +997,7 @@ function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }
             ) : (
               <tr>
                 <td className="px-4 py-6 text-muted-foreground" colSpan={headers.length}>
-                  Nada registrado ainda. Preencha este módulo para alimentar o Dashboard 360.
+                  {emptyMessage ?? "Nada registrado ainda. Preencha este módulo para alimentar o Dashboard 360."}
                 </td>
               </tr>
             )}
@@ -1199,7 +1210,7 @@ function TicketModule({ state, persist }: { state: Inteligencia360State; persist
           money360(averageTicketReceived(record)),
           percent360(ticketVariationPercentage(record)),
           <Badge key={record.id} variant={ticketStatus(record, state.settings.ticketDropCriticalPercentage) === "CRITICAL" ? "gold" : "muted"}>
-            {ticketStatus(record, state.settings.ticketDropCriticalPercentage)}
+            {ticketStatusLabels[ticketStatus(record, state.settings.ticketDropCriticalPercentage)]}
           </Badge>,
         ])}
       />
@@ -1427,7 +1438,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
               <Field label="Valor recebido" value={form.receivedAmount} onChange={(value) => setForm({ ...form, receivedAmount: value })} />
               <Field label="Canal" value={form.acquisitionChannel} onChange={(value) => setForm({ ...form, acquisitionChannel: value })} />
               <SelectField label="Objeção" value={form.objectionCategory} onChange={(value) => setForm({ ...form, objectionCategory: value })} options={Object.entries(objectionLabels).map(([value, label]) => ({ value: value as ObjectionCategory360, label }))} />
-              <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={["PRESCRIBED", "CLOSED_FULL", "CLOSED_PARTIAL", "NOT_CLOSED", "IN_RECOVERY", "LOST"].map((value) => ({ value: value as PrescriptionStatus360, label: value }))} />
+              <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={(Object.keys(prescriptionStatusLabels) as PrescriptionStatus360[]).map((value) => ({ value, label: prescriptionStatusLabels[value] }))} />
               <div className="md:col-span-2 xl:col-span-4">
                 <LiquidButton type="submit" size="lg">Adicionar venda e atualizar recebíveis</LiquidButton>
               </div>
@@ -1435,7 +1446,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
           </CardContent>
         </Card>
         </ManualEntry>
-        <DataTable headers={["Paciente", "Prescrito", "Vendido", "Recebido", "Conversão", "Objeção"]} rows={state.prescriptions.map((record) => [record.patientReference, money360(record.prescribedAmount), money360(record.soldAmount), money360(record.receivedAmount), percent360(record.prescribedAmount ? record.soldAmount / record.prescribedAmount * 100 : 0), objectionLabels[record.objectionCategory]])} />
+        <DataTable emptyMessage={DERIVED_360_EMPTY} headers={["Paciente", "Prescrito", "Vendido", "Recebido", "Conversão", "Objeção"]} rows={state.prescriptions.map((record) => [record.patientReference, money360(record.prescribedAmount), money360(record.soldAmount), money360(record.receivedAmount), percent360(record.prescribedAmount ? record.soldAmount / record.prescribedAmount * 100 : 0), objectionLabels[record.objectionCategory]])} />
       </>
     );
   }
@@ -1455,10 +1466,15 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             }}>
               <Field label="Referência paciente" value={form.patientReference} onChange={(value) => setForm({ ...form, patientReference: value })} />
               <SelectField label="Etapa atual" value={form.currentStage} onChange={(value) => setForm({ ...form, currentStage: value })} options={Object.entries(stageLabels).map(([value, label]) => ({ value: value as JourneyStage360, label }))} />
-              {(["contractCreated", "contractSent", "contractSigned", "allDatesScheduled"] as const).map((key) => (
+              {([
+                ["contractCreated", "Contrato criado"],
+                ["contractSent", "Contrato enviado"],
+                ["contractSigned", "Contrato assinado"],
+                ["allDatesScheduled", "Todas as datas agendadas"],
+              ] as const).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 rounded-lg border border-brand-oliva/16 bg-white/60 px-3 py-3 text-sm font-semibold">
                   <input type="checkbox" checked={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.checked })} />
-                  {key}
+                  {label}
                 </label>
               ))}
               <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg">Adicionar jornada</LiquidButton></div>
@@ -1466,7 +1482,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
           </CardContent>
         </Card>
         </ManualEntry>
-        <DataTable headers={["Paciente", "Etapa", "Contrato", "Datas", "Próximo passo"]} rows={state.journeys.map((record) => [record.patientReference, stageLabels[record.currentStage], record.contractSigned ? "Assinado" : record.contractSent ? "Enviado" : record.contractCreated ? "Criado" : "Pendente", record.allDatesScheduled ? "Agendadas" : "Incompletas", record.contractSigned ? "Concierge / enfermagem" : "Administrativo conferir SuperSign"])} />
+        <DataTable emptyMessage={DERIVED_360_EMPTY} headers={["Paciente", "Etapa", "Contrato", "Datas", "Próximo passo"]} rows={state.journeys.map((record) => [record.patientReference, stageLabels[record.currentStage], record.contractSigned ? "Assinado" : record.contractSent ? "Enviado" : record.contractCreated ? "Criado" : "Pendente", record.allDatesScheduled ? "Agendadas" : "Incompletas", record.contractSigned ? "Concierge / enfermagem" : "Administrativo conferir SuperSign"])} />
       </>
     );
   }
@@ -1494,7 +1510,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
           </CardContent>
         </Card>
         </ManualEntry>
-        <DataTable headers={["Paciente", "Toque", "Data", "Status", "Mensagem"]} rows={state.touchpoints.map((record) => [record.patientReference, touchTypeLabels[record.touchType], record.scheduledDate, record.status, <Button key={record.id} type="button" size="sm" variant="outline" onClick={() => copyText(record.manualMessageText)}>Copiar</Button>])} />
+        <DataTable emptyMessage={DERIVED_360_EMPTY} headers={["Paciente", "Toque", "Data", "Status", "Mensagem"]} rows={state.touchpoints.map((record) => [record.patientReference, touchTypeLabels[record.touchType], record.scheduledDate, touchStatusLabels[record.status], <Button key={record.id} type="button" size="sm" variant="outline" onClick={() => copyText(record.manualMessageText)}>Copiar</Button>])} />
       </>
     );
   }
@@ -1522,7 +1538,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
         </Card>
         </ManualEntry>
         <DataTable headers={["Coorte", "Agendados", "Compareceram", "Faltaram", "Retenção"]} rows={state.retentionCohorts.map((record) => [record.cohortLabel, record.scheduledReturns, record.attendedReturns, record.missedReturns, percent360(record.scheduledReturns ? record.attendedReturns / record.scheduledReturns * 100 : 0)])} />
-        <DataTable headers={["Paciente em resgate", "Tipo", "Tentativas", "Status", "Dono"]} rows={state.rescueWorkflows.map((record) => [record.patientReference, record.rescueType, `${record.attemptsDone}/${record.attemptsTotal}`, record.status as RescueStatus360, record.ownerUserId])} />
+        <DataTable emptyMessage={DERIVED_360_EMPTY} headers={["Paciente em resgate", "Tipo", "Tentativas", "Status", "Dono"]} rows={state.rescueWorkflows.map((record) => [record.patientReference, rescueTypeLabels[record.rescueType], `${record.attemptsDone}/${record.attemptsTotal}`, rescueStatusLabels[record.status as RescueStatus360], record.ownerUserId])} />
       </>
     );
   }
@@ -1567,13 +1583,13 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
               <Field label="Referência paciente" value={form.patientReference} onChange={(value) => setForm({ ...form, patientReference: value })} />
               <Field label="NPS" type="number" value={form.npsScore} onChange={(value) => setForm({ ...form, npsScore: value })} />
               <Field label="Satisfação" type="number" value={form.satisfactionScore} onChange={(value) => setForm({ ...form, satisfactionScore: value })} />
-              <SelectField label="Tipo" value={form.feedbackType} onChange={(value) => setForm({ ...form, feedbackType: value })} options={["PRAISE", "CRITICISM", "SUGGESTION", "COMPLAINT"].map((value) => ({ value: value as FeedbackType360, label: value }))} />
+              <SelectField label="Tipo" value={form.feedbackType} onChange={(value) => setForm({ ...form, feedbackType: value })} options={(Object.keys(feedbackTypeLabels) as FeedbackType360[]).map((value) => ({ value, label: feedbackTypeLabels[value] }))} />
               <TextAreaField label="Feedback" value={form.feedbackText} onChange={(value) => setForm({ ...form, feedbackText: value })} />
               <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg">Adicionar experiência e ação se necessário</LiquidButton></div>
             </form>
           </CardContent>
         </Card>
-        <DataTable headers={["Paciente", "NPS", "Satisfação", "Tipo", "Ação obrigatória"]} rows={state.experiences.map((record) => [record.patientReference, record.npsScore, record.satisfactionScore, record.feedbackType, record.actionRequired ? <Badge key={record.id} variant="gold" className="text-destructive">Sim</Badge> : <Badge key={record.id} variant="muted">Não</Badge>])} />
+        <DataTable headers={["Paciente", "NPS", "Satisfação", "Tipo", "Ação obrigatória"]} rows={state.experiences.map((record) => [record.patientReference, record.npsScore, record.satisfactionScore, feedbackTypeLabels[record.feedbackType], record.actionRequired ? <Badge key={record.id} variant="gold" className="text-destructive">Sim</Badge> : <Badge key={record.id} variant="muted">Não</Badge>])} />
       </>
     );
   }
@@ -1595,13 +1611,14 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
               <Field label="Valor vendido" value={form.totalAmount} onChange={(value) => setForm({ ...form, totalAmount: value })} />
               <Field label="Valor recebido" value={form.receivedAmount} onChange={(value) => setForm({ ...form, receivedAmount: value })} />
               <Field label="Vencimento" type="date" value={form.dueDate} onChange={(value) => setForm({ ...form, dueDate: value })} />
-              <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={["OPEN", "PARTIALLY_PAID", "PAID", "OVERDUE", "CANCELED"].map((value) => ({ value: value as ReceivableStatus360, label: value }))} />
+              <SelectField label="Status" value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={(Object.keys(receivableStatusLabels) as ReceivableStatus360[]).map((value) => ({ value, label: receivableStatusLabels[value] }))} />
               <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg">Adicionar recebível</LiquidButton></div>
             </form>
           </CardContent>
         </Card>
         </ManualEntry>
         <DataTable
+          emptyMessage={DERIVED_360_EMPTY}
           headers={["Paciente", "Vendido", "Recebido", "Aberto", "Vencimento", "Status", "Ações"]}
           rows={state.receivables.map((record) => [
             record.patientReference,
@@ -1609,7 +1626,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             money360(record.receivedAmount),
             money360(receivableOpenAmount(record)),
             record.dueDate,
-            isOverdue(record.dueDate) && record.status !== "PAID" ? <Badge key={record.id} variant="gold" className="text-destructive">Vencido</Badge> : record.status,
+            isOverdue(record.dueDate) && record.status !== "PAID" ? <Badge key={record.id} variant="gold" className="text-destructive">Vencido</Badge> : receivableStatusLabels[record.status],
             <ReceivableStatusControls key={record.id} record={record} persist={persist} />,
           ])}
         />
@@ -1689,7 +1706,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             <Badge key={record.id} variant={record.status === "DONE" ? "muted" : record.status === "CANCELED" ? "outline" : "gold"}>
               {actionStatusLabels[record.status as ActionStatus360]}
             </Badge>,
-            record.expectedImpact,
+            expectedImpactLabels[record.expectedImpact],
             <ActionStatusControls key={record.id} record={record} persist={persist} />,
           ])}
         />

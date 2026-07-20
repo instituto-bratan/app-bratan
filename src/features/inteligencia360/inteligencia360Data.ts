@@ -447,6 +447,78 @@ export const actionStatusLabels: Record<ActionStatus360, string> = {
   CANCELED: "Cancelada",
 };
 
+// Rótulos em português para os enums exibidos nas tabelas/seletores do 360 —
+// antes apareciam valores técnicos em inglês (OPEN, PARTIALLY_PAID, PRAISE...),
+// principal queixa de "está confuso".
+export const receivableStatusLabels: Record<ReceivableStatus360, string> = {
+  OPEN: "Em aberto",
+  PARTIALLY_PAID: "Parcialmente pago",
+  PAID: "Pago",
+  OVERDUE: "Vencido",
+  CANCELED: "Cancelado",
+};
+
+export const rescueTypeLabels: Record<RescueType360, string> = {
+  TRADITIONAL_60_DAYS: "Resgate 60 dias",
+  SIX_MONTHS: "Resgate 6 meses",
+  ONE_YEAR: "Resgate 1 ano",
+};
+
+export const rescueStatusLabels: Record<RescueStatus360, string> = {
+  OPEN: "Aberto",
+  IN_PROGRESS: "Em andamento",
+  RESCUED: "Resgatado",
+  NOT_RESCUED: "Não resgatado",
+  CHURN_INVESTIGATION: "Investigar churn",
+  CLOSED: "Encerrado",
+};
+
+export const ticketStatusLabels: Record<TicketStatus360, string> = {
+  ABOVE_TARGET: "Acima da meta",
+  ON_TARGET: "Na meta",
+  BELOW_TARGET: "Abaixo da meta",
+  CRITICAL: "Crítico",
+};
+
+export const feedbackTypeLabels: Record<FeedbackType360, string> = {
+  PRAISE: "Elogio",
+  CRITICISM: "Crítica",
+  SUGGESTION: "Sugestão",
+  COMPLAINT: "Reclamação",
+};
+
+export const prescriptionStatusLabels: Record<PrescriptionStatus360, string> = {
+  PRESCRIBED: "Prescrito",
+  CLOSED_FULL: "Fechou completo",
+  CLOSED_PARTIAL: "Fechou parcial",
+  NOT_CLOSED: "Não fechou",
+  IN_RECOVERY: "Em recuperação",
+  LOST: "Perdido",
+};
+
+export const expectedImpactLabels: Record<ExpectedImpact360, string> = {
+  CASH: "Caixa",
+  MARGIN: "Margem",
+  PATIENT_EXPERIENCE: "Experiência do paciente",
+  CONVERSION: "Conversão",
+  RETENTION: "Retenção",
+  PROCESS: "Processo",
+};
+
+export const touchStatusLabels: Record<TouchStatus360, string> = {
+  PENDING: "Pendente",
+  SENT: "Enviado",
+  RESPONDED: "Respondeu",
+  PAUSED: "Pausado",
+  CANCELED: "Cancelado",
+  FAILED: "Falhou",
+};
+
+export const patientTypeLabels: Record<PatientType360, string> = {
+  NEW: "Novo",
+  RETURNING: "Recorrente",
+};
+
 const now = new Date().toISOString();
 
 export const defaultSettings360: OperationalSettings360 = {
