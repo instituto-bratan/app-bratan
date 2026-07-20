@@ -14,9 +14,9 @@ import { parseMoneyBR } from "@/lib/money";
 import { canFinanceiroFull, canLancarDia } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
-import { contactDisplayName } from "@/features/crm/crmData";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { extractPersonName } from "@/features/crm/nameMatch";
+import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
   buildDailyCardSummary,
@@ -98,14 +98,6 @@ export function FinanceiroLancarDiaPage() {
     setFeedback(`Dia ${date.split("-").reverse().join("/")} marcado como zerado: nenhum atendimento, R$ 0,00 recebido. O fechamento e a P12 já sabem.`);
   }
 
-  const patientSuggestions = useMemo(() => {
-    const term = patientName.trim().toLowerCase();
-    if (term.length < 2) return [];
-    return crmState.contacts
-      .filter((contact) => contactDisplayName(contact).toLowerCase().includes(term))
-      .slice(0, 5);
-  }, [crmState.contacts, patientName]);
-
   const itemsTotal = items.reduce((sum, item) => sum + parseAmount(item.amount), 0);
   const paymentsTotal = payments.reduce((sum, payment) => sum + parseAmount(payment.amount), 0);
   const totalsMatch = Math.abs(itemsTotal - paymentsTotal) < 0.01;
@@ -176,14 +168,16 @@ export function FinanceiroLancarDiaPage() {
       adhesion,
       createdAt: editingSale?.createdAt ?? new Date().toISOString(),
     };
-    // Paciente da comanda sempre existe no CRM: sem vínculo escolhido, o app
-    // acha (sem duplicar) ou cria o contato como paciente e amarra a comanda.
+    // Paciente da comanda sempre existe no CRM: com o seletor, ou já vem
+    // vinculado (ref), ou o app acha/cria o contato. O ref é resolvido de forma
+    // SÍNCRONA aqui (antes do addSale) — assim ele nunca é gravado vazio na
+    // comanda (o updater do persistCrm roda depois e não daria tempo).
     let crmNote = "";
-    const cleanName = extractPersonName(sale.patientName);
-    if (!sale.crmContactRef && cleanName) {
-      persistCrm((current) => {
+    if (!sale.crmContactRef) {
+      const cleanName = extractPersonName(sale.patientName) || sale.patientName.trim();
+      if (cleanName) {
         const result = findOrCreateCrmContact(
-          current,
+          crmState,
           {
             fullName: cleanName,
             contactType: "PATIENT",
@@ -195,8 +189,14 @@ export function FinanceiroLancarDiaPage() {
         );
         sale.crmContactRef = result.contact.id;
         crmNote = result.created ? " Paciente criado no CRM automaticamente." : " Vinculado ao cadastro já existente no CRM.";
-        return result.state;
-      });
+        if (result.created) {
+          persistCrm((current) =>
+            current.contacts.some((contact) => contact.id === result.contact.id)
+              ? current
+              : { ...current, contacts: [result.contact, ...current.contacts] },
+          );
+        }
+      }
     }
 
     if (editingSale) {
@@ -261,35 +261,17 @@ export function FinanceiroLancarDiaPage() {
               </CardHeader>
               <CardContent>
                 <form className="grid gap-4" onSubmit={handleSubmit}>
-                  <div className="relative">
+                  <div>
                     <Label>Paciente</Label>
-                    <Input
-                      value={patientName}
-                      onChange={(event) => {
-                        setPatientName(event.target.value);
-                        setPatientRef("");
+                    <PatientPicker
+                      contacts={crmState.contacts}
+                      value={{ ref: patientRef, name: patientName }}
+                      onChange={(next) => {
+                        setPatientName(next.name);
+                        setPatientRef(next.ref);
                       }}
-                      placeholder="Nome do paciente (busca no CRM)"
-                      autoComplete="off"
+                      placeholder="Buscar paciente por nome ou telefone…"
                     />
-                    {patientSuggestions.length && !patientRef ? (
-                      <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-brand-oliva/18 bg-brand-papel shadow-calm">
-                        {patientSuggestions.map((contact) => (
-                          <button
-                            key={contact.id}
-                            type="button"
-                            className="block w-full px-3 py-2 text-left text-sm text-brand-tinta hover:bg-brand-creme/50"
-                            onClick={() => {
-                              setPatientName(contactDisplayName(contact));
-                              setPatientRef(contact.id);
-                            }}
-                          >
-                            {contactDisplayName(contact)}
-                            <span className="ml-2 text-xs text-muted-foreground">{contact.lifecycleStage}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
 
                   <div>

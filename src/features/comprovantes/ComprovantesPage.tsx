@@ -24,6 +24,10 @@ import {
 } from "@/lib/remoteData";
 import { prepareSharePointDispatch } from "@/lib/sharepoint";
 import { cn } from "@/lib/utils";
+import { contactDisplayName, findOrCreateCrmContact } from "@/features/crm/crmData";
+import { extractPersonName } from "@/features/crm/nameMatch";
+import { PatientPicker } from "@/features/crm/PatientPicker";
+import { useCrmState } from "@/features/crm/useCrmState";
 import type { ComprovanteTipo, FormaPagamento } from "@/types/database";
 import { loadInteligencia360State, saveInteligencia360State } from "@/features/inteligencia360/inteligencia360Data";
 import { pagamentosStorageKey, type PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
@@ -67,6 +71,8 @@ export function ComprovantesPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pacienteReferencia, setPacienteReferencia] = useState("");
+  const [patientRef, setPatientRef] = useState("");
+  const { state: crmState, persist: persistCrm } = useCrmState();
   const [pagamentoLembreteId, setPagamentoLembreteId] = useState("");
   const [alimentarRecebiveis360, setAlimentarRecebiveis360] = useState(true);
   const [valor, setValor] = useState("");
@@ -118,6 +124,7 @@ export function ComprovantesPage() {
 
   function resetCaptureForm() {
     setPacienteReferencia("");
+    setPatientRef("");
     setPagamentoLembreteId("");
     setValor("");
     setFormaPagamento("");
@@ -156,6 +163,31 @@ export function ComprovantesPage() {
     });
   }
 
+  // Garante o paciente no CRM (vincula o existente do seletor ou cria pelo nome)
+  // e devolve ref + nome canônico. Assim o comprovante fica ligado ao MESMO
+  // contato do CRM/comandas/dívida/360, sem duplicar.
+  function resolvePatientLink(): { ref: string; name: string } {
+    if (patientRef) {
+      const existing = crmState.contacts.find((contact) => contact.id === patientRef);
+      return { ref: patientRef, name: existing ? contactDisplayName(existing) : pacienteReferencia.trim() };
+    }
+    const clean = extractPersonName(pacienteReferencia) || pacienteReferencia.trim();
+    if (!clean) return { ref: "", name: "" };
+    const result = findOrCreateCrmContact(
+      crmState,
+      { fullName: clean, contactType: "PATIENT", lifecycleStage: "ACTIVE_PATIENT", sourceChannel: "Comprovante", ownerUserId: pessoa?.id ?? "financeiro" },
+      pessoa?.id ?? "financeiro",
+    );
+    if (result.created) {
+      persistCrm((current) =>
+        current.contacts.some((contact) => contact.id === result.contact.id)
+          ? current
+          : { ...current, contacts: [result.contact, ...current.contacts] },
+      );
+    }
+    return { ref: result.contact.id, name: contactDisplayName(result.contact) };
+  }
+
   async function attach(files: FileList | File[]) {
     const nextFiles = Array.from(files);
     const acceptedFiles = nextFiles.filter(isAcceptedComprovante);
@@ -166,7 +198,9 @@ export function ComprovantesPage() {
     }
 
     const parsedValor = valor ? parseMoneyInput(valor) : undefined;
-    const paciente = pacienteReferencia.trim();
+    const link = resolvePatientLink();
+    const paciente = link.name.trim();
+    const crmRef = link.ref || undefined;
 
     if (useRemote && pessoa) {
       try {
@@ -176,6 +210,7 @@ export function ComprovantesPage() {
               pessoa,
               file,
               pacienteReferencia: paciente || undefined,
+              crmContactRef: crmRef,
               pagamentoLembreteId: pagamentoLembreteId || undefined,
               valor: Number.isFinite(parsedValor) ? parsedValor : undefined,
               formaPagamento: formaPagamento || undefined,
@@ -211,6 +246,7 @@ export function ComprovantesPage() {
         anexadoPor: pessoa?.nome ?? "Equipe Bratan",
         anexadoPorCargo: pessoa?.cargo ?? "recepcionista",
         pacienteReferencia: paciente || undefined,
+        crmContactRef: crmRef,
         pagamentoLembreteId: pagamentoLembreteId || undefined,
         inteligencia360ReceivableId: paciente && Number.isFinite(parsedValor) && alimentarRecebiveis360 && index === 0 ? `recv-${id}` : undefined,
         valor: Number.isFinite(parsedValor) ? parsedValor : undefined,
@@ -405,12 +441,16 @@ export function ComprovantesPage() {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="paciente-referencia">Paciente / referência</Label>
-                <Input
+                <Label htmlFor="paciente-referencia">Paciente</Label>
+                <PatientPicker
                   id="paciente-referencia"
-                  placeholder="Nome ou código simples"
-                  value={pacienteReferencia}
-                  onChange={(event) => setPacienteReferencia(event.target.value)}
+                  contacts={crmState.contacts}
+                  value={{ ref: patientRef, name: pacienteReferencia }}
+                  onChange={(next) => {
+                    setPacienteReferencia(next.name);
+                    setPatientRef(next.ref);
+                  }}
+                  placeholder="Buscar paciente por nome ou telefone…"
                 />
               </div>
               <div className="space-y-2">

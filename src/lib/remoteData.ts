@@ -638,6 +638,7 @@ type RemoteComprovante = {
   file_size_bytes: number;
   uploaded_at: string;
   paciente_referencia: string | null;
+  crm_contact_ref: string | null;
   pagamento_lembrete_id: string | null;
   inteligencia_360_receivable_ref: string | null;
   valor: number | null;
@@ -653,7 +654,7 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
   const client = requireSupabase();
   const { data, error } = await client
     .from("comprovante")
-    .select("id, tipo, storage_path, original_filename, mime_type, file_size_bytes, uploaded_at, paciente_referencia, pagamento_lembrete_id, inteligencia_360_receivable_ref, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
+    .select("id, tipo, storage_path, original_filename, mime_type, file_size_bytes, uploaded_at, paciente_referencia, crm_contact_ref, pagamento_lembrete_id, inteligencia_360_receivable_ref, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
     .is("deleted_at", null)
     .order("uploaded_at", { ascending: false });
 
@@ -670,6 +671,7 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
     anexadoPor: record.colaborador?.nome ?? "Equipe Bratan",
     anexadoPorCargo: uploadedByCargo,
     pacienteReferencia: record.paciente_referencia ?? undefined,
+    crmContactRef: record.crm_contact_ref ?? undefined,
     pagamentoLembreteId: record.pagamento_lembrete_id ?? undefined,
     inteligencia360ReceivableId: record.inteligencia_360_receivable_ref ?? undefined,
     valor: record.valor ?? undefined,
@@ -690,6 +692,7 @@ export async function uploadRemoteComprovante(values: {
   pessoa: Colaborador;
   file: File;
   pacienteReferencia?: string;
+  crmContactRef?: string;
   pagamentoLembreteId?: string;
   valor?: number;
   formaPagamento?: FormaPagamento;
@@ -721,6 +724,7 @@ export async function uploadRemoteComprovante(values: {
     file_size_bytes: values.file.size,
     uploaded_by: values.pessoa.id,
     paciente_referencia: values.pacienteReferencia?.trim() || null,
+    crm_contact_ref: values.crmContactRef || null,
     pagamento_lembrete_id: values.pagamentoLembreteId ?? null,
     inteligencia_360_receivable_ref: inteligenciaReceivableRef,
     valor: values.valor ?? null,
@@ -849,6 +853,7 @@ export async function createRemoteEstorno(values: {
     file_size_bytes: 0,
     uploaded_by: values.pessoa.id,
     paciente_referencia: values.record.pacienteReferencia ?? null,
+    crm_contact_ref: values.record.crmContactRef ?? null,
     pagamento_lembrete_id: values.record.pagamentoLembreteId ?? null,
     valor: typeof values.record.valor === "number" ? -Math.abs(values.record.valor) : null,
     observacao: `Correção operacional do comprovante ${values.record.arquivoNome}.`,

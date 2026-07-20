@@ -16,6 +16,7 @@ export type ComprovanteRecord = {
   anexadoPor: string;
   anexadoPorCargo: Cargo;
   pacienteReferencia?: string;
+  crmContactRef?: string; // vínculo com o contato do CRM (paciente único)
   pagamentoLembreteId?: string;
   inteligencia360ReceivableId?: string;
   valor?: number;
