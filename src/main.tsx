@@ -35,3 +35,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+// PWA: registra o service worker para o app ficar instalável (Add to Home Screen /
+// "Instalar app"). Só em produção e fora de file:// — em dev evita cache atrapalhando.
+if (import.meta.env.PROD && "serviceWorker" in navigator && window.location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  });
+}

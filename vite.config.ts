@@ -3,7 +3,9 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "./",
+  // Base absoluta: o app é servido na raiz do Vercel e precisa disso para o PWA
+  // (service worker + rotas profundas) resolver os assets corretamente.
+  base: "/",
   plugins: [react()],
   build: {
     rollupOptions: {
