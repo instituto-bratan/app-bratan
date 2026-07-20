@@ -151,29 +151,39 @@ export function FinanceiroFechamentoPage() {
   const conferidos = monthRecs.filter((record) => record.status === "CONFERIDO").length;
   const divergentes = monthRecs.filter((record) => record.status === "DIVERGENTE").length;
   const feesExpenseId = monthFeesExpenseRef(month);
-  const feesExpenseExists = financeiro.expenses.some((expense) => expense.id === feesExpenseId);
+  const feesExpense = financeiro.expenses.find((expense) => expense.id === feesExpenseId) ?? null;
+  const feesTarget = Math.round(feesTotal * 100) / 100;
+  const feesSynced = feesExpense !== null && Math.abs((feesExpense.amount || 0) - feesTarget) < 0.01;
 
-  function generateFeesExpense() {
-    if (feesExpenseExists || feesTotal <= 0) return;
-    const lastDay = `${month}-28`;
-    const expense: FinExpense = {
-      id: feesExpenseId,
-      description: `Tarifas maquininhas ${month.split("-").reverse().join("/")}`,
-      categoryRef: "cat-tarifa-bancaria-rede",
-      amount: Math.round(feesTotal * 100) / 100,
-      dueDate: lastDay,
-      paidAt: lastDay,
-      method: "DEBITO_CONTA",
-      supplier: "Itaú / Safra",
-      installmentNum: null,
-      installmentTotal: null,
-      documentNote: "Gerado pelo Fechamento do dia",
-      isCapex: false,
-      notes: `Soma das taxas registradas na conciliação de ${month}.`,
-      createdAt: new Date().toISOString(),
-    };
-    financeiro.addExpense(expense);
-    setFeedback(`Despesa de tarifas (${moneyFin(feesTotal)}) lançada na P12 em "Tarifa bancária (rede)".`);
+  // A conciliação já sincroniza sozinha (useFinanceiro.saveReconciliation). Este
+  // botão é a rede de segurança para corrigir meses antigos que ficaram defasados
+  // antes desta melhoria — cria OU atualiza a despesa para bater com o Fechamento.
+  function syncFeesExpense() {
+    if (feesTarget <= 0 || feesSynced) return;
+    if (!feesExpense) {
+      const lastDay = `${month}-28`;
+      const expense: FinExpense = {
+        id: feesExpenseId,
+        description: `Tarifas maquininhas ${month.split("-").reverse().join("/")}`,
+        categoryRef: "cat-tarifa-bancaria-rede",
+        amount: feesTarget,
+        dueDate: lastDay,
+        paidAt: lastDay,
+        method: "DEBITO_CONTA",
+        supplier: "Itaú / Safra",
+        installmentNum: null,
+        installmentTotal: null,
+        documentNote: "Gerado pelo Fechamento do dia",
+        isCapex: false,
+        notes: "Atualiza sozinho conforme a conciliação do Fechamento.",
+        createdAt: new Date().toISOString(),
+      };
+      financeiro.addExpense(expense);
+      setFeedback(`Despesa de tarifas (${moneyFin(feesTarget)}) lançada na P12 em "Tarifa bancária (rede)".`);
+    } else {
+      financeiro.updateExpense({ ...feesExpense, amount: feesTarget, recorrencia: null, notes: "Atualiza sozinho conforme a conciliação do Fechamento." });
+      setFeedback(`Tarifas atualizadas na P12 para ${moneyFin(feesTarget)} — Fechamento, P12 e Contas a Pagar batem agora.`);
+    }
   }
 
   function registrarRendimento() {
@@ -250,11 +260,20 @@ export function FinanceiroFechamentoPage() {
               type="button"
               size="sm"
               className={cn("mt-2 h-8 px-3 text-xs", readOnly && "hidden")}
-              onClick={generateFeesExpense}
-              disabled={feesExpenseExists || feesTotal <= 0}
+              onClick={syncFeesExpense}
+              disabled={feesSynced || feesTarget <= 0}
             >
-              {feesExpenseExists ? "Já lançada na P12" : "Lançar tarifas na P12"}
+              {feesSynced
+                ? `Sincronizada na P12 (${moneyFin(feesTarget)})`
+                : feesExpense
+                  ? `Atualizar P12 (${moneyFin(feesTarget)})`
+                  : "Lançar tarifas na P12"}
             </LiquidButton>
+            {feesExpense && !feesSynced ? (
+              <p className="mt-1 text-[11px] font-semibold text-red-700">
+                P12 está com {moneyFin(feesExpense.amount || 0)} — diferente do Fechamento. Toque para acertar.
+              </p>
+            ) : null}
           </div>
         </div>
 

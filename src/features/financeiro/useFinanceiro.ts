@@ -39,6 +39,7 @@ import {
   loadLocalFinSales,
   loadLocalFinSavings,
   materializeRecurringExpenses,
+  monthFeesExpenseRef,
   saveLocalFinExpenses,
   saveLocalFinReconciliations,
   saveLocalFinPurchases,
@@ -334,6 +335,43 @@ export function useFinanceiro(year = new Date().getFullYear()) {
       void upsertRemoteFinReconciliation(record, pessoa?.id ?? null)
         .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-reconciliations", year] }))
         .catch((error) => console.warn("Fechamento não sincronizou.", error));
+    }
+    // Taxa da maquininha SEMPRE ligada: ao conciliar um dia, a despesa da P12
+    // (Tarifa bancária rede) é criada/atualizada para bater com a soma das taxas
+    // do mês. Antes ela era lançada uma vez e congelava — Fechamento subia e
+    // P12/Contas a Pagar ficavam defasados. Agora Fechamento = P12 = Contas a Pagar.
+    syncMonthFeesExpense(record.day.slice(0, 7), [record, ...reconciliations.filter((item) => item.id !== record.id)]);
+  }
+
+  function syncMonthFeesExpense(month: string, recs: FinReconciliation[]) {
+    const feesTotal = recs
+      .filter((r) => r.day.slice(0, 7) === month)
+      .reduce((sum, r) => sum + (r.feeItau || 0) + (r.feeSafra || 0), 0);
+    const target = Math.round(feesTotal * 100) / 100;
+    const id = monthFeesExpenseRef(month);
+    const existing = expenses.find((expense) => expense.id === id);
+    if (target <= 0) return; // nada a lançar ainda
+    if (!existing) {
+      const lastDay = `${month}-28`;
+      addExpense({
+        id,
+        description: `Tarifas maquininhas ${month.split("-").reverse().join("/")}`,
+        categoryRef: "cat-tarifa-bancaria-rede",
+        amount: target,
+        dueDate: lastDay,
+        paidAt: lastDay,
+        method: "DEBITO_CONTA",
+        supplier: "Itaú / Safra",
+        installmentNum: null,
+        installmentTotal: null,
+        documentNote: "Gerado pelo Fechamento (soma das taxas conciliadas)",
+        isCapex: false,
+        notes: "Atualiza sozinho conforme a conciliação do Fechamento.",
+        createdAt: new Date().toISOString(),
+      });
+    } else if (Math.abs((existing.amount || 0) - target) >= 0.01) {
+      // Nunca recorrente: a taxa é recalculada por mês; recorrência duplicaria.
+      updateExpense({ ...existing, amount: target, recorrencia: null, notes: "Atualiza sozinho conforme a conciliação do Fechamento." });
     }
   }
 
