@@ -65,6 +65,27 @@ export function FinanceiroPoupancaPage() {
 
   const balance = useMemo(() => savingsBalance(financeiro.savingsMoves), [financeiro.savingsMoves]);
   const debt = useMemo(() => operationalDebtToCofre(financeiro.savingsMoves), [financeiro.savingsMoves]);
+
+  // Uso do CDB no MÊS ATUAL, derivado AUTOMÁTICO: a obra vem das contas da P12
+  // (categoria CAPEX/Obras) e a sobra é o CDB resgatado no mês menos a obra.
+  // Assim, se uma conta de obra muda (ex.: dividir a fatura), estes números se
+  // ajustam sozinhos — sem re-sincronizar nada à mão.
+  const mesAtual = now.slice(0, 7);
+  const obraDoMes = useMemo(
+    () =>
+      financeiro.expenses
+        .filter((expense) => expense.isCapex && (expense.dueDate || expense.paidAt || "").slice(0, 7) === mesAtual)
+        .reduce((sum, expense) => sum + (expense.amount || 0), 0),
+    [financeiro.expenses, mesAtual],
+  );
+  const cdbResgatadoMes = useMemo(
+    () =>
+      financeiro.savingsMoves
+        .filter((move) => (move.kind === "USO_OBRA" || move.kind === "EMPRESTIMO") && move.monthRef === mesAtual)
+        .reduce((sum, move) => sum + move.amount, 0),
+    [financeiro.savingsMoves, mesAtual],
+  );
+  const sobraDoMes = cdbResgatadoMes - obraDoMes;
   const provisionsDone = monthProvisionsDone(financeiro.savingsMoves, provisionMonth);
   const provisionTotal = financeiro.provisionRules.reduce(
     (sum, rule) => sum + parseFinAmount(provisionAmounts[rule.id] ?? String(rule.monthlyAmount).replace(".", ",")),
@@ -164,6 +185,40 @@ export function FinanceiroPoupancaPage() {
             </div>
           </div>
         </motion.section>
+
+        {cdbResgatadoMes > 0.005 ? (
+          <Card className="border-brand-dourado/30 bg-brand-creme/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <HandCoins className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
+                Uso do CDB neste mês
+                <Badge variant="muted" className="text-[10px]">automático</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">CDB resgatado no mês</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-musgo">{moneyFin(cdbResgatadoMes)}</p>
+                </div>
+                <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">− Obra do mês (P12)</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-tinta">{moneyFin(obraDoMes)}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">puxado das contas de obra</p>
+                </div>
+                <div className={cn("rounded-lg border px-4 py-3", sobraDoMes > 0.005 ? "border-amber-400/50 bg-amber-50/60" : "border-brand-oliva/16 bg-white/70")}>
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">= Sobra (cobriu operacional)</p>
+                  <p className={cn("mt-1 text-2xl font-bold", sobraDoMes > 0.005 ? "text-amber-700" : "text-brand-musgo")}>{moneyFin(sobraDoMes)}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">a devolver ao cofre</p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Atualiza sozinho: a obra vem das contas da categoria Obras (P12). Mexeu numa conta de obra? Estes números se
+                ajustam na hora — sem re-lançar nada.
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {feedback ? (
           <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
