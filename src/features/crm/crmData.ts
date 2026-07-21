@@ -455,25 +455,28 @@ export const dealStageHints: Record<CrmDealStage, string> = {
   NAO_ADESAO: "Não aderiu nem após o contato do Dr. Daniel. Vendas encerra aqui; o paciente segue na base para os resgates futuros.",
 };
 
+// Rótulos em linguagem de balcão (POP): sem jargão/inglês e sem termos que se
+// confundem ("Contatado" era lido como "Contratado"). As CHAVES do enum NÃO
+// mudam — só o texto exibido em colunas, cards e timeline.
 export const dealStageLabels: Record<CrmDealStage, string> = {
-  LEAD_FRIO: "Lead frio",
-  LEAD_NOVO: "Lead novo",
-  CONTATADO: "Contatado",
-  QUALIFICADO: "Qualificado",
+  LEAD_FRIO: "Interesse inicial",
+  LEAD_NOVO: "Novo — falar primeiro",
+  CONTATADO: "Em conversa",
+  QUALIFICADO: "Pronto p/ consulta",
   CONSULTA_AGENDADA: "Consulta agendada",
   CONSULTA_CONFIRMADA: "Consulta confirmada",
   CONSULTA_REALIZADA: "Consulta realizada",
-  PRESCRICAO_FEITA: "Prescrição feita",
-  EM_NEGOCIACAO: "Em negociação",
-  FECHOU_COMPLETO: "Fechou completo",
-  FECHOU_PARCIAL: "Fechou parcial",
-  NAO_FECHOU: "Não fechou",
-  RECUPERACAO_D1_MEDICO: "Recuperação D+1 Médico",
-  RECUPERACAO_D2_GESTOR: "Recuperação D+2 Gestor",
-  PERDIDO: "Perdido",
-  RESGATE_D60: "Resgate D60",
-  CHURN: "Churn (pausou)",
-  NAO_ADESAO: "Não adesão",
+  PRESCRICAO_FEITA: "Plano prescrito — apresentar preço",
+  EM_NEGOCIACAO: "Negociando o plano",
+  FECHOU_COMPLETO: "Fechou (plano inteiro)",
+  FECHOU_PARCIAL: "Fechou (parte do plano)",
+  NAO_FECHOU: "Não fechou — médico vai retomar",
+  RECUPERACAO_D1_MEDICO: "Médico tentando reverter",
+  RECUPERACAO_D2_GESTOR: "Gestor tentando reverter",
+  PERDIDO: "Pausado — resgatar depois",
+  RESGATE_D60: "Em resgate (Aline)",
+  CHURN: "Pausou por condição real",
+  NAO_ADESAO: "Encerrado — vai p/ resgate",
 };
 
 export const dealStages: CrmDealStage[] = [
@@ -530,6 +533,18 @@ function atLocalTime(dateIso: string, hour = 9, minute = 0) {
 
 export function createCrmId(prefix: string) {
   return `${prefix}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+}
+
+// Id DETERMINÍSTICO de contato: a mesma pessoa criada em dois aparelhos/recargas
+// converge para o MESMO id → o upsert (por client_ref) funde em vez de duplicar.
+// Por telefone quando há (seguro); senão por nome+dono (evita colar homônimos de
+// donos diferentes). Sem nome utilizável, cai no id aleatório.
+export function deterministicContactId(values: { fullName?: string; phone?: string; whatsapp?: string; ownerUserId?: string }) {
+  const phone = normalizePhone(values.phone || values.whatsapp || "");
+  if (phone.length >= 10) return `contact-tel-${phone.slice(-11)}`;
+  const nameSlug = normalizeText(values.fullName || "").replace(/[^a-z0-9]+/g, "-").replace(/(^-+)|(-+$)/g, "");
+  const ownerSlug = (values.ownerUserId || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+)|(-+$)/g, "");
+  return nameSlug ? `contact-nm-${nameSlug}${ownerSlug ? `-${ownerSlug}` : ""}` : createCrmId("contact");
 }
 
 function normalizeText(value: string) {
@@ -1511,7 +1526,7 @@ export function findOrCreateCrmContact(
 
   const now = new Date().toISOString();
   const contact: CrmContact = {
-    id: values.id ?? createCrmId("contact"),
+    id: values.id ?? deterministicContactId(values),
     contactType: values.contactType ?? "LEAD",
     lifecycleStage: values.lifecycleStage ?? "COLD_LEAD",
     fullName: values.fullName,
@@ -2166,11 +2181,11 @@ export const programPhases: CrmProgramPhase[] = [
 ];
 
 export const programPhaseLabels: Record<CrmProgramPhase, string> = {
-  FECHAMENTO_D0: "Fechamento",
+  FECHAMENTO_D0: "Acabou de aderir",
   TRES_CONTATOS_D1: "Boas-vindas (D+1)",
   AGENDAMENTO: "Agendamento",
   CADENCIA_PROGRAMA: "Em acompanhamento",
-  ENCERRAMENTO: "Encerramento",
+  ENCERRAMENTO: "Renovar ou dar alta",
 };
 
 export const programPhaseHints: Record<CrmProgramPhase, string> = {
@@ -2738,7 +2753,43 @@ export function completeCrmTask(
   if (task.isGate && task.dealId) {
     return advancePhaseIfGateComplete(completed, task.dealId, { actorId: values.actorId });
   }
+
+  // Ponte Tarefa → Kanban Comercial: concluir a tarefa move o card sozinho, mas
+  // SÓ para frente (nunca volta), SÓ enquanto o deal ainda é comercial (sem
+  // programPhase) e ainda não fechou/perdeu. Assim "concluí e o paciente andou".
+  // SOLD não entra aqui (exige valor da venda → fechamento é feito no Kanban).
+  if (task.dealId) {
+    const target = resultToCommercialStage(values.result);
+    const deal = completed.deals.find((item) => item.id === task.dealId);
+    if (
+      target &&
+      deal &&
+      !deal.programPhase &&
+      deal.status !== "WON_FULL" &&
+      deal.status !== "WON_PARTIAL" &&
+      deal.status !== "LOST" &&
+      dealStages.indexOf(target) > dealStages.indexOf(deal.stage)
+    ) {
+      const moved = moveDealStage(completed, deal.id, {
+        actorId: values.actorId,
+        stage: target,
+        objection: target === "NAO_FECHOU" ? values.resultNotes?.trim() || "Não fechou (registrado ao concluir a tarefa)" : undefined,
+      });
+      if (moved.ok) completed = moved.state;
+    }
+  }
   return completed;
+}
+
+// Mapa declarativo result→etapa comercial. Só movimentos GENUÍNOS de funil:
+// "agendou" → consulta agendada; "não vendeu" → não fechou. SOLD fica de fora
+// (fechamento pede o valor no Kanban) e NEEDS_MANAGER também: ele é o gatilho da
+// cadência de escalonamento (Gestor D+2), não um movimento de etapa — mover
+// cancelaria a régua do D+2 e quebraria o POP.
+function resultToCommercialStage(result: CrmTaskResult): CrmDealStage | null {
+  if (result === "SCHEDULED" || result === "RESCHEDULED") return "CONSULTA_AGENDADA";
+  if (result === "NOT_SOLD") return "NAO_FECHOU";
+  return null;
 }
 
 export function createFollowUpTask(state: CrmState, taskId: string, actorId: string) {
@@ -2980,6 +3031,22 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   if (options.stage === "FECHOU_PARCIAL" && (!options.soldAmount || !options.partialReason?.trim())) return { state, ok: false, message: "Informe valor vendido e motivo do parcial." };
 
   const now = new Date().toISOString();
+  // Churn preserva o status: quem fechou continua contando como fechado no 360 —
+  // churn é pausa do PACIENTE, não cancelamento da venda.
+  const resolvedStatus: CrmDealStatus =
+    options.stage === "FECHOU_COMPLETO"
+      ? "WON_FULL"
+      : options.stage === "FECHOU_PARCIAL"
+        ? "WON_PARTIAL"
+        : options.stage === "PERDIDO" || options.stage === "NAO_ADESAO"
+          ? "LOST"
+          : options.stage === "CHURN"
+            ? deal.status
+            : "OPEN";
+  // Reabertura: se um deal que estava no PROGRAMA volta para uma etapa comercial
+  // (status OPEN), ele SAI do Programa — senão vira "fantasma" na aba
+  // Acompanhamento. NÃO limpa no churn (preserva a jornada) nem quando segue ganho.
+  const leavesProgram = Boolean(deal.programPhase) && resolvedStatus === "OPEN";
   const updatedDeal: CrmDeal = {
     ...deal,
     stage: options.stage,
@@ -2988,18 +3055,8 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
     receivedAmount: options.receivedAmount ?? deal.receivedAmount,
     mainObjection: options.objection ?? deal.mainObjection,
     objectionCategory: options.objectionCategory ?? deal.objectionCategory,
-    // Churn preserva o status: quem fechou continua contando como fechado no
-    // 360 — churn é pausa do PACIENTE, não cancelamento da venda.
-    status:
-      options.stage === "FECHOU_COMPLETO"
-        ? "WON_FULL"
-        : options.stage === "FECHOU_PARCIAL"
-          ? "WON_PARTIAL"
-          : options.stage === "PERDIDO" || options.stage === "NAO_ADESAO"
-            ? "LOST"
-            : options.stage === "CHURN"
-              ? deal.status
-              : "OPEN",
+    status: resolvedStatus,
+    ...(leavesProgram ? { programPhase: null, programPhaseEnteredAt: undefined, programPhaseActorId: undefined } : {}),
     probability:
       options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL"
         ? 100

@@ -98,6 +98,15 @@ test("toggle marca e desmarca marco sem tocar os demais deals", () => {
   assert.equal(JSON.stringify(unmarked.deals.find((d) => d.id === "deal-1").programMilestonesDone), "[]");
 });
 
+test("board exige adesão REAL: deal com programPhase mas status OPEN não aparece (fantasma)", () => {
+  const fantasma = makeDeal({ id: "d-fantasma", status: "OPEN", programPhase: "CADENCIA_PROGRAMA" });
+  const aderente = makeDeal({ id: "d-ok", status: "WON_FULL", programPhase: "CADENCIA_PROGRAMA" });
+  const parcial = makeDeal({ id: "d-parcial", status: "WON_PARTIAL", programPhase: "AGENDAMENTO" });
+  const board = programa.buildProgramaBoard(makeState([fantasma, aderente, parcial]), "2026-07-20");
+  const ids = board.map((c) => c.dealId).sort();
+  assert.deepEqual(ids, ["d-ok", "d-parcial"]); // fantasma (OPEN) fica de fora
+});
+
 test("board: encerramento aparece até ter desfecho; perdidos e com desfecho saem", () => {
   const emEncerramento = makeDeal({ id: "d-enc", programPhase: "ENCERRAMENTO" });
   const comDesfecho = makeDeal({ id: "d-alta", programPhase: "ENCERRAMENTO", programOutcome: "ALTA" });

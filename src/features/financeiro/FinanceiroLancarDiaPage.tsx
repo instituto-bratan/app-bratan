@@ -176,26 +176,21 @@ export function FinanceiroLancarDiaPage() {
     if (!sale.crmContactRef) {
       const cleanName = extractPersonName(sale.patientName) || sale.patientName.trim();
       if (cleanName) {
-        const result = findOrCreateCrmContact(
-          crmState,
-          {
-            fullName: cleanName,
-            contactType: "PATIENT",
-            lifecycleStage: "ACTIVE_PATIENT",
-            sourceChannel: "Comanda / Lançar Dia",
-            ownerUserId: pessoa?.id ?? "recepcao",
-          },
-          pessoa?.id ?? "recepcao",
-        );
-        sale.crmContactRef = result.contact.id;
-        crmNote = result.created ? " Paciente criado no CRM automaticamente." : " Vinculado ao cadastro já existente no CRM.";
-        if (result.created) {
-          persistCrm((current) =>
-            current.contacts.some((contact) => contact.id === result.contact.id)
-              ? current
-              : { ...current, contacts: [result.contact, ...current.contacts] },
-          );
-        }
+        const contactValues = {
+          fullName: cleanName,
+          contactType: "PATIENT" as const,
+          lifecycleStage: "ACTIVE_PATIENT" as const,
+          sourceChannel: "Comanda / Lançar Dia",
+          ownerUserId: pessoa?.id ?? "recepcao",
+        };
+        // Resolve no snapshot só para pegar o REF (id determinístico → estável).
+        const preview = findOrCreateCrmContact(crmState, contactValues, pessoa?.id ?? "recepcao");
+        sale.crmContactRef = preview.contact.id;
+        crmNote = preview.created ? " Paciente criado no CRM automaticamente." : " Vinculado ao cadastro já existente no CRM.";
+        // Persiste contra o estado VIVO (current) reusando o MESMO id: se já existe
+        // (achado por nome/telefone), não duplica; se não, cria com o id do ref —
+        // nunca deixa contato duplicado nem ref órfão.
+        persistCrm((current) => findOrCreateCrmContact(current, { ...contactValues, id: preview.contact.id }, pessoa?.id ?? "recepcao").state);
       }
     }
 

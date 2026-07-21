@@ -25,12 +25,16 @@ import {
 // tarefas, cadências esgotadas escalam ao gestor, gates completos avançam de
 // fase e, por fim, colapsa qualquer duplicata.
 function prepareCrmState(state: CrmState) {
-  // collapseSequentialLadders roda por ÚLTIMO (após o dedupe deixar 1 inscrição
-  // ativa por régua): garante uma única tentativa aberta por vez — a escada não
-  // reaparece nem no Kanban nem em Minhas Tarefas, sem limpeza manual.
+  // dedupeCrmState roda TAMBÉM no início: se o estado chega com inscrições ativas
+  // duplicadas do mesmo par (corrida entre aparelhos, ids antigos), a GERAÇÃO de
+  // tarefas parte de 1 inscrição só — sem multiplicar tarefas. dedupe é idempotente
+  // (retorna o mesmo objeto quando nada muda), então rodar duas vezes não custa.
+  // collapseSequentialLadders roda por ÚLTIMO: 1 tentativa aberta por vez.
   return collapseSequentialLadders(
     dedupeCrmState(
-      advanceAllProgramGates(escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(state))))),
+      advanceAllProgramGates(
+        escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(dedupeCrmState(state))))),
+      ),
     ),
   );
 }

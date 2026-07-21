@@ -133,9 +133,16 @@ export function buildMilestones(deal: CrmDeal, todayISO: string): ProgramMilesto
 export function buildProgramaBoard(state: CrmState, todayISO: string): ProgramPatientCard[] {
   const contactById = new Map(state.contacts.map((contact) => [contact.id, contact]));
   return state.deals
-    // Encerramento ainda APARECE (é a decisão do médico: renovar/manutenção/alta);
-    // o paciente só sai da lista quando o desfecho é registrado.
-    .filter((deal) => deal.programPhase && !deal.programOutcome && deal.status !== "LOST")
+    // Só entra quem REALMENTE aderiu: fechou o plano (status ganho). Antes bastava
+    // ter programPhase setado — o que deixava fantasmas (deals reabertos p/ etapa
+    // comercial mantêm programPhase; import/enroll sem adesão). Encerramento ainda
+    // APARECE (decisão renovar/manter/alta); só sai quando o desfecho é registrado.
+    .filter(
+      (deal) =>
+        deal.programPhase &&
+        !deal.programOutcome &&
+        (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL"),
+    )
     .map((deal) => {
       const contact = contactById.get(deal.contactId);
       const milestones = buildMilestones(deal, todayISO);

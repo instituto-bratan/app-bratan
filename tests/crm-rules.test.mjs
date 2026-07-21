@@ -675,3 +675,82 @@ test("churn preserva o status da venda (fechado continua contando no 360)", () =
   );
 });
 
+
+function bridgeTask(dealId, contactId, overrides = {}) {
+  return {
+    id: "task-bridge", contactId, dealId, cadenceId: "", cadenceStepId: "",
+    title: "Follow-up comercial", description: "", taskType: "WHATSAPP",
+    assignedToUserId: "vendedor", assignedToRole: "COMERCIAL_VENDEDOR",
+    dueAt: "2026-06-30T12:00:00.000Z", completedAt: null, status: "PENDING",
+    priority: "HIGH", visibilityScope: "ROLE", generatedBy: "MANUAL",
+    result: "", resultNotes: "", createdBy: "vendedor", createdAt: "2026-06-01", updatedAt: "2026-06-01",
+    ...overrides,
+  };
+}
+
+test("ponte tarefa→Kanban: concluir 'não vendeu' move o card p/ NAO_FECHOU (forward-only)", () => {
+  const state = cloneState();
+  const deal = state.deals.find((d) => !["FECHOU_COMPLETO", "FECHOU_PARCIAL"].includes(d.stage) && !d.programPhase);
+  deal.stage = "EM_NEGOCIACAO"; deal.status = "OPEN"; deal.programPhase = null;
+  state.tasks = [bridgeTask(deal.id, deal.contactId), ...state.tasks];
+  const next = crm.completeCrmTask(state, "task-bridge", { result: "NOT_SOLD", resultNotes: "achou caro", actorId: "vendedor" });
+  assert.equal(next.deals.find((d) => d.id === deal.id).stage, "NAO_FECHOU");
+});
+
+test("ponte tarefa→Kanban: 'agendou' move p/ CONSULTA_AGENDADA; NUNCA anda para trás", () => {
+  const state = cloneState();
+  const deal = state.deals.find((d) => !["FECHOU_COMPLETO", "FECHOU_PARCIAL"].includes(d.stage) && !d.programPhase);
+  deal.stage = "CONTATADO"; deal.status = "OPEN"; deal.programPhase = null;
+  state.tasks = [bridgeTask(deal.id, deal.contactId), ...state.tasks];
+  const fwd = crm.completeCrmTask(state, "task-bridge", { result: "SCHEDULED", actorId: "recepcao" });
+  assert.equal(fwd.deals.find((d) => d.id === deal.id).stage, "CONSULTA_AGENDADA");
+
+  // forward-only: já adiante → concluir 'agendou' não volta
+  const state2 = cloneState();
+  const deal2 = state2.deals.find((d) => !["FECHOU_COMPLETO", "FECHOU_PARCIAL"].includes(d.stage) && !d.programPhase);
+  deal2.stage = "EM_NEGOCIACAO"; deal2.status = "OPEN"; deal2.programPhase = null;
+  state2.tasks = [bridgeTask(deal2.id, deal2.contactId), ...state2.tasks];
+  const back = crm.completeCrmTask(state2, "task-bridge", { result: "SCHEDULED", actorId: "recepcao" });
+  assert.equal(back.deals.find((d) => d.id === deal2.id).stage, "EM_NEGOCIACAO"); // não recuou
+});
+
+test("ponte tarefa→Kanban: deal fechado/no Programa NÃO é movido por conclusão de tarefa", () => {
+  const state = cloneState();
+  const deal = state.deals[0];
+  deal.stage = "FECHOU_COMPLETO"; deal.status = "WON_FULL"; deal.programPhase = "CADENCIA_PROGRAMA";
+  state.tasks = [bridgeTask(deal.id, deal.contactId), ...state.tasks];
+  const next = crm.completeCrmTask(state, "task-bridge", { result: "NOT_SOLD", resultNotes: "x", actorId: "vendedor" });
+  const d = next.deals.find((x) => x.id === deal.id);
+  assert.equal(d.stage, "FECHOU_COMPLETO"); // intacto
+  assert.equal(d.programPhase, "CADENCIA_PROGRAMA");
+});
+
+test("reabrir deal do Programa limpa o programPhase; churn preserva", () => {
+  const state = cloneState();
+  const deal = state.deals[0];
+  deal.stage = "FECHOU_COMPLETO"; deal.status = "WON_FULL"; deal.programPhase = "CADENCIA_PROGRAMA";
+  const reopened = crm.moveDealStage(state, deal.id, { actorId: "gestor", stage: "EM_NEGOCIACAO" });
+  assert.equal(reopened.ok, true);
+  const d = reopened.state.deals.find((x) => x.id === deal.id);
+  assert.equal(d.programPhase, null);
+  assert.equal(d.status, "OPEN");
+
+  const state2 = cloneState();
+  const deal2 = state2.deals[0];
+  deal2.stage = "FECHOU_COMPLETO"; deal2.status = "WON_FULL"; deal2.programPhase = "CADENCIA_PROGRAMA";
+  const churn = crm.moveDealStage(state2, deal2.id, { actorId: "gestor", stage: "CHURN", objection: "sem condições agora" });
+  assert.equal(churn.state.deals.find((x) => x.id === deal2.id).programPhase, "CADENCIA_PROGRAMA");
+});
+
+test("id de contato é determinístico: mesma pessoa converge para o mesmo id (não duplica)", () => {
+  // por telefone (formatação diferente → mesmo id)
+  assert.equal(
+    crm.deterministicContactId({ fullName: "Ana", phone: "11 98888-1234" }),
+    crm.deterministicContactId({ fullName: "Ana Beatriz", phone: "5511988881234" }),
+  );
+  // sem telefone: por nome + dono (acento/caixa/espaços normalizados)
+  const idA = crm.deterministicContactId({ fullName: "João Silva", ownerUserId: "recepcao" });
+  const idB = crm.deterministicContactId({ fullName: "joão  silva", ownerUserId: "recepcao" });
+  assert.equal(idA, idB);
+  assert.ok(idA.startsWith("contact-nm-"));
+});
