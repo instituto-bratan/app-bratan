@@ -38,33 +38,41 @@ export function ResumoMesCard({
           <Wallet className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
           Resumo do mês · {mesLabel}
           <InfoTip title="Por que meta, lucro e contas a pagar são diferentes?">
-            São três olhares que nunca vão ser iguais — e está certo assim: a META olha só quanto ENTRA (faturamento). O LUCRO
-            é o que entrou menos tudo que se gasta no mês. CONTAS A PAGAR é apenas a parte dos gastos que ainda não foi paga. A
-            OBRA é investimento pago pelo cofre (CDB), por isso fica fora do lucro.
+            São três olhares que nunca vão ser iguais — e está certo assim: a META olha só quanto ENTRA (faturamento). O LUCRO é
+            faturamento + juros do banco − custos do mês. CONTAS A PAGAR é apenas a parte dos custos que ainda não foi paga (já
+            está dentro dos custos). A OBRA e os APORTES/resgates do cofre ficam FORA do lucro — são movimento de cofre (CDB), não
+            receita nem custo do dia a dia.
           </InfoTip>
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
-        {/* Fluxo: faturamento − custos = lucro */}
+        {/* Fluxo: (faturamento + juros) − custos = lucro. A soma bate exata. */}
         <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-stretch">
-          <FlowBox label="Faturamento (entrou)" value={moneyFin(r.faturamento)} hint={r.poupanca > 0 ? `+ poupança ${moneyFin(r.poupanca)}` : "das comandas"} tone="pos" />
+          <FlowBox
+            label="Faturamento"
+            value={moneyFin(r.receita)}
+            hint={r.rendimento > 0 ? `comandas ${moneyFin(r.faturamento)} + juros ${moneyFin(r.rendimento)}` : "das comandas"}
+            tone="pos"
+          />
           <FlowSign sign="−" />
           <FlowBox label="Custos do mês" value={moneyFin(r.custosOperacionais)} hint={`pago ${moneyFin(r.jaPago)} · a pagar ${moneyFin(r.aPagar)}`} tone="neutral" />
           <FlowSign sign="=" />
           <FlowBox label="Lucro do mês" value={moneyFin(r.lucroOperacional)} hint={lucroNeg ? "no vermelho — falta faturar" : "no azul 🎉"} tone={lucroNeg ? "neg" : "pos"} />
         </div>
 
-        {/* Meta + contas a pagar + obra, cada um explicado */}
+        {/* Meta + contas a pagar + obra/cofre, cada um explicado */}
         <div className="grid gap-2 sm:grid-cols-3">
           <MiniCard icon={Target} label={`Meta do mês (super ${moneyFin(r.metaSuper)})`} value={`${Math.round(r.metaPercent * 100)}%`} detail={r.faltaMeta > 0 ? `faltam ${moneyFin(r.faltaMeta)} de faturamento` : "meta batida! 🏆"} tone={r.faltaMeta > 0 ? "gold" : "pos"} />
           <MiniCard icon={HandCoins} label="Contas a pagar (ainda)" value={moneyFin(r.aPagar)} detail="fatia dos custos não paga" tone={r.aPagar > 0 ? "gold" : "pos"} />
-          <MiniCard icon={Wallet} label="Obra (investimento)" value={moneyFin(r.obra)} detail="pago pelo cofre — fora do lucro" tone="neutral" />
+          <MiniCard icon={Wallet} label="Cofre e obra (fora do lucro)" value={moneyFin(r.obra + r.aportes)} detail={`obra ${moneyFin(r.obra)} · aportes ${moneyFin(r.aportes)}`} tone="neutral" />
         </div>
 
         <p className="text-xs leading-5 text-muted-foreground">
-          Como ler: para o <strong>lucro</strong> ficar no azul, o <strong>faturamento</strong> (+ poupança) precisa passar dos{" "}
-          <strong>custos do mês</strong>. A <strong>meta</strong> é de faturamento (o que entra), não de lucro. As{" "}
-          <strong>contas a pagar</strong> já estão dentro dos custos — pagá-las não muda o lucro, só tira do "a pagar".
+          Como ler: o <strong>lucro</strong> é o <strong>faturamento</strong> (+ juros do banco) menos os{" "}
+          <strong>custos do mês</strong> — a conta fecha exata (Faturamento − Custos = Lucro). A <strong>meta</strong> é de
+          faturamento (o que entra), não de lucro. As <strong>contas a pagar</strong> já estão dentro dos custos — pagá-las não
+          muda o lucro, só tira do "a pagar". <strong>Obra e aportes do cofre (CDB) ficam fora do lucro</strong>: são
+          movimento de tesouraria, não receita nem custo do dia a dia.
         </p>
       </CardContent>
     </Card>

@@ -104,10 +104,10 @@ export function FinanceiroP12Page() {
                 P12 ao vivo
                 <InfoTip title="O que é a P12 ao vivo?">
                   A matriz categoria × mês 100% derivada dos lançamentos: faturamento vem das comandas e cada categoria soma as
-                  contas lançadas nela, SEMPRE no mês do vencimento (conta de junho paga em julho continua em junho). O LUCRO
-                  OPERACIONAL do mês = faturamento + poupança − despesas operacionais. A OBRA (investimento) aparece numa linha
-                  à parte e NÃO entra no lucro — ela é paga pelo cofre (CDB), não pelo caixa do dia a dia. O crediário também
-                  fica fora, em aba própria. Clique em qualquer valor para ver a "prova viva".
+                  contas lançadas nela, SEMPRE no mês do vencimento (conta de junho paga em julho continua em junho). O LUCRO do
+                  mês = faturamento + juros do banco − despesas operacionais. A OBRA (investimento) e os APORTES/resgates do cofre
+                  NÃO entram no lucro — são movimento de tesouraria (CDB), não caixa do dia a dia. Só o rendimento (juros) conta
+                  como receita. O crediário também fica fora, em aba própria. Clique em qualquer valor para ver a "prova viva".
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -197,12 +197,13 @@ export function FinanceiroP12Page() {
                 </tr>
                 <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
                   <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
-                    Entrada de valores (Poupança)
+                    Rendimento financeiro (juros)
+                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">única entrada de cofre que conta como receita</span>
                   </td>
                   {visibleMonths.map((month) => (
-                    <td key={month} className="px-2.5 py-2.5">{cellValue(matrix.savingsInMonths[month], true)}</td>
+                    <td key={month} className="px-2.5 py-2.5">{cellValue(matrix.financialIncomeMonths[month], true)}</td>
                   ))}
-                  <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.savingsInYear)}</td>
+                  <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.financialIncomeYear)}</td>
                 </tr>
 
                 {matrix.groups.map((group) => (
@@ -225,11 +226,11 @@ export function FinanceiroP12Page() {
                 <tr className="bg-brand-creme/70 font-bold">
                   <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme px-4 py-3 text-left text-brand-musgo">
                     LUCRO OPERACIONAL DO MÊS
-                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(fatur. + poupança − despesas operacionais; obra fica fora)</span>
+                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(faturamento + juros − despesas operacionais; obra e aportes ficam fora)</span>
                   </td>
                   {visibleMonths.map((month) => (
                     <td key={month} className={cn("px-2.5 py-3", matrix.profitMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
-                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.savingsInMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
+                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.financialIncomeMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
                     </td>
                   ))}
                   <td className={cn("px-4 py-3", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>
@@ -244,6 +245,19 @@ export function FinanceiroP12Page() {
                       <td key={month} className="px-2.5 py-2.5">{matrix.capexMonths[month] ? `(${moneyFin(matrix.capexMonths[month])})` : "—"}</td>
                     ))}
                     <td className="px-4 py-2.5">({moneyFin(matrix.capexYear)})</td>
+                  </tr>
+                ) : null}
+                {matrix.savingsInYear - matrix.financialIncomeYear > 0.005 ? (
+                  <tr className="bg-brand-papel/70 text-brand-oliva">
+                    <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-2.5 text-left">
+                      Aportes / entradas no cofre
+                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">tesouraria (trocas de conta, reservas) — fora do lucro</span>
+                    </td>
+                    {visibleMonths.map((month) => {
+                      const aporte = matrix.savingsInMonths[month] - matrix.financialIncomeMonths[month];
+                      return <td key={month} className="px-2.5 py-2.5">{aporte > 0.005 ? moneyFin(aporte) : "—"}</td>;
+                    })}
+                    <td className="px-4 py-2.5">{moneyFin(matrix.savingsInYear - matrix.financialIncomeYear)}</td>
                   </tr>
                 ) : null}
               </tbody>

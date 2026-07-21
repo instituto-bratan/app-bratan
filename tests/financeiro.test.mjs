@@ -105,7 +105,7 @@ test("P12 deriva faturamento das comandas e despesas por categoria/mês", () => 
   assert.ok(Math.abs(matrix.profitMonths[5] - (12000 - 13982.77)) < 0.001);
 });
 
-test("resumo do mês conecta faturamento → custos (pago+a pagar) → lucro → meta → obra", () => {
+test("resumo do mês: lucro = faturamento + juros − custos; aportes/obra FORA (a conta fecha)", () => {
   const categories = fin.seedFinCategories;
   const sales = [
     sale("2026-07-05", [["TRATAMENTO", 100000]], [["PIX", 100000]], "s1"),
@@ -118,19 +118,24 @@ test("resumo do mês conecta faturamento → custos (pago+a pagar) → lucro →
     { id: "e3", description: "Obra (VISA)", categoryRef: "cat-compras-variaveis-obras-2026", amount: 48000, dueDate: "2026-07-05", paidAt: "2026-07-05", method: "CARTAO_CREDITO", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: true, notes: "", createdAt: "" },
   ];
   const savings = [
-    { id: "sv1", moveDate: "2026-07-02", direction: "ENTRADA", amount: 20939.62, kind: "APORTE", note: "" },
+    { id: "sv1", moveDate: "2026-07-02", direction: "ENTRADA", amount: 20015, kind: "APORTE", reason: "troca de contas", source: "MANUAL", monthRef: "2026-07", createdAt: "" },
+    { id: "sv2", moveDate: "2026-07-02", direction: "ENTRADA", amount: 0.62, kind: "RENDIMENTO", reason: "juros", source: "MANUAL", monthRef: "2026-07", createdAt: "" },
   ];
   const metas = { goalSuperRevenue: 350000, goalTargetRevenue: 330000, goalMinRevenue: 300000 };
   const resumo = fin.buildResumoMes(sales, expenses, categories, savings, metas, "2026-07");
 
   assert.equal(resumo.faturamento, 153216);
-  assert.equal(resumo.poupanca, 20939.62);
+  assert.ok(Math.abs(resumo.rendimento - 0.62) < 0.001); // só o juro conta
+  assert.ok(Math.abs(resumo.aportes - 20015) < 0.001); // aporte/troca fora do lucro
+  assert.ok(Math.abs(resumo.receita - (153216 + 0.62)) < 0.001); // faturamento + juros
   assert.equal(resumo.custosOperacionais, 60000); // 20k aluguel + 40k mercearia (obra fora)
   assert.equal(resumo.aPagar, 40000); // só a mercearia não paga
   assert.equal(resumo.jaPago, 20000); // aluguel pago
   assert.equal(resumo.obra, 48000); // CAPEX à parte
-  // lucro = faturamento + poupança − custos operacionais (obra fora)
-  assert.ok(Math.abs(resumo.lucroOperacional - (153216 + 20939.62 - 60000)) < 0.001);
+  // lucro = faturamento + juros − custos (aporte e obra FORA)
+  assert.ok(Math.abs(resumo.lucroOperacional - (153216 + 0.62 - 60000)) < 0.001);
+  // identidade que faltava para a conta "fechar": receita − custos = lucro, exato
+  assert.ok(Math.abs((resumo.receita - resumo.custosOperacionais) - resumo.lucroOperacional) < 0.001);
   assert.equal(resumo.metaSuper, 350000);
   assert.equal(resumo.faltaMeta, 350000 - 153216);
   assert.ok(Math.abs(resumo.metaPercent - 153216 / 350000) < 0.001);
@@ -280,19 +285,25 @@ test("comandas sem NF listam valores sugeridos por tipo e itens psi/nutri geram 
   assert.equal(fin.partnerSuggestions(sales, [{ id: "e", professional: "PSICOLOGA", entryDate: "2026-07-02", patientName: "", saleItemRef: suggestions[0].saleItemRef, kind: "PLANO", amount: 110, notes: "", createdAt: "" }], "PSICOLOGA", "2026-07").length, 1);
 });
 
-test("LUCRO da P12 segue a planilha: faturamento + entradas de poupança − despesas", () => {
+test("LUCRO da P12: só JUROS (rendimento) entram; aportes/trocas de conta NÃO (decisão Lucas 21/07)", () => {
   const sales = [sale("2026-01-10", [["CONSULTA", 265051.20]], [["PIX", 265051.20]], "s1")];
   const expenses = [
     { id: "e1", description: "Despesas jan", categoryRef: "cat-salarios-fixos", amount: 219167.47, dueDate: "2026-01-28", paidAt: "2026-01-28", method: "PIX", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
   ];
   const savings = [
-    { id: "m1", moveDate: "2026-01-28", direction: "ENTRADA", amount: 13982.99, reason: "", source: "MANUAL", monthRef: "2026-01", createdAt: "" },
-    { id: "m2", moveDate: "2026-01-29", direction: "SAIDA", amount: 999, reason: "não conta no lucro", source: "MANUAL", monthRef: "2026-01", createdAt: "" },
+    { id: "m1", moveDate: "2026-01-28", direction: "ENTRADA", kind: "RENDIMENTO", amount: 100.00, reason: "juros do banco", source: "MANUAL", monthRef: "2026-01", createdAt: "" },
+    { id: "m2", moveDate: "2026-01-15", direction: "ENTRADA", kind: "APORTE", amount: 13882.99, reason: "troca de contas", source: "MANUAL", monthRef: "2026-01", createdAt: "" },
+    { id: "m3", moveDate: "2026-01-29", direction: "SAIDA", amount: 999, reason: "não conta no lucro", source: "MANUAL", monthRef: "2026-01", createdAt: "" },
   ];
   const matrix = fin.buildP12Matrix(sales, expenses, fin.seedFinCategories, 2026, savings);
+  // savingsIn = TODAS as entradas (informativo/cofre): 100 + 13882.99
   assert.ok(Math.abs(matrix.savingsInMonths[0] - 13982.99) < 0.001);
-  assert.ok(Math.abs(matrix.profitMonths[0] - 59866.72) < 0.001);
-  assert.ok(Math.abs(matrix.profitYear - 59866.72) < 0.001);
+  // financialIncome = só o rendimento (juros): 100
+  assert.ok(Math.abs(matrix.financialIncomeMonths[0] - 100) < 0.001);
+  assert.ok(Math.abs(matrix.financialIncomeYear - 100) < 0.001);
+  // lucro = faturamento + juros − despesas = 265051.20 + 100 − 219167.47 (APORTE fora)
+  assert.ok(Math.abs(matrix.profitMonths[0] - 45983.73) < 0.001);
+  assert.ok(Math.abs(matrix.profitYear - 45983.73) < 0.001);
 });
 
 // --- P12 por mês (14/07/2026): vencimento manda + crediário no lucro ---
@@ -313,7 +324,7 @@ test("P12: crediário fica FORA da P12 (caixa separado, decisão do Lucas)", () 
   ];
   const matrix = fin.buildP12Matrix(sales, expenses, fin.seedFinCategories, 2026, []);
   assert.equal("cashInMonths" in matrix, false, "matriz não tem crediário");
-  assert.equal(matrix.profitMonths[5], 2000 - 5000, "lucro do mês = faturamento + poupança − despesas, sem crediário");
+  assert.equal(matrix.profitMonths[5], 2000 - 5000, "lucro do mês = faturamento + juros − despesas, sem crediário");
 });
 
 

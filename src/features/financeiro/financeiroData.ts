@@ -316,8 +316,14 @@ export type P12Matrix = {
   year: number;
   revenueMonths: P12Cell[];
   revenueYear: number;
+  // Entradas no cofre/poupança (TODAS: aportes, rendimentos, trocas de conta). É saldo de
+  // tesouraria — NÃO é receita, então NÃO entra no lucro. Só informativo/cofre.
   savingsInMonths: number[];
   savingsInYear: number;
+  // Rendimento financeiro (juros do banco) = única entrada de cofre que é RECEITA de verdade.
+  // É o que entra no lucro além do faturamento (decisão do Lucas: "só receita real").
+  financialIncomeMonths: number[];
+  financialIncomeYear: number;
   groups: P12Group[];
   // Despesas OPERACIONAIS (já sem a obra/CAPEX).
   totalExpensesMonths: number[];
@@ -326,7 +332,7 @@ export type P12Matrix = {
   capexRows: P12Row[];
   capexMonths: number[];
   capexYear: number;
-  // Lucro OPERACIONAL = faturamento + poupança − despesas operacionais (sem obra).
+  // Lucro = faturamento + juros (rendimento) − despesas operacionais (sem obra, sem aportes).
   profitMonths: number[];
   profitYear: number;
 };
@@ -402,17 +408,23 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     groups.reduce((sum, group) => sum + group.months[index].total, 0),
   );
   const savingsInMonths = Array.from({ length: 12 }, () => 0);
+  const financialIncomeMonths = Array.from({ length: 12 }, () => 0);
   for (const move of savingsMoves) {
     if (move.direction !== "ENTRADA") continue;
     if (Number(move.moveDate.slice(0, 4)) !== year) continue;
     const month = monthIndex(move.moveDate);
-    if (month >= 0) savingsInMonths[month] += move.amount || 0;
+    if (month < 0) continue;
+    savingsInMonths[month] += move.amount || 0;
+    // Só o RENDIMENTO (juros do banco) é receita de verdade e entra no lucro.
+    // Aporte, troca de contas, saldo inicial etc. são tesouraria, não receita.
+    if (move.kind === "RENDIMENTO") financialIncomeMonths[month] += move.amount || 0;
   }
   const revenueYear = revenueMonths.reduce((sum, cell) => sum + cell.total, 0);
   const savingsInYear = savingsInMonths.reduce((sum, value) => sum + value, 0);
+  const financialIncomeYear = financialIncomeMonths.reduce((sum, value) => sum + value, 0);
   const totalExpensesYear = totalExpensesMonths.reduce((sum, value) => sum + value, 0);
   const profitMonths = totalExpensesMonths.map(
-    (expensesTotal, index) => revenueMonths[index].total + savingsInMonths[index] - expensesTotal,
+    (expensesTotal, index) => revenueMonths[index].total + financialIncomeMonths[index] - expensesTotal,
   );
 
   return {
@@ -421,6 +433,8 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     revenueYear,
     savingsInMonths,
     savingsInYear,
+    financialIncomeMonths,
+    financialIncomeYear,
     groups,
     totalExpensesMonths,
     totalExpensesYear,
@@ -428,18 +442,20 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     capexMonths,
     capexYear,
     profitMonths,
-    profitYear: revenueYear + savingsInYear - totalExpensesYear,
+    profitYear: revenueYear + financialIncomeYear - totalExpensesYear,
   };
 }
 
 export const p12MonthLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 // Resumo do mês que CONECTA as três lentes que se confundem: meta (faturamento),
-// lucro (faturamento − custos operacionais) e contas a pagar (fatia não paga).
+// lucro (faturamento + juros − custos operacionais) e contas a pagar (fatia não paga).
 // Tudo derivado das mesmas fontes da P12/Metas — nada digitado.
 export type ResumoMes = {
   faturamento: number;
-  poupanca: number;
+  rendimento: number; // juros do banco — entra no lucro
+  aportes: number; // aportes/trocas de conta no cofre — NÃO entram no lucro
+  receita: number; // faturamento + rendimento (o que "entrou" e conta pro lucro)
   custosOperacionais: number;
   jaPago: number;
   aPagar: number;
@@ -464,7 +480,10 @@ export function buildResumoMes(
   const monthIdx = Number(monthKey.slice(5, 7)) - 1;
   const matrix = buildP12Matrix(sales, expenses, categories, year, savingsMoves);
   const faturamento = matrix.revenueMonths[monthIdx]?.total ?? 0;
-  const poupanca = matrix.savingsInMonths[monthIdx] ?? 0;
+  const rendimento = matrix.financialIncomeMonths[monthIdx] ?? 0;
+  const poupancaTotal = matrix.savingsInMonths[monthIdx] ?? 0;
+  const aportes = poupancaTotal - rendimento; // entradas no cofre que NÃO são receita
+  const receita = faturamento + rendimento;
   const custosOperacionais = matrix.totalExpensesMonths[monthIdx] ?? 0;
   const obra = matrix.capexMonths[monthIdx] ?? 0;
   const lucroOperacional = matrix.profitMonths[monthIdx] ?? 0;
@@ -482,7 +501,9 @@ export function buildResumoMes(
     .reduce((sum, expense) => sum + (expense.amount || 0), 0);
   return {
     faturamento,
-    poupanca,
+    rendimento,
+    aportes,
+    receita,
     custosOperacionais,
     jaPago: custosOperacionais - aPagar,
     aPagar,
