@@ -125,6 +125,37 @@ test("mover para fechou completo cria tarefas setoriais e alimenta o 360", () =>
   assert.equal(recsDoDeal.length, 1, "um único recebível por venda do CRM (sem dobrar)");
 });
 
+test("360 mostra o NOME do paciente (não o código) e deriva o resgate do CRM", () => {
+  const state = cloneState();
+  const contact = state.contacts.find((c) => c.id === "crm-contact-lead-quente");
+  const moved = crm.moveDealStage(state, "crm-deal-lead-quente", {
+    actorId: "vendedor", stage: "FECHOU_COMPLETO", prescribedAmount: 10000, soldAmount: 10000, receivedAmount: 5000,
+  });
+  const derived = crm.deriveInteligencia360FromCrm(moved.state, clone360());
+  const rx = derived.prescriptions.find((r) => r.id === "crm-rx-crm-deal-lead-quente");
+  assert.ok(rx);
+  assert.equal(rx.patientReference, crm.contactDisplayName(contact)); // NOME, não código
+  assert.notEqual(rx.patientReference, "crm-contact-lead-quente");
+
+  // Retenção/Resgate deixa de ficar vazio: cadência de resgate do CRM vira RescueWorkflow.
+  const withRescue = {
+    ...moved.state,
+    cadenceEnrollments: [
+      ...moved.state.cadenceEnrollments,
+      {
+        id: "enr-resc-1", cadenceId: "cad-rescue-60d", contactId: contact.id, dealId: "crm-deal-lead-quente",
+        status: "ACTIVE", enrolledAt: "2026-06-01", triggerSource: "TESTE", triggerDate: "2026-06-01",
+        ownerUserId: "concierge", ownerRole: "CONCIERGE", completedAt: null, canceledReason: "", createdAt: "2026-06-01", updatedAt: "2026-06-01",
+      },
+    ],
+  };
+  const derived2 = crm.deriveInteligencia360FromCrm(withRescue, clone360());
+  const rescue = derived2.rescueWorkflows.find((r) => r.id === "crm-rescue-enr-resc-1");
+  assert.ok(rescue, "resgate do CRM aparece na retenção");
+  assert.equal(rescue.rescueType, "TRADITIONAL_60_DAYS");
+  assert.equal(rescue.patientReference, crm.contactDisplayName(contact));
+});
+
 test("marcar 'consulta realizada' gera o D+1 da concierge (lista automática de quem passou com o Dr.)", () => {
   const state = cloneState();
   const deal = state.deals.find((d) => d.stage !== "FECHOU_COMPLETO" && d.stage !== "FECHOU_PARCIAL");

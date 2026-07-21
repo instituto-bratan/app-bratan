@@ -1266,11 +1266,8 @@ function TicketModule({ state, persist }: { state: Inteligencia360State; persist
 
   return (
     <>
-      <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
-        <CardHeader>
-          <CardTitle>Novo registro semanal</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <ManualEntry title="Registrar ticket da semana (manual — opcional; o ticket do painel já vem das comandas)">
+        <div className="p-3">
           <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
             <Field label="Início da semana" value={form.weekStartDate} type="date" onChange={(value) => setForm({ ...form, weekStartDate: value })} />
             <Field label="Fim da semana" value={form.weekEndDate} type="date" onChange={(value) => setForm({ ...form, weekEndDate: value })} />
@@ -1306,8 +1303,8 @@ function TicketModule({ state, persist }: { state: Inteligencia360State; persist
               </LiquidButton>
             </div>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </ManualEntry>
       <DataTable
         headers={["Semana", "Médico", "Tipo", "Ticket vendido", "Recebido", "Variação", "Status"]}
         deleteLabel="semana"
@@ -1440,11 +1437,8 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     });
     return (
       <>
-        <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
-          <CardHeader>
-            <CardTitle>Adicionar serviço à tabela de margem</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <ManualEntry title="Adicionar serviço à tabela de margem">
+          <div className="p-3">
             <form
               className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
               onSubmit={(event) => {
@@ -1490,8 +1484,8 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
                 <LiquidButton type="submit" size="lg">Adicionar preço</LiquidButton>
               </div>
             </form>
-          </CardContent>
-        </Card>
+          </div>
+        </ManualEntry>
         <DataTable
           headers={["Serviço", "Preço", "Custo estimado", "Margem", "Preço mínimo", "Alerta"]}
           deleteLabel="linha de preço"

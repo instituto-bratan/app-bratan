@@ -13,6 +13,9 @@ import {
   type PrescriptionSale,
   type Receivable,
   type RelationshipTouchpoint,
+  type RescueStatus360,
+  type RescueType360,
+  type RescueWorkflow,
 } from "@/features/inteligencia360/inteligencia360Data";
 
 export type CrmRole =
@@ -3200,7 +3203,7 @@ function crmPrescriptionFromDeal(deal: CrmDeal, contact: CrmContact): Prescripti
   if (!["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "CHURN"].includes(deal.stage)) return null;
   return {
     id: `crm-rx-${deal.id}`,
-    patientReference: contact.id,
+    patientReference: contactDisplayName(contact),
     patientType: contact.contactType === "LEAD" ? "NEW" : "RETURNING",
     doctorId: deal.doctorId,
     sellerId: deal.ownerUserId,
@@ -3236,7 +3239,7 @@ function crmJourneyFromDeal(state: CrmState, deal: CrmDeal, contact: CrmContact)
   if (!["FECHOU_COMPLETO", "FECHOU_PARCIAL"].includes(deal.stage)) return null;
   return {
     id: `crm-journey-${deal.id}`,
-    patientReference: contact.id,
+    patientReference: contactDisplayName(contact),
     patientType: contact.contactType === "LEAD" ? "NEW" : "RETURNING",
     currentStage: "ADMINISTRATIVE",
     doctorId: deal.doctorId,
@@ -3268,7 +3271,7 @@ function crmReceivableFromDeal(deal: CrmDeal, contact: CrmContact): Receivable |
   if (deal.soldAmount <= 0 || open <= 0) return null;
   return {
     id: `crm-recv-${deal.id}`,
-    patientReference: contact.id,
+    patientReference: contactDisplayName(contact),
     saleId: `crm-rx-${deal.id}`,
     totalAmount: deal.soldAmount,
     receivedAmount: deal.receivedAmount,
@@ -3288,7 +3291,7 @@ function crmExperienceFromTouchpoint(touch: CrmTouchpoint, contact: CrmContact):
   if (touch.sentiment !== "NEGATIVE") return null;
   return {
     id: `crm-exp-${touch.id}`,
-    patientReference: contact.id,
+    patientReference: contactDisplayName(contact),
     journeyId: "",
     npsScore: 6,
     satisfactionScore: 6,
@@ -3310,7 +3313,7 @@ function crmTouchpointFor360(touch: CrmTouchpoint, contact: CrmContact): Relatio
   const touchType = touch.cadenceId === "cad-concierge-d1" ? "D1_CONCIERGE" : touch.cadenceId === "cad-nursing-14" ? "NURSE_14_DAYS" : touch.cadenceId === "cad-return-cycle" ? "RETURN_CONSULTATION" : "RESCUE_ATTEMPT";
   return {
     id: `crm-touch-${touch.id}`,
-    patientReference: contact.id,
+    patientReference: contactDisplayName(contact),
     journeyId: "",
     touchType,
     scheduledDate: touch.sentAt.slice(0, 10),
@@ -3327,6 +3330,36 @@ function crmTouchpointFor360(touch: CrmTouchpoint, contact: CrmContact): Relatio
     notes: "Espelhado do CRM Bratan.",
     createdAt: touch.createdAt,
     updatedAt: touch.createdAt,
+  };
+}
+
+// Resgate 360 espelhado das cadências de resgate do CRM (cad-rescue-*): retenção
+// e resgate deixam de ficar vazios e passam a refletir o Kanban/cadências.
+function crmRescueFromEnrollment(enrollment: CrmCadenceEnrollment, contact: CrmContact, tasksDone: number): RescueWorkflow | null {
+  if (!enrollment.cadenceId.startsWith("cad-rescue")) return null;
+  const rescueType: RescueType360 =
+    enrollment.cadenceId === "cad-rescue-6m" ? "SIX_MONTHS" : enrollment.cadenceId === "cad-rescue-1y" ? "ONE_YEAR" : "TRADITIONAL_60_DAYS";
+  const status: RescueStatus360 =
+    enrollment.status === "COMPLETED"
+      ? "RESCUED"
+      : enrollment.status === "CANCELED"
+        ? "NOT_RESCUED"
+        : tasksDone > 0
+          ? "IN_PROGRESS"
+          : "OPEN";
+  return {
+    id: `crm-rescue-${enrollment.id}`,
+    patientReference: contactDisplayName(contact),
+    rescueType,
+    triggerDate: (enrollment.triggerDate || enrollment.enrolledAt || "").slice(0, 10),
+    attemptsTotal: 5,
+    attemptsDone: Math.min(5, tasksDone),
+    status,
+    rescuedCriteria: enrollment.status === "COMPLETED" ? "POSITIVE_RESPONSE" : "",
+    ownerUserId: enrollment.ownerUserId || enrollment.ownerRole,
+    notes: "Espelhado das cadências de resgate do CRM.",
+    createdAt: enrollment.createdAt,
+    updatedAt: enrollment.updatedAt,
   };
 }
 
@@ -3356,6 +3389,19 @@ export function deriveInteligencia360FromCrm(state: CrmState, base: Inteligencia
     const record = contact ? crmExperienceFromTouchpoint(touch, contact) : null;
     return record ? [record] : [];
   });
+  const doneByCadenceContact = new Map<string, number>();
+  for (const task of state.tasks) {
+    if (task.status !== "DONE" || !task.cadenceId) continue;
+    const key = `${task.cadenceId}::${task.contactId}`;
+    doneByCadenceContact.set(key, (doneByCadenceContact.get(key) ?? 0) + 1);
+  }
+  const crmRescues = state.cadenceEnrollments.flatMap((enrollment) => {
+    const contact = contactById.get(enrollment.contactId);
+    if (!contact) return [];
+    const tasksDone = doneByCadenceContact.get(`${enrollment.cadenceId}::${enrollment.contactId}`) ?? 0;
+    const record = crmRescueFromEnrollment(enrollment, contact, tasksDone);
+    return record ? [record] : [];
+  });
   const crmActions: ActionItem360[] = state.tasks
     .filter((task) => isTaskOverdue(task) && task.priority !== "LOW")
     .map((task) => ({
@@ -3380,6 +3426,7 @@ export function deriveInteligencia360FromCrm(state: CrmState, base: Inteligencia
     touchpoints: base.touchpoints.filter((record) => !record.id.startsWith("crm-touch-")),
     experiences: base.experiences.filter((record) => !record.id.startsWith("crm-exp-")),
     actions: base.actions.filter((record) => !record.id.startsWith("crm-action-")),
+    rescueWorkflows: base.rescueWorkflows.filter((record) => !record.id.startsWith("crm-rescue-")),
   };
 
   const prescriptions = [...crmPrescriptions, ...withoutCrm.prescriptions];
@@ -3390,6 +3437,7 @@ export function deriveInteligencia360FromCrm(state: CrmState, base: Inteligencia
     receivables: mergePrescriptionReceivables([...crmReceivables, ...withoutCrm.receivables], prescriptions),
     touchpoints: [...crmTouchpoints, ...withoutCrm.touchpoints],
     experiences: [...crmExperiences, ...withoutCrm.experiences],
+    rescueWorkflows: [...crmRescues, ...withoutCrm.rescueWorkflows],
     actions: [...crmActions, ...withoutCrm.actions],
   };
 }
