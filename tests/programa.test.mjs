@@ -107,6 +107,58 @@ test("board: encerramento aparece até ter desfecho; perdidos e com desfecho sae
   assert.deepEqual(board.map((c) => c.dealId), ["d-enc"]);
 });
 
+test("contagens viram marcos concluídos (limitadas a 6/6/3)", () => {
+  const done = programa.programMilestonesFromCounts(3, 2, 1);
+  assert.equal(JSON.stringify(done), JSON.stringify(["BIO-1", "BIO-2", "CHECK-1", "CHECK-2", "CHECK-3", "MEDICO-1"]));
+  const capped = programa.programMilestonesFromCounts(99, 99, 99);
+  assert.equal(capped.filter((k) => k.startsWith("CHECK")).length, 6);
+  assert.equal(capped.filter((k) => k.startsWith("BIO")).length, 6);
+  assert.equal(capped.filter((k) => k.startsWith("MEDICO")).length, 3);
+});
+
+test("cadastrar paciente antigo: reusa o deal ganho e marca o já feito", () => {
+  const state = makeState([makeDeal({ programPhase: null, programMilestonesDone: [] })]);
+  const next = programa.enrollPatientInProgram(state, {
+    contactId: "c-1", startDate: "2026-04-01", channel: "PROGRAMA_ACOMPANHAMENTO", checksDone: 2, biosDone: 2, medicoDone: 1,
+  });
+  const board = programa.buildProgramaBoard(next, "2026-07-20");
+  assert.equal(board.length, 1);
+  assert.equal(board[0].checksDone, 2);
+  assert.equal(board[0].medicoDone, 1);
+  assert.equal(board[0].phase, "CADENCIA_PROGRAMA");
+  // não criou deal novo — reusou o existente
+  assert.equal(next.deals.length, 1);
+  assert.equal(next.deals[0].adhesionChannel, "PROGRAMA_ACOMPANHAMENTO");
+});
+
+test("cadastrar paciente sem deal cria um deal do plano e ativa o contato", () => {
+  const state = makeState([], [{ id: "c-9", fullName: "João Antigo", phone: "", lifecycleStage: "CLOSED_PATIENT" }]);
+  const next = programa.enrollPatientInProgram(state, {
+    contactId: "c-9", startDate: "2026-05-01", channel: "PROGRAMA_ACOMPANHAMENTO", checksDone: 0, biosDone: 0, medicoDone: 0,
+  });
+  assert.equal(next.deals.length, 1);
+  assert.equal(next.deals[0].contactId, "c-9");
+  assert.equal(next.contacts.find((c) => c.id === "c-9").lifecycleStage, "ACTIVE_PATIENT");
+  assert.equal(programa.buildProgramaBoard(next, "2026-07-20").length, 1);
+});
+
+test("sugestões: pacientes ativos/fechados fora do plano aparecem para cadastrar", () => {
+  const noPlano = makeDeal({ id: "d-plano" });
+  const state = {
+    deals: [noPlano],
+    contacts: [
+      { id: "c-1", fullName: "Maria Silva", phone: "", lifecycleStage: "ACTIVE_PATIENT" }, // já no plano (deal-1 aponta p/ c-1)
+      { id: "c-2", fullName: "Ana Fora", phone: "", lifecycleStage: "ACTIVE_PATIENT" },
+      { id: "c-3", fullName: "Lead Frio", phone: "", lifecycleStage: "COLD_LEAD" },
+    ],
+    tasks: [], cadences: [], cadenceSteps: [], cadenceEnrollments: [],
+  };
+  const sug = programa.patientsNotInProgram(state, "2026-07-20").map((c) => c.id);
+  assert.ok(sug.includes("c-2")); // ativa fora do plano → sugerida
+  assert.ok(!sug.includes("c-1")); // já no plano → não sugere
+  assert.ok(!sug.includes("c-3")); // lead frio → não é paciente
+});
+
 test("texto para a Assistente de Performance resume paciente, progresso e próximo passo", () => {
   const deal = makeDeal({ programMilestonesDone: ["CHECK-1", "BIO-1", "MEDICO-1"] });
   const board = programa.buildProgramaBoard(makeState([deal]), "2026-07-20");

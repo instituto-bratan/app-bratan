@@ -525,7 +525,7 @@ function atLocalTime(dateIso: string, hour = 9, minute = 0) {
   return `${dateIso.slice(0, 10)}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
 }
 
-function createCrmId(prefix: string) {
+export function createCrmId(prefix: string) {
   return `${prefix}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
 }
 

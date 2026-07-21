@@ -96,7 +96,6 @@ const flowGroups: FlowGroup[] = [
       { label: "Minhas Tarefas", shortLabel: "Tarefas", href: "/crm/minhas-tarefas", icon: ClipboardList, allowed: canCrmBratan },
       { label: "Kanban Comercial", shortLabel: "Kanban", href: "/crm/vendas", icon: Target, allowed: canCrmBratan },
       { label: "Cadências", href: "/crm/cadencias", icon: MessageCircle, allowed: canCrmBratan },
-      { label: "Listas do Dr. Daniel", shortLabel: "Listas", href: "/crm/listas", icon: ClipboardList, allowed: canCrmBratan },
       { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento },
       { label: "Canais de Venda", shortLabel: "Canais", href: "/crm/canais", icon: Target, allowed: canCrmBratan },
     ],

@@ -190,11 +190,12 @@ export function canCrmBratan(cargo: Cargo | null | undefined) {
   return Boolean(cargo);
 }
 
-// Aba "Plano de Acompanhamento" (20/07/2026): controle do Dr. Daniel sobre os
-// pacientes do plano (fases, bioimpedâncias, checkpoints, consultas). Pedido do
-// Lucas: SÓ o médico e o gestor financeiro (desenvolvedor) enxergam.
+// Aba "Plano de Acompanhamento" (unificada com as Listas do Dr. Daniel,
+// 21/07/2026): o time TODO de cuidado vê e marca os marcos (enfermagem faz
+// doses/bio, Assistente de Performance faz checkpoints, médico faz consultas);
+// recepção/concierge/coordenação também acompanham. Mesmo alcance do CRM.
 export function canAcompanhamento(cargo: Cargo | null | undefined) {
-  return cargo === "dr_daniel" || cargo === "gestor_financeiro";
+  return canCrmBratan(cargo);
 }
 
 // Aba de Marketing (13/07/2026): o time de marketing e a coordenação veem o

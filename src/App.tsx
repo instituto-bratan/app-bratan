@@ -33,7 +33,6 @@ const CrmTasksPage = lazyRoute("crmTasks");
 const CrmKanbanPage = lazyRoute("crmKanban");
 const CrmContactProfilePage = lazyRoute("crmContact");
 const CrmCadencesPage = lazyRoute("crmCadences");
-const CrmListasPage = lazyRoute("crmListas");
 const ProgramaAcompanhamentoPage = lazyRoute("acompanhamento");
 const CrmCanaisPage = lazyRoute("crmCanais");
 const ColaboradoresPage = lazyRoute("colaboradores");
@@ -93,7 +92,8 @@ export function App() {
               <Route path="/crm/vendas" element={<CrmKanbanPage />} />
               <Route path="/crm/contatos/:id" element={<CrmContactProfilePage />} />
               <Route path="/crm/cadencias" element={<CrmCadencesPage />} />
-              <Route path="/crm/listas" element={<CrmListasPage />} />
+              {/* "Listas do Dr. Daniel" foi unificada na aba Acompanhamento. */}
+              <Route path="/crm/listas" element={<Navigate to="/acompanhamento" replace />} />
               <Route path="/acompanhamento" element={<ProgramaAcompanhamentoPage />} />
               <Route path="/crm/canais" element={<CrmCanaisPage />} />
               <Route path="/administracao" element={<Navigate to="/administracao/colaboradores" replace />} />

@@ -8,14 +8,25 @@
 // vem a seguir, por paciente. Concluídos ficam em deal.programMilestonesDone
 // (chaves determinísticas) — marcados pelo médico/gestão nesta aba.
 import {
+  contactDisplayName,
+  createCrmId,
   programPhaseLabels,
   type CrmAdhesionChannel,
+  type CrmContact,
   type CrmDeal,
   type CrmProgramPhase,
   type CrmState,
 } from "@/features/crm/crmData";
 
 export type ProgramMilestoneType = "CHECK" | "BIO" | "MEDICO";
+
+// Quem, pelo POP v3.1, faz cada passo (rótulo de responsável — o time todo pode
+// marcar, mas isto deixa claro de quem é a etapa no fluxo).
+export const milestoneResponsible: Record<ProgramMilestoneType, string> = {
+  CHECK: "Assistente de Performance",
+  BIO: "Enfermagem / Performance",
+  MEDICO: "Dr. Daniel",
+};
 
 export type ProgramMilestone = {
   key: string; // ex.: "CHECK-1", "BIO-3", "MEDICO-2"
@@ -152,6 +163,102 @@ export function buildProgramaBoard(state: CrmState, todayISO: string): ProgramPa
       };
     })
     .sort((a, b) => b.overdueCount - a.overdueCount || a.patientName.localeCompare(b.patientName));
+}
+
+// Constrói a lista de marcos concluídos a partir de contagens (para cadastrar
+// paciente já em andamento: "já fez 3 checkpoints, 2 bios, 1 consulta").
+export function programMilestonesFromCounts(checks: number, bios: number, medico: number): string[] {
+  const done: string[] = [];
+  for (let n = 1; n <= Math.min(6, Math.max(0, Math.floor(checks))); n += 1) done.push(milestoneKey("CHECK", n));
+  for (let n = 1; n <= Math.min(6, Math.max(0, Math.floor(bios))); n += 1) done.push(milestoneKey("BIO", n));
+  for (let n = 1; n <= Math.min(3, Math.max(0, Math.floor(medico))); n += 1) done.push(milestoneKey("MEDICO", n));
+  return done.sort();
+}
+
+export type EnrollInput = {
+  contactId: string;
+  startDate: string; // ISO — data de adesão
+  channel: CrmAdhesionChannel;
+  checksDone: number;
+  biosDone: number;
+  medicoDone: number;
+};
+
+// Cadastra (ou atualiza) um paciente JÁ existente no plano de acompanhamento —
+// usado para trazer quem entrou antes do app. Reaproveita o deal ganho mais
+// recente do paciente; se não houver, cria um deal do plano. Idempotente por
+// paciente: chamar de novo apenas atualiza os marcos/datas.
+export function enrollPatientInProgram(state: CrmState, input: EnrollInput): CrmState {
+  const now = new Date().toISOString();
+  const milestones = programMilestonesFromCounts(input.checksDone, input.biosDone, input.medicoDone);
+  const existing = state.deals
+    .filter((deal) => deal.contactId === input.contactId)
+    .sort((a, b) => (b.closedAt || b.createdAt || "").localeCompare(a.closedAt || a.createdAt || ""))[0];
+
+  let deals: CrmDeal[];
+  if (existing) {
+    deals = state.deals.map((deal) =>
+      deal.id === existing.id
+        ? {
+            ...deal,
+            programPhase: "CADENCIA_PROGRAMA",
+            programPhaseEnteredAt: deal.programPhaseEnteredAt || now,
+            programOutcome: null,
+            adhesionChannel: input.channel,
+            closedAt: input.startDate || deal.closedAt,
+            status: deal.status === "OPEN" ? "WON_FULL" : deal.status,
+            programMilestonesDone: milestones,
+            updatedAt: now,
+          }
+        : deal,
+    );
+  } else {
+    const contact = state.contacts.find((item) => item.id === input.contactId);
+    const newDeal: CrmDeal = {
+      id: createCrmId("deal"),
+      contactId: input.contactId,
+      title: contact ? contactDisplayName(contact) : "Plano de acompanhamento",
+      dealType: "TREATMENT_PLAN",
+      stage: "FECHOU_COMPLETO",
+      estimatedValue: 0,
+      prescribedAmount: 0,
+      soldAmount: 0,
+      receivedAmount: 0,
+      probability: 100,
+      status: "WON_FULL",
+      mainObjection: "",
+      objectionCategory: "OTHER",
+      sourceChannel: "Cadastro manual (plano existente)",
+      ownerUserId: "",
+      doctorId: "",
+      expectedCloseDate: input.startDate,
+      closedAt: input.startDate,
+      createdAt: now,
+      updatedAt: now,
+      programPhase: "CADENCIA_PROGRAMA",
+      programPhaseEnteredAt: now,
+      adhesionChannel: input.channel,
+      programMilestonesDone: milestones,
+    };
+    deals = [newDeal, ...state.deals];
+  }
+
+  const contacts = state.contacts.map((contact) =>
+    contact.id === input.contactId && contact.lifecycleStage !== "ACTIVE_PATIENT"
+      ? { ...contact, lifecycleStage: "ACTIVE_PATIENT" as const, updatedAt: now }
+      : contact,
+  );
+  return { ...state, deals, contacts };
+}
+
+// Pacientes ATIVOS (ou fechados) que ainda NÃO estão no board do plano — para
+// sugerir o cadastro dos antigos com um clique.
+export function patientsNotInProgram(state: CrmState, todayISO: string): CrmContact[] {
+  const enrolled = new Set(buildProgramaBoard(state, todayISO).map((card) => card.contactId));
+  return state.contacts
+    .filter((contact) => !contact.archivedAt && !enrolled.has(contact.id))
+    .filter((contact) => ["CLOSED_PATIENT", "ACTIVE_PATIENT"].includes(contact.lifecycleStage))
+    .sort((a, b) => contactDisplayName(a).localeCompare(contactDisplayName(b), "pt-BR"));
 }
 
 // Marca/desmarca um marco no deal (imutável — para usar com persist do CRM).
