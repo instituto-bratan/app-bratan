@@ -105,6 +105,52 @@ test("P12 deriva faturamento das comandas e despesas por categoria/mês", () => 
   assert.ok(Math.abs(matrix.profitMonths[5] - (12000 - 13982.77)) < 0.001);
 });
 
+test("resumo do mês conecta faturamento → custos (pago+a pagar) → lucro → meta → obra", () => {
+  const categories = fin.seedFinCategories;
+  const sales = [
+    sale("2026-07-05", [["TRATAMENTO", 100000]], [["PIX", 100000]], "s1"),
+    sale("2026-07-10", [["CONSULTA", 53216]], [["PIX", 53216]], "s2"),
+    sale("2026-06-30", [["CONSULTA", 9000]], [["PIX", 9000]], "s3"), // outro mês, ignorado
+  ];
+  const expenses = [
+    { id: "e1", description: "Aluguel pago", categoryRef: "cat-aluguel-iptu-agua", amount: 20000, dueDate: "2026-07-08", paidAt: "2026-07-09", method: "BOLETO", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
+    { id: "e2", description: "Mercearia a pagar", categoryRef: "cat-salarios-fixos", amount: 40000, dueDate: "2026-07-20", paidAt: null, method: "PIX", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
+    { id: "e3", description: "Obra (VISA)", categoryRef: "cat-compras-variaveis-obras-2026", amount: 48000, dueDate: "2026-07-05", paidAt: "2026-07-05", method: "CARTAO_CREDITO", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: true, notes: "", createdAt: "" },
+  ];
+  const savings = [
+    { id: "sv1", moveDate: "2026-07-02", direction: "ENTRADA", amount: 20939.62, kind: "APORTE", note: "" },
+  ];
+  const metas = { goalSuperRevenue: 350000, goalTargetRevenue: 330000, goalMinRevenue: 300000 };
+  const resumo = fin.buildResumoMes(sales, expenses, categories, savings, metas, "2026-07");
+
+  assert.equal(resumo.faturamento, 153216);
+  assert.equal(resumo.poupanca, 20939.62);
+  assert.equal(resumo.custosOperacionais, 60000); // 20k aluguel + 40k mercearia (obra fora)
+  assert.equal(resumo.aPagar, 40000); // só a mercearia não paga
+  assert.equal(resumo.jaPago, 20000); // aluguel pago
+  assert.equal(resumo.obra, 48000); // CAPEX à parte
+  // lucro = faturamento + poupança − custos operacionais (obra fora)
+  assert.ok(Math.abs(resumo.lucroOperacional - (153216 + 20939.62 - 60000)) < 0.001);
+  assert.equal(resumo.metaSuper, 350000);
+  assert.equal(resumo.faltaMeta, 350000 - 153216);
+  assert.ok(Math.abs(resumo.metaPercent - 153216 / 350000) < 0.001);
+});
+
+test("resumo do mês: aPagar nunca fica maior que os custos (jaPago não negativo)", () => {
+  const categories = fin.seedFinCategories;
+  const expenses = [
+    { id: "e1", description: "Categoria órfã não paga", categoryRef: "cat-inexistente", amount: 5000, dueDate: "2026-07-10", paidAt: null, method: "PIX", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
+    { id: "e2", description: "Salário a pagar", categoryRef: "cat-salarios-fixos", amount: 3000, dueDate: "2026-07-15", paidAt: null, method: "PIX", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false, notes: "", createdAt: "" },
+  ];
+  const metas = { goalSuperRevenue: 350000, goalTargetRevenue: 330000, goalMinRevenue: 300000 };
+  const resumo = fin.buildResumoMes([], expenses, categories, [], metas, "2026-07");
+  // categoria órfã não entra nem no custo nem no "a pagar" (mesma base da P12)
+  assert.equal(resumo.custosOperacionais, 3000);
+  assert.equal(resumo.aPagar, 3000);
+  assert.equal(resumo.jaPago, 0);
+  assert.ok(resumo.jaPago >= 0);
+});
+
 test("categorias seed cobrem os 4 grupos da P12 real", () => {
   const groups = new Set(fin.seedFinCategories.map((category) => category.groupKey));
   assert.deepEqual([...groups].sort(), ["CUSTO_FIXO", "CUSTO_VARIAVEL", "MAO_DE_OBRA", "POUPANCA"]);

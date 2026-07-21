@@ -434,6 +434,68 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
 
 export const p12MonthLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
+// Resumo do mês que CONECTA as três lentes que se confundem: meta (faturamento),
+// lucro (faturamento − custos operacionais) e contas a pagar (fatia não paga).
+// Tudo derivado das mesmas fontes da P12/Metas — nada digitado.
+export type ResumoMes = {
+  faturamento: number;
+  poupanca: number;
+  custosOperacionais: number;
+  jaPago: number;
+  aPagar: number;
+  obra: number;
+  lucroOperacional: number;
+  metaSuper: number;
+  metaAlvo: number;
+  metaMin: number;
+  faltaMeta: number;
+  metaPercent: number;
+};
+
+export function buildResumoMes(
+  sales: FinSale[],
+  expenses: FinExpense[],
+  categories: FinCategory[],
+  savingsMoves: FinSavingsMove[],
+  metas: { goalSuperRevenue: number; goalTargetRevenue: number; goalMinRevenue: number },
+  monthKey: string,
+): ResumoMes {
+  const year = Number(monthKey.slice(0, 4));
+  const monthIdx = Number(monthKey.slice(5, 7)) - 1;
+  const matrix = buildP12Matrix(sales, expenses, categories, year, savingsMoves);
+  const faturamento = matrix.revenueMonths[monthIdx]?.total ?? 0;
+  const poupanca = matrix.savingsInMonths[monthIdx] ?? 0;
+  const custosOperacionais = matrix.totalExpensesMonths[monthIdx] ?? 0;
+  const obra = matrix.capexMonths[monthIdx] ?? 0;
+  const lucroOperacional = matrix.profitMonths[monthIdx] ?? 0;
+  // "A pagar" tem que somar exatamente a mesma base do custo operacional da P12:
+  // só categorias conhecidas e não-CAPEX, competência pelo vencimento. Assim
+  // jaPago = custos − aPagar nunca fica negativo por causa de categoria órfã.
+  const operationalRefs = new Set(categories.filter((category) => !category.isCapex).map((category) => category.id));
+  const aPagar = expenses
+    .filter(
+      (expense) =>
+        operationalRefs.has(expense.categoryRef) &&
+        !expense.paidAt &&
+        (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey,
+    )
+    .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  return {
+    faturamento,
+    poupanca,
+    custosOperacionais,
+    jaPago: custosOperacionais - aPagar,
+    aPagar,
+    obra,
+    lucroOperacional,
+    metaSuper: metas.goalSuperRevenue,
+    metaAlvo: metas.goalTargetRevenue,
+    metaMin: metas.goalMinRevenue,
+    faltaMeta: Math.max(metas.goalSuperRevenue - faturamento, 0),
+    metaPercent: metas.goalSuperRevenue > 0 ? faturamento / metas.goalSuperRevenue : 0,
+  };
+}
+
 export function createFinId(prefix: string) {
   return `${prefix}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
 }

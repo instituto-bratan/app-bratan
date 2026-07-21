@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { canFinanceiroView } from "@/lib/access";
+import { readLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
   buildP12Matrix,
@@ -15,7 +16,11 @@ import {
   type FinCategory,
   type P12Matrix,
 } from "./financeiroData";
+import { defaultMetasConfig, type MetasConfig } from "./metasData";
+import { ResumoMesCard } from "./ResumoMesCard";
 import { useFinanceiro } from "./useFinanceiro";
+
+const metasStorageKey = "app-bratan-fin-metas-config-v1";
 
 type CellSelection = { category: FinCategory | null; month: number; isRevenue: boolean };
 
@@ -35,6 +40,15 @@ export function FinanceiroP12Page() {
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
+
+  // Resumo do mês: usa o mês filtrado ou, no "Ano inteiro", o mês atual.
+  // Metas vêm da mesma config do controle de Metas (salva localmente).
+  const resumoMonthIdx = monthFilter ?? new Date().getMonth();
+  const resumoMonthKey = `${year}-${String(resumoMonthIdx + 1).padStart(2, "0")}`;
+  const metasConfig = useMemo<MetasConfig>(
+    () => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }),
+    [],
+  );
 
   const selectionEntries = useMemo(() => {
     if (!selection) return [];
@@ -143,6 +157,15 @@ export function FinanceiroP12Page() {
             {hideEmpty ? "Só categorias com valor" : "Todas as categorias"}
           </button>
         </section>
+
+        <ResumoMesCard
+          sales={financeiro.sales}
+          expenses={financeiro.expenses}
+          categories={financeiro.categories}
+          savingsMoves={financeiro.savingsMoves}
+          metas={metasConfig}
+          monthKey={resumoMonthKey}
+        />
 
         <section className="overflow-hidden rounded-xl border border-brand-oliva/15 bg-white/60 shadow-calm backdrop-blur-xl">
           <div className="kanban-scroll overflow-x-auto">

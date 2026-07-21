@@ -18,6 +18,7 @@ import { parseMoneyBR } from "@/lib/money";
 import { loadRemoteFinMetasConfig, saveRemoteFinMetasConfig } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import { moneyFin } from "./financeiroData";
+import { ResumoMesCard } from "./ResumoMesCard";
 import {
   buildMetaDoDiaMessage,
   buildMetasBoard,
@@ -219,6 +220,15 @@ export function FinanceiroMetasPage() {
             {feedback}
           </div>
         ) : null}
+
+        <ResumoMesCard
+          sales={financeiro.sales}
+          expenses={financeiro.expenses}
+          categories={financeiro.categories}
+          savingsMoves={financeiro.savingsMoves}
+          metas={config}
+          monthKey={monthKey}
+        />
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
