@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { ArrowDownCircle, ArrowUpCircle, CheckCircle2, PiggyBank, Plus, Trash2 } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, CheckCircle2, HandCoins, PiggyBank, Plus, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,20 +17,45 @@ import {
   createFinId,
   moneyFin,
   monthProvisionsDone,
+  operationalDebtToCofre,
   parseFinAmount,
   provisionMoveRef,
   savingsBalance,
-  type FinSavingsDirection,
+  savingsKindDirection,
+  savingsKindLabels,
+  type FinSavingsKind,
   type FinSavingsMove,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
+
+// Tipos oferecidos no formulário (na ordem de uso mais comum).
+const KIND_OPTIONS: { value: FinSavingsKind; hint: string }[] = [
+  { value: "APORTE", hint: "Reservou dinheiro no cofre (ex.: guardar lucro para a obra)." },
+  { value: "USO_OBRA", hint: "Usou o cofre para pagar a obra. Uso normal, não vira dívida." },
+  { value: "EMPRESTIMO", hint: "O cofre cobriu uma conta do operacional. O operacional passa a DEVER ao cofre." },
+  { value: "DEVOLUCAO", hint: "O operacional devolveu dinheiro ao cofre (quita o empréstimo)." },
+  { value: "RENDIMENTO", hint: "Rendimento pago pelo banco." },
+  { value: "SALDO_INICIAL", hint: "Saldo que já existia no cofre quando começou o controle." },
+  { value: "AJUSTE", hint: "Correção manual (entra como entrada)." },
+];
+
+const kindBadgeVariant: Record<FinSavingsKind, "gold" | "muted" | "outline"> = {
+  APORTE: "muted",
+  USO_OBRA: "outline",
+  EMPRESTIMO: "gold",
+  DEVOLUCAO: "muted",
+  RENDIMENTO: "muted",
+  PROVISAO: "muted",
+  SALDO_INICIAL: "outline",
+  AJUSTE: "outline",
+};
 
 export function FinanceiroPoupancaPage() {
   const { pessoa } = useAuth();
   const readOnly = !canFinanceiroFull(pessoa?.cargo);
   const now = todayISO();
   const financeiro = useFinanceiro(Number(now.slice(0, 4)));
-  const [direction, setDirection] = useState<FinSavingsDirection>("ENTRADA");
+  const [kind, setKind] = useState<FinSavingsKind>("APORTE");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [moveDate, setMoveDate] = useState(now);
@@ -39,30 +64,33 @@ export function FinanceiroPoupancaPage() {
   const [feedback, setFeedback] = useState("");
 
   const balance = useMemo(() => savingsBalance(financeiro.savingsMoves), [financeiro.savingsMoves]);
+  const debt = useMemo(() => operationalDebtToCofre(financeiro.savingsMoves), [financeiro.savingsMoves]);
   const provisionsDone = monthProvisionsDone(financeiro.savingsMoves, provisionMonth);
   const provisionTotal = financeiro.provisionRules.reduce(
     (sum, rule) => sum + parseFinAmount(provisionAmounts[rule.id] ?? String(rule.monthlyAmount).replace(".", ",")),
     0,
   );
+  const direction = savingsKindDirection[kind];
 
   function handleAddMove(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
     const value = parseFinAmount(amount);
     if (value <= 0) return setFeedback("Informe o valor do movimento.");
-    if (!reason.trim()) return setFeedback("Descreva o motivo (ex.: lucro de junho, saída obra).");
+    if (!reason.trim()) return setFeedback("Descreva o motivo (ex.: lucro de junho, fatura da obra).");
     const move: FinSavingsMove = {
       id: createFinId("fsav"),
       moveDate,
       direction,
       amount: value,
       reason: reason.trim(),
-      source: "MANUAL",
+      source: kind === "SALDO_INICIAL" ? "SALDO_INICIAL" : "MANUAL",
+      kind,
       monthRef: moveDate.slice(0, 7),
       createdAt: new Date().toISOString(),
     };
     financeiro.addSavingsMoves([move]);
-    setFeedback(`${direction === "ENTRADA" ? "Entrada" : "Saída"} de ${moneyFin(value)} registrada.`);
+    setFeedback(`${savingsKindLabels[kind]}: ${moneyFin(value)} registrado.`);
     setAmount("");
     setReason("");
   }
@@ -79,6 +107,7 @@ export function FinanceiroPoupancaPage() {
           amount: value,
           reason: `Provisão ${rule.name} (${provisionMonth.split("-").reverse().join("/")})`,
           source: "PROVISAO" as const,
+          kind: "PROVISAO" as const,
           monthRef: provisionMonth,
           createdAt: new Date().toISOString(),
         };
@@ -97,27 +126,41 @@ export function FinanceiroPoupancaPage() {
           animate={{ opacity: 1, y: 0 }}
           className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
         >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="gold">Financeiro 360</Badge>
                 <Badge variant="muted">{financeiro.syncMode}</Badge>
               </div>
               <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Poupança
-                <InfoTip title="Como funciona a Poupança aqui?">
-                  O saldo é a soma de todos os movimentos — nada de acumular célula na planilha. As provisões do mês (13º,
-                  férias, festa...) aparecem como sugestão pré-preenchida: você revisa, edita ou zera cada valor e confirma
-                  manualmente no fechamento, exatamente como decidiu.
+                Cofre / Poupança
+                <InfoTip title="Como funciona o cofre?">
+                  O cofre guarda o dinheiro reservado (obra/CDB, provisões de 13º e férias). Cada movimento tem um TIPO: guardei
+                  (aporte), usei na obra, o cofre cobriu uma conta do operacional (empréstimo, que fica como dívida a devolver)
+                  ou o operacional devolveu. Assim a obra nunca se mistura com o dia a dia. O saldo é a soma dos movimentos.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Entradas, saídas e provisões confirmadas — com o saldo sempre calculado.
+                Tudo separado: o que é da obra, o que foi guardado e o que o operacional pegou emprestado do cofre.
               </p>
             </div>
-            <div className="rounded-xl border border-brand-dourado/40 bg-brand-creme/50 px-5 py-3 text-right">
-              <p className="text-xs font-semibold uppercase text-brand-oliva">Saldo atual</p>
-              <p className={cn("text-3xl font-bold", balance < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(balance)}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-brand-dourado/40 bg-brand-creme/50 px-5 py-4">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-brand-oliva">
+                  <PiggyBank className="h-4 w-4" aria-hidden="true" /> Saldo do cofre
+                </p>
+                <p className={cn("mt-1 text-3xl font-bold", balance < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(balance)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Total reservado (obra, provisões, aportes).</p>
+              </div>
+              <div className={cn("rounded-xl border px-5 py-4", debt > 0.005 ? "border-amber-400/60 bg-amber-50/60" : "border-brand-oliva/20 bg-white/60")}>
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-brand-oliva">
+                  <HandCoins className="h-4 w-4" aria-hidden="true" /> Operacional deve ao cofre
+                </p>
+                <p className={cn("mt-1 text-3xl font-bold", debt > 0.005 ? "text-amber-700" : "text-brand-musgo")}>{moneyFin(debt)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {debt > 0.005 ? "Dinheiro do cofre que cobriu contas do operacional — a devolver." : "Nada pendente. Nada misturado. 👌"}
+                </p>
+              </div>
             </div>
           </div>
         </motion.section>
@@ -139,13 +182,27 @@ export function FinanceiroPoupancaPage() {
             </CardHeader>
             <CardContent>
               <form className="grid gap-3" onSubmit={handleAddMove}>
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" variant={direction === "ENTRADA" ? "default" : "outline"} onClick={() => setDirection("ENTRADA")}>
-                    <ArrowUpCircle className="mr-1.5 h-4 w-4" aria-hidden="true" /> Entrada
-                  </Button>
-                  <Button type="button" size="sm" variant={direction === "SAIDA" ? "default" : "outline"} onClick={() => setDirection("SAIDA")}>
-                    <ArrowDownCircle className="mr-1.5 h-4 w-4" aria-hidden="true" /> Saída
-                  </Button>
+                <div>
+                  <Label>O que é este movimento?</Label>
+                  <select
+                    value={kind}
+                    onChange={(event) => setKind(event.target.value as FinSavingsKind)}
+                    className="flex h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {KIND_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {savingsKindLabels[option.value]}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1.5 flex items-center gap-1.5 text-xs leading-5 text-muted-foreground">
+                    {direction === "ENTRADA" ? (
+                      <ArrowUpCircle className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden="true" />
+                    ) : (
+                      <ArrowDownCircle className="h-3.5 w-3.5 shrink-0 text-red-600" aria-hidden="true" />
+                    )}
+                    {KIND_OPTIONS.find((option) => option.value === kind)?.hint}
+                  </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -158,8 +215,8 @@ export function FinanceiroPoupancaPage() {
                   </div>
                 </div>
                 <div>
-                  <Label>Motivo</Label>
-                  <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ex.: entrada lucro junho, saída obra..." />
+                  <Label>Motivo / descrição</Label>
+                  <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ex.: fatura VISA obra, guardar lucro de junho..." />
                 </div>
                 <div>
                   <LiquidButton type="submit" size="sm">
@@ -223,7 +280,7 @@ export function FinanceiroPoupancaPage() {
           </CardHeader>
           <CardContent className="grid gap-2">
             {financeiro.savingsMoves.length ? (
-              financeiro.savingsMoves.slice(0, 40).map((move) => (
+              financeiro.savingsMoves.slice(0, 60).map((move) => (
                 <div key={move.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
                   <div className="flex min-w-0 items-center gap-2.5">
                     {move.direction === "ENTRADA" ? (
@@ -232,11 +289,13 @@ export function FinanceiroPoupancaPage() {
                       <ArrowDownCircle className="h-4 w-4 shrink-0 text-red-600" aria-hidden="true" />
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-brand-tinta">{move.reason}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {move.moveDate.split("-").reverse().join("/")}
-                        {move.source === "PROVISAO" ? " · provisão" : ""}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="truncate text-sm font-semibold text-brand-tinta">{move.reason}</p>
+                        {move.kind ? (
+                          <Badge variant={kindBadgeVariant[move.kind]} className="shrink-0 text-[10px]">{savingsKindLabels[move.kind]}</Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{move.moveDate.split("-").reverse().join("/")}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -253,7 +312,7 @@ export function FinanceiroPoupancaPage() {
               ))
             ) : (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                Sem movimentos ainda. Dica: comece registrando uma entrada "Saldo anterior" com o valor atual da poupança.
+                Sem movimentos ainda. Dica: comece com um "Saldo inicial" com o valor atual do cofre.
               </p>
             )}
           </CardContent>

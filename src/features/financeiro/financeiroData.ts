@@ -319,8 +319,14 @@ export type P12Matrix = {
   savingsInMonths: number[];
   savingsInYear: number;
   groups: P12Group[];
+  // Despesas OPERACIONAIS (já sem a obra/CAPEX).
   totalExpensesMonths: number[];
   totalExpensesYear: number;
+  // OBRA / investimento (CAPEX): fica FORA do lucro operacional — é pago pelo cofre.
+  capexRows: P12Row[];
+  capexMonths: number[];
+  capexYear: number;
+  // Lucro OPERACIONAL = faturamento + poupança − despesas operacionais (sem obra).
   profitMonths: number[];
   profitYear: number;
 };
@@ -370,7 +376,9 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
   }
 
   const groups: P12Group[] = finGroupOrder.map((groupKey) => {
-    const rows = orderedCategories.filter((category) => category.groupKey === groupKey).map((category) => rowByRef.get(category.id)!);
+    // Categorias CAPEX (obra) saem dos grupos: são investimento pago pelo cofre,
+    // não custo operacional — não podem pesar no lucro do mês.
+    const rows = orderedCategories.filter((category) => category.groupKey === groupKey && !category.isCapex).map((category) => rowByRef.get(category.id)!);
     const months = emptyCells();
     let yearTotal = 0;
     for (const row of rows) {
@@ -382,6 +390,13 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     }
     return { groupKey, label: finGroupLabels[groupKey], months, yearTotal, rows };
   });
+
+  // OBRA / investimento (CAPEX): consolidado à parte, fora do lucro operacional.
+  const capexRows = orderedCategories.filter((category) => category.isCapex).map((category) => rowByRef.get(category.id)!);
+  const capexMonths = Array.from({ length: 12 }, (_, index) =>
+    capexRows.reduce((sum, row) => sum + row.months[index].total, 0),
+  );
+  const capexYear = capexMonths.reduce((sum, value) => sum + value, 0);
 
   const totalExpensesMonths = Array.from({ length: 12 }, (_, index) =>
     groups.reduce((sum, group) => sum + group.months[index].total, 0),
@@ -409,6 +424,9 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     groups,
     totalExpensesMonths,
     totalExpensesYear,
+    capexRows,
+    capexMonths,
+    capexYear,
     profitMonths,
     profitYear: revenueYear + savingsInYear - totalExpensesYear,
   };
@@ -593,6 +611,41 @@ export type FinReconciliationStatus = "PENDENTE" | "CONFERIDO" | "DIVERGENTE";
 export type FinSavingsDirection = "ENTRADA" | "SAIDA";
 export type FinSavingsSource = "MANUAL" | "PROVISAO" | "SALDO_INICIAL";
 
+// Tipo do movimento do cofre — dá o "para quê" de cada entrada/saída, para
+// separar o que é da obra do que o operacional pegou emprestado.
+export type FinSavingsKind =
+  | "APORTE" // entrada: guardou dinheiro no cofre (ex.: reservar lucro para a obra)
+  | "USO_OBRA" // saída: usou o cofre para pagar OBRA (uso legítimo, não vira dívida)
+  | "EMPRESTIMO" // saída: cofre cobriu conta OPERACIONAL → o operacional passa a dever
+  | "DEVOLUCAO" // entrada: o operacional devolveu ao cofre (quita o empréstimo)
+  | "RENDIMENTO" // entrada: rendimento do banco
+  | "PROVISAO" // entrada: provisão (13º, férias)
+  | "SALDO_INICIAL" // entrada: saldo inicial do cofre
+  | "AJUSTE"; // entrada ou saída: ajuste/correção manual
+
+export const savingsKindLabels: Record<FinSavingsKind, string> = {
+  APORTE: "Guardei no cofre",
+  USO_OBRA: "Usei na obra",
+  EMPRESTIMO: "Cofre cobriu conta (a devolver)",
+  DEVOLUCAO: "Devolvi ao cofre",
+  RENDIMENTO: "Rendimento do banco",
+  PROVISAO: "Provisão (13º/férias)",
+  SALDO_INICIAL: "Saldo inicial",
+  AJUSTE: "Ajuste manual",
+};
+
+// Direção natural de cada tipo (entra ou sai do cofre).
+export const savingsKindDirection: Record<FinSavingsKind, FinSavingsDirection> = {
+  APORTE: "ENTRADA",
+  USO_OBRA: "SAIDA",
+  EMPRESTIMO: "SAIDA",
+  DEVOLUCAO: "ENTRADA",
+  RENDIMENTO: "ENTRADA",
+  PROVISAO: "ENTRADA",
+  SALDO_INICIAL: "ENTRADA",
+  AJUSTE: "ENTRADA",
+};
+
 export type FinReconciliation = {
   id: string;
   day: string;
@@ -615,6 +668,7 @@ export type FinSavingsMove = {
   amount: number;
   reason: string;
   source: FinSavingsSource;
+  kind?: FinSavingsKind;
   monthRef: string;
   createdAt: string;
 };
@@ -676,6 +730,21 @@ export function monthDaysWithSales(sales: FinSale[], month: string) {
 
 export function savingsBalance(moves: FinSavingsMove[]) {
   return moves.reduce((sum, move) => sum + (move.direction === "ENTRADA" ? move.amount : -move.amount), 0);
+}
+
+// Quanto o OPERACIONAL deve ao cofre: soma dos empréstimos (cofre cobriu conta)
+// menos as devoluções. É o valor "misturado" que ainda precisa ser compensado.
+export function operationalDebtToCofre(moves: FinSavingsMove[]) {
+  return moves.reduce((sum, move) => {
+    if (move.kind === "EMPRESTIMO") return sum + move.amount;
+    if (move.kind === "DEVOLUCAO") return sum - move.amount;
+    return sum;
+  }, 0);
+}
+
+// Total já usado do cofre para a obra (uso legítimo).
+export function cofreSpentOnObra(moves: FinSavingsMove[]) {
+  return moves.reduce((sum, move) => (move.kind === "USO_OBRA" ? sum + move.amount : sum), 0);
 }
 
 export function monthProvisionsDone(moves: FinSavingsMove[], month: string) {

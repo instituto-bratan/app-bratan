@@ -3591,7 +3591,7 @@ export async function listRemoteFinSavings(): Promise<FinSavingsMove[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_savings_moves")
-    .select("client_ref, move_date, direction, amount, reason, source, month_ref, created_at")
+    .select("client_ref, move_date, direction, amount, reason, source, kind, month_ref, created_at")
     .is("deleted_at", null)
     .order("move_date", { ascending: false });
 
@@ -3603,6 +3603,7 @@ export async function listRemoteFinSavings(): Promise<FinSavingsMove[]> {
     amount: Number(row.amount ?? 0),
     reason: String(row.reason ?? ""),
     source: row.source as FinSavingsMove["source"],
+    kind: (row.kind ?? undefined) as FinSavingsMove["kind"],
     monthRef: String(row.month_ref ?? ""),
     createdAt: String(row.created_at ?? ""),
   }));
@@ -3619,6 +3620,7 @@ export async function createRemoteFinSavingsMoves(moves: FinSavingsMove[], creat
       amount: move.amount,
       reason: move.reason,
       source: move.source,
+      kind: move.kind ?? null,
       month_ref: move.monthRef,
       created_by: uuidOrNull(createdBy),
       // Reconfirmar provisões após excluir os movimentos do mês usa os MESMOS ids

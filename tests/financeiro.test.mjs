@@ -94,13 +94,15 @@ test("P12 deriva faturamento das comandas e despesas por categoria/mês", () => 
   assert.equal(aluguelRow.yearTotal, 13982.77);
 
   const variaveis = matrix.groups.find((group) => group.groupKey === "CUSTO_VARIAVEL");
-  assert.equal(variaveis.months[5].total, 6300);
+  assert.equal(variaveis.months[5].total, 0); // obra (CAPEX) não entra mais no grupo operacional
 
   const maoDeObra = matrix.groups.find((group) => group.groupKey === "MAO_DE_OBRA");
   assert.equal(maoDeObra.months[6].total, 8689);
 
-  assert.equal(matrix.totalExpensesMonths[5], 13982.77 + 6300);
-  assert.ok(Math.abs(matrix.profitMonths[5] - (12000 - 20282.77)) < 0.001);
+  // Obra é CAPEX: consolidada à parte e FORA das despesas operacionais e do lucro.
+  assert.equal(matrix.capexMonths[5], 6300);
+  assert.equal(matrix.totalExpensesMonths[5], 13982.77); // só o aluguel (operacional)
+  assert.ok(Math.abs(matrix.profitMonths[5] - (12000 - 13982.77)) < 0.001);
 });
 
 test("categorias seed cobrem os 4 grupos da P12 real", () => {
@@ -134,6 +136,16 @@ test("saldo da poupança soma entradas e subtrai saídas", () => {
     { id: "m3", moveDate: "2026-06-18", direction: "ENTRADA", amount: 40001.64, reason: "", source: "MANUAL", monthRef: "2026-06", createdAt: "" },
   ];
   assert.ok(Math.abs(fin.savingsBalance(moves) - (15000.8 + 40001.64 - 71507.42)) < 0.001);
+});
+
+test("dívida do operacional com o cofre = empréstimos − devoluções (obra não conta)", () => {
+  const moves = [
+    { id: "a", moveDate: "2026-07-13", direction: "SAIDA", amount: 34323.91, reason: "cobriu conta", source: "MANUAL", kind: "EMPRESTIMO", monthRef: "2026-07", createdAt: "" },
+    { id: "b", moveDate: "2026-07-13", direction: "SAIDA", amount: 59239.37, reason: "obra", source: "MANUAL", kind: "USO_OBRA", monthRef: "2026-07", createdAt: "" },
+    { id: "c", moveDate: "2026-07-20", direction: "ENTRADA", amount: 10000, reason: "devolveu", source: "MANUAL", kind: "DEVOLUCAO", monthRef: "2026-07", createdAt: "" },
+  ];
+  assert.ok(Math.abs(fin.operationalDebtToCofre(moves) - (34323.91 - 10000)) < 0.001);
+  assert.ok(Math.abs(fin.cofreSpentOnObra(moves) - 59239.37) < 0.001);
 });
 
 test("provisões do mês são idempotentes por referência determinística", () => {
