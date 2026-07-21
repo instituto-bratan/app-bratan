@@ -38,7 +38,7 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { PageGuideButton } from "@/components/ui/page-guide";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvatar } from "@/features/perfil/avatarStore";
-import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canMarketing, cargoGroup, cargoLabels } from "@/lib/access";
+import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canMarketing, cargoGroup, cargoLabels } from "@/lib/access";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
@@ -97,6 +97,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Kanban Comercial", shortLabel: "Kanban", href: "/crm/vendas", icon: Target, allowed: canCrmBratan },
       { label: "Cadências", href: "/crm/cadencias", icon: MessageCircle, allowed: canCrmBratan },
       { label: "Listas do Dr. Daniel", shortLabel: "Listas", href: "/crm/listas", icon: ClipboardList, allowed: canCrmBratan },
+      { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento },
       { label: "Canais de Venda", shortLabel: "Canais", href: "/crm/canais", icon: Target, allowed: canCrmBratan },
     ],
   },

@@ -234,6 +234,9 @@ export type CrmDeal = {
   programPhaseActorId?: string; // quem disparou a entrada (auditoria)
   programOutcome?: CrmProgramOutcome | null; // desfecho ao encerrar
   adhesionChannel?: CrmAdhesionChannel | null; // canal escolhido no fechamento
+  // Marcos do plano de acompanhamento concluídos (aba do Dr. Daniel):
+  // chaves "CHECK-1".."CHECK-6", "BIO-1".."BIO-6", "MEDICO-1".."MEDICO-3".
+  programMilestonesDone?: string[];
 };
 
 export type CrmCadence = {

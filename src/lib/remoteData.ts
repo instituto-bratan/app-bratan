@@ -2148,6 +2148,7 @@ export async function listRemoteCrmState(): Promise<CrmState> {
         programPhaseActorId: row.program_phase_actor_id ?? undefined,
         programOutcome: row.program_outcome ?? null,
         adhesionChannel: row.adhesion_channel ?? null,
+        programMilestonesDone: Array.isArray(row.program_milestones_done) ? (row.program_milestones_done as string[]) : [],
       }),
     ),
     tasks: (tasks as any[]).map(
@@ -2361,6 +2362,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       program_phase_actor_id: record.programPhaseActorId || null,
       program_outcome: record.programOutcome ?? null,
       adhesion_channel: record.adhesionChannel ?? null,
+      program_milestones_done: record.programMilestonesDone ?? [],
     })),
   );
 

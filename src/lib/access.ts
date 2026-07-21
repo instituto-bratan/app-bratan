@@ -190,6 +190,13 @@ export function canCrmBratan(cargo: Cargo | null | undefined) {
   return Boolean(cargo);
 }
 
+// Aba "Plano de Acompanhamento" (20/07/2026): controle do Dr. Daniel sobre os
+// pacientes do plano (fases, bioimpedâncias, checkpoints, consultas). Pedido do
+// Lucas: SÓ o médico e o gestor financeiro (desenvolvedor) enxergam.
+export function canAcompanhamento(cargo: Cargo | null | undefined) {
+  return cargo === "dr_daniel" || cargo === "gestor_financeiro";
+}
+
 // Aba de Marketing (13/07/2026): o time de marketing e a coordenação veem o
 // briefing do mês e o plano de conteúdo preenchido pela IA.
 export function canMarketing(cargo: Cargo | null | undefined) {
