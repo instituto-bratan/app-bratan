@@ -159,12 +159,17 @@ test("sugestões: pacientes ativos/fechados fora do plano aparecem para cadastra
   assert.ok(!sug.includes("c-3")); // lead frio → não é paciente
 });
 
-test("texto para a Assistente de Performance resume paciente, progresso e próximo passo", () => {
+test("relatório em tabela: colunas por paciente com feito e quanto falta", () => {
   const deal = makeDeal({ programMilestonesDone: ["CHECK-1", "BIO-1", "MEDICO-1"] });
   const board = programa.buildProgramaBoard(makeState([deal]), "2026-07-20");
-  const text = programa.buildNutriShareText(board, "2026-07-20");
-  assert.ok(text.includes("Maria Silva"));
-  assert.ok(text.includes("Checkpoints: 1/6"));
-  assert.ok(text.includes("Consultas Dr.: 1/3"));
-  assert.ok(text.includes("Próximo:"));
+  const table = programa.buildPerformanceReportTable(board);
+  assert.equal(JSON.stringify(table.headers), JSON.stringify(["Paciente", "Fase", "Mês", "Checkpoints", "Bioimpedâncias", "Consultas Dr.", "Próximo passo"]));
+  const row = table.rows[0];
+  assert.equal(row[0], "Maria Silva");
+  assert.equal(row[3], "1/6 · faltam 5");
+  assert.equal(row[5], "1/3 · faltam 2");
+  assert.ok(row[6].length > 0);
+  const summary = programa.programSummaryLines(board);
+  assert.ok(summary[0].includes("1 paciente"));
+  assert.ok(summary[1].includes("checkpoint"));
 });

@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CheckCircle2, ClipboardCheck, Copy, HeartPulse, Plus, Stethoscope, UserPlus, XCircle } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Stethoscope, UserPlus, XCircle } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { canAcompanhamento } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
+import { exportBrandedPdf } from "@/lib/brandedPdf";
 import { cn } from "@/lib/utils";
 import {
   contactDisplayName,
@@ -23,12 +24,13 @@ import {
 } from "@/features/crm/crmData";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
-  buildNutriShareText,
+  buildPerformanceReportTable,
   buildProgramaBoard,
   enrollPatientInProgram,
   milestoneResponsible,
   milestoneTypeLabels,
   patientsNotInProgram,
+  programSummaryLines,
   toggleProgramMilestone,
   type ProgramMilestone,
   type ProgramPatientCard,
@@ -120,15 +122,27 @@ export function ProgramaAcompanhamentoPage() {
     void persist((current) => toggleProgramMilestone(current, dealId, key));
   }
 
-  async function copyForNutri() {
-    const text = buildNutriShareText(filtered, hoje);
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopyFeedback("Controle copiado — é só colar no WhatsApp da Assistente de Performance.");
-    } catch {
-      setCopyFeedback("Não consegui copiar automático — tente de novo.");
+  function gerarRelatorio() {
+    if (!filtered.length) {
+      setCopyFeedback("Nenhum paciente para o relatório com o filtro atual.");
+      window.setTimeout(() => setCopyFeedback(""), 6000);
+      return;
     }
-    window.setTimeout(() => setCopyFeedback(""), 6000);
+    const ok = exportBrandedPdf({
+      title: "Plano de Acompanhamento — Assistente de Performance",
+      subtitle: `Controle da caminhada dos pacientes · ${formatBR(hoje)}`,
+      sections: [
+        { heading: "Resumo", lines: programSummaryLines(filtered) },
+        { heading: "Pacientes em acompanhamento", table: buildPerformanceReportTable(filtered) },
+      ],
+      footerNote: "Datas previstas contam a partir da adesão. A agenda oficial fica no Feegow.",
+    });
+    setCopyFeedback(
+      ok
+        ? "Relatório gerado — use \"Salvar como PDF\" na janela de impressão para enviar."
+        : "Libere os pop-ups do navegador para gerar o relatório.",
+    );
+    window.setTimeout(() => setCopyFeedback(""), 7000);
   }
 
   async function copyNotClosed() {
@@ -216,9 +230,9 @@ export function ProgramaAcompanhamentoPage() {
             </button>
           ))}
           <span className="mx-1 hidden h-5 w-px bg-brand-oliva/20 sm:block" />
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void copyForNutri()}>
-            <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-            Copiar controle p/ Performance
+          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={gerarRelatorio}>
+            <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+            Relatório p/ Performance
           </Button>
           <Button type="button" variant={enrollOpen ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setEnrollOpen((value) => !value)}>
             <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />

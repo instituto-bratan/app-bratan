@@ -279,19 +279,36 @@ function formatBR(dateISO: string) {
   return dateISO ? dateISO.slice(0, 10).split("-").reverse().join("/") : "";
 }
 
-// Texto pronto para o Dr. Daniel mandar à Assistente de Performance (WhatsApp).
-export function buildNutriShareText(cards: ProgramPatientCard[], todayISO: string): string {
-  const lines: string[] = [
-    `Plano de Acompanhamento — controle ${formatBR(todayISO)}`,
-    `${cards.length} paciente(s) em acompanhamento`,
-    "",
-  ];
-  for (const card of cards) {
-    lines.push(`• ${card.patientName} — mês ${card.monthOfProgram}/6 (${card.phaseLabel})`);
-    lines.push(`   Checkpoints: ${card.checksDone}/6 · Bioimpedâncias: ${card.biosDone}/6 · Consultas Dr.: ${card.medicoDone}/3`);
-    if (card.nextMilestone) {
-      lines.push(`   Próximo: ${card.nextMilestone.label} — ${formatBR(card.nextMilestone.expectedDate)}${card.nextMilestone.overdue ? " (ATRASADO)" : ""}`);
-    }
-  }
-  return lines.join("\n");
+// Relatório em TABELA para a Assistente de Performance (colunas por paciente,
+// quanto já foi e quanto falta de cada etapa). Alimenta o PDF com a marca.
+export function buildPerformanceReportTable(cards: ProgramPatientCard[]): { headers: string[]; rows: string[][] } {
+  const headers = ["Paciente", "Fase", "Mês", "Checkpoints", "Bioimpedâncias", "Consultas Dr.", "Próximo passo"];
+  const rows = cards.map((card) => {
+    const next = card.nextMilestone
+      ? `${card.nextMilestone.label} · ${formatBR(card.nextMilestone.expectedDate)}${card.nextMilestone.overdue ? " (ATRASADO)" : ""}`
+      : "Plano completo";
+    return [
+      card.patientName,
+      card.phaseLabel,
+      `${card.monthOfProgram}/6`,
+      `${card.checksDone}/6 · faltam ${6 - card.checksDone}`,
+      `${card.biosDone}/6 · faltam ${6 - card.biosDone}`,
+      `${card.medicoDone}/3 · faltam ${3 - card.medicoDone}`,
+      next,
+    ];
+  });
+  return { headers, rows };
 }
+
+// Resumo executivo do plano (para o cabeçalho do relatório).
+export function programSummaryLines(cards: ProgramPatientCard[]): string[] {
+  const emDia = cards.filter((card) => card.overdueCount === 0).length;
+  const atrasados = cards.filter((card) => card.overdueCount > 0).length;
+  const checkFaltam = cards.reduce((sum, card) => sum + (6 - card.checksDone), 0);
+  const bioFaltam = cards.reduce((sum, card) => sum + (6 - card.biosDone), 0);
+  return [
+    `${cards.length} paciente(s) em acompanhamento — ${emDia} em dia, ${atrasados} com atraso.`,
+    `Faltam no total: ${checkFaltam} checkpoint(s) e ${bioFaltam} bioimpedância(s).`,
+  ];
+}
+
