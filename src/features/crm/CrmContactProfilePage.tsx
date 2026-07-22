@@ -35,7 +35,9 @@ import {
 } from "./crmData";
 import { useCrmState } from "./useCrmState";
 
-type ProfileTab = "resumo" | "timeline" | "tarefas" | "cadencias" | "comercial" | "jornada" | "experiencia" | "recebiveis" | "contratos";
+// Contratos saiu do app (decisão do Lucas, 22/07): não existe fluxo de
+// contrato/SuperSign no CRM.
+type ProfileTab = "resumo" | "timeline" | "tarefas" | "cadencias" | "comercial" | "jornada" | "experiencia" | "recebiveis";
 
 const tabLabels: Record<ProfileTab, string> = {
   resumo: "Resumo",
@@ -46,7 +48,6 @@ const tabLabels: Record<ProfileTab, string> = {
   jornada: "Jornada",
   experiencia: "Experiência",
   recebiveis: "Recebíveis",
-  contratos: "Contratos",
 };
 
 function InfoItem({ label, value }: { label: string; value: string | number }) {
@@ -357,7 +358,6 @@ export function CrmContactProfilePage() {
               <CardContent>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <InfoItem label="Plano" value={journey.treatmentPlanSummary} />
-                  <InfoItem label="Contrato" value={journey.contractSigned ? "Assinado" : journey.contractSent ? "Enviado" : journey.contractCreated ? "Criado" : "Pendente"} />
                   <InfoItem label="Próximo retorno" value={journey.nextMedicalReturnDate || "Não definido"} />
                   <InfoItem label="Primeira dose" value={journey.firstDoseScheduled ? "Agendada" : "Pendente"} />
                   <InfoItem label="Bioimpedância" value={journey.firstBioimpedanceScheduled ? "Agendada" : "Pendente"} />
@@ -411,28 +411,6 @@ export function CrmContactProfilePage() {
         </Card>
       ) : null}
 
-      {tab === "contratos" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FileSignature className="h-5 w-5" /> Contratos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3">
-              {journeys.map((journey) => (
-                <div key={journey.id} className="rounded-lg border border-brand-oliva/12 bg-white/58 p-3">
-                  <p className="font-semibold text-brand-musgo">{journey.contractSigned ? "Contrato assinado" : journey.contractSent ? "Contrato enviado" : journey.contractCreated ? "Contrato criado" : "Contrato pendente"}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{journey.notes || "Status vem da Jornada/Administrativo."}</p>
-                </div>
-              ))}
-              {!journeys.length ? (
-                <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/45 p-4 text-sm text-muted-foreground">
-                  Contrato será criado automaticamente quando a venda fechar no Kanban.
-                </div>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">

@@ -65,6 +65,7 @@ import {
   type CrmTask,
 } from "./crmData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
+import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
 import { useCrmState } from "./useCrmState";
 
 const objectionOptions: CrmObjectionCategory[] = [
@@ -94,9 +95,11 @@ const stageSections: Record<KanbanSection, CrmDealStage[]> = {
   negociacao: ["PRESCRICAO_FEITA", "EM_NEGOCIACAO", "FECHOU_COMPLETO", "FECHOU_PARCIAL", "NAO_FECHOU", "RECUPERACAO_D1_MEDICO", "RECUPERACAO_D2_GESTOR", "NAO_ADESAO", "PERDIDO", "RESGATE_D60", "CHURN"],
 };
 
-// Quadros do Kanban (POP v3.1): Comercial (até fechar) e Programa (pós-fechamento).
+// O CRM começa no FECHAMENTO (decisão do Lucas, 22/07): o quadro principal é a
+// JORNADA do paciente; o que era funil comercial virou uma lista simples de
+// "Em aberto" (leads/consultas ainda sem fechamento registrado).
 type KanbanBoard = "comercial" | "programa";
-const boardLabels: Record<KanbanBoard, string> = { comercial: "Comercial", programa: "Programa" };
+const boardLabels: Record<KanbanBoard, string> = { programa: "Jornada do paciente", comercial: "Em aberto (antes do fechamento)" };
 
 // Cores por papel — a mesma linguagem visual da Régua de Relacionamento.
 const roleTones: Partial<Record<CrmRole, { chip: string; dot: string }>> = {
@@ -143,31 +146,30 @@ const temperatureLabels: Record<CrmLeadTemperature, string> = {
 const kanbanTourSteps: TourStep[] = [
   {
     icon: Target,
-    title: "As colunas são a caminhada do lead",
+    title: "Tudo começa no fechamento (Estevão)",
     description:
-      "Do Lead Frio até Fechou (ou Resgate), cada coluna é uma etapa real da operação Bratan. Use as seções no topo para focar em Captação & Consulta ou Negociação & Recuperação.",
-    hint: "O valor no cabeçalho de cada coluna soma o potencial dos cards dela.",
+      "O botão \"Registrar fechamento\" é a porta de entrada: escolha o paciente, marque o que ele fechou (Programa, Clube, Só Tratamento, avulsa ou não fechou) e a esteira certa liga sozinha.",
+    hint: "O telefone é a chave única: o app busca antes de criar — nada duplica.",
   },
   {
     icon: Move,
-    title: "Arraste os cards entre etapas",
+    title: "O card anda SOZINHO — ninguém arrasta",
     description:
-      "Pegue um card com o mouse e solte na nova etapa. No iPhone, toque em \"Mover / registrar\" dentro do card — faz a mesma coisa.",
-    hint: "Se faltar algo obrigatório (objeção, valor), o painel lateral abre sozinho para completar.",
+      "Cada fase tem as tarefas dela em Minhas Tarefas. Quando a pessoa conclui a tarefa, o card avança de coluna na mesma hora. No D+1 o card só avança quando TODAS as pessoas da esteira marcarem \"mensagem enviada\".",
+    hint: "O checklist no card mostra quem já marcou e quem falta.",
   },
   {
     icon: CircleDollarSign,
-    title: "Registre valores e objeções",
+    title: "Não fechou? A Concierge acolhe",
     description:
-      "Ao clicar em um card, o painel lateral mostra próxima ação, WhatsApp e os campos de prescrito, vendido e recebido. Não fechou? Registre a objeção — é o PMI digital.",
-    hint: "Regra da casa: não fechou exige objeção; fechou exige valor; parcial exige motivo.",
+      "Registrou \"não fechou\" com a objeção → a Aline recebe o acolhimento do D+1 e a régua D1–D5 segue um passo por vez. Qualquer resposta do paciente encerra a régua na hora.",
+    hint: "Sem resposta no D5 → o card vai para o Estevão (5 ligações).",
   },
   {
     icon: AlertTriangle,
-    title: "Nenhum card sem próxima ação",
+    title: "1 paciente = 1 card = 1 tarefa por pessoa",
     description:
-      "Card com selo vermelho \"Sem próxima ação\" é lead esfriando. Ao mover uma etapa, o app cria automaticamente as tarefas certas para Médico, Concierge, Recepção e Enfermagem.",
-    hint: "Exemplo: mover para \"Não Fechou\" agenda o contato do médico em D+1 e do gestor em D+2.",
+      "Nunca existem dois cards ativos do mesmo paciente, nem duas tarefas da mesma pessoa para ele. Se algo duplicar, o app cancela sozinho a sobra e registra o motivo.",
   },
   {
     icon: Search,
@@ -396,7 +398,7 @@ export function CrmKanbanPage() {
   const { state, persist, syncFailed, retrySync, deleteLead } = useCrmState();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
-  const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board", "comercial"));
+  const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
   const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
   const [density, setDensity] = useState<KanbanDensity>(() => readLocalValue<KanbanDensity>("app-bratan-kanban-density", "comfortable"));
   const [fullscreen, setFullscreen] = useState(false);
@@ -422,6 +424,18 @@ export function CrmKanbanPage() {
   const [draggingDealId, setDraggingDealId] = useState("");
   const [dragOverStage, setDragOverStage] = useState<CrmDealStage | null>(null);
   const [leadModalOpen, setLeadModalOpen] = useState(false);
+  // Cadastro do FECHAMENTO (Estevão) — a porta de entrada da jornada (Lucas, 22/07).
+  const [fechamentoOpen, setFechamentoOpen] = useState(false);
+  const [fcPatient, setFcPatient] = useState<PatientPickerValue>({ ref: "", name: "" });
+  const [fcPhone, setFcPhone] = useState("");
+  const [fcResultado, setFcResultado] = useState<CrmAdhesionChannel | "AVULSA" | "NAO_FECHOU">("PROGRAMA_ACOMPANHAMENTO");
+  const [fcCompleto, setFcCompleto] = useState(true);
+  const [fcSold, setFcSold] = useState("");
+  const [fcReceived, setFcReceived] = useState("");
+  const [fcObjection, setFcObjection] = useState("");
+  const [fcObjectionCategory, setFcObjectionCategory] = useState<CrmObjectionCategory>("PRICE");
+  const [fcPartialReason, setFcPartialReason] = useState("");
+  const [fcFeedback, setFcFeedback] = useState("");
   const [tourOpen, setTourOpen] = useState(false);
   const { seen: tourSeen, markSeen: markTourSeen } = useTourSeen("app-bratan-tour-kanban");
   const boardRef = useRef<HTMLDivElement>(null);
@@ -488,7 +502,7 @@ export function CrmKanbanPage() {
 
   function changeBoard(next: KanbanBoard) {
     setBoard(next);
-    writeLocalValue("app-bratan-kanban-board", next);
+    writeLocalValue("app-bratan-kanban-board-v2", next);
   }
 
   function onProgramColumnDrop(event: DragEvent<HTMLElement>, phase: CrmProgramPhase) {
@@ -633,6 +647,81 @@ export function CrmKanbanPage() {
     setNewName("");
     setNewPhone("");
     setLeadModalOpen(false);
+  }
+
+  // A jornada COMEÇA aqui: Estevão cadastra o fechamento (paciente + o que
+  // fechou) e o canal liga a esteira certa sozinho. Telefone é a chave única —
+  // o PatientPicker busca antes de criar (regra de ouro nº 1).
+  function handleRegistrarFechamento(event: FormEvent) {
+    event.preventDefault();
+    setFcFeedback("");
+    if (!fcPatient.ref && !fcPatient.name.trim()) return setFcFeedback("Escolha o paciente (ou digite o nome completo para criar).");
+    if (fcResultado === "NAO_FECHOU" && !fcObjection.trim()) return setFcFeedback("Não fechou: registre o motivo/objeção (é o nosso PMI).");
+    const soldAmount = Number(fcSold.replace(/\./g, "").replace(",", ".")) || 0;
+    const receivedAmount = Number(fcReceived.replace(/\./g, "").replace(",", ".")) || 0;
+    if (fcResultado !== "NAO_FECHOU" && soldAmount <= 0) return setFcFeedback("Fechou: informe o valor vendido.");
+    if (fcResultado !== "NAO_FECHOU" && !fcCompleto && !fcPartialReason.trim()) return setFcFeedback("Fechamento parcial: registre o motivo do parcial.");
+
+    persist((current) => {
+      let working = current;
+      let contactId = fcPatient.ref;
+      if (!contactId) {
+        const created = findOrCreateCrmContact(
+          working,
+          { fullName: fcPatient.name.trim(), phone: fcPhone, whatsapp: fcPhone, sourceChannel: "Fechamento (Estevão)", ownerUserId: pessoa?.id ?? "gestao" },
+          pessoa?.id ?? "gestao",
+        );
+        working = created.state;
+        contactId = created.contact.id;
+      }
+      let deal = working.deals.find((item) => item.contactId === contactId && item.status === "OPEN" && !item.programPhase);
+      if (!deal) {
+        working = createDealForContact(working, {
+          contactId,
+          title: `Fechamento — ${contactDisplayName(working.contacts.find((c) => c.id === contactId))}`,
+          ownerUserId: pessoa?.id ?? "gestao",
+          estimatedValue: soldAmount,
+          sourceChannel: "Fechamento (Estevão)",
+        });
+        deal = working.deals[0];
+      }
+      if (!deal) {
+        setFcFeedback("Não consegui criar a negociação — tente de novo.");
+        return current;
+      }
+      const stage: CrmDealStage = fcResultado === "NAO_FECHOU" ? "NAO_FECHOU" : fcCompleto ? "FECHOU_COMPLETO" : "FECHOU_PARCIAL";
+      const moved = moveDealStage(working, deal.id, {
+        actorId: pessoa?.id ?? "gestao",
+        stage,
+        soldAmount: fcResultado === "NAO_FECHOU" ? undefined : soldAmount,
+        receivedAmount: fcResultado === "NAO_FECHOU" ? undefined : receivedAmount,
+        adhesionChannel: fcResultado !== "NAO_FECHOU" && fcResultado !== "AVULSA" ? fcResultado : undefined,
+        objection: fcObjection.trim() || undefined,
+        objectionCategory: fcResultado === "NAO_FECHOU" ? fcObjectionCategory : undefined,
+        partialReason: fcPartialReason.trim() || undefined,
+      });
+      if (!moved.ok) {
+        setFcFeedback(moved.message || "Faltou informação obrigatória.");
+        return current;
+      }
+      setFeedback(
+        fcResultado === "NAO_FECHOU"
+          ? "Fechamento registrado como NÃO FECHOU — a Concierge acolhe amanhã (D+1) e a régua segue sozinha."
+          : fcResultado === "AVULSA"
+            ? "Consulta avulsa registrada — sem jornada (segue o fluxo normal de agenda)."
+            : `Fechamento registrado! A esteira ${fcResultado === "PROGRAMA_ACOMPANHAMENTO" ? "do Programa" : fcResultado === "CLUBE_BRATAN" ? "do Clube" : "de Tratamento"} ligou sozinha — as tarefas do D+1 já nasceram para as pessoas certas.`,
+      );
+      return moved.state;
+    });
+    setFechamentoOpen(false);
+    setFcPatient({ ref: "", name: "" });
+    setFcPhone("");
+    setFcSold("");
+    setFcReceived("");
+    setFcObjection("");
+    setFcPartialReason("");
+    setFcCompleto(true);
+    setFcResultado("PROGRAMA_ACOMPANHAMENTO");
   }
 
   function handleMoveDeal(event: FormEvent) {
@@ -835,17 +924,21 @@ export function CrmKanbanPage() {
               </button>
             ))}
           </div>
-          <InfoTip title={board === "comercial" ? "Quadro Comercial" : "Quadro Programa"}>
+          <InfoTip title={board === "comercial" ? "Em aberto (antes do fechamento)" : "Jornada do paciente"}>
             {board === "comercial"
-              ? "A caminhada da VENDA: da captação ao fechamento. Ao marcar \"Fechou\", o paciente ganha um card no quadro Programa e a régua de cuidado começa sozinha."
-              : "A régua PÓS-FECHAMENTO em 5 fases. O card avança sozinho quando os setores do gate concluem (ex.: no D+1, Recepção + Concierge + Enfermeira marcam \"enviado\"). A coordenação pode arrastar para corrigir."}
+              ? "Lista de quem ainda NÃO tem fechamento registrado. O CRM começa quando o Estevão registra o fechamento — aí o paciente entra na Jornada e as tarefas nascem sozinhas."
+              : "A jornada pós-fechamento. O card avança SOZINHO quando as tarefas da fase são concluídas (no D+1, todas as pessoas da esteira marcam \"mensagem enviada\"). Ninguém arrasta card; a coordenação corrige pela ficha."}
           </InfoTip>
         </div>
         <div className="flex flex-wrap gap-2">
-          <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={() => setLeadModalOpen(true)}>
+          <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={() => { setFcFeedback(""); setFechamentoOpen(true); }}>
             <Plus className="h-4 w-4" aria-hidden="true" />
-            Novo lead
+            Registrar fechamento
           </LiquidButton>
+          <Button type="button" variant="outline" size="sm" onClick={() => setLeadModalOpen(true)}>
+            <UserPlus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            Novo lead
+          </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => { setImportFeedback(""); setImportOpen(true); }}>
             <Upload className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Importar do Feegow
@@ -988,6 +1081,33 @@ export function CrmKanbanPage() {
                 {selectedDeal.programOutcome ? (
                   <Badge className="mt-2 bg-emerald-100 text-emerald-800">Desfecho: {programOutcomeLabels[selectedDeal.programOutcome]}</Badge>
                 ) : null}
+                {canOverridePhase ? (
+                  <div className="mt-3 border-t border-brand-oliva/15 pt-2">
+                    <p className="text-[11px] font-bold uppercase text-brand-oliva">Corrigir fase (só coordenação — fica registrado)</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {programPhases.map((phase) => (
+                        <button
+                          key={phase}
+                          type="button"
+                          disabled={selectedDeal.programPhase === phase}
+                          onClick={() => {
+                            persist((current) => setProgramPhase(current, selectedDeal.id, phase, pessoa?.id ?? "coordenacao"));
+                            setDrawerFeedback("");
+                            setFeedback(`Card movido manualmente para "${programPhaseLabels[phase]}" (registrado no histórico).`);
+                          }}
+                          className={cn(
+                            "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                            selectedDeal.programPhase === phase
+                              ? "border-brand-musgo bg-brand-musgo text-brand-papel"
+                              : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-brand-creme/50",
+                          )}
+                        >
+                          {programPhaseLabels[phase]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -1028,7 +1148,13 @@ export function CrmKanbanPage() {
               </div>
             </div>
 
-            <form className="mt-5 grid gap-3 sm:grid-cols-2" onSubmit={handleMoveDeal}>
+            {!canOverridePhase ? (
+              <p className="mt-5 rounded-lg border border-brand-oliva/16 bg-white/64 p-3 text-xs leading-5 text-muted-foreground">
+                O card anda sozinho quando a tarefa é concluída em <strong>Minhas Tarefas</strong> — ninguém move card na mão.
+                Precisa corrigir uma etapa? Fale com a coordenação.
+              </p>
+            ) : null}
+            <form className={cn("mt-5 grid gap-3 sm:grid-cols-2", !canOverridePhase && "hidden")} onSubmit={handleMoveDeal}>
               <div>
                 <Label>Nova etapa</Label>
                 <select value={targetStage} onChange={(event) => setTargetStage(event.target.value as CrmDealStage)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
@@ -1099,25 +1225,17 @@ export function CrmKanbanPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Buscar lead, paciente, origem ou objeção" />
           </label>
-          {board === "comercial" ? (
-            <select value={section} onChange={(event) => changeSection(event.target.value as KanbanSection)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Seção do funil">
-              {(Object.keys(sectionLabels) as KanbanSection[]).map((item) => (
-                <option key={item} value={item}>{sectionLabels[item]}</option>
-              ))}
-            </select>
-          ) : (
-            <div className="flex h-12 items-center gap-2 overflow-x-auto rounded-md border border-brand-oliva/16 bg-white/60 px-3" aria-label="Legenda de papéis">
-              {(["RECEPCAO", "CONCIERGE", "ENFERMAGEM", "MEDICO"] as CrmRole[]).map((role) => {
-                const tone = roleTone(role);
-                return (
-                  <span key={role} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-brand-musgo">
-                    <span className={cn("h-2 w-2 rounded-full", tone.dot)} aria-hidden="true" />
-                    {crmRoleLabels[role]}
-                  </span>
-                );
-              })}
-            </div>
-          )}
+          <div className="flex h-12 items-center gap-2 overflow-x-auto rounded-md border border-brand-oliva/16 bg-white/60 px-3" aria-label="Legenda de papéis">
+            {(["CONCIERGE", "RECEPCAO", "ENFERMAGEM", "ADMIN_GESTAO"] as CrmRole[]).map((role) => {
+              const tone = roleTone(role);
+              return (
+                <span key={role} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-brand-musgo">
+                  <span className={cn("h-2 w-2 rounded-full", tone.dot)} aria-hidden="true" />
+                  {crmRoleLabels[role]}
+                </span>
+              );
+            })}
+          </div>
           <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Densidade dos cards">
             {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
               <option key={item} value={item}>{densityLabels[item]}</option>
@@ -1165,102 +1283,80 @@ export function CrmKanbanPage() {
           fullscreen ? "min-h-0 flex-1" : "lg:min-h-0 lg:flex-1",
         )}
       >
-        <div className={cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen ? "h-full items-stretch" : "lg:h-full lg:items-stretch")}>
+        <div
+          className={cn(
+            board === "comercial"
+              ? "w-full min-w-0 max-w-5xl"
+              : cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen ? "h-full items-stretch" : "lg:h-full lg:items-stretch"),
+          )}
+        >
           {board === "comercial"
-            ? visibleStages.map((stage, stageIndex) => {
-                const stageDeals = comercialDeals.filter((deal) => deal.stage === stage);
-                const total = stageDeals.reduce((sum, deal) => sum + (deal.soldAmount || deal.estimatedValue * (stageProbability(stage) / 100)), 0);
-                const isDropTarget = dragOverStage === stage;
-                const nextStage = visibleStages[stageIndex + 1];
-                const isClosing = stage === "FECHOU_COMPLETO" || stage === "FECHOU_PARCIAL";
-
+            ? (() => {
+                // O CRM começa no FECHAMENTO: o que era funil virou esta lista
+                // simples. Cada linha tem 1 botão que importa — Registrar fechamento.
+                const rows = [...comercialDeals]
+                  .filter((deal) => deal.status === "OPEN")
+                  .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
                 return (
-                  <section
-                    key={stage}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      if (dragOverStage !== stage) setDragOverStage(stage);
-                    }}
-                    onDragLeave={(event) => {
-                      if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-                      setDragOverStage((current) => (current === stage ? null : current));
-                    }}
-                    onDrop={(event) => onColumnDrop(event, stage)}
-                    className={cn(
-                      "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
-                      fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none",
-                      isDropTarget && "border-brand-dourado/70 bg-brand-creme/45 ring-2 ring-brand-dourado/30",
-                    )}
-                  >
-                    <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
-                      <p className="flex items-center gap-1.5 text-sm font-semibold" title={dealStageHints[stage]}>
-                        {dealStageLabels[stage]}
-                        <InfoTip title={dealStageLabels[stage]} className="text-brand-papel/80">
-                          {dealStageHints[stage]}
-                        </InfoTip>
-                      </p>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
-                        <span>{stageDeals.length} cards{canSeeValue ? ` · ${moneyCrm(total)}` : ""}</span>
-                        {isClosing ? (
-                          <span className="font-semibold text-brand-creme">→ vai p/ Programa</span>
-                        ) : nextStage ? (
-                          <span>→ {dealStageLabels[nextStage]}</span>
-                        ) : null}
+                  <section className="flex flex-col gap-2 rounded-lg border border-brand-oliva/14 bg-white/40 p-3 backdrop-blur-xl">
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Pacientes/leads ainda SEM fechamento registrado. Quando o Estevão registra o fechamento, o paciente
+                      entra na <strong>Jornada</strong> e as tarefas certas nascem sozinhas. ({rows.length} em aberto)
+                    </p>
+                    {rows.length ? (
+                      rows.map((deal) => {
+                        const contact = contactsById.get(deal.contactId);
+                        const phone = contact ? (contact.whatsapp || contact.phone || "").replace(/\D/g, "") : "";
+                        return (
+                          <div key={deal.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/65 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-brand-tinta">{contactDisplayName(contact)}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {dealStageLabels[deal.stage]}
+                                {deal.sourceChannel ? ` · ${deal.sourceChannel}` : ""}
+                                {phone ? ` · ${phone}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 gap-1.5">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  setFcPatient({ ref: deal.contactId, name: contactDisplayName(contact) });
+                                  setFcFeedback("");
+                                  setFechamentoOpen(true);
+                                }}
+                              >
+                                Registrar fechamento
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" onClick={() => selectDeal(deal)}>
+                                Abrir
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-4 text-center text-sm text-muted-foreground">
+                        Ninguém em aberto — todo mundo já tem fechamento registrado. ✓
                       </div>
-                    </div>
-                    <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
-                      {stageDeals.length ? (
-                        stageDeals.map((deal) => {
-                          const contact = contactsById.get(deal.contactId);
-                          return (
-                            <DealCard
-                              key={deal.id}
-                              deal={deal}
-                              contact={contact}
-                              nextTask={nextTaskByDealId.get(deal.id)}
-                              hasCadence={coveredContactIds.has(deal.contactId)}
-                              density={density}
-                              canSeeValue={canSeeValue}
-                              isDragging={draggingDealId === deal.id}
-                              onSelect={() => selectDeal(deal)}
-                              onDragStart={(event) => onCardDragStart(event, deal.id)}
-                              onDragEnd={onCardDragEnd}
-                            />
-                          );
-                        })
-                      ) : (
-                        <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
-                          Solte um card aqui
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </section>
                 );
-              })
+              })()
             : programPhases.map((phase, phaseIndex) => {
                 const phaseDeals = programDeals.filter((deal) => deal.programPhase === phase);
-                const isDropTarget = dragOverPhase === phase;
                 const nextPhase = programPhases[phaseIndex + 1];
 
                 return (
+                  // REGRA DE OURO nº 4: concluir a tarefa É o que move o card.
+                  // Arrastar com o mouse foi desabilitado (Lucas, 22/07); a
+                  // coordenação corrige fases pelo painel do card.
                   <section
                     key={phase}
-                    onDragOver={(event) => {
-                      if (!canOverridePhase) return;
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      if (dragOverPhase !== phase) setDragOverPhase(phase);
-                    }}
-                    onDragLeave={(event) => {
-                      if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-                      setDragOverPhase((current) => (current === phase ? null : current));
-                    }}
-                    onDrop={(event) => onProgramColumnDrop(event, phase)}
                     className={cn(
                       "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
                       fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none",
-                      isDropTarget && "border-brand-dourado/70 bg-brand-creme/45 ring-2 ring-brand-dourado/30",
                     )}
                   >
                     <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
@@ -1287,11 +1383,11 @@ export function CrmKanbanPage() {
                             contact={contactsById.get(deal.contactId)}
                             state={state}
                             density={density}
-                            canDrag={canOverridePhase}
-                            isDragging={draggingDealId === deal.id}
+                            canDrag={false}
+                            isDragging={false}
                             onSelect={() => selectDeal(deal)}
-                            onDragStart={(event) => onCardDragStart(event, deal.id)}
-                            onDragEnd={onCardDragEnd}
+                            onDragStart={() => undefined}
+                            onDragEnd={() => undefined}
                           />
                         ))
                       ) : (
@@ -1303,12 +1399,219 @@ export function CrmKanbanPage() {
                   </section>
                 );
               })}
+          {board === "programa"
+            ? (() => {
+                // Colunas de exceção da jornada (prompt do Lucas): quem caiu da
+                // esteira aparece AQUI — primeiro com a Concierge (D1–D5), depois
+                // com o Estevão (5 ligações) e, por fim, Encerrado (resgates futuros).
+                const activeByContact = new Map<string, string>();
+                for (const enrollment of state.cadenceEnrollments) {
+                  if (enrollment.status === "ACTIVE") activeByContact.set(enrollment.contactId, enrollment.cadenceId);
+                }
+                const recoveryDeals = visibleDeals.filter(
+                  (deal) => !deal.programPhase && deal.status === "OPEN" && ["cad-not-closed", "cad-gestor-5lig"].includes(activeByContact.get(deal.contactId) ?? ""),
+                );
+                const closedDeals = visibleDeals
+                  .filter((deal) => !deal.programPhase && ["NAO_ADESAO", "PERDIDO"].includes(deal.stage))
+                  .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+                const closedVisible = closedDeals.slice(0, 12);
+                const renderMini = (deal: (typeof visibleDeals)[number], driver: string) => {
+                  const contact = contactsById.get(deal.contactId);
+                  return (
+                    <button
+                      key={deal.id}
+                      type="button"
+                      onClick={() => selectDeal(deal)}
+                      className="rounded-lg border border-brand-oliva/16 bg-white/70 px-3 py-2 text-left transition-colors hover:bg-brand-creme/50"
+                    >
+                      <p className="truncate text-sm font-semibold text-brand-tinta">{contactDisplayName(contact)}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{driver}</p>
+                    </button>
+                  );
+                };
+                return (
+                  <>
+                    <section className={cn("flex flex-col rounded-lg border border-amber-300/60 bg-amber-50/40 p-2 backdrop-blur-xl", fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none")}>
+                      <div className="mb-2 shrink-0 rounded-md bg-amber-600 px-3 py-2 text-white">
+                        <p className="text-sm font-semibold">Recuperação / Resgate</p>
+                        <p className="mt-1 text-[11px] text-white/80">{recoveryDeals.length} pacientes · Concierge D1–D5 → Estevão</p>
+                      </div>
+                      <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
+                        {recoveryDeals.length ? (
+                          recoveryDeals.map((deal) =>
+                            renderMini(
+                              deal,
+                              activeByContact.get(deal.contactId) === "cad-gestor-5lig" ? "Com o Estevão (5 ligações)" : "Com a Concierge (D1–D5)",
+                            ),
+                          )
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-amber-300/60 bg-white/35 p-3 text-center text-xs text-muted-foreground">
+                            Ninguém em recuperação
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                    <section className={cn("flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl", fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none")}>
+                      <div className="mb-2 shrink-0 rounded-md bg-brand-oliva px-3 py-2 text-brand-papel">
+                        <p className="text-sm font-semibold">Encerrado</p>
+                        <p className="mt-1 text-[11px] text-brand-papel/75">{closedDeals.length} na base · resgates de 60d/6m/1a seguem sozinhos</p>
+                      </div>
+                      <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
+                        {closedVisible.length ? (
+                          <>
+                            {closedVisible.map((deal) => renderMini(deal, dealStageLabels[deal.stage]))}
+                            {closedDeals.length > closedVisible.length ? (
+                              <p className="px-1 text-center text-[11px] text-muted-foreground">e mais {closedDeals.length - closedVisible.length}…</p>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
+                            Nenhum encerrado
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  </>
+                );
+              })()
+            : null}
         </div>
       </div>
 
       <AnimatePresence>
+        {fechamentoOpen ? (
+          <motion.div
+            key="modal-fechamento"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[75] grid place-items-center bg-brand-tinta/30 px-4 py-6 backdrop-blur-sm"
+            onClick={() => setFechamentoOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className="max-h-[86dvh] w-[min(34rem,94vw)] overflow-y-auto rounded-2xl border border-brand-oliva/18 bg-brand-papel p-5 shadow-[0_32px_80px_rgba(43,46,36,0.28)] sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-label="Registrar fechamento"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-xl text-brand-musgo">
+                    <CircleDollarSign className="h-5 w-5" aria-hidden="true" />
+                    Registrar fechamento
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    A jornada começa aqui: escolha o paciente, marque o que ele fechou e a esteira certa liga sozinha
+                    (as tarefas do D+1 nascem para as pessoas certas).
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setFechamentoOpen(false)} aria-label="Fechar">
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </Button>
+              </div>
+              <form className="grid gap-3" onSubmit={handleRegistrarFechamento}>
+                <div>
+                  <Label>Paciente (busca por nome ou telefone — não duplica)</Label>
+                  <div className="mt-1">
+                    <PatientPicker contacts={state.contacts} value={fcPatient} onChange={setFcPatient} autoFocus />
+                  </div>
+                </div>
+                {!fcPatient.ref && fcPatient.name.trim() ? (
+                  <div>
+                    <Label>WhatsApp do paciente novo (chave única)</Label>
+                    <Input value={fcPhone} onChange={(event) => setFcPhone(event.target.value)} placeholder="11999999999" inputMode="tel" />
+                  </div>
+                ) : null}
+                <div>
+                  <Label>O que o paciente fechou?</Label>
+                  <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
+                    {(
+                      [
+                        ["PROGRAMA_ACOMPANHAMENTO", "Plano de Acompanhamento", "Concierge + Recepção + Enfermeira no D+1"],
+                        ["CLUBE_BRATAN", "Clube Bratan", "Concierge + Recepção no D+1"],
+                        ["SOMENTE_TRATAMENTO", "Somente Tratamento", "Concierge + Enfermeira no D+1"],
+                        ["AVULSA", "Consulta avulsa", "sem esteira — só agenda"],
+                        ["NAO_FECHOU", "Não fechou", "Concierge acolhe no D+1 (régua D1–D5)"],
+                      ] as const
+                    ).map(([value, label, hint]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFcResultado(value)}
+                        className={cn(
+                          "rounded-lg border px-3 py-2 text-left transition-colors",
+                          fcResultado === value ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-brand-creme/50",
+                        )}
+                      >
+                        <span className="block text-sm font-semibold">{label}</span>
+                        <span className={cn("block text-[11px]", fcResultado === value ? "text-brand-papel/80" : "text-muted-foreground")}>{hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {fcResultado !== "NAO_FECHOU" ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label className="mr-1">Fechou tudo?</Label>
+                      <button type="button" onClick={() => setFcCompleto(true)} className={cn("rounded-full border px-3 py-1 text-xs font-semibold", fcCompleto ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70")}>Completo (10% desc.)</button>
+                      <button type="button" onClick={() => setFcCompleto(false)} className={cn("rounded-full border px-3 py-1 text-xs font-semibold", !fcCompleto ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70")}>Parcial (5% desc.)</button>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>Valor vendido (R$)</Label>
+                        <Input value={fcSold} onChange={(event) => setFcSold(event.target.value)} inputMode="decimal" placeholder="9000" />
+                      </div>
+                      <div>
+                        <Label>Valor já recebido (R$)</Label>
+                        <Input value={fcReceived} onChange={(event) => setFcReceived(event.target.value)} inputMode="decimal" placeholder="0" />
+                      </div>
+                    </div>
+                    {!fcCompleto ? (
+                      <div>
+                        <Label>Motivo do parcial</Label>
+                        <Input value={fcPartialReason} onChange={(event) => setFcPartialReason(event.target.value)} placeholder="Ex.: fechou só a consulta + 3 meses" />
+                      </div>
+                    ) : null}
+                    <div>
+                      <Label>Observações do fechamento (opcional)</Label>
+                      <Input value={fcObjection} onChange={(event) => setFcObjection(event.target.value)} placeholder="O que fechou, condições, NF..." />
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Categoria da objeção</Label>
+                      <select value={fcObjectionCategory} onChange={(event) => setFcObjectionCategory(event.target.value as CrmObjectionCategory)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                        {objectionOptions.map((item) => <option key={item} value={item}>{objectionCategoryLabels[item]}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Objeção / motivo (obrigatório)</Label>
+                      <Input value={fcObjection} onChange={(event) => setFcObjection(event.target.value)} placeholder="Ex.: vai conversar com a família" />
+                    </div>
+                  </div>
+                )}
+                {fcFeedback ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-800">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    {fcFeedback}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <LiquidButton type="submit" className="h-10 px-5">Salvar fechamento</LiquidButton>
+                  <Button type="button" variant="outline" onClick={() => setFechamentoOpen(false)}>Cancelar</Button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        ) : null}
         {leadModalOpen ? (
           <motion.div
+            key="modal-novo-lead"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
