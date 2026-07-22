@@ -6,6 +6,7 @@ import { isCoordenacao } from "@/lib/access";
 import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState, subscribeRemoteCrmState } from "@/lib/remoteData";
 import {
   advanceAllProgramGates,
+  archiveDuplicateActiveDeals,
   collapseSequentialLadders,
   dedupeCrmState,
   enforceOneTaskPerPersonPerPatient,
@@ -16,6 +17,7 @@ import {
   loadCrmState,
   mergeCrmCatalogWithSeeds,
   removeLeadFromCrm,
+  retireObsoleteCrmWork,
   saveCrmStateWithIntelligence,
   seedCrmState,
   type CrmState,
@@ -33,11 +35,18 @@ function prepareCrmState(state: CrmState) {
   // (retorna o mesmo objeto quando nada muda), então rodar duas vezes não custa.
   // enforceOneTaskPerPersonPerPatient roda por ÚLTIMO: depois do avanço de fase
   // (que materializa tarefas-gate novas), qualquer sobra é cancelada.
+  // retireObsoleteCrmWork + archiveDuplicateActiveDeals rodam ANTES da geração:
+  // trabalho de médico/contrato é aposentado e cards duplicados são arquivados
+  // (fica o mais avançado) — aí o motor gera tarefas só do que vale.
   return enforceOneTaskPerPersonPerPatient(
     collapseSequentialLadders(
       dedupeCrmState(
         advanceAllProgramGates(
-          escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(dedupeCrmState(state))))),
+          escalateExhaustedCadences(
+            generateCadenceTasks(
+              ensureCadenceCoverage(ensureMondaySafetyTask(archiveDuplicateActiveDeals(retireObsoleteCrmWork(dedupeCrmState(state))))),
+            ),
+          ),
         ),
       ),
     ),

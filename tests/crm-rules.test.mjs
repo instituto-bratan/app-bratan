@@ -765,6 +765,67 @@ test("id de contato é determinístico: mesma pessoa converge para o mesmo id (n
 
 // --- REGRAS DE OURO do prompt do Lucas (22/07/2026) ---
 
+test("catálogo aposentado: assinatura/médico desativados MESMO se vierem ativos do banco", () => {
+  const state = cloneState();
+  // simula o banco trazendo o catálogo antigo ativo
+  state.cadences.push({ id: "cad-assinatura-d1d5", name: "Assinatura (antiga)", description: "", cadenceType: "COMMERCIAL_FOLLOW_UP", defaultOwnerRole: "RECEPCAO", active: true, createdAt: "", updatedAt: "" });
+  state.cadenceSteps.push(
+    { id: "step-med-d1", cadenceId: "cad-not-closed", stepOrder: 1, name: "Médico D+1", offsetDays: 1, templateId: "tpl-medico-d1", assignedToRole: "MEDICO", taskType: "WHATSAPP", offsetType: "DAYS_AFTER_TRIGGER", preferredTimeWindow: "MORNING", pauseIfContactResponded: true, cancelIfStageChanged: false, active: true, createdAt: "", updatedAt: "" },
+    { id: "step-assin-d1", cadenceId: "cad-assinatura-d1d5", stepOrder: 1, name: "Assinatura D1", offsetDays: 1, templateId: "tpl-lembrete-assinatura", assignedToRole: "RECEPCAO", taskType: "WHATSAPP", offsetType: "DAYS_AFTER_TRIGGER", preferredTimeWindow: "MORNING", pauseIfContactResponded: true, cancelIfStageChanged: false, active: true, createdAt: "", updatedAt: "" },
+  );
+  const merged = crm.mergeCrmCatalogWithSeeds(state);
+  assert.equal(merged.cadences.find((c) => c.id === "cad-assinatura-d1d5").active, false, "cadência de assinatura desativada");
+  assert.equal(merged.cadenceSteps.find((s) => s.id === "step-med-d1").active, false, "passo do médico desativado");
+  assert.equal(merged.cadenceSteps.find((s) => s.id === "step-assin-d1").active, false, "passo de assinatura desativado");
+  const notClosed = merged.cadences.find((c) => c.id === "cad-not-closed");
+  assert.equal(notClosed.defaultOwnerRole, "CONCIERGE", "não-fechou agora é da Concierge mesmo com banco antigo");
+  assert.ok(!merged.messageTemplates.some((t) => t.id === "tpl-medico-d1"), "template do médico some");
+});
+
+test("trabalho antigo aposentado: tarefas de médico/contrato pendentes são canceladas; inscrição do não-fechou muda de dono", () => {
+  const state = cloneState();
+  state.tasks.push({
+    ...state.tasks[0],
+    id: "task-medico-antiga",
+    status: "PENDING",
+    assignedToUserId: "dr-daniel",
+    assignedToRole: "MEDICO",
+    taskType: "WHATSAPP",
+    cadenceId: "cad-not-closed",
+    cadenceStepId: "step-med-d1",
+  });
+  state.cadenceEnrollments.push({
+    id: "enroll-medico-antigo", cadenceId: "cad-not-closed", contactId: "crm-contact-lead-quente", dealId: "",
+    status: "ACTIVE", enrolledAt: "2026-06-29T09:00:00.000Z", triggerSource: "antigo", triggerDate: "2026-06-29",
+    ownerUserId: "dr-daniel", ownerRole: "MEDICO", completedAt: null, canceledReason: "", createdAt: "", updatedAt: "",
+  });
+  const retired = crm.retireObsoleteCrmWork(state);
+  assert.equal(retired.tasks.find((t) => t.id === "task-medico-antiga").status, "CANCELED");
+  const enrollment = retired.cadenceEnrollments.find((e) => e.id === "enroll-medico-antigo");
+  assert.equal(enrollment.status, "ACTIVE", "a régua continua viva");
+  assert.equal(enrollment.ownerRole, "CONCIERGE", "mas agora é da Concierge");
+});
+
+test("1 paciente = 1 card: duplicado ativo é ARQUIVADO (fica o mais avançado, nada é apagado)", () => {
+  const state = cloneState();
+  const contactId = "crm-contact-lead-quente";
+  const base = state.deals.find((d) => d.contactId === contactId);
+  // segundo card ativo do mesmo paciente, MENOS avançado
+  state.deals.push({ ...base, id: "deal-duplicado", stage: "LEAD_NOVO", status: "OPEN", programPhase: null, updatedAt: "2026-06-01T00:00:00.000Z" });
+  // o card original entra na jornada (mais avançado)
+  const journey = crm.startProgramJourney(state, base.id, "PROGRAMA_ACOMPANHAMENTO", "estevao", new Date("2026-06-30T09:00:00"));
+  const archived = crm.archiveDuplicateActiveDeals(journey);
+  const dup = archived.deals.find((d) => d.id === "deal-duplicado");
+  const kept = archived.deals.find((d) => d.id === base.id);
+  assert.equal(dup.status, "PAUSED", "duplicado arquivado (não apagado)");
+  assert.ok(dup.title.startsWith("[Duplicado arquivado]"));
+  assert.equal(kept.programPhase, "FECHAMENTO_D0", "o mais avançado fica intacto");
+  assert.equal(archived.deals.length, journey.deals.length, "nenhum deal apagado");
+  // idempotente
+  const again = crm.archiveDuplicateActiveDeals(archived);
+  assert.equal(again.deals.find((d) => d.id === "deal-duplicado").title, dup.title, "não re-prefixa o título");
+});
+
 test("regra de ouro: nome COMPLETO na tela; apelido não é mais auto-gerado", () => {
   const state = cloneState();
   const created = crm.findOrCreateCrmContact(state, { fullName: "Maria Aparecida dos Santos", phone: "11977776666" }, "recepcao");

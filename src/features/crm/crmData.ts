@@ -1443,13 +1443,115 @@ function unionById<T extends { id: string }>(primary: T[], extras: T[]): T[] {
 // Cadências/passos/mensagens novos entram por código: qualquer estado salvo
 // (local ou vindo do Supabase) precisa ganhar os itens de catálogo que ainda
 // não conhece, senão réguas novas nunca aparecem para quem já tem dados.
+// Catálogo APOSENTADO (Lucas, 22/07/2026): médico e contrato/SuperSign saíram
+// do CRM. Estes ids podem continuar existindo no banco/localStorage de outros
+// aparelhos — o merge abaixo os desativa SEMPRE, então o motor nunca mais gera
+// tarefa deles, não importa o que o estado remoto traga.
+const retiredCadenceIds = new Set(["cad-assinatura-d1d5"]);
+const retiredStepIds = new Set([
+  "step-med-d1",
+  "step-gestor-d2",
+  "step-assin-d1",
+  "step-assin-d2",
+  "step-assin-d3",
+  "step-assin-d4",
+  "step-assin-ligar",
+]);
+const retiredTemplateIds = new Set(["tpl-medico-d1", "tpl-gestor-d2", "tpl-lembrete-assinatura"]);
+
 export function mergeCrmCatalogWithSeeds(state: CrmState): CrmState {
+  const cadences = unionById(state.cadences ?? [], seedCrmState.cadences).map((cadence) =>
+    retiredCadenceIds.has(cadence.id) && cadence.active ? { ...cadence, active: false } : cadence,
+  );
+  const cadenceSteps = unionById(state.cadenceSteps ?? [], seedCrmState.cadenceSteps).map((step) =>
+    (retiredStepIds.has(step.id) || retiredCadenceIds.has(step.cadenceId)) && step.active ? { ...step, active: false } : step,
+  );
+  // A régua do não-fechou mudou de dono (médico → concierge): a definição do
+  // CÓDIGO vence a do banco para estes registros de catálogo.
+  const seedNotClosed = seedCrmState.cadences.find((item) => item.id === "cad-not-closed");
   return {
     ...seedCrmState,
     ...state,
-    cadences: unionById(state.cadences ?? [], seedCrmState.cadences),
-    cadenceSteps: unionById(state.cadenceSteps ?? [], seedCrmState.cadenceSteps),
-    messageTemplates: unionById(state.messageTemplates ?? [], seedCrmState.messageTemplates),
+    cadences: cadences.map((cadence) => (cadence.id === "cad-not-closed" && seedNotClosed ? { ...cadence, name: seedNotClosed.name, description: seedNotClosed.description, defaultOwnerRole: seedNotClosed.defaultOwnerRole } : cadence)),
+    cadenceSteps,
+    messageTemplates: unionById(state.messageTemplates ?? [], seedCrmState.messageTemplates).filter((template) => !retiredTemplateIds.has(template.id)),
+  };
+}
+
+// Aposenta o TRABALHO antigo que ainda estiver aberto em produção: tarefas
+// pendentes de médico/contrato/assinatura são canceladas (com motivo) e as
+// inscrições da régua do não-fechou passam para a Concierge. Idempotente.
+export function retireObsoleteCrmWork(state: CrmState): CrmState {
+  const now = new Date().toISOString();
+  let changedTasks = false;
+  const tasks = state.tasks.map((task) => {
+    if (["DONE", "CANCELED", "SKIPPED"].includes(task.status)) return task;
+    const obsolete =
+      task.assignedToRole === "MEDICO" ||
+      task.taskType === "CONTRACT" ||
+      retiredCadenceIds.has(task.cadenceId) ||
+      retiredStepIds.has(task.cadenceStepId);
+    if (!obsolete) return task;
+    changedTasks = true;
+    return { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: "Cancelada: fluxo saiu do CRM (médico/contrato — decisão 22/07).", updatedAt: now };
+  });
+  let changedEnrollments = false;
+  const cadenceEnrollments = state.cadenceEnrollments.map((enrollment) => {
+    if (enrollment.status === "ACTIVE" && retiredCadenceIds.has(enrollment.cadenceId)) {
+      changedEnrollments = true;
+      return { ...enrollment, status: "CANCELED" as CrmCadenceStatus, canceledReason: "Fluxo de assinatura saiu do app (22/07).", updatedAt: now };
+    }
+    if (enrollment.status === "ACTIVE" && enrollment.cadenceId === "cad-not-closed" && enrollment.ownerRole !== "CONCIERGE") {
+      changedEnrollments = true;
+      return { ...enrollment, ownerUserId: "concierge", ownerRole: "CONCIERGE" as CrmRole, updatedAt: now };
+    }
+    return enrollment;
+  });
+  if (!changedTasks && !changedEnrollments) return state;
+  return { ...state, tasks: changedTasks ? tasks : state.tasks, cadenceEnrollments: changedEnrollments ? cadenceEnrollments : state.cadenceEnrollments };
+}
+
+// REGRA DE OURO nº 1/2 — autocorreção: 1 paciente = 1 card ativo. Se o mesmo
+// contato tiver 2+ cards ativos (aberto ou em jornada), fica o MAIS AVANÇADO
+// (jornada > etapa mais à frente > mais recente); os demais são ARQUIVADOS
+// (status pausado + título marcado), nunca apagados.
+export function archiveDuplicateActiveDeals(state: CrmState): CrmState {
+  const isActive = (deal: CrmDeal) => (deal.status === "OPEN" || Boolean(deal.programPhase)) && !deal.programOutcome;
+  const byContact = new Map<string, CrmDeal[]>();
+  for (const deal of state.deals) {
+    if (!isActive(deal)) continue;
+    const list = byContact.get(deal.contactId) ?? [];
+    list.push(deal);
+    byContact.set(deal.contactId, list);
+  }
+  const toArchive = new Set<string>();
+  const score = (deal: CrmDeal) => {
+    const journey = deal.programPhase ? programPhaseSpecs[deal.programPhase].order * 100 : 0;
+    const stage = dealStages.indexOf(deal.stage);
+    return journey + stage;
+  };
+  for (const list of byContact.values()) {
+    if (list.length <= 1) continue;
+    const [keep] = [...list].sort((a, b) => score(b) - score(a) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    for (const deal of list) if (deal.id !== keep.id) toArchive.add(deal.id);
+  }
+  if (!toArchive.size) return state;
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    deals: state.deals.map((deal) =>
+      toArchive.has(deal.id)
+        ? {
+            ...deal,
+            status: "PAUSED" as CrmDealStatus,
+            programPhase: null,
+            programPhaseEnteredAt: undefined,
+            programPhaseActorId: undefined,
+            title: deal.title.startsWith("[Duplicado arquivado]") ? deal.title : `[Duplicado arquivado] ${deal.title}`,
+            updatedAt: now,
+          }
+        : deal,
+    ),
   };
 }
 
