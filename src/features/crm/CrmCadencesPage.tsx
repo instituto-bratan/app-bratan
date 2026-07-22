@@ -264,6 +264,71 @@ export function CrmCadencesPage() {
         </div>
       </motion.section>
 
+      {/* A AULA (pedido do Lucas, 22/07): cada esteira explicada + o que cada
+          pessoa vê. Conteúdo espelha gatesForPhase/nextPhaseFor — se o motor
+          mudar, atualizar aqui junto. */}
+      <Card className="border-brand-dourado/30 bg-brand-creme/25">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Como funcionam as esteiras (a aula)</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Tudo começa quando o <strong>Estevão registra o fechamento</strong> no Kanban. O que o paciente fechou define a
+            esteira — e cada pessoa recebe SÓ as tarefas dela, na hora certa. Ninguém move card: concluir a tarefa move.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+              <p className="text-sm font-bold text-brand-musgo">1 · Plano de Acompanhamento (a jornada completa)</p>
+              <ol className="mt-1.5 grid gap-1 text-xs leading-5 text-brand-tinta">
+                <li><strong>Acabou de aderir (D0):</strong> Estevão salvou o cadastro — o card nasce e já passa sozinho para o D+1.</li>
+                <li><strong>Boas-vindas (D+1) — o portão:</strong> no dia seguinte, <span className="font-semibold text-amber-800">Concierge</span> (como foi? + avaliação Google), <span className="font-semibold text-emerald-800">Recepção</span> (mensagem para fechar toda a agenda) e <span className="font-semibold text-violet-800">Enfermeira</span> (como está com a medicação). O card SÓ avança quando as TRÊS marcarem "enviada".</li>
+                <li><strong>Agendamento:</strong> paciente respondeu → Recepção fecha todas as datas → avança sozinho.</li>
+                <li><strong>1º atendimento:</strong> Enfermeira faz a 1ª aplicação/bioimpedância → avança sozinho.</li>
+                <li><strong>Em acompanhamento (6–9 meses):</strong> Enfermeira no D+1 de cada aplicação e a cada 14 dias (relógio individual do paciente). No fim: renovar, manter ou alta.</li>
+              </ol>
+            </div>
+            <div className="grid gap-2">
+              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+                <p className="text-sm font-bold text-brand-musgo">2 · Clube Bratan</p>
+                <p className="mt-1 text-xs leading-5 text-brand-tinta">
+                  D+1 com <span className="font-semibold text-amber-800">Concierge</span> (boas-vindas) + <span className="font-semibold text-emerald-800">Recepção</span> (agendar a próxima consulta, ~3 meses). Agenda confirmada = Clube ativo. Sem enfermeira nesta esteira.
+                </p>
+              </div>
+              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+                <p className="text-sm font-bold text-brand-musgo">3 · Somente Tratamento</p>
+                <p className="mt-1 text-xs leading-5 text-brand-tinta">
+                  D+1 com <span className="font-semibold text-amber-800">Concierge</span> + <span className="font-semibold text-violet-800">Enfermeira</span> (agendar as medicações). Depois vai DIRETO para o 1º atendimento — não passa pela Recepção.
+                </p>
+              </div>
+              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+                <p className="text-sm font-bold text-brand-musgo">4 · Consulta avulsa</p>
+                <p className="mt-1 text-xs leading-5 text-brand-tinta">Sem esteira — segue a agenda normal. Se marcar retorno, entra o ciclo de retorno da Recepção (abaixo).</p>
+              </div>
+              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+                <p className="text-sm font-bold text-brand-musgo">5 · Não fechou</p>
+                <p className="mt-1 text-xs leading-5 text-brand-tinta">
+                  <span className="font-semibold text-amber-800">Concierge</span> acolhe no D+1 e segue D2–D5, um passo por vez — qualquer resposta encerra na hora. Sem resposta no D5 → <span className="font-semibold text-slate-700">Estevão</span> (5 ligações) → encerrado → resgates de 60 dias, 6 meses e 1 ano.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
+            <p className="text-sm font-bold text-brand-musgo">O que CADA pessoa vê (e só isso)</p>
+            <div className="mt-1.5 grid gap-1.5 text-xs leading-5 text-brand-tinta sm:grid-cols-2">
+              <p><span className="font-semibold text-violet-800">Enfermeira:</span> apresentação D+1 (Programa/Só Tratamento), 1º atendimento, pós-aplicação D+1 e os 14 dias — o relógio é DE CADA paciente: quem passou dia 10 recebe dia 24, quem passou dia 11 recebe dia 25. Por isso quase todo dia tem mensagem de 14 dias de alguém.</p>
+              <p><span className="font-semibold text-emerald-800">Recepção:</span> mensagem de agenda no D+1 (Programa/Clube), fechar todas as datas, e o ciclo de retorno: exames 15 dias antes, 1 semana antes, confirmar 3 dias antes, lembrete 1 dia antes da consulta.</p>
+              <p><span className="font-semibold text-amber-800">Concierge:</span> boas-vindas do D+1 de TODOS os canais + avaliação Google, a régua do não-fechou (D1–D5) e os resgates de 60 dias/6 meses/1 ano (5 tentativas cada, parando na 1ª resposta).</p>
+              <p><span className="font-semibold text-slate-700">Estevão (gestor):</span> registra os fechamentos (a porta de entrada), assume o que escala no D5 sem resposta (5 ligações em dias e horários alternados) e tem o 3·1·3·1 para negociação parada: 3 dias, 1 semana, 3 semanas e 1 mês após o último contato.</p>
+            </div>
+            <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+              Em "Minhas Tarefas" cada pessoa abre já na visão do próprio papel — e quem não é coordenação só enxerga as suas.
+              Regras de ouro: 1 paciente = 1 card · 1 tarefa por pessoa por paciente (a próxima espera a atual) · 1 cadência
+              ativa por paciente · resposta do paciente encerra a régua na hora.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
       {isManagement ? (
         <div className="flex flex-wrap items-center gap-2">
