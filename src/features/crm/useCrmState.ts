@@ -8,6 +8,7 @@ import {
   advanceAllProgramGates,
   collapseSequentialLadders,
   dedupeCrmState,
+  enforceOneTaskPerPersonPerPatient,
   ensureCadenceCoverage,
   ensureMondaySafetyTask,
   escalateExhaustedCadences,
@@ -20,20 +21,24 @@ import {
   type CrmState,
 } from "./crmData";
 
-// Pipeline padrão de saneamento do estado (POP v3.1): rotina de segurança de
-// segunda nasce sozinha, todo card ganha régua, o motor materializa as
-// tarefas, cadências esgotadas escalam ao gestor, gates completos avançam de
-// fase e, por fim, colapsa qualquer duplicata.
+// Pipeline padrão de saneamento do estado: rotina de segurança de segunda
+// nasce sozinha, todo card ganha régua, o motor materializa as tarefas,
+// cadências esgotadas escalam ao gestor, gates completos avançam de fase,
+// colapsa duplicatas e, por fim, garante a REGRA DE OURO do Lucas (22/07):
+// 1 tarefa aberta por pessoa por paciente.
 function prepareCrmState(state: CrmState) {
   // dedupeCrmState roda TAMBÉM no início: se o estado chega com inscrições ativas
   // duplicadas do mesmo par (corrida entre aparelhos, ids antigos), a GERAÇÃO de
   // tarefas parte de 1 inscrição só — sem multiplicar tarefas. dedupe é idempotente
   // (retorna o mesmo objeto quando nada muda), então rodar duas vezes não custa.
-  // collapseSequentialLadders roda por ÚLTIMO: 1 tentativa aberta por vez.
-  return collapseSequentialLadders(
-    dedupeCrmState(
-      advanceAllProgramGates(
-        escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(dedupeCrmState(state))))),
+  // enforceOneTaskPerPersonPerPatient roda por ÚLTIMO: depois do avanço de fase
+  // (que materializa tarefas-gate novas), qualquer sobra é cancelada.
+  return enforceOneTaskPerPersonPerPatient(
+    collapseSequentialLadders(
+      dedupeCrmState(
+        advanceAllProgramGates(
+          escalateExhaustedCadences(generateCadenceTasks(ensureCadenceCoverage(ensureMondaySafetyTask(dedupeCrmState(state))))),
+        ),
       ),
     ),
   );

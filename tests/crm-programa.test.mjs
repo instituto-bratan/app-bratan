@@ -79,16 +79,52 @@ test("gate completo (3 de 3) avança para AGENDAMENTO e cria a tarefa-gate de ag
   assert.ok(s.tasks.some((t) => t.id === gateTaskId("AGENDAMENTO", "recepcao-agenda")), "nasce a tarefa de montar agenda");
 });
 
-test("não pula fase: cada avanço é de uma fase por vez", () => {
+test("não pula fase: cada avanço é de uma fase por vez (Programa: agenda → 1º atendimento → acompanhamento)", () => {
   let s = crm.advanceAllProgramGates(crm.startProgramJourney(clone(), DEAL, "PROGRAMA_ACOMPANHAMENTO", "v", ref), ref);
-  // completa o gate do D+1 → AGENDAMENTO (não salta para CADENCIA_PROGRAMA)
+  // completa o gate do D+1 → AGENDAMENTO (não salta para frente)
   s = complete(s, gateTaskId("TRES_CONTATOS_D1", "recepcao"), "r");
   s = complete(s, gateTaskId("TRES_CONTATOS_D1", "concierge"), "c");
   s = complete(s, gateTaskId("TRES_CONTATOS_D1", "enfermeira"), "e");
   assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "AGENDAMENTO");
-  // agora fecha o gate de AGENDAMENTO → CADENCIA_PROGRAMA
+  // agenda fechada → 1º ATENDIMENTO (fase nova da enfermeira), não direto pro acompanhamento
   s = complete(s, gateTaskId("AGENDAMENTO", "recepcao-agenda"), "r");
+  assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "PRIMEIRO_ATENDIMENTO");
+  // 1ª aplicação feita → CADENCIA_PROGRAMA
+  s = complete(s, gateTaskId("PRIMEIRO_ATENDIMENTO", "enfermeira-1atend"), "e");
   assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "CADENCIA_PROGRAMA");
+});
+
+test("esteira CLUBE: gate D+1 só Concierge + Recepção; agenda confirmada → Clube ativo (sem 1º atendimento)", () => {
+  let s = crm.advanceAllProgramGates(crm.startProgramJourney(clone(), DEAL, "CLUBE_BRATAN", "v", ref), ref);
+  const gates = s.tasks.filter((t) => t.isGate && t.gatePhase === "TRES_CONTATOS_D1" && t.dealId === DEAL);
+  assert.deepEqual(Array.from(gates, (g) => g.assignedToRole).sort(), ["CONCIERGE", "RECEPCAO"]);
+  s = complete(s, gateTaskId("TRES_CONTATOS_D1", "concierge"), "c");
+  s = complete(s, gateTaskId("TRES_CONTATOS_D1", "recepcao"), "r");
+  assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "AGENDAMENTO");
+  s = complete(s, gateTaskId("AGENDAMENTO", "recepcao-agenda"), "r");
+  assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "CADENCIA_PROGRAMA", "Clube pula o 1º atendimento");
+});
+
+test("esteira SÓ TRATAMENTO: gate D+1 só Concierge + Enfermeira (agendar medicações); depois direto pro 1º atendimento", () => {
+  let s = crm.advanceAllProgramGates(crm.startProgramJourney(clone(), DEAL, "SOMENTE_TRATAMENTO", "v", ref), ref);
+  const gates = s.tasks.filter((t) => t.isGate && t.gatePhase === "TRES_CONTATOS_D1" && t.dealId === DEAL);
+  assert.deepEqual(Array.from(gates, (g) => g.assignedToRole).sort(), ["CONCIERGE", "ENFERMAGEM"]);
+  const enf = gates.find((g) => g.assignedToRole === "ENFERMAGEM");
+  assert.ok(enf.title.includes("agendar as medicações"), "título da enfermeira muda no Só Tratamento");
+  s = complete(s, gateTaskId("TRES_CONTATOS_D1", "concierge"), "c");
+  s = complete(s, gateTaskId("TRES_CONTATOS_D1", "enfermeira"), "e");
+  assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "PRIMEIRO_ATENDIMENTO", "pula o Agendamento da Recepção");
+  s = complete(s, gateTaskId("PRIMEIRO_ATENDIMENTO", "enfermeira-1atend"), "e");
+  assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "CADENCIA_PROGRAMA");
+});
+
+test("consulta AVULSA: fechar sem canal NÃO liga jornada nenhuma", () => {
+  const s = clone();
+  const moved = crm.moveDealStage(s, DEAL, { stage: "FECHOU_COMPLETO", actorId: "estevao", soldAmount: 900 });
+  assert.equal(moved.ok, true);
+  const deal = moved.state.deals.find((d) => d.id === DEAL);
+  assert.equal(deal.programPhase ?? null, null, "sem canal → sem jornada (segue agenda normal)");
+  assert.equal(moved.state.tasks.filter((t) => t.isGate && t.dealId === DEAL).length, 0);
 });
 
 test("idempotência: advanceAllProgramGates rodado 2x não duplica tarefas/inscrições", () => {
@@ -108,6 +144,7 @@ test("CADENCIA_PROGRAMA inscreve a enfermagem 14 em 14 dias", () => {
   s = complete(s, gateTaskId("TRES_CONTATOS_D1", "concierge"), "c");
   s = complete(s, gateTaskId("TRES_CONTATOS_D1", "enfermeira"), "e");
   s = complete(s, gateTaskId("AGENDAMENTO", "recepcao-agenda"), "r");
+  s = complete(s, gateTaskId("PRIMEIRO_ATENDIMENTO", "enfermeira-1atend"), "e");
   assert.equal(s.deals.find((d) => d.id === DEAL).programPhase, "CADENCIA_PROGRAMA");
   const contactId = s.deals.find((d) => d.id === DEAL).contactId;
   assert.ok(

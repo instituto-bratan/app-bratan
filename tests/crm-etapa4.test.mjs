@@ -90,16 +90,13 @@ test("gate Recepção concluído com RESPOSTA não abre follow-up (paciente resp
   assert.ok(!s.cadenceEnrollments.some((e) => e.cadenceId === "cad-pos-fechamento-d2d5" && e.contactId === contactId));
 });
 
-// ---- Assinatura SuperSign D1–D5 -----------------------------------------------
+// ---- Contrato/SuperSign saiu do app (Lucas, 22/07) ----------------------------
 
-test("administrativo envia o contrato (SuperSign) → abre a régua de assinatura da recepção", () => {
-  let s = closeDeal(clone());
-  const contractTask = s.tasks.find((t) => t.dealId === DEAL && t.taskType === "CONTRACT" && t.assignedToRole === "RECEPCAO");
-  assert.ok(contractTask, "tarefa de conferir contrato existe");
-  s = crm.completeCrmTask(s, contractTask.id, { result: "SENT", actorId: "administrativo" });
-  const contactId = s.deals.find((d) => d.id === DEAL).contactId;
-  const enrollment = s.cadenceEnrollments.find((e) => e.cadenceId === "cad-assinatura-d1d5" && e.contactId === contactId);
-  assert.ok(enrollment, "régua de assinatura aberta");
+test("fechar NÃO cria tarefa de contrato e não existe régua de assinatura no catálogo", () => {
+  const s = closeDeal(clone());
+  assert.ok(!s.tasks.some((t) => t.dealId === DEAL && t.taskType === "CONTRACT"), "nenhuma tarefa de contrato ao fechar");
+  assert.ok(!s.cadences.some((c) => c.id === "cad-assinatura-d1d5"), "cadência de assinatura fora do catálogo");
+  assert.ok(!s.cadenceSteps.some((step) => step.cadenceId === "cad-assinatura-d1d5"), "sem passos de assinatura");
 });
 
 // ---- Abraço Bratan / regra 2.3 -----------------------------------------------

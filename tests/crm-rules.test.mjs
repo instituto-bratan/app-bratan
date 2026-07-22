@@ -103,6 +103,8 @@ test("mover para fechou completo cria tarefas setoriais e alimenta o 360", () =>
     prescribedAmount: 22000,
     soldAmount: 22000,
     receivedAmount: 12000,
+    // Canal fechado liga a esteira (sem canal = consulta avulsa, sem jornada).
+    adhesionChannel: "PROGRAMA_ACOMPANHAMENTO",
   });
 
   assert.equal(moved.ok, true);
@@ -175,7 +177,7 @@ test("marcar 'consulta realizada' gera o D+1 da concierge (lista automática de 
   assert.ok(task, "tarefa D+1 da concierge criada");
 });
 
-test("não fechou exige objeção e com objeção cria médico D+1 e gestor D+2", () => {
+test("não fechou exige objeção e cria SÓ o acolhimento da Concierge (médico saiu do CRM — Lucas 22/07)", () => {
   const state = cloneState();
   const invalid = crm.moveDealStage(state, "crm-deal-lead-quente", {
     actorId: "vendedor",
@@ -191,11 +193,15 @@ test("não fechou exige objeção e com objeção cria médico D+1 e gestor D+2"
     objectionCategory: "SPOUSE_OR_FAMILY",
   });
 
-  const roles = valid.state.tasks
-    .filter((task) => task.dealId === "crm-deal-lead-quente")
-    .map((task) => task.assignedToRole);
-  assert.ok(roles.includes("MEDICO"));
-  assert.ok(roles.includes("ADMIN_GESTAO"));
+  const dealTasks = valid.state.tasks.filter((task) => task.dealId === "crm-deal-lead-quente" && task.status === "PENDING");
+  const roles = dealTasks.map((task) => task.assignedToRole);
+  assert.ok(roles.includes("CONCIERGE"), "acolhimento D+1 é da Concierge");
+  assert.ok(!roles.includes("MEDICO"), "médico não ganha tarefa no CRM");
+  // Nasce UMA tarefa de recuperação (a régua D2–D5 vem 1 passo por vez);
+  // e o gestor só entra por escalação no D5 sem resposta.
+  const recovery = dealTasks.filter((task) => task.cadenceId === "cad-not-closed");
+  assert.equal(recovery.length, 1);
+  assert.equal(recovery[0].assignedToUserId, "concierge");
 });
 
 test("gerar cadência duas vezes não duplica tarefa aberta", () => {
@@ -339,6 +345,8 @@ test("resposta pausa só a régua daquele contato, não a dos outros", () => {
   const contactB = state.contacts.find((item) => item.id === "crm-contact-fechou-completo");
   assert.ok(contactA && contactB);
 
+  // replaceActive: as fixtures já têm réguas ativas — e a regra nova é 1
+  // cadência por paciente, então a inscrição do teste precisa substituir.
   let next = crm.enrollContactInCadence(state, {
     cadenceId: "cad-cold-lead",
     contactId: contactA.id,
@@ -347,7 +355,7 @@ test("resposta pausa só a régua daquele contato, não a dos outros", () => {
     triggerDate: "2026-06-29",
     ownerUserId: "tester",
     ownerRole: "SDR_LEADS",
-  });
+  }, { replaceActive: true });
   next = crm.enrollContactInCadence(next, {
     cadenceId: "cad-cold-lead",
     contactId: contactB.id,
@@ -356,7 +364,7 @@ test("resposta pausa só a régua daquele contato, não a dos outros", () => {
     triggerDate: "2026-06-29",
     ownerUserId: "tester",
     ownerRole: "SDR_LEADS",
-  });
+  }, { replaceActive: true });
 
   const taskA = next.tasks.find((task) => task.contactId === contactA.id && task.cadenceId === "cad-cold-lead");
   assert.ok(taskA, "tarefa da régua do contato A existe");
@@ -422,7 +430,7 @@ test("fechar 1ª consulta cria tarefa de presente pela faixa do POP", () => {
   assert.ok(!movedRenewal.state.tasks.some((task) => task.title.startsWith("Entregar presente")));
 });
 
-test("fechar cria contrato + inicia o Programa com as 3 tarefas-gate do D+1 (POP v3.1)", () => {
+test("fechar (canal Programa) inicia a jornada com as 3 tarefas-gate do D+1 — e SEM tarefa de contrato", () => {
   const state = cloneState();
   const moved = crm.moveDealStage(state, "crm-deal-lead-quente", {
     actorId: "vendedor",
@@ -432,10 +440,9 @@ test("fechar cria contrato + inicia o Programa com as 3 tarefas-gate do D+1 (POP
     adhesionChannel: "PROGRAMA_ACOMPANHAMENTO",
   });
   const dealTasks = moved.state.tasks.filter((task) => task.dealId === "crm-deal-lead-quente");
-  const titles = dealTasks.map((task) => task.title);
-  assert.ok(titles.includes("Fazer o contrato e enviar à administradora"), "contrato da recepção");
-  assert.ok(titles.includes("Conferir contrato e SuperSign"), "conferência do administrativo");
-  // Jornada do Programa: entrou e já está em Boas-vindas (D+1) com as 3 gates.
+  // Contrato/SuperSign saiu do app (Lucas, 22/07).
+  assert.ok(!dealTasks.some((task) => task.taskType === "CONTRACT"), "nenhuma tarefa de contrato");
+  // Jornada: entrou e já está em Boas-vindas (D+1) com as 3 gates do Programa.
   const deal = moved.state.deals.find((d) => d.id === "crm-deal-lead-quente");
   assert.equal(deal.programPhase, "TRES_CONTATOS_D1");
   assert.equal(deal.adhesionChannel, "PROGRAMA_ACOMPANHAMENTO");
@@ -444,7 +451,7 @@ test("fechar cria contrato + inicia o Programa com as 3 tarefas-gate do D+1 (POP
   assert.deepEqual(Array.from(gates, (g) => g.assignedToRole).sort(), ["CONCIERGE", "ENFERMAGEM", "RECEPCAO"]);
 });
 
-test("resposta ao médico D+1 pula o gestor D+2 automaticamente (POP)", () => {
+test("régua do não-fechou: resposta à Concierge encerra; sem resposta a régua segue 1 passo por vez", () => {
   const state = cloneState();
   const moved = crm.moveDealStage(state, "crm-deal-lead-quente", {
     actorId: "vendedor",
@@ -452,37 +459,31 @@ test("resposta ao médico D+1 pula o gestor D+2 automaticamente (POP)", () => {
     objection: "Vai pensar com a família",
     objectionCategory: "SPOUSE_OR_FAMILY",
   });
-  const medTask = moved.state.tasks.find((task) => task.dealId === "crm-deal-lead-quente" && task.title.startsWith("Médico D+1"));
-  const gestorBefore = moved.state.tasks.find((task) => task.dealId === "crm-deal-lead-quente" && task.title.startsWith("Gestor D+2"));
-  assert.ok(medTask && gestorBefore, "as duas tarefas nascem");
+  const d1 = moved.state.tasks.find((task) => task.dealId === "crm-deal-lead-quente" && task.cadenceStepId === "step-nc-d1");
+  assert.ok(d1, "acolhimento D1 da Concierge nasce");
+  assert.equal(d1.assignedToRole, "CONCIERGE");
 
-  const done = crm.completeCrmTask(moved.state, medTask.id, { result: "RESPONDED", actorId: "dr-daniel" });
-  const gestorAfter = done.tasks.find((task) => task.id === gestorBefore.id);
-  assert.equal(gestorAfter.status, "SKIPPED", "gestor D+2 pulado quando o paciente respondeu ao médico");
+  // Paciente RESPONDEU no D1 → a régua encerra: nenhum D2 nasce.
+  const done = crm.completeCrmTask(moved.state, d1.id, { result: "RESPONDED", actorId: "concierge" });
+  const afterResponse = crm.generateCadenceTasks(done, new Date("2026-07-02T09:00:00"));
+  assert.ok(
+    !afterResponse.tasks.some((task) => task.contactId === d1.contactId && task.cadenceStepId === "step-nc-d2" && task.status === "PENDING"),
+    "resposta encerra a régua — D2 não nasce",
+  );
 
-  // Sem resposta, o gestor continua de pé.
+  // Sem resposta no D1 → o D2 nasce (1 passo por vez), ainda da Concierge.
   const moved2 = crm.moveDealStage(cloneState(), "crm-deal-lead-quente", {
     actorId: "vendedor",
     stage: "NAO_FECHOU",
     objection: "Preço",
     objectionCategory: "PRICE",
   });
-  const medTask2 = moved2.state.tasks.find((task) => task.title.startsWith("Médico D+1"));
-  const done2 = crm.completeCrmTask(moved2.state, medTask2.id, { result: "NO_RESPONSE", actorId: "dr-daniel" });
-  const gestor2 = done2.tasks.find((task) => task.title.startsWith("Gestor D+2"));
-  assert.equal(gestor2.status, "PENDING", "sem resposta o gestor D+2 continua");
-
-  // "Precisa de gestor" NÃO pausa: é justamente o gatilho do D+2 (POP).
-  const moved3 = crm.moveDealStage(cloneState(), "crm-deal-lead-quente", {
-    actorId: "vendedor",
-    stage: "NAO_FECHOU",
-    objection: "Preço",
-    objectionCategory: "PRICE",
-  });
-  const medTask3 = moved3.state.tasks.find((task) => task.title.startsWith("Médico D+1"));
-  const done3 = crm.completeCrmTask(moved3.state, medTask3.id, { result: "NEEDS_MANAGER", actorId: "dr-daniel" });
-  const gestor3 = done3.tasks.find((task) => task.title.startsWith("Gestor D+2"));
-  assert.equal(gestor3.status, "PENDING", "'precisa de gestor' mantém o Gestor D+2 de pé");
+  const d1b = moved2.state.tasks.find((task) => task.cadenceStepId === "step-nc-d1" && task.dealId === "crm-deal-lead-quente");
+  const done2 = crm.completeCrmTask(moved2.state, d1b.id, { result: "NO_RESPONSE", actorId: "concierge" });
+  const after2 = crm.generateCadenceTasks(done2, new Date("2026-07-02T09:00:00"));
+  const d2 = after2.tasks.find((task) => task.contactId === d1b.contactId && task.cadenceStepId === "step-nc-d2");
+  assert.ok(d2 && d2.status === "PENDING", "sem resposta → D2 da Concierge nasce");
+  assert.equal(d2.assignedToRole, "CONCIERGE");
 });
 
 test("ciclo de retorno conta para trás da data da consulta", () => {
@@ -648,9 +649,16 @@ test("churn exige motivo e agenda o resgate de 6 meses para o futuro", () => {
   // O harness congela todayISO em 2026-06-30: +180 dias = 2026-12-27.
   assert.equal(enrollment.triggerDate, "2026-12-27", "gatilho exatamente 6 meses (180 dias) à frente");
 
-  // A 1ª tentativa do resgate nasce com a data futura
-  const rescueTask = moved.state.tasks.find((task) => task.contactId === deal.contactId && task.cadenceId === "cad-rescue-6m");
-  assert.ok(rescueTask, "primeira tentativa do resgate materializada");
+  // REGRA DE OURO nº 3: a Aline já tem a tarefa de INVESTIGAÇÃO deste paciente,
+  // então a 1ª tentativa do resgate ESPERA na fila — nasce quando a investigação
+  // for resolvida (1 tarefa por pessoa por paciente, nunca duas ao mesmo tempo).
+  const rescueBefore = moved.state.tasks.find((task) => task.contactId === deal.contactId && task.cadenceId === "cad-rescue-6m");
+  assert.equal(rescueBefore ?? null, null, "resgate espera: Aline ainda está com a investigação");
+  const investigacaoTask = moved.state.tasks.find((task) => task.dealId === deal.id && task.taskType === "CHURN_INVESTIGATION");
+  const doneInvestigation = crm.completeCrmTask(moved.state, investigacaoTask.id, { result: "DONE_OTHER", actorId: "concierge" });
+  const regenerated = crm.generateCadenceTasks(doneInvestigation, new Date("2026-06-30T10:00:00"));
+  const rescueTask = regenerated.tasks.find((task) => task.contactId === deal.contactId && task.cadenceId === "cad-rescue-6m");
+  assert.ok(rescueTask, "investigação resolvida → primeira tentativa do resgate materializa");
   assert.ok(rescueTask.dueAt.slice(0, 10) >= enrollment.triggerDate, "vencimento no futuro");
 });
 
@@ -753,4 +761,72 @@ test("id de contato é determinístico: mesma pessoa converge para o mesmo id (n
   const idB = crm.deterministicContactId({ fullName: "joão  silva", ownerUserId: "recepcao" });
   assert.equal(idA, idB);
   assert.ok(idA.startsWith("contact-nm-"));
+});
+
+// --- REGRAS DE OURO do prompt do Lucas (22/07/2026) ---
+
+test("regra de ouro: nome COMPLETO na tela; apelido não é mais auto-gerado", () => {
+  const state = cloneState();
+  const created = crm.findOrCreateCrmContact(state, { fullName: "Maria Aparecida dos Santos", phone: "11977776666" }, "recepcao");
+  assert.equal(crm.contactDisplayName(created.contact), "Maria Aparecida dos Santos", "nome inteiro, nunca só o primeiro");
+  assert.equal(created.contact.preferredName, "", "apelido só se alguém preencher de propósito");
+  // contato antigo COM apelido gravado: a tela continua mostrando o nome completo
+  const legado = { ...created.contact, preferredName: "Maria" };
+  assert.equal(crm.contactDisplayName(legado), "Maria Aparecida dos Santos");
+});
+
+test("regra de ouro: 1 cadência ativa por paciente — segunda inscrição não nasce (sem replace)", () => {
+  const state = cloneState();
+  const contact = state.contacts.find((c) => c.id === "crm-contact-lead-quente");
+  let next = crm.enrollContactInCadence(state, {
+    cadenceId: "cad-cold-lead", contactId: contact.id, dealId: "", triggerSource: "t", triggerDate: "2026-06-29",
+    ownerUserId: "tester", ownerRole: "SDR_LEADS",
+  }, { replaceActive: true });
+  const activeAfterFirst = next.cadenceEnrollments.filter((e) => e.contactId === contact.id && e.status === "ACTIVE");
+  assert.equal(activeAfterFirst.length, 1);
+  // tentativa de abrir OUTRA cadência sem replace → não nasce
+  next = crm.enrollContactInCadence(next, {
+    cadenceId: "cad-rescue-60d", contactId: contact.id, dealId: "", triggerSource: "t", triggerDate: "2026-06-29",
+    ownerUserId: "concierge", ownerRole: "CONCIERGE",
+  });
+  const active = next.cadenceEnrollments.filter((e) => e.contactId === contact.id && e.status === "ACTIVE");
+  assert.equal(active.length, 1, "continua UMA cadência ativa");
+  assert.equal(active[0].cadenceId, "cad-cold-lead");
+  // com replace → a nova assume e a antiga é cancelada com as tarefas pendentes
+  next = crm.enrollContactInCadence(next, {
+    cadenceId: "cad-rescue-60d", contactId: contact.id, dealId: "", triggerSource: "t", triggerDate: "2026-06-29",
+    ownerUserId: "concierge", ownerRole: "CONCIERGE",
+  }, { replaceActive: true });
+  const activeAfterReplace = next.cadenceEnrollments.filter((e) => e.contactId === contact.id && e.status === "ACTIVE");
+  assert.equal(activeAfterReplace.length, 1);
+  assert.equal(activeAfterReplace[0].cadenceId, "cad-rescue-60d");
+  const oldPending = next.tasks.filter((t) => t.contactId === contact.id && t.cadenceId === "cad-cold-lead" && t.status === "PENDING");
+  assert.equal(oldPending.length, 0, "tarefas da régua substituída foram canceladas");
+});
+
+test("regra de ouro: 1 tarefa por pessoa por paciente — o gate D+1 é a única fase paralela (pessoas diferentes)", () => {
+  const state = cloneState();
+  // Jornada Programa: 3 tarefas no D+1, mas de 3 PESSOAS diferentes (permitido).
+  const journey = crm.advanceAllProgramGates(
+    crm.startProgramJourney(state, "crm-deal-lead-quente", "PROGRAMA_ACOMPANHAMENTO", "estevao", new Date("2026-06-30T09:00:00")),
+    new Date("2026-06-30T09:00:00"),
+  );
+  const contactId = journey.deals.find((d) => d.id === "crm-deal-lead-quente").contactId;
+  const gateTasks = journey.tasks.filter((t) => t.isGate && t.contactId === contactId && t.status === "PENDING");
+  const people = new Set(gateTasks.map((t) => t.assignedToUserId));
+  assert.equal(gateTasks.length, people.size, "cada pessoa tem NO MÁXIMO 1 tarefa do paciente");
+  // Autocorreção: se aparecerem 2 tarefas abertas da MESMA pessoa p/ o mesmo paciente, uma é cancelada.
+  const duplicated = {
+    ...journey,
+    tasks: [
+      ...journey.tasks,
+      { ...gateTasks[0], id: "task-duplicada-teste", isGate: false, generatedBy: "CADENCE_ENGINE", cadenceId: "cad-cold-lead", cadenceStepId: "step-cold-d1" },
+    ],
+  };
+  const enforced = crm.enforceOneTaskPerPersonPerPatient(duplicated);
+  const stillOpen = enforced.tasks.filter(
+    (t) => t.contactId === contactId && t.assignedToUserId === gateTasks[0].assignedToUserId && t.status === "PENDING",
+  );
+  assert.equal(stillOpen.length, 1, "sobrou exatamente 1 tarefa da pessoa");
+  assert.ok(stillOpen[0].isGate, "a tarefa-gate (jornada) vence a de cadência");
 });

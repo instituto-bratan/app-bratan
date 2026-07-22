@@ -684,7 +684,7 @@ export function CrmKanbanPage() {
       ...current,
       contacts: current.contacts.map((contact) =>
         contact.id === selectedDeal.contactId
-          ? { ...contact, fullName, preferredName: editPreferred.trim() || fullName.split(" ")[0], updatedAt: new Date().toISOString() }
+          ? { ...contact, fullName, preferredName: editPreferred.trim(), updatedAt: new Date().toISOString() }
           : contact,
       ),
       deals: current.deals.map((deal) =>

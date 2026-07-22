@@ -100,11 +100,12 @@ export type CrmDealStage =
 // O stage do deal registra a história comercial (ficou em FECHOU_*); a fase do
 // programa é o que anda na trilha de cuidado. Ver programPhaseSpecs.
 export type CrmProgramPhase =
-  | "FECHAMENTO_D0" // fase 1
-  | "TRES_CONTATOS_D1" // fase 2 — GATE: recepção + concierge + enfermeira
+  | "FECHAMENTO_D0" // fase 1 — cadastro do fechamento (Estevão)
+  | "TRES_CONTATOS_D1" // fase 2 — GATE: quem participa depende do canal fechado
   | "AGENDAMENTO" // fase 3 — recepção monta a agenda no Feegow
-  | "CADENCIA_PROGRAMA" // fase 4 — 6 a 9 meses
-  | "ENCERRAMENTO"; // fase 5 — renovação / manutenção / alta
+  | "PRIMEIRO_ATENDIMENTO" // fase 4 — enfermeira: 1ª aplicação/bioimpedância feita
+  | "CADENCIA_PROGRAMA" // fase 5 — 6 a 9 meses
+  | "ENCERRAMENTO"; // fase 6 — renovação / manutenção / alta
 export type CrmProgramOutcome = "RENOVACAO" | "MANUTENCAO" | "ALTA";
 export type CrmJourney = "COMERCIAL" | "PROGRAMA";
 // Canal escolhido no fechamento (POP v3.1).
@@ -444,15 +445,15 @@ export const dealStageHints: Record<CrmDealStage, string> = {
   CONSULTA_REALIZADA: "Passou pelo Dr. Daniel. Aguardando a proposta do plano.",
   PRESCRICAO_FEITA: "Médico prescreveu. Vendas apresenta o valor cheio e o preço Bratan.",
   EM_NEGOCIACAO: "Proposta na mesa. Follow-up até decidir.",
-  FECHOU_COMPLETO: "Comprou o plano inteiro! Presente, concierge D+1, agendamentos e contrato saem sozinhos.",
+  FECHOU_COMPLETO: "Comprou o plano inteiro! Presente e boas-vindas do D+1 saem sozinhos conforme o canal fechado.",
   FECHOU_PARCIAL: "Fechou uma parte. Registre o motivo — o resto do fluxo é igual ao completo.",
-  NAO_FECHOU: "Não fechou (objeção registrada). O médico entra em D+1 e, se não responder, o gestor em D+2.",
-  RECUPERACAO_D1_MEDICO: "Dr. Daniel está tentando reverter a objeção (dia seguinte à consulta).",
-  RECUPERACAO_D2_GESTOR: "Médico não reverteu: agora é o Estevão quem conversa (2 dias depois).",
+  NAO_FECHOU: "Não fechou (objeção registrada). A Concierge acolhe em D+1 e segue a régua D1–D5; sem resposta, o Estevão assume.",
+  RECUPERACAO_D1_MEDICO: "Recuperação em andamento — régua da Concierge (histórico antigo usava o médico).",
+  RECUPERACAO_D2_GESTOR: "Estevão está conduzindo a recuperação.",
   PERDIDO: "Não vai fechar agora. Entra nos resgates futuros (60 dias, 6 meses, 1 ano).",
   RESGATE_D60: "Sumiu do ciclo: a Aline faz as 5 tentativas de resgate.",
   CHURN: "Pausou por condição real (dinheiro, momento de vida). Não é perdido: a Aline investiga o motivo e o resgate fica agendado sozinho para daqui a 6 meses.",
-  NAO_ADESAO: "Não aderiu nem após o contato do Dr. Daniel. Vendas encerra aqui; o paciente segue na base para os resgates futuros.",
+  NAO_ADESAO: "Não aderiu após o acolhimento. Encerra aqui; o paciente segue na base para os resgates futuros.",
 };
 
 // Rótulos em linguagem de balcão (POP): sem jargão/inglês e sem termos que se
@@ -470,9 +471,9 @@ export const dealStageLabels: Record<CrmDealStage, string> = {
   EM_NEGOCIACAO: "Negociando o plano",
   FECHOU_COMPLETO: "Fechou (plano inteiro)",
   FECHOU_PARCIAL: "Fechou (parte do plano)",
-  NAO_FECHOU: "Não fechou — médico vai retomar",
-  RECUPERACAO_D1_MEDICO: "Médico tentando reverter",
-  RECUPERACAO_D2_GESTOR: "Gestor tentando reverter",
+  NAO_FECHOU: "Não fechou — Concierge acolhe",
+  RECUPERACAO_D1_MEDICO: "Em recuperação (Concierge)",
+  RECUPERACAO_D2_GESTOR: "Em recuperação (Estevão)",
   PERDIDO: "Pausado — resgatar depois",
   RESGATE_D60: "Em resgate (Aline)",
   CHURN: "Pausou por condição real",
@@ -661,9 +662,12 @@ export const roleRuleExplainers: Partial<Record<CrmRole, { title: string; rule: 
   },
 };
 
+// Regra do Lucas (22/07/2026): a equipe se confunde com abreviação — em card,
+// lista e tarefa aparece SEMPRE o nome completo. O "nome preferido" (apelido)
+// continua existindo só para as mensagens ({{primeiro_nome}}).
 export function contactDisplayName(contact: CrmContact | undefined) {
   if (!contact) return "Contato sem nome";
-  return contact.preferredName || contact.fullName || contact.phone || contact.whatsapp || "Contato sem nome";
+  return contact.fullName || contact.preferredName || contact.phone || contact.whatsapp || "Contato sem nome";
 }
 
 export function isTaskOverdue(task: CrmTask, reference = new Date()) {
@@ -742,10 +746,11 @@ const cadences: CrmCadence[] = [
   },
   {
     id: "cad-not-closed",
-    name: "Pós-consulta não fechou",
-    description: "Médico D+1 e gestão D+2 quando a venda não fecha.",
+    name: "Não fechou — régua da Concierge (D1–D5)",
+    description:
+      "Paciente não fechou: a Concierge (Aline) faz 1 contato por dia útil, do D1 ao D5, com carinho e sem cobrança. Qualquer resposta encerra a régua; sem resposta no D5 → Estevão assume (5 ligações).",
     cadenceType: "POST_CONSULTATION_NOT_CLOSED",
-    defaultOwnerRole: "MEDICO",
+    defaultOwnerRole: "CONCIERGE",
     active: true,
     createdAt: baseNow,
     updatedAt: baseNow,
@@ -842,17 +847,6 @@ const cadences: CrmCadence[] = [
     updatedAt: baseNow,
   },
   {
-    id: "cad-assinatura-d1d5",
-    name: "Assinatura do contrato D1–D5 (SuperSign)",
-    description:
-      "Contrato enviado pelo SuperSign: a recepcionista verifica a plataforma todo dia e manda o lembrete-padrão (POP 5.4). No D5 sem assinar, liga; sem atender → Gestor de Vendas conduz até a assinatura.",
-    cadenceType: "COMMERCIAL_FOLLOW_UP",
-    defaultOwnerRole: "RECEPCAO",
-    active: true,
-    createdAt: baseNow,
-    updatedAt: baseNow,
-  },
-  {
     id: "cad-gestor-5lig",
     name: "Trilha de resgate do Gestor — 5 ligações (Estevão)",
     description:
@@ -890,8 +884,11 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-cold-d5", "cad-cold-lead", 2, "D5 - novo ângulo da dor", 5, "tpl-lead-d5", "SDR_LEADS"],
   ["step-cold-d7", "cad-cold-lead", 3, "D7 - prova ou conteúdo", 7, "tpl-lead-d7", "SDR_LEADS"],
   ["step-cold-d60", "cad-cold-lead", 4, "D60 - reativação", 60, "tpl-lead-d60", "SDR_LEADS"],
-  ["step-med-d1", "cad-not-closed", 1, "Médico D+1", 1, "tpl-medico-d1", "MEDICO"],
-  ["step-gestor-d2", "cad-not-closed", 2, "Gestor D+2", 2, "tpl-gestor-d2", "ADMIN_GESTAO"],
+  ["step-nc-d1", "cad-not-closed", 1, "Não fechou D1 - acolhimento", 1, "tpl-naofechou-d1", "CONCIERGE"],
+  ["step-nc-d2", "cad-not-closed", 2, "Não fechou D2 - viu minha mensagem?", 2, "tpl-followup-d2", "CONCIERGE"],
+  ["step-nc-d3", "cad-not-closed", 3, "Não fechou D3 - à disposição", 3, "tpl-followup-d3", "CONCIERGE"],
+  ["step-nc-d4", "cad-not-closed", 4, "Não fechou D4 - posso ligar?", 4, "tpl-followup-d4", "CONCIERGE"],
+  ["step-nc-d5", "cad-not-closed", 5, "Não fechou D5 - última mensagem", 5, "tpl-followup-d5", "CONCIERGE"],
   ["step-concierge-d1", "cad-concierge-d1", 1, "Concierge D+1", 1, "tpl-concierge-d1", "CONCIERGE"],
   ["step-concierge-reenvio", "cad-concierge-d1", 2, "Reenvio acolhimento", 2, "tpl-concierge-reenvio", "CONCIERGE"],
   ["step-posc-d1", "cad-pos-consulta-d1", 1, "Pós-consulta D+1 — como foi a consulta?", 1, "tpl-pos-consulta-d1", "CONCIERGE"],
@@ -919,11 +916,6 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-posf-d3", "cad-pos-fechamento-d2d5", 2, "Follow-up D3 - à disposição", 2, "tpl-followup-d3", "RECEPCAO"],
   ["step-posf-d4", "cad-pos-fechamento-d2d5", 3, "Follow-up D4 - posso ligar?", 3, "tpl-followup-d4", "RECEPCAO"],
   ["step-posf-d5", "cad-pos-fechamento-d2d5", 4, "Follow-up D5 - última mensagem", 4, "tpl-followup-d5", "RECEPCAO"],
-  ["step-assin-d1", "cad-assinatura-d1d5", 1, "Assinatura D1 - verificar e lembrar", 1, "tpl-lembrete-assinatura", "RECEPCAO"],
-  ["step-assin-d2", "cad-assinatura-d1d5", 2, "Assinatura D2 - lembrete", 2, "tpl-lembrete-assinatura", "RECEPCAO"],
-  ["step-assin-d3", "cad-assinatura-d1d5", 3, "Assinatura D3 - lembrete", 3, "tpl-lembrete-assinatura", "RECEPCAO"],
-  ["step-assin-d4", "cad-assinatura-d1d5", 4, "Assinatura D4 - lembrete", 4, "tpl-lembrete-assinatura", "RECEPCAO"],
-  ["step-assin-ligar", "cad-assinatura-d1d5", 5, "Assinatura D5 - LIGAR para o paciente", 5, "tpl-lembrete-assinatura", "RECEPCAO"],
   ["step-g5l-1", "cad-gestor-5lig", 1, "Ligação 1 (ex.: seg 10h)", 0, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
   ["step-g5l-2", "cad-gestor-5lig", 2, "Ligação 2 (ex.: qua 16h)", 2, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
   ["step-g5l-3", "cad-gestor-5lig", 3, "Ligação 3 (ex.: sex 12h)", 4, "tpl-gestor-ligacao", "ADMIN_GESTAO"],
@@ -947,7 +939,7 @@ const cadenceSteps: CrmCadenceStep[] = [
   offsetValue: offsetValue as number,
   preferredTimeWindow: (id === "step-post-application" ? "AFTERNOON" : id === "step-concierge-d1" ? "MORNING" : "ANY") as CrmTimeWindow,
   // Ligações do gestor e a ligação do D5 da assinatura são CALL; o resto é WhatsApp.
-  taskType: ((String(id).startsWith("step-g5l-") && id !== "step-g5l-encerramento") || id === "step-assin-ligar" ? "CALL" : "WHATSAPP") as CrmTaskType,
+  taskType: (String(id).startsWith("step-g5l-") && id !== "step-g5l-encerramento" ? "CALL" : "WHATSAPP") as CrmTaskType,
   assignedToRole: assignedToRole as CrmRole,
   messageTemplateId: messageTemplateId as string,
   required: true,
@@ -972,12 +964,10 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-followup-d3", "Follow-up D3 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, tudo bem por aí? Sigo à disposição para agendar suas consultas. É só me responder por aqui!"],
   ["tpl-followup-d4", "Follow-up D4 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "Oi, {{primeiro_nome}}! Para facilitar, posso te ligar? Me diz o melhor horário que eu te ligo rapidinho. 😊"],
   ["tpl-followup-d5", "Follow-up D5 (POP 5.3)", "Recepção", "RECEPCAO", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, essa é a minha última mensagem por aqui para não te incomodar. Se preferir, nosso coordenador pode te ligar para resolver tudo de uma vez — é só me confirmar. Estamos à disposição!"],
-  ["tpl-lembrete-assinatura", "Lembrete de assinatura (POP 5.4)", "Recepção", "RECEPCAO", "COMMERCIAL_FOLLOW_UP", "Olá, {{primeiro_nome}}, tudo bem? Aqui é a Isabela, do Instituto Bratan. 😊 Passando para lembrar do seu contrato, que está prontinho no SuperSign aguardando a sua assinatura — é rapidinho, direto do celular, pelo link: {{link_contrato}}. Ele garante o registro de todo o seu tratamento e dos valores combinados, para a sua segurança. Qualquer dúvida sobre o documento, me chama por aqui que eu te ajudo!"],
   ["tpl-gestor-ligacao", "Ligação do gestor (roteiro)", "Gestão", "ADMIN_GESTAO", "COMMERCIAL_FOLLOW_UP", "LIGAR para {{nome}} (não é mensagem): entender com escuta por que não está respondendo — agendamento, aplicação, concierge ou contrato. Dias alternados, horários diferentes. Registrar data, hora e status na planilha do gestor."],
   ["tpl-encerramento-gestor", "Encerramento do gestor (POP 5.1)", "Gestão", "ADMIN_GESTAO", "COMMERCIAL_FOLLOW_UP", "Olá, {{primeiro_nome}}, tudo bem? Aqui é o Estevão, coordenador do Instituto Bratan. 🌿 Nos últimos dias, nossa equipe tentou falar com você por mensagem e eu tentei algumas ligações em dias e horários diferentes, mas infelizmente não conseguimos contato. Por respeito ao seu tempo e ao seu espaço, estou encerrando por aqui as nossas tentativas. Quero que saiba que as portas do Instituto continuam abertas para você: a qualquer momento, é só responder esta mensagem ou ligar para a nossa equipe no 11 91752-3530 que retomamos de onde paramos — seja para agendar, tirar uma dúvida ou dar continuidade ao seu tratamento. Estamos aguardando o seu contato para prestar a você um trabalho de excelência e uma experiência completa na transformação da sua saúde. Um abraço, Estevão · Instituto Bratan."],
   ["tpl-gestor-3131", "Gestor 3·1·3·1", "Gestão", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Estevão, gestor do Instituto Bratan. Passando para saber se ficou alguma dúvida e como posso facilitar seu próximo passo com a gente."],
-  ["tpl-medico-d1", "Médico D+1", "Recuperação", "MEDICO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é o Dr. Daniel. Queria entender com calma o que ficou como dúvida ou barreira para ajustarmos o caminho sem perder o objetivo principal."],
-  ["tpl-gestor-d2", "Gestor D+2", "Recuperação", "ADMIN_GESTAO", "POST_CONSULTATION_NOT_CLOSED", "{{primeiro_nome}}, aqui é da gestão do Instituto Bratan. Passei para entender como podemos facilitar sua decisão e deixar o próximo passo claro."],
+  ["tpl-naofechou-d1", "Não fechou D1 — acolhimento da Concierge", "Recuperação", "CONCIERGE", "POST_CONSULTATION_NOT_CLOSED", "Olá, {{primeiro_nome}}, tudo bem? Aqui é a Aline, do Instituto Bratan. 🌿 Foi um prazer receber você na consulta! Sei que é uma decisão importante e queria ficar à disposição: se ficou alguma dúvida sobre o plano, valores ou o caminho do tratamento, me conta por aqui que eu te ajudo com todo carinho — sem pressa e sem compromisso."],
   ["tpl-concierge-d1", "Concierge D+1", "Concierge", "CONCIERGE", "POST_SALE_CONCIERGE", "Bom dia, {{primeiro_nome}}. Seja muito bem-vindo ao acompanhamento Bratan! Estou por aqui para qualquer dúvida e para cuidar da sua experiência conosco. Se puder, sua avaliação no Google nos ajuda demais: {{link_google_review}}"],
   ["tpl-concierge-reenvio", "Concierge reenvio", "Concierge", "CONCIERGE", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, reforçando que ficamos à disposição. Quando puder, me diga se está tudo claro para o início do seu plano."],
   ["tpl-enfermagem-14", "Enfermagem 14 dias", "Enfermagem", "ENFERMAGEM", "NURSING_14_DAYS", "Olá, {{primeiro_nome}}. Passando para acompanhar como você está se sentindo no tratamento e se apareceu alguma dúvida ou intercorrência."],
@@ -1270,16 +1260,16 @@ const seedTasks: CrmTask[] = [
     createdBy: "seed",
   }),
   createTask({
-    id: "crm-task-medico-d1",
+    id: "crm-task-naofechou-d1",
     contactId: "crm-contact-nao-fechou",
     dealId: "crm-deal-nao-fechou",
     cadenceId: "cad-not-closed",
-    cadenceStepId: "step-med-d1",
-    title: "Médico D+1 - entender objeção",
-    description: "Paciente não fechou. Contato médico para entender barreira e possível ajuste.",
+    cadenceStepId: "step-nc-d1",
+    title: "Não fechou D+1 — acolhimento da Concierge",
+    description: "Paciente não fechou. Acolha com carinho, tire dúvidas e deixe a porta aberta.",
     taskType: "WHATSAPP",
-    assignedToUserId: "dr-daniel",
-    assignedToRole: "MEDICO",
+    assignedToUserId: "concierge",
+    assignedToRole: "CONCIERGE",
     dueAt: atLocalTime(todayISO(), 10),
     priority: "CRITICAL",
     visibilityScope: "ROLE",
@@ -1318,23 +1308,6 @@ const seedTasks: CrmTask[] = [
     priority: "MEDIUM",
     visibilityScope: "ROLE",
     generatedBy: "CADENCE_ENGINE",
-    createdBy: "seed",
-  }),
-  createTask({
-    id: "crm-task-admin-contrato",
-    contactId: "crm-contact-fechou-completo",
-    dealId: "crm-deal-fechou-completo",
-    cadenceId: "",
-    cadenceStepId: "",
-    title: "Conferir contrato e enviar SuperSign",
-    description: "Documento jurídico deve ficar em mãos em até 24h.",
-    taskType: "CONTRACT",
-    assignedToUserId: "recepcao",
-    assignedToRole: "RECEPCAO",
-    dueAt: atLocalTime(todayISO(), 16),
-    priority: "HIGH",
-    visibilityScope: "ROLE",
-    generatedBy: "PIPELINE_STAGE",
     createdBy: "seed",
   }),
   createTask({
@@ -1382,8 +1355,8 @@ const seedEnrollments: CrmCadenceEnrollment[] = [
     enrolledAt: baseNow,
     triggerSource: "deal nao fechou",
     triggerDate: addDays(todayISO(), -1),
-    ownerUserId: "dr-daniel",
-    ownerRole: "MEDICO",
+    ownerUserId: "concierge",
+    ownerRole: "CONCIERGE",
     completedAt: null,
     canceledReason: "",
     createdAt: baseNow,
@@ -1530,7 +1503,9 @@ export function findOrCreateCrmContact(
     contactType: values.contactType ?? "LEAD",
     lifecycleStage: values.lifecycleStage ?? "COLD_LEAD",
     fullName: values.fullName,
-    preferredName: values.preferredName ?? values.fullName.split(" ")[0] ?? "",
+    // Sem apelido automático: a tela mostra o nome COMPLETO (regra do Lucas);
+    // o apelido só existe se alguém preencher de propósito.
+    preferredName: values.preferredName ?? "",
     phone: values.phone ?? "",
     whatsapp: values.whatsapp ?? values.phone ?? "",
     email: values.email ?? "",
@@ -1644,6 +1619,17 @@ function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment
   // Idempotência do id (mesma execução em qualquer aparelho) + dedup por passo.
   if (state.tasks.some((task) => task.id === id)) return null;
   if (hasTaskForStep(state, enrollment, step, recurring, date)) return null;
+  // REGRA DE OURO nº 3 (Lucas, 22/07): 1 tarefa ativa por PESSOA por PACIENTE.
+  // Se esta pessoa já tem tarefa aberta deste paciente (ex.: tarefa-gate da
+  // jornada), a próxima da cadência espera — nasce no próximo ciclo, depois
+  // que a atual for resolvida.
+  const personBusy = state.tasks.some(
+    (task) =>
+      task.contactId === enrollment.contactId &&
+      task.assignedToUserId === enrollment.ownerUserId &&
+      !["DONE", "CANCELED", "SKIPPED"].includes(task.status),
+  );
+  if (personBusy) return null;
 
   const hour = step.preferredTimeWindow === "MORNING" ? 9 : step.preferredTimeWindow === "AFTERNOON" ? 15 : 10;
   return createTask({
@@ -1658,11 +1644,52 @@ function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment
     assignedToUserId: enrollment.ownerUserId,
     assignedToRole: step.assignedToRole,
     dueAt: atLocalTime(date, hour),
-    priority: step.assignedToRole === "MEDICO" || step.assignedToRole === "ADMIN_GESTAO" ? "HIGH" : "MEDIUM",
+    priority: step.assignedToRole === "ADMIN_GESTAO" ? "HIGH" : "MEDIUM",
     visibilityScope: "ROLE",
     generatedBy: "CADENCE_ENGINE",
     createdBy: "cadence-engine",
   });
+}
+
+// REGRA DE OURO nº 3 — autocorreção: se por qualquer caminho a mesma PESSOA
+// ficou com 2+ tarefas abertas do MESMO paciente, só a mais importante fica.
+// Prioridade: tarefa-gate da jornada > tarefa de etapa > tarefa de cadência;
+// no empate, a de vencimento mais próximo. As demais são canceladas com o
+// motivo registrado — nada some sem explicação.
+export function enforceOneTaskPerPersonPerPatient(state: CrmState): CrmState {
+  // Reclamações (POP 2.3) ficam de fora: insatisfação é urgência e convive com
+  // qualquer outra tarefa — nunca é cancelada por esta regra.
+  const open = state.tasks.filter(
+    (task) =>
+      !["DONE", "CANCELED", "SKIPPED"].includes(task.status) &&
+      task.contactId &&
+      task.assignedToUserId &&
+      !task.id.startsWith("task-reclamacao-"),
+  );
+  const groups = new Map<string, CrmTask[]>();
+  for (const task of open) {
+    const key = `${task.contactId}::${task.assignedToUserId}`;
+    const list = groups.get(key) ?? [];
+    list.push(task);
+    groups.set(key, list);
+  }
+  const cancelIds = new Set<string>();
+  const rank = (task: CrmTask) => (task.isGate ? 0 : task.generatedBy === "PIPELINE_STAGE" ? 1 : 2);
+  for (const list of groups.values()) {
+    if (list.length <= 1) continue;
+    const [keep] = [...list].sort((a, b) => rank(a) - rank(b) || a.dueAt.localeCompare(b.dueAt));
+    for (const task of list) if (task.id !== keep.id) cancelIds.add(task.id);
+  }
+  if (!cancelIds.size) return state;
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    tasks: state.tasks.map((task) =>
+      cancelIds.has(task.id)
+        ? { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: "Cancelada: 1 tarefa por pessoa por paciente (regra de ouro).", updatedAt: now }
+        : task,
+    ),
+  };
 }
 
 export function generateCadenceTasks(state: CrmState, reference = new Date()) {
@@ -2176,6 +2203,7 @@ export const programPhases: CrmProgramPhase[] = [
   "FECHAMENTO_D0",
   "TRES_CONTATOS_D1",
   "AGENDAMENTO",
+  "PRIMEIRO_ATENDIMENTO",
   "CADENCIA_PROGRAMA",
   "ENCERRAMENTO",
 ];
@@ -2184,18 +2212,21 @@ export const programPhaseLabels: Record<CrmProgramPhase, string> = {
   FECHAMENTO_D0: "Acabou de aderir",
   TRES_CONTATOS_D1: "Boas-vindas (D+1)",
   AGENDAMENTO: "Agendamento",
+  PRIMEIRO_ATENDIMENTO: "1º atendimento",
   CADENCIA_PROGRAMA: "Em acompanhamento",
   ENCERRAMENTO: "Renovar ou dar alta",
 };
 
 export const programPhaseHints: Record<CrmProgramPhase, string> = {
-  FECHAMENTO_D0: "Acabou de fechar. Vendas acionou Recepção, Concierge e Enfermagem.",
+  FECHAMENTO_D0: "Estevão cadastrou o fechamento. O canal fechado liga a esteira certa sozinho.",
   TRES_CONTATOS_D1:
-    "No dia seguinte, três pessoas falam com o paciente: Recepção (agenda tudo), Concierge (experiência + Google) e Enfermeira (bem-estar). O card só avança quando os TRÊS marcarem \"mensagem enviada\".",
+    "No dia seguinte, cada pessoa da esteira manda a sua mensagem (Programa: Concierge + Recepção + Enfermeira; Clube: Concierge + Recepção; Só Tratamento: Concierge + Enfermeira). O card só avança quando TODAS marcarem \"mensagem enviada\".",
   AGENDAMENTO:
-    "A Recepção monta a agenda no Feegow (3 consultas do médico, 6 checkpoints da Performance, 1ª dose). Confirmada a agenda, avança sozinho.",
+    "A Recepção fecha todas as datas no Feegow. Confirmada a agenda, o card avança sozinho.",
+  PRIMEIRO_ATENDIMENTO:
+    "Enfermeira faz a 1ª aplicação/bioimpedância. Feita e marcada, o card avança sozinho.",
   CADENCIA_PROGRAMA:
-    "Programa rodando (6 a 9 meses): enfermeira nas doses e a cada 14 dias, Performance mensal, médico a cada 60 dias.",
+    "Acompanhamento rodando (6 a 9 meses): enfermeira nas doses e a cada 14 dias, Performance mensal.",
   ENCERRAMENTO: "Mês 6/9: decisão — renovar, manter (mais leve) ou dar alta.",
 };
 
@@ -2213,13 +2244,21 @@ type ProgramGateSpec = {
   description: string;
   taskType: CrmTaskType;
   dueOffsetDays: number;
+  /** Canais em que esta pessoa participa do gate (ausente = todos). */
+  channels?: CrmAdhesionChannel[];
+  /** Título/descrição específicos por canal (ex.: enfermeira no Só Tratamento agenda medicações). */
+  overrides?: Partial<Record<CrmAdhesionChannel, { title: string; description: string }>>;
 };
 type ProgramPhaseSpec = {
   order: number;
-  gate: ProgramGateSpec[]; // TODAS obrigatórias para avançar
+  gate: ProgramGateSpec[]; // as do canal do deal são TODAS obrigatórias para avançar
   enrollCadences: string[]; // cadências materializadas ao ENTRAR na fase
   autoAdvance: boolean; // gate fechado avança sozinho
   next: CrmProgramPhase | null;
+  /** Próxima fase específica por canal (ex.: Só Tratamento pula Agendamento). */
+  nextByChannel?: Partial<Record<CrmAdhesionChannel, CrmProgramPhase | null>>;
+  /** Canais que PULAM esta fase por inteiro. */
+  skipForChannels?: CrmAdhesionChannel[];
 };
 
 export const programPhaseSpecs: Record<CrmProgramPhase, ProgramPhaseSpec> = {
@@ -2227,26 +2266,94 @@ export const programPhaseSpecs: Record<CrmProgramPhase, ProgramPhaseSpec> = {
   TRES_CONTATOS_D1: {
     order: 2,
     gate: [
-      { key: "recepcao", role: "RECEPCAO", userId: "recepcao", title: "Recepção D+1 — agendar o programa", description: "Envie 1 mensagem com todas as datas (consultas, checkpoints e doses). Marque como enviada quando mandar.", taskType: "WHATSAPP", dueOffsetDays: 1 },
-      { key: "concierge", role: "CONCIERGE", userId: "concierge", title: "Concierge D+1 — experiência + avaliação Google", description: "Pergunte como foi a experiência e peça a avaliação no Google. Marque como enviada quando mandar.", taskType: "WHATSAPP", dueOffsetDays: 1 },
-      { key: "enfermeira", role: "ENFERMAGEM", userId: "enfermagem", title: "Enfermeira D+1 — bem-estar e efeitos", description: "Pergunte como o paciente está se sentindo e se teve efeitos colaterais. Marque como enviada quando mandar.", taskType: "WHATSAPP", dueOffsetDays: 1 },
+      {
+        key: "concierge",
+        role: "CONCIERGE",
+        userId: "concierge",
+        title: "Concierge D+1 — boas-vindas + avaliação Google",
+        description: "Mande as boas-vindas, pergunte como foi a experiência e peça a avaliação no Google. Marque como enviada quando mandar.",
+        taskType: "WHATSAPP",
+        dueOffsetDays: 1,
+      },
+      {
+        key: "recepcao",
+        role: "RECEPCAO",
+        userId: "recepcao",
+        title: "Recepção D+1 — mensagem de agendamento",
+        description: "Envie 1 mensagem com os dias e períodos para fechar toda a agenda. Marque como enviada quando mandar.",
+        taskType: "WHATSAPP",
+        dueOffsetDays: 1,
+        channels: ["PROGRAMA_ACOMPANHAMENTO", "CLUBE_BRATAN"],
+        overrides: {
+          CLUBE_BRATAN: { title: "Recepção D+1 — agendar a próxima consulta", description: "Envie a mensagem para agendar a próxima consulta do Clube (~3 meses). Marque como enviada quando mandar." },
+        },
+      },
+      {
+        key: "enfermeira",
+        role: "ENFERMAGEM",
+        userId: "enfermagem",
+        title: "Enfermeira D+1 — apresentação",
+        description: "Apresente-se e fique à disposição antes da 1ª aplicação/bioimpedância. Marque como enviada quando mandar.",
+        taskType: "WHATSAPP",
+        dueOffsetDays: 1,
+        channels: ["PROGRAMA_ACOMPANHAMENTO", "SOMENTE_TRATAMENTO"],
+        overrides: {
+          SOMENTE_TRATAMENTO: { title: "Enfermeira D+1 — agendar as medicações", description: "Combine com o paciente as datas das medicações/aplicações. Marque como enviada quando mandar." },
+        },
+      },
     ],
     enrollCadences: [],
     autoAdvance: true,
     next: "AGENDAMENTO",
+    // Só Tratamento não passa pela Recepção: da boas-vindas vai direto pro 1º atendimento.
+    nextByChannel: { SOMENTE_TRATAMENTO: "PRIMEIRO_ATENDIMENTO" },
   },
   AGENDAMENTO: {
     order: 3,
     gate: [
-      { key: "recepcao-agenda", role: "RECEPCAO", userId: "recepcao", title: "Montar a agenda no Feegow", description: "Agende as 3 consultas do Dr. Daniel (1 a cada 2 meses), os 6 checkpoints da Assistente de Performance (1/mês) e a 1ª dose/bioimpedância. Confirme aqui quando a agenda estiver montada.", taskType: "SCHEDULE", dueOffsetDays: 1 },
+      { key: "recepcao-agenda", role: "RECEPCAO", userId: "recepcao", title: "Fechar todas as datas no Feegow", description: "Paciente respondeu: feche todas as datas (consultas, checkpoints da Performance e 1ª dose). Confirme aqui quando a agenda estiver montada.", taskType: "SCHEDULE", dueOffsetDays: 1 },
+    ],
+    enrollCadences: [],
+    autoAdvance: true,
+    next: "PRIMEIRO_ATENDIMENTO",
+    // Clube não tem aplicação: agenda confirmada = Clube ativo (acompanhamento).
+    nextByChannel: { CLUBE_BRATAN: "CADENCIA_PROGRAMA" },
+    skipForChannels: ["SOMENTE_TRATAMENTO"],
+  },
+  PRIMEIRO_ATENDIMENTO: {
+    order: 4,
+    gate: [
+      { key: "enfermeira-1atend", role: "ENFERMAGEM", userId: "enfermagem", title: "1ª aplicação/bioimpedância feita", description: "Faça o 1º atendimento (aplicação/bioimpedância) e conclua aqui. O card avança sozinho.", taskType: "IN_PERSON", dueOffsetDays: 2 },
     ],
     enrollCadences: [],
     autoAdvance: true,
     next: "CADENCIA_PROGRAMA",
+    skipForChannels: ["CLUBE_BRATAN"],
   },
-  CADENCIA_PROGRAMA: { order: 4, gate: [], enrollCadences: ["cad-nursing-14"], autoAdvance: false, next: "ENCERRAMENTO" },
-  ENCERRAMENTO: { order: 5, gate: [], enrollCadences: [], autoAdvance: false, next: null },
+  CADENCIA_PROGRAMA: { order: 5, gate: [], enrollCadences: ["cad-nursing-14"], autoAdvance: false, next: "ENCERRAMENTO" },
+  ENCERRAMENTO: { order: 6, gate: [], enrollCadences: [], autoAdvance: false, next: null },
 };
+
+// Gate efetivo da fase para o canal do deal (canal nulo = esteira completa).
+export function gatesForPhase(phase: CrmProgramPhase, channel: CrmAdhesionChannel | null | undefined): ProgramGateSpec[] {
+  return programPhaseSpecs[phase].gate
+    .filter((gate) => !gate.channels || !channel || gate.channels.includes(channel))
+    .map((gate) => {
+      const override = channel ? gate.overrides?.[channel] : undefined;
+      return override ? { ...gate, title: override.title, description: override.description } : gate;
+    });
+}
+
+// Próxima fase para o canal, pulando fases que o canal não usa.
+export function nextPhaseFor(phase: CrmProgramPhase, channel: CrmAdhesionChannel | null | undefined): CrmProgramPhase | null {
+  const spec = programPhaseSpecs[phase];
+  let next = (channel ? spec.nextByChannel?.[channel] : undefined) ?? spec.next;
+  while (next && channel && programPhaseSpecs[next].skipForChannels?.includes(channel)) {
+    const skipped = programPhaseSpecs[next];
+    next = skipped.nextByChannel?.[channel] ?? skipped.next;
+  }
+  return next ?? null;
+}
 
 // Id determinístico da tarefa-gate (converge entre aparelhos; upsert idempotente).
 export function programGateTaskIdFor(dealId: string, phase: CrmProgramPhase, key: string) {
@@ -2254,12 +2361,14 @@ export function programGateTaskIdFor(dealId: string, phase: CrmProgramPhase, key
 }
 
 // Cria (idempotente) as tarefas-gate da fase e inscreve as cadências da fase.
+// O gate depende do CANAL fechado (Programa/Clube/Só Tratamento) — cada esteira
+// aciona só as pessoas dela.
 function materializeProgramPhase(state: CrmState, deal: CrmDeal, phase: CrmProgramPhase, reference: Date): CrmState {
   const spec = programPhaseSpecs[phase];
   let next = state;
   const tasksToAdd: CrmTask[] = [];
   const enteredISO = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
-  for (const gate of spec.gate) {
+  for (const gate of gatesForPhase(phase, deal.adhesionChannel)) {
     const id = programGateTaskIdFor(deal.id, phase, gate.key);
     if (next.tasks.some((task) => task.id === id)) continue;
     tasksToAdd.push(
@@ -2287,15 +2396,20 @@ function materializeProgramPhase(state: CrmState, deal: CrmDeal, phase: CrmProgr
   if (tasksToAdd.length) next = { ...next, tasks: [...tasksToAdd, ...next.tasks] };
   for (const cadenceId of spec.enrollCadences) {
     const cadence = next.cadences.find((item) => item.id === cadenceId);
-    next = enrollContactInCadence(next, {
-      cadenceId,
-      contactId: deal.contactId,
-      dealId: deal.id,
-      triggerSource: "programa (fase)",
-      triggerDate: enteredISO,
-      ownerUserId: deal.ownerUserId || (cadence?.defaultOwnerRole ?? "CONCIERGE").toLowerCase(),
-      ownerRole: cadence?.defaultOwnerRole ?? "CONCIERGE",
-    });
+    next = enrollContactInCadence(
+      next,
+      {
+        cadenceId,
+        contactId: deal.contactId,
+        dealId: deal.id,
+        triggerSource: "programa (fase)",
+        triggerDate: enteredISO,
+        ownerUserId: deal.ownerUserId || (cadence?.defaultOwnerRole ?? "CONCIERGE").toLowerCase(),
+        ownerRole: cadence?.defaultOwnerRole ?? "CONCIERGE",
+      },
+      // A cadência da fase nova assume o lugar de qualquer outra (1 por paciente).
+      { replaceActive: true },
+    );
   }
   return next;
 }
@@ -2322,16 +2436,16 @@ export function startProgramJourney(state: CrmState, dealId: string, channel: Cr
 export function programGateStatus(state: CrmState, dealId: string): { phase: CrmProgramPhase | null; total: number; done: number; missing: { role: CrmRole; title: string }[] } {
   const deal = state.deals.find((item) => item.id === dealId);
   if (!deal?.programPhase) return { phase: null, total: 0, done: 0, missing: [] };
-  const spec = programPhaseSpecs[deal.programPhase];
+  const gates = gatesForPhase(deal.programPhase, deal.adhesionChannel);
   const missing: { role: CrmRole; title: string }[] = [];
   let done = 0;
-  for (const gate of spec.gate) {
+  for (const gate of gates) {
     const id = programGateTaskIdFor(deal.id, deal.programPhase, gate.key);
     const task = state.tasks.find((item) => item.id === id);
     if (task && task.status === "DONE") done += 1;
     else missing.push({ role: gate.role, title: gate.title });
   }
-  return { phase: deal.programPhase, total: spec.gate.length, done, missing };
+  return { phase: deal.programPhase, total: gates.length, done, missing };
 }
 
 // Avança UMA fase se o gate estiver completo (idempotente, determinística).
@@ -2341,15 +2455,15 @@ export function advancePhaseIfGateComplete(state: CrmState, dealId: string, opti
   const deal = state.deals.find((item) => item.id === dealId);
   if (!deal?.programPhase) return state;
   const spec = programPhaseSpecs[deal.programPhase];
-  if (!spec.autoAdvance || !spec.next) return state;
-  const gateComplete = spec.gate.every((gate) => {
+  const nextPhase = nextPhaseFor(deal.programPhase, deal.adhesionChannel);
+  if (!spec.autoAdvance || !nextPhase) return state;
+  const gateComplete = gatesForPhase(deal.programPhase, deal.adhesionChannel).every((gate) => {
     const id = programGateTaskIdFor(deal.id, deal.programPhase as CrmProgramPhase, gate.key);
     const task = state.tasks.find((item) => item.id === id);
     return task?.status === "DONE";
   });
   if (!gateComplete) return state;
   const now = new Date().toISOString();
-  const nextPhase = spec.next;
   const movedDeal: CrmDeal = { ...deal, programPhase: nextPhase, programPhaseEnteredAt: now, programPhaseActorId: actorId, updatedAt: now };
   let next: CrmState = { ...state, deals: state.deals.map((item) => (item.id === dealId ? movedDeal : item)) };
   next = materializeProgramPhase(next, movedDeal, nextPhase, reference);
@@ -2433,7 +2547,9 @@ export function ensureMondaySafetyTask(state: CrmState, reference = new Date()):
 // POP v3.1 · Escalonamento: cadência D1–D5 esgotada SEM resposta → o caso vai
 // para o Gestor de Vendas (Estevão): trilha de 5 ligações em dias alternados,
 // encerrando com a mensagem-padrão (POP 5.1) se ninguém atender.
-const ESCALATE_TO_MANAGER_CADENCES = ["cad-pos-fechamento-d2d5", "cad-assinatura-d1d5", "cad-return-cycle"];
+// D5 sem resposta → Estevão (5 ligações). A régua do não-fechou agora é da
+// CONCIERGE (decisão do Lucas, 22/07 — o médico saiu do CRM); assinatura saiu.
+const ESCALATE_TO_MANAGER_CADENCES = ["cad-pos-fechamento-d2d5", "cad-not-closed", "cad-return-cycle"];
 
 export function escalateExhaustedCadences(state: CrmState, reference = new Date()): CrmState {
   let next = state;
@@ -2458,15 +2574,20 @@ export function escalateExhaustedCadences(state: CrmState, reference = new Date(
         item.id === enrollment.id ? { ...item, status: "COMPLETED" as CrmCadenceStatus, completedAt: now, updatedAt: now } : item,
       ),
     };
-    next = enrollContactInCadence(next, {
-      cadenceId: "cad-gestor-5lig",
-      contactId: enrollment.contactId,
-      dealId: enrollment.dealId,
-      triggerSource: `escalonado: ${enrollment.cadenceId} sem resposta no D5`,
-      triggerDate: refISO,
-      ownerUserId: "gestao",
-      ownerRole: "ADMIN_GESTAO",
-    });
+    next = enrollContactInCadence(
+      next,
+      {
+        cadenceId: "cad-gestor-5lig",
+        contactId: enrollment.contactId,
+        dealId: enrollment.dealId,
+        triggerSource: `escalonado: ${enrollment.cadenceId} sem resposta no D5`,
+        triggerDate: refISO,
+        ownerUserId: "gestao",
+        ownerRole: "ADMIN_GESTAO",
+      },
+      // O Estevão ASSUME: a tarefa/cadência antiga é cancelada (nunca as duas juntas).
+      { replaceActive: true },
+    );
     next = {
       ...next,
       timelineEvents: [
@@ -2512,11 +2633,40 @@ export function cadenceNeedsEventDate(state: CrmState, cadenceId: string) {
   );
 }
 
-export function enrollContactInCadence(state: CrmState, values: Omit<CrmCadenceEnrollment, "id" | "status" | "enrolledAt" | "completedAt" | "canceledReason" | "createdAt" | "updatedAt">) {
+export function enrollContactInCadence(
+  state: CrmState,
+  values: Omit<CrmCadenceEnrollment, "id" | "status" | "enrolledAt" | "completedAt" | "canceledReason" | "createdAt" | "updatedAt">,
+  options?: { replaceActive?: boolean },
+) {
   const existing = state.cadenceEnrollments.find(
     (item) => item.contactId === values.contactId && item.cadenceId === values.cadenceId && item.status === "ACTIVE",
   );
   if (existing) return state;
+
+  // REGRA DE OURO nº 5 (Lucas, 22/07): 1 cadência ativa por paciente. Se já
+  // existe OUTRA cadência ativa: ou esta nova substitui (replaceActive — usado
+  // pelas fases da jornada e pela escalação ao gestor), ou ela NÃO nasce.
+  const otherActive = state.cadenceEnrollments.filter(
+    (item) => item.contactId === values.contactId && item.status === "ACTIVE",
+  );
+  if (otherActive.length && !options?.replaceActive) return state;
+  if (otherActive.length && options?.replaceActive) {
+    const nowISO = new Date().toISOString();
+    const otherIds = new Set(otherActive.map((item) => item.id));
+    state = {
+      ...state,
+      cadenceEnrollments: state.cadenceEnrollments.map((item) =>
+        otherIds.has(item.id)
+          ? { ...item, status: "CANCELED" as const, canceledReason: "Substituída: nova cadência assumiu (1 por paciente).", updatedAt: nowISO }
+          : item,
+      ),
+      tasks: state.tasks.map((task) =>
+        task.status === "PENDING" && task.contactId === values.contactId && task.cadenceId && otherActive.some((item) => item.cadenceId === task.cadenceId)
+          ? { ...task, status: "CANCELED" as const, resultNotes: "Cancelada: cadência substituída (1 por paciente).", updatedAt: nowISO }
+          : task,
+      ),
+    };
+  }
   const now = new Date().toISOString();
 
   // Regra do Lucas (14/07/2026): quem entra em cadência tem que aparecer no
@@ -2589,9 +2739,9 @@ export function completeCrmTask(
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) return state;
   const now = new Date().toISOString();
-  // Só uma resposta REAL do paciente (ou a venda) pausa a régua. "Não vendeu" e
-  // "Precisa de gestor" NÃO pausam: são o gatilho para o próximo toque do POP
-  // (ex.: médico D+1 marca "precisa de gestor" → o Gestor D+2 TEM de continuar).
+  // Só uma resposta REAL do paciente (ou a venda) encerra a régua. "Não vendeu"
+  // e "Precisa de gestor" NÃO encerram: são o gatilho para o próximo toque
+  // (ex.: concierge D1 sem resposta → o D2 dela TEM de nascer).
   const responseReceived = ["RESPONDED", "SCHEDULED", "RESCHEDULED", "SOLD"].includes(values.result);
   const touchpoint: CrmTouchpoint = {
     id: createCrmId("touch"),
@@ -2714,21 +2864,8 @@ export function completeCrmTask(
     }
   }
 
-  // POP 3.6 — Contrato enviado pelo SuperSign: abre a régua de assinatura D1–D5
-  // da recepção (verificação diária + lembrete-padrão 5.4). Dispara em qualquer
-  // tarefa de contrato marcada como ENVIADA (a régua é idempotente); antes exigia
-  // o papel ADMINISTRATIVO, que deixou de existir na atribuição das tarefas.
-  if (task.taskType === "CONTRACT" && values.result === "SENT" && task.contactId) {
-    completed = enrollContactInCadence(completed, {
-      cadenceId: "cad-assinatura-d1d5",
-      contactId: task.contactId,
-      dealId: task.dealId,
-      triggerSource: "contrato enviado (SuperSign)",
-      triggerDate: now.slice(0, 10),
-      ownerUserId: "recepcao",
-      ownerRole: "RECEPCAO",
-    });
-  }
+  // Contrato/SuperSign saiu do app (decisão do Lucas, 22/07): concluir tarefa
+  // de contrato não abre mais régua nenhuma.
 
   // POP 3.3 — Gate da Recepção no D+1 enviado SEM resposta do paciente: abre o
   // follow-up D2–D5 (a Recepção conduz — máx. 1 cadência ativa por paciente).
@@ -2905,36 +3042,9 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
   }
 
   if (options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL") {
-    // POP v3.1: os contatos do D+1 (Recepção, Concierge e Enfermeira) agora são
-    // TAREFAS-GATE da fase "Boas-vindas (D+1)" do Programa — nascem via
-    // startProgramJourney, não aqui (evita duplicar).
-    tasks.push(
-      createTask({
-        ...taskBase,
-        cadenceId: "",
-        cadenceStepId: "",
-        title: "Conferir contrato e SuperSign",
-        description: "Recepção confere o documento jurídico item a item e envia para assinatura — contrato em mãos em até 24h (POP).",
-        taskType: "CONTRACT",
-        // Decisão do Lucas (17/07): conferir contrato é da RECEPÇÃO.
-        assignedToUserId: "recepcao",
-        assignedToRole: "RECEPCAO",
-        dueAt: atLocalTime(addDays(today, 1), 12),
-        priority: "HIGH",
-      }),
-      createTask({
-        ...taskBase,
-        cadenceId: "",
-        cadenceStepId: "",
-        title: "Fazer o contrato e enviar à administradora",
-        description: "Recepção monta o contrato no modelo do SharePoint (medicação/implante/ácido/implanon, CID, cláusulas, valor, pagamento), salva em PDF com o nº do caderno azul e envia à administradora (POP).",
-        taskType: "CONTRACT",
-        assignedToUserId: "recepcao",
-        assignedToRole: "RECEPCAO",
-        dueAt: atLocalTime(today, 17),
-        priority: "HIGH",
-      }),
-    );
+    // Os contatos do D+1 são TAREFAS-GATE da fase "Boas-vindas (D+1)" da
+    // jornada — nascem via startProgramJourney, não aqui (evita duplicar).
+    // Contrato/SuperSign saiu do app (decisão do Lucas, 22/07).
 
     // POP v3.1 · Vendas: presente por faixa, SOMENTE na 1ª compra, entregue
     // NO DIA do pagamento. R$8.000–10.999 → caixa PillBox; R$11.000+ → Stanley.
@@ -2980,30 +3090,23 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
   }
 
   if (options.stage === "NAO_FECHOU") {
+    // Decisão do Lucas (22/07): o médico saiu do CRM. Quem acolhe o não-fechou
+    // é a CONCIERGE (D1); a régua D2–D5 dela nasce pela cadência, 1 passo por
+    // vez, e no D5 sem resposta o Estevão assume (escalação automática).
     tasks.push(
       createTask({
         ...taskBase,
         cadenceId: "cad-not-closed",
-        cadenceStepId: "step-med-d1",
-        title: "Médico D+1 - objeção",
-        description: options.objection || "Paciente não fechou. Entender objeção e tentar ajuste.",
+        cadenceStepId: "step-nc-d1",
+        title: "Não fechou D+1 — acolhimento da Concierge",
+        description: options.objection
+          ? `Motivo registrado: ${options.objection}. Acolha com carinho, tire dúvidas e deixe a porta aberta.`
+          : "Paciente não fechou. Acolha com carinho, tire dúvidas e deixe a porta aberta.",
         taskType: "WHATSAPP",
-        assignedToUserId: "dr-daniel",
-        assignedToRole: "MEDICO",
+        assignedToUserId: "concierge",
+        assignedToRole: "CONCIERGE",
         dueAt: atLocalTime(addDays(today, 1), 10),
         priority: "CRITICAL",
-      }),
-      createTask({
-        ...taskBase,
-        cadenceId: "cad-not-closed",
-        cadenceStepId: "step-gestor-d2",
-        title: "Gestor D+2 - recuperação",
-        description: "Se médico não reverteu, gestão entra com escuta e próximo passo.",
-        taskType: "WHATSAPP",
-        assignedToUserId: "gestao",
-        assignedToRole: "ADMIN_GESTAO",
-        dueAt: atLocalTime(addDays(today, 2), 10),
-        priority: "HIGH",
       }),
     );
   }
@@ -3132,39 +3235,52 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   }
 
   if (options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL") {
-    // POP v3.1: fechar inicia a JORNADA DO PROGRAMA. A fase 1 (Fechamento) tem
-    // gate vazio, então o avanço imediato leva para "Boas-vindas (D+1)" e cria
-    // as 3 tarefas-gate (Recepção, Concierge, Enfermeira). A enfermagem 14d
-    // entra sozinha quando o card chega em "Em acompanhamento".
-    nextState = startProgramJourney(nextState, deal.id, options.adhesionChannel ?? null, options.actorId);
-    nextState = advancePhaseIfGateComplete(nextState, deal.id, { actorId: options.actorId });
+    // Fechar inicia a JORNADA quando um CANAL foi fechado (Programa, Clube ou
+    // Só Tratamento) — o canal define quais pessoas entram no gate do D+1.
+    // CONSULTA AVULSA (sem canal) não tem jornada: segue o fluxo normal de
+    // agenda, como o Lucas definiu (22/07).
+    const channel = options.adhesionChannel ?? deal.adhesionChannel ?? null;
+    if (channel) {
+      nextState = startProgramJourney(nextState, deal.id, channel, options.actorId);
+      nextState = advancePhaseIfGateComplete(nextState, deal.id, { actorId: options.actorId });
+    }
   }
 
   if (options.stage === "CHURN" || options.stage === "NAO_ADESAO") {
     // POP/Réguas: churn e não adesão → encerra agora, mas o paciente fica na
     // base e o resgate de ~6 meses fica agendado sozinho (1ª tentativa já
     // nasce com a data futura).
-    nextState = enrollContactInCadence(nextState, {
-      cadenceId: "cad-rescue-6m",
-      contactId: deal.contactId,
-      dealId: deal.id,
-      triggerSource: options.stage === "CHURN" ? "churn no kanban" : "não adesão",
-      triggerDate: addDays(todayISO(), 180),
-      ownerUserId: "concierge",
-      ownerRole: "CONCIERGE",
-    });
+    nextState = enrollContactInCadence(
+      nextState,
+      {
+        cadenceId: "cad-rescue-6m",
+        contactId: deal.contactId,
+        dealId: deal.id,
+        triggerSource: options.stage === "CHURN" ? "churn no kanban" : "não adesão",
+        triggerDate: addDays(todayISO(), 180),
+        ownerUserId: "concierge",
+        ownerRole: "CONCIERGE",
+      },
+      // Encerrou: o resgate futuro substitui qualquer régua que estava rodando.
+      { replaceActive: true },
+    );
   }
 
   if (options.stage === "NAO_FECHOU") {
-    nextState = enrollContactInCadence(nextState, {
-      cadenceId: "cad-not-closed",
-      contactId: deal.contactId,
-      dealId: deal.id,
-      triggerSource: "kanban nao fechou",
-      triggerDate: todayISO(),
-      ownerUserId: "dr-daniel",
-      ownerRole: "MEDICO",
-    });
+    nextState = enrollContactInCadence(
+      nextState,
+      {
+        cadenceId: "cad-not-closed",
+        contactId: deal.contactId,
+        dealId: deal.id,
+        triggerSource: "kanban nao fechou",
+        triggerDate: todayISO(),
+        ownerUserId: "concierge",
+        ownerRole: "CONCIERGE",
+      },
+      // O não-fechou vira a régua da vez (1 cadência por paciente).
+      { replaceActive: true },
+    );
   }
 
   if (options.stage === "CONSULTA_REALIZADA") {
