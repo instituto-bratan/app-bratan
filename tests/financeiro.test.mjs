@@ -258,31 +258,107 @@ test("fechamento das doutoras: plano soma Instituto→Dra e avulsa Dra→Institu
   assert.equal(fin.partnerClosingExpenseRef("NUTRICIONISTA", "2026-06"), "fexp-repasse-nutricionista-2026-06");
 });
 
-test("comandas sem NF listam valores sugeridos por tipo e itens psi/nutri geram sugestões de repasse", () => {
+test("comandas sem NF: fila por VALOR restante (N notas por comanda) e psi/nutri fora", () => {
   const sales = [
     sale("2026-07-02", [["CONSULTA", 500], ["TRATAMENTO", 2719.5], ["PSICOLOGA", 2180.5]], [["PIX", 5400]], "sA"),
     sale("2026-07-03", [["PSICOLOGA", 300]], [["PIX", 300]], "sB"),
   ];
   const pending = fin.salesPendingInvoice(sales, [], "2026-07");
-  assert.equal(pending.length, 1);
-  assert.equal(pending[0].consulta, 500);
-  assert.equal(pending[0].tratamento, 2719.5);
-  // Faturar SÓ a consulta mantém a comanda na fila com a NF de TRATAMENTO
-  // ainda pendente (antes o bug removia a comanda inteira e a 2ª nota — base do
-  // IRPJ/CSLL — ficava impossível de lançar).
-  const soConsulta = fin.salesPendingInvoice(sales, [{ id: "n", saleRef: "sA", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 500, notes: "", createdAt: "" }], "2026-07");
-  assert.equal(soConsulta.length, 1, "comanda continua na fila pela nota de tratamento");
-  assert.equal(soConsulta[0].consulta, 0, "consulta já faturada");
-  assert.equal(soConsulta[0].tratamento, 2719.5, "tratamento ainda pendente");
-  // Faturadas AMBAS as notas → sai da fila.
-  const ambas = fin.salesPendingInvoice(sales, [
-    { id: "n1", saleRef: "sA", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 500, notes: "", createdAt: "" },
-    { id: "n2", saleRef: "sA", invoiceType: "TRATAMENTO", invoiceNumber: "2", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 2719.5, notes: "", createdAt: "" },
+  assert.equal(pending.length, 1); // sB é só psicóloga → não entra na fila de NF
+  assert.equal(pending[0].breakdown.consulta, 500);
+  assert.equal(pending[0].breakdown.tratamento, 2719.5);
+  assert.equal(pending[0].remaining, 3219.5); // psi fica fora
+  // Nota parcial (só a consulta) mantém a comanda na fila com o RESTANTE.
+  const parcial = fin.salesPendingInvoice(sales, [{ id: "n", saleRef: "sA", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 500, notes: "", createdAt: "" }], "2026-07");
+  assert.equal(parcial.length, 1, "comanda continua na fila pelo restante");
+  assert.equal(parcial[0].remaining, 2719.5);
+  // Nota UNIFICADA de tratamento cobrindo tudo → sai da fila (o modelo antigo
+  // por tipo não permitia unificar; o novo por valor permite).
+  const unificada = fin.salesPendingInvoice(sales, [
+    { id: "n1", saleRef: "sA", invoiceType: "TRATAMENTO", invoiceNumber: "9", issueDate: "2026-07-02", comandaDate: null, patientName: "", amount: 3219.5, notes: "", createdAt: "" },
   ], "2026-07");
-  assert.equal(ambas.length, 0, "as duas notas lançadas → comanda sai da fila");
+  assert.equal(unificada.length, 0, "nota unificada cobre o valor → comanda sai da fila");
   const suggestions = fin.partnerSuggestions(sales, [], "PSICOLOGA", "2026-07");
   assert.equal(suggestions.length, 2);
   assert.equal(fin.partnerSuggestions(sales, [{ id: "e", professional: "PSICOLOGA", entryDate: "2026-07-02", patientName: "", saleItemRef: suggestions[0].saleItemRef, kind: "PLANO", amount: 110, notes: "", createdAt: "" }], "PSICOLOGA", "2026-07").length, 1);
+});
+
+test("bioimpedância paga imposto de PROCEDIMENTO (7,93%), não de consulta", () => {
+  const taxes = fin.invoiceTaxes("BIOIMPEDANCIA", 200);
+  assert.ok(Math.abs(taxes.irpj - 200 * 0.012) < 0.001);
+  assert.ok(Math.abs(taxes.csll - 200 * 0.0108) < 0.001);
+  assert.ok(Math.abs(taxes.total - 200 * 0.0793) < 0.01); // 15,86 vs 26,66 se fosse consulta
+  assert.equal(fin.invoiceTaxClass("BIOIMPEDANCIA"), "PROCEDIMENTO");
+  assert.equal(fin.invoiceTaxClass("TRATAMENTO"), "PROCEDIMENTO");
+  assert.equal(fin.invoiceTaxClass("CONSULTA"), "CONSULTA");
+});
+
+test("plano de emissão: consulta 1.100 vira bio 200 + consulta 900 (como a equipe faz)", () => {
+  const comanda = sale("2026-07-10", [["CONSULTA", 1100]], [["PIX", 1100]], "sC");
+  const plans = fin.suggestInvoicePlans(comanda, []);
+  assert.equal(plans.length, 1); // sem tratamento → só o plano separado
+  const linhas = plans[0].lines;
+  assert.equal(JSON.stringify(linhas), JSON.stringify([
+    { invoiceType: "BIOIMPEDANCIA", amount: 200 },
+    { invoiceType: "CONSULTA", amount: 900 },
+  ]));
+  // economia real vs nota única de consulta: 1100×13,33% − (200×7,93% + 900×13,33%)
+  const notaUnica = fin.invoiceTaxes("CONSULTA", 1100).total;
+  assert.ok(plans[0].tax < notaUnica);
+  assert.ok(Math.abs((notaUnica - plans[0].tax) - 200 * (0.1333 - 0.0793)) < 0.01);
+});
+
+test("plano de emissão: com tratamento, UNIFICADA (1 nota) tem o menor imposto e vem primeiro", () => {
+  const comanda = sale("2026-07-10", [["CONSULTA", 1100], ["TRATAMENTO", 8000]], [["PIX", 9100]], "sD");
+  const plans = fin.suggestInvoicePlans(comanda, []);
+  assert.equal(plans.length, 2);
+  assert.equal(plans[0].key, "UNIFICADA"); // menor imposto primeiro
+  assert.equal(JSON.stringify(plans[0].lines), JSON.stringify([{ invoiceType: "TRATAMENTO", amount: 9100 }]));
+  const separada = plans.find((plan) => plan.key === "SEPARADA");
+  assert.equal(JSON.stringify(separada.lines), JSON.stringify([
+    { invoiceType: "BIOIMPEDANCIA", amount: 200 },
+    { invoiceType: "CONSULTA", amount: 900 },
+    { invoiceType: "TRATAMENTO", amount: 8000 },
+  ]));
+  assert.ok(plans[0].tax < separada.tax);
+  // consulta pequena (≤200) não divide; item de bio explícito usa o valor do item
+  const pequena = fin.suggestInvoicePlans(sale("2026-07-11", [["CONSULTA", 200]], [["PIX", 200]], "sE"), []);
+  assert.equal(JSON.stringify(pequena[0].lines), JSON.stringify([{ invoiceType: "CONSULTA", amount: 200 }]));
+  const bioItem = fin.suggestInvoicePlans(sale("2026-07-12", [["BIOIMPEDANCIA", 250], ["CONSULTA", 800]], [["PIX", 1050]], "sF"), []);
+  assert.equal(JSON.stringify(bioItem[0].lines), JSON.stringify([
+    { invoiceType: "BIOIMPEDANCIA", amount: 250 },
+    { invoiceType: "CONSULTA", amount: 800 },
+  ]));
+  // comanda com nota parcial → sugere completar o restante (sem re-dividir)
+  const comNota = fin.suggestInvoicePlans(comanda, [
+    { id: "n1", saleRef: "sD", invoiceType: "BIOIMPEDANCIA", invoiceNumber: "10", issueDate: "2026-07-10", comandaDate: null, patientName: "", amount: 200, notes: "", createdAt: "" },
+  ]);
+  assert.equal(comNota.length, 1);
+  assert.equal(comNota[0].label, "Completar o restante");
+  assert.equal(JSON.stringify(comNota[0].lines), JSON.stringify([{ invoiceType: "TRATAMENTO", amount: 8900 }]));
+});
+
+test("resumo por classe (bloco K/L da planilha) e número sequencial", () => {
+  const invoices = [
+    { id: "n1", saleRef: null, invoiceType: "CONSULTA", invoiceNumber: "5970", issueDate: "2026-07-10", comandaDate: null, patientName: "", amount: 900, notes: "", createdAt: "" },
+    { id: "n2", saleRef: null, invoiceType: "BIOIMPEDANCIA", invoiceNumber: "5971", issueDate: "2026-07-10", comandaDate: null, patientName: "", amount: 200, notes: "", createdAt: "" },
+    { id: "n3", saleRef: null, invoiceType: "TRATAMENTO", invoiceNumber: "5972", issueDate: "2026-07-11", comandaDate: null, patientName: "", amount: 4720, notes: "", createdAt: "" },
+  ];
+  const totals = fin.monthInvoiceTotals(invoices, "2026-07");
+  assert.equal(totals.count, 3);
+  assert.equal(totals.byClass.CONSULTA.count, 1);
+  assert.equal(totals.byClass.PROCEDIMENTO.count, 2);
+  assert.equal(totals.byClass.PROCEDIMENTO.amount, 4920);
+  // classe consulta: mensal = 900×5,65%; trimestral = 900×7,68%
+  assert.ok(Math.abs(totals.byClass.CONSULTA.mensal - 900 * 0.0565) < 0.01);
+  assert.ok(Math.abs(totals.byClass.CONSULTA.trimestral - 900 * 0.0768) < 0.01);
+  // procedimento: trimestral = (200+4720)×2,28%
+  assert.ok(Math.abs(totals.byClass.PROCEDIMENTO.trimestral - 4920 * 0.0228) < 0.01);
+  // mensal+trimestral por classe fecham com o total geral
+  const soma = totals.byClass.CONSULTA.mensal + totals.byClass.CONSULTA.trimestral + totals.byClass.PROCEDIMENTO.mensal + totals.byClass.PROCEDIMENTO.trimestral;
+  assert.ok(Math.abs(soma - (totals.mensal + totals.trimestral)) < 0.001);
+  assert.equal(fin.nextInvoiceNumber(invoices), 5973);
+  assert.equal(fin.nextInvoiceNumber([]), null);
 });
 
 test("LUCRO da P12: só JUROS (rendimento) entram; aportes/trocas de conta NÃO (decisão Lucas 21/07)", () => {

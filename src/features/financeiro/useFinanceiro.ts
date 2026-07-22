@@ -34,6 +34,7 @@ import {
 } from "@/lib/remoteData";
 import {
   loadLocalFinExpenses,
+  loadLocalFinInvoices,
   loadLocalFinReconciliations,
   loadLocalFinPurchases,
   loadLocalFinSales,
@@ -41,6 +42,7 @@ import {
   materializeRecurringExpenses,
   monthFeesExpenseRef,
   saveLocalFinExpenses,
+  saveLocalFinInvoices,
   saveLocalFinReconciliations,
   saveLocalFinPurchases,
   saveLocalFinSales,
@@ -65,7 +67,7 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   const [expenses, setExpenses] = useState<FinExpense[]>(() => loadLocalFinExpenses());
   const [reconciliations, setReconciliations] = useState<FinReconciliation[]>(() => loadLocalFinReconciliations());
   const [savingsMoves, setSavingsMoves] = useState<FinSavingsMove[]>(() => loadLocalFinSavings());
-  const [invoices, setInvoices] = useState<FinInvoice[]>([]);
+  const [invoices, setInvoices] = useState<FinInvoice[]>(() => loadLocalFinInvoices());
   const [partnerEntries, setPartnerEntries] = useState<FinPartnerEntry[]>([]);
 
   const categoriesQuery = useQuery({
@@ -175,7 +177,9 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   });
 
   useEffect(() => {
-    if (invoicesQuery.data) setInvoices(invoicesQuery.data);
+    if (!invoicesQuery.data) return;
+    setInvoices(invoicesQuery.data);
+    saveLocalFinInvoices(invoicesQuery.data);
   }, [invoicesQuery.data]);
 
   useEffect(() => {
@@ -401,7 +405,11 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   }
 
   function addInvoice(invoice: FinInvoice) {
-    setInvoices((current) => [invoice, ...current]);
+    setInvoices((current) => {
+      const next = [invoice, ...current];
+      saveLocalFinInvoices(next);
+      return next;
+    });
     if (useRemote) {
       void createRemoteFinInvoice(invoice, pessoa?.id ?? null)
         .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-invoices", year] }))
@@ -410,7 +418,11 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   }
 
   function removeInvoice(invoiceId: string) {
-    setInvoices((current) => current.filter((invoice) => invoice.id !== invoiceId));
+    setInvoices((current) => {
+      const next = current.filter((invoice) => invoice.id !== invoiceId);
+      saveLocalFinInvoices(next);
+      return next;
+    });
     if (useRemote) {
       void deleteRemoteFinInvoice(invoiceId).catch((error) => console.warn("Exclusão de NF não sincronizou.", error));
     }

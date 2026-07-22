@@ -879,7 +879,13 @@ export function saveLocalFinSavings(moves: FinSavingsMove[]) {
 
 // ---------------- Sprint 3: notas fiscais/impostos e repasses ----------------
 
-export type FinInvoiceType = "CONSULTA" | "TRATAMENTO";
+// Três tipos de nota (como a clínica emite de verdade): consulta, bioimpedância e
+// tratamento. Para o IMPOSTO só existem DUAS classes (as duas abas da planilha
+// CONTROLE DE IMPOSTOS): CONSULTA paga 13,33% e PROCEDIMENTO (tratamento e bio)
+// paga 7,93%. É por isso que a equipe divide a consulta em duas notas (bio 200 +
+// consulta resto) e às vezes unifica tudo numa nota de tratamento.
+export type FinInvoiceType = "CONSULTA" | "BIOIMPEDANCIA" | "TRATAMENTO";
+export type FinInvoiceTaxClass = "CONSULTA" | "PROCEDIMENTO";
 export type FinPartnerProfessional = "NUTRICIONISTA" | "PSICOLOGA";
 export type FinPartnerKind = "PLANO" | "AVULSA" | "RETORNO";
 
@@ -912,13 +918,29 @@ export type FinPartnerEntry = {
 // Mensal = ISS + PIS + COFINS; Trimestral = IRPJ + CSLL.
 export const finTaxRates: Record<FinInvoiceType, { iss: number; pis: number; cofins: number; irpj: number; csll: number }> = {
   CONSULTA: { iss: 0.02, pis: 0.0065, cofins: 0.03, irpj: 0.048, csll: 0.0288 },
+  // Bioimpedância é PROCEDIMENTO: mesmas alíquotas do tratamento (7,93%).
+  BIOIMPEDANCIA: { iss: 0.02, pis: 0.0065, cofins: 0.03, irpj: 0.012, csll: 0.0108 },
   TRATAMENTO: { iss: 0.02, pis: 0.0065, cofins: 0.03, irpj: 0.012, csll: 0.0108 },
 };
 
 export const invoiceTypeLabels: Record<FinInvoiceType, string> = {
-  CONSULTA: "Consulta / Bio / Sinal",
+  CONSULTA: "Consulta",
+  BIOIMPEDANCIA: "Bioimpedância",
   TRATAMENTO: "Tratamento",
 };
+
+export function invoiceTaxClass(invoiceType: FinInvoiceType): FinInvoiceTaxClass {
+  return invoiceType === "CONSULTA" ? "CONSULTA" : "PROCEDIMENTO";
+}
+
+export const invoiceTaxClassLabels: Record<FinInvoiceTaxClass, string> = {
+  CONSULTA: "Consulta (13,33%)",
+  PROCEDIMENTO: "Tratamento & Bio (7,93%)",
+};
+
+// Valor padrão da nota de bioimpedância quando a equipe divide a consulta
+// em duas notas (bio + consulta). É o valor praticado na planilha (R$ 200).
+export const defaultBioInvoiceAmount = 200;
 
 export type InvoiceTaxes = {
   iss: number;
@@ -941,6 +963,18 @@ export function invoiceTaxes(invoiceType: FinInvoiceType, amount: number): Invoi
   const mensal = iss + pis + cofins;
   const trimestral = irpj + csll;
   return { iss, pis, cofins, irpj, csll, mensal, trimestral, total: mensal + trimestral };
+}
+
+// Cache local das notas (mesmo padrão das comandas): protege o registro feito
+// com internet oscilando — o que foi digitado não some ao recarregar.
+export const finInvoicesStorageKey = "app-bratan-fin-invoices";
+
+export function loadLocalFinInvoices() {
+  return readLocalValue<FinInvoice[]>(finInvoicesStorageKey, []);
+}
+
+export function saveLocalFinInvoices(invoices: FinInvoice[]) {
+  writeLocalValue(finInvoicesStorageKey, invoices);
 }
 
 export function quarterOfMonth(month: string) {
@@ -972,6 +1006,9 @@ export type MonthInvoiceTotals = {
   mensal: number;
   trimestral: number;
   byType: Record<FinInvoiceType, { count: number; amount: number }>;
+  // Resumo por classe de imposto, igual ao bloco K/L da planilha:
+  // CONSULTA e PROCEDIMENTO, cada um com imposto mensal e trimestral.
+  byClass: Record<FinInvoiceTaxClass, { count: number; amount: number; mensal: number; trimestral: number }>;
 };
 
 export function monthInvoiceTotals(invoices: FinInvoice[], month: string): MonthInvoiceTotals {
@@ -980,7 +1017,15 @@ export function monthInvoiceTotals(invoices: FinInvoice[], month: string): Month
     amount: 0,
     mensal: 0,
     trimestral: 0,
-    byType: { CONSULTA: { count: 0, amount: 0 }, TRATAMENTO: { count: 0, amount: 0 } },
+    byType: {
+      CONSULTA: { count: 0, amount: 0 },
+      BIOIMPEDANCIA: { count: 0, amount: 0 },
+      TRATAMENTO: { count: 0, amount: 0 },
+    },
+    byClass: {
+      CONSULTA: { count: 0, amount: 0, mensal: 0, trimestral: 0 },
+      PROCEDIMENTO: { count: 0, amount: 0, mensal: 0, trimestral: 0 },
+    },
   };
   for (const invoice of invoices) {
     if (invoice.issueDate.slice(0, 7) !== month) continue;
@@ -991,6 +1036,11 @@ export function monthInvoiceTotals(invoices: FinInvoice[], month: string): Month
     totals.trimestral += taxes.trimestral;
     totals.byType[invoice.invoiceType].count += 1;
     totals.byType[invoice.invoiceType].amount += invoice.amount;
+    const klass = invoiceTaxClass(invoice.invoiceType);
+    totals.byClass[klass].count += 1;
+    totals.byClass[klass].amount += invoice.amount;
+    totals.byClass[klass].mensal += taxes.mensal;
+    totals.byClass[klass].trimestral += taxes.trimestral;
   }
   return totals;
 }
@@ -999,29 +1049,143 @@ export function quarterTrimestralTotal(invoices: FinInvoice[], quarterRef: strin
   return quarterMonths(quarterRef).reduce((sum, month) => sum + monthInvoiceTotals(invoices, month).trimestral, 0);
 }
 
-// Comandas do mês que ainda não têm NF registrada (itens do Instituto; psi/nutri ficam fora).
-export function salesPendingInvoice(sales: FinSale[], invoices: FinInvoice[], month: string) {
-  // Uma comanda pode gerar DUAS notas (consulta + tratamento). Antes marcávamos
-  // a comanda inteira como "faturada" quando QUALQUER NF a referenciava, então
-  // registrar a 1ª nota removia a comanda da fila e a 2ª (base do IRPJ/CSLL
-  // trimestral) ficava impossível de lançar. Agora o controle é por TIPO.
-  const invoicedByType = new Set(
-    invoices.filter((invoice) => invoice.saleRef).map((invoice) => `${invoice.saleRef}:${invoice.invoiceType}`),
-  );
+// Partes "do Instituto" de uma comanda (psi/nutri ficam fora — vão pelos repasses).
+export function saleInvoiceBreakdown(sale: FinSale) {
+  let bio = 0;
+  let consulta = 0;
+  let tratamento = 0;
+  for (const item of sale.items) {
+    if (item.itemType === "BIOIMPEDANCIA") bio += item.amount;
+    else if (item.itemType === "TRATAMENTO") tratamento += item.amount;
+    else if (consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO") consulta += item.amount;
+  }
+  return { bio, consulta, tratamento, total: bio + consulta + tratamento };
+}
+
+export type PendingInvoiceSale = {
+  sale: FinSale;
+  breakdown: ReturnType<typeof saleInvoiceBreakdown>;
+  /** Soma das NFs já registradas para esta comanda. */
+  invoiced: number;
+  /** Quanto da comanda ainda está sem nota. */
+  remaining: number;
+  invoices: FinInvoice[];
+};
+
+// Comandas do mês que ainda não têm NF para TODO o valor do Instituto.
+// O controle agora é por VALOR RESTANTE (não por tipo): uma comanda pode gerar
+// 1, 2 ou 3 notas (bio + consulta + tratamento, ou tudo unificado em uma), e a
+// comanda só sai da fila quando a soma das notas cobre o valor. Tolerância de
+// R$ 0,50 para diferenças de arredondamento.
+export function salesPendingInvoice(sales: FinSale[], invoices: FinInvoice[], month: string): PendingInvoiceSale[] {
+  const invoicesBySale = new Map<string, FinInvoice[]>();
+  for (const invoice of invoices) {
+    if (!invoice.saleRef) continue;
+    const list = invoicesBySale.get(invoice.saleRef) ?? [];
+    list.push(invoice);
+    invoicesBySale.set(invoice.saleRef, list);
+  }
   return sales
     .filter((sale) => sale.saleDate.slice(0, 7) === month)
     .map((sale) => {
-      const consulta = invoicedByType.has(`${sale.id}:CONSULTA`)
-        ? 0
-        : sale.items
-            .filter((item) => consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO")
-            .reduce((sum, item) => sum + item.amount, 0);
-      const tratamento = invoicedByType.has(`${sale.id}:TRATAMENTO`)
-        ? 0
-        : sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
-      return { sale, consulta, tratamento };
+      const breakdown = saleInvoiceBreakdown(sale);
+      const saleInvoices = invoicesBySale.get(sale.id) ?? [];
+      const invoiced = saleInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+      return { sale, breakdown, invoiced, remaining: breakdown.total - invoiced, invoices: saleInvoices };
     })
-    .filter((entry) => entry.consulta > 0 || entry.tratamento > 0);
+    .filter((entry) => entry.remaining > 0.5);
+}
+
+// ---- Planos de emissão (o jeito que a clínica emite de verdade) ----
+
+export type SuggestedInvoiceLine = { invoiceType: FinInvoiceType; amount: number };
+export type InvoicePlan = {
+  key: "SEPARADA" | "UNIFICADA";
+  label: string;
+  hint: string;
+  lines: SuggestedInvoiceLine[];
+  /** Imposto total (13,33% na consulta, 7,93% em bio/tratamento). */
+  tax: number;
+};
+
+function planTax(lines: SuggestedInvoiceLine[]) {
+  return lines.reduce((sum, line) => sum + invoiceTaxes(line.invoiceType, line.amount).total, 0);
+}
+
+// Sugere COMO emitir as notas de uma comanda, seguindo a prática da equipe:
+// • SEPARADA — divide a consulta em bio (R$200, imposto menor) + consulta (resto),
+//   e o tratamento em nota própria. "Tira um pouco da nota de consulta, que é altíssima."
+// • UNIFICADA — quando tem tratamento, junta TUDO numa nota de tratamento (7,93%),
+//   que é o menor imposto possível. "Às vezes unificamos tudo em uma nota de tratamento."
+// Os valores são sugestões: a tela deixa editar tudo antes de registrar.
+export function suggestInvoicePlans(sale: FinSale, existingInvoices: FinInvoice[] = []): InvoicePlan[] {
+  const breakdown = saleInvoiceBreakdown(sale);
+  const invoiced = existingInvoices
+    .filter((invoice) => invoice.saleRef === sale.id)
+    .reduce((sum, invoice) => sum + invoice.amount, 0);
+  const remaining = Math.max(0, Math.round((breakdown.total - invoiced) * 100) / 100);
+  if (remaining <= 0) return [];
+
+  // Se já tem nota parcial, sugerimos UMA linha com o restante (sem re-dividir:
+  // não dá para saber qual parte já foi emitida) — no tipo mais provável.
+  if (invoiced > 0.5) {
+    const type: FinInvoiceType = breakdown.tratamento > 0 ? "TRATAMENTO" : "CONSULTA";
+    const lines = [{ invoiceType: type, amount: remaining }];
+    return [{ key: "SEPARADA", label: "Completar o restante", hint: "cobre o que ficou sem nota", lines, tax: planTax(lines) }];
+  }
+
+  const plans: InvoicePlan[] = [];
+
+  // Plano SEPARADA: bio + consulta + tratamento, cada um na sua nota.
+  const separadaLines: SuggestedInvoiceLine[] = [];
+  const consultaBucket = breakdown.consulta;
+  const bioExplicit = breakdown.bio;
+  if (bioExplicit > 0) {
+    separadaLines.push({ invoiceType: "BIOIMPEDANCIA", amount: bioExplicit });
+    if (consultaBucket > 0) separadaLines.push({ invoiceType: "CONSULTA", amount: consultaBucket });
+  } else if (consultaBucket > defaultBioInvoiceAmount) {
+    // Divide a consulta: bio 200 (7,93%) + consulta resto (13,33%).
+    separadaLines.push({ invoiceType: "BIOIMPEDANCIA", amount: defaultBioInvoiceAmount });
+    separadaLines.push({ invoiceType: "CONSULTA", amount: consultaBucket - defaultBioInvoiceAmount });
+  } else if (consultaBucket > 0) {
+    separadaLines.push({ invoiceType: "CONSULTA", amount: consultaBucket });
+  }
+  if (breakdown.tratamento > 0) separadaLines.push({ invoiceType: "TRATAMENTO", amount: breakdown.tratamento });
+  if (separadaLines.length) {
+    plans.push({
+      key: "SEPARADA",
+      label: breakdown.tratamento > 0 ? "Notas separadas" : "Bio + consulta",
+      hint: "cada serviço na sua nota",
+      lines: separadaLines,
+      tax: planTax(separadaLines),
+    });
+  }
+
+  // Plano UNIFICADA: só faz sentido quando existe tratamento na comanda.
+  if (breakdown.tratamento > 0) {
+    const lines: SuggestedInvoiceLine[] = [{ invoiceType: "TRATAMENTO", amount: remaining }];
+    plans.push({
+      key: "UNIFICADA",
+      label: "Tudo em 1 nota de tratamento",
+      hint: "menor imposto (7,93% sobre tudo)",
+      lines,
+      tax: planTax(lines),
+    });
+  }
+
+  // Menor imposto primeiro — é o que a equipe escolhe na prática.
+  return plans.sort((a, b) => a.tax - b.tax);
+}
+
+// Próximo número de nota provável (a prefeitura emite sequencial): maior número
+// já registrado + 1. É só sugestão — a tela deixa corrigir.
+export function nextInvoiceNumber(invoices: FinInvoice[]) {
+  let max = 0;
+  for (const invoice of invoices) {
+    const value = Number(String(invoice.invoiceNumber).replace(/\D/g, ""));
+    if (Number.isFinite(value) && value > max) max = value;
+  }
+  return max > 0 ? max + 1 : null;
 }
 
 export const partnerProfessionalLabels: Record<FinPartnerProfessional, string> = {
