@@ -1054,12 +1054,21 @@ export function saleInvoiceBreakdown(sale: FinSale) {
   let bio = 0;
   let consulta = 0;
   let tratamento = 0;
+  let sinal = 0;
   for (const item of sale.items) {
     if (item.itemType === "BIOIMPEDANCIA") bio += item.amount;
     else if (item.itemType === "TRATAMENTO") tratamento += item.amount;
-    else if (consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO") consulta += item.amount;
+    else if (consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO") {
+      consulta += item.amount;
+      if (item.itemType === "SINAL") sinal += item.amount;
+    }
   }
-  return { bio, consulta, tratamento, total: bio + consulta + tratamento };
+  const total = bio + consulta + tratamento;
+  // Regra do Lucas (23/07): SINAL não gera nota — ele é SOMADO na nota do
+  // serviço quando a consulta/bio/tratamento acontece. Comanda só de sinal
+  // não pode ficar cobrando NF na fila.
+  const onlySinal = total > 0 && Math.abs(total - sinal) < 0.005;
+  return { bio, consulta, tratamento, sinal, onlySinal, total };
 }
 
 export type PendingInvoiceSale = {
@@ -1093,7 +1102,9 @@ export function salesPendingInvoice(sales: FinSale[], invoices: FinInvoice[], mo
       const invoiced = saleInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
       return { sale, breakdown, invoiced, remaining: breakdown.total - invoiced, invoices: saleInvoices };
     })
-    .filter((entry) => entry.remaining > 0.5);
+    // Comanda só de SINAL não entra na fila: a nota sai depois, somada ao
+    // serviço (regra do Lucas, 23/07).
+    .filter((entry) => entry.remaining > 0.5 && !entry.breakdown.onlySinal);
 }
 
 // ---- Planos de emissão (o jeito que a clínica emite de verdade) ----

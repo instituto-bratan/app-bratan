@@ -545,8 +545,10 @@ export function FinanceiroImpostosPage() {
                   São 3 tipos de nota e 2 classes de imposto: CONSULTA paga 13,33% e TRATAMENTO/BIOIMPEDÂNCIA (procedimento)
                   pagam 7,93%. Por isso a prática da equipe: consulta paga vira DUAS notas (bio R$200 no imposto menor +
                   consulta no resto) e, quando fecha tratamento, dá para UNIFICAR tudo numa nota de tratamento — o menor
-                  imposto. A fila abaixo já sugere o plano certo por comanda; é só conferir o nº da prefeitura e registrar.
-                  O imposto mensal (ISS+PIS+COFINS) e o trimestral (IRPJ+CSLL) viram guias em Contas a Pagar com um clique.
+                  imposto. SINAL não gera nota: ele é somado na nota do serviço quando acontece (por isso a nota pode sair
+                  maior que a comanda do dia — e comanda só de sinal nem aparece na fila). A fila abaixo já sugere o plano
+                  certo por comanda; é só conferir o nº da prefeitura e registrar. O imposto mensal (ISS+PIS+COFINS) e o
+                  trimestral (IRPJ+CSLL) viram guias em Contas a Pagar com um clique.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">

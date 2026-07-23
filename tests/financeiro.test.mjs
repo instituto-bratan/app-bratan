@@ -141,6 +141,18 @@ test("resumo do mês: lucro = faturamento + juros − custos; aportes/obra FORA 
   assert.ok(Math.abs(resumo.metaPercent - 153216 / 350000) < 0.001);
 });
 
+test("SINAL não gera nota: comanda só de sinal fica FORA da fila; sinal junto com serviço continua na fila", () => {
+  const soSinal = sale("2026-07-07", [["SINAL", 500]], [["PIX", 500]], "sS1");
+  const sinalMaisTratamento = sale("2026-07-22", [["SINAL", 500], ["TRATAMENTO", 4048]], [["PIX", 4548]], "sS2");
+  const pending = fin.salesPendingInvoice([soSinal, sinalMaisTratamento], [], "2026-07");
+  assert.equal(pending.length, 1, "só a comanda com serviço aparece");
+  assert.equal(pending[0].sale.id, "sS2");
+  assert.equal(pending[0].breakdown.onlySinal, false);
+  assert.equal(pending[0].breakdown.sinal, 500);
+  // e o plano da comanda com serviço soma o sinal na nota (o valor todo é notável)
+  assert.equal(pending[0].remaining, 4548);
+});
+
 test("resumo do mês: aPagar nunca fica maior que os custos (jaPago não negativo)", () => {
   const categories = fin.seedFinCategories;
   const expenses = [
