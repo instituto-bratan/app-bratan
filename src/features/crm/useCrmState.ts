@@ -5,53 +5,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { isCoordenacao } from "@/lib/access";
 import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState, subscribeRemoteCrmState } from "@/lib/remoteData";
 import {
-  advanceAllProgramGates,
-  archiveDuplicateActiveDeals,
-  collapseSequentialLadders,
-  dedupeCrmState,
-  enforceOneTaskPerPersonPerPatient,
-  ensureCadenceCoverage,
-  ensureMondaySafetyTask,
-  escalateExhaustedCadences,
-  generateCadenceTasks,
   loadCrmState,
   mergeCrmCatalogWithSeeds,
   removeLeadFromCrm,
-  retireObsoleteCrmWork,
+  sanitizeCrmState,
   saveCrmStateWithIntelligence,
   seedCrmState,
   type CrmState,
 } from "./crmData";
 
-// Pipeline padrão de saneamento do estado: rotina de segurança de segunda
-// nasce sozinha, todo card ganha régua, o motor materializa as tarefas,
-// cadências esgotadas escalam ao gestor, gates completos avançam de fase,
-// colapsa duplicatas e, por fim, garante a REGRA DE OURO do Lucas (22/07):
-// 1 tarefa aberta por pessoa por paciente.
-function prepareCrmState(state: CrmState) {
-  // dedupeCrmState roda TAMBÉM no início: se o estado chega com inscrições ativas
-  // duplicadas do mesmo par (corrida entre aparelhos, ids antigos), a GERAÇÃO de
-  // tarefas parte de 1 inscrição só — sem multiplicar tarefas. dedupe é idempotente
-  // (retorna o mesmo objeto quando nada muda), então rodar duas vezes não custa.
-  // enforceOneTaskPerPersonPerPatient roda por ÚLTIMO: depois do avanço de fase
-  // (que materializa tarefas-gate novas), qualquer sobra é cancelada.
-  // retireObsoleteCrmWork + archiveDuplicateActiveDeals rodam ANTES da geração:
-  // trabalho de médico/contrato é aposentado e cards duplicados são arquivados
-  // (fica o mais avançado) — aí o motor gera tarefas só do que vale.
-  return enforceOneTaskPerPersonPerPatient(
-    collapseSequentialLadders(
-      dedupeCrmState(
-        advanceAllProgramGates(
-          escalateExhaustedCadences(
-            generateCadenceTasks(
-              ensureCadenceCoverage(ensureMondaySafetyTask(archiveDuplicateActiveDeals(retireObsoleteCrmWork(dedupeCrmState(state))))),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
 
 export function useCrmState() {
   const { pessoa, session, isPreview } = useAuth();
@@ -65,7 +27,13 @@ export function useCrmState() {
   // um cliente de visão parcial (recepção/enfermagem) não enxerga as tarefas
   // dos outros papéis e não deve regravar o estado a partir de um retrato torto.
   const canPushCoverage = isCoordenacao(pessoa?.cargo);
-  const [state, setState] = useState<CrmState>(() => prepareCrmState(loadCrmState()));
+  // As etapas CURATIVAS do pipeline (cancelar trabalho aposentado, arquivar
+  // duplicados, cortar tarefa excedente) mexem em dados de OUTRAS pessoas —
+  // só a sessão da COORDENAÇÃO roda (e consegue gravar) isso. Era a causa do
+  // "não salva" da enfermeira (24/07): o diff dela levava escritas proibidas
+  // e o Supabase derrubava o pacote inteiro, junto com a tarefa dela.
+  const curative = isCoordenacao(pessoa?.cargo);
+  const [state, setState] = useState<CrmState>(() => sanitizeCrmState(loadCrmState(), { curative }));
   // Enquanto houver mudança local ainda não confirmada no Supabase, o snapshot
   // remoto NÃO pode sobrescrever o estado — era isso que fazia inscrições
   // recém-criadas "sumirem" ao navegar entre as telas do CRM.
@@ -110,7 +78,7 @@ export function useCrmState() {
     if (dirtyRef.current || saveRemoteMutation.isPending) return;
     const merged = mergeCrmCatalogWithSeeds(remoteStateQuery.data);
     baselineRef.current = merged;
-    const next = prepareCrmState(merged);
+    const next = sanitizeCrmState(merged, { curative });
     setState(next);
     saveCrmStateWithIntelligence(next);
     // A cobertura automática (POP) pode ter criado inscrições/tarefas novas a
@@ -159,7 +127,7 @@ export function useCrmState() {
   function persist(updater: (current: CrmState) => CrmState): Promise<boolean> {
     let promise: Promise<boolean> = Promise.resolve(true);
     setState((current) => {
-      const next = prepareCrmState(updater(current));
+      const next = sanitizeCrmState(updater(current), { curative });
       saveCrmStateWithIntelligence(next);
       if (useRemote) {
         dirtyRef.current = true;
@@ -219,7 +187,7 @@ export function useCrmState() {
   }
 
   function reset() {
-    const next = prepareCrmState(seedCrmState);
+    const next = sanitizeCrmState(seedCrmState, { curative });
     setState(next);
     saveCrmStateWithIntelligence(next);
     if (useRemote) {

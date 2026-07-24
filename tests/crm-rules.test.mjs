@@ -765,6 +765,35 @@ test("id de contato é determinístico: mesma pessoa converge para o mesmo id (n
 
 // --- REGRAS DE OURO do prompt do Lucas (22/07/2026) ---
 
+test("sanitize por sessão: limpezas CURATIVAS só rodam para a coordenação (bug 'enfermeira não salva', 24/07)", () => {
+  const base = cloneState();
+  // trabalho antigo do médico pendente + card duplicado ativo (dados de OUTRAS pessoas)
+  base.tasks.push({
+    ...base.tasks[0],
+    id: "task-medico-legada",
+    status: "PENDING",
+    assignedToUserId: "dr-daniel",
+    assignedToRole: "MEDICO",
+    taskType: "WHATSAPP",
+    cadenceId: "cad-not-closed",
+    cadenceStepId: "step-med-d1",
+  });
+  const dealBase = base.deals.find((d) => d.contactId === "crm-contact-lead-quente");
+  base.deals.push({ ...dealBase, id: "deal-dup-sessao", stage: "LEAD_NOVO", status: "OPEN", programPhase: null, updatedAt: "2026-06-01T00:00:00.000Z" });
+
+  // Sessão de visão PARCIAL (enfermeira): nada disso pode ser tocado —
+  // o diff dela não pode carregar escritas que o banco rejeitaria.
+  const enfermeira = crm.sanitizeCrmState(JSON.parse(JSON.stringify(base)), { curative: false });
+  assert.equal(enfermeira.tasks.find((t) => t.id === "task-medico-legada").status, "PENDING", "tarefa do médico fica quieta");
+  assert.equal(enfermeira.deals.find((d) => d.id === "deal-dup-sessao").status, "OPEN", "duplicado fica quieto");
+
+  // Sessão da COORDENAÇÃO: a cura acontece.
+  const coordenacao = crm.sanitizeCrmState(JSON.parse(JSON.stringify(base)), { curative: true });
+  assert.equal(coordenacao.tasks.find((t) => t.id === "task-medico-legada").status, "CANCELED", "coordenação aposenta o médico");
+  const dup = coordenacao.deals.filter((d) => ["deal-dup-sessao", dealBase.id].includes(d.id) && d.status === "PAUSED");
+  assert.equal(dup.length, 1, "coordenação arquiva o duplicado (fica 1 ativo)");
+});
+
 test("catálogo aposentado: assinatura/médico desativados MESMO se vierem ativos do banco", () => {
   const state = cloneState();
   // simula o banco trazendo o catálogo antigo ativo

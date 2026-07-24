@@ -1753,6 +1753,30 @@ function createTaskFromCadence(state: CrmState, enrollment: CrmCadenceEnrollment
   });
 }
 
+// Pipeline padrão de saneamento do estado. As etapas CURATIVAS (aposentar
+// trabalho de médico/contrato, arquivar cards duplicados, cancelar tarefa
+// excedente) mexem em dados DE OUTRAS PESSOAS — só podem rodar na sessão da
+// COORDENAÇÃO (visão completa + permissão de escrita). Numa sessão de visão
+// parcial (enfermeira/recepção), o banco rejeitaria essas escritas e o
+// salvamento INTEIRO caía junto — era o "não salva" da enfermeira (24/07).
+export function sanitizeCrmState(state: CrmState, options?: { curative?: boolean }): CrmState {
+  const curative = options?.curative ?? false;
+  let next = dedupeCrmState(state);
+  if (curative) {
+    next = archiveDuplicateActiveDeals(retireObsoleteCrmWork(next));
+  }
+  // Daqui pra baixo é o pipeline que SEMPRE rodou para todos os papéis
+  // (rotina de segunda, cobertura, geração, escalação, avanço de gate).
+  next = ensureMondaySafetyTask(next);
+  next = ensureCadenceCoverage(next);
+  next = generateCadenceTasks(next);
+  next = escalateExhaustedCadences(next);
+  next = advanceAllProgramGates(next);
+  next = collapseSequentialLadders(dedupeCrmState(next));
+  if (curative) next = enforceOneTaskPerPersonPerPatient(next);
+  return next;
+}
+
 // REGRA DE OURO nº 3 — autocorreção: se por qualquer caminho a mesma PESSOA
 // ficou com 2+ tarefas abertas do MESMO paciente, só a mais importante fica.
 // Prioridade: tarefa-gate da jornada > tarefa de etapa > tarefa de cadência;
