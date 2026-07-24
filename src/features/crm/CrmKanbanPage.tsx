@@ -395,7 +395,7 @@ function ProgramCard({
 
 export function CrmKanbanPage() {
   const { pessoa } = useAuth();
-  const { state, persist, syncFailed, retrySync, deleteLead } = useCrmState();
+  const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead } = useCrmState();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
@@ -897,7 +897,7 @@ export function CrmKanbanPage() {
           : "lg:h-[calc(100dvh-9.5rem)] lg:min-h-[540px]",
       )}
     >
-      <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
+      <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge variant="gold">CRM Bratan</Badge>

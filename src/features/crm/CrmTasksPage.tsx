@@ -130,7 +130,7 @@ function useFilteredTasks(tasks: CrmTask[], tab: TaskTab, query: string, type: s
 
 export function CrmTasksPage() {
   const { pessoa } = useAuth();
-  const { state, persist, syncMode, syncFailed, retrySync } = useCrmState();
+  const { state, persist, syncMode, syncFailed, syncErrorDetail, retrySync } = useCrmState();
   const role = cargoToCrmRole(pessoa?.cargo);
   const isManagement = isCrmManagement(pessoa?.cargo);
   // Regra do Lucas (14/07/2026): cada um vê as SUAS tarefas. A coordenação
@@ -255,7 +255,7 @@ export function CrmTasksPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
-        <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
+        <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
         {(() => {
           const roleExplainer = roleRuleExplainers[cargoToCrmRole(pessoa?.cargo) ?? "ADMINISTRATIVO"];
           if (!roleExplainer) return null;

@@ -38,7 +38,7 @@ const statusTones: Record<ReferralRewardStatus, string> = {
 
 export function CrmCanaisPage() {
   const { pessoa } = useAuth();
-  const { state, persist, syncFailed, retrySync } = useCrmState();
+  const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState();
   const canPay = isCoordenacao(pessoa?.cargo);
   const [feedback, setFeedback] = useState("");
 
@@ -117,7 +117,7 @@ export function CrmCanaisPage() {
   return (
     <AccessGate allowed={canCrmBratan} label="CRM · Canais de Venda" module="crm">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
+        <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
         <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
           <div className="flex items-center gap-2">
             <Share2 className="h-6 w-6 text-brand-musgo" aria-hidden="true" />

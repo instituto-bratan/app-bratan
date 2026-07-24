@@ -53,7 +53,7 @@ function statusTone(status: CrmCadenceStatus) {
 
 export function CrmCadencesPage() {
   const { pessoa } = useAuth();
-  const { state, persist, syncFailed, retrySync } = useCrmState();
+  const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState();
   // Sem default fixo: a régua abre na do PRÓPRIO papel (concierge → Concierge D+1),
   // para ninguém inscrever sem querer na cadência comercial (bug "coloco no D1 e
   // não vai" — a Comercial se chamava 'D1' e era o default).
@@ -329,7 +329,7 @@ export function CrmCadencesPage() {
         </CardContent>
       </Card>
 
-      <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
+      <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
       {isManagement ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant={onlyMine ? "default" : "outline"} size="sm" onClick={() => setOnlyMine(true)}>

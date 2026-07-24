@@ -46,6 +46,9 @@ export function useCrmState() {
   // no próximo refetch e o banner sumia dando falsa sensação de sucesso.
   const pendingDeletesRef = useRef<{ contactRef: string; dealRefs: string[] }[]>([]);
   const [syncFailed, setSyncFailed] = useState(false);
+  // Detalhe técnico do último erro de sync — vai pro banner: um print da
+  // equipe já chega com o diagnóstico (aprendizado do bug de 24/07).
+  const [syncErrorDetail, setSyncErrorDetail] = useState("");
 
   const remoteStateQuery = useQuery({
     queryKey: ["crm-state"],
@@ -63,11 +66,13 @@ export function useCrmState() {
       baselineRef.current = saved;
       dirtyRef.current = false;
       setSyncFailed(false);
+      setSyncErrorDetail("");
       queryClient.setQueryData(["crm-state"], saved);
       void queryClient.invalidateQueries({ queryKey: ["inteligencia-360-state"] });
     },
-    onError: () => {
+    onError: (error) => {
       setSyncFailed(true);
+      setSyncErrorDetail(error instanceof Error ? error.message : String(error));
     },
   });
 
@@ -208,5 +213,6 @@ export function useCrmState() {
     isSyncing: remoteStateQuery.isFetching || saveRemoteMutation.isPending,
     syncError: remoteStateQuery.error || saveRemoteMutation.error,
     syncFailed,
+    syncErrorDetail,
   };
 }
