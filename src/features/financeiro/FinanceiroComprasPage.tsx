@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { parseMoneyBR } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -42,7 +42,7 @@ function shortDate(value: string | null) {
 
 export function FinanceiroComprasPage() {
   const { pessoa } = useAuth();
-  const readOnly = !canFinanceiroFull(pessoa?.cargo);
+  const readOnly = !canEditModule(pessoa, "fin-compras");
   const [monthKey, setMonthKey] = useState(() => todayISO().slice(0, 7));
   const financeiro = useFinanceiro(Number(monthKey.slice(0, 4)));
 
@@ -129,7 +129,7 @@ export function FinanceiroComprasPage() {
   }
 
   return (
-    <AccessGate allowed={canFinanceiroView} label="Financeiro · Compras">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Compras" module="fin-compras">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

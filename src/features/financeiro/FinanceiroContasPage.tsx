@@ -9,7 +9,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,7 @@ function parseAmount(value: string) {
 
 export function FinanceiroContasPage() {
   const { pessoa } = useAuth();
-  const readOnly = !canFinanceiroFull(pessoa?.cargo);
+  const readOnly = !canEditModule(pessoa, "fin-contas");
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
@@ -158,7 +158,7 @@ export function FinanceiroContasPage() {
   }
 
   return (
-    <AccessGate allowed={canFinanceiroView} label="Financeiro · Contas a Pagar">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Contas a Pagar" module="fin-contas">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

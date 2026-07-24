@@ -115,7 +115,7 @@ export function CrmCanaisPage() {
   }
 
   return (
-    <AccessGate allowed={canCrmBratan} label="CRM · Canais de Venda">
+    <AccessGate allowed={canCrmBratan} label="CRM · Canais de Venda" module="crm">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <CrmSyncBanner failed={syncFailed} onRetry={retrySync} />
         <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">

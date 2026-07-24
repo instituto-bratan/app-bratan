@@ -19,6 +19,9 @@ export type Colaborador = {
   ativo: boolean;
   created_at: string;
   updated_at: string | null;
+  // Exceções de acesso POR PESSOA (tela → "OCULTO" | "VER" | "EDITAR").
+  // Ausente/vazio = padrão do cargo. Editável só por Lucas/Dr. Daniel/CEO.
+  acessos?: Record<string, string> | null;
 };
 
 export type Pessoa = Colaborador;

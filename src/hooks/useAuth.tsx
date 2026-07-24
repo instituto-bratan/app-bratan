@@ -45,6 +45,7 @@ const previewPessoa = (cargo: Cargo): Pessoa => ({
   ativo: true,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
+  acessos: {},
 });
 
 function readPreviewCargo(): Cargo | null {

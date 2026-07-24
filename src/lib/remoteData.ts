@@ -123,6 +123,31 @@ export async function listRemoteColaboradores(): Promise<Colaborador[]> {
   return (data ?? []) as Colaborador[];
 }
 
+// Acessos por pessoa (tela "Acessos" — só Lucas/Dr. Daniel/CEO; RLS confere).
+export async function saveRemoteColaboradorAcessos(
+  colaboradorId: string,
+  acessos: Record<string, string>,
+  updatedBy: string | null,
+) {
+  const client = requireSupabase();
+  const { error } = await client.from("colaborador_acesso").upsert(
+    {
+      colaborador_id: colaboradorId,
+      acessos,
+      updated_at: new Date().toISOString(),
+      updated_by: uuidOrNull(updatedBy),
+    },
+    { onConflict: "colaborador_id" },
+  );
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "admin.acessos.salvar",
+    entity: "colaborador_acesso",
+    entityId: colaboradorId,
+    metadata: { acessos },
+  });
+}
+
 export async function saveRemoteColaborador(values: {
   id: string | null;
   nome: string;

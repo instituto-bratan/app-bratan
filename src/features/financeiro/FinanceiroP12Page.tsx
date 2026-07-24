@@ -87,7 +87,7 @@ export function FinanceiroP12Page() {
   }, [selection, financeiro.sales, financeiro.expenses, year]);
 
   return (
-    <AccessGate allowed={canFinanceiroView} label="Financeiro · P12">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · P12" module="fin-p12">
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

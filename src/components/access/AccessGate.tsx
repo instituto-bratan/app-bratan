@@ -4,19 +4,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
-import { cargoLabels } from "@/lib/access";
+import { canSeeModule, cargoLabels, type ModuleKey } from "@/lib/access";
 import type { Cargo } from "@/types/database";
 
 type AccessGateProps = {
   allowed: (cargo: Cargo | null | undefined) => boolean;
   children: React.ReactNode;
   label: string;
+  /** Tela do controle de Acessos por pessoa: quando presente, a exceção
+   *  gravada pela coordenação vence a regra de cargo (OCULTO bloqueia). */
+  module?: ModuleKey;
 };
 
-export function AccessGate({ allowed, children, label }: AccessGateProps) {
+export function AccessGate({ allowed, children, label, module }: AccessGateProps) {
   const { pessoa } = useAuth();
 
-  if (allowed(pessoa?.cargo)) {
+  const permitted = module ? canSeeModule(pessoa, module) : allowed(pessoa?.cargo);
+  if (permitted) {
     return <>{children}</>;
   }
 

@@ -329,7 +329,7 @@ export function PagamentosPage() {
   }
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Lembretes de pagamento">
+    <AccessGate allowed={canLembretesPagamento} label="Lembretes de pagamento" module="fin-contas">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
         <motion.section
           initial={{ opacity: 0, y: 18 }}

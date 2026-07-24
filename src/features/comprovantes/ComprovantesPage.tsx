@@ -347,7 +347,7 @@ export function ComprovantesPage() {
   }
 
   return (
-    <AccessGate allowed={canComprovantes} label="Comprovantes">
+    <AccessGate allowed={canComprovantes} label="Comprovantes" module="comprovantes">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <motion.section
           initial={{ opacity: 0, y: 18 }}

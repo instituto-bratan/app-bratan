@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
-import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import {
   deleteRemoteFinPdcaMark,
@@ -98,7 +98,7 @@ function buildPdcaRows(sales: FinSale[], month: string, marks: Map<string, FinPd
 export function FinanceiroPdcaPage() {
   const { pessoa, session, isPreview } = useAuth();
   const useRemote = Boolean(pessoa && session && !isPreview);
-  const canEdit = canFinanceiroFull(pessoa?.cargo);
+  const canEdit = canEditModule(pessoa, "fin-pdca");
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
@@ -152,7 +152,7 @@ export function FinanceiroPdcaPage() {
   };
 
   return (
-    <AccessGate allowed={canFinanceiroView} label="Financeiro · PDCA">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · PDCA" module="fin-pdca">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

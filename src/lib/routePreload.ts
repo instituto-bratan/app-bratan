@@ -41,6 +41,7 @@ const routeLoaders = {
   acompanhamento: namedPage(() => import("@/features/programa/ProgramaAcompanhamentoPage"), "ProgramaAcompanhamentoPage"),
   crmCanais: namedPage(() => import("@/features/crm/CrmCanaisPage"), "CrmCanaisPage"),
   colaboradores: namedPage(() => import("@/features/admin/ColaboradoresPage"), "ColaboradoresPage"),
+  acessos: namedPage(() => import("@/features/admin/AcessosPage"), "AcessosPage"),
   colaboradorPerfil: namedPage(() => import("@/features/admin/ColaboradorPerfilPage"), "ColaboradorPerfilPage"),
   estalecasAdmin: namedPage(() => import("@/features/admin/EstalecasAdminPage"), "EstalecasAdminPage"),
   seguranca: namedPage(() => import("@/features/admin/SegurancaPage"), "SegurancaPage"),
@@ -95,6 +96,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/crm/canais") return "crmCanais";
   if (pathname.startsWith("/administracao/colaboradores/")) return "colaboradorPerfil";
   if (pathname === "/administracao" || pathname === "/administracao/colaboradores") return "colaboradores";
+  if (pathname === "/administracao/acessos") return "acessos";
   if (pathname === "/administracao/estalecas") return "estalecasAdmin";
   if (pathname === "/administracao/seguranca") return "seguranca";
   if (pathname === "/administracao/auditoria") return "auditoria";

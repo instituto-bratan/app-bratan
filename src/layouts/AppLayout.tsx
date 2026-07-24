@@ -38,7 +38,8 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { PageGuideButton } from "@/components/ui/page-guide";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvatar } from "@/features/perfil/avatarStore";
-import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canMarketing, cargoGroup, cargoLabels } from "@/lib/access";
+import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey } from "@/lib/access";
+import type { Pessoa } from "@/types/database";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
@@ -50,6 +51,9 @@ type NavEntry = {
   href: string;
   icon: ComponentType<{ className?: string }>;
   allowed: (cargo: Cargo | null | undefined) => boolean;
+  /** Tela do controle de Acessos por pessoa: quando presente, a exceção
+   *  gravada vence a regra de cargo (inclusive para MOSTRAR a mais). */
+  module?: ModuleKey;
 };
 
 type FlowGroup = {
@@ -71,9 +75,9 @@ const flowGroups: FlowGroup[] = [
     icon: CheckSquare,
     allowed: canBaseModules,
     entries: [
-      { label: "Tarefas", href: "/tarefas", icon: CheckSquare, allowed: canBaseModules },
-      { label: "Almoço", href: "/almoco", icon: Utensils, allowed: canBaseModules },
-      { label: "Mural", href: "/mural", icon: Bell, allowed: canBaseModules },
+      { label: "Tarefas", href: "/tarefas", icon: CheckSquare, allowed: canBaseModules, module: "hoje" },
+      { label: "Almoço", href: "/almoco", icon: Utensils, allowed: canBaseModules, module: "hoje" },
+      { label: "Mural", href: "/mural", icon: Bell, allowed: canBaseModules, module: "hoje" },
     ],
   },
   {
@@ -83,7 +87,7 @@ const flowGroups: FlowGroup[] = [
     icon: Coins,
     allowed: canBaseModules,
     entries: [
-      { label: "Minhas Estalecas", shortLabel: "Estalecas", href: "/estalecas", icon: Coins, allowed: canBaseModules },
+      { label: "Minhas Estalecas", shortLabel: "Estalecas", href: "/estalecas", icon: Coins, allowed: canBaseModules, module: "estalecas" },
     ],
   },
   {
@@ -93,11 +97,11 @@ const flowGroups: FlowGroup[] = [
     icon: MessageCircle,
     allowed: canCrmBratan,
     entries: [
-      { label: "Minhas Tarefas", shortLabel: "Tarefas", href: "/crm/minhas-tarefas", icon: ClipboardList, allowed: canCrmBratan },
-      { label: "Kanban Comercial", shortLabel: "Kanban", href: "/crm/vendas", icon: Target, allowed: canCrmBratan },
-      { label: "Cadências", href: "/crm/cadencias", icon: MessageCircle, allowed: canCrmBratan },
-      { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento },
-      { label: "Canais de Venda", shortLabel: "Canais", href: "/crm/canais", icon: Target, allowed: canCrmBratan },
+      { label: "Minhas Tarefas", shortLabel: "Tarefas", href: "/crm/minhas-tarefas", icon: ClipboardList, allowed: canCrmBratan, module: "crm" },
+      { label: "Kanban Comercial", shortLabel: "Kanban", href: "/crm/vendas", icon: Target, allowed: canCrmBratan, module: "crm" },
+      { label: "Cadências", href: "/crm/cadencias", icon: MessageCircle, allowed: canCrmBratan, module: "crm" },
+      { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento, module: "acompanhamento" },
+      { label: "Canais de Venda", shortLabel: "Canais", href: "/crm/canais", icon: Target, allowed: canCrmBratan, module: "crm" },
     ],
   },
   {
@@ -107,8 +111,8 @@ const flowGroups: FlowGroup[] = [
     icon: FileText,
     allowed: canBaseModules,
     entries: [
-      { label: "POPs & Fluxos", shortLabel: "POPs", href: "/pops-fluxos", icon: FileText, allowed: canBaseModules },
-      { label: "Comprovantes", href: "/comprovantes", icon: ReceiptText, allowed: canComprovantes },
+      { label: "POPs & Fluxos", shortLabel: "POPs", href: "/pops-fluxos", icon: FileText, allowed: canBaseModules, module: "pops" },
+      { label: "Comprovantes", href: "/comprovantes", icon: ReceiptText, allowed: canComprovantes, module: "comprovantes" },
     ],
   },
   {
@@ -118,18 +122,18 @@ const flowGroups: FlowGroup[] = [
     icon: CalendarClock,
     allowed: (cargo) => canLancarDia(cargo) || canFinanceiroView(cargo),
     entries: [
-      { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canLancarDia },
-      { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento },
-      { label: "Compras", href: "/financeiro/compras", icon: ShoppingCart, allowed: canFinanceiroView },
-      { label: "Crediário (Dinheiro)", shortLabel: "Crediário", href: "/financeiro/crediario", icon: HandCoins, allowed: canLembretesPagamento },
-      { label: "Fechamento", href: "/financeiro/fechamento", icon: ShieldCheck, allowed: canLembretesPagamento },
-      { label: "Poupança", href: "/financeiro/poupanca", icon: Coins, allowed: canLembretesPagamento },
-      { label: "Impostos & NFs", shortLabel: "NFs", href: "/financeiro/impostos", icon: FileText, allowed: canLembretesPagamento },
-      { label: "Repasses Nutri/Psi", shortLabel: "Repasses", href: "/financeiro/repasses", icon: UsersRound, allowed: canLembretesPagamento },
-      { label: "P12 ao vivo", shortLabel: "P12", href: "/financeiro/p12", icon: CircleDollarSign, allowed: canLembretesPagamento },
-      { label: "Metas do Mês", shortLabel: "Metas", href: "/financeiro/metas", icon: Goal, allowed: canFinanceiroView },
-      { label: "PDCA do Dr. Daniel", shortLabel: "PDCA", href: "/financeiro/pdca", icon: RefreshCw, allowed: canLembretesPagamento },
-      { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento },
+      { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canLancarDia, module: "fin-lancar-dia" },
+      { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento, module: "fin-contas" },
+      { label: "Compras", href: "/financeiro/compras", icon: ShoppingCart, allowed: canFinanceiroView, module: "fin-compras" },
+      { label: "Crediário (Dinheiro)", shortLabel: "Crediário", href: "/financeiro/crediario", icon: HandCoins, allowed: canLembretesPagamento, module: "fin-crediario" },
+      { label: "Fechamento", href: "/financeiro/fechamento", icon: ShieldCheck, allowed: canLembretesPagamento, module: "fin-fechamento" },
+      { label: "Poupança", href: "/financeiro/poupanca", icon: Coins, allowed: canLembretesPagamento, module: "fin-poupanca" },
+      { label: "Impostos & NFs", shortLabel: "NFs", href: "/financeiro/impostos", icon: FileText, allowed: canLembretesPagamento, module: "fin-impostos" },
+      { label: "Repasses Nutri/Psi", shortLabel: "Repasses", href: "/financeiro/repasses", icon: UsersRound, allowed: canLembretesPagamento, module: "fin-repasses" },
+      { label: "P12 ao vivo", shortLabel: "P12", href: "/financeiro/p12", icon: CircleDollarSign, allowed: canLembretesPagamento, module: "fin-p12" },
+      { label: "Metas do Mês", shortLabel: "Metas", href: "/financeiro/metas", icon: Goal, allowed: canFinanceiroView, module: "fin-metas" },
+      { label: "PDCA do Dr. Daniel", shortLabel: "PDCA", href: "/financeiro/pdca", icon: RefreshCw, allowed: canLembretesPagamento, module: "fin-pdca" },
+      { label: "Lembretes", href: "/lembretes-pagamento", icon: CalendarClock, allowed: canLembretesPagamento, module: "fin-contas" },
     ],
   },
   {
@@ -139,7 +143,7 @@ const flowGroups: FlowGroup[] = [
     icon: Megaphone,
     allowed: canMarketing,
     entries: [
-      { label: "Briefing do Mês", shortLabel: "Briefing", href: "/marketing", icon: Megaphone, allowed: canMarketing },
+      { label: "Briefing do Mês", shortLabel: "Briefing", href: "/marketing", icon: Megaphone, allowed: canMarketing, module: "marketing" },
     ],
   },
   {
@@ -149,27 +153,29 @@ const flowGroups: FlowGroup[] = [
     icon: BrainCircuit,
     allowed: canInteligencia360,
     entries: [
-      { label: "Dashboard 360", shortLabel: "360", href: "/inteligencia-360", icon: BrainCircuit, allowed: canInteligencia360 },
-      { label: "Ticket Médio", href: "/inteligencia-360/ticket-medio", icon: Target, allowed: canInteligencia360 },
-      { label: "Precificação", href: "/inteligencia-360/precificacao", icon: HandCoins, allowed: canInteligencia360 },
-      { label: "Comercial", href: "/inteligencia-360/comercial", icon: CircleDollarSign, allowed: canInteligencia360 },
-      { label: "Jornada", href: "/inteligencia-360/jornada-paciente", icon: UserRoundCheck, allowed: canInteligencia360 },
-      { label: "Réguas", href: "/inteligencia-360/reguas", icon: MessageCircle, allowed: canInteligencia360 },
-      { label: "Retenção", href: "/inteligencia-360/retencao-resgate", icon: RefreshCw, allowed: canInteligencia360 },
-      { label: "Experiência", href: "/inteligencia-360/experiencia", icon: HeartPulse, allowed: canInteligencia360 },
-      { label: "Recebíveis", href: "/inteligencia-360/recebiveis", icon: ReceiptText, allowed: canInteligencia360 },
-      { label: "Ações", href: "/inteligencia-360/acoes", icon: ClipboardList, allowed: canInteligencia360 },
+      { label: "Dashboard 360", shortLabel: "360", href: "/inteligencia-360", icon: BrainCircuit, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Ticket Médio", href: "/inteligencia-360/ticket-medio", icon: Target, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Precificação", href: "/inteligencia-360/precificacao", icon: HandCoins, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Comercial", href: "/inteligencia-360/comercial", icon: CircleDollarSign, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Jornada", href: "/inteligencia-360/jornada-paciente", icon: UserRoundCheck, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Réguas", href: "/inteligencia-360/reguas", icon: MessageCircle, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Retenção", href: "/inteligencia-360/retencao-resgate", icon: RefreshCw, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Experiência", href: "/inteligencia-360/experiencia", icon: HeartPulse, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Recebíveis", href: "/inteligencia-360/recebiveis", icon: ReceiptText, allowed: canInteligencia360, module: "inteligencia360" },
+      { label: "Ações", href: "/inteligencia-360/acoes", icon: ClipboardList, allowed: canInteligencia360, module: "inteligencia360" },
       { label: "Configurações", href: "/inteligencia-360/configuracoes", icon: ShieldCheck, allowed: canAdministracao },
     ],
   },
   {
     label: "Administração",
-    detail: "equipe, segurança e auditoria",
+    detail: "equipe, acessos e auditoria",
     href: "/administracao/colaboradores",
     icon: UsersRound,
     allowed: canAdministracao,
     entries: [
       { label: "Colaboradores", href: "/administracao/colaboradores", icon: UsersRound, allowed: canAdministracao },
+      // Acessos por pessoa: só Lucas, Dr. Daniel e CEO (fixo por cargo).
+      { label: "Acessos", href: "/administracao/acessos", icon: ShieldCheck, allowed: canManageAcessos },
       { label: "Gestão Estalecas", shortLabel: "Gestão", href: "/administracao/estalecas", icon: CircleDollarSign, allowed: canAdministracao },
       { label: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, allowed: canAdministracao },
       { label: "Auditoria", href: "/administracao/auditoria", icon: History, allowed: canAdministracao },
@@ -186,11 +192,19 @@ function isGroupActive(pathname: string, group: FlowGroup) {
   return pathname === group.href || pathname.startsWith(`${group.href}/`) || group.entries.some((entry) => isEntryActive(pathname, entry));
 }
 
-function visibleFlowGroups(cargo: Cargo | null | undefined) {
+// Visibilidade por PESSOA: telas com `module` seguem o controle de Acessos
+// (exceção pode esconder OU liberar a mais que o cargo); as demais seguem o
+// cargo. O grupo aparece se sobrar qualquer tela visível dentro dele.
+function entryVisible(pessoa: Pessoa | null | undefined, entry: NavEntry) {
+  return entry.module ? canSeeModule(pessoa, entry.module) : entry.allowed(pessoa?.cargo);
+}
+
+function visibleFlowGroups(pessoa: Pessoa | null | undefined) {
   return flowGroups
-    .filter((group) => group.allowed(cargo))
-    .map((group) => ({ ...group, entries: group.entries.filter((entry) => entry.allowed(cargo)) }))
-    .filter((group) => group.entries.length > 0);
+    .map((group) => ({ ...group, entries: group.entries.filter((entry) => entryVisible(pessoa, entry)) }))
+    .filter((group) => group.entries.length > 0)
+    // O atalho do grupo aponta pra 1ª tela visível (senão levaria a uma porta trancada).
+    .map((group) => ({ ...group, href: group.entries[0]?.href ?? group.href }));
 }
 
 function preloadRouteProps(href: string) {
@@ -238,9 +252,9 @@ function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function DesktopNav({ cargo }: { cargo: Cargo | null | undefined }) {
+function DesktopNav({ pessoa }: { pessoa: Pessoa | null | undefined }) {
   const location = useLocation();
-  const groups = visibleFlowGroups(cargo);
+  const groups = visibleFlowGroups(pessoa);
 
   return (
     <nav className="mt-8 hidden space-y-3 lg:block" aria-label="Navegação principal">
@@ -317,10 +331,10 @@ function DesktopNav({ cargo }: { cargo: Cargo | null | undefined }) {
   );
 }
 
-function MobileNav({ cargo, menuOpen, onOpenMenu }: { cargo: Cargo | null | undefined; menuOpen: boolean; onOpenMenu: () => void }) {
+function MobileNav({ pessoa, menuOpen, onOpenMenu }: { pessoa: Pessoa | null | undefined; menuOpen: boolean; onOpenMenu: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const groups = visibleFlowGroups(cargo);
+  const groups = visibleFlowGroups(pessoa);
   const coreItems: (NavEntry & { menu?: boolean })[] = [
     homeEntry,
     ...groups
@@ -335,7 +349,7 @@ function MobileNav({ cargo, menuOpen, onOpenMenu }: { cargo: Cargo | null | unde
     { label: "Menu", href: "#menu", icon: LayoutGrid, allowed: () => true, menu: true },
   ];
   const mobileItems = coreItems
-    .filter((item) => item.allowed(cargo))
+    .filter((item) => item.menu || item.href === "/" || groups.some((group) => group.href === item.href))
     .map((item) => ({
       icon: item.icon,
       label: item.shortLabel ?? item.label,
@@ -365,15 +379,15 @@ function normalizeSearch(value: string) {
 }
 
 function FlowLauncher({
-  cargo,
+  pessoa,
   open,
   onClose,
 }: {
-  cargo: Cargo | null | undefined;
+  pessoa: Pessoa | null | undefined;
   open: boolean;
   onClose: () => void;
 }) {
-  const groups = useMemo(() => visibleFlowGroups(cargo), [cargo]);
+  const groups = useMemo(() => visibleFlowGroups(pessoa), [pessoa]);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -509,7 +523,7 @@ export function AppLayout() {
     <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-hidden lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="ios-glass-quiet hidden min-w-0 border-r px-5 py-6 lg:block">
         <Brand />
-        <DesktopNav cargo={pessoa?.cargo} />
+        <DesktopNav pessoa={pessoa} />
       </aside>
 
       <div className="flex min-h-screen min-h-dvh min-w-0 flex-col pb-[calc(6.75rem+env(safe-area-inset-bottom))] lg:pb-0">
@@ -563,8 +577,8 @@ export function AppLayout() {
         <PageGuideButton pathname={location.pathname} />
       </div>
 
-      <FlowLauncher cargo={pessoa?.cargo} open={flowLauncherOpen} onClose={() => setFlowLauncherOpen(false)} />
-      <MobileNav cargo={pessoa?.cargo} menuOpen={flowLauncherOpen} onOpenMenu={() => setFlowLauncherOpen(true)} />
+      <FlowLauncher pessoa={pessoa} open={flowLauncherOpen} onClose={() => setFlowLauncherOpen(false)} />
+      <MobileNav pessoa={pessoa} menuOpen={flowLauncherOpen} onOpenMenu={() => setFlowLauncherOpen(true)} />
     </div>
   );
 }

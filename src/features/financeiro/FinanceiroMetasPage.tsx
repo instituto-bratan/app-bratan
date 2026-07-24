@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { exportBrandedPdf } from "@/lib/brandedPdf";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { parseMoneyBR } from "@/lib/money";
@@ -37,7 +37,7 @@ function percent(value: number) {
 export function FinanceiroMetasPage() {
   const { pessoa, session, isPreview } = useAuth();
   const useRemote = Boolean(pessoa && session && !isPreview);
-  const canEdit = canFinanceiroFull(pessoa?.cargo);
+  const canEdit = canEditModule(pessoa, "fin-metas");
   const [monthKey, setMonthKey] = useState(() => todayISO().slice(0, 7));
   const financeiro = useFinanceiro(Number(monthKey.slice(0, 4)));
   const [config, setConfig] = useState<MetasConfig>(() => ({
@@ -174,7 +174,7 @@ export function FinanceiroMetasPage() {
   );
 
   return (
-    <AccessGate allowed={canFinanceiroView} label="Financeiro · Metas do mês">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Metas do mês" module="fin-metas">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

@@ -160,7 +160,7 @@ export function ProgramaAcompanhamentoPage() {
   }
 
   return (
-    <AccessGate allowed={canAcompanhamento} label="Acompanhamento">
+    <AccessGate allowed={canAcompanhamento} label="Acompanhamento" module="acompanhamento">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

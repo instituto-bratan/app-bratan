@@ -205,7 +205,7 @@ export function FinanceiroLancarDiaPage() {
   }
 
   return (
-    <AccessGate allowed={canLancarDia} label="Financeiro · Lançar dia">
+    <AccessGate allowed={canLancarDia} label="Financeiro · Lançar dia" module="fin-lancar-dia">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

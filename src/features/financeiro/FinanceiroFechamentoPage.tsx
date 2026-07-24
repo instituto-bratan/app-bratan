@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { parseMoneyBR } from "@/lib/money";
 import { todayISO } from "@/lib/localStore";
@@ -137,7 +137,7 @@ function DayRow({
 
 export function FinanceiroFechamentoPage() {
   const { pessoa } = useAuth();
-  const readOnly = !canFinanceiroFull(pessoa?.cargo);
+  const readOnly = !canEditModule(pessoa, "fin-fechamento");
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
@@ -212,7 +212,7 @@ export function FinanceiroFechamentoPage() {
   }
 
   return (
-    <AccessGate allowed={canFinanceiroView} label="Financeiro · Fechamento">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Fechamento" module="fin-fechamento">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

@@ -218,3 +218,126 @@ export function cargoGroup(cargo: Cargo | null | undefined) {
   if (cargo === "recepcionista") return "Operacional + Lançar Dia";
   return "Operacional";
 }
+
+// ---------------------------------------------------------------------------
+// ACESSOS POR PESSOA (pedido do Lucas, 23/07/2026)
+// O cargo dá o PADRÃO; a tela "Acessos" (só Lucas, Dr. Daniel e CEO) grava
+// EXCEÇÕES por pessoa e por tela: OCULTO (nem vê), VER (só leitura) ou
+// EDITAR. Ausência de exceção = padrão do cargo.
+// ---------------------------------------------------------------------------
+
+export type AccessLevel = "OCULTO" | "VER" | "EDITAR";
+
+export type ModuleKey =
+  | "hoje"
+  | "estalecas"
+  | "crm"
+  | "acompanhamento"
+  | "pops"
+  | "comprovantes"
+  | "marketing"
+  | "inteligencia360"
+  | "fin-lancar-dia"
+  | "fin-contas"
+  | "fin-compras"
+  | "fin-crediario"
+  | "fin-fechamento"
+  | "fin-poupanca"
+  | "fin-p12"
+  | "fin-metas"
+  | "fin-impostos"
+  | "fin-repasses"
+  | "fin-pdca"
+  | "fin-canais";
+
+export const moduleLabels: Record<ModuleKey, string> = {
+  hoje: "Hoje (tarefas, almoço, mural)",
+  estalecas: "Carteira / Estalecas",
+  crm: "CRM (Kanban, tarefas, cadências)",
+  acompanhamento: "Plano de Acompanhamento",
+  pops: "POPs & Fluxos",
+  comprovantes: "Comprovantes",
+  marketing: "Marketing",
+  inteligencia360: "Inteligência 360",
+  "fin-lancar-dia": "Financeiro · Lançar Dia",
+  "fin-contas": "Financeiro · Contas a Pagar",
+  "fin-compras": "Financeiro · Compras",
+  "fin-crediario": "Financeiro · Crediário",
+  "fin-fechamento": "Financeiro · Fechamento",
+  "fin-poupanca": "Financeiro · Poupança (Cofre)",
+  "fin-p12": "Financeiro · P12",
+  "fin-metas": "Financeiro · Metas do Mês",
+  "fin-impostos": "Financeiro · Impostos & NF",
+  "fin-repasses": "Financeiro · Repasses",
+  "fin-pdca": "Financeiro · PDCA",
+  "fin-canais": "Financeiro · Canais de Venda",
+};
+
+export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
+
+// Padrão do CARGO por tela (as mesmas regras que já valiam, agora nomeadas).
+function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): AccessLevel {
+  if (!cargo) return "OCULTO";
+  switch (module) {
+    case "hoje":
+    case "estalecas":
+    case "pops":
+      return "EDITAR"; // básicos: todo mundo usa
+    case "crm":
+    case "acompanhamento":
+      return canCrmBratan(cargo) ? "EDITAR" : "OCULTO";
+    case "comprovantes":
+      return canComprovantes(cargo) ? "EDITAR" : "OCULTO";
+    case "marketing":
+      return canMarketing(cargo) ? "EDITAR" : "OCULTO";
+    case "inteligencia360":
+      if (canManageInteligencia360(cargo)) return "EDITAR";
+      return canInteligencia360(cargo) ? "VER" : "OCULTO";
+    case "fin-lancar-dia":
+      if (canFinanceiroFull(cargo) || cargo === "recepcionista") return "EDITAR";
+      return canFinanceiroView(cargo) ? "VER" : "OCULTO";
+    default:
+      // demais telas do Financeiro
+      if (canFinanceiroFull(cargo)) return "EDITAR";
+      return canFinanceiroView(cargo) ? "VER" : "OCULTO";
+  }
+}
+
+function isAccessLevel(value: unknown): value is AccessLevel {
+  return value === "OCULTO" || value === "VER" || value === "EDITAR";
+}
+
+// Nível EFETIVO da pessoa numa tela: exceção gravada vence; senão, padrão do cargo.
+export function moduleLevel(
+  pessoa: { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined,
+  module: ModuleKey,
+): AccessLevel {
+  if (!pessoa?.cargo) return "OCULTO";
+  const override = pessoa.acessos?.[module];
+  if (isAccessLevel(override)) return override;
+  return cargoDefaultLevel(pessoa.cargo, module);
+}
+
+export function canSeeModule(pessoa: { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined, module: ModuleKey) {
+  return moduleLevel(pessoa, module) !== "OCULTO";
+}
+
+export function canEditModule(pessoa: { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined, module: ModuleKey) {
+  return moduleLevel(pessoa, module) === "EDITAR";
+}
+
+export function cargoDefaultLevelFor(cargo: Cargo | null | undefined, module: ModuleKey) {
+  return cargoDefaultLevel(cargo, module);
+}
+
+// Quem pode ABRIR a tela "Acessos" e editar os acessos dos outros.
+// Fixo por cargo de propósito (sem exceção): ninguém se tranca fora.
+export function canManageAcessos(cargo: Cargo | null | undefined) {
+  return cargo === "dr_daniel" || cargo === "ceo" || cargo === "gestor_financeiro";
+}
+
+export const accessLevelLabels: Record<AccessLevel, string> = {
+  OCULTO: "Sem acesso",
+  VER: "Só vê",
+  EDITAR: "Vê e edita",
+};

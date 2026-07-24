@@ -9,7 +9,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -52,7 +52,7 @@ const kindBadgeVariant: Record<FinSavingsKind, "gold" | "muted" | "outline"> = {
 
 export function FinanceiroPoupancaPage() {
   const { pessoa } = useAuth();
-  const readOnly = !canFinanceiroFull(pessoa?.cargo);
+  const readOnly = !canEditModule(pessoa, "fin-poupanca");
   const now = todayISO();
   const financeiro = useFinanceiro(Number(now.slice(0, 4)));
   const [kind, setKind] = useState<FinSavingsKind>("APORTE");
@@ -140,7 +140,7 @@ export function FinanceiroPoupancaPage() {
   }
 
   return (
-    <AccessGate allowed={canFinanceiroView} label="Financeiro · Poupança">
+    <AccessGate allowed={canFinanceiroView} label="Financeiro · Poupança" module="fin-poupanca">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}

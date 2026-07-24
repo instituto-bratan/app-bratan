@@ -437,7 +437,7 @@ export function MarketingPage() {
   }, [plan, selected]);
 
   return (
-    <AccessGate allowed={canMarketing} label="Marketing">
+    <AccessGate allowed={canMarketing} label="Marketing" module="marketing">
       <div className="mx-auto w-full max-w-6xl space-y-6">
         <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
           <div className="flex items-center gap-2">

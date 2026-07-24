@@ -129,7 +129,7 @@ export function FinanceiroCrediarioPage() {
   }
 
   return (
-    <AccessGate allowed={canLembretesPagamento} label="Financeiro · Crediário">
+    <AccessGate allowed={canLembretesPagamento} label="Financeiro · Crediário" module="fin-crediario">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
