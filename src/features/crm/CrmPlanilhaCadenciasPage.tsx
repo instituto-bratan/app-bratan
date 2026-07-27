@@ -178,16 +178,16 @@ export function CrmPlanilhaCadenciasPage() {
           </colgroup>
           <thead>
             <tr className="border-b border-brand-oliva/20 text-left text-xs uppercase tracking-wide text-brand-musgo">
-              <th className="px-2 py-2">Abertura</th>
-              <th className="px-2 py-2">Paciente</th>
-              <th className="px-2 py-2">Motivo do contato</th>
+              <th className="px-2 py-2" title="Dia em que este contato começou">Abertura</th>
+              <th className="px-2 py-2" title="Paciente linkado no CRM — clique para abrir a ficha">Paciente</th>
+              <th className="px-2 py-2" title="Por que estamos falando com o paciente">Motivo do contato</th>
               {[1, 2, 3, 4, 5].map((d) => (
-                <th key={d} className="px-1.5 py-2 text-center">{`D${d}`}</th>
+                <th key={d} className="px-1.5 py-2 text-center" title={`${d}º dia de tentativa — registre no menu o que aconteceu`}>{`D${d}`}</th>
               ))}
-              <th className="px-2 py-2">Resultado final</th>
-              <th className="px-2 py-2 text-center">Concierge?</th>
-              <th className="px-2 py-2 text-center">Gestor?</th>
-              <th className="px-2 py-2">Observações</th>
+              <th className="px-2 py-2" title="Como a régua terminou (ou 'Em andamento')">Resultado final</th>
+              <th className="px-2 py-2 text-center" title="'Sim' = insatisfação encaminhada à Aline no mesmo dia">Concierge?</th>
+              <th className="px-2 py-2 text-center" title="'Sim' = D5 sem resposta, Estevão assumiu (5 ligações)">Gestor?</th>
+              <th className="px-2 py-2" title="Anotações livres — salva ao clicar fora">Observações</th>
             </tr>
           </thead>
           <tbody>
@@ -357,6 +357,54 @@ export function CrmPlanilhaCadenciasPage() {
         </motion.section>
 
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+
+        <details className="rounded-lg border border-brand-dourado/30 bg-brand-creme/25 backdrop-blur">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-brand-musgo">
+            📖 Entenda a planilha — o que é cada coluna e cada status (aula rápida)
+          </summary>
+          <div className="grid gap-4 border-t border-brand-dourado/20 p-4 text-sm leading-6 text-brand-tinta lg:grid-cols-2">
+            <div>
+              <p className="mb-1 font-bold text-brand-musgo">O que é cada coluna</p>
+              <ul className="space-y-1.5">
+                <li><strong>Abertura</strong> — o dia em que este contato começou (ex.: dia seguinte à aplicação).</li>
+                <li><strong>Paciente</strong> — sempre o paciente de verdade, linkado no CRM (clique no nome para abrir a ficha).</li>
+                <li><strong>Motivo do contato</strong> — por que estamos falando com ele (pós-aplicação, boas-vindas, agendamento, não fechou...).</li>
+                <li><strong>D1 a D5</strong> — os 5 dias de tentativa. D1 é o primeiro contato; se não houver resposta, D2 nasce amanhã, e assim por diante. Cada célula mostra a data e o que aconteceu.</li>
+                <li><strong>Resultado final</strong> — como a régua terminou: "Em andamento" (ainda tentando), "Resolvido no setor" (respondeu), "Insatisfação → Concierge" ou "Escalonado ao Gestor".</li>
+                <li><strong>Concierge?</strong> — "Sim" quando o paciente relatou insatisfação e a Aline recebeu o caso no mesmo dia.</li>
+                <li><strong>Gestor?</strong> — "Sim" quando ninguém respondeu até o D5 e o Estevão assumiu com as 5 ligações.</li>
+                <li><strong>Observações</strong> — campo livre para anotar detalhes da linha (salva sozinho ao clicar fora).</li>
+              </ul>
+            </div>
+            <div>
+              <p className="mb-1 font-bold text-brand-musgo">O que cada status faz quando você escolhe</p>
+              <ul className="space-y-1.5">
+                <li>
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SEM_RESPOSTA)}>Sem resposta</span>{" "}
+                  — mandei a mensagem e o paciente não respondeu. <strong>O próximo D nasce sozinho amanhã.</strong>
+                </li>
+                <li>
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SATISFEITO)}>Respondeu · satisfeito</span>{" "}
+                  — o paciente respondeu bem. <strong>A régua encerra na hora</strong> (nunca mandamos follow-up para quem já respondeu).
+                </li>
+                <li>
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.INSATISFEITO_CONCIERGE)}>Respondeu · insatisfeito → Concierge</span>{" "}
+                  — relatou queixa, dor ou problema. <strong>A Aline recebe a tarefa NO MESMO DIA</strong> (regra de ouro das reclamações) e a régua encerra.
+                </li>
+                <li>
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.AGENDADO_RESOLVIDO)}>Agendado · resolvido</span>{" "}
+                  — o objetivo do contato foi cumprido (agenda fechada, dúvida resolvida). <strong>A régua encerra.</strong>
+                </li>
+              </ul>
+              <p className="mt-3 font-bold text-brand-musgo">Aba do Gestor Estevão</p>
+              <p>
+                Recebe sozinha todo caso que chegou ao D5 sem resposta. O Estevão registra cada ligação (Não atendeu ·
+                Caixa postal · Atendeu·devolvido · Atendeu·resolvido) — o app anota data e hora. Sem contato na 5ª
+                ligação, ele clica em "Enviei a mensagem 5.1" e o paciente segue para os resgates de 6 meses e 1 ano.
+              </p>
+            </div>
+          </div>
+        </details>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {sheet.summary.map((item) => (

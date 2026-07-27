@@ -434,6 +434,30 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/crm/planilha",
+    guide: {
+      title: "Planilha de Cadências",
+      whatIs:
+        "É a Planilha Oficial de Cadências, viva dentro do app: cada linha é um paciente que o seu setor precisa contatar, e cada coluna D1 a D5 é um dia de tentativa. Você registra aqui o que aconteceu em cada envio — e o app cuida do resto sozinho.",
+      steps: [
+        "Abra a SUA aba (Enfermagem, Recepção, Concierge ou Vendas) — cada linha é um paciente com contato em andamento.",
+        "Enviou a mensagem do dia? Escolha no menu da coluna do D o que aconteceu: Sem resposta, Respondeu satisfeito, Respondeu insatisfeito ou Agendado/resolvido.",
+        "Escolheu 'Sem resposta'? O próximo D nasce sozinho amanhã — não precisa criar nada.",
+        "O paciente respondeu (satisfeito ou agendado)? A régua encerra na hora e a linha fica como 'Resolvido no setor'.",
+        "Respondeu insatisfeito? A Aline (Concierge) recebe a tarefa NO MESMO DIA e a coluna 'Concierge?' vira 'Sim'.",
+        "Se ninguém respondeu até o D5, o caso vai SOZINHO para a aba do Gestor Estevão — a coluna 'Gestor?' vira 'Sim'.",
+        "Use 'Observações' para anotar qualquer detalhe da linha (ex.: 'prefere contato à tarde').",
+      ],
+      tips: [
+        "Nada fica 'de boca': se não está na planilha, não aconteceu.",
+        "As células são as MESMAS tarefas de Minhas Tarefas — registrar aqui ou lá dá no mesmo, sem duplicar.",
+        "Janelas de envio: Enfermagem 10h00–10h30 · Recepção e Concierge até 12h00.",
+        "Aba do Gestor: o Estevão registra cada uma das 5 ligações (o app guarda data e hora sozinho) e, se ninguém atender na 5ª, marca o envio da mensagem de encerramento.",
+        "Esta tela tem dados de saúde — não tire print nem compartilhe fora do app (LGPD).",
+      ],
+    },
+  },
+  {
     pattern: "/crm/contatos",
     guide: {
       title: "Contatos (CRM)",
