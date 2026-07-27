@@ -163,17 +163,17 @@ export function CrmPlanilhaCadenciasPage() {
     }
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] table-fixed border-collapse text-sm">
+        <table className="w-full min-w-[1220px] table-fixed border-collapse text-sm">
           <colgroup>
-            <col className="w-16" />
+            <col className="w-20" />
             <col className="w-44" />
             <col className="w-36" />
             {[1, 2, 3, 4, 5].map((d) => (
               <col key={d} className="w-[7.5rem]" />
             ))}
             <col className="w-36" />
+            <col className="w-24" />
             <col className="w-20" />
-            <col className="w-16" />
             <col className="w-40" />
           </colgroup>
           <thead>
@@ -226,7 +226,7 @@ export function CrmPlanilhaCadenciasPage() {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1240px] table-fixed border-collapse text-sm">
           <colgroup>
-            <col className="w-16" />
+            <col className="w-20" />
             <col className="w-48" />
             <col className="w-24" />
             {[1, 2, 3, 4, 5].map((n) => (
