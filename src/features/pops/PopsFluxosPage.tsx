@@ -195,12 +195,21 @@ export function PopsFluxosPage() {
                   <Card className="h-full overflow-hidden border-brand-oliva/20 bg-white/75 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm">
                     <a href={documento.assetPath} target="_blank" rel="noreferrer" className="block bg-brand-papel/45">
                       <div className="aspect-[16/9] overflow-hidden border-b border-brand-oliva/12">
-                        <img
-                          src={documento.assetPath}
-                          alt={`Fluxograma ${documento.titulo}`}
-                          loading="lazy"
-                          className="h-full w-full object-contain transition duration-500 hover:scale-[1.015]"
-                        />
+                        {documento.fileName.toLowerCase().endsWith(".pdf") ? (
+                          <div className="grid h-full w-full place-items-center bg-brand-creme/40">
+                            <div className="flex flex-col items-center gap-2 text-brand-musgo">
+                              <FileText className="h-10 w-10" aria-hidden="true" />
+                              <span className="text-sm font-semibold">Documento PDF — clique para abrir</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <img
+                            src={documento.assetPath}
+                            alt={`Fluxograma ${documento.titulo}`}
+                            loading="lazy"
+                            className="h-full w-full object-contain transition duration-500 hover:scale-[1.015]"
+                          />
+                        )}
                       </div>
                     </a>
                     <CardHeader>
@@ -251,10 +260,10 @@ export function PopsFluxosPage() {
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase text-brand-oliva">
                           <ImageIcon className="h-4 w-4" aria-hidden="true" />
-                          PNG anexado
+                          {documento.fileName.toLowerCase().endsWith(".pdf") ? "PDF anexado" : "PNG anexado"}
                         </div>
                         <LiquidButton type="button" size="lg" className="h-11 px-5" onClick={() => window.open(documento.assetPath, "_blank", "noopener,noreferrer")}>
-                          Abrir fluxograma
+                          {documento.fileName.toLowerCase().endsWith(".pdf") ? "Abrir POP" : "Abrir fluxograma"}
                           <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                         </LiquidButton>
                       </div>

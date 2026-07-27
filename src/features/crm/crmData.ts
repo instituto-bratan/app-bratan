@@ -284,6 +284,8 @@ export type CrmCadenceEnrollment = {
   ownerRole: CrmRole;
   completedAt: string | null;
   canceledReason: string;
+  // Observações da Planilha Oficial de Cadências (texto livre por linha).
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -788,7 +790,8 @@ const cadences: CrmCadence[] = [
   {
     id: "cad-post-application",
     name: "Pós-aplicação / bioimpedância",
-    description: "Mensagem do dia seguinte, preferencialmente 15h30-16h30.",
+    description:
+      "Mensagem do dia seguinte no bloco 10h00–10h30 (POP v3 — o horário da tarde foi extinto). Sem resposta → D2–D5 no mesmo bloco; D5 sem resposta → Gestor.",
     cadenceType: "POST_APPLICATION_NURSING",
     defaultOwnerRole: "ENFERMAGEM",
     active: true,
@@ -890,11 +893,22 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-nc-d4", "cad-not-closed", 4, "Não fechou D4 - posso ligar?", 4, "tpl-followup-d4", "CONCIERGE"],
   ["step-nc-d5", "cad-not-closed", 5, "Não fechou D5 - última mensagem", 5, "tpl-followup-d5", "CONCIERGE"],
   ["step-concierge-d1", "cad-concierge-d1", 1, "Concierge D+1", 1, "tpl-concierge-d1", "CONCIERGE"],
-  ["step-concierge-reenvio", "cad-concierge-d1", 2, "Reenvio acolhimento", 2, "tpl-concierge-reenvio", "CONCIERGE"],
+  // POP v3 (3.5): sem resposta às boas-vindas → cadência D1–D5 (substitui o
+  // reenvio único do fluxo anterior). D5 sem resposta → Gestor (Estevão).
+  ["step-concierge-d2", "cad-concierge-d1", 2, "Boas-vindas D2 - viu minha mensagem?", 2, "tpl-followup-d2", "CONCIERGE"],
+  ["step-concierge-d3", "cad-concierge-d1", 3, "Boas-vindas D3 - à disposição", 3, "tpl-followup-d3", "CONCIERGE"],
+  ["step-concierge-d4", "cad-concierge-d1", 4, "Boas-vindas D4 - posso ligar?", 4, "tpl-followup-d4", "CONCIERGE"],
+  ["step-concierge-d5", "cad-concierge-d1", 5, "Boas-vindas D5 - última mensagem", 5, "tpl-followup-d5", "CONCIERGE"],
   ["step-posc-d1", "cad-pos-consulta-d1", 1, "Pós-consulta D+1 — como foi a consulta?", 1, "tpl-pos-consulta-d1", "CONCIERGE"],
   ["step-posc-d3", "cad-pos-consulta-d1", 2, "Pós-consulta D+3 — apoiar a decisão", 3, "tpl-pos-consulta-d3", "CONCIERGE"],
   ["step-nurse-14", "cad-nursing-14", 1, "Enfermagem 14 dias", 14, "tpl-enfermagem-14", "ENFERMAGEM"],
   ["step-post-application", "cad-post-application", 1, "Pós-aplicação", 1, "tpl-pos-aplicacao", "ENFERMAGEM"],
+  // POP v3 (3.4): sem resposta ao pós-aplicação → D2–D5 nos dias seguintes,
+  // dentro do MESMO bloco 10h00–10h30. D5 sem resposta → Gestor (Estevão).
+  ["step-postapp-d2", "cad-post-application", 2, "Pós-aplicação D2 - viu minha mensagem?", 2, "tpl-followup-d2", "ENFERMAGEM"],
+  ["step-postapp-d3", "cad-post-application", 3, "Pós-aplicação D3 - à disposição", 3, "tpl-followup-d3", "ENFERMAGEM"],
+  ["step-postapp-d4", "cad-post-application", 4, "Pós-aplicação D4 - posso ligar?", 4, "tpl-followup-d4", "ENFERMAGEM"],
+  ["step-postapp-d5", "cad-post-application", 5, "Pós-aplicação D5 - última mensagem", 5, "tpl-followup-d5", "ENFERMAGEM"],
   ["step-rescue60-1", "cad-rescue-60d", 1, "Resgate 60d - tentativa 1", 0, "tpl-resgate-60", "CONCIERGE"],
   ["step-rescue60-2", "cad-rescue-60d", 2, "Resgate 60d - tentativa 2", 2, "tpl-resgate-60", "CONCIERGE"],
   ["step-rescue60-3", "cad-rescue-60d", 3, "Resgate 60d - tentativa 3", 4, "tpl-resgate-60", "CONCIERGE"],
@@ -937,7 +951,9 @@ const cadenceSteps: CrmCadenceStep[] = [
   name: name as string,
   offsetType: (cadenceId === "cad-return-cycle" ? "BEFORE_EVENT_DATE" : cadenceId === "cad-nursing-14" ? "RECURRING_EVERY_X_DAYS" : "DAYS_AFTER_TRIGGER") as CrmOffsetType,
   offsetValue: offsetValue as number,
-  preferredTimeWindow: (id === "step-post-application" ? "AFTERNOON" : id === "step-concierge-d1" ? "MORNING" : "ANY") as CrmTimeWindow,
+  // POP v3 (2.5): Enfermagem tem bloco fixo 10h00–10h30 (o horário da tarde foi
+  // extinto) — janela "ANY" materializa a tarefa às 10h.
+  preferredTimeWindow: (String(cadenceId) === "cad-post-application" ? "ANY" : id === "step-concierge-d1" ? "MORNING" : "ANY") as CrmTimeWindow,
   // Ligações do gestor e a ligação do D5 da assinatura são CALL; o resto é WhatsApp.
   taskType: (String(id).startsWith("step-g5l-") && id !== "step-g5l-encerramento" ? "CALL" : "WHATSAPP") as CrmTaskType,
   assignedToRole: assignedToRole as CrmRole,
@@ -1456,8 +1472,10 @@ const retiredStepIds = new Set([
   "step-assin-d3",
   "step-assin-d4",
   "step-assin-ligar",
+  // POP v3 (3.5): o "reenvio único" das boas-vindas virou a régua D2–D5.
+  "step-concierge-reenvio",
 ]);
-const retiredTemplateIds = new Set(["tpl-medico-d1", "tpl-gestor-d2", "tpl-lembrete-assinatura"]);
+const retiredTemplateIds = new Set(["tpl-medico-d1", "tpl-gestor-d2", "tpl-lembrete-assinatura", "tpl-concierge-reenvio"]);
 
 export function mergeCrmCatalogWithSeeds(state: CrmState): CrmState {
   const cadences = unionById(state.cadences ?? [], seedCrmState.cadences).map((cadence) =>
@@ -2675,7 +2693,16 @@ export function ensureMondaySafetyTask(state: CrmState, reference = new Date()):
 // encerrando com a mensagem-padrão (POP 5.1) se ninguém atender.
 // D5 sem resposta → Estevão (5 ligações). A régua do não-fechou agora é da
 // CONCIERGE (decisão do Lucas, 22/07 — o médico saiu do CRM); assinatura saiu.
-const ESCALATE_TO_MANAGER_CADENCES = ["cad-pos-fechamento-d2d5", "cad-not-closed", "cad-return-cycle"];
+// Planilha Oficial de Cadências (27/07): TODA régua de setor esgotada sem
+// resposta sobe para o Estevão — boas-vindas da Concierge e pós-aplicação da
+// Enfermagem agora também são D1–D5 (POP v3, seções 3.4 e 3.5).
+const ESCALATE_TO_MANAGER_CADENCES = [
+  "cad-pos-fechamento-d2d5",
+  "cad-not-closed",
+  "cad-return-cycle",
+  "cad-concierge-d1",
+  "cad-post-application",
+];
 
 export function escalateExhaustedCadences(state: CrmState, reference = new Date()): CrmState {
   let next = state;
@@ -2731,6 +2758,354 @@ export function escalateExhaustedCadences(state: CrmState, reference = new Date(
     };
   }
   return next;
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// PLANILHA OFICIAL DE CADÊNCIAS (réplica viva da planilha do Lucas, 27/07).
+// Uma LINHA por inscrição de cadência; colunas D1–D5 com data + status;
+// Resultado final, Encaminhado à Concierge?, Escalonado ao Gestor?, Obs.
+// Tudo DERIVADO do motor — a planilha é uma visão da mesma verdade que
+// alimenta Minhas Tarefas e o Kanban (zero duplicação de dado).
+// ————————————————————————————————————————————————————————————————————————
+
+export type CadenceSheetSector = "ENFERMAGEM" | "RECEPCAO" | "CONCIERGE" | "VENDAS";
+
+export const cadenceSheetSectorLabels: Record<CadenceSheetSector, string> = {
+  ENFERMAGEM: "Enfermagem",
+  RECEPCAO: "Recepção",
+  CONCIERGE: "Concierge",
+  VENDAS: "Vendas",
+};
+
+// Os 4 status do menu suspenso da planilha (aba Instruções).
+export type CadenceSheetDStatus = "SEM_RESPOSTA" | "SATISFEITO" | "INSATISFEITO_CONCIERGE" | "AGENDADO_RESOLVIDO";
+
+export const cadenceSheetStatusLabels: Record<CadenceSheetDStatus, string> = {
+  SEM_RESPOSTA: "Sem resposta",
+  SATISFEITO: "Respondeu · satisfeito",
+  INSATISFEITO_CONCIERGE: "Respondeu · insatisfeito → Concierge",
+  AGENDADO_RESOLVIDO: "Agendado · resolvido",
+};
+
+// Status das ligações do Gestor (aba Gestor Estevão da planilha).
+export type GestorCallStatus = "NAO_ATENDEU" | "CAIXA_POSTAL" | "ATENDEU_DEVOLVIDO" | "ATENDEU_RESOLVIDO";
+
+export const gestorCallStatusLabels: Record<GestorCallStatus, string> = {
+  NAO_ATENDEU: "Não atendeu",
+  CAIXA_POSTAL: "Caixa postal",
+  ATENDEU_DEVOLVIDO: "Atendeu · devolvido ao setor",
+  ATENDEU_RESOLVIDO: "Atendeu · resolvido",
+};
+
+// O vocabulário da planilha vira o vocabulário do motor: `result` é ENUM no
+// banco (crm_task_result), então NENHUM valor novo — o detalhe fino viaja em
+// resultNotes e no sentimento (NEGATIVE dispara a reclamação da Concierge).
+export function cadenceSheetCompletion(status: CadenceSheetDStatus): {
+  result: CrmTaskResult;
+  sentiment: CrmSentiment;
+  resultNotes: string;
+} {
+  switch (status) {
+    case "SEM_RESPOSTA":
+      return { result: "NO_RESPONSE", sentiment: "NO_RESPONSE", resultNotes: "" };
+    case "SATISFEITO":
+      return { result: "RESPONDED", sentiment: "POSITIVE", resultNotes: "" };
+    case "INSATISFEITO_CONCIERGE":
+      return { result: "RESPONDED", sentiment: "NEGATIVE", resultNotes: "Insatisfação relatada — encaminhar à Concierge no MESMO dia (POP 2.3)." };
+    case "AGENDADO_RESOLVIDO":
+      return { result: "SCHEDULED", sentiment: "POSITIVE", resultNotes: "" };
+  }
+}
+
+export function gestorCallCompletion(status: GestorCallStatus): {
+  result: CrmTaskResult;
+  sentiment: CrmSentiment;
+  resultNotes: string;
+} {
+  switch (status) {
+    case "NAO_ATENDEU":
+      return { result: "NO_RESPONSE", sentiment: "NO_RESPONSE", resultNotes: "Não atendeu" };
+    case "CAIXA_POSTAL":
+      return { result: "NO_RESPONSE", sentiment: "NO_RESPONSE", resultNotes: "Caixa postal" };
+    case "ATENDEU_DEVOLVIDO":
+      return { result: "RESPONDED", sentiment: "NEUTRAL", resultNotes: "Atendeu · devolvido ao setor de origem" };
+    case "ATENDEU_RESOLVIDO":
+      return { result: "SCHEDULED", sentiment: "POSITIVE", resultNotes: "Atendeu · resolvido" };
+  }
+}
+
+// Lê de volta o status da planilha a partir de uma tarefa concluída.
+export function sheetStatusFromTask(task: CrmTask): CadenceSheetDStatus | null {
+  if (task.status !== "DONE") return null;
+  if (task.result === "NO_RESPONSE" || task.result === "NEEDS_MANAGER") return "SEM_RESPOSTA";
+  if (["SCHEDULED", "RESCHEDULED", "SOLD"].includes(task.result)) return "AGENDADO_RESOLVIDO";
+  if (task.resultNotes.toLowerCase().includes("insatisf")) return "INSATISFEITO_CONCIERGE";
+  return "SATISFEITO";
+}
+
+function gestorCallStatusFromTask(task: CrmTask): GestorCallStatus | null {
+  if (task.status !== "DONE") return null;
+  const notes = task.resultNotes.toLowerCase();
+  if (notes.includes("caixa")) return "CAIXA_POSTAL";
+  if (task.result === "NO_RESPONSE" || task.result === "NEEDS_MANAGER") return "NAO_ATENDEU";
+  if (notes.includes("resolvido") || ["SCHEDULED", "RESCHEDULED", "SOLD"].includes(task.result)) return "ATENDEU_RESOLVIDO";
+  return "ATENDEU_DEVOLVIDO";
+}
+
+export type CadenceSheetCell = {
+  stepId: string;
+  stepName: string;
+  taskId: string | null;
+  // Data exibida: envio real (completedAt) ou vencimento previsto.
+  date: string | null;
+  status: CadenceSheetDStatus | null;
+  // A célula da vez: tarefa PENDENTE que pode receber o status hoje.
+  actionable: boolean;
+  skipped: boolean;
+};
+
+export type CadenceSheetRow = {
+  enrollmentId: string;
+  sector: CadenceSheetSector;
+  cadenceId: string;
+  motivo: string;
+  contactId: string;
+  patientName: string;
+  phone: string;
+  openedAt: string;
+  cells: CadenceSheetCell[];
+  resultadoFinal: string;
+  encaminhadoConcierge: boolean;
+  escalonadoGestor: boolean;
+  observacoes: string;
+  active: boolean;
+};
+
+export type GestorSheetCall = {
+  n: number;
+  taskId: string | null;
+  date: string | null;
+  hora: string | null;
+  status: GestorCallStatus | null;
+  actionable: boolean;
+};
+
+export type GestorSheetRow = {
+  enrollmentId: string;
+  contactId: string;
+  patientName: string;
+  phone: string;
+  entradaEm: string;
+  setorOrigem: string;
+  motivoOriginal: string;
+  calls: GestorSheetCall[];
+  encerramentoTaskId: string | null;
+  encerramentoEnviadoEm: string | null;
+  encerramentoActionable: boolean;
+  resultadoFinal: string;
+  observacoes: string;
+  active: boolean;
+};
+
+const sheetSectorByRole: Partial<Record<CrmRole, CadenceSheetSector>> = {
+  ENFERMAGEM: "ENFERMAGEM",
+  RECEPCAO: "RECEPCAO",
+  CONCIERGE: "CONCIERGE",
+  COMERCIAL_VENDEDOR: "VENDAS",
+  COMERCIAL_GESTOR: "VENDAS",
+  SDR_LEADS: "VENDAS",
+  ADMIN_GESTAO: "VENDAS", // ex.: 3·1·3·1 do Estevão (a trilha de 5 ligações tem aba própria)
+};
+
+function enrollmentTasks(state: CrmState, enrollment: CrmCadenceEnrollment, steps: CrmCadenceStep[]) {
+  // Linkagem determinística: a identidade da execução é o triggerDate embutido
+  // no id (`task-{contato}-{cadência}-{passo}-{triggerDate}`) — execuções
+  // antigas do mesmo paciente NUNCA se misturam com a atual.
+  return steps.map((step) => {
+    const recurring = step.offsetType === "RECURRING_EVERY_X_DAYS";
+    const byId = recurring
+      ? null
+      : state.tasks.find((task) => task.id === cadenceTaskIdFor(enrollment.contactId, enrollment.cadenceId, step.id, enrollment.triggerDate)) ?? null;
+    const task =
+      byId ??
+      state.tasks.find(
+        (item) =>
+          item.contactId === enrollment.contactId &&
+          item.cadenceId === enrollment.cadenceId &&
+          item.cadenceStepId === step.id &&
+          item.createdAt >= enrollment.createdAt,
+      ) ??
+      null;
+    return { step, task };
+  });
+}
+
+function enrollmentFlags(state: CrmState, enrollment: CrmCadenceEnrollment, taskIds: string[]) {
+  const encaminhadoConcierge = taskIds.some((taskId) => state.tasks.some((task) => task.id === `task-reclamacao-${taskId}`));
+  const escalonadoGestor = state.timelineEvents.some(
+    (event) => event.eventType === "ESCALATED_TO_MANAGER" && event.sourceId === enrollment.id,
+  );
+  return { encaminhadoConcierge, escalonadoGestor };
+}
+
+function sheetResultadoFinal(
+  enrollment: CrmCadenceEnrollment,
+  flags: { encaminhadoConcierge: boolean; escalonadoGestor: boolean },
+  cells: CadenceSheetCell[],
+): string {
+  if (flags.escalonadoGestor) return "Escalonado ao Gestor (Estevão)";
+  if (flags.encaminhadoConcierge) return "Insatisfação → Concierge";
+  if (enrollment.status === "PAUSED") return "Resolvido no setor";
+  if (enrollment.status === "CANCELED") return enrollment.canceledReason ? `Cancelada — ${enrollment.canceledReason}` : "Cancelada";
+  if (enrollment.status === "COMPLETED") {
+    const allNoResponse = cells.every((cell) => cell.status === "SEM_RESPOSTA" || cell.skipped || !cell.taskId);
+    return allNoResponse ? "Sem resposta até o D5" : "Concluída";
+  }
+  return "Em andamento";
+}
+
+export function buildCadenceSheet(state: CrmState, options?: { historyDays?: number; reference?: Date }) {
+  const reference = options?.reference ?? new Date();
+  const historyDays = options?.historyDays ?? 60;
+  const cutoffDate = new Date(reference.getTime() - historyDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const sectors: Record<CadenceSheetSector, CadenceSheetRow[]> = {
+    ENFERMAGEM: [],
+    RECEPCAO: [],
+    CONCIERGE: [],
+    VENDAS: [],
+  };
+  const gestor: GestorSheetRow[] = [];
+
+  const activeStepsByCadence = new Map<string, CrmCadenceStep[]>();
+  for (const step of state.cadenceSteps) {
+    if (!step.active) continue;
+    const list = activeStepsByCadence.get(step.cadenceId) ?? [];
+    list.push(step);
+    activeStepsByCadence.set(step.cadenceId, list);
+  }
+  for (const list of activeStepsByCadence.values()) list.sort((a, b) => a.stepOrder - b.stepOrder);
+
+  for (const enrollment of state.cadenceEnrollments) {
+    const isActive = enrollment.status === "ACTIVE";
+    const lastMoved = enrollment.completedAt ?? enrollment.updatedAt;
+    if (!isActive && lastMoved < cutoffDate) continue; // histórico limitado — a página é operação, não arquivo morto
+
+    const contact = state.contacts.find((item) => item.id === enrollment.contactId);
+    if (!contact) continue;
+    const steps = activeStepsByCadence.get(enrollment.cadenceId) ?? [];
+    if (!steps.length) continue;
+    const cadence = state.cadences.find((item) => item.id === enrollment.cadenceId);
+    const pairs = enrollmentTasks(state, enrollment, steps);
+    const taskIds = pairs.map((pair) => pair.task?.id).filter((id): id is string => Boolean(id));
+    const flags = enrollmentFlags(state, enrollment, taskIds);
+    const patientName = contactDisplayName(contact);
+
+    if (enrollment.cadenceId === "cad-gestor-5lig") {
+      const callPairs = pairs.filter((pair) => pair.step.id !== "step-g5l-encerramento");
+      const encerramento = pairs.find((pair) => pair.step.id === "step-g5l-encerramento");
+      const calls: GestorSheetCall[] = callPairs.map((pair, index) => {
+        const done = pair.task?.status === "DONE";
+        return {
+          n: index + 1,
+          taskId: pair.task?.id ?? null,
+          date: pair.task ? (pair.task.completedAt ?? pair.task.dueAt).slice(0, 10) : null,
+          hora: done && pair.task?.completedAt ? pair.task.completedAt.slice(11, 16) : null,
+          status: pair.task ? gestorCallStatusFromTask(pair.task) : null,
+          actionable: Boolean(pair.task && pair.task.status === "PENDING"),
+        };
+      });
+      const resolvido = calls.some((call) => call.status === "ATENDEU_RESOLVIDO" || call.status === "ATENDEU_DEVOLVIDO");
+      const encerramentoDone = encerramento?.task?.status === "DONE";
+      gestor.push({
+        enrollmentId: enrollment.id,
+        contactId: contact.id,
+        patientName,
+        phone: contact.phone,
+        entradaEm: enrollment.triggerDate,
+        setorOrigem: enrollment.triggerSource.includes("cad-pos-fechamento") || enrollment.triggerSource.includes("cad-return-cycle")
+          ? "Recepção"
+          : enrollment.triggerSource.includes("cad-post-application")
+            ? "Enfermagem"
+            : enrollment.triggerSource.includes("cad-not-closed") || enrollment.triggerSource.includes("cad-concierge")
+              ? "Concierge"
+              : "—",
+        motivoOriginal: enrollment.triggerSource || "Cadência D1–D5 sem resposta",
+        calls,
+        encerramentoTaskId: encerramento?.task?.id ?? null,
+        encerramentoEnviadoEm: encerramentoDone ? (encerramento?.task?.completedAt ?? "").slice(0, 10) : null,
+        encerramentoActionable: Boolean(encerramento?.task && encerramento.task.status === "PENDING"),
+        resultadoFinal: encerramentoDone
+          ? "Encerrado sem contato — entra nos resgates de 6 meses e 1 ano"
+          : resolvido
+            ? enrollment.status === "PAUSED"
+              ? "Resolvido pelo gestor"
+              : "Contato obtido"
+            : enrollment.status === "CANCELED"
+              ? "Cancelada"
+              : "Em andamento",
+        observacoes: enrollment.notes ?? "",
+        active: isActive,
+      });
+      continue;
+    }
+
+    const sector = sheetSectorByRole[enrollment.ownerRole] ?? sheetSectorByRole[cadence?.defaultOwnerRole ?? "CONCIERGE"];
+    if (!sector) continue;
+
+    const cells: CadenceSheetCell[] = pairs.map((pair) => ({
+      stepId: pair.step.id,
+      stepName: pair.step.name,
+      taskId: pair.task?.id ?? null,
+      date: pair.task ? (pair.task.completedAt ?? pair.task.dueAt).slice(0, 10) : null,
+      status: pair.task ? sheetStatusFromTask(pair.task) : null,
+      actionable: Boolean(pair.task && pair.task.status === "PENDING"),
+      skipped: pair.task ? ["SKIPPED", "CANCELED"].includes(pair.task.status) : false,
+    }));
+
+    sectors[sector].push({
+      enrollmentId: enrollment.id,
+      sector,
+      cadenceId: enrollment.cadenceId,
+      motivo: cadence?.name ?? enrollment.cadenceId,
+      contactId: contact.id,
+      patientName,
+      phone: contact.phone,
+      openedAt: enrollment.triggerDate,
+      cells,
+      resultadoFinal: sheetResultadoFinal(enrollment, flags, cells),
+      encaminhadoConcierge: flags.encaminhadoConcierge,
+      escalonadoGestor: flags.escalonadoGestor,
+      observacoes: enrollment.notes ?? "",
+      active: isActive,
+    });
+  }
+
+  const byRecent = (a: { active: boolean; openedAt?: string; entradaEm?: string }, b: typeof a) =>
+    Number(b.active) - Number(a.active) || String(b.openedAt ?? b.entradaEm).localeCompare(String(a.openedAt ?? a.entradaEm));
+  for (const sector of Object.keys(sectors) as CadenceSheetSector[]) sectors[sector].sort(byRecent);
+  gestor.sort(byRecent);
+
+  const summary = (Object.keys(sectors) as CadenceSheetSector[]).map((sector) => ({
+    sector,
+    label: cadenceSheetSectorLabels[sector],
+    casos: sectors[sector].length,
+    encaminhados: sectors[sector].filter((row) => row.encaminhadoConcierge).length,
+    escalonados: sectors[sector].filter((row) => row.escalonadoGestor).length,
+  }));
+
+  return { sectors, gestor, summary };
+}
+
+// Observações da planilha — texto livre por inscrição (linha).
+export function updateCadenceEnrollmentNotes(state: CrmState, enrollmentId: string, notes: string): CrmState {
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    cadenceEnrollments: state.cadenceEnrollments.map((enrollment) =>
+      enrollment.id === enrollmentId ? { ...enrollment, notes, updatedAt: now } : enrollment,
+    ),
+  };
 }
 
 // Exclui um lead por completo: contato, negociações, inscrições, tarefas,

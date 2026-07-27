@@ -117,6 +117,46 @@ export const popsAreas: PopsArea[] = [
 
 export const fluxogramas: FluxogramaDocumento[] = [
   {
+    id: "pop-caminhada-paciente-v3",
+    areaId: "gestao",
+    titulo: "POP · Caminhada do Paciente (v3)",
+    setor: "Todos os setores",
+    responsavel: "Equipe operacional completa",
+    categoria: "Documento unificado",
+    resumo:
+      "A caminhada completa do paciente — do pós-consulta ao pós-venda — por setor, com a Cadência D1–D5, o escalonamento ao Gestor (Estevão), a regra de ouro das reclamações e as mensagens-padrão. Registro oficial: Planilha de Cadências (no app, aba do CRM).",
+    etapas: ["Cadência D1–D5", "Fluxo por setor", "Escalonamento ao Gestor", "Réguas contínuas", "Mensagens-padrão"],
+    tarefasSugeridas: [
+      "Todo contato ativo sem resposta abre a cadência D1–D5 — registrar cada D na Planilha de Cadências do CRM.",
+      "Qualquer insatisfação vai à Concierge NO MESMO DIA (grave: Dr. Daniel → CEO).",
+      "Sem resposta no D5 → o caso sobe sozinho para a trilha de 5 ligações do Estevão.",
+      "Janelas de envio: Enfermagem 10h00–10h30 · Recepção e Concierge até 12h00.",
+    ],
+    tags: ["cadência", "d1-d5", "concierge", "gestor", "reclamação", "planilha", "pop"],
+    fileName: "POP — Caminhada do Paciente v3.pdf",
+    assetPath: fluxogramaPath("POP — Caminhada do Paciente v3.pdf"),
+  },
+  {
+    id: "pop-agendamento-consultas-v1",
+    areaId: "recepcao_comercial",
+    titulo: "POP · Agendamento de Consultas e Tratamentos (v1)",
+    setor: "Recepção / Agendamento",
+    responsavel: "Recepção e time de agendamento",
+    categoria: "Procedimento + fluxograma",
+    resumo:
+      "Toda consulta é marcada pelo TEMPO DO TRATAMENTO, não pelo calendário: Dr. Daniel 7–10 dias antes do fim do tratamento; Dra. Géssica na mesma semana da consulta médica (máx. 10 dias); bioimpedância junto; medicações em até 10 dias. Inclui o Plano Bratan e a Regra de Ouro da 1ª consulta.",
+    etapas: ["Identifique o fechamento", "Programa de Acompanhamento", "Plano Bratan", "Exceções", "Regra de Ouro"],
+    tarefasSugeridas: [
+      "Agendar a próxima consulta do Dr. Daniel 7 a 10 dias ANTES do término do tratamento — nunca depois.",
+      "1ª consulta da Dra. Géssica na mesma semana da consulta médica (máximo 10 dias).",
+      "Paciente que não aceita agendar tudo → tarefa no CRM E pendência no Feegow (textos-padrão do POP).",
+      "Todo paciente sai da 1ª consulta com Dr. Daniel + Dra. Géssica + bioimpedância agendados.",
+    ],
+    tags: ["agendamento", "feegow", "plano bratan", "tempo do tratamento", "recepção", "pop"],
+    fileName: "POP — Agendamento de Consultas e Tratamentos v1.pdf",
+    assetPath: fluxogramaPath("POP — Agendamento de Consultas e Tratamentos v1.pdf"),
+  },
+  {
     id: "administracao-medicamento-im",
     areaId: "enfermagem",
     titulo: "Administração de Medicamento - Via Intramuscular",

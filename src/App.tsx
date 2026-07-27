@@ -35,6 +35,7 @@ const CrmContactProfilePage = lazyRoute("crmContact");
 const CrmCadencesPage = lazyRoute("crmCadences");
 const ProgramaAcompanhamentoPage = lazyRoute("acompanhamento");
 const CrmCanaisPage = lazyRoute("crmCanais");
+const CrmPlanilhaCadenciasPage = lazyRoute("crmPlanilha");
 const ColaboradoresPage = lazyRoute("colaboradores");
 const AcessosPage = lazyRoute("acessos");
 const ColaboradorPerfilPage = lazyRoute("colaboradorPerfil");
@@ -97,6 +98,7 @@ export function App() {
               <Route path="/crm/listas" element={<Navigate to="/acompanhamento" replace />} />
               <Route path="/acompanhamento" element={<ProgramaAcompanhamentoPage />} />
               <Route path="/crm/canais" element={<CrmCanaisPage />} />
+              <Route path="/crm/planilha" element={<CrmPlanilhaCadenciasPage />} />
               <Route path="/administracao" element={<Navigate to="/administracao/colaboradores" replace />} />
               <Route path="/administracao/colaboradores" element={<ColaboradoresPage />} />
               <Route path="/administracao/colaboradores/:id" element={<ColaboradorPerfilPage />} />
