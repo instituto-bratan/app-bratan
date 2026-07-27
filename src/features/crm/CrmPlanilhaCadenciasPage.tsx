@@ -47,6 +47,21 @@ const dStatusTone: Record<CadenceSheetDStatus, string> = {
   AGENDADO_RESOLVIDO: "bg-brand-creme text-brand-musgo",
 };
 
+// Selo compacto na célula (o menu suspenso mantém o texto completo).
+const dStatusShort: Record<CadenceSheetDStatus, string> = {
+  SEM_RESPOSTA: "Sem resposta",
+  SATISFEITO: "Satisfeito",
+  INSATISFEITO_CONCIERGE: "Insatisf. → Concierge",
+  AGENDADO_RESOLVIDO: "Agendado/resolvido",
+};
+
+const gestorCallShort: Record<string, string> = {
+  NAO_ATENDEU: "Não atendeu",
+  CAIXA_POSTAL: "Caixa postal",
+  ATENDEU_DEVOLVIDO: "Atendeu · devolvido",
+  ATENDEU_RESOLVIDO: "Atendeu · resolvido",
+};
+
 export function CrmPlanilhaCadenciasPage() {
   const { pessoa } = useAuth();
   const { state, persist, syncMode, syncFailed, syncErrorDetail, retrySync } = useCrmState();
@@ -97,15 +112,15 @@ export function CrmPlanilhaCadenciasPage() {
     if (cell.actionable && cell.taskId) {
       const taskId = cell.taskId;
       return (
-        <td key={cell.stepId} className="px-2 py-2">
-          <div className="flex flex-col gap-1">
+        <td key={cell.stepId} className="px-1.5 py-2 text-center">
+          <div className="mx-auto flex w-full max-w-28 flex-col items-center gap-1">
             <span className="text-[11px] text-muted-foreground">{shortDate(cell.date)}</span>
             <select
               defaultValue=""
               onChange={(event) => {
                 if (event.target.value) registerD(taskId, event.target.value as CadenceSheetDStatus);
               }}
-              className="rounded border border-brand-dourado/50 bg-brand-creme/40 px-1.5 py-1 text-xs font-medium text-brand-musgo"
+              className="w-full rounded border border-brand-dourado/50 bg-brand-creme/40 px-1 py-1 text-[11px] font-medium text-brand-musgo"
               aria-label={`Registrar ${cell.stepName} de ${row.patientName}`}
             >
               <option value="">Registrar…</option>
@@ -120,12 +135,15 @@ export function CrmPlanilhaCadenciasPage() {
       );
     }
     return (
-      <td key={cell.stepId} className="px-2 py-2 text-center">
+      <td key={cell.stepId} className="px-1.5 py-2 text-center">
         {cell.status ? (
-          <div className="flex flex-col items-center gap-0.5">
+          <div className="mx-auto flex w-full max-w-28 flex-col items-center gap-0.5">
             <span className="text-[11px] text-muted-foreground">{shortDate(cell.date)}</span>
-            <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone[cell.status])}>
-              {cadenceSheetStatusLabels[cell.status]}
+            <span
+              title={cadenceSheetStatusLabels[cell.status]}
+              className={cn("w-full rounded px-1 py-0.5 text-[11px] font-medium leading-4", dStatusTone[cell.status])}
+            >
+              {dStatusShort[cell.status]}
             </span>
           </div>
         ) : cell.skipped ? (
@@ -145,14 +163,26 @@ export function CrmPlanilhaCadenciasPage() {
     }
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1100px] border-collapse text-sm">
+        <table className="w-full min-w-[1180px] table-fixed border-collapse text-sm">
+          <colgroup>
+            <col className="w-16" />
+            <col className="w-44" />
+            <col className="w-36" />
+            {[1, 2, 3, 4, 5].map((d) => (
+              <col key={d} className="w-[7.5rem]" />
+            ))}
+            <col className="w-36" />
+            <col className="w-20" />
+            <col className="w-16" />
+            <col className="w-40" />
+          </colgroup>
           <thead>
             <tr className="border-b border-brand-oliva/20 text-left text-xs uppercase tracking-wide text-brand-musgo">
               <th className="px-2 py-2">Abertura</th>
               <th className="px-2 py-2">Paciente</th>
               <th className="px-2 py-2">Motivo do contato</th>
               {[1, 2, 3, 4, 5].map((d) => (
-                <th key={d} className="px-2 py-2 text-center">{`D${d}`}</th>
+                <th key={d} className="px-1.5 py-2 text-center">{`D${d}`}</th>
               ))}
               <th className="px-2 py-2">Resultado final</th>
               <th className="px-2 py-2 text-center">Concierge?</th>
@@ -170,7 +200,7 @@ export function CrmPlanilhaCadenciasPage() {
                   </Link>
                   <p className="text-[11px] text-muted-foreground">{row.phone}</p>
                 </td>
-                <td className="max-w-48 px-2 py-2 text-xs">{row.motivo}</td>
+                <td className="px-2 py-2 text-xs leading-4">{row.motivo}</td>
                 {[0, 1, 2, 3, 4].map((index) => dCell(row, index))}
                 <td className="px-2 py-2 text-xs font-medium">{row.resultadoFinal}</td>
                 <td className="px-2 py-2 text-center">
@@ -194,14 +224,25 @@ export function CrmPlanilhaCadenciasPage() {
     }
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1200px] border-collapse text-sm">
+        <table className="w-full min-w-[1240px] table-fixed border-collapse text-sm">
+          <colgroup>
+            <col className="w-16" />
+            <col className="w-48" />
+            <col className="w-24" />
+            {[1, 2, 3, 4, 5].map((n) => (
+              <col key={n} className="w-[7.5rem]" />
+            ))}
+            <col className="w-28" />
+            <col className="w-36" />
+            <col className="w-40" />
+          </colgroup>
           <thead>
             <tr className="border-b border-brand-oliva/20 text-left text-xs uppercase tracking-wide text-brand-musgo">
               <th className="px-2 py-2">Entrada</th>
               <th className="px-2 py-2">Paciente</th>
-              <th className="px-2 py-2">Setor de origem</th>
+              <th className="px-2 py-2">Origem</th>
               {[1, 2, 3, 4, 5].map((n) => (
-                <th key={n} className="px-2 py-2 text-center">{`Lig. ${n}`}</th>
+                <th key={n} className="px-1.5 py-2 text-center">{`Lig. ${n}`}</th>
               ))}
               <th className="px-2 py-2">Encerramento (5.1)</th>
               <th className="px-2 py-2">Resultado final</th>
@@ -221,16 +262,16 @@ export function CrmPlanilhaCadenciasPage() {
                 </td>
                 <td className="px-2 py-2 text-xs">{row.setorOrigem}</td>
                 {row.calls.map((call) => (
-                  <td key={call.n} className="px-2 py-2 text-center">
+                  <td key={call.n} className="px-1.5 py-2 text-center">
                     {call.actionable && call.taskId ? (
-                      <div className="flex flex-col gap-1">
+                      <div className="mx-auto flex w-full max-w-28 flex-col items-center gap-1">
                         <span className="text-[11px] text-muted-foreground">{shortDate(call.date)}</span>
                         <select
                           defaultValue=""
                           onChange={(event) => {
                             if (event.target.value && call.taskId) registerCall(call.taskId, event.target.value as GestorCallStatus);
                           }}
-                          className="rounded border border-brand-dourado/50 bg-brand-creme/40 px-1.5 py-1 text-xs font-medium text-brand-musgo"
+                          className="w-full rounded border border-brand-dourado/50 bg-brand-creme/40 px-1 py-1 text-[11px] font-medium text-brand-musgo"
                           aria-label={`Registrar ligação ${call.n} de ${row.patientName}`}
                         >
                           <option value="">Liguei…</option>
@@ -242,18 +283,19 @@ export function CrmPlanilhaCadenciasPage() {
                         </select>
                       </div>
                     ) : call.status ? (
-                      <div className="flex flex-col items-center gap-0.5">
+                      <div className="mx-auto flex w-full max-w-28 flex-col items-center gap-0.5">
                         <span className="text-[11px] text-muted-foreground">
                           {shortDate(call.date)}
                           {call.hora ? ` · ${call.hora}` : ""}
                         </span>
                         <span
+                          title={gestorCallStatusLabels[call.status]}
                           className={cn(
-                            "rounded px-1.5 py-0.5 text-[11px] font-medium",
+                            "w-full rounded px-1 py-0.5 text-[11px] font-medium leading-4",
                             call.status === "ATENDEU_RESOLVIDO" || call.status === "ATENDEU_DEVOLVIDO" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600",
                           )}
                         >
-                          {gestorCallStatusLabels[call.status]}
+                          {gestorCallShort[call.status]}
                         </span>
                       </div>
                     ) : (
