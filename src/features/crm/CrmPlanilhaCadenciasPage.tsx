@@ -47,12 +47,21 @@ const dStatusTone: Record<CadenceSheetDStatus, string> = {
   AGENDADO_RESOLVIDO: "bg-brand-creme text-brand-musgo",
 };
 
-// Selo compacto na célula (o menu suspenso mantém o texto completo).
+// Linguagem simples pedida pelo Lucas (27/07): o menu pergunta "O que
+// aconteceu?" e as opções são curtas, do jeito que a equipe fala.
+const dStatusMenu: Record<CadenceSheetDStatus, string> = {
+  SEM_RESPOSTA: "Não respondeu",
+  SATISFEITO: "Respondeu bem",
+  INSATISFEITO_CONCIERGE: "Reclamou → vai pra Concierge",
+  AGENDADO_RESOLVIDO: "Agendei / resolvi",
+};
+
+// Selo compacto na célula (o texto completo fica no title).
 const dStatusShort: Record<CadenceSheetDStatus, string> = {
-  SEM_RESPOSTA: "Sem resposta",
-  SATISFEITO: "Satisfeito",
-  INSATISFEITO_CONCIERGE: "Insatisf. → Concierge",
-  AGENDADO_RESOLVIDO: "Agendado/resolvido",
+  SEM_RESPOSTA: "Não respondeu",
+  SATISFEITO: "Respondeu bem",
+  INSATISFEITO_CONCIERGE: "Reclamou → Concierge",
+  AGENDADO_RESOLVIDO: "Agendei/resolvi",
 };
 
 const gestorCallShort: Record<string, string> = {
@@ -123,10 +132,10 @@ export function CrmPlanilhaCadenciasPage() {
               className="w-full rounded border border-brand-dourado/50 bg-brand-creme/40 px-1 py-1 text-[11px] font-medium text-brand-musgo"
               aria-label={`Registrar ${cell.stepName} de ${row.patientName}`}
             >
-              <option value="">Registrar…</option>
-              {(Object.keys(cadenceSheetStatusLabels) as CadenceSheetDStatus[]).map((status) => (
+              <option value="">O que aconteceu?</option>
+              {(Object.keys(dStatusMenu) as CadenceSheetDStatus[]).map((status) => (
                 <option key={status} value={status}>
-                  {cadenceSheetStatusLabels[status]}
+                  {dStatusMenu[status]}
                 </option>
               ))}
             </select>
@@ -377,22 +386,22 @@ export function CrmPlanilhaCadenciasPage() {
               </ul>
             </div>
             <div>
-              <p className="mb-1 font-bold text-brand-musgo">O que cada status faz quando você escolhe</p>
+              <p className="mb-1 font-bold text-brand-musgo">O que cada opção do menu faz</p>
               <ul className="space-y-1.5">
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SEM_RESPOSTA)}>Sem resposta</span>{" "}
-                  — mandei a mensagem e o paciente não respondeu. <strong>O próximo D nasce sozinho amanhã.</strong>
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SEM_RESPOSTA)}>Não respondeu</span>{" "}
+                  — mandei a mensagem e nada. <strong>O próximo D nasce sozinho amanhã.</strong>
                 </li>
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SATISFEITO)}>Respondeu · satisfeito</span>{" "}
-                  — o paciente respondeu bem. <strong>A régua encerra na hora</strong> (nunca mandamos follow-up para quem já respondeu).
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SATISFEITO)}>Respondeu bem</span>{" "}
+                  — o paciente respondeu e está tudo certo. <strong>A régua encerra na hora</strong> (nunca mandamos follow-up para quem já respondeu).
                 </li>
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.INSATISFEITO_CONCIERGE)}>Respondeu · insatisfeito → Concierge</span>{" "}
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.INSATISFEITO_CONCIERGE)}>Reclamou → vai pra Concierge</span>{" "}
                   — relatou queixa, dor ou problema. <strong>A Aline recebe a tarefa NO MESMO DIA</strong> (regra de ouro das reclamações) e a régua encerra.
                 </li>
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.AGENDADO_RESOLVIDO)}>Agendado · resolvido</span>{" "}
+                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.AGENDADO_RESOLVIDO)}>Agendei / resolvi</span>{" "}
                   — o objetivo do contato foi cumprido (agenda fechada, dúvida resolvida). <strong>A régua encerra.</strong>
                 </li>
               </ul>
