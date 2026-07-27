@@ -1357,6 +1357,38 @@ export async function updateRemotePagamentoStatus(values: {
   });
 }
 
+// Editar um lembrete existente (quem deve, valor, data e observação) —
+// pedido do Lucas (27/07): antes só dava para mudar status/data, nunca o nome.
+export async function updateRemotePagamentoDetalhes(values: {
+  id: string;
+  pacienteNome: string;
+  valorPendente: number;
+  dataPrevista: string;
+  observacao?: string;
+}) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("pagamento_lembrete")
+    .update({
+      paciente_nome: values.pacienteNome,
+      valor_pendente: values.valorPendente,
+      data_prevista: values.dataPrevista,
+      observacao: values.observacao || null,
+    })
+    .eq("id", values.id)
+    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .single();
+
+  if (error) throw error;
+  await upsertRemoteReceivableFromPagamento(data as RemotePagamentoLembrete);
+  await safeWriteRemoteAuditEvent({
+    action: "pagamento_lembrete.editar",
+    entity: "pagamento_lembrete",
+    entityId: values.id,
+    metadata: { pacienteNome: values.pacienteNome, valorPendente: values.valorPendente, dataPrevista: values.dataPrevista },
+  });
+}
+
 export async function postponeRemotePagamento(values: {
   id: string;
   dataPrevista: string;

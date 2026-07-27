@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { CalendarClock, CheckCircle2, CircleDollarSign, Clock3, RotateCcw, Trash2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, CircleDollarSign, Clock3, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
   postponeRemotePagamento,
   registerRemotePagamentoRecebimento,
   softDeleteRemotePagamento,
+  updateRemotePagamentoDetalhes,
   updateRemotePagamentoStatus,
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
@@ -87,6 +88,9 @@ export function PagamentosPage() {
   const [error, setError] = useState<string | null>(null);
   const [postponeTarget, setPostponeTarget] = useState<string | null>(null);
   const [postponeDate, setPostponeDate] = useState(todayISO());
+  // Edição de um lembrete existente (nome de quem deve, valor, data e obs).
+  const [editTarget, setEditTarget] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<FormState>(emptyForm);
 
   const pagamentosQuery = useQuery({
     queryKey: ["pagamentos-lembretes"],
@@ -107,6 +111,10 @@ export function PagamentosPage() {
   });
   const deleteMutation = useMutation({
     mutationFn: softDeleteRemotePagamento,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pagamentos-lembretes"] }),
+  });
+  const editMutation = useMutation({
+    mutationFn: updateRemotePagamentoDetalhes,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pagamentos-lembretes"] }),
   });
 
@@ -281,6 +289,7 @@ export function PagamentosPage() {
 
   function openPostpone(record: PagamentoLembrete) {
     setError(null);
+    setEditTarget(null);
     setPostponeTarget(record.id);
     setPostponeDate(record.dataPrevista);
   }
@@ -312,6 +321,67 @@ export function PagamentosPage() {
 
     setPostponeTarget(null);
     setPostponeDate(todayISO());
+  }
+
+  function openEdit(record: PagamentoLembrete) {
+    setError(null);
+    setPostponeTarget(null);
+    setEditTarget(record.id);
+    setEditForm({
+      pacienteNome: record.pacienteNome,
+      valorPendente: record.valorPendente.toFixed(2).replace(".", ","),
+      dataPrevista: record.dataPrevista,
+      observacao: record.observacao ?? "",
+    });
+  }
+
+  async function saveEdit(record: PagamentoLembrete) {
+    const pacienteNome = editForm.pacienteNome.trim();
+    const valorPendente = parseMoneyBR(editForm.valorPendente);
+    if (!pacienteNome) {
+      setError("Falta o nome de quem deve.");
+      return;
+    }
+    if (!Number.isFinite(valorPendente) || valorPendente <= 0) {
+      setError("Não entendi o valor — digite como 1.500,00.");
+      return;
+    }
+    if (!editForm.dataPrevista) {
+      setError("Falta a data combinada.");
+      return;
+    }
+
+    if (useRemote) {
+      try {
+        await editMutation.mutateAsync({
+          id: record.id,
+          pacienteNome,
+          valorPendente,
+          dataPrevista: editForm.dataPrevista,
+          observacao: editForm.observacao.trim() || undefined,
+        });
+      } catch (saveError) {
+        setError(`Não foi possível salvar a edição${remoteErrorDetail(saveError)}. Tente de novo.`);
+        return;
+      }
+    } else {
+      persist(
+        records.map((item) =>
+          item.id === record.id
+            ? {
+                ...item,
+                pacienteNome,
+                valorPendente,
+                dataPrevista: editForm.dataPrevista,
+                observacao: editForm.observacao.trim() || undefined,
+              }
+            : item,
+        ),
+      );
+    }
+
+    setError(null);
+    setEditTarget(null);
   }
 
   function hide(record: PagamentoLembrete) {
@@ -540,11 +610,65 @@ export function PagamentosPage() {
                               Reabrir
                             </Button>
                           )}
+                          <Button type="button" variant="outline" size="sm" onClick={() => openEdit(record)}>
+                            <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
+                            Editar
+                          </Button>
                           <Button type="button" variant="ghost" size="icon" aria-label="Ocultar" onClick={() => hide(record)}>
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                           </Button>
                         </div>
                       </div>
+
+                      {editTarget === record.id ? (
+                        <div className="mt-4 grid gap-3 rounded-lg border border-brand-oliva/18 bg-white/65 p-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor={`edit-nome-${record.id}`}>Quem está devendo</Label>
+                            <Input
+                              id={`edit-nome-${record.id}`}
+                              value={editForm.pacienteNome}
+                              onChange={(event) => setEditForm((current) => ({ ...current, pacienteNome: event.target.value }))}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <Label htmlFor={`edit-valor-${record.id}`}>Valor pendente</Label>
+                              <Input
+                                id={`edit-valor-${record.id}`}
+                                inputMode="decimal"
+                                value={editForm.valorPendente}
+                                onChange={(event) => setEditForm((current) => ({ ...current, valorPendente: event.target.value }))}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor={`edit-data-${record.id}`}>Data combinada</Label>
+                              <Input
+                                id={`edit-data-${record.id}`}
+                                type="date"
+                                value={editForm.dataPrevista}
+                                onChange={(event) => setEditForm((current) => ({ ...current, dataPrevista: event.target.value }))}
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2 sm:col-span-2">
+                            <Label htmlFor={`edit-obs-${record.id}`}>Observação</Label>
+                            <Input
+                              id={`edit-obs-${record.id}`}
+                              value={editForm.observacao}
+                              placeholder="Opcional"
+                              onChange={(event) => setEditForm((current) => ({ ...current, observacao: event.target.value }))}
+                            />
+                          </div>
+                          <div className="flex gap-2 sm:col-span-2">
+                            <Button type="button" onClick={() => void saveEdit(record)} disabled={editMutation.isPending}>
+                              {editMutation.isPending ? "Salvando..." : "Salvar alterações"}
+                            </Button>
+                            <Button type="button" variant="ghost" onClick={() => setEditTarget(null)}>
+                              Fechar
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
 
                       {postponeTarget === record.id ? (
                         <div className="mt-4 flex flex-col gap-2 rounded-lg border border-brand-oliva/18 bg-white/65 p-3 sm:flex-row sm:items-end">
