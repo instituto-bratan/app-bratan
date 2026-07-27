@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Target, TrendingUp, UserCheck, UserX } from "lucide-react";
+import { ShieldAlert, Target, TrendingUp, UserCheck, UserX } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -103,18 +103,49 @@ export function FinanceiroPdcaPage() {
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
   const [localMarks, setLocalMarks] = useState<FinPdcaMark[]>(() => readLocalValue(pdcaMarksStorageKey, []));
+  // Marcações que o Supabase rejeitou (ex.: RLS): ficam aqui aguardando o
+  // "Tentar sincronizar" e NÃO podem ser engolidas pelo refetch — era isso que
+  // fazia tudo "voltar" quando a pessoa atualizava a página.
+  const pendingRef = useRef(new Map<string, FinPdcaMark | { saleRef: string; status: null }>());
+  const [syncFailed, setSyncFailed] = useState(false);
+  const [syncErrorDetail, setSyncErrorDetail] = useState("");
 
   const marksQuery = useQuery({
     queryKey: ["fin-pdca-marks"],
     queryFn: async () => {
       const remote = await listRemoteFinPdcaMarks();
-      setLocalMarks(remote);
-      writeLocalValue(pdcaMarksStorageKey, remote);
-      return remote;
+      // O retrato do banco vale para todo mundo, MENOS para o que ainda não
+      // conseguiu subir daqui — senão o refetch apaga o trabalho da pessoa.
+      const pending = pendingRef.current;
+      const merged = [
+        ...remote.filter((mark) => !pending.has(mark.saleRef)),
+        ...[...pending.values()].filter((mark): mark is FinPdcaMark => Boolean(mark.status)),
+      ];
+      setLocalMarks(merged);
+      writeLocalValue(pdcaMarksStorageKey, merged);
+      return merged;
     },
     enabled: useRemote,
   });
   void marksQuery;
+
+  function syncMarkRemote(mark: FinPdcaMark | { saleRef: string; status: null }) {
+    const action = mark.status ? saveRemoteFinPdcaMark(mark as FinPdcaMark) : deleteRemoteFinPdcaMark(mark.saleRef);
+    return action
+      .then(() => {
+        pendingRef.current.delete(mark.saleRef);
+        if (pendingRef.current.size === 0) {
+          setSyncFailed(false);
+          setSyncErrorDetail("");
+        }
+      })
+      .catch((error) => {
+        console.warn("Marcação do PDCA não sincronizou.", error);
+        pendingRef.current.set(mark.saleRef, mark);
+        setSyncFailed(true);
+        setSyncErrorDetail(error instanceof Error ? error.message : String(error));
+      });
+  }
 
   function persistMark(mark: FinPdcaMark | { saleRef: string; status: null }) {
     setLocalMarks((current) => {
@@ -123,12 +154,11 @@ export function FinanceiroPdcaPage() {
       writeLocalValue(pdcaMarksStorageKey, next);
       return next;
     });
-    if (useRemote) {
-      const action = mark.status
-        ? saveRemoteFinPdcaMark(mark as FinPdcaMark)
-        : deleteRemoteFinPdcaMark(mark.saleRef);
-      void action.catch((error) => console.warn("Marcação do PDCA não sincronizou.", error));
-    }
+    if (useRemote) void syncMarkRemote(mark);
+  }
+
+  function retrySync() {
+    for (const mark of pendingRef.current.values()) void syncMarkRemote(mark);
   }
 
   function markNaoAderiu(sale: FinSale) {
@@ -180,6 +210,25 @@ export function FinanceiroPdcaPage() {
             <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" aria-label="Mês" />
           </div>
         </motion.section>
+
+        {syncFailed ? (
+          <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+            <div className="flex flex-wrap items-center gap-3">
+              <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="flex-1">
+                Sua marcação NÃO chegou ao Supabase — ela está salva só neste aparelho. Não saia da tela sem sincronizar.
+              </span>
+              <Button type="button" variant="outline" size="sm" onClick={retrySync}>
+                Tentar sincronizar
+              </Button>
+            </div>
+            {syncErrorDetail ? (
+              <p className="mt-1.5 break-all pl-7 font-mono text-[11px] leading-4 text-red-600/80">
+                Detalhe técnico: {syncErrorDetail}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div
