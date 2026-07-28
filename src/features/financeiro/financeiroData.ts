@@ -858,6 +858,133 @@ export const seedProvisionRules: FinProvisionRule[] = [
   { id: "prov-festa-final-ano", name: "Festa de final de ano", monthlyAmount: 909.09, sortOrder: 7, active: true },
 ];
 
+// ————————————————————————————————————————————————————————————————————————
+// PROVISÕES DA POUPANÇA EM CONTAS A PAGAR (pedido do Lucas, 28/07/2026)
+// Na planilha CONTAS A PAGAR-RECEBER as provisões ficam num bloco embaixo,
+// para o custo do mês já sair somado. Aqui cada provisão vira DUAS coisas
+// linkadas pelo mesmo id-raiz:
+//   1) uma CONTA A PAGAR na categoria de Poupança do P12 (o custo soma);
+//   2) uma ENTRADA na poupança quando a conta é paga (o cofre cresce).
+// Ids determinísticos → clicar duas vezes não duplica.
+// ————————————————————————————————————————————————————————————————————————
+
+// Cada regra de provisão cai na linha certa do grupo "4. Poupanças" do P12.
+export const provisionCategoryByRule: Record<string, string> = {
+  "prov-13-socios": "cat-poup-13-ferias-socios",
+  "prov-13-colaboradores": "cat-poup-13-colaboradores",
+  "prov-rescisoes": "cat-poup-rescisao",
+  "prov-ferias-colaboradores": "cat-poup-ferias-colaboradores",
+  "prov-urgencias": "cat-poup-urgencias",
+  "prov-inicio-janeiro": "cat-poup-inicio-ano-2027",
+  "prov-festa-final-ano": "cat-poup-confraternizacao",
+};
+
+export function provisionExpenseRef(month: string, ruleId: string) {
+  return `fexp-prov-${month}-${ruleId}`;
+}
+
+// Último dia do mês — a provisão vence no fechamento, como na planilha.
+export function monthLastDay(month: string) {
+  const [year, mon] = month.split("-").map(Number);
+  const date = new Date(year, mon, 0);
+  return `${month}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export type ProvisionPlanLine = {
+  ruleId: string;
+  name: string;
+  amount: number;
+  categoryRef: string;
+  expenseId: string;
+  savingsId: string;
+  lancada: boolean;
+  paga: boolean;
+};
+
+// Retrato do mês: o que cada provisão vale, se já está em Contas a Pagar e se
+// já foi paga (isto é, se o dinheiro já entrou no cofre).
+export function buildProvisionPlan(
+  rules: FinProvisionRule[],
+  expenses: FinExpense[],
+  month: string,
+): { lines: ProvisionPlanLine[]; total: number; lancadas: number; pendentes: number } {
+  const byId = new Map(expenses.map((expense) => [expense.id, expense]));
+  const lines = rules
+    .filter((rule) => rule.active)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((rule) => {
+      const expenseId = provisionExpenseRef(month, rule.id);
+      const existing = byId.get(expenseId);
+      return {
+        ruleId: rule.id,
+        name: rule.name,
+        // Se já foi lançada, o valor que vale é o da conta (o Lucas pode ter ajustado).
+        amount: existing ? existing.amount : rule.monthlyAmount,
+        categoryRef: provisionCategoryByRule[rule.id] ?? "cat-poup-urgencias",
+        expenseId,
+        savingsId: provisionMoveRef(month, rule.id),
+        lancada: Boolean(existing),
+        paga: Boolean(existing?.paidAt),
+      };
+    });
+  return {
+    lines,
+    total: lines.reduce((sum, line) => sum + line.amount, 0),
+    lancadas: lines.filter((line) => line.lancada).length,
+    pendentes: lines.filter((line) => !line.lancada).length,
+  };
+}
+
+// As contas a pagar que faltam para o mês ficar provisionado (só as que ainda
+// não existem — reexecutar é inofensivo).
+export function buildProvisionExpenses(
+  rules: FinProvisionRule[],
+  expenses: FinExpense[],
+  month: string,
+  now = new Date().toISOString(),
+): FinExpense[] {
+  const plan = buildProvisionPlan(rules, expenses, month);
+  return plan.lines
+    .filter((line) => !line.lancada)
+    .map((line) => ({
+      id: line.expenseId,
+      description: `Provisão: ${line.name}`,
+      categoryRef: line.categoryRef,
+      amount: line.amount,
+      dueDate: monthLastDay(month),
+      paidAt: null,
+      method: null,
+      supplier: "Poupança (cofre)",
+      installmentNum: null,
+      installmentTotal: null,
+      documentNote: "",
+      isCapex: false,
+      notes: "Provisão mensal da poupança — ao dar baixa, o valor entra no cofre (aba Poupança). Quando o 13º/férias for pago de verdade, use SAÍDA da poupança, não crie outra despesa.",
+      createdAt: now,
+      recorrencia: null,
+    }));
+}
+
+// Movimento de ENTRADA no cofre correspondente a uma provisão paga.
+export function provisionSavingsMove(
+  line: { ruleId: string; name: string; amount: number; savingsId: string },
+  month: string,
+  paidAt: string,
+  now = new Date().toISOString(),
+): FinSavingsMove {
+  return {
+    id: line.savingsId,
+    moveDate: paidAt.slice(0, 10),
+    direction: "ENTRADA",
+    amount: line.amount,
+    reason: `Provisão ${month.split("-").reverse().join("/")}: ${line.name}`,
+    source: "PROVISAO",
+    kind: "PROVISAO",
+    monthRef: month,
+    createdAt: now,
+  };
+}
+
 export const finReconciliationsStorageKey = "app-bratan-fin-reconciliations";
 export const finSavingsStorageKey = "app-bratan-fin-savings";
 

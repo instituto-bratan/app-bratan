@@ -41,6 +41,8 @@ import {
   loadLocalFinSavings,
   materializeRecurringExpenses,
   monthFeesExpenseRef,
+  provisionMoveRef,
+  provisionSavingsMove,
   saveLocalFinExpenses,
   saveLocalFinInvoices,
   saveLocalFinReconciliations,
@@ -327,6 +329,29 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     if (useRemote) {
       void paidExpenseMutation.mutateAsync({ id: expenseId, paidAt }).catch((error) => console.warn("Baixa não sincronizou.", error));
     }
+    // PROVISÃO PAGA = dinheiro guardado no cofre. A baixa da conta de provisão
+    // gera (ou remove) a entrada correspondente na Poupança — assim o saldo do
+    // cofre e o custo do mês nunca ficam contando histórias diferentes.
+    syncProvisionSavings(expenseId, paidAt);
+  }
+
+  // Espelha a baixa de uma conta de provisão na aba Poupança.
+  function syncProvisionSavings(expenseId: string, paidAt: string | null) {
+    const match = /^fexp-prov-(\d{4}-\d{2})-(.+)$/.exec(expenseId);
+    if (!match) return;
+    const [, month, ruleId] = match;
+    const savingsId = provisionMoveRef(month, ruleId);
+    if (!paidAt) {
+      removeSavingsMove(savingsId);
+      return;
+    }
+    const expense = expenses.find((item) => item.id === expenseId);
+    const rule = (provisionRulesQuery.data?.length ? provisionRulesQuery.data : seedProvisionRules).find((item) => item.id === ruleId);
+    const amount = expense?.amount ?? rule?.monthlyAmount ?? 0;
+    if (amount <= 0) return;
+    addSavingsMoves([
+      provisionSavingsMove({ ruleId, name: rule?.name ?? "Provisão", amount, savingsId }, month, paidAt),
+    ]);
   }
 
   function saveReconciliation(record: FinReconciliation) {

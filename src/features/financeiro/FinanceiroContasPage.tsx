@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, Plus, Repeat, Trash2 } from "lucide-react";
+import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
+  buildProvisionExpenses,
+  buildProvisionPlan,
   createFinId,
   expensePaymentMethods,
   finGroupLabels,
   finGroupOrder,
   moneyFin,
+  monthLastDay,
   paymentMethodLabels,
   upcomingExpenses,
   type FinExpense,
@@ -53,6 +56,27 @@ export function FinanceiroContasPage() {
   const [feedback, setFeedback] = useState("");
   const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas">("todas");
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [provisionFeedback, setProvisionFeedback] = useState("");
+
+  // Provisões da poupança do mês (13º, férias, rescisões, urgências, início de
+  // ano, festa) — o bloco que a planilha antiga trazia embaixo.
+  const provisionPlan = useMemo(
+    () => buildProvisionPlan(financeiro.provisionRules, financeiro.expenses, month),
+    [financeiro.provisionRules, financeiro.expenses, month],
+  );
+
+  function lancarProvisoes() {
+    const novas = buildProvisionExpenses(financeiro.provisionRules, financeiro.expenses, month);
+    if (!novas.length) {
+      setProvisionFeedback("Este mês já está provisionado.");
+      return;
+    }
+    for (const expense of novas) financeiro.addExpense(expense);
+    const total = novas.reduce((sum, expense) => sum + expense.amount, 0);
+    setProvisionFeedback(
+      `${novas.length} provisão(ões) lançada(s) em Contas a Pagar (${moneyFin(total)}). O custo do mês já está somado — ao dar baixa, o valor entra no cofre da Poupança.`,
+    );
+  }
 
   const categoriesByGroup = useMemo(
     () => finGroupOrder.map((groupKey) => ({
@@ -445,6 +469,80 @@ export function FinanceiroContasPage() {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* PROVISÕES DA POUPANÇA — o bloco "de baixo" da planilha CONTAS A PAGAR.
+            Lançar aqui faz o custo do mês já sair somado; dar baixa manda o
+            dinheiro para o cofre (aba Poupança), sem digitar duas vezes. */}
+        <Card className="border-brand-dourado/40 bg-brand-creme/25">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <PiggyBank className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
+                Provisões da Poupança — {month.split("-").reverse().join("/")}
+                <InfoTip title="Por que as provisões ficam aqui">
+                  São os valores que a planilha antiga trazia no bloco de baixo: 13º, férias, rescisões, urgências,
+                  início de ano e festa. Lançando aqui, o custo do mês já sai somado (elas entram no grupo "4. Poupanças"
+                  do P12 e reduzem o lucro do mês, que é o certo em competência). Ao dar BAIXA numa provisão, o app
+                  registra sozinho a entrada no cofre da aba Poupança — você não digita duas vezes. Quando o 13º/férias
+                  for pago de verdade, registre SAÍDA na Poupança; não crie outra despesa (senão o custo conta duas vezes).
+                </InfoTip>
+              </CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-brand-musgo">
+                  {provisionPlan.lancadas} de {provisionPlan.lines.length} lançadas · {moneyFin(provisionPlan.total)}/mês
+                </span>
+                {!readOnly && provisionPlan.pendentes > 0 ? (
+                  <LiquidButton type="button" size="sm" onClick={lancarProvisoes}>
+                    <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                    Lançar {provisionPlan.pendentes} provisão(ões) do mês
+                  </LiquidButton>
+                ) : provisionPlan.pendentes === 0 ? (
+                  <Badge variant="gold">Mês provisionado ✓</Badge>
+                ) : null}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="mobile-scrollbar-none overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-sm">
+                <thead className="text-xs uppercase text-brand-oliva">
+                  <tr>
+                    <th className="px-3 py-2">Provisão</th>
+                    <th className="px-3 py-2 text-right">Valor / mês</th>
+                    <th className="px-3 py-2">Vencimento</th>
+                    <th className="px-3 py-2">Situação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {provisionPlan.lines.map((line) => (
+                    <tr key={line.ruleId} className="border-t border-brand-oliva/10">
+                      <td className="px-3 py-2 font-medium text-brand-tinta">{line.name}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{moneyFin(line.amount)}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{monthLastDay(month).split("-").reverse().join("/")}</td>
+                      <td className="px-3 py-2">
+                        {line.paga ? (
+                          <Badge variant="gold">Paga · no cofre</Badge>
+                        ) : line.lancada ? (
+                          <Badge variant="outline">Em Contas a Pagar</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Não lançada</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-brand-dourado/40 bg-brand-creme/40">
+                    <td className="px-3 py-2 font-bold text-brand-musgo">TOTAL provisionado no mês</td>
+                    <td className="px-3 py-2 text-right font-bold text-brand-musgo">{moneyFin(provisionPlan.total)}</td>
+                    <td colSpan={2} className="px-3 py-2 text-xs text-muted-foreground">
+                      Entra no P12 no grupo "4. Poupanças" e soma nos custos do mês
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {provisionFeedback ? <p className="mt-3 text-sm font-medium text-brand-musgo">{provisionFeedback}</p> : null}
           </CardContent>
         </Card>
       </div>
