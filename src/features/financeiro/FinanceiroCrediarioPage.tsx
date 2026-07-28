@@ -10,6 +10,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { crediarioCashMoves } from "@/features/pagamentos/pagamentosData";
 import { useAuth } from "@/hooks/useAuth";
 import { canLembretesPagamento } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
@@ -55,9 +56,13 @@ export function FinanceiroCrediarioPage() {
   const lembreteEntries: (FinCashEntry & { fromLembrete?: boolean })[] = useMemo(() => {
     const receipts = useRemote
       ? receiptsQuery.data ?? []
-      : readLocalValue<{ id: string; valor: number; forma: string; recebidoEm: string }[]>("app-bratan-pagamento-recebimentos", []);
-    return receipts
-      .filter((receipt) => receipt.forma === "DINHEIRO")
+      : readLocalValue<{ id: string; valor: number; forma: string; recebidoEm: string; saleRef?: string | null }[]>(
+          "app-bratan-pagamento-recebimentos",
+          [],
+        );
+    // Recebimento que veio de COMANDA (saleRef) já está no faturamento — trazer
+    // para o caixa do crediário contaria o mesmo dinheiro duas vezes (28/07).
+    return crediarioCashMoves(receipts)
       .map((receipt) => ({
         id: `lembrete-${receipt.id}`,
         entryDate: receipt.recebidoEm,

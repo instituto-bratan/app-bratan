@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
+import { PatientPicker } from "@/features/crm/PatientPicker";
+import { useCrmState } from "@/features/crm/useCrmState";
 import { canLembretesPagamento } from "@/lib/access";
 import { formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { parseMoneyBR } from "@/lib/money";
@@ -45,6 +47,7 @@ import {
 
 type FormState = {
   pacienteNome: string;
+  crmContactRef?: string;
   valorPendente: string;
   dataPrevista: string;
   observacao: string;
@@ -52,6 +55,7 @@ type FormState = {
 
 const emptyForm: FormState = {
   pacienteNome: "",
+  crmContactRef: "",
   valorPendente: "",
   dataPrevista: todayISO(),
   observacao: "",
@@ -80,6 +84,7 @@ function remoteErrorDetail(error: unknown) {
 
 export function PagamentosPage() {
   const { pessoa, session, isPreview } = useAuth();
+  const { state: crmState } = useCrmState();
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
   const [localRecords, setLocalRecords] = useState<PagamentoLembrete[]>(() => readLocalValue(pagamentosStorageKey, []));
@@ -162,6 +167,7 @@ export function PagamentosPage() {
         await createMutation.mutateAsync({
           pessoa,
           pacienteNome,
+          crmContactRef: form.crmContactRef || null,
           valorPendente,
           dataPrevista: form.dataPrevista,
           observacao: observacao || undefined,
@@ -178,6 +184,7 @@ export function PagamentosPage() {
       {
         id: createId(),
         pacienteNome,
+        crmContactRef: form.crmContactRef || undefined,
         valorPendente,
         dataPrevista: form.dataPrevista,
         observacao: observacao || undefined,
@@ -329,6 +336,7 @@ export function PagamentosPage() {
     setEditTarget(record.id);
     setEditForm({
       pacienteNome: record.pacienteNome,
+      crmContactRef: record.crmContactRef ?? "",
       valorPendente: record.valorPendente.toFixed(2).replace(".", ","),
       dataPrevista: record.dataPrevista,
       observacao: record.observacao ?? "",
@@ -356,6 +364,7 @@ export function PagamentosPage() {
         await editMutation.mutateAsync({
           id: record.id,
           pacienteNome,
+          crmContactRef: editForm.crmContactRef ?? null,
           valorPendente,
           dataPrevista: editForm.dataPrevista,
           observacao: editForm.observacao.trim() || undefined,
@@ -371,6 +380,7 @@ export function PagamentosPage() {
             ? {
                 ...item,
                 pacienteNome,
+                crmContactRef: editForm.crmContactRef || undefined,
                 valorPendente,
                 dataPrevista: editForm.dataPrevista,
                 observacao: editForm.observacao.trim() || undefined,
@@ -485,13 +495,16 @@ export function PagamentosPage() {
             <CardContent>
               <form className="space-y-4" onSubmit={submit}>
                 <div className="space-y-2">
-                  <Label htmlFor="paciente">Nome</Label>
-                  <Input
-                    id="paciente"
-                    value={form.pacienteNome}
-                    placeholder="Nome da pessoa"
-                    onChange={(event) => setForm((current) => ({ ...current, pacienteNome: event.target.value }))}
+                  <Label>Quem está devendo</Label>
+                  <PatientPicker
+                    contacts={crmState.contacts}
+                    value={{ ref: form.crmContactRef ?? "", name: form.pacienteNome }}
+                    onChange={(next) => setForm((current) => ({ ...current, pacienteNome: next.name, crmContactRef: next.ref }))}
+                    placeholder="Buscar paciente por nome ou telefone…"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Vincular o paciente é o que permite a comanda ABATER este lembrete sozinha, sem contar o dinheiro duas vezes.
+                  </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
                   <div className="space-y-2">

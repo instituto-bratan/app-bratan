@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CalendarDays, CheckCircle2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, BellRing, CalendarDays, CheckCircle2, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,12 +13,19 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { parseMoneyBR } from "@/lib/money";
 import { canFinanceiroFull, canLancarDia } from "@/lib/access";
-import { todayISO } from "@/lib/localStore";
+import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { extractPersonName } from "@/features/crm/nameMatch";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
+import {
+  formatDate as formatLembreteDate,
+  pagamentosStorageKey,
+  planEncaixeComanda,
+  type PagamentoLembrete,
+} from "@/features/pagamentos/pagamentosData";
+import { listRemotePagamentos, registerRemotePagamentoRecebimento } from "@/lib/remoteData";
 import {
   buildDailyCardSummary,
   cardMachineLabels,
@@ -57,7 +65,7 @@ function SummaryLine({ label, value, strong = false }: { label: string; value: n
 }
 
 export function FinanceiroLancarDiaPage() {
-  const { pessoa } = useAuth();
+  const { pessoa, session, isPreview } = useAuth();
   const { state: crmState, persist: persistCrm } = useCrmState();
   const [date, setDate] = useState(todayISO());
   const financeiro = useFinanceiro(Number(date.slice(0, 4)));
@@ -68,6 +76,29 @@ export function FinanceiroLancarDiaPage() {
   const [payments, setPayments] = useState<DraftPayment[]>([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
   const [adhesion, setAdhesion] = useState<FinAdhesion>("ABERTO");
   const [feedback, setFeedback] = useState("");
+  // ENCAIXE COM OS LEMBRETES (28/07): se o paciente da comanda tem valor em
+  // aberto nos Lembretes, esta comanda ABATE o lembrete em vez de virar um
+  // segundo registro do mesmo dinheiro. Ligado por padrão.
+  const [abaterLembrete, setAbaterLembrete] = useState(true);
+  const queryClient = useQueryClient();
+  const useRemote = Boolean(pessoa && session && !isPreview);
+  const lembretesQuery = useQuery({
+    queryKey: ["pagamentos-lembretes"],
+    queryFn: listRemotePagamentos,
+    enabled: useRemote,
+  });
+  // Sem banco (modo demonstração) os lembretes vivem no aparelho — o encaixe
+  // precisa funcionar igual, senão a tela ensina errado.
+  const lembretes = useRemote
+    ? lembretesQuery.data ?? []
+    : readLocalValue<PagamentoLembrete[]>(pagamentosStorageKey, []);
+  const abaterMutation = useMutation({
+    mutationFn: registerRemotePagamentoRecebimento,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["pagamentos-lembretes"] });
+      void queryClient.invalidateQueries({ queryKey: ["pagamento-recebimentos"] });
+    },
+  });
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   const summary = useMemo(() => buildDailyCardSummary(financeiro.sales, date), [financeiro.sales, date]);
@@ -101,6 +132,14 @@ export function FinanceiroLancarDiaPage() {
   const itemsTotal = items.reduce((sum, item) => sum + parseAmount(item.amount), 0);
   const paymentsTotal = payments.reduce((sum, payment) => sum + parseAmount(payment.amount), 0);
   const totalsMatch = Math.abs(itemsTotal - paymentsTotal) < 0.01;
+
+  // O que esta comanda abate dos Lembretes deste paciente (nada é gravado até
+  // salvar). Vale para pix/cartão/transferência; crediário em dinheiro segue
+  // com livro-caixa próprio e não é abatido aqui.
+  const encaixe = useMemo(
+    () => planEncaixeComanda(lembretes, { ref: patientRef, name: patientName }, itemsTotal),
+    [lembretes, patientRef, patientName, itemsTotal],
+  );
 
   function resetForm() {
     setEditingSaleId(null);
@@ -194,14 +233,72 @@ export function FinanceiroLancarDiaPage() {
       }
     }
 
+    // ENCAIXE: abate os Lembretes deste paciente com ESTA comanda. O
+    // recebimento fica marcado com a comanda (saleRef) — o faturamento é a
+    // comanda, e o lembrete só dá baixa. Nada é contado duas vezes.
+    let lembreteNote = "";
+    if (!editingSale && abaterLembrete && encaixe.encaixes.length) {
+      if (useRemote) {
+        for (const item of encaixe.encaixes) {
+          void abaterMutation
+            .mutateAsync({
+              lembreteId: item.lembreteId,
+              valor: item.valorAbatido,
+              forma: "OUTRO",
+              novoPendente: item.novoPendente,
+              recebidoPor: pessoa?.id ?? null,
+              saleRef: sale.id,
+            })
+            .catch((error) => {
+              console.warn("Não consegui abater o lembrete com esta comanda.", error);
+              setFeedback("Comanda salva, mas o lembrete NÃO foi abatido — dê baixa manualmente em Lembretes para não duplicar.");
+            });
+        }
+      } else {
+        // Modo demonstração: mesma regra, gravada no aparelho.
+        const abatidos = new Map(encaixe.encaixes.map((item) => [item.lembreteId, item]));
+        writeLocalValue(
+          pagamentosStorageKey,
+          lembretes.map((record) => {
+            const item = abatidos.get(record.id);
+            if (!item) return record;
+            return {
+              ...record,
+              valorPendente: item.novoPendente,
+              status: item.quitou ? ("pago" as const) : record.status,
+              pagoEm: item.quitou ? new Date().toISOString() : record.pagoEm,
+            };
+          }),
+        );
+        const recebidos = readLocalValue<{ id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string; saleRef?: string | null }[]>(
+          "app-bratan-pagamento-recebimentos",
+          [],
+        );
+        writeLocalValue("app-bratan-pagamento-recebimentos", [
+          ...encaixe.encaixes.map((item) => ({
+            id: `rec-${sale.id}-${item.lembreteId}`,
+            lembreteId: item.lembreteId,
+            valor: item.valorAbatido,
+            forma: "OUTRO",
+            recebidoEm: date,
+            saleRef: sale.id,
+          })),
+          ...recebidos,
+        ]);
+      }
+      const quitados = encaixe.encaixes.filter((item) => item.quitou).length;
+      lembreteNote = ` Abatido dos Lembretes: ${moneyFin(encaixe.totalAbatido)}${quitados ? ` (${quitados} quitado${quitados > 1 ? "s" : ""})` : ""} — sem duplicar.`;
+    }
+
     if (editingSale) {
       financeiro.updateSale(sale);
       setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.${crmNote}`);
     } else {
       financeiro.addSale(sale);
-      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}.${crmNote} Pode adicionar o próximo paciente.`);
+      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}.${crmNote}${lembreteNote} Pode adicionar o próximo paciente.`);
     }
     resetForm();
+    setAbaterLembrete(true);
   }
 
   return (
@@ -268,6 +365,52 @@ export function FinanceiroLancarDiaPage() {
                       placeholder="Buscar paciente por nome ou telefone…"
                     />
                   </div>
+
+                  {/* ENCAIXE COM OS LEMBRETES — evita lançar o mesmo dinheiro duas vezes */}
+                  {encaixe.totalEmAberto > 0 && !editingSaleId ? (
+                    <div className="rounded-lg border border-brand-dourado/45 bg-brand-creme/45 p-3">
+                      <p className="flex items-center gap-2 text-sm font-bold text-brand-musgo">
+                        <BellRing className="h-4 w-4 shrink-0 text-brand-dourado" aria-hidden="true" />
+                        Este paciente está devendo {moneyFin(encaixe.totalEmAberto)} nos Lembretes
+                      </p>
+                      <ul className="mt-1.5 space-y-1 text-xs text-brand-tinta">
+                        {encaixe.encaixes.map((item) => (
+                          <li key={item.lembreteId} className="flex flex-wrap items-baseline gap-x-1.5">
+                            <Link2 className="h-3 w-3 shrink-0 text-brand-oliva" aria-hidden="true" />
+                            <span className="font-semibold">{moneyFin(item.valorAbatido)}</span>
+                            <span className="text-muted-foreground">
+                              de {moneyFin(item.valorPendente)} · venc. {formatLembreteDate(item.dataPrevista)}
+                              {item.quitou ? " · quita o lembrete" : ` · restam ${moneyFin(item.novoPendente)}`}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {encaixe.totalAbatido > 0 ? (
+                        <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs font-semibold text-brand-musgo">
+                          <input
+                            type="checkbox"
+                            checked={abaterLembrete}
+                            onChange={(event) => setAbaterLembrete(event.target.checked)}
+                            className="mt-0.5 h-3.5 w-3.5"
+                          />
+                          <span>
+                            Abater {moneyFin(encaixe.totalAbatido)} do lembrete com esta comanda (recomendado — o
+                            faturamento é a comanda, o lembrete só dá baixa; assim o valor não conta duas vezes).
+                          </span>
+                        </label>
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Preencha os itens para o app calcular quanto esta comanda abate.
+                        </p>
+                      )}
+                      {!abaterLembrete && encaixe.totalAbatido > 0 ? (
+                        <p className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-destructive">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                          Sem abater, o mesmo dinheiro fica na comanda E no lembrete — dê baixa manualmente depois.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div>
                     <div className="mb-2 flex items-center justify-between">

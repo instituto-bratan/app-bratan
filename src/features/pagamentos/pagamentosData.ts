@@ -7,6 +7,9 @@ export type PagamentoLembrete = {
   id: string;
   pacienteNome: string;
   contato?: string;
+  // Paciente do CRM — mesma chave das comandas e comprovantes. É o que permite
+  // encaixar a comanda no lembrete sem depender de como o nome foi digitado.
+  crmContactRef?: string;
   valorPendente: number;
   dataPrevista: string;
   observacao?: string;
@@ -15,6 +18,17 @@ export type PagamentoLembrete = {
   criadoEm: string;
   pagoEm?: string;
   deletedAt?: string;
+};
+
+export type PagamentoRecebimento = {
+  id: string;
+  lembreteId: string;
+  valor: number;
+  forma: string;
+  recebidoEm: string;
+  // Comanda que abateu este lembrete. Preenchido = o dinheiro JÁ está no
+  // faturamento pela comanda; não pode entrar de novo no caixa do crediário.
+  saleRef?: string | null;
 };
 
 export const pagamentosStorageKey = "app-bratan-lembretes-pagamento";
@@ -148,6 +162,94 @@ export function receivableFromPagamento(record: PagamentoLembrete): Receivable {
     createdAt: record.criadoEm,
     updatedAt,
   };
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// ENCAIXE LEMBRETE × COMANDA (28/07/2026)
+// Regra do Lucas: NÃO duplicar. Quando a recepcionista lança na comanda o
+// valor que o paciente estava devendo, aquele lembrete tem de ser abatido —
+// o faturamento é a comanda, e o recebimento do lembrete é só a baixa dela.
+// Quem paga em crediário (dinheiro) continua separado: aí o recebimento não
+// tem comanda e o livro-caixa do crediário é o registro legítimo.
+// ————————————————————————————————————————————————————————————————————————
+
+export function normalizePatientName(name: string) {
+  return String(name ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Lembretes em aberto do paciente da comanda. Casa primeiro pelo contato do
+// CRM (à prova de erro de digitação) e, para os lembretes antigos que nasceram
+// sem link, pelo nome normalizado.
+export function openLembretesForPatient(
+  lembretes: PagamentoLembrete[],
+  patient: { ref?: string | null; name?: string | null },
+): PagamentoLembrete[] {
+  const ref = patient.ref || "";
+  const name = normalizePatientName(patient.name ?? "");
+  return lembretes
+    .filter((record) => !record.deletedAt && record.status === "aberto" && record.valorPendente > 0)
+    .filter((record) => {
+      if (ref && record.crmContactRef) return record.crmContactRef === ref;
+      if (!name) return false;
+      const recordName = normalizePatientName(record.pacienteNome);
+      if (!recordName) return false;
+      // "Milton" casa com "Milton Ferreira": um nome é prefixo do outro.
+      return recordName === name || recordName.startsWith(`${name} `) || name.startsWith(`${recordName} `);
+    })
+    .sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
+}
+
+export type EncaixeLembrete = {
+  lembreteId: string;
+  pacienteNome: string;
+  valorPendente: number;
+  dataPrevista: string;
+  // Quanto a comanda abate deste lembrete (nunca mais do que o pendente).
+  valorAbatido: number;
+  quitou: boolean;
+  novoPendente: number;
+};
+
+// Distribui o valor da comanda entre os lembretes em aberto do paciente, do
+// vencimento mais antigo para o mais novo. Nunca abate mais do que se deve.
+export function planEncaixeComanda(
+  lembretes: PagamentoLembrete[],
+  patient: { ref?: string | null; name?: string | null },
+  valorComanda: number,
+): { encaixes: EncaixeLembrete[]; totalEmAberto: number; totalAbatido: number; sobra: number } {
+  const abertos = openLembretesForPatient(lembretes, patient);
+  const totalEmAberto = abertos.reduce((sum, record) => sum + record.valorPendente, 0);
+  let restante = Math.max(0, Math.round((valorComanda || 0) * 100) / 100);
+  const encaixes: EncaixeLembrete[] = [];
+  for (const record of abertos) {
+    if (restante <= 0) break;
+    const valorAbatido = Math.min(record.valorPendente, restante);
+    const novoPendente = Math.round((record.valorPendente - valorAbatido) * 100) / 100;
+    encaixes.push({
+      lembreteId: record.id,
+      pacienteNome: record.pacienteNome,
+      valorPendente: record.valorPendente,
+      dataPrevista: record.dataPrevista,
+      valorAbatido: Math.round(valorAbatido * 100) / 100,
+      quitou: novoPendente <= 0,
+      novoPendente: novoPendente <= 0 ? 0 : novoPendente,
+    });
+    restante = Math.round((restante - valorAbatido) * 100) / 100;
+  }
+  const totalAbatido = encaixes.reduce((sum, item) => sum + item.valorAbatido, 0);
+  return { encaixes, totalEmAberto, totalAbatido, sobra: restante };
+}
+
+// Caixa do crediário: só o dinheiro que NÃO veio por comanda. Recebimento com
+// saleRef já está no faturamento — somá-lo aqui seria contar duas vezes.
+export function crediarioCashMoves<T extends { forma: string; saleRef?: string | null }>(recebimentos: T[]): T[] {
+  return recebimentos.filter((item) => item.forma === "DINHEIRO" && !item.saleRef);
 }
 
 export function mergePagamentoReceivables(receivables: Receivable[], pagamentos: PagamentoLembrete[]) {

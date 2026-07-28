@@ -910,6 +910,7 @@ export async function softDeleteRemoteComprovante(id: string) {
 type RemotePagamentoLembrete = {
   id: string;
   paciente_nome: string;
+  crm_contact_ref?: string | null;
   contato: string | null;
   valor_pendente: number | string;
   data_prevista: string;
@@ -978,6 +979,7 @@ function mapRemotePagamento(record: RemotePagamentoLembrete): PagamentoLembrete 
   return {
     id: record.id,
     pacienteNome: record.paciente_nome,
+    crmContactRef: record.crm_contact_ref ?? undefined,
     contato: record.contato ?? undefined,
     valorPendente: Number(record.valor_pendente),
     dataPrevista: record.data_prevista,
@@ -994,7 +996,7 @@ export async function listRemotePagamentos(): Promise<PagamentoLembrete[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("pagamento_lembrete")
-    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at, colaborador:criado_por(nome)")
+    .select("id, paciente_nome, contato, crm_contact_ref, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at, colaborador:criado_por(nome)")
     .is("deleted_at", null)
     .order("data_prevista", { ascending: true });
 
@@ -1006,6 +1008,7 @@ export async function createRemotePagamento(values: {
   pessoa: Colaborador;
   pacienteNome: string;
   contato?: string;
+  crmContactRef?: string | null;
   valorPendente: number;
   dataPrevista: string;
   observacao?: string;
@@ -1016,12 +1019,13 @@ export async function createRemotePagamento(values: {
     .insert({
       paciente_nome: values.pacienteNome,
       contato: values.contato ?? null,
+      crm_contact_ref: values.crmContactRef || null,
       valor_pendente: values.valorPendente,
       data_prevista: values.dataPrevista,
       observacao: values.observacao ?? null,
       criado_por: values.pessoa.id,
     })
-    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .select("id, paciente_nome, contato, crm_contact_ref, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
     .single();
 
   if (error) throw error;
@@ -1282,6 +1286,9 @@ export async function registerRemotePagamentoRecebimento(values: {
   forma: "DINHEIRO" | "PIX" | "CARTAO" | "OUTRO";
   novoPendente: number;
   recebidoPor: string | null;
+  // Comanda que abateu o lembrete. Preenchido = o valor já está no faturamento
+  // pela comanda; o caixa do crediário ignora estes recebimentos.
+  saleRef?: string | null;
 }) {
   const client = requireSupabase();
   const { error } = await client.from("pagamento_recebimento").insert({
@@ -1289,6 +1296,7 @@ export async function registerRemotePagamentoRecebimento(values: {
     valor: values.valor,
     forma: values.forma,
     recebido_por: uuidOrNull(values.recebidoPor),
+    sale_ref: values.saleRef || null,
   });
   if (error) throw error;
 
@@ -1301,7 +1309,7 @@ export async function registerRemotePagamentoRecebimento(values: {
       pago_em: quitou ? new Date().toISOString() : null,
     })
     .eq("id", values.lembreteId)
-    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .select("id, paciente_nome, contato, crm_contact_ref, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
     .single();
   if (updateError) throw updateError;
   await upsertRemoteReceivableFromPagamento(data as RemotePagamentoLembrete);
@@ -1314,12 +1322,12 @@ export async function registerRemotePagamentoRecebimento(values: {
 }
 
 export async function listRemotePagamentoRecebimentos(): Promise<
-  { id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string }[]
+  { id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string; saleRef?: string | null }[]
 > {
   const client = requireSupabase();
   const { data, error } = await client
     .from("pagamento_recebimento")
-    .select("id, lembrete_id, valor, forma, recebido_em")
+    .select("id, lembrete_id, valor, forma, recebido_em, sale_ref")
     .order("recebido_em", { ascending: false })
     .limit(300);
   if (error) throw error;
@@ -1329,6 +1337,7 @@ export async function listRemotePagamentoRecebimentos(): Promise<
     valor: Number(row.valor ?? 0),
     forma: String(row.forma ?? "DINHEIRO"),
     recebidoEm: String(row.recebido_em),
+    saleRef: row.sale_ref ? String(row.sale_ref) : null,
   }));
 }
 
@@ -1344,7 +1353,7 @@ export async function updateRemotePagamentoStatus(values: {
       pago_em: values.status === "pago" ? new Date().toISOString() : null,
     })
     .eq("id", values.id)
-    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .select("id, paciente_nome, contato, crm_contact_ref, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
     .single();
 
   if (error) throw error;
@@ -1365,6 +1374,7 @@ export async function updateRemotePagamentoDetalhes(values: {
   valorPendente: number;
   dataPrevista: string;
   observacao?: string;
+  crmContactRef?: string | null;
 }) {
   const client = requireSupabase();
   const { data, error } = await client
@@ -1374,9 +1384,10 @@ export async function updateRemotePagamentoDetalhes(values: {
       valor_pendente: values.valorPendente,
       data_prevista: values.dataPrevista,
       observacao: values.observacao || null,
+      ...(values.crmContactRef === undefined ? {} : { crm_contact_ref: values.crmContactRef || null }),
     })
     .eq("id", values.id)
-    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .select("id, paciente_nome, contato, crm_contact_ref, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
     .single();
 
   if (error) throw error;
@@ -1402,7 +1413,7 @@ export async function postponeRemotePagamento(values: {
       pago_em: null,
     })
     .eq("id", values.id)
-    .select("id, paciente_nome, contato, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .select("id, paciente_nome, contato, crm_contact_ref, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
     .single();
 
   if (error) throw error;
