@@ -1,3 +1,4 @@
+import { personNameTokens } from "@/features/crm/nameMatch";
 import type { Receivable } from "@/features/inteligencia360/inteligencia360Data";
 import type { PagamentoLembreteStatus } from "@/types/database";
 
@@ -248,6 +249,215 @@ export function planEncaixeComanda(
 
 // Caixa do crediário: só o dinheiro que NÃO veio por comanda. Recebimento com
 // saleRef já está no faturamento — somá-lo aqui seria contar duas vezes.
+// ————————————————————————————————————————————————————————————————————————
+// CONFERÊNCIA DO COFRE (28/07/2026)
+// O cofre descasou porque não havia estorno: lançamento com forma errada era
+// refeito e o errado ficava contando. Isto aponta os pares suspeitos para a
+// pessoa decidir — nunca apaga nada sozinho.
+// ————————————————————————————————————————————————————————————————————————
+
+export type CofreItemKind = "RECEBIMENTO" | "MANUAL";
+
+// Uma linha de dinheiro no cofre: recebimento de lembrete ou lançamento manual.
+export type CofreItem = {
+  kind: CofreItemKind;
+  id: string;
+  quem: string;
+  valor: number;
+  data: string;
+  detalhe: string;
+  // Só o dinheiro vivo soma no cofre. PIX/cartão entram na conferência apenas
+  // como contexto: eles mostram que o pagamento foi lançado duas vezes.
+  somaNoCofre: boolean;
+  lembreteId?: string;
+  lembreteApagado?: boolean;
+  lembreteStatus?: string;
+};
+
+export type CofreSuspectMotivo =
+  | "MESMO_VALOR_MESMO_DIA"
+  | "MESMO_VALOR_REPETIDO"
+  | "RECEBIMENTO_E_MANUAL"
+  | "LEMBRETE_APAGADO"
+  | "LEMBRETE_CANCELADO";
+
+export type CofreSuspect = {
+  motivo: CofreSuspectMotivo;
+  titulo: string;
+  descricao: string;
+  valorEmRisco: number;
+  itens: CofreItem[];
+};
+
+// Palavras de descrição de lançamento manual que não são nome de gente
+// (medicação, serviço) e por isso não valem para casar com o paciente.
+const COFRE_NOISE_TOKENS = new Set([
+  "tirze", "tirzepatida", "mounjaro", "ozempic", "consulta", "consultas",
+  "sinal", "restante", "resto", "parcela", "pagamento", "pago", "recebido",
+  "dinheiro", "pix", "cartao", "reembolso", "retirada", "lucro", "troco",
+  "sangria", "avulsa", "avulso", "plano", "exame", "exames", "bio",
+  "bioimpedancia", "aplicacao", "medicacao", "kit",
+]);
+
+function cofreNameTokens(value: string) {
+  return personNameTokens(value ?? "").filter((token) => token.length > 2 && !COFRE_NOISE_TOKENS.has(token));
+}
+
+// Duas linhas falam da mesma pessoa quando dividem alguma palavra de nome.
+// "TIRZE ALINE MENDES" (lançamento manual) casa com "ALINE CRISTINE MENDES"
+// (recebimento) por ALINE/MENDES, que é exatamente o caso de 28/07/2026.
+function cofreSamePerson(a: CofreItem, b: CofreItem) {
+  const tokensA = cofreNameTokens(a.quem);
+  const tokensB = cofreNameTokens(b.quem);
+  if (!tokensA.length || !tokensB.length) return false;
+  const setB = new Set(tokensB);
+  return tokensA.some((token) => setB.has(token));
+}
+
+function cofreDia(item: CofreItem) {
+  return item.data.slice(0, 10);
+}
+
+function dinheiroDoDia(items: CofreItem[]) {
+  return new Set(items.map(cofreDia)).size === 1;
+}
+
+// Agrupa, dentro do mesmo valor, as linhas que se ligam por pessoa OU por dia.
+// Assim R$ 2.800 da Aline no dia 28 não é confundido com R$ 2.800 do Paulo no dia 21.
+function clusterCofreItems(items: CofreItem[]) {
+  const clusters: CofreItem[][] = [];
+  for (const item of items) {
+    const target = clusters.find((cluster) =>
+      cluster.some((other) => cofreSamePerson(item, other) || cofreDia(item) === cofreDia(other)),
+    );
+    if (target) target.push(item);
+    else clusters.push([item]);
+  }
+  return clusters;
+}
+
+export function cofreItemsFromRecebimentos<
+  T extends {
+    id: string;
+    lembreteId: string;
+    valor: number;
+    forma: string;
+    recebidoEm: string;
+    saleRef?: string | null;
+    pacienteNome?: string | null;
+    lembreteStatus?: string | null;
+    lembreteApagado?: boolean;
+  },
+>(recebimentos: T[]): CofreItem[] {
+  // Recebimento de COMANDA fica fora: já está no faturamento, não passa pelo cofre.
+  return recebimentos
+    .filter((item) => !item.saleRef)
+    .map((item) => ({
+      kind: "RECEBIMENTO" as const,
+      id: item.id,
+      quem: item.pacienteNome ?? "Paciente do lembrete",
+      valor: item.valor,
+      data: item.recebidoEm.slice(0, 10),
+      detalhe: item.forma === "DINHEIRO" ? "recebido em dinheiro" : `recebido em ${item.forma.toLowerCase()}`,
+      somaNoCofre: item.forma === "DINHEIRO",
+      lembreteId: item.lembreteId,
+      lembreteApagado: Boolean(item.lembreteApagado),
+      lembreteStatus: item.lembreteStatus ?? undefined,
+    }));
+}
+
+export function cofreItemsFromManuais<
+  T extends { id: string; entryDate: string; direction: string; description: string; amount: number },
+>(entries: T[]): CofreItem[] {
+  return entries
+    .filter((entry) => entry.direction === "ENTRADA")
+    .map((entry) => ({
+      kind: "MANUAL" as const,
+      id: entry.id,
+      quem: entry.description,
+      valor: entry.amount,
+      data: entry.entryDate.slice(0, 10),
+      detalhe: "entrada lançada à mão",
+      somaNoCofre: true,
+    }));
+}
+
+// O que está somando no cofre e não deveria. Nada é apagado aqui: a função só
+// aponta, quem decide é a pessoa.
+export function findCofreSuspects(input: { recebimentos: CofreItem[]; manuais: CofreItem[] }): CofreSuspect[] {
+  const todos = [...input.recebimentos, ...input.manuais];
+  const suspects: CofreSuspect[] = [];
+
+  const porValor = new Map<string, CofreItem[]>();
+  for (const item of todos) {
+    const key = item.valor.toFixed(2);
+    porValor.set(key, [...(porValor.get(key) ?? []), item]);
+  }
+
+  for (const items of porValor.values()) {
+    if (items.length < 2) continue;
+    for (const cluster of clusterCofreItems(items)) {
+      if (cluster.length < 2) continue;
+      const ordenado = [...cluster].sort((a, b) => a.data.localeCompare(b.data));
+      const temManual = ordenado.some((item) => item.kind === "MANUAL");
+      const temRecebimento = ordenado.some((item) => item.kind === "RECEBIMENTO");
+      const mesmoDia = dinheiroDoDia(ordenado);
+      const noCofre = ordenado.filter((item) => item.somaNoCofre).length;
+      // Sobrando = o que soma no cofre além da primeira vez. Se só uma das
+      // linhas é dinheiro (ex.: lançaram PIX e depois dinheiro), a dúvida é o
+      // valor inteiro dela.
+      const valorEmRisco =
+        noCofre === 0
+          ? 0
+          : Math.round(ordenado[0].valor * (noCofre >= 2 ? noCofre - 1 : 1) * 100) / 100;
+      const motivo: CofreSuspectMotivo =
+        temManual && temRecebimento ? "RECEBIMENTO_E_MANUAL" : mesmoDia ? "MESMO_VALOR_MESMO_DIA" : "MESMO_VALOR_REPETIDO";
+      const descricao =
+        motivo === "RECEBIMENTO_E_MANUAL"
+          ? "O mesmo valor entrou pelo lembrete E foi lançado à mão no caixa — o dinheiro está contado duas vezes."
+          : mesmoDia
+            ? `${ordenado.length} lançamentos do mesmo valor no mesmo dia — provável relançamento (a primeira tentativa saiu errada e ficou).`
+            : `${ordenado.length} lançamentos do mesmo valor em dias diferentes — confirme se foram pagamentos distintos.`;
+      if (valorEmRisco === 0) continue;
+      suspects.push({
+        motivo,
+        titulo: `${ordenado[0].quem} · ${ordenado[0].valor.toFixed(2)}`,
+        descricao,
+        valorEmRisco,
+        itens: ordenado,
+      });
+    }
+  }
+
+  const jaListado = new Set(suspects.flatMap((suspect) => suspect.itens.map((item) => `${item.kind}:${item.id}`)));
+
+  // Recebimento cujo lembrete foi apagado ou cancelado continua somando no cofre
+  // sem nenhuma dívida por trás — foi assim que o cofre descasou em julho/2026.
+  for (const item of input.recebimentos) {
+    if (jaListado.has(`RECEBIMENTO:${item.id}`)) continue;
+    if (!item.somaNoCofre) continue;
+    if (item.lembreteApagado) {
+      suspects.push({
+        motivo: "LEMBRETE_APAGADO",
+        titulo: `${item.quem} · ${item.valor.toFixed(2)}`,
+        descricao: "O lembrete deste recebimento foi apagado, mas o dinheiro continua somando no cofre.",
+        valorEmRisco: item.valor,
+        itens: [item],
+      });
+    } else if (item.lembreteStatus === "cancelado") {
+      suspects.push({
+        motivo: "LEMBRETE_CANCELADO",
+        titulo: `${item.quem} · ${item.valor.toFixed(2)}`,
+        descricao: "O lembrete está cancelado (a dívida voltou a ficar em aberto), mas o recebimento continua somando no cofre.",
+        valorEmRisco: item.valor,
+        itens: [item],
+      });
+    }
+  }
+
+  return suspects.sort((a, b) => b.valorEmRisco - a.valorEmRisco);
+}
+
 export function crediarioCashMoves<T extends { forma: string; saleRef?: string | null }>(recebimentos: T[]): T[] {
   return recebimentos.filter((item) => item.forma === "DINHEIRO" && !item.saleRef);
 }

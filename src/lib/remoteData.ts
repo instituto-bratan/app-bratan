@@ -1321,24 +1321,101 @@ export async function registerRemotePagamentoRecebimento(values: {
   });
 }
 
-export async function listRemotePagamentoRecebimentos(): Promise<
-  { id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string; saleRef?: string | null }[]
-> {
+export type RemotePagamentoRecebimento = {
+  id: string;
+  lembreteId: string;
+  valor: number;
+  forma: string;
+  recebidoEm: string;
+  saleRef?: string | null;
+  // Estado do lembrete de origem — o cofre precisa saber quando o recebimento
+  // ficou órfão (lembrete apagado) ou pendurado num lembrete cancelado.
+  pacienteNome?: string | null;
+  lembreteStatus?: string | null;
+  lembreteApagado?: boolean;
+};
+
+export async function listRemotePagamentoRecebimentos(): Promise<RemotePagamentoRecebimento[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("pagamento_recebimento")
-    .select("id, lembrete_id, valor, forma, recebido_em, sale_ref")
+    .select("id, lembrete_id, valor, forma, recebido_em, sale_ref, lembrete:lembrete_id(paciente_nome, status, deleted_at)")
     .order("recebido_em", { ascending: false })
     .limit(300);
   if (error) throw error;
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
-    id: String(row.id),
-    lembreteId: String(row.lembrete_id),
-    valor: Number(row.valor ?? 0),
-    forma: String(row.forma ?? "DINHEIRO"),
-    recebidoEm: String(row.recebido_em),
-    saleRef: row.sale_ref ? String(row.sale_ref) : null,
-  }));
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
+    const lembrete = (Array.isArray(row.lembrete) ? row.lembrete[0] : row.lembrete) as
+      | Record<string, unknown>
+      | null
+      | undefined;
+    return {
+      id: String(row.id),
+      lembreteId: String(row.lembrete_id),
+      valor: Number(row.valor ?? 0),
+      forma: String(row.forma ?? "DINHEIRO"),
+      recebidoEm: String(row.recebido_em),
+      saleRef: row.sale_ref ? String(row.sale_ref) : null,
+      pacienteNome: lembrete?.paciente_nome ? String(lembrete.paciente_nome) : null,
+      lembreteStatus: lembrete?.status ? String(lembrete.status) : null,
+      lembreteApagado: Boolean(lembrete?.deleted_at),
+    };
+  });
+}
+
+// ESTORNO de recebimento (28/07/2026). Antes não existia: quem lançava errado
+// (forma trocada, duplo lançamento) não tinha como desfazer, e o valor ficava
+// inflando o caixa do crediário para sempre — foi o que descasou o cofre.
+// Estornar apaga o recebimento E devolve o valor ao pendente do lembrete.
+export async function deleteRemotePagamentoRecebimento(values: { id: string; motivo?: string }) {
+  const client = requireSupabase();
+  const { data: receipt, error: findError } = await client
+    .from("pagamento_recebimento")
+    .select("id, lembrete_id, valor, forma, recebido_em")
+    .eq("id", values.id)
+    .single();
+  if (findError) throw findError;
+
+  const lembreteId = String((receipt as Record<string, unknown>).lembrete_id);
+  const valor = Number((receipt as Record<string, unknown>).valor ?? 0);
+
+  const { data: lembrete, error: lembreteError } = await client
+    .from("pagamento_lembrete")
+    .select("id, valor_pendente, status")
+    .eq("id", lembreteId)
+    .single();
+  if (lembreteError) throw lembreteError;
+
+  // .select() de propósito: se a permissão bloquear, o delete volta VAZIO em vez
+  // de dar erro — sem esta conferência o app diria "estornado" sem estornar.
+  const { data: deleted, error: deleteError } = await client
+    .from("pagamento_recebimento")
+    .delete()
+    .eq("id", values.id)
+    .select("id");
+  if (deleteError) throw deleteError;
+  if (!deleted || deleted.length === 0) {
+    throw new Error("Sem permissão para estornar este recebimento.");
+  }
+
+  // O valor volta a ser dívida: reabre o lembrete se ele havia sido quitado.
+  const pendenteAtual = Number((lembrete as Record<string, unknown>).valor_pendente ?? 0);
+  const novoPendente = Math.round((pendenteAtual + valor) * 100) / 100;
+  const { data, error: updateError } = await client
+    .from("pagamento_lembrete")
+    .update({ valor_pendente: novoPendente, status: "aberto", pago_em: null })
+    .eq("id", lembreteId)
+    .select("id, paciente_nome, contato, crm_contact_ref, valor_pendente, data_prevista, observacao, status, criado_por, criado_em, pago_em, deleted_at")
+    .single();
+  if (updateError) throw updateError;
+
+  await upsertRemoteReceivableFromPagamento(data as RemotePagamentoLembrete);
+  await safeWriteRemoteAuditEvent({
+    action: "pagamento_lembrete.estorno",
+    entity: "pagamento_lembrete",
+    entityId: lembreteId,
+    metadata: { recebimentoId: values.id, valor, novoPendente, motivo: values.motivo ?? "" },
+  });
+  return { lembreteId, valor, novoPendente };
 }
 
 export async function updateRemotePagamentoStatus(values: {

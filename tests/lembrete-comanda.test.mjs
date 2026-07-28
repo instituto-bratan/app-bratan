@@ -143,3 +143,114 @@ test("REGRA CENTRAL: recebimento que veio de comanda NÃO entra no caixa do cred
   const total = caixa.reduce((sum, item) => sum + item.valor, 0);
   assert.equal(total, 5000, "os R$ 3 mil que vieram por comanda não entram (já estão no faturamento)");
 });
+
+function receb(over = {}) {
+  return { id: "r", lembreteId: "lem", valor: 1000, forma: "DINHEIRO", recebidoEm: "2026-07-17", saleRef: null, ...over };
+}
+function manual(over = {}) {
+  return { id: "m", entryDate: "2026-07-17", direction: "ENTRADA", description: "Fulano", amount: 1000, ...over };
+}
+function auditar(recebimentos, manuais = []) {
+  return pag.findCofreSuspects({
+    recebimentos: pag.cofreItemsFromRecebimentos(recebimentos),
+    manuais: pag.cofreItemsFromManuais(manuais),
+  });
+}
+
+test("conferência do cofre: mesmo valor lançado duas vezes no mesmo dia (forma trocada)", () => {
+  const suspeitos = auditar([
+    receb({ id: "a", lembreteId: "lem-elias", valor: 2000, forma: "OUTRO", pacienteNome: "Elias Teodoro Gomes" }),
+    receb({ id: "b", lembreteId: "lem-elias", valor: 2000, forma: "DINHEIRO", pacienteNome: "Elias Teodoro Gomes" }),
+    receb({ id: "c", lembreteId: "lem-outro", valor: 500, pacienteNome: "Outro Paciente" }),
+  ]);
+  assert.equal(suspeitos.length, 1);
+  assert.equal(suspeitos[0].motivo, "MESMO_VALOR_MESMO_DIA");
+  assert.equal(suspeitos[0].valorEmRisco, 2000, "só um deles é dinheiro: o cofre pode estar R$ 2 mil a mais");
+  assert.equal(suspeitos[0].itens.length, 2, "mostra o par inteiro (o de outra forma entra como contexto)");
+});
+
+test("CASO REAL 17/07: recebimento pendurado em lembrete APAGADO continua somando", () => {
+  const suspeitos = auditar([
+    receb({
+      id: "marcia-17",
+      lembreteId: "lem-apagado",
+      valor: 1889,
+      recebidoEm: "2026-07-17",
+      pacienteNome: "Marcia Olivia",
+      lembreteApagado: true,
+    }),
+  ]);
+  assert.equal(suspeitos.length, 1);
+  assert.equal(suspeitos[0].motivo, "LEMBRETE_APAGADO");
+  assert.equal(suspeitos[0].valorEmRisco, 1889);
+});
+
+test("CASO REAL Marcia: o mesmo valor em lembretes DIFERENTES do mesmo nome é pego", () => {
+  const suspeitos = auditar([
+    receb({ id: "m1", lembreteId: "lem-antigo", valor: 1889, recebidoEm: "2026-07-17", pacienteNome: "Marcia Olivia" }),
+    receb({ id: "m2", lembreteId: "lem-novo", valor: 1889, recebidoEm: "2026-07-23", pacienteNome: "MARCIA OLIVIA" }),
+  ]);
+  assert.equal(suspeitos.length, 1, "nome igual + valor igual = suspeita, mesmo em lembretes diferentes");
+  assert.equal(suspeitos[0].motivo, "MESMO_VALOR_REPETIDO");
+  assert.equal(suspeitos[0].itens.length, 2);
+});
+
+test("CASO REAL Elias: lembrete CANCELADO com recebimento em dinheiro é apontado", () => {
+  const suspeitos = auditar([
+    receb({ id: "e1", lembreteId: "lem-cancelado", valor: 2000, pacienteNome: "Elias Teodoro Gomes", lembreteStatus: "cancelado" }),
+  ]);
+  assert.equal(suspeitos[0].motivo, "LEMBRETE_CANCELADO");
+  assert.equal(suspeitos[0].valorEmRisco, 2000);
+});
+
+test("CASO REAL Aline 28/07: lembrete + lançamento à mão do mesmo valor = dinheiro contado 2x", () => {
+  const suspeitos = auditar(
+    [receb({ id: "a1", lembreteId: "lem-aline", valor: 2800, recebidoEm: "2026-07-28", pacienteNome: "ALINE CRISTINE MENDES" })],
+    [
+      manual({ id: "m1", entryDate: "2026-07-28", description: "TIRZE ALINE MENDES", amount: 2800 }),
+      manual({ id: "m2", entryDate: "2026-07-21", description: "Paulo Queiroz Neto", amount: 2800 }),
+    ],
+  );
+  assert.equal(suspeitos.length, 1, "o Paulo de outro dia e outro nome NÃO entra");
+  assert.equal(suspeitos[0].motivo, "RECEBIMENTO_E_MANUAL");
+  assert.equal(suspeitos[0].valorEmRisco, 2800);
+  assert.equal(suspeitos[0].itens.length, 2);
+});
+
+test("parcelas iguais de pacientes diferentes em dias diferentes NÃO viram suspeita", () => {
+  const suspeitos = auditar([
+    receb({ id: "a", lembreteId: "lem-1", valor: 1150, recebidoEm: "2026-08-05", pacienteNome: "Gabriela Guagliano" }),
+    receb({ id: "b", lembreteId: "lem-2", valor: 1150, recebidoEm: "2026-09-08", pacienteNome: "Isabel Guarnieri" }),
+  ]);
+  assert.equal(suspeitos.length, 0);
+});
+
+test("recebimento que veio de comanda não é conferido no cofre (não está lá)", () => {
+  const suspeitos = auditar([
+    receb({ id: "a", lembreteId: "lem-1", valor: 3000, pacienteNome: "Vagner", saleRef: "fsale-1" }),
+    receb({ id: "b", lembreteId: "lem-1", valor: 3000, pacienteNome: "Vagner", saleRef: "fsale-2" }),
+  ]);
+  assert.equal(suspeitos.length, 0, "comanda já está no faturamento — fora da conferência do cofre");
+});
+
+test("saída lançada à mão não é confundida com entrada duplicada", () => {
+  const suspeitos = auditar(
+    [receb({ id: "a", lembreteId: "lem-1", valor: 5000, pacienteNome: "Vagner da Rocha" })],
+    [manual({ id: "m", direction: "SAIDA", description: "RETIRADA DE LUCRO ANDRYA", amount: 5000 })],
+  );
+  assert.equal(suspeitos.length, 0, "saída é dinheiro que saiu, nunca duplicata de entrada");
+});
+
+test("o cofre bate depois de tirar o que estava sobrando", () => {
+  const recebimentos = [
+    receb({ id: "milton", lembreteId: "l1", valor: 1042, recebidoEm: "2026-07-13", pacienteNome: "Milton" }),
+    receb({ id: "marcia-orfa", lembreteId: "l2", valor: 1889, recebidoEm: "2026-07-17", pacienteNome: "Marcia Olivia", lembreteApagado: true }),
+    receb({ id: "marcia-ok", lembreteId: "l3", valor: 1889, recebidoEm: "2026-07-23", pacienteNome: "MARCIA OLIVIA" }),
+  ];
+  const antes = pag.crediarioCashMoves(recebimentos).reduce((sum, item) => sum + item.valor, 0);
+  assert.equal(antes, 4820);
+  const suspeitos = auditar(recebimentos);
+  assert.ok(suspeitos.length >= 1, "aponta a órfã");
+  const depois = pag.crediarioCashMoves(recebimentos.filter((item) => item.id !== "marcia-orfa")).reduce((sum, item) => sum + item.valor, 0);
+  assert.equal(depois, 2931, "estornando a órfã, o caixa cai exatamente os R$ 1.889");
+});
