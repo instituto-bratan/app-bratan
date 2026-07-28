@@ -46,6 +46,15 @@ import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { clusterPersonNames, extractPersonName, personNamesMatch } from "@/features/crm/nameMatch";
 import { useCrmState } from "@/features/crm/useCrmState";
 import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
+import { BarsWithLine, CalendarHeatGrid, Donut, RankBars, chartColors } from "@/components/charts/BratanCharts";
+import {
+  buildCalendarHeat,
+  buildMonthlyResultSeries,
+  buildPaymentDonut,
+  buildPrescriptionFunnel,
+  buildWeekdayStrength,
+} from "@/lib/chartData";
+import { buildP12Matrix } from "@/features/financeiro/financeiroData";
 import { cn } from "@/lib/utils";
 import {
   actionPriorityLabels,
@@ -713,6 +722,22 @@ export function Inteligencia360DashboardPage() {
     };
   }, [financeiro.sales, periodRange]);
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
+  // Visão em gráficos (28/07): as mesmas fontes, em imagem. Nada digitado aqui.
+  const chartMatrix = useMemo(
+    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, Number(hoje.slice(0, 4)), financeiro.savingsMoves),
+    [financeiro.sales, financeiro.expenses, financeiro.categories, hoje],
+  );
+  const chartSerie = useMemo(() => buildMonthlyResultSeries(chartMatrix), [chartMatrix]);
+  const chartHeat = useMemo(() => buildCalendarHeat(financeiro.sales, hoje.slice(0, 7)), [financeiro.sales, hoje]);
+  const chartWeekday = useMemo(
+    () => buildWeekdayStrength(financeiro.sales, { from: periodRange.start, to: periodRange.end }),
+    [financeiro.sales, periodRange],
+  );
+  const chartPagamentos = useMemo(
+    () => buildPaymentDonut(financeiro.sales, { from: periodRange.start, to: periodRange.end }),
+    [financeiro.sales, periodRange],
+  );
+  const chartFunil = useMemo(() => buildPrescriptionFunnel(state.prescriptions), [state.prescriptions]);
   const insights = useMemo(() => generateActionRecommendations(state), [state]);
   const quality = useMemo(() => buildDataQuality(state), [state]);
   const [createdAction, setCreatedAction] = useState<string | null>(null);
@@ -912,6 +937,94 @@ export function Inteligencia360DashboardPage() {
         {cards.map((card) => (
           <MetricCard key={card.label} {...card} />
         ))}
+      </section>
+
+      {/* Visão em gráficos: os mesmos números, palpáveis. Cada card linka a fonte. */}
+      <section className="grid gap-4">
+        <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              Faturamento × Custos × Lucro — {hoje.slice(0, 4)}
+              <Link to="/financeiro/relatorios" className="ml-auto text-[11px] font-semibold text-brand-oliva underline-offset-2 hover:underline">
+                Relatórios completos →
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BarsWithLine
+              labels={chartSerie.labels}
+              bars={[
+                { name: "Faturamento", values: chartSerie.faturamento, color: chartColors.entrada },
+                { name: "Custos", values: chartSerie.custos, color: chartColors.saida },
+              ]}
+              line={{ name: "Lucro", values: chartSerie.lucro, color: chartColors.resultado }}
+              upTo={chartSerie.lastActiveMonth}
+            />
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                Mapa de calor do mês
+                <Link to="/financeiro/lancar-dia" className="ml-auto text-[11px] font-semibold text-brand-oliva underline-offset-2 hover:underline">
+                  Lançar Dia →
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CalendarHeatGrid heat={chartHeat} />
+            </CardContent>
+          </Card>
+
+          <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                Funil de prescrições
+                <Link to={moduleRoutes360.commercial} className="ml-auto text-[11px] font-semibold text-brand-oliva underline-offset-2 hover:underline">
+                  Comercial →
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RankBars
+                points={chartFunil}
+                color={chartColors.resultado}
+                formatValue={(value) => `${value} paciente${value === 1 ? "" : "s"}`}
+                emptyMessage="Nenhuma prescrição registrada ainda — elas nascem no Comercial."
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                Como o dinheiro entra {periodRange.label}
+                <Link to="/financeiro/lancar-dia" className="ml-auto text-[11px] font-semibold text-brand-oliva underline-offset-2 hover:underline">
+                  Lançar Dia →
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Donut slices={chartPagamentos} centerLabel={periodRange.label} emptyMessage="Nenhum pagamento no período." />
+            </CardContent>
+          </Card>
+
+          <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                Força dos dias da semana {periodRange.label}
+                <Link to="/financeiro/relatorios" className="ml-auto text-[11px] font-semibold text-brand-oliva underline-offset-2 hover:underline">
+                  Relatórios →
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RankBars points={chartWeekday} color={chartColors.entrada} emptyMessage="Sem comanda no período ainda." />
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">

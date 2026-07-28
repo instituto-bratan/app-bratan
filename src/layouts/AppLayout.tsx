@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useState, type ComponentType } from "reac
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  BarChart3,
   Bell,
   BrainCircuit,
   CalendarClock,
@@ -124,6 +125,7 @@ const flowGroups: FlowGroup[] = [
     allowed: (cargo) => canLancarDia(cargo) || canFinanceiroView(cargo),
     entries: [
       { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canLancarDia, module: "fin-lancar-dia" },
+      { label: "Relatórios", href: "/financeiro/relatorios", icon: BarChart3, allowed: canFinanceiroView, module: "fin-relatorios" },
       { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento, module: "fin-contas" },
       { label: "Compras", href: "/financeiro/compras", icon: ShoppingCart, allowed: canFinanceiroView, module: "fin-compras" },
       { label: "Crediário (Dinheiro)", shortLabel: "Crediário", href: "/financeiro/crediario", icon: HandCoins, allowed: canLembretesPagamento, module: "fin-crediario" },

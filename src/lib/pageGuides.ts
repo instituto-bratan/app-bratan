@@ -322,6 +322,25 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/financeiro/relatorios",
+    guide: {
+      title: "Financeiro — Relatórios",
+      whatIs:
+        "O Financeiro em imagem: gráficos e mapa de calor gerados na hora a partir das comandas, das contas e da poupança. Nada aqui é digitado — é leitura pura.",
+      steps: [
+        "Escolha o ano e o mês nos botões do topo — todos os gráficos obedecem.",
+        "Faturamento × Custos × Lucro é a P12 desenhada: barra dourada entra, barra barro sai, linha musgo é o lucro.",
+        "No mapa de calor, cada quadrado é um dia do mês: quanto mais escuro, mais dinheiro entrou. Passe o mouse para ver o valor.",
+        "Os donuts mostram como o dinheiro entra (PIX, cartão…), o que é vendido e para onde os custos vão.",
+        "Cada card tem o link da fonte no canto — clique para ir à aba de origem do número.",
+      ],
+      tips: [
+        "Se um número parecer estranho, o problema está na fonte (comanda ou conta) — corrija lá e o gráfico se corrige sozinho.",
+        "Use a força dos dias da semana para decidir onde abrir agenda: dia claro no calor = espaço para vender mais.",
+      ],
+    },
+  },
+  {
     pattern: "/financeiro/crediario",
     guide: {
       title: "Crediário (Dinheiro)",
