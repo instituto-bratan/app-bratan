@@ -171,7 +171,10 @@ export function CrmPlanilhaCadenciasPage() {
     myRole === "ENFERMAGEM" ? "ENFERMAGEM" : myRole === "RECEPCAO" ? "RECEPCAO" : myRole === "CONCIERGE" ? "CONCIERGE" : myRole === "ADMIN_GESTAO" ? "GESTOR" : "ENFERMAGEM";
   const [tab, setTab] = useState<SheetTab>(defaultTab);
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
-  const [periodo, setPeriodo] = useState<Periodo>("tudo");
+  // Padrão = MÊS CORRENTE (decisão do Lucas, 28/07): a régua antiga acumulada
+  // (ex.: 57 linhas da Concierge) não atropela mais quem abre a tela para
+  // trabalhar o dia. "Tudo" continua a um clique.
+  const [periodo, setPeriodo] = useState<Periodo>("mes");
   const [anchor, setAnchor] = useState(() => todayISO());
 
   const range = useMemo(() => periodRange(periodo, anchor), [periodo, anchor]);
@@ -362,7 +365,11 @@ export function CrmPlanilhaCadenciasPage() {
               >
                 <td className="px-2 py-1.5 text-xs font-medium text-brand-oliva">{shortDate(row.openedAt)}</td>
                 <td className="px-2 py-1.5">
-                  <Link to={`/crm/contatos/${row.contactId}`} className="block truncate font-semibold leading-tight text-brand-musgo hover:underline" title={row.patientName}>
+                  <Link
+                    to={`/crm/contatos/${row.contactId}`}
+                    className="block text-[13px] font-semibold leading-tight text-brand-musgo hover:underline"
+                    title={row.patientName}
+                  >
                     {row.patientName}
                   </Link>
                   <p className="text-[11px] text-muted-foreground">{row.phone}</p>
@@ -428,7 +435,11 @@ export function CrmPlanilhaCadenciasPage() {
               >
                 <td className="px-2 py-1.5 text-xs font-medium text-brand-oliva">{shortDate(row.entradaEm)}</td>
                 <td className="px-2 py-1.5">
-                  <Link to={`/crm/contatos/${row.contactId}`} className="block truncate font-semibold leading-tight text-brand-musgo hover:underline" title={row.patientName}>
+                  <Link
+                    to={`/crm/contatos/${row.contactId}`}
+                    className="block text-[13px] font-semibold leading-tight text-brand-musgo hover:underline"
+                    title={row.patientName}
+                  >
                     {row.patientName}
                   </Link>
                   <p className="text-[11px] text-muted-foreground">{row.phone}</p>
