@@ -15,7 +15,14 @@ import { parseMoneyBR } from "@/lib/money";
 import { canFinanceiroFull, canLancarDia } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
-import { findOrCreateCrmContact } from "@/features/crm/crmData";
+import { applyContactChannels, findOrCreateCrmContact } from "@/features/crm/crmData";
+import {
+  contactChannelsIssue,
+  contactChannelsValues,
+  emptyContactChannels,
+  hasContactChannels,
+  type ContactChannelsDraft,
+} from "@/features/crm/contactChannels";
 import { extractPersonName } from "@/features/crm/nameMatch";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
@@ -71,6 +78,8 @@ export function FinanceiroLancarDiaPage() {
   const financeiro = useFinanceiro(Number(date.slice(0, 4)));
   const [patientName, setPatientName] = useState("");
   const [patientRef, setPatientRef] = useState("");
+  // Telefone/e-mail do paciente novo (29/07): a comanda criava contato mudo.
+  const [patientChannels, setPatientChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DraftItem[]>([{ itemType: "CONSULTA", amount: "", description: "" }]);
   const [payments, setPayments] = useState<DraftPayment[]>([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
@@ -146,6 +155,7 @@ export function FinanceiroLancarDiaPage() {
     setAdhesion("ABERTO");
     setPatientName("");
     setPatientRef("");
+    setPatientChannels(emptyContactChannels);
     setNotes("");
     setItems([{ itemType: "CONSULTA", amount: "", description: "" }]);
     setPayments([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
@@ -191,6 +201,8 @@ export function FinanceiroLancarDiaPage() {
       }));
 
     if (!patientName.trim()) return setFeedback("Informe o paciente.");
+    const problemaContato = contactChannelsIssue(patientChannels);
+    if (problemaContato) return setFeedback(problemaContato);
     if (!validItems.length) return setFeedback("Adicione pelo menos um item com valor.");
     if (!validPayments.length) return setFeedback("Informe como foi pago.");
     if (!totalsMatch) return setFeedback("Os pagamentos não fecham com os itens. Ajuste antes de salvar.");
@@ -217,6 +229,7 @@ export function FinanceiroLancarDiaPage() {
       if (cleanName) {
         const contactValues = {
           fullName: cleanName,
+          ...contactChannelsValues(patientChannels),
           contactType: "PATIENT" as const,
           lifecycleStage: "ACTIVE_PATIENT" as const,
           sourceChannel: "Comanda / Lançar Dia",
@@ -229,8 +242,18 @@ export function FinanceiroLancarDiaPage() {
         // Persiste contra o estado VIVO (current) reusando o MESMO id: se já existe
         // (achado por nome/telefone), não duplica; se não, cria com o id do ref —
         // nunca deixa contato duplicado nem ref órfão.
-        persistCrm((current) => findOrCreateCrmContact(current, { ...contactValues, id: preview.contact.id }, pessoa?.id ?? "recepcao").state);
+        persistCrm((current) => {
+          const resolved = findOrCreateCrmContact(current, { ...contactValues, id: preview.contact.id }, pessoa?.id ?? "recepcao");
+          // Se casou com cadastro antigo sem número, completa em vez de ignorar.
+          return applyContactChannels(resolved.state, resolved.contact.id, contactChannelsValues(patientChannels), pessoa?.id ?? "recepcao");
+        });
       }
+    } else if (hasContactChannels(patientChannels)) {
+      // Paciente JÁ vinculado e a recepção digitou o contato que faltava: sem
+      // este ramo o número se perdia (o bloco acima só roda para gente nova).
+      const ref = sale.crmContactRef;
+      persistCrm((current) => applyContactChannels(current, ref, contactChannelsValues(patientChannels), pessoa?.id ?? "recepcao"));
+      crmNote = " Telefone/e-mail salvos no cadastro do CRM.";
     }
 
     // ENCAIXE: abate os Lembretes deste paciente com ESTA comanda. O
@@ -362,6 +385,9 @@ export function FinanceiroLancarDiaPage() {
                         setPatientName(next.name);
                         setPatientRef(next.ref);
                       }}
+                      channels={patientChannels}
+                      onChannelsChange={setPatientChannels}
+                      id="comanda-paciente"
                       placeholder="Buscar paciente por nome ou telefone…"
                     />
                   </div>

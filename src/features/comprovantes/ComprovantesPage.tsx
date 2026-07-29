@@ -24,7 +24,13 @@ import {
 } from "@/lib/remoteData";
 import { prepareSharePointDispatch } from "@/lib/sharepoint";
 import { cn } from "@/lib/utils";
-import { contactDisplayName, findOrCreateCrmContact } from "@/features/crm/crmData";
+import { applyContactChannels, contactDisplayName, findOrCreateCrmContact } from "@/features/crm/crmData";
+import {
+  contactChannelsIssue,
+  contactChannelsValues,
+  emptyContactChannels,
+  type ContactChannelsDraft,
+} from "@/features/crm/contactChannels";
 import { extractPersonName } from "@/features/crm/nameMatch";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
@@ -72,6 +78,8 @@ export function ComprovantesPage() {
   const [error, setError] = useState<string | null>(null);
   const [pacienteReferencia, setPacienteReferencia] = useState("");
   const [patientRef, setPatientRef] = useState("");
+  // Telefone/e-mail de quem entra pelo comprovante (29/07): antes nascia mudo.
+  const [patientChannels, setPatientChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
   const { state: crmState, persist: persistCrm } = useCrmState();
   const [pagamentoLembreteId, setPagamentoLembreteId] = useState("");
   const [alimentarRecebiveis360, setAlimentarRecebiveis360] = useState(true);
@@ -125,6 +133,7 @@ export function ComprovantesPage() {
   function resetCaptureForm() {
     setPacienteReferencia("");
     setPatientRef("");
+    setPatientChannels(emptyContactChannels);
     setPagamentoLembreteId("");
     setValor("");
     setFormaPagamento("");
@@ -167,24 +176,28 @@ export function ComprovantesPage() {
   // e devolve ref + nome canônico. Assim o comprovante fica ligado ao MESMO
   // contato do CRM/comandas/dívida/360, sem duplicar.
   function resolvePatientLink(): { ref: string; name: string } {
+    const canais = contactChannelsValues(patientChannels);
     if (patientRef) {
       const existing = crmState.contacts.find((contact) => contact.id === patientRef);
+      // Cadastro vinculado que estava sem número ganha o que foi digitado aqui.
+      persistCrm((current) => applyContactChannels(current, patientRef, canais, pessoa?.id ?? "financeiro"));
       return { ref: patientRef, name: existing ? contactDisplayName(existing) : pacienteReferencia.trim() };
     }
     const clean = extractPersonName(pacienteReferencia) || pacienteReferencia.trim();
     if (!clean) return { ref: "", name: "" };
-    const result = findOrCreateCrmContact(
-      crmState,
-      { fullName: clean, contactType: "PATIENT", lifecycleStage: "ACTIVE_PATIENT", sourceChannel: "Comprovante", ownerUserId: pessoa?.id ?? "financeiro" },
-      pessoa?.id ?? "financeiro",
-    );
-    if (result.created) {
-      persistCrm((current) =>
-        current.contacts.some((contact) => contact.id === result.contact.id)
-          ? current
-          : { ...current, contacts: [result.contact, ...current.contacts] },
-      );
-    }
+    const contactValues = {
+      fullName: clean,
+      ...canais,
+      contactType: "PATIENT" as const,
+      lifecycleStage: "ACTIVE_PATIENT" as const,
+      sourceChannel: "Comprovante",
+      ownerUserId: pessoa?.id ?? "financeiro",
+    };
+    const result = findOrCreateCrmContact(crmState, contactValues, pessoa?.id ?? "financeiro");
+    persistCrm((current) => {
+      const resolved = findOrCreateCrmContact(current, { ...contactValues, id: result.contact.id }, pessoa?.id ?? "financeiro");
+      return applyContactChannels(resolved.state, resolved.contact.id, canais, pessoa?.id ?? "financeiro");
+    });
     return { ref: result.contact.id, name: contactDisplayName(result.contact) };
   }
 
@@ -194,6 +207,12 @@ export function ComprovantesPage() {
 
     if (!acceptedFiles.length) {
       setError("Anexe JPG, PNG, HEIC ou PDF.");
+      return;
+    }
+
+    const problemaContato = contactChannelsIssue(patientChannels);
+    if (problemaContato) {
+      setError(problemaContato);
       return;
     }
 
@@ -450,6 +469,8 @@ export function ComprovantesPage() {
                     setPacienteReferencia(next.name);
                     setPatientRef(next.ref);
                   }}
+                  channels={patientChannels}
+                  onChannelsChange={setPatientChannels}
                   placeholder="Buscar paciente por nome ou telefone…"
                 />
               </div>

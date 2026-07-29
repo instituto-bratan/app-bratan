@@ -11,6 +11,13 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { PatientPicker } from "@/features/crm/PatientPicker";
+import { applyContactChannels, findOrCreateCrmContact } from "@/features/crm/crmData";
+import {
+  contactChannelsIssue,
+  contactChannelsValues,
+  emptyContactChannels,
+  type ContactChannelsDraft,
+} from "@/features/crm/contactChannels";
 import { useCrmState } from "@/features/crm/useCrmState";
 import { canLembretesPagamento } from "@/lib/access";
 import { formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
@@ -84,13 +91,16 @@ function remoteErrorDetail(error: unknown) {
 
 export function PagamentosPage() {
   const { pessoa, session, isPreview } = useAuth();
-  const { state: crmState } = useCrmState();
+  const { state: crmState, persist: persistCrm } = useCrmState();
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
   const [localRecords, setLocalRecords] = useState<PagamentoLembrete[]>(() => readLocalValue(pagamentosStorageKey, []));
   const [form, setForm] = useState<FormState>(emptyForm);
   const [filter, setFilter] = useState<PagamentoFiltro>("abertos");
   const [error, setError] = useState<string | null>(null);
+  // Telefone/e-mail de quem entra pelo lembrete (29/07). Antes o seletor prometia
+  // "será cadastrado no CRM ao salvar" e ninguém cadastrava: o ref ia vazio.
+  const [patientChannels, setPatientChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
   const [postponeTarget, setPostponeTarget] = useState<string | null>(null);
   const [postponeDate, setPostponeDate] = useState(todayISO());
   // Edição de um lembrete existente (nome de quem deve, valor, data e obs).
@@ -161,18 +171,46 @@ export function PagamentosPage() {
       setError("Falta a data combinada.");
       return;
     }
+    const problemaContato = contactChannelsIssue(patientChannels);
+    if (problemaContato) {
+      setError(problemaContato);
+      return;
+    }
+
+    // O lembrete SEMPRE fica ligado a um contato do CRM: sem isso a dívida não
+    // encaixa com a comanda depois e o mesmo valor acaba contado duas vezes.
+    const canais = contactChannelsValues(patientChannels);
+    let contactRef = form.crmContactRef || "";
+    const contactValues = {
+      fullName: pacienteNome,
+      ...canais,
+      contactType: "PATIENT" as const,
+      lifecycleStage: "ACTIVE_PATIENT" as const,
+      sourceChannel: "Lembrete de pagamento",
+      ownerUserId: pessoa?.id ?? "coordenacao",
+    };
+    if (!contactRef) {
+      const preview = findOrCreateCrmContact(crmState, contactValues, pessoa?.id ?? "coordenacao");
+      contactRef = preview.contact.id;
+    }
+    const refFinal = contactRef;
+    void persistCrm((current) => {
+      const resolved = findOrCreateCrmContact(current, { ...contactValues, id: refFinal }, pessoa?.id ?? "coordenacao");
+      return applyContactChannels(resolved.state, resolved.contact.id, canais, pessoa?.id ?? "coordenacao");
+    });
 
     if (useRemote && pessoa) {
       try {
         await createMutation.mutateAsync({
           pessoa,
           pacienteNome,
-          crmContactRef: form.crmContactRef || null,
+          crmContactRef: refFinal || null,
           valorPendente,
           dataPrevista: form.dataPrevista,
           observacao: observacao || undefined,
         });
         setForm({ ...emptyForm, dataPrevista: todayISO() });
+        setPatientChannels(emptyContactChannels);
       } catch (saveError) {
         setError(`Não foi possível salvar o lembrete${remoteErrorDetail(saveError)}. Tente de novo.`);
       }
@@ -184,7 +222,7 @@ export function PagamentosPage() {
       {
         id: createId(),
         pacienteNome,
-        crmContactRef: form.crmContactRef || undefined,
+        crmContactRef: refFinal || undefined,
         valorPendente,
         dataPrevista: form.dataPrevista,
         observacao: observacao || undefined,
@@ -195,6 +233,7 @@ export function PagamentosPage() {
       ...records,
     ]);
     setForm({ ...emptyForm, dataPrevista: todayISO() });
+    setPatientChannels(emptyContactChannels);
   }
 
   function updateLocalStatus(id: string, status: PagamentoLembreteStatus) {
@@ -500,6 +539,9 @@ export function PagamentosPage() {
                     contacts={crmState.contacts}
                     value={{ ref: form.crmContactRef ?? "", name: form.pacienteNome }}
                     onChange={(next) => setForm((current) => ({ ...current, pacienteNome: next.name, crmContactRef: next.ref }))}
+                    channels={patientChannels}
+                    onChannelsChange={setPatientChannels}
+                    id="lembrete-paciente"
                     placeholder="Buscar paciente por nome ou telefone…"
                   />
                   <p className="text-xs text-muted-foreground">

@@ -30,6 +30,7 @@ import { isCoordenacao } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
+  applyContactChannels,
   canUserAccessContact,
   contactDisplayName,
   createDealForContact,
@@ -63,9 +64,19 @@ import {
   type CrmRole,
   type CrmState,
   type CrmTask,
+  updateContactChannels,
 } from "./crmData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
+import { ContactChannelsFields } from "./ContactChannelsFields";
+import {
+  contactChannelsIssue,
+  contactChannelsValues,
+  emptyContactChannels,
+  formatPhoneBR,
+  phoneDigits,
+  type ContactChannelsDraft,
+} from "./contactChannels";
 import { useCrmState } from "./useCrmState";
 
 const objectionOptions: CrmObjectionCategory[] = [
@@ -416,6 +427,7 @@ export function CrmKanbanPage() {
   const [drawerFeedback, setDrawerFeedback] = useState("");
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [newSource, setNewSource] = useState("Manual");
   const [newValue, setNewValue] = useState("18000");
   const [newTemp, setNewTemp] = useState<CrmLeadTemperature>("WARM");
@@ -427,7 +439,7 @@ export function CrmKanbanPage() {
   // Cadastro do FECHAMENTO (Estevão) — a porta de entrada da jornada (Lucas, 22/07).
   const [fechamentoOpen, setFechamentoOpen] = useState(false);
   const [fcPatient, setFcPatient] = useState<PatientPickerValue>({ ref: "", name: "" });
-  const [fcPhone, setFcPhone] = useState("");
+  const [fcChannels, setFcChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
   const [fcResultado, setFcResultado] = useState<CrmAdhesionChannel | "AVULSA" | "NAO_FECHOU">("PROGRAMA_ACOMPANHAMENTO");
   const [fcCompleto, setFcCompleto] = useState(true);
   const [fcSold, setFcSold] = useState("");
@@ -617,14 +629,19 @@ export function CrmKanbanPage() {
       setFeedback("Informe pelo menos nome ou telefone.");
       return;
     }
+    const canaisNovo = { phone: newPhone, email: newEmail };
+    const problema = contactChannelsIssue(canaisNovo);
+    if (problema) {
+      setFeedback(problema);
+      return;
+    }
 
     persist((current) => {
       const created = findOrCreateCrmContact(
         current,
         {
           fullName: newName.trim() || newPhone.trim(),
-          phone: newPhone,
-          whatsapp: newPhone,
+          ...contactChannelsValues(canaisNovo),
           sourceChannel: newSource,
           leadTemperature: newTemp,
           personaFit: newFit,
@@ -634,7 +651,9 @@ export function CrmKanbanPage() {
         pessoa?.id ?? "manual",
       );
       setFeedback(created.duplicateWarning || "Lead criado e oportunidade aberta sem duplicar cadastro.");
-      const withDeal = createDealForContact(created.state, {
+      // Casou com alguém que já existia: aproveita para completar o que faltava.
+      const comContato = applyContactChannels(created.state, created.contact.id, canaisNovo, pessoa?.id ?? "manual");
+      const withDeal = createDealForContact(comContato, {
         contactId: created.contact.id,
         title: `Primeira consulta - ${contactDisplayName(created.contact)}`,
         ownerUserId: pessoa?.id ?? "manual",
@@ -646,6 +665,7 @@ export function CrmKanbanPage() {
 
     setNewName("");
     setNewPhone("");
+    setNewEmail("");
     setLeadModalOpen(false);
   }
 
@@ -656,6 +676,8 @@ export function CrmKanbanPage() {
     event.preventDefault();
     setFcFeedback("");
     if (!fcPatient.ref && !fcPatient.name.trim()) return setFcFeedback("Escolha o paciente (ou digite o nome completo para criar).");
+    const problemaCanais = contactChannelsIssue(fcChannels);
+    if (problemaCanais) return setFcFeedback(problemaCanais);
     if (fcResultado === "NAO_FECHOU" && !fcObjection.trim()) return setFcFeedback("Não fechou: registre o motivo/objeção (é o nosso PMI).");
     const soldAmount = Number(fcSold.replace(/\./g, "").replace(",", ".")) || 0;
     const receivedAmount = Number(fcReceived.replace(/\./g, "").replace(",", ".")) || 0;
@@ -668,12 +690,19 @@ export function CrmKanbanPage() {
       if (!contactId) {
         const created = findOrCreateCrmContact(
           working,
-          { fullName: fcPatient.name.trim(), phone: fcPhone, whatsapp: fcPhone, sourceChannel: "Fechamento (Estevão)", ownerUserId: pessoa?.id ?? "gestao" },
+          {
+            fullName: fcPatient.name.trim(),
+            ...contactChannelsValues(fcChannels),
+            sourceChannel: "Fechamento (Estevão)",
+            ownerUserId: pessoa?.id ?? "gestao",
+          },
           pessoa?.id ?? "gestao",
         );
         working = created.state;
         contactId = created.contact.id;
       }
+      // Vinculado ou recém-criado: completa telefone/e-mail que estiverem vazios.
+      working = applyContactChannels(working, contactId, fcChannels, pessoa?.id ?? "gestao");
       let deal = working.deals.find((item) => item.contactId === contactId && item.status === "OPEN" && !item.programPhase);
       if (!deal) {
         working = createDealForContact(working, {
@@ -715,7 +744,7 @@ export function CrmKanbanPage() {
     });
     setFechamentoOpen(false);
     setFcPatient({ ref: "", name: "" });
-    setFcPhone("");
+    setFcChannels(emptyContactChannels);
     setFcSold("");
     setFcReceived("");
     setFcObjection("");
@@ -760,6 +789,8 @@ export function CrmKanbanPage() {
   const [editName, setEditName] = useState("");
   const [editPreferred, setEditPreferred] = useState("");
   const [editDealTitle, setEditDealTitle] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [nameFeedback, setNameFeedback] = useState("");
 
   function saveLeadName() {
@@ -769,20 +800,28 @@ export function CrmKanbanPage() {
       setNameFeedback("O nome não pode ficar vazio.");
       return;
     }
-    persist((current) => ({
-      ...current,
-      contacts: current.contacts.map((contact) =>
-        contact.id === selectedDeal.contactId
-          ? { ...contact, fullName, preferredName: editPreferred.trim(), updatedAt: new Date().toISOString() }
-          : contact,
-      ),
-      deals: current.deals.map((deal) =>
-        deal.id === selectedDeal.id && editDealTitle.trim()
-          ? { ...deal, title: editDealTitle.trim(), updatedAt: new Date().toISOString() }
-          : deal,
-      ),
-    }));
-    setNameFeedback("Nome atualizado — vale para o card, as tarefas e as cadências.");
+    const problema = contactChannelsIssue({ phone: editPhone, email: editEmail });
+    if (problema) {
+      setNameFeedback(problema);
+      return;
+    }
+    persist((current) => {
+      const comCadastro = updateContactChannels(
+        current,
+        selectedDeal.contactId,
+        { fullName, preferredName: editPreferred, phone: editPhone, email: editEmail },
+        pessoa?.id ?? "manual",
+      );
+      return {
+        ...comCadastro,
+        deals: comCadastro.deals.map((deal) =>
+          deal.id === selectedDeal.id && editDealTitle.trim()
+            ? { ...deal, title: editDealTitle.trim(), updatedAt: new Date().toISOString() }
+            : deal,
+        ),
+      };
+    });
+    setNameFeedback("Cadastro atualizado — vale para o card, as tarefas, as cadências e a planilha.");
   }
 
   function selectDeal(deal: CrmDeal, stageOverride?: CrmDealStage) {
@@ -791,6 +830,8 @@ export function CrmKanbanPage() {
     const dealContact = contactsById.get(deal.contactId);
     setEditName(dealContact?.fullName ?? "");
     setEditPreferred(dealContact?.preferredName ?? "");
+    setEditPhone(formatPhoneBR(dealContact?.whatsapp || dealContact?.phone || ""));
+    setEditEmail(dealContact?.email ?? "");
     setEditDealTitle(deal.title);
     setNameFeedback("");
     setTargetStage(stageOverride ?? deal.stage);
@@ -1134,15 +1175,39 @@ export function CrmKanbanPage() {
             </div>
 
             <div className="mt-5 rounded-lg border border-brand-oliva/16 bg-white/64 p-3">
-              <p className="text-xs font-semibold uppercase text-brand-oliva">Corrigir nome do lead</p>
+              <p className="text-xs font-semibold uppercase text-brand-oliva">Cadastro do lead</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                 <Input value={editName} onChange={(event) => setEditName(event.target.value)} placeholder="Nome completo" aria-label="Nome completo do lead" />
                 <Input value={editPreferred} onChange={(event) => setEditPreferred(event.target.value)} placeholder="Apelido (no card)" aria-label="Apelido do lead" />
                 <Input value={editDealTitle} onChange={(event) => setEditDealTitle(event.target.value)} placeholder="Título da negociação" aria-label="Título da negociação" />
               </div>
-              <div className="mt-2 flex items-center gap-3">
+              {/* Telefone e e-mail editáveis aqui (29/07): antes o lead ficava sem
+                  número e não havia onde cadastrar depois. */}
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <Input
+                  value={editPhone}
+                  onChange={(event) => setEditPhone(formatPhoneBR(event.target.value))}
+                  placeholder="(11) 98765-4321"
+                  inputMode="tel"
+                  aria-label="WhatsApp do lead"
+                />
+                <Input
+                  value={editEmail}
+                  onChange={(event) => setEditEmail(event.target.value)}
+                  placeholder="nome@email.com"
+                  type="email"
+                  inputMode="email"
+                  aria-label="E-mail do lead"
+                />
+              </div>
+              {!editPhone.trim() && !editEmail.trim() ? (
+                <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                  Este lead está sem telefone e sem e-mail — a cadência não tem para onde ligar nem escrever.
+                </p>
+              ) : null}
+              <div className="mt-2 flex flex-wrap items-center gap-3">
                 <Button type="button" size="sm" variant="outline" onClick={saveLeadName}>
-                  Salvar nome
+                  Salvar cadastro
                 </Button>
                 {nameFeedback ? <p className="text-xs font-semibold text-brand-musgo">{nameFeedback}</p> : null}
               </div>
@@ -1517,15 +1582,17 @@ export function CrmKanbanPage() {
                 <div>
                   <Label>Paciente (busca por nome ou telefone — não duplica)</Label>
                   <div className="mt-1">
-                    <PatientPicker contacts={state.contacts} value={fcPatient} onChange={setFcPatient} autoFocus />
+                    <PatientPicker
+                      contacts={state.contacts}
+                      value={fcPatient}
+                      onChange={setFcPatient}
+                      channels={fcChannels}
+                      onChannelsChange={setFcChannels}
+                      id="fc-paciente"
+                      autoFocus
+                    />
                   </div>
                 </div>
-                {!fcPatient.ref && fcPatient.name.trim() ? (
-                  <div>
-                    <Label>WhatsApp do paciente novo (chave única)</Label>
-                    <Input value={fcPhone} onChange={(event) => setFcPhone(event.target.value)} placeholder="11999999999" inputMode="tel" />
-                  </div>
-                ) : null}
                 <div>
                   <Label>O que o paciente fechou?</Label>
                   <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
@@ -1648,8 +1715,27 @@ export function CrmKanbanPage() {
                   <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nome ou referência" />
                 </div>
                 <div>
-                  <Label>WhatsApp</Label>
-                  <Input value={newPhone} onChange={(event) => setNewPhone(event.target.value)} placeholder="11999999999" />
+                  <Label htmlFor="novo-lead-phone">WhatsApp / telefone</Label>
+                  <Input
+                    id="novo-lead-phone"
+                    value={newPhone}
+                    onChange={(event) => setNewPhone(formatPhoneBR(event.target.value))}
+                    placeholder="(11) 98765-4321"
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="novo-lead-email">E-mail</Label>
+                  <Input
+                    id="novo-lead-email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(event) => setNewEmail(event.target.value)}
+                    placeholder="nome@email.com"
+                    inputMode="email"
+                    autoComplete="email"
+                  />
                 </div>
                 <div>
                   <Label>Origem</Label>

@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  applyContactChannels,
   applyMessageTemplate,
   canUserAccessCadence,
   canUserAccessContact,
@@ -43,6 +44,13 @@ import {
 import { todayISO } from "@/lib/localStore";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { useCrmState } from "./useCrmState";
+import { ContactChannelsFields } from "./ContactChannelsFields";
+import {
+  contactChannelsIssue,
+  contactChannelsValues,
+  emptyContactChannels,
+  type ContactChannelsDraft,
+} from "./contactChannels";
 
 function statusTone(status: CrmCadenceStatus) {
   if (status === "ACTIVE") return "bg-emerald-100 text-emerald-800";
@@ -61,7 +69,7 @@ export function CrmCadencesPage() {
   const [contactId, setContactId] = useState("");
   const [contactQuery, setContactQuery] = useState("");
   const [dealId, setDealId] = useState("");
-  const [newPhone, setNewPhone] = useState("");
+  const [novoContato, setNovoContato] = useState<ContactChannelsDraft>(emptyContactChannels);
   const [eventDate, setEventDate] = useState("");
   const [feedback, setFeedback] = useState("");
 
@@ -106,7 +114,11 @@ export function CrmCadencesPage() {
   const needsEventDate = cadenceNeedsEventDate(state, cadenceId);
   const selectedContact = state.contacts.find((contact) => contact.id === contactId);
 
-  async function enrollContact(contactIdToEnroll: string, displayName: string, createValues?: { fullName: string; phone: string }) {
+  async function enrollContact(
+    contactIdToEnroll: string,
+    displayName: string,
+    createValues?: { fullName: string; channels: ContactChannelsDraft },
+  ) {
     const cadence = state.cadences.find((item) => item.id === cadenceId);
     if (!cadence) return;
     const alreadyEnrolled = state.cadenceEnrollments.some(
@@ -129,8 +141,7 @@ export function CrmCadencesPage() {
           next,
           {
             fullName: createValues.fullName,
-            phone: createValues.phone,
-            whatsapp: createValues.phone,
+            ...contactChannelsValues(createValues.channels),
             contactType: "LEAD",
             lifecycleStage: "COLD_LEAD",
             sourceChannel: "Cadência (inscrição manual)",
@@ -139,6 +150,8 @@ export function CrmCadencesPage() {
         );
         next = result.state;
         targetId = result.contact.id;
+        // Casou com quem já existia sem número: completa o cadastro.
+        next = applyContactChannels(next, targetId, contactChannelsValues(createValues.channels), pessoa?.id ?? "sistema");
         createdName = contactDisplayName(result.contact);
       }
       return enrollContactInCadence(next, {
@@ -166,7 +179,7 @@ export function CrmCadencesPage() {
       setContactQuery("");
       setContactId("");
       setDealId("");
-      setNewPhone("");
+      setNovoContato(emptyContactChannels);
     } else {
       setFeedback(
         `${who} foi inscrito(a) neste aparelho, mas NÃO sincronizou com o Supabase. Confira a internet e toque em "Tentar sincronizar" no aviso acima antes de sair desta tela.`,
@@ -181,6 +194,11 @@ export function CrmCadencesPage() {
       setFeedback("Informe a data da consulta de retorno: os lembretes desta cadência contam para trás dela.");
       return;
     }
+    const problemaCanais = contactChannelsIssue(novoContato);
+    if (problemaCanais) {
+      setFeedback(problemaCanais);
+      return;
+    }
     if (selectedContact) {
       void enrollContact(selectedContact.id, contactDisplayName(selectedContact));
       return;
@@ -190,7 +208,7 @@ export function CrmCadencesPage() {
       setFeedback("Busque um contato existente ou digite o nome completo da pessoa nova.");
       return;
     }
-    void enrollContact("", typedName, { fullName: typedName, phone: newPhone.trim() });
+    void enrollContact("", typedName, { fullName: typedName, channels: novoContato });
   }
 
   function updateEnrollment(id: string, status: CrmCadenceStatus) {
@@ -390,12 +408,13 @@ export function CrmCadencesPage() {
                     <p className="text-xs font-semibold text-brand-musgo">
                       Pessoa nova! Ao inscrever, o contato é criado, entra no Kanban Comercial e as tarefas nascem sozinhas.
                     </p>
-                    <Label className="mt-2 block text-xs">WhatsApp (opcional, ajuda a evitar duplicados)</Label>
-                    <Input
-                      value={newPhone}
-                      onChange={(event) => setNewPhone(event.target.value)}
-                      placeholder="(11) 9…"
-                      className="mt-1 h-9"
+                    <ContactChannelsFields
+                      value={novoContato}
+                      onChange={setNovoContato}
+                      idPrefix="cadencia-novo"
+                      bare
+                      className="mt-2"
+                      note="Telefone e e-mail da pessoa — é por aqui que a cadência liga e escreve. Também é o que evita cadastro duplicado."
                     />
                   </div>
                 ) : null}

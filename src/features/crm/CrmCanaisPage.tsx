@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { canCrmBratan, isCoordenacao } from "@/lib/access";
 import { cn } from "@/lib/utils";
 import {
+  applyContactChannels,
   REFERRAL_REWARD_VALUE,
   contactDisplayName,
   crmModuleRoutes,
@@ -29,6 +30,13 @@ import {
 } from "./crmData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { useCrmState } from "./useCrmState";
+import { ContactChannelsFields } from "./ContactChannelsFields";
+import {
+  contactChannelsIssue,
+  contactChannelsValues,
+  emptyContactChannels,
+  type ContactChannelsDraft,
+} from "./contactChannels";
 
 const statusTones: Record<ReferralRewardStatus, string> = {
   AGUARDANDO: "border-slate-300 bg-slate-50 text-slate-700",
@@ -47,7 +55,7 @@ export function CrmCanaisPage() {
   const [referrerId, setReferrerId] = useState("");
   const [referredQuery, setReferredQuery] = useState("");
   const [referredId, setReferredId] = useState("");
-  const [newPhone, setNewPhone] = useState("");
+  const [novoContato, setNovoContato] = useState<ContactChannelsDraft>(emptyContactChannels);
 
   const stats = useMemo(() => salesChannelStats(state), [state]);
   const rewards = useMemo(() => referralRewards(state), [state]);
@@ -74,6 +82,11 @@ export function CrmCanaisPage() {
       setFeedback("Escolha quem FOI indicado, ou digite o nome completo da pessoa nova.");
       return;
     }
+    const problemaCanais = contactChannelsIssue(novoContato);
+    if (problemaCanais) {
+      setFeedback(problemaCanais);
+      return;
+    }
     persist((current) => {
       let next = current;
       let targetId = referredId;
@@ -82,8 +95,7 @@ export function CrmCanaisPage() {
           next,
           {
             fullName: referredQuery.trim(),
-            phone: newPhone.trim(),
-            whatsapp: newPhone.trim(),
+            ...contactChannelsValues(novoContato),
             contactType: "LEAD",
             lifecycleStage: "COLD_LEAD",
             sourceChannel: "Indicação",
@@ -93,6 +105,8 @@ export function CrmCanaisPage() {
         next = created.state;
         targetId = created.contact.id;
       }
+      // Indicado que já existia sem número: completa o cadastro agora.
+      next = applyContactChannels(next, targetId, contactChannelsValues(novoContato), pessoa?.id ?? "canais");
       next = setContactReferrer(next, targetId, referrerId, pessoa?.id ?? "canais");
       const referrer = next.contacts.find((item) => item.id === referrerId);
       const referred = next.contacts.find((item) => item.id === targetId);
@@ -105,7 +119,7 @@ export function CrmCanaisPage() {
     setReferrerId("");
     setReferredQuery("");
     setReferredId("");
-    setNewPhone("");
+    setNovoContato(emptyContactChannels);
   }
 
   function handleMarkPaid(referredContactId: string, referredName: string) {
@@ -237,8 +251,13 @@ export function CrmCanaisPage() {
                 {referredId ? <p className="text-xs font-semibold text-emerald-700">✓ selecionado</p> : null}
               </div>
               <div className="space-y-1.5">
-                <Label>WhatsApp (se for pessoa nova)</Label>
-                <Input value={newPhone} onChange={(event) => setNewPhone(event.target.value)} placeholder="11999999999" />
+                <ContactChannelsFields
+                  value={novoContato}
+                  onChange={setNovoContato}
+                  idPrefix="indicacao"
+                  bare
+                  note="Contato de quem foi indicado (se for pessoa nova, ou se o cadastro estiver sem número)."
+                />
                 <LiquidButton type="submit" size="sm" className="mt-1 w-full">
                   Registrar indicação
                 </LiquidButton>

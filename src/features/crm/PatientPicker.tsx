@@ -3,6 +3,8 @@ import { Check, Search, UserPlus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { contactDisplayName, type CrmContact } from "./crmData";
+import { ContactChannelsFields } from "./ContactChannelsFields";
+import { hasContactChannels, type ContactChannelsDraft } from "./contactChannels";
 
 export type PatientPickerValue = { ref: string; name: string };
 
@@ -29,6 +31,8 @@ export function PatientPicker({
   disabled = false,
   autoFocus = false,
   id,
+  channels,
+  onChannelsChange,
 }: {
   contacts: CrmContact[];
   value: PatientPickerValue;
@@ -37,6 +41,11 @@ export function PatientPicker({
   disabled?: boolean;
   autoFocus?: boolean;
   id?: string;
+  // Telefone e e-mail (29/07/2026): quando a tela passa estes dois, o próprio
+  // seletor pede o contato — na hora de criar alguém novo E quando o cadastro
+  // vinculado está sem número. Sem isso a pessoa nascia muda no CRM.
+  channels?: ContactChannelsDraft;
+  onChannelsChange?: (next: ContactChannelsDraft) => void;
 }) {
   const [query, setQuery] = useState(value.name);
   const [open, setOpen] = useState(false);
@@ -94,7 +103,19 @@ export function PatientPicker({
     setQuery("");
     setOpen(true);
     onChange({ ref: "", name: "" });
+    onChannelsChange?.({ phone: "", email: "" });
   }
+
+  const linkedContact = useMemo(
+    () => (value.ref ? contacts.find((contact) => contact.id === value.ref) : undefined),
+    [contacts, value.ref],
+  );
+  // Cadastro vinculado que está sem telefone E sem e-mail: é o caso do Lucas —
+  // "puxo o perfil da pessoa e não tem onde cadastrar o número".
+  const linkedSemContato = Boolean(
+    linkedContact && !linkedContact.phone.trim() && !linkedContact.whatsapp.trim() && !linkedContact.email.trim(),
+  );
+  const pedirContato = Boolean(channels && onChannelsChange && !disabled && (linkedSemContato || (!linked && query.trim().length >= 2)));
 
   return (
     <div className="relative">
@@ -135,7 +156,22 @@ export function PatientPicker({
       ) : query.trim() ? (
         <p className="mt-1 flex items-center gap-1 text-xs text-amber-700">
           <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Novo paciente — será cadastrado no CRM ao salvar
+          {channels && !hasContactChannels(channels) ? " (preencha o telefone abaixo)" : ""}
         </p>
+      ) : null}
+
+      {pedirContato && channels && onChannelsChange ? (
+        <ContactChannelsFields
+          value={channels}
+          onChange={onChannelsChange}
+          idPrefix={`${id ?? "paciente"}-novo`}
+          className="mt-2"
+          note={
+            linkedSemContato
+              ? `${contactDisplayName(linkedContact!)} está no CRM sem telefone nem e-mail. Preencha aqui e o cadastro fica completo ao salvar.`
+              : "Contato de quem está sendo cadastrado agora — é por aqui que a cadência liga e escreve depois."
+          }
+        />
       ) : null}
 
       {open && !disabled ? (

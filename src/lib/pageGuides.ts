@@ -426,15 +426,17 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       whatIs:
         "É o quadro de vendas: cada coluna é uma etapa da caminhada do lead até fechar. Toda negociação nasce aqui.",
       steps: [
-        "Chegou um lead novo? Toque em Novo lead: ele cria o contato e a negociação de uma vez.",
+        "Chegou um lead novo? Toque em Novo lead: ele cria o contato e a negociação de uma vez — preencha o WhatsApp e o e-mail ali mesmo.",
         "Acompanhe cada cartão: ele mostra em que etapa a negociação está.",
         "Quando o lead avançar de verdade, arraste o cartão para a próxima coluna — o app valida se a passagem é permitida.",
         "Abra o cartão para ver detalhes, registrar o que foi conversado e agendar o próximo passo.",
+        "No cartão aberto, o bloco 'Cadastro do lead' corrige nome, apelido, telefone e e-mail — vale para as tarefas, as cadências e a planilha.",
       ],
       tips: [
         "Negociação só nasce aqui — não tente criar em outra tela.",
         "Se o app barrar o arraste, é porque falta cumprir algo da etapa atual.",
         "Cartão parado muitos dias na mesma coluna merece um contato de resgate.",
+        "O telefone é a chave única do CRM: com ele, o mesmo paciente nunca vira dois cadastros — e a cadência tem para onde ligar.",
       ],
     },
   },
@@ -446,6 +448,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
         "É onde você inscreve um contato nas réguas de acompanhamento D1, D5, D7 e D60. Depois de inscrito, as tarefas de contato aparecem sozinhas em Minhas Tarefas nos dias certos.",
       steps: [
         "Busque o contato pelo nome.",
+        "Pessoa nova? Digite o nome completo e preencha o telefone e o e-mail que aparecem — é por eles que a régua liga e escreve.",
         "Vincule a negociação existente daquele contato.",
         "Escolha a régua certa (D1, D5, D7 ou D60) e inscreva.",
         "Pronto: nos dias da régua, a tarefa de contato aparece automaticamente em Minhas Tarefas.",
@@ -453,6 +456,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       tips: [
         "Inscreva o contato assim que a etapa pedir — régua atrasada perde o timing.",
         "Um contato sem negociação vinculada não roda a régua direito: vincule antes.",
+        "Sem telefone a régua nasce cega: se o cadastro estiver vazio, preencha aqui ou no perfil do contato.",
       ],
     },
   },

@@ -9,6 +9,7 @@ import {
   HeartPulse,
   History,
   MessageCircle,
+  Pencil,
   ShieldAlert,
   UserRound,
 } from "lucide-react";
@@ -16,6 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { loadInteligencia360State, money360, stageLabels, touchTypeLabels } from "@/features/inteligencia360/inteligencia360Data";
 import {
@@ -32,8 +36,10 @@ import {
   taskStatusLabels,
   taskTypeLabels,
   whatsappUrl,
+  updateContactChannels,
 } from "./crmData";
 import { useCrmState } from "./useCrmState";
+import { contactChannelsIssue, formatPhoneBR } from "./contactChannels";
 
 // Contratos saiu do app (decisão do Lucas, 22/07): não existe fluxo de
 // contrato/SuperSign no CRM.
@@ -66,8 +72,14 @@ function statusDot(tone: "ok" | "warn" | "danger") {
 export function CrmContactProfilePage() {
   const { id = "" } = useParams();
   const { pessoa } = useAuth();
-  const { state } = useCrmState();
+  const { state, persist } = useCrmState();
   const [tab, setTab] = useState<ProfileTab>("resumo");
+  // Edição do cadastro (29/07/2026): o perfil era 100% somente leitura, então
+  // um paciente que entrou sem telefone (comanda, comprovante) não tinha onde
+  // ganhar número depois — a cadência ficava sem para onde ligar.
+  const [editando, setEditando] = useState(false);
+  const [cadastro, setCadastro] = useState({ fullName: "", preferredName: "", phone: "", email: "" });
+  const [cadastroFeedback, setCadastroFeedback] = useState("");
   const inteligencia = useMemo(() => loadInteligencia360State(), []);
   const contact = state.contacts.find((item) => item.id === id);
   const canAccess = contact ? canUserAccessContact(pessoa, contact) : false;
@@ -90,6 +102,30 @@ export function CrmContactProfilePage() {
   const lastTouch = contactTouchpoints
     .slice()
     .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0];
+
+  const semContato = Boolean(contact && !contact.phone.trim() && !contact.whatsapp.trim() && !contact.email.trim());
+
+  function abrirEdicao() {
+    if (!contact) return;
+    setCadastro({
+      fullName: contact.fullName,
+      preferredName: contact.preferredName,
+      phone: formatPhoneBR(contact.whatsapp || contact.phone),
+      email: contact.email,
+    });
+    setCadastroFeedback("");
+    setEditando(true);
+  }
+
+  function salvarCadastro() {
+    if (!contact) return;
+    if (!cadastro.fullName.trim()) return setCadastroFeedback("O nome não pode ficar vazio.");
+    const problema = contactChannelsIssue({ phone: cadastro.phone, email: cadastro.email });
+    if (problema) return setCadastroFeedback(problema);
+    void persist((current) => updateContactChannels(current, contact.id, cadastro, pessoa?.id ?? "manual"));
+    setEditando(false);
+    setCadastroFeedback("");
+  }
 
 
 
@@ -208,14 +244,101 @@ export function CrmContactProfilePage() {
         <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex flex-wrap items-center gap-2">
                 <UserRound className="h-5 w-5" />
                 Resumo do contato
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto h-8 gap-1.5 px-2.5 text-xs"
+                  onClick={() => (editando ? setEditando(false) : abrirEdicao())}
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                  {editando ? "Cancelar" : "Editar cadastro"}
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {semContato && !editando ? (
+                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-brand-dourado/45 bg-brand-creme/45 p-3">
+                  <p className="text-xs font-semibold text-brand-tinta">
+                    Este cadastro está sem telefone e sem e-mail — a cadência não tem para onde ligar nem escrever.
+                  </p>
+                  <Button type="button" size="sm" className="h-8 px-3 text-xs" onClick={abrirEdicao}>
+                    Cadastrar telefone
+                  </Button>
+                </div>
+              ) : null}
+
+              {editando ? (
+                <div className="mb-4 grid gap-3 rounded-lg border border-brand-oliva/25 bg-white/70 p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="perfil-nome">Nome completo</Label>
+                      <Input
+                        id="perfil-nome"
+                        className="mt-1"
+                        value={cadastro.fullName}
+                        onChange={(event) => setCadastro({ ...cadastro, fullName: event.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="perfil-apelido">Apelido (como aparece nos cards)</Label>
+                      <Input
+                        id="perfil-apelido"
+                        className="mt-1"
+                        value={cadastro.preferredName}
+                        onChange={(event) => setCadastro({ ...cadastro, preferredName: event.target.value })}
+                        placeholder="Opcional"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="perfil-phone">WhatsApp / telefone</Label>
+                      <Input
+                        id="perfil-phone"
+                        className="mt-1"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder="(11) 98765-4321"
+                        value={cadastro.phone}
+                        onChange={(event) => setCadastro({ ...cadastro, phone: formatPhoneBR(event.target.value) })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="perfil-email">E-mail</Label>
+                      <Input
+                        id="perfil-email"
+                        className="mt-1"
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        placeholder="nome@email.com"
+                        value={cadastro.email}
+                        onChange={(event) => setCadastro({ ...cadastro, email: event.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    O telefone é a chave única do CRM: ele liga esta pessoa às comandas, aos comprovantes, às dívidas e às
+                    cadências — e é o que evita cadastro duplicado.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <LiquidButton type="button" size="sm" onClick={salvarCadastro}>
+                      Salvar cadastro
+                    </LiquidButton>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setEditando(false)}>
+                      Cancelar
+                    </Button>
+                    {cadastroFeedback ? (
+                      <p className="text-xs font-semibold text-destructive">{cadastroFeedback}</p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <InfoItem label="WhatsApp" value={contact.whatsapp || contact.phone} />
+                <InfoItem label="WhatsApp" value={formatPhoneBR(contact.whatsapp || contact.phone)} />
                 <InfoItem label="E-mail" value={contact.email} />
                 <InfoItem label="Origem" value={contact.sourceChannel} />
                 <InfoItem label="Temperatura" value={contact.leadTemperature} />

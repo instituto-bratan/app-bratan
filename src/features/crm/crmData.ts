@@ -1602,6 +1602,109 @@ export function findPotentialDuplicateContacts(state: CrmState, values: Partial<
   });
 }
 
+/**
+ * Preenche telefone e e-mail de um contato que já existe (29/07/2026).
+ *
+ * Regra: só preenche o que está VAZIO — nunca sobrescreve número que alguém já
+ * cadastrou, para uma comanda às pressas não apagar o contato bom. Trocar de
+ * número de propósito é no perfil do contato, onde a pessoa vê o valor antigo.
+ * Devolve o estado igual quando não havia nada para preencher.
+ */
+export function applyContactChannels(
+  state: CrmState,
+  contactId: string,
+  draft: { phone?: string; whatsapp?: string; email?: string },
+  actorId = "sistema",
+) {
+  const contact = state.contacts.find((record) => record.id === contactId);
+  if (!contact) return state;
+
+  const phone = normalizePhone(draft.phone || draft.whatsapp || "");
+  const email = (draft.email || "").trim().toLowerCase();
+  const patch: Partial<CrmContact> = {};
+  const preenchidos: string[] = [];
+  if (phone && !normalizePhone(contact.phone)) {
+    patch.phone = phone;
+    preenchidos.push("telefone");
+  }
+  if (phone && !normalizePhone(contact.whatsapp)) patch.whatsapp = phone;
+  if (email && !contact.email.trim()) {
+    patch.email = email;
+    preenchidos.push("e-mail");
+  }
+  if (!preenchidos.length && !patch.whatsapp) return state;
+
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    contacts: state.contacts.map((record) =>
+      record.id === contactId ? { ...record, ...patch, updatedAt: now } : record,
+    ),
+    timelineEvents: preenchidos.length
+      ? [
+          createTimelineEvent({
+            contactId,
+            eventType: "CONTACT_CHANNELS_FILLED",
+            eventTitle: `Contato completado (${preenchidos.join(" e ")})`,
+            eventDescription: `${preenchidos.join(" e ")} cadastrado(s) para ${contactDisplayName(contact)}.`,
+            sourceModule: "CRM",
+            sourceId: contactId,
+            createdBy: actorId,
+          }),
+          ...state.timelineEvents,
+        ]
+      : state.timelineEvents,
+  };
+}
+
+/**
+ * Troca/edita os dados de contato pela mão da pessoa (perfil do contato).
+ * Aqui SOBRESCREVE de propósito — inclusive limpando — porque quem está
+ * editando vê o valor atual na tela. Registra o antes → depois na timeline.
+ */
+export function updateContactChannels(
+  state: CrmState,
+  contactId: string,
+  values: { fullName?: string; preferredName?: string; phone: string; email: string },
+  actorId = "sistema",
+) {
+  const contact = state.contacts.find((record) => record.id === contactId);
+  if (!contact) return state;
+
+  const phone = normalizePhone(values.phone);
+  const email = values.email.trim().toLowerCase();
+  const fullName = values.fullName?.trim() || contact.fullName;
+  const preferredName = values.preferredName?.trim() ?? contact.preferredName;
+  const mudou: string[] = [];
+  if (phone !== normalizePhone(contact.phone)) mudou.push(`telefone: ${contact.phone || "vazio"} → ${phone || "vazio"}`);
+  if (email !== contact.email.trim().toLowerCase()) mudou.push(`e-mail: ${contact.email || "vazio"} → ${email || "vazio"}`);
+  if (fullName !== contact.fullName) mudou.push(`nome: ${contact.fullName} → ${fullName}`);
+  if (preferredName !== contact.preferredName) mudou.push(`apelido: ${contact.preferredName || "vazio"} → ${preferredName || "vazio"}`);
+  if (!mudou.length) return state;
+
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    contacts: state.contacts.map((record) =>
+      record.id === contactId
+        ? { ...record, fullName, preferredName, phone, whatsapp: phone, email, updatedAt: now }
+        : record,
+    ),
+    timelineEvents: [
+      createTimelineEvent({
+        contactId,
+        eventType: "CONTACT_UPDATED",
+        eventTitle: "Cadastro atualizado",
+        eventDescription: mudou.join(" · "),
+        sourceModule: "CRM",
+        sourceId: contactId,
+        createdBy: actorId,
+      }),
+      ...state.timelineEvents,
+    ],
+  };
+}
+
 export function findOrCreateCrmContact(
   state: CrmState,
   values: Partial<CrmContact> & Pick<CrmContact, "fullName">,
@@ -3021,7 +3124,7 @@ export function buildCadenceSheet(state: CrmState, options?: { historyDays?: num
         enrollmentId: enrollment.id,
         contactId: contact.id,
         patientName,
-        phone: contact.phone,
+        phone: contact.whatsapp || contact.phone,
         entradaEm: enrollment.triggerDate,
         setorOrigem: enrollment.triggerSource.includes("cad-pos-fechamento") || enrollment.triggerSource.includes("cad-return-cycle")
           ? "Recepção"
@@ -3070,7 +3173,7 @@ export function buildCadenceSheet(state: CrmState, options?: { historyDays?: num
       motivo: cadence?.name ?? enrollment.cadenceId,
       contactId: contact.id,
       patientName,
-      phone: contact.phone,
+      phone: contact.whatsapp || contact.phone,
       openedAt: enrollment.triggerDate,
       cells,
       resultadoFinal: sheetResultadoFinal(enrollment, flags, cells),
