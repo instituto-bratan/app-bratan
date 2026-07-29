@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
+import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, Layers, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,11 @@ import {
   buildProvisionExpenses,
   buildProvisionPlan,
   createFinId,
+  addMonthsToDue,
+  futureOpenInstallments,
+  installmentSummary,
+  MAX_INSTALLMENTS,
+  missingInstallments,
   expensePaymentMethods,
   finGroupLabels,
   finGroupOrder,
@@ -57,6 +62,8 @@ export function FinanceiroContasPage() {
   const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas">("todas");
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [provisionFeedback, setProvisionFeedback] = useState("");
+  // Corrigindo uma parcela: aplicar também às seguintes ainda em aberto?
+  const [aplicarNasSeguintes, setAplicarNasSeguintes] = useState(true);
 
   // Provisões da poupança do mês (13º, férias, rescisões, urgências, início de
   // ano, festa) — o bloco que a planilha antiga trazia embaixo.
@@ -114,6 +121,29 @@ export function FinanceiroContasPage() {
   // Aviso de vencimento olha o ANO inteiro, não só o mês da tela.
   const avisos = useMemo(() => upcomingExpenses(financeiro.expenses, now, AVISO_DIAS), [financeiro.expenses, now]);
 
+  // Pré-visualização do parcelamento enquanto a pessoa digita "1/12".
+  const previewParcelas = useMemo(() => {
+    const [num, total] = installment.split("/").map((part) => Number(part.trim()) || 0);
+    if (!total || total < 2 || total > MAX_INSTALLMENTS) return null;
+    const parcelaAtual = num || 1;
+    const restantes = Math.max(total - parcelaAtual, 0);
+    if (!restantes) return null;
+    const ultima = addMonthsToDue(dueDate, restantes);
+    const valor = parseAmount(amount);
+    return {
+      mensagem: `Vai lançar ${restantes + 1} parcelas: da ${parcelaAtual}/${total} até a ${total}/${total}.`,
+      detalhe: `Uma por mês, sempre no dia ${dueDate.slice(8, 10)}, terminando em ${ultima.split("-").reverse().join("/")}${
+        valor > 0 ? ` · ${moneyFin(valor)} por parcela, ${moneyFin(valor * (restantes + 1))} no total` : ""
+      }.`,
+    };
+  }, [installment, dueDate, amount]);
+
+  const parcelasSeguintesDaEdicao = useMemo(() => {
+    if (!editingExpenseId) return [];
+    const editando = financeiro.expenses.find((expense) => expense.id === editingExpenseId);
+    return editando ? futureOpenInstallments(financeiro.expenses, editando) : [];
+  }, [editingExpenseId, financeiro.expenses]);
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
@@ -123,6 +153,15 @@ export function FinanceiroContasPage() {
     if (value <= 0) return setFeedback("Informe o valor.");
 
     const [num, total] = installment.split("/").map((part) => Number(part.trim()) || null);
+    if (total && total > MAX_INSTALLMENTS) {
+      return setFeedback(`Parcelamento de ${total}x parece erro de digitação — o limite é ${MAX_INSTALLMENTS}x.`);
+    }
+    if (total && num && num > total) {
+      return setFeedback(`Parcela ${num}/${total} não existe: a parcela não pode ser maior que o total.`);
+    }
+    if (total && total > 1 && recorrente) {
+      return setFeedback("Escolha um dos dois: parcelado (tem fim) OU repete todo mês (não tem fim).");
+    }
     const category = categoryById.get(categoryRef);
     const editingExpense = editingExpenseId ? financeiro.expenses.find((existing) => existing.id === editingExpenseId) : null;
     const expense: FinExpense = {
@@ -144,16 +183,70 @@ export function FinanceiroContasPage() {
     };
     if (editingExpense) {
       financeiro.updateExpense(expense);
-      setFeedback(`Conta "${expense.description}" corrigida: ${moneyFin(value)} em "${category?.name}". A P12 já refletiu.`);
+      // Correção em série: as parcelas SEGUINTES ainda em aberto acompanham o
+      // valor/categoria/vencimento corrigidos. Parcela paga nunca é mexida.
+      const seguintes = aplicarNasSeguintes ? futureOpenInstallments(financeiro.expenses, expense) : [];
+      if (seguintes.length) {
+        const anchorDay = Number(expense.dueDate.slice(8, 10));
+        financeiro.updateExpenses(
+          seguintes.map((parcela) => ({
+            ...parcela,
+            description: expense.description,
+            categoryRef: expense.categoryRef,
+            amount: expense.amount,
+            method: expense.method,
+            supplier: expense.supplier,
+            isCapex: expense.isCapex,
+            dueDate: addMonthsToDue(expense.dueDate, (parcela.installmentNum ?? 0) - (expense.installmentNum ?? 0), anchorDay),
+          })),
+        );
+      }
+      setFeedback(
+        seguintes.length
+          ? `Conta "${expense.description}" corrigida em ${moneyFin(value)} — e as ${seguintes.length} parcelas seguintes ainda em aberto foram ajustadas junto. Parcela já paga não foi tocada.`
+          : `Conta "${expense.description}" corrigida: ${moneyFin(value)} em "${category?.name}". A P12 já refletiu.`,
+      );
     } else {
       financeiro.addExpense(expense);
+      // PARCELADO: a série inteira nasce junto, uma parcela em cada mês, até a
+      // última (30/07/2026). Antes só a primeira era lançada e as seguintes
+      // simplesmente não apareciam nos próximos meses.
+      const parcelas = missingInstallments([...financeiro.expenses, expense], expense);
+      if (parcelas.length) financeiro.addExpenses(parcelas);
       setFeedback(
-        recorrente
-          ? `Conta recorrente lançada em "${category?.name}" · ${moneyFin(value)}. A do mês que vem nasce sozinha — edite o valor dela se mudar.`
-          : `Conta lançada em "${category?.name}" · ${moneyFin(value)}.`,
+        parcelas.length
+          ? `Parcelado em ${total}x de ${moneyFin(value)}: lancei esta e as ${parcelas.length} seguintes, uma por mês, até ${parcelas.at(-1)!.dueDate.split("-").reverse().join("/")}. Cada uma cai no mês do seu vencimento na P12.`
+          : recorrente
+            ? `Conta recorrente lançada em "${category?.name}" · ${moneyFin(value)}. A do mês que vem nasce sozinha — edite o valor dela se mudar.`
+            : `Conta lançada em "${category?.name}" · ${moneyFin(value)}.`,
       );
     }
     resetForm();
+  }
+
+  // Boleto lançado ANTES desta correção (30/07): a série existe só no rótulo.
+  // Este botão lança as parcelas que faltam, sem tocar nas que já existem.
+  function lancarParcelasQueFaltam(expense: FinExpense) {
+    const faltam = missingInstallments(financeiro.expenses, expense);
+    if (!faltam.length) return setFeedback("As parcelas seguintes desta conta já estão lançadas.");
+    financeiro.addExpenses(faltam);
+    setFeedback(
+      `Lancei ${faltam.length} parcela(s) de "${expense.description}", uma por mês, até ${faltam.at(-1)!.dueDate.split("-").reverse().join("/")}.`,
+    );
+  }
+
+  // Excluir o parcelamento inteiro (as que ainda não foram pagas).
+  function excluirParcelasEmAberto(expense: FinExpense) {
+    const abertas = [expense, ...futureOpenInstallments(financeiro.expenses, expense)].filter((item) => !item.paidAt);
+    if (
+      !window.confirm(
+        `Excluir ${abertas.length} parcela(s) em aberto de "${expense.description}"?\n\nParcela já paga NÃO é excluída — o histórico fica.`,
+      )
+    )
+      return;
+    if (abertas.some((item) => item.id === editingExpenseId)) resetForm();
+    financeiro.removeExpenses(abertas.map((item) => item.id));
+    setFeedback(`${abertas.length} parcela(s) em aberto excluída(s). A P12 se ajustou sozinha.`);
   }
 
   function resetForm() {
@@ -164,6 +257,7 @@ export function FinanceiroContasPage() {
     setInstallment("");
     setDocumentNote("");
     setRecorrente(false);
+    setAplicarNasSeguintes(true);
   }
 
   function startEditing(expense: FinExpense) {
@@ -326,8 +420,20 @@ export function FinanceiroContasPage() {
                 </select>
               </div>
               <div>
-                <Label>Parcela (ex.: 2/4)</Label>
-                <Input value={installment} onChange={(event) => setInstallment(event.target.value)} placeholder="Opcional" />
+                <Label className="flex items-center gap-1">
+                  Parcela (ex.: 1/12)
+                  <InfoTip title="Boleto parcelado">
+                    Escreva a parcela desta conta e o total (1/12, 3/10…). Ao lançar, o app cria TODAS as parcelas
+                    seguintes, uma em cada mês, até a última — cada uma entra na P12 no mês do seu vencimento. Corrigir o
+                    valor de uma parcela oferece ajustar as seguintes que ainda estão em aberto.
+                  </InfoTip>
+                </Label>
+                <Input
+                  value={installment}
+                  onChange={(event) => setInstallment(event.target.value)}
+                  placeholder="Opcional — ex.: 1/12"
+                  inputMode="text"
+                />
               </div>
               <div className="sm:col-span-2">
                 <Label>Fornecedor</Label>
@@ -354,6 +460,33 @@ export function FinanceiroContasPage() {
                   </span>
                 </span>
               </label>
+              {previewParcelas ? (
+                <div className="rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3 text-xs leading-5 sm:col-span-2 lg:col-span-4">
+                  <p className="flex items-center gap-1.5 font-bold text-brand-tinta">
+                    <Layers className="h-4 w-4 text-brand-dourado" aria-hidden="true" />
+                    {previewParcelas.mensagem}
+                  </p>
+                  <p className="mt-0.5 text-muted-foreground">{previewParcelas.detalhe}</p>
+                </div>
+              ) : null}
+              {editingExpenseId && parcelasSeguintesDaEdicao.length ? (
+                <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6 sm:col-span-2 lg:col-span-4">
+                  <input
+                    type="checkbox"
+                    checked={aplicarNasSeguintes}
+                    onChange={(event) => setAplicarNasSeguintes(event.target.checked)}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <span>
+                    <span className="font-semibold text-brand-tinta">
+                      Aplicar também às {parcelasSeguintesDaEdicao.length} parcelas seguintes em aberto
+                    </span>
+                    <span className="block text-muted-foreground">
+                      Corrige valor, categoria, forma e vencimento das próximas. Parcela já paga nunca é alterada.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
               <div className="sm:col-span-2 lg:col-span-4">
                 <LiquidButton type="submit" size="sm">
                   <Plus className="h-4 w-4" aria-hidden="true" />
@@ -401,6 +534,7 @@ export function FinanceiroContasPage() {
                     monthExpenses.map((expense) => {
                       const category = categoryById.get(expense.categoryRef);
                       const overdue = !expense.paidAt && expense.dueDate < now;
+                      const serie = installmentSummary(financeiro.expenses, expense);
                       return (
                         <tr key={expense.id} className={cn(overdue && "bg-red-50/60")}>
                           <td className="px-3 py-2.5 whitespace-nowrap">{expense.dueDate.split("-").reverse().join("/")}</td>
@@ -415,9 +549,47 @@ export function FinanceiroContasPage() {
                                   <Repeat className="mr-1 h-3 w-3" aria-hidden="true" />Recorrente
                                 </Badge>
                               ) : null}
+                              {serie ? (
+                                <Badge className="bg-brand-creme text-brand-tinta">
+                                  <Layers className="mr-1 h-3 w-3" aria-hidden="true" />
+                                  {serie.faltamLancar ? `${serie.lancadas} de ${serie.total} lançadas` : `${serie.abertas} em aberto`}
+                                </Badge>
+                              ) : null}
                             </div>
                             {expense.supplier || expense.documentNote ? (
                               <p className="text-xs text-muted-foreground">{[expense.supplier, expense.documentNote].filter(Boolean).join(" · ")}</p>
+                            ) : null}
+                            {serie ? (
+                              <p className="text-xs text-muted-foreground">
+                                {serie.faltamLancar ? (
+                                  <>
+                                    Faltam {serie.faltamLancar} parcela(s) sem lançar — os próximos meses estão vazios.
+                                    {readOnly ? null : (
+                                      <button
+                                        type="button"
+                                        onClick={() => lancarParcelasQueFaltam(expense)}
+                                        className="ml-1 font-semibold text-brand-oliva underline underline-offset-2"
+                                      >
+                                        Lançar as que faltam
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    Parcelamento até {serie.ultimoVencimento.split("-").reverse().join("/")} ·{" "}
+                                    {moneyFin(serie.valorAberto)} ainda a pagar
+                                    {readOnly ? null : (
+                                      <button
+                                        type="button"
+                                        onClick={() => excluirParcelasEmAberto(expense)}
+                                        className="ml-1 font-semibold text-destructive underline underline-offset-2"
+                                      >
+                                        Excluir parcelas em aberto
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </p>
                             ) : null}
                           </td>
                           <td className="px-3 py-2.5 text-xs">{category?.name ?? expense.categoryRef}{expense.isCapex ? <Badge className="ml-1.5 bg-brand-creme text-brand-tinta">CAPEX</Badge> : null}</td>

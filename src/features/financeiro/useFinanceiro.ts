@@ -320,6 +320,54 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
+  // Lote de contas (parcelas de um boleto): um único save local + N no Supabase.
+  // Ids determinísticos garantem que reenviar não duplica.
+  function addExpenses(list: FinExpense[]) {
+    if (!list.length) return;
+    setExpenses((current) => {
+      const existing = new Set(current.map((expense) => expense.id));
+      const novas = list.filter((expense) => !existing.has(expense.id));
+      const next = [...current, ...novas].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      saveLocalFinExpenses(next);
+      return next;
+    });
+    if (useRemote) {
+      for (const expense of list) {
+        void createExpenseMutation.mutateAsync(expense).catch((error) => console.warn("Parcela não sincronizou.", error));
+      }
+    }
+  }
+
+  function updateExpenses(list: FinExpense[]) {
+    if (!list.length) return;
+    const byId = new Map(list.map((expense) => [expense.id, expense]));
+    setExpenses((current) => {
+      const next = current.map((expense) => byId.get(expense.id) ?? expense);
+      saveLocalFinExpenses(next);
+      return next;
+    });
+    if (useRemote) {
+      for (const expense of list) {
+        void updateExpenseMutation.mutateAsync(expense).catch((error) => console.warn("Parcela não sincronizou.", error));
+      }
+    }
+  }
+
+  function removeExpenses(ids: string[]) {
+    if (!ids.length) return;
+    const alvo = new Set(ids);
+    setExpenses((current) => {
+      const next = current.filter((expense) => !alvo.has(expense.id));
+      saveLocalFinExpenses(next);
+      return next;
+    });
+    if (useRemote) {
+      for (const id of ids) {
+        void deleteExpenseMutation.mutateAsync(id).catch((error) => console.warn("Parcela não removida no servidor.", error));
+      }
+    }
+  }
+
   function setExpensePaid(expenseId: string, paidAt: string | null) {
     setExpenses((current) => {
       const next = current.map((expense) => (expense.id === expenseId ? { ...expense, paidAt } : expense));
@@ -509,7 +557,10 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     updateSale,
     removeSale,
     addExpense,
+    addExpenses,
     updateExpense,
+    updateExpenses,
+    removeExpenses,
     setExpensePaid,
     removeExpense,
     saveReconciliation,

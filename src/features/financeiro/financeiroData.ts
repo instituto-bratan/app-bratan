@@ -170,6 +170,101 @@ export function materializeRecurringExpenses(expenses: FinExpense[], todayISO: s
   return generated;
 }
 
+// ---- Parcelamento (30/07/2026) -------------------------------------------------
+// Antes, "3/12" era só um RÓTULO: o app gravava uma linha e as parcelas seguintes
+// nunca apareciam nos próximos meses (reclamação do Lucas). Agora a série inteira
+// nasce junto, cada parcela com id determinístico `<raiz>~par-NN` — o mesmo
+// truque da recorrência, que impede duplicar em qualquer aparelho.
+//
+// Diferença da recorrência: parcela TERMINA (tem total), recorrência é infinita.
+// Por isso as duas nunca convivem na mesma conta.
+
+const INSTALLMENT_SEP = "~par-";
+
+// Trava contra erro de digitação (1/9999 criaria mil linhas na P12).
+export const MAX_INSTALLMENTS = 72;
+
+export function installmentRootId(id: string) {
+  const index = id.indexOf(INSTALLMENT_SEP);
+  return index === -1 ? recurringRootId(id) : id.slice(0, index);
+}
+
+/** Avança N meses preservando o dia (clampado em mês curto: 31/01 + 1 = 28/02). */
+export function addMonthsToDue(dateISO: string, months: number, anchorDay?: number) {
+  const day = anchorDay ?? Number(dateISO.slice(8, 10));
+  let cursor = dateISO;
+  for (let step = 0; step < months; step += 1) cursor = nextMonthlyDueDate(cursor, day);
+  return cursor;
+}
+
+/** Todas as parcelas já lançadas da mesma série, da primeira para a última. */
+export function installmentSeries(expenses: FinExpense[], anchor: Pick<FinExpense, "id">) {
+  const root = installmentRootId(anchor.id);
+  return expenses
+    .filter((expense) => installmentRootId(expense.id) === root && expense.installmentTotal)
+    .sort((a, b) => (a.installmentNum ?? 0) - (b.installmentNum ?? 0));
+}
+
+/**
+ * As parcelas que FALTAM depois desta — é o que o app grava para a conta aparecer
+ * em todos os meses até a última parcela. Devolve [] quando não é parcelado, é a
+ * última parcela, ou as seguintes já existem.
+ */
+export function missingInstallments(expenses: FinExpense[], anchor: FinExpense): FinExpense[] {
+  const total = anchor.installmentTotal ?? 0;
+  const num = anchor.installmentNum ?? 1;
+  if (total < 2 || num >= total || total > MAX_INSTALLMENTS) return [];
+
+  const root = installmentRootId(anchor.id);
+  const jaExistem = new Set(
+    expenses
+      .filter((expense) => installmentRootId(expense.id) === root)
+      .map((expense) => expense.installmentNum ?? 0),
+  );
+  const anchorDay = Number(anchor.dueDate.slice(8, 10));
+  const now = new Date().toISOString();
+  const geradas: FinExpense[] = [];
+  for (let parcela = num + 1; parcela <= total; parcela += 1) {
+    if (jaExistem.has(parcela)) continue;
+    geradas.push({
+      ...anchor,
+      id: `${root}${INSTALLMENT_SEP}${String(parcela).padStart(2, "0")}`,
+      dueDate: addMonthsToDue(anchor.dueDate, parcela - num, anchorDay),
+      paidAt: null,
+      installmentNum: parcela,
+      installmentTotal: total,
+      // Parcela nunca é recorrente: ela acaba na última.
+      recorrencia: null,
+      createdAt: now,
+    });
+  }
+  return geradas;
+}
+
+/** Parcelas seguintes ainda EM ABERTO — as que uma correção pode alcançar. */
+export function futureOpenInstallments(expenses: FinExpense[], anchor: FinExpense) {
+  const num = anchor.installmentNum ?? 0;
+  return installmentSeries(expenses, anchor).filter(
+    (expense) => (expense.installmentNum ?? 0) > num && !expense.paidAt && expense.id !== anchor.id,
+  );
+}
+
+/** Resumo em português para a tela: "faltam 9 parcelas, R$ 4.500 até 10/05/2027". */
+export function installmentSummary(expenses: FinExpense[], anchor: FinExpense) {
+  const serie = installmentSeries(expenses, anchor);
+  if (!anchor.installmentTotal || anchor.installmentTotal < 2) return null;
+  const abertas = serie.filter((expense) => !expense.paidAt);
+  const ultima = serie[serie.length - 1];
+  return {
+    lancadas: serie.length,
+    total: anchor.installmentTotal,
+    faltamLancar: Math.max(anchor.installmentTotal - serie.length, 0),
+    abertas: abertas.length,
+    valorAberto: abertas.reduce((sum, expense) => sum + (expense.amount || 0), 0),
+    ultimoVencimento: ultima?.dueDate ?? anchor.dueDate,
+  };
+}
+
 // Contas em aberto separadas em vencidas e chegando (vencem em até `days` dias).
 // Vencidas olham no máximo `maxOverdueDays` para trás — histórico importado ou
 // esquecido de meses fechados não inunda o aviso.

@@ -184,12 +184,16 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       steps: [
         "Toque em nova conta e preencha descrição, valor e data de vencimento.",
         "Escolha a categoria P12 — o app não deixa salvar sem ela.",
+        "Boleto parcelado? Escreva a parcela e o total (1/12) e o app lança TODAS as parcelas, uma em cada mês, até a última.",
+        "Conta que repete sem fim (aluguel, energia)? Marque 'Repete todo mês' em vez de parcelar.",
         "Quando pagar a conta na vida real, clique no selo dela para marcá-la como paga.",
         "Marcou sem querer? Clique no selo de novo para desfazer.",
       ],
       tips: [
         "A categoria P12 é o que faz o DRE ficar certo — na dúvida de qual usar, pergunte antes de chutar.",
         "Anexe o comprovante do pagamento na tela de Comprovantes e vincule à conta.",
+        "Corrigiu o valor de uma parcela? O app oferece ajustar as seguintes que ainda estão em aberto — parcela já paga nunca muda.",
+        "Boleto lançado antes de 30/07/2026 pode estar com as parcelas seguintes faltando: a linha avisa e tem o botão 'Lançar as que faltam'.",
       ],
     },
   },
