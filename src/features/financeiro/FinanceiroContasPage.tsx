@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, Layers, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
+import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, Filter, Layers, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,10 @@ export function FinanceiroContasPage() {
   const [recorrente, setRecorrente] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas">("todas");
+  // Filtro de categoria (31/07, pedido do Lucas): por GRUPO da P12 ou por uma
+  // categoria específica. "grupo:CUSTO_FIXO" ou o id da categoria.
+  const [categoryFilter, setCategoryFilter] = useState("todas");
+  const [buscaConta, setBuscaConta] = useState("");
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [provisionFeedback, setProvisionFeedback] = useState("");
   // Corrigindo uma parcela: aplicar também às seguintes ainda em aberto?
@@ -97,6 +101,25 @@ export function FinanceiroContasPage() {
     [financeiro.categories],
   );
 
+  // O que o filtro de categoria deixa passar. Um grupo inteiro da P12
+  // ("grupo:CUSTO_FIXO"), "obra" (CAPEX) ou uma categoria específica.
+  function passaCategoria(expense: FinExpense) {
+    if (categoryFilter === "todas") return true;
+    const category = categoryById.get(expense.categoryRef);
+    if (categoryFilter === "obra") return Boolean(expense.isCapex || category?.isCapex);
+    if (categoryFilter.startsWith("grupo:")) return category?.groupKey === categoryFilter.slice(6);
+    return expense.categoryRef === categoryFilter;
+  }
+
+  function passaBusca(expense: FinExpense) {
+    const termo = buscaConta.trim().toLowerCase();
+    if (!termo) return true;
+    const category = categoryById.get(expense.categoryRef);
+    return [expense.description, expense.supplier, expense.documentNote, category?.name]
+      .filter(Boolean)
+      .some((campo) => String(campo).toLowerCase().includes(termo));
+  }
+
   const monthExpenses = useMemo(
     () => financeiro.expenses
       // Mesmo critério da P12: a conta pertence ao mês do VENCIMENTO.
@@ -105,9 +128,30 @@ export function FinanceiroContasPage() {
         if (statusFilter === "pendentes") return !expense.paidAt;
         if (statusFilter === "pagas") return Boolean(expense.paidAt);
         return true;
-      }),
-    [financeiro.expenses, month, statusFilter],
+      })
+      .filter(passaCategoria)
+      .filter(passaBusca),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.expenses, month, statusFilter, categoryFilter, buscaConta, categoryById],
   );
+
+  // Totais do que está NA TELA (com filtro) — para o filtro responder "quanto é".
+  const totaisFiltrados = useMemo(() => ({
+    total: monthExpenses.reduce((sum, expense) => sum + expense.amount, 0),
+    aPagar: monthExpenses.filter((expense) => !expense.paidAt).reduce((sum, expense) => sum + expense.amount, 0),
+    pago: monthExpenses.filter((expense) => expense.paidAt).reduce((sum, expense) => sum + expense.amount, 0),
+  }), [monthExpenses]);
+
+  const filtroAtivo = categoryFilter !== "todas" || Boolean(buscaConta.trim()) || statusFilter !== "todas";
+  const nomeDoFiltro = useMemo(() => {
+    if (categoryFilter === "todas") return "";
+    if (categoryFilter === "obra") return "Obra / investimento (CAPEX)";
+    if (categoryFilter.startsWith("grupo:")) {
+      const key = categoryFilter.slice(6) as (typeof finGroupOrder)[number];
+      return finGroupLabels[key] ?? key;
+    }
+    return categoryById.get(categoryFilter)?.name ?? categoryFilter;
+  }, [categoryFilter, categoryById]);
 
   const totals = useMemo(() => {
     const all = financeiro.expenses.filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month);
@@ -514,6 +558,86 @@ export function FinanceiroContasPage() {
                 ))}
               </div>
             </div>
+
+            {/* FILTRO DE CATEGORIA (31/07): por grupo da P12, por obra ou por uma
+                categoria específica — com o total do que ficou na tela. */}
+            <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+              <div>
+                <Label htmlFor="filtro-categoria" className="text-xs">
+                  Filtrar por categoria
+                </Label>
+                <select
+                  id="filtro-categoria"
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-white/72 px-2 text-sm"
+                >
+                  <option value="todas">Todas as categorias</option>
+                  <option value="obra">Obra / investimento (CAPEX)</option>
+                  {finGroupOrder.map((groupKey) => (
+                    <option key={groupKey} value={`grupo:${groupKey}`}>
+                      Grupo · {finGroupLabels[groupKey]}
+                    </option>
+                  ))}
+                  {categoriesByGroup.map((group) =>
+                    group.categories.length ? (
+                      <optgroup key={group.groupKey} label={finGroupLabels[group.groupKey]}>
+                        {group.categories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null,
+                  )}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="filtro-busca" className="text-xs">
+                  Buscar por descrição, fornecedor ou NF
+                </Label>
+                <Input
+                  id="filtro-busca"
+                  className="mt-1 h-10"
+                  value={buscaConta}
+                  onChange={(event) => setBuscaConta(event.target.value)}
+                  placeholder="Ex.: Jaziel, aluguel, energia…"
+                />
+              </div>
+              {filtroAtivo ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-10"
+                  onClick={() => {
+                    setCategoryFilter("todas");
+                    setBuscaConta("");
+                    setStatusFilter("todas");
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+              ) : null}
+            </div>
+
+            {filtroAtivo ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-brand-dourado/35 bg-brand-creme/30 px-3 py-2 text-xs">
+                <span className="font-bold text-brand-tinta">
+                  <Filter className="mr-1 inline h-3.5 w-3.5 text-brand-dourado" aria-hidden="true" />
+                  {monthExpenses.length} conta(s){nomeDoFiltro ? ` em ${nomeDoFiltro}` : ""}
+                </span>
+                <span className="text-muted-foreground">
+                  Total <strong className="text-brand-tinta">{moneyFin(totaisFiltrados.total)}</strong>
+                </span>
+                <span className="text-muted-foreground">
+                  A pagar <strong className="text-brand-tinta">{moneyFin(totaisFiltrados.aPagar)}</strong>
+                </span>
+                <span className="text-muted-foreground">
+                  Já pago <strong className="text-brand-tinta">{moneyFin(totaisFiltrados.pago)}</strong>
+                </span>
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent>
             <div className="mobile-scrollbar-none overflow-x-auto">
@@ -635,7 +759,11 @@ export function FinanceiroContasPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Nenhuma conta neste mês/filtro.</td>
+                      <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                        {filtroAtivo
+                          ? `Nenhuma conta ${nomeDoFiltro ? `em ${nomeDoFiltro} ` : ""}neste mês com esse filtro — toque em "Limpar filtros" para ver todas.`
+                          : "Nenhuma conta lançada neste mês."}
+                      </td>
                     </tr>
                   )}
                 </tbody>
