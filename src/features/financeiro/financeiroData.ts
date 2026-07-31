@@ -524,7 +524,10 @@ export function buildP12Matrix(
     savingsInMonths[month] += move.amount || 0;
     // Só o RENDIMENTO (juros do banco) é receita de verdade e entra no lucro.
     // Aporte, troca de contas, saldo inicial etc. são tesouraria, não receita.
-    if (move.kind === "RENDIMENTO") financialIncomeMonths[month] += move.amount || 0;
+    // Linha antiga sem kind mas com razão "rendimento" também conta — o
+    // Fechamento gravou sem kind até 31/07/2026 e esses juros sumiam do lucro.
+    const isRendimento = move.kind === "RENDIMENTO" || (!move.kind && /rendimento/i.test(move.reason || ""));
+    if (isRendimento) financialIncomeMonths[month] += move.amount || 0;
   }
   // Crediário incorporado ao lucro, mês a mês (decisão manual do gestor).
   const crediarioMonths = Array.from({ length: 12 }, () => 0);

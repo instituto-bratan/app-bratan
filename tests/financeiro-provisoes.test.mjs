@@ -142,3 +142,29 @@ test("provisões entram nos custos do P12 e reduzem o lucro do mês", () => {
   const grupo = matrix.groups.find((item) => item.groupKey === "POUPANCA");
   assert.equal(Math.round(grupo.months[julhoIdx].total * 100) / 100, 15487.09, "aparece no grupo 4. Poupanças");
 });
+
+// ---------------------------------------------------------------- 31/07/2026
+// Auditoria do lucro: rendimento gravado sem kind (Fechamento antigo) sumia dos
+// juros da P12 — a mensagem prometia "entra na P12" e não entrava.
+test("rendimento sem kind mas com razão 'Rendimento do banco' conta nos juros e no lucro", () => {
+  const cats = [{ id: "c1", groupKey: "CUSTO_FIXO", name: "X", sortOrder: 1, isCapex: false, active: true }];
+  const moves = [
+    { id: "a", moveDate: "2026-07-23", direction: "ENTRADA", amount: 0.26, reason: "Rendimento do banco", source: "MANUAL", monthRef: "2026-07", createdAt: "" },
+    { id: "b", moveDate: "2026-07-28", direction: "ENTRADA", amount: 0.87, reason: "Rendimento do banco", source: "MANUAL", monthRef: "2026-07", createdAt: "" },
+    { id: "c", moveDate: "2026-07-01", direction: "ENTRADA", amount: 0.25, reason: "Rendimento do banco", source: "MANUAL", kind: "RENDIMENTO", monthRef: "2026-07", createdAt: "" },
+    { id: "d", moveDate: "2026-07-01", direction: "ENTRADA", amount: 10015, reason: "Transferência Itaú → Poupança", source: "MANUAL", kind: "APORTE", monthRef: "2026-07", createdAt: "" },
+  ];
+  const m = fin.buildP12Matrix([], [], cats, 2026, moves, []);
+  assert.equal(Math.round(m.financialIncomeMonths[6] * 100) / 100, 1.38, "0,26 + 0,87 (sem kind) + 0,25 (com kind)");
+  assert.equal(Math.round(m.profitMonths[6] * 100) / 100, 1.38, "juros entram no lucro");
+  assert.equal(m.savingsInMonths[6], 10016.38, "o aporte segue como tesouraria, fora do lucro");
+});
+
+test("aporte sem kind NÃO vira juros (a tolerância é só para razão de rendimento)", () => {
+  const cats = [{ id: "c1", groupKey: "CUSTO_FIXO", name: "X", sortOrder: 1, isCapex: false, active: true }];
+  const moves = [
+    { id: "a", moveDate: "2026-07-05", direction: "ENTRADA", amount: 5000, reason: "Entrada de valores — poupança", source: "MANUAL", monthRef: "2026-07", createdAt: "" },
+  ];
+  const m = fin.buildP12Matrix([], [], cats, 2026, moves, []);
+  assert.equal(m.financialIncomeMonths[6], 0);
+});

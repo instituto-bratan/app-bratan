@@ -202,6 +202,9 @@ export function FinanceiroFechamentoPage() {
         amount: Math.round(amount * 100) / 100,
         reason: "Rendimento do banco",
         source: "MANUAL",
+        // Sem o kind a P12 não reconhece como juros — foi o furo dos R$ 1,13
+        // achado na auditoria de 31/07 (a promessa do feedback ficava falsa).
+        kind: "RENDIMENTO",
         monthRef: moveDate.slice(0, 7),
         createdAt: new Date().toISOString(),
       },

@@ -106,7 +106,10 @@ export function FinanceiroContasPage() {
   function passaCategoria(expense: FinExpense) {
     if (categoryFilter === "todas") return true;
     const category = categoryById.get(expense.categoryRef);
-    if (categoryFilter === "obra") return Boolean(expense.isCapex || category?.isCapex);
+    // Obra segue a CATEGORIA (é o que a P12 usa). O flag da conta só decide
+    // quando a categoria sumiu — senão o "EMPRESTIMO OBRA" (pago pelo
+    // operacional, decisão de 20/07) apareceria como obra sem ser.
+    if (categoryFilter === "obra") return category ? category.isCapex : Boolean(expense.isCapex);
     if (categoryFilter.startsWith("grupo:")) return category?.groupKey === categoryFilter.slice(6);
     return expense.categoryRef === categoryFilter;
   }
