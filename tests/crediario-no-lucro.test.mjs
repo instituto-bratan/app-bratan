@@ -123,7 +123,8 @@ test("resumo do mês mostra o crediário e soma no lucro operacional", () => {
   const comBotao = fin.buildResumoMes([venda("2026-07-10", 100000)], [conta("2026-07-05", 40000)], categorias, [], metas, "2026-07", [incorporacao("2026-07", 10939.30)]);
   assert.equal(comBotao.crediarioNoLucro, 10939.30);
   assert.equal(comBotao.lucroOperacional, 70939.30);
-  assert.equal(comBotao.faturamento, 100000, "o faturamento NÃO muda — o crediário entra no lucro, não na receita de comandas");
+  assert.equal(comBotao.faturamento, 110939.30, "o crediário SOMA no faturamento do mês (Lucas, 31/07) e puxa a meta");
+  assert.equal(Math.round(comBotao.metaPercent * 10000) / 10000, Math.round((110939.30 / 350000) * 10000) / 10000, "% da meta conta o crediário");
 });
 
 test("mês de outro ano não vaza para a matriz do ano corrente", () => {
@@ -138,4 +139,25 @@ test("o valor incorporado NÃO mexe no saldo do caixa do crediário (o dinheiro 
   ];
   const caixa = pag.crediarioCashMoves(recebimentos).reduce((sum, item) => sum + item.valor, 0);
   assert.equal(caixa, 3842, "incorporar no lucro é decisão contábil: não é sangria nem saída de dinheiro");
+});
+
+test("meta (buildMetasBoard) conta o crediário reconhecido no acumulado e no %", () => {
+  const metas = loadTsModule("src/features/financeiro/metasData.ts");
+  const config = { ...metas.defaultMetasConfig, goalSuperRevenue: 350000, goalTargetRevenue: 300000, goalMinRevenue: 250000 };
+  const sem = metas.buildMetasBoard([venda("2026-07-10", 100000)], config, "2026-07");
+  const com = metas.buildMetasBoard([venda("2026-07-10", 100000)], config, "2026-07", 34309.10);
+  assert.equal(Math.round(com.accumulatedRevenue), Math.round(sem.accumulatedRevenue + 34309.10));
+  assert.ok(com.superGoalPercent > sem.superGoalPercent, "o % da super meta sobe");
+  assert.equal(Math.round(com.missingToSuper), Math.round(Math.max(350000 - 134309.10, 0)));
+});
+
+test("gráfico Faturamento×Custos×Lucro: a barra de faturamento inclui o crediário", () => {
+  const charts = loadTsModule("src/lib/chartData.ts");
+  const cats = [{ id: "c1", groupKey: "CUSTO_FIXO", name: "X", sortOrder: 1, isCapex: false, active: true }];
+  const m = fin.buildP12Matrix([venda("2026-07-10", 100000)], [], cats, 2026, [], [
+    { id: "crediario-lucro-2026-07", monthRef: "2026-07", amount: 34309.10, note: "", includedAt: "" },
+  ]);
+  const serie = charts.buildMonthlyResultSeries(m);
+  assert.equal(Math.round(serie.faturamento[6] * 100) / 100, 134309.10, "barra = comandas + crediário");
+  assert.equal(Math.round(serie.lucro[6] * 100) / 100, 134309.10, "sem custo, lucro = faturamento");
 });

@@ -53,7 +53,13 @@ export function ResumoMesCard({
           <FlowBox
             label="Faturamento"
             value={moneyFin(r.receita)}
-            hint={r.rendimento > 0 ? `comandas ${moneyFin(r.faturamento)} + juros ${moneyFin(r.rendimento)}` : "das comandas"}
+            hint={
+              r.crediarioNoLucro > 0
+                ? `comandas + ${moneyFin(r.crediarioNoLucro)} do crediário${r.rendimento > 0 ? ` + juros ${moneyFin(r.rendimento)}` : ""}`
+                : r.rendimento > 0
+                  ? `comandas ${moneyFin(r.faturamento)} + juros ${moneyFin(r.rendimento)}`
+                  : "das comandas"
+            }
             tone="pos"
           />
           <FlowSign sign="−" />

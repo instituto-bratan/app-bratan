@@ -604,7 +604,10 @@ export function buildResumoMes(
   const year = Number(monthKey.slice(0, 4));
   const monthIdx = Number(monthKey.slice(5, 7)) - 1;
   const matrix = buildP12Matrix(sales, expenses, categories, year, savingsMoves, crediarioProfits);
-  const faturamento = matrix.revenueMonths[monthIdx]?.total ?? 0;
+  // Faturamento do mês = comandas + crediário reconhecido (Lucas, 31/07/2026:
+  // o dinheiro do crediário incorporado conta como faturamento, e puxa a meta).
+  const faturamentoComandas = matrix.revenueMonths[monthIdx]?.total ?? 0;
+  const faturamento = faturamentoComandas + (matrix.crediarioMonths[monthIdx] ?? 0);
   const rendimento = matrix.financialIncomeMonths[monthIdx] ?? 0;
   const poupancaTotal = matrix.savingsInMonths[monthIdx] ?? 0;
   const aportes = poupancaTotal - rendimento; // entradas no cofre que NÃO são receita

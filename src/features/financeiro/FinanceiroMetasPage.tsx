@@ -17,7 +17,7 @@ import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { parseMoneyBR } from "@/lib/money";
 import { loadRemoteFinMetasConfig, saveRemoteFinMetasConfig } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
-import { moneyFin } from "./financeiroData";
+import { crediarioProfitOfMonth, moneyFin } from "./financeiroData";
 import { ResumoMesCard } from "./ResumoMesCard";
 import {
   buildMetaDoDiaMessage,
@@ -75,8 +75,8 @@ export function FinanceiroMetasPage() {
   }
 
   const board = useMemo(
-    () => buildMetasBoard(financeiro.sales, config, monthKey),
-    [financeiro.sales, config, monthKey],
+    () => buildMetasBoard(financeiro.sales, config, monthKey, crediarioProfitOfMonth(financeiro.crediarioProfits, monthKey)),
+    [financeiro.sales, config, monthKey, financeiro.crediarioProfits],
   );
   const today = todayISO();
   const monthLabel = new Date(`${monthKey}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });

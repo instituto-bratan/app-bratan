@@ -54,7 +54,7 @@ import {
   buildPrescriptionFunnel,
   buildWeekdayStrength,
 } from "@/lib/chartData";
-import { buildP12Matrix } from "@/features/financeiro/financeiroData";
+import { buildP12Matrix, crediarioProfitOfMonth } from "@/features/financeiro/financeiroData";
 import { cn } from "@/lib/utils";
 import {
   actionPriorityLabels,
@@ -658,8 +658,8 @@ export function Inteligencia360DashboardPage() {
   );
   const [period, setPeriod] = useState("semana");
   const metasBoard = useMemo(
-    () => buildMetasBoard(financeiro.sales, metasConfig, hoje.slice(0, 7)),
-    [financeiro.sales, metasConfig, hoje],
+    () => buildMetasBoard(financeiro.sales, metasConfig, hoje.slice(0, 7), crediarioProfitOfMonth(financeiro.crediarioProfits, hoje.slice(0, 7))),
+    [financeiro.sales, metasConfig, hoje, financeiro.crediarioProfits],
   );
   // Faixa de datas do filtro de período — aplicada ao que é temporal
   // (comandas e vendido); indicadores de estado (recebíveis, NPS) não mudam.

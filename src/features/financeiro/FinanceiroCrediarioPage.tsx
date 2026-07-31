@@ -207,7 +207,7 @@ export function FinanceiroCrediarioPage() {
     financeiro.setCrediarioNoLucro(lucroMes, valor, lucroNota.trim());
     setLucroEditando(false);
     setLucroFeedback(
-      `${moneyFin(valor)} somados ao lucro de ${mesBR(lucroMes)}. O dinheiro continua no cofre — mudou só o resultado do mês na P12, nas Metas e nos Relatórios.`,
+      `${moneyFin(valor)} somados ao faturamento e ao lucro de ${mesBR(lucroMes)}. O dinheiro continua no cofre — a P12, a meta e os Relatórios já refletem.`,
     );
   }
 
@@ -368,9 +368,10 @@ export function FinanceiroCrediarioPage() {
               <Sparkles className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
               Somar este caixa no lucro do mês
               <InfoTip title="Quando usar">
-                Por padrão o dinheiro do crediário fica FORA do lucro — é caixa físico, separado da P12. Quando você quiser
-                reconhecer esse dinheiro como resultado de um mês (no fechamento, por exemplo), escolha o mês e aperte o
-                botão. Vale só para o mês escolhido, e o dinheiro continua no cofre: muda o lucro, não o saldo.
+                Por padrão o dinheiro do crediário fica FORA do resultado — é caixa físico, separado da P12. Quando você
+                quiser reconhecer esse dinheiro num mês (no fechamento, por exemplo), escolha o mês e aperte o botão: o
+                valor SOMA NO FATURAMENTO do mês, puxa o % da meta e entra no lucro. O dinheiro continua no cofre — muda o
+                resultado, não o saldo.
               </InfoTip>
             </CardTitle>
           </CardHeader>
@@ -497,9 +498,9 @@ export function FinanceiroCrediarioPage() {
                   </div>
                 </div>
                 <p className="text-[11px] leading-snug text-muted-foreground">
-                  Isto NÃO tira dinheiro do cofre e não cria lançamento na P12: entra como uma linha de resultado no mês
-                  escolhido ({mesBR(lucroMes)}), somando no lucro da P12, das Metas e dos Relatórios. Fica registrado quem
-                  marcou e quando, e dá para desfazer.
+                  Isto NÃO tira dinheiro do cofre: entra como linha própria no mês escolhido ({mesBR(lucroMes)}), somando
+                  no FATURAMENTO, no % da meta e no lucro — na P12, nas Metas e nos Relatórios. Fica registrado quem marcou
+                  e quando, e dá para desfazer.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <LiquidButton type="button" size="sm" onClick={confirmarLucro}>

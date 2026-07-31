@@ -27,7 +27,9 @@ export type MonthlyResultSeries = {
 
 export function buildMonthlyResultSeries(matrix: P12Matrix): MonthlyResultSeries {
   const labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  const faturamento = matrix.revenueMonths.map((cell) => cell.total);
+  // Faturamento do gráfico = comandas + crediário reconhecido no mês (igual ao
+  // KPI e à meta — Lucas, 31/07/2026).
+  const faturamento = matrix.revenueMonths.map((cell, index) => cell.total + (matrix.crediarioMonths[index] ?? 0));
   const custos = [...matrix.totalExpensesMonths];
   const lucro = [...matrix.profitMonths];
   let lastActiveMonth = 0;

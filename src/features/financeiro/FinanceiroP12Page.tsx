@@ -211,9 +211,9 @@ export function FinanceiroP12Page() {
                 {matrix.crediarioYear > 0.005 ? (
                   <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
                     <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
-                      Crediário somado ao lucro
+                      Crediário somado ao faturamento
                       <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-                        dinheiro do cofre reconhecido no mês (decisão manual)
+                        dinheiro do cofre reconhecido no mês (decisão manual) — soma na meta e no lucro
                       </span>
                     </td>
                     {visibleMonths.map((month) => (

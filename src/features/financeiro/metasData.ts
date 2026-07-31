@@ -109,7 +109,14 @@ export function doctorAttendsOn(date: string, config: MetasConfig): boolean {
   return toDate(date).getDay() !== 5;
 }
 
-export function buildMetasBoard(sales: FinSale[], config: MetasConfig, monthKey: string): MetasBoard {
+export function buildMetasBoard(
+  sales: FinSale[],
+  config: MetasConfig,
+  monthKey: string,
+  // Crediário reconhecido no mês (botão do Crediário): soma no faturamento
+  // acumulado e no % da meta, sem inventar comanda em dia nenhum.
+  extraRevenue = 0,
+): MetasBoard {
   const dayList = businessDaysOfMonth(monthKey);
 
   const revenueByDay = new Map<string, number>();
@@ -191,20 +198,21 @@ export function buildMetasBoard(sales: FinSale[], config: MetasConfig, monthKey:
   const totalDailyGoals = days.reduce((sum, day) => sum + day.dailyGoal, 0);
   const avgTicket = accumulatedPatients > 0 ? accumulatedRevenue / accumulatedPatients : 0;
 
+  const monthRevenue = accumulatedRevenue + extraRevenue;
   return {
     monthKey,
     days,
     weeks,
     totalDailyGoals,
-    accumulatedRevenue,
+    accumulatedRevenue: monthRevenue,
     accumulatedPatients,
     avgTicket,
-    missingToMin: Math.max(config.goalMinRevenue - accumulatedRevenue, 0),
-    missingToTarget: Math.max(config.goalTargetRevenue - accumulatedRevenue, 0),
-    missingToSuper: Math.max(config.goalSuperRevenue - accumulatedRevenue, 0),
-    superGoalPercent: config.goalSuperRevenue > 0 ? accumulatedRevenue / config.goalSuperRevenue : 0,
+    missingToMin: Math.max(config.goalMinRevenue - monthRevenue, 0),
+    missingToTarget: Math.max(config.goalTargetRevenue - monthRevenue, 0),
+    missingToSuper: Math.max(config.goalSuperRevenue - monthRevenue, 0),
+    superGoalPercent: config.goalSuperRevenue > 0 ? monthRevenue / config.goalSuperRevenue : 0,
     avgTicketForSuper: config.goalPatients > 0 ? config.goalSuperRevenue / config.goalPatients : 0,
-    meritocracyStatus: meritocracyStatusText(accumulatedRevenue, config),
+    meritocracyStatus: meritocracyStatusText(monthRevenue, config),
   };
 }
 
