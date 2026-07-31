@@ -19,6 +19,8 @@ import {
   type ContactChannelsDraft,
 } from "@/features/crm/contactChannels";
 import { useCrmState } from "@/features/crm/useCrmState";
+import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
+import { saleFromLembretePayment, saleRefFromLembretePayment } from "@/features/financeiro/financeiroData";
 import { canLembretesPagamento } from "@/lib/access";
 import { formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { parseMoneyBR } from "@/lib/money";
@@ -70,6 +72,13 @@ const emptyForm: FormState = {
 
 const filtros: PagamentoFiltro[] = ["abertos", "vencidos", "hoje", "proximos", "pagos", "todos"];
 
+const formaLabel: Record<string, string> = {
+  DINHEIRO: "dinheiro (crediário)",
+  PIX: "PIX",
+  CARTAO: "cartão",
+  OUTRO: "transferência / outra",
+};
+
 function createId() {
   return `pagamento-${crypto.randomUUID?.() ?? Date.now()}`;
 }
@@ -92,6 +101,9 @@ function remoteErrorDetail(error: unknown) {
 export function PagamentosPage() {
   const { pessoa, session, isPreview } = useAuth();
   const { state: crmState, persist: persistCrm } = useCrmState();
+  // Comanda gerada quando a dívida não tinha comanda — é o que faz o dinheiro
+  // aparecer no faturamento e na P12.
+  const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
   const [localRecords, setLocalRecords] = useState<PagamentoLembrete[]>(() => readLocalValue(pagamentosStorageKey, []));
@@ -101,6 +113,15 @@ export function PagamentosPage() {
   // Telefone/e-mail de quem entra pelo lembrete (29/07). Antes o seletor prometia
   // "será cadastrado no CRM ao salvar" e ninguém cadastrava: o ref ia vazio.
   const [patientChannels, setPatientChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
+  // Diálogo de "recebi": forma de verdade + decidir se gera comanda (31/07).
+  // Antes era um window.confirm de OK/Cancelar e o dinheiro em PIX/cartão não
+  // chegava ao faturamento — só baixava a dívida e sumia.
+  const [recebendo, setRecebendo] = useState<PagamentoLembrete | null>(null);
+  const [recValor, setRecValor] = useState("");
+  const [recForma, setRecForma] = useState<"DINHEIRO" | "PIX" | "CARTAO" | "OUTRO">("PIX");
+  const [recGerarComanda, setRecGerarComanda] = useState(true);
+  const [recErro, setRecErro] = useState("");
+  const [feedbackRecebimento, setFeedbackRecebimento] = useState("");
   const [postponeTarget, setPostponeTarget] = useState<string | null>(null);
   const [postponeDate, setPostponeDate] = useState(todayISO());
   // Edição de um lembrete existente (nome de quem deve, valor, data e obs).
@@ -250,7 +271,7 @@ export function PagamentosPage() {
     );
   }
 
-  type Recebimento = { id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string };
+  type Recebimento = { id: string; lembreteId: string; valor: number; forma: string; recebidoEm: string; saleRef?: string | null };
   const [localReceipts, setLocalReceipts] = useState<Recebimento[]>(() => readLocalValue("app-bratan-pagamento-recebimentos", []));
   const receiptsQuery = useQuery({
     queryKey: ["pagamento-recebimentos"],
@@ -263,33 +284,67 @@ export function PagamentosPage() {
     .reduce((sum, receipt) => sum + receipt.valor, 0);
   const cashTotal = receipts.filter((receipt) => receipt.forma === "DINHEIRO").reduce((sum, receipt) => sum + receipt.valor, 0);
 
-  async function pagouParte(record: PagamentoLembrete) {
-    setError(null);
-    const raw = window.prompt(`Quanto ${record.pacienteNome} pagou agora? (pendente: ${money(record.valorPendente)})`);
-    if (raw === null) return;
-    const valor = parseMoneyBR(raw);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      setError("Não entendi o valor — digite como 500,00.");
-      return;
+  // Abre o diálogo de recebimento. O padrão de "gerar comanda" já vem decidido:
+  // se o paciente NÃO tem comanda no mês, o dinheiro precisa entrar no
+  // faturamento; se já tem, provavelmente é só baixa de recebível.
+  function abrirRecebimento(record: PagamentoLembrete) {
+    const temComanda = financeiro.sales.some(
+      (sale) =>
+        (record.crmContactRef && sale.crmContactRef === record.crmContactRef) ||
+        (sale.patientName || "").trim().toLowerCase() === (record.pacienteNome || "").trim().toLowerCase(),
+    );
+    setRecebendo(record);
+    setRecValor(record.valorPendente.toFixed(2).replace(".", ","));
+    setRecForma("PIX");
+    setRecGerarComanda(!temComanda);
+    setRecErro("");
+  }
+
+  async function confirmarRecebimento() {
+    const record = recebendo;
+    if (!record) return;
+    setRecErro("");
+    const valor = parseMoneyBR(recValor);
+    if (!Number.isFinite(valor) || valor <= 0) return setRecErro("Não entendi o valor — digite como 500,00.");
+    if (valor > record.valorPendente + 0.01) {
+      return setRecErro(`${record.pacienteNome} deve ${money(record.valorPendente)}. Não dá para receber mais do que isso.`);
     }
-    const emDinheiro = window.confirm("Foi em DINHEIRO (crediário)? OK = dinheiro · Cancelar = outra forma (pix/cartão)");
-    const forma = emDinheiro ? "DINHEIRO" : "OUTRO";
+
+    const dia = todayISO();
     const novoPendente = Math.round((record.valorPendente - valor) * 100) / 100;
     const quitou = novoPendente <= 0;
+
+    // Dívida SEM comanda: a comanda nasce agora e o recebimento fica amarrado
+    // nela (saleRef) — assim o valor entra no faturamento uma única vez.
+    let saleRef: string | null = null;
+    if (recGerarComanda) {
+      const sale = saleFromLembretePayment({
+        lembreteId: record.id,
+        patientName: record.pacienteNome,
+        crmContactRef: record.crmContactRef ?? "",
+        valor,
+        forma: recForma,
+        dia,
+        observacao: record.observacao,
+      });
+      saleRef = saleRefFromLembretePayment(record.id, dia, valor);
+      financeiro.addSale(sale);
+    }
 
     if (useRemote) {
       try {
         await registerRemotePagamentoRecebimento({
           lembreteId: record.id,
           valor,
-          forma: forma as "DINHEIRO" | "OUTRO",
+          forma: recForma,
           novoPendente,
           recebidoPor: pessoa?.id ?? null,
+          saleRef,
         });
         void queryClient.invalidateQueries({ queryKey: ["pagamentos-lembretes"] });
         void queryClient.invalidateQueries({ queryKey: ["pagamento-recebimentos"] });
       } catch (saveError) {
-        setError(`Não foi possível registrar o pagamento${remoteErrorDetail(saveError)}. Tente de novo.`);
+        setRecErro(`Não foi possível registrar o pagamento${remoteErrorDetail(saveError)}. Tente de novo.`);
         return;
       }
     } else {
@@ -297,8 +352,9 @@ export function PagamentosPage() {
         id: `rec-${Date.now()}`,
         lembreteId: record.id,
         valor,
-        forma,
-        recebidoEm: todayISO(),
+        forma: recForma,
+        recebidoEm: dia,
+        saleRef,
       };
       const nextReceipts = [receipt, ...localReceipts];
       setLocalReceipts(nextReceipts);
@@ -316,10 +372,14 @@ export function PagamentosPage() {
         ),
       );
     }
+
+    setRecebendo(null);
     setError(null);
-    window.setTimeout(() => {
-      setError(null);
-    }, 0);
+    setFeedbackRecebimento(
+      recGerarComanda
+        ? `${money(valor)} de ${record.pacienteNome} recebido em ${formaLabel[recForma]} — comanda lançada, então já entrou no faturamento de hoje e na P12.${quitou ? " Dívida quitada." : ` Falta ${money(novoPendente)}.`}`
+        : `${money(valor)} de ${record.pacienteNome} recebido em ${formaLabel[recForma]} — baixa no recebível (o faturamento já tinha esse valor pela comanda).${quitou ? " Dívida quitada." : ` Falta ${money(novoPendente)}.`}`,
+    );
   }
 
   function updateStatus(record: PagamentoLembrete, status: PagamentoLembreteStatus) {
@@ -590,7 +650,124 @@ export function PagamentosPage() {
             </CardContent>
           </Card>
 
+          {recebendo ? (
+            <div
+              className="fixed inset-0 z-[80] grid place-items-center bg-brand-tinta/30 px-4 py-6 backdrop-blur-sm"
+              onClick={() => setRecebendo(null)}
+            >
+              <div
+                className="max-h-[88dvh] w-[min(34rem,94vw)] overflow-y-auto rounded-2xl border border-brand-oliva/18 bg-brand-papel p-5 shadow-[0_32px_80px_rgba(43,46,36,0.28)]"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-label="Registrar recebimento"
+              >
+                <h2 className="text-xl text-brand-musgo">Recebi de {recebendo.pacienteNome}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Dívida em aberto: <strong className="text-brand-tinta">{money(recebendo.valorPendente)}</strong>
+                </p>
+
+                <div className="mt-4 grid gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="rec-valor">Quanto recebeu</Label>
+                      <Input
+                        id="rec-valor"
+                        inputMode="decimal"
+                        value={recValor}
+                        onChange={(event) => setRecValor(event.target.value)}
+                        placeholder="500,00"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="rec-forma">Como recebeu</Label>
+                      <select
+                        id="rec-forma"
+                        value={recForma}
+                        onChange={(event) => {
+                          const forma = event.target.value as typeof recForma;
+                          setRecForma(forma);
+                          // Dinheiro fica no cofre do crediário (fora da P12, como
+                          // sempre). PIX/cartão precisam de comanda, senão o valor
+                          // não aparece em lugar nenhum.
+                          setRecGerarComanda(forma !== "DINHEIRO");
+                        }}
+                        className="h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                      >
+                        <option value="PIX">PIX</option>
+                        <option value="CARTAO">Cartão</option>
+                        <option value="DINHEIRO">Dinheiro (vai para o crediário)</option>
+                        <option value="OUTRO">Transferência / outra</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">
+                      Essa dívida já tem comanda lançada?
+                    </p>
+                    <label className="flex items-start gap-2.5 text-sm">
+                      <input
+                        type="radio"
+                        name="rec-comanda"
+                        className="mt-1 h-4 w-4"
+                        checked={recGerarComanda}
+                        onChange={() => setRecGerarComanda(true)}
+                      />
+                      <span>
+                        <span className="font-semibold text-brand-tinta">Não tem comanda — lançar agora</span>
+                        <span className="block text-xs text-muted-foreground">
+                          O app cria a comanda deste valor e o dinheiro entra no faturamento de hoje e na P12. Use quando a
+                          dívida foi combinada direto no Lembretes, sem passar pela recepção.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2.5 text-sm">
+                      <input
+                        type="radio"
+                        name="rec-comanda"
+                        className="mt-1 h-4 w-4"
+                        checked={!recGerarComanda}
+                        onChange={() => setRecGerarComanda(false)}
+                      />
+                      <span>
+                        <span className="font-semibold text-brand-tinta">Já tem comanda — só dar baixa</span>
+                        <span className="block text-xs text-muted-foreground">
+                          O faturamento já contou esse valor quando a comanda foi lançada. Aqui só a dívida diminui — somar
+                          de novo contaria o mesmo dinheiro duas vezes.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
+                  {recForma === "DINHEIRO" && !recGerarComanda ? (
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      Dinheiro sem comanda entra no caixa do Crediário. Para reconhecer como lucro do mês, use o botão
+                      "Somar este caixa no lucro do mês" na tela do Crediário.
+                    </p>
+                  ) : null}
+
+                  {recErro ? <p className="text-sm font-semibold text-destructive">{recErro}</p> : null}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <LiquidButton type="button" size="sm" onClick={() => void confirmarRecebimento()}>
+                      Confirmar recebimento
+                    </LiquidButton>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setRecebendo(null)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <section className="space-y-4">
+            {feedbackRecebimento ? (
+              <div className="rounded-lg border border-brand-dourado/40 bg-brand-creme/40 px-4 py-3 text-sm font-semibold text-brand-tinta">
+                {feedbackRecebimento}
+              </div>
+            ) : null}
             <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
               <CardContent className="flex flex-wrap items-center gap-2 p-3">
                 {filtros.map((item) => (
@@ -644,13 +821,13 @@ export function PagamentosPage() {
                         <div className="flex flex-wrap gap-2 xl:justify-end">
                           {record.status === "aberto" ? (
                             <>
-                              <Button type="button" size="sm" onClick={() => updateStatus(record, "pago")}>
+                              <Button type="button" size="sm" onClick={() => abrirRecebimento(record)}>
                                 <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                                Pago
+                                Recebi
                               </Button>
-                              <Button type="button" variant="outline" size="sm" onClick={() => void pagouParte(record)}>
+                              <Button type="button" variant="outline" size="sm" onClick={() => updateStatus(record, "pago")}>
                                 <CircleDollarSign className="mr-2 h-4 w-4" aria-hidden="true" />
-                                Pagou parte
+                                Só marcar pago
                               </Button>
                               <Button type="button" variant="outline" size="sm" onClick={() => openPostpone(record)}>
                                 <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />

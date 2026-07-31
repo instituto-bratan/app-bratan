@@ -890,6 +890,73 @@ export type FinSavingsMove = {
   createdAt: string;
 };
 
+// ---- Dívida paga sem comanda vira faturamento (31/07/2026) --------------------
+// Buraco que o Lucas achou: pagamento de lembrete em PIX/cartão não aparecia em
+// lugar nenhum. Só o DINHEIRO ia para o caixa do crediário; o resto apenas
+// baixava a dívida e sumia — não entrava no faturamento nem na P12.
+//
+// A regra depende de existir comanda por trás da dívida:
+//  · dívida que JÁ tem comanda lançada → o faturamento já contou; pagar é só dar
+//    baixa no recebível (somar de novo seria duplicar);
+//  · dívida que só existe como lembrete → o valor NUNCA entrou no faturamento, e
+//    o pagamento tem que gerar a comanda.
+// Esta função monta essa comanda, com id determinístico para o mesmo pagamento
+// não virar duas comandas se a tela for enviada duas vezes.
+
+export const lembretePaymentMethodMap: Record<string, FinPaymentMethod> = {
+  DINHEIRO: "DINHEIRO",
+  PIX: "PIX",
+  CARTAO: "CARTAO_CREDITO",
+  OUTRO: "TRANSFERENCIA",
+};
+
+export function saleRefFromLembretePayment(lembreteId: string, dia: string, valor: number) {
+  const cents = Math.round((valor || 0) * 100);
+  return `fsale-lem-${lembreteId}-${dia}-${cents}`;
+}
+
+export function saleFromLembretePayment(values: {
+  lembreteId: string;
+  patientName: string;
+  crmContactRef?: string | null;
+  valor: number;
+  forma: string;
+  dia: string;
+  observacao?: string;
+}): FinSale {
+  const id = saleRefFromLembretePayment(values.lembreteId, values.dia, values.valor);
+  const method = lembretePaymentMethodMap[values.forma] ?? "TRANSFERENCIA";
+  const now = new Date().toISOString();
+  return {
+    id,
+    saleDate: values.dia,
+    patientName: values.patientName,
+    crmContactRef: values.crmContactRef ?? "",
+    notes: values.observacao?.trim()
+      ? `Pagamento de dívida (Lembretes). ${values.observacao.trim()}`
+      : "Pagamento de dívida registrado nos Lembretes — a dívida não tinha comanda.",
+    items: [
+      {
+        id: `${id}-item`,
+        // OUTRO de propósito: não é uma venda nova de tratamento/consulta, é a
+        // cobrança de uma dívida antiga entrando no faturamento.
+        itemType: "OUTRO",
+        amount: Math.round((values.valor || 0) * 100) / 100,
+        description: "Pagamento de dívida (Lembretes)",
+      },
+    ],
+    payments: [
+      {
+        id: `${id}-pay`,
+        method,
+        amount: Math.round((values.valor || 0) * 100) / 100,
+        installments: 1,
+      },
+    ],
+    createdAt: now,
+  };
+}
+
 // ---- Crediário no lucro (31/07/2026) -------------------------------------------
 // O caixa do crediário (dinheiro vivo) fica FORA da P12 de propósito. Quando o
 // gestor decide reconhecer esse dinheiro como lucro de um mês, nasce UMA linha

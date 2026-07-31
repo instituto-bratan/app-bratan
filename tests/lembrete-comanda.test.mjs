@@ -254,3 +254,58 @@ test("o cofre bate depois de tirar o que estava sobrando", () => {
   const depois = pag.crediarioCashMoves(recebimentos.filter((item) => item.id !== "marcia-orfa")).reduce((sum, item) => sum + item.valor, 0);
   assert.equal(depois, 2931, "estornando a órfã, o caixa cai exatamente os R$ 1.889");
 });
+
+// ---------------------------------------------------------------- 31/07/2026
+// Dívida paga em PIX/cartão precisa virar faturamento: antes o valor só baixava
+// a dívida e não aparecia em lugar nenhum (nem no crediário, nem na P12).
+const fin = loadTsModule("src/features/financeiro/financeiroData.ts");
+
+test("CASO DO LUCAS: dívida sem comanda paga em PIX gera comanda e entra no faturamento", () => {
+  const sale = fin.saleFromLembretePayment({
+    lembreteId: "lem-claudia",
+    patientName: "CLAUDIA CEZARINO",
+    crmContactRef: "contact-tel-11999998888",
+    valor: 3170,
+    forma: "PIX",
+    dia: "2026-07-31",
+  });
+  assert.equal(fin.saleTotal(sale), 3170, "o valor entra no faturamento");
+  assert.equal(sale.payments[0].method, "PIX", "a forma real é preservada (dá para conciliar com o extrato)");
+  assert.equal(sale.items[0].itemType, "OUTRO", "não é venda nova de tratamento: é dívida antiga entrando");
+  assert.equal(sale.crmContactRef, "contact-tel-11999998888", "fica ligada ao paciente do CRM");
+  assert.match(sale.notes, /dívida/i);
+});
+
+test("cada forma de pagamento vira a forma certa na comanda", () => {
+  const formas = ["DINHEIRO", "PIX", "CARTAO", "OUTRO"].map(
+    (forma) => fin.saleFromLembretePayment({ lembreteId: "l", patientName: "P", valor: 100, forma, dia: "2026-07-31" }).payments[0].method,
+  );
+  assert.equal(formas.join(","), "DINHEIRO,PIX,CARTAO_CREDITO,TRANSFERENCIA");
+});
+
+test("id da comanda é determinístico: enviar duas vezes o mesmo pagamento não duplica faturamento", () => {
+  const a = fin.saleRefFromLembretePayment("lem-1", "2026-07-31", 3170);
+  const b = fin.saleRefFromLembretePayment("lem-1", "2026-07-31", 3170);
+  assert.equal(a, b);
+  assert.equal(a, "fsale-lem-lem-1-2026-07-31-317000");
+  // valor diferente no mesmo dia = pagamento diferente = comanda diferente
+  assert.notEqual(a, fin.saleRefFromLembretePayment("lem-1", "2026-07-31", 500));
+});
+
+test("comanda gerada entra no mês do recebimento na P12", () => {
+  const sale = fin.saleFromLembretePayment({ lembreteId: "l1", patientName: "Claudia", valor: 3170, forma: "PIX", dia: "2026-07-31" });
+  const cats = [{ id: "cat-x", name: "X", groupKey: "CUSTO_FIXO", sortOrder: 1, isCapex: false, active: true }];
+  const m = fin.buildP12Matrix([sale], [], cats, 2026, [], []);
+  assert.equal(m.revenueMonths[6].total, 3170, "julho");
+  assert.equal(m.profitMonths[6], 3170, "e vira lucro, porque não há despesa no mês");
+});
+
+test("dívida QUE JÁ TEM comanda não gera outra (senão duplica o faturamento)", () => {
+  // A tela decide: com saleRef, o recebimento é só baixa. O caixa do crediário
+  // também ignora, exatamente como já era.
+  const recebimentos = [
+    { id: "r1", lembreteId: "l1", valor: 3170, forma: "PIX", recebidoEm: "2026-07-31", saleRef: "fsale-lem-l1-2026-07-31-317000" },
+    { id: "r2", lembreteId: "l2", valor: 500, forma: "DINHEIRO", recebidoEm: "2026-07-31", saleRef: null },
+  ];
+  assert.deepEqual(pag.crediarioCashMoves(recebimentos).map((r) => r.id), ["r2"]);
+});
