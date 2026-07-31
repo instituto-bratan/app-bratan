@@ -35,8 +35,8 @@ export function FinanceiroP12Page() {
   const [hideEmpty, setHideEmpty] = useState(true);
   const financeiro = useFinanceiro(year);
   const matrix = useMemo(
-    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves],
+    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits],
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
@@ -159,6 +159,7 @@ export function FinanceiroP12Page() {
         </section>
 
         <ResumoMesCard
+          crediarioProfits={financeiro.crediarioProfits}
           sales={financeiro.sales}
           expenses={financeiro.expenses}
           categories={financeiro.categories}
@@ -205,6 +206,22 @@ export function FinanceiroP12Page() {
                   ))}
                   <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.financialIncomeYear)}</td>
                 </tr>
+                {/* Crediário reconhecido como lucro: aparece só nos meses em que o
+                    gestor apertou o botão na tela do Crediário (31/07/2026). */}
+                {matrix.crediarioYear > 0.005 ? (
+                  <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
+                    <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
+                      Crediário somado ao lucro
+                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                        dinheiro do cofre reconhecido no mês (decisão manual)
+                      </span>
+                    </td>
+                    {visibleMonths.map((month) => (
+                      <td key={month} className="px-2.5 py-2.5">{cellValue(matrix.crediarioMonths[month], true)}</td>
+                    ))}
+                    <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.crediarioYear)}</td>
+                  </tr>
+                ) : null}
 
                 {matrix.groups.map((group) => (
                   <GroupRows
@@ -226,11 +243,14 @@ export function FinanceiroP12Page() {
                 <tr className="bg-brand-creme/70 font-bold">
                   <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme px-4 py-3 text-left text-brand-musgo">
                     LUCRO OPERACIONAL DO MÊS
-                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(faturamento + juros − despesas operacionais; obra e aportes ficam fora)</span>
+                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                      (faturamento + juros{matrix.crediarioYear > 0.005 ? " + crediário reconhecido" : ""} − despesas
+                      operacionais; obra e aportes ficam fora)
+                    </span>
                   </td>
                   {visibleMonths.map((month) => (
                     <td key={month} className={cn("px-2.5 py-3", matrix.profitMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
-                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.financialIncomeMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
+                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.financialIncomeMonths[month] || matrix.crediarioMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
                     </td>
                   ))}
                   <td className={cn("px-4 py-3", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>

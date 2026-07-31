@@ -4,6 +4,9 @@ import { todayISO } from "@/lib/localStore";
 
 import { useAuth } from "@/hooks/useAuth";
 import {
+  deleteRemoteFinCrediarioProfit,
+  listRemoteFinCrediarioProfits,
+  saveRemoteFinCrediarioProfit,
   createRemoteFinExpense,
   createRemoteFinExpensesIgnoreDuplicates,
   createRemoteFinPurchase,
@@ -33,6 +36,10 @@ import {
   upsertRemoteFinReconciliation,
 } from "@/lib/remoteData";
 import {
+  crediarioProfitRef,
+  loadLocalCrediarioProfits,
+  saveLocalCrediarioProfits,
+  type FinCrediarioProfit,
   loadLocalFinExpenses,
   loadLocalFinInvoices,
   loadLocalFinReconciliations,
@@ -69,6 +76,8 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   const [expenses, setExpenses] = useState<FinExpense[]>(() => loadLocalFinExpenses());
   const [reconciliations, setReconciliations] = useState<FinReconciliation[]>(() => loadLocalFinReconciliations());
   const [savingsMoves, setSavingsMoves] = useState<FinSavingsMove[]>(() => loadLocalFinSavings());
+  // Crediário reconhecido como lucro, por mês (só quando o gestor aperta).
+  const [crediarioProfits, setCrediarioProfits] = useState<FinCrediarioProfit[]>(() => loadLocalCrediarioProfits());
   const [invoices, setInvoices] = useState<FinInvoice[]>(() => loadLocalFinInvoices());
   const [partnerEntries, setPartnerEntries] = useState<FinPartnerEntry[]>([]);
 
@@ -146,6 +155,12 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     enabled: useRemote,
     staleTime: 30_000,
   });
+  const crediarioProfitQuery = useQuery({
+    queryKey: ["fin-crediario-profit"],
+    queryFn: listRemoteFinCrediarioProfits,
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
   const provisionRulesQuery = useQuery({
     queryKey: ["fin-provision-rules"],
     queryFn: listRemoteFinProvisionRules,
@@ -164,6 +179,12 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     setSavingsMoves(savingsQuery.data);
     saveLocalFinSavings(savingsQuery.data);
   }, [savingsQuery.data]);
+
+  useEffect(() => {
+    if (!crediarioProfitQuery.data) return;
+    setCrediarioProfits(crediarioProfitQuery.data);
+    saveLocalCrediarioProfits(crediarioProfitQuery.data);
+  }, [crediarioProfitQuery.data]);
 
   const invoicesQuery = useQuery({
     queryKey: ["fin-invoices", year],
@@ -452,6 +473,45 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
+  /**
+   * Reconhece (ou atualiza) o caixa do crediário como lucro do mês. Nunca é
+   * automático: só roda quando alguém aperta o botão na tela do Crediário.
+   */
+  function setCrediarioNoLucro(monthKey: string, amount: number, note = "") {
+    const record: FinCrediarioProfit = {
+      id: crediarioProfitRef(monthKey),
+      monthRef: monthKey,
+      amount: Math.round(amount * 100) / 100,
+      note,
+      includedAt: new Date().toISOString(),
+    };
+    setCrediarioProfits((current) => {
+      const next = [record, ...current.filter((item) => item.id !== record.id)];
+      saveLocalCrediarioProfits(next);
+      return next;
+    });
+    if (useRemote) {
+      void saveRemoteFinCrediarioProfit(record, pessoa?.id ?? null)
+        .then(() => invalidate("fin-crediario-profit"))
+        .catch((error) => console.warn("Crediário no lucro não sincronizou.", error));
+    }
+    return record;
+  }
+
+  function removeCrediarioNoLucro(monthKey: string) {
+    const ref = crediarioProfitRef(monthKey);
+    setCrediarioProfits((current) => {
+      const next = current.filter((item) => item.id !== ref);
+      saveLocalCrediarioProfits(next);
+      return next;
+    });
+    if (useRemote) {
+      void deleteRemoteFinCrediarioProfit(ref)
+        .then(() => invalidate("fin-crediario-profit"))
+        .catch((error) => console.warn("Remoção do crediário no lucro não sincronizou.", error));
+    }
+  }
+
   function addSavingsMoves(moves: FinSavingsMove[]) {
     setSavingsMoves((current) => {
       const existing = new Set(current.map((move) => move.id));
@@ -545,6 +605,9 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     expenses,
     reconciliations,
     savingsMoves,
+    crediarioProfits,
+    setCrediarioNoLucro,
+    removeCrediarioNoLucro,
     invoices,
     partnerEntries,
     provisionRules: provisionRulesQuery.data?.length ? provisionRulesQuery.data : seedProvisionRules,

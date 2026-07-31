@@ -427,7 +427,12 @@ export type P12Matrix = {
   capexRows: P12Row[];
   capexMonths: number[];
   capexYear: number;
-  // Lucro = faturamento + juros (rendimento) − despesas operacionais (sem obra, sem aportes).
+  // Crediário reconhecido como lucro naquele mês (só quando o gestor aperta o
+  // botão — ver FinCrediarioProfit). Zero na esmagadora maioria dos meses.
+  crediarioMonths: number[];
+  crediarioYear: number;
+  // Lucro = faturamento + juros (rendimento) + crediário incorporado − despesas
+  // operacionais (sem obra, sem aportes).
   profitMonths: number[];
   profitYear: number;
 };
@@ -447,7 +452,14 @@ function emptyCells(): P12Cell[] {
 // julho continua sendo despesa de junho. O crediário (dinheiro vivo) fica
 // FORA da P12 de propósito: é caixa separado, com aba própria.
 // LUCRO do mês = faturamento + poupança − despesas do mês.
-export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categories: FinCategory[], year: number, savingsMoves: FinSavingsMove[] = []): P12Matrix {
+export function buildP12Matrix(
+  sales: FinSale[],
+  expenses: FinExpense[],
+  categories: FinCategory[],
+  year: number,
+  savingsMoves: FinSavingsMove[] = [],
+  crediarioProfits: FinCrediarioProfit[] = [],
+): P12Matrix {
   const revenueMonths = emptyCells();
   for (const sale of sales) {
     if (Number(sale.saleDate.slice(0, 4)) !== year) continue;
@@ -514,12 +526,23 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     // Aporte, troca de contas, saldo inicial etc. são tesouraria, não receita.
     if (move.kind === "RENDIMENTO") financialIncomeMonths[month] += move.amount || 0;
   }
+  // Crediário incorporado ao lucro, mês a mês (decisão manual do gestor).
+  const crediarioMonths = Array.from({ length: 12 }, () => 0);
+  for (const record of crediarioProfits) {
+    if (Number(record.monthRef.slice(0, 4)) !== year) continue;
+    const month = Number(record.monthRef.slice(5, 7)) - 1;
+    if (month < 0 || month > 11) continue;
+    crediarioMonths[month] += record.amount || 0;
+  }
+  const crediarioYear = crediarioMonths.reduce((sum, value) => sum + value, 0);
+
   const revenueYear = revenueMonths.reduce((sum, cell) => sum + cell.total, 0);
   const savingsInYear = savingsInMonths.reduce((sum, value) => sum + value, 0);
   const financialIncomeYear = financialIncomeMonths.reduce((sum, value) => sum + value, 0);
   const totalExpensesYear = totalExpensesMonths.reduce((sum, value) => sum + value, 0);
   const profitMonths = totalExpensesMonths.map(
-    (expensesTotal, index) => revenueMonths[index].total + financialIncomeMonths[index] - expensesTotal,
+    (expensesTotal, index) =>
+      revenueMonths[index].total + financialIncomeMonths[index] + crediarioMonths[index] - expensesTotal,
   );
 
   return {
@@ -536,8 +559,10 @@ export function buildP12Matrix(sales: FinSale[], expenses: FinExpense[], categor
     capexRows,
     capexMonths,
     capexYear,
+    crediarioMonths,
+    crediarioYear,
     profitMonths,
-    profitYear: revenueYear + financialIncomeYear - totalExpensesYear,
+    profitYear: revenueYear + financialIncomeYear + crediarioYear - totalExpensesYear,
   };
 }
 
@@ -549,6 +574,7 @@ export const p12MonthLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", 
 export type ResumoMes = {
   faturamento: number;
   rendimento: number; // juros do banco — entra no lucro
+  crediarioNoLucro: number; // caixa do crediário reconhecido pelo gestor neste mês
   aportes: number; // aportes/trocas de conta no cofre — NÃO entram no lucro
   receita: number; // faturamento + rendimento (o que "entrou" e conta pro lucro)
   custosOperacionais: number;
@@ -570,14 +596,16 @@ export function buildResumoMes(
   savingsMoves: FinSavingsMove[],
   metas: { goalSuperRevenue: number; goalTargetRevenue: number; goalMinRevenue: number },
   monthKey: string,
+  crediarioProfits: FinCrediarioProfit[] = [],
 ): ResumoMes {
   const year = Number(monthKey.slice(0, 4));
   const monthIdx = Number(monthKey.slice(5, 7)) - 1;
-  const matrix = buildP12Matrix(sales, expenses, categories, year, savingsMoves);
+  const matrix = buildP12Matrix(sales, expenses, categories, year, savingsMoves, crediarioProfits);
   const faturamento = matrix.revenueMonths[monthIdx]?.total ?? 0;
   const rendimento = matrix.financialIncomeMonths[monthIdx] ?? 0;
   const poupancaTotal = matrix.savingsInMonths[monthIdx] ?? 0;
   const aportes = poupancaTotal - rendimento; // entradas no cofre que NÃO são receita
+  const crediarioNoLucro = matrix.crediarioMonths[monthIdx] ?? 0;
   const receita = faturamento + rendimento;
   const custosOperacionais = matrix.totalExpensesMonths[monthIdx] ?? 0;
   const obra = matrix.capexMonths[monthIdx] ?? 0;
@@ -597,6 +625,7 @@ export function buildResumoMes(
   return {
     faturamento,
     rendimento,
+    crediarioNoLucro,
     aportes,
     receita,
     custosOperacionais,
@@ -693,6 +722,16 @@ export function purchaseAccounting(purchase: Pick<FinPurchase, "method" | "card"
   }
   if (purchase.method === "BOLETO") return { label: "Contas a Pagar", tone: "boleto" };
   return { label: "Saída direta (caixa)", tone: "caixa" };
+}
+
+export const crediarioProfitStorageKey = "app-bratan-fin-crediario-lucro";
+
+export function loadLocalCrediarioProfits() {
+  return readLocalValue<FinCrediarioProfit[]>(crediarioProfitStorageKey, []);
+}
+
+export function saveLocalCrediarioProfits(records: FinCrediarioProfit[]) {
+  writeLocalValue(crediarioProfitStorageKey, records);
 }
 
 export const finSalesStorageKey = "app-bratan-fin-sales";
@@ -850,6 +889,59 @@ export type FinSavingsMove = {
   monthRef: string;
   createdAt: string;
 };
+
+// ---- Crediário no lucro (31/07/2026) -------------------------------------------
+// O caixa do crediário (dinheiro vivo) fica FORA da P12 de propósito. Quando o
+// gestor decide reconhecer esse dinheiro como lucro de um mês, nasce UMA linha
+// destas — nunca automático, nunca em todo mês.
+//
+// Regra de ouro contra dupla contagem: o caixa é ACUMULADO (vem de vários
+// meses). Então o que se incorpora é sempre o que AINDA NÃO foi incorporado:
+// saldo do cofre − tudo que já entrou no lucro em meses anteriores.
+export type FinCrediarioProfit = {
+  id: string;
+  monthRef: string;
+  amount: number;
+  note: string;
+  includedAt: string;
+  includedBy?: string | null;
+};
+
+export function crediarioProfitRef(monthKey: string) {
+  return `crediario-lucro-${monthKey}`;
+}
+
+/** Total já reconhecido como lucro (todos os meses). */
+export function crediarioProfitTotal(records: FinCrediarioProfit[]) {
+  return round2(records.reduce((sum, record) => sum + (record.amount || 0), 0));
+}
+
+/** O que já foi reconhecido no mês pedido (0 quando o mês não foi incorporado). */
+export function crediarioProfitOfMonth(records: FinCrediarioProfit[], monthKey: string) {
+  return round2(
+    records.filter((record) => record.monthRef === monthKey).reduce((sum, record) => sum + (record.amount || 0), 0),
+  );
+}
+
+/**
+ * Quanto o botão deve sugerir para um mês: o saldo do caixa menos tudo que já
+ * foi para o lucro em OUTROS meses. Se o mês já está incorporado, sugere o
+ * próprio valor dele (para o botão virar "atualizar"). Nunca sugere negativo.
+ */
+export function crediarioProfitSuggestion(
+  saldoCaixa: number,
+  records: FinCrediarioProfit[],
+  monthKey: string,
+) {
+  const outrosMeses = round2(
+    records.filter((record) => record.monthRef !== monthKey).reduce((sum, record) => sum + (record.amount || 0), 0),
+  );
+  return Math.max(round2(saldoCaixa - outrosMeses), 0);
+}
+
+function round2(value: number) {
+  return Math.round((value || 0) * 100) / 100;
+}
 
 export type FinProvisionRule = {
   id: string;

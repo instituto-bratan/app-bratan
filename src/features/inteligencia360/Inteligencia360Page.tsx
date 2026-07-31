@@ -724,7 +724,7 @@ export function Inteligencia360DashboardPage() {
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   // Visão em gráficos (28/07): as mesmas fontes, em imagem. Nada digitado aqui.
   const chartMatrix = useMemo(
-    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, Number(hoje.slice(0, 4)), financeiro.savingsMoves),
+    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, Number(hoje.slice(0, 4)), financeiro.savingsMoves, financeiro.crediarioProfits),
     [financeiro.sales, financeiro.expenses, financeiro.categories, hoje],
   );
   const chartSerie = useMemo(() => buildMonthlyResultSeries(chartMatrix), [chartMatrix]);

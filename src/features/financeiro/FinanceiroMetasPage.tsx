@@ -222,6 +222,7 @@ export function FinanceiroMetasPage() {
         ) : null}
 
         <ResumoMesCard
+          crediarioProfits={financeiro.crediarioProfits}
           sales={financeiro.sales}
           expenses={financeiro.expenses}
           categories={financeiro.categories}

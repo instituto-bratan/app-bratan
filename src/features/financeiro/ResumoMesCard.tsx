@@ -3,7 +3,7 @@ import { HandCoins, Target, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
-import { buildResumoMes, moneyFin, type FinCategory, type FinExpense, type FinSale, type FinSavingsMove } from "./financeiroData";
+import { buildResumoMes, moneyFin, type FinCategory, type FinCrediarioProfit, type FinExpense, type FinSale, type FinSavingsMove } from "./financeiroData";
 
 // Resumo do mês que CONECTA meta (faturamento), lucro e contas a pagar num só
 // lugar — para nunca mais parecer que "nada bate". São lentes diferentes: a meta
@@ -16,6 +16,7 @@ export function ResumoMesCard({
   savingsMoves,
   metas,
   monthKey,
+  crediarioProfits = [],
 }: {
   sales: FinSale[];
   expenses: FinExpense[];
@@ -23,10 +24,11 @@ export function ResumoMesCard({
   savingsMoves: FinSavingsMove[];
   metas: { goalSuperRevenue: number; goalTargetRevenue: number; goalMinRevenue: number };
   monthKey: string;
+  crediarioProfits?: FinCrediarioProfit[];
 }) {
   const r = useMemo(
-    () => buildResumoMes(sales, expenses, categories, savingsMoves, metas, monthKey),
-    [sales, expenses, categories, savingsMoves, metas, monthKey],
+    () => buildResumoMes(sales, expenses, categories, savingsMoves, metas, monthKey, crediarioProfits),
+    [sales, expenses, categories, savingsMoves, metas, monthKey, crediarioProfits],
   );
   const mesLabel = `${monthKey.slice(5, 7)}/${monthKey.slice(0, 4)}`;
   const lucroNeg = r.lucroOperacional < 0;
@@ -57,7 +59,18 @@ export function ResumoMesCard({
           <FlowSign sign="−" />
           <FlowBox label="Custos do mês" value={moneyFin(r.custosOperacionais)} hint={`pago ${moneyFin(r.jaPago)} · a pagar ${moneyFin(r.aPagar)}`} tone="neutral" />
           <FlowSign sign="=" />
-          <FlowBox label="Lucro do mês" value={moneyFin(r.lucroOperacional)} hint={lucroNeg ? "no vermelho — falta faturar" : "no azul 🎉"} tone={lucroNeg ? "neg" : "pos"} />
+          <FlowBox
+            label="Lucro do mês"
+            value={moneyFin(r.lucroOperacional)}
+            hint={
+              r.crediarioNoLucro > 0
+                ? `inclui ${moneyFin(r.crediarioNoLucro)} do crediário`
+                : lucroNeg
+                  ? "no vermelho — falta faturar"
+                  : "no azul 🎉"
+            }
+            tone={lucroNeg ? "neg" : "pos"}
+          />
         </div>
 
         {/* Meta + contas a pagar + obra/cofre, cada um explicado */}

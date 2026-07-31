@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, CircleDollarSign, Plus, ScanLine, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, CircleDollarSign, Plus, ScanLine, Sparkles, Trash2, Wallet } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,14 @@ import {
   type FinCashEntry,
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
-import { createFinId, moneyFin } from "./financeiroData";
+import {
+  createFinId,
+  crediarioProfitOfMonth,
+  crediarioProfitSuggestion,
+  crediarioProfitTotal,
+  moneyFin,
+} from "./financeiroData";
+import { useFinanceiro } from "./useFinanceiro";
 
 const cashStorageKey = "app-bratan-fin-crediario";
 
@@ -73,6 +80,12 @@ export function FinanceiroCrediarioPage() {
   // Conferência do cofre: o valor contado à mão e o resultado do estorno.
   const [cofreContado, setCofreContado] = useState("");
   const [estornoFeedback, setEstornoFeedback] = useState("");
+  // Somar o caixa do crediário no lucro de um mês — só quando o gestor aperta.
+  const [lucroMes, setLucroMes] = useState(() => todayISO().slice(0, 7));
+  const [lucroValor, setLucroValor] = useState("");
+  const [lucroNota, setLucroNota] = useState("");
+  const [lucroFeedback, setLucroFeedback] = useState("");
+  const [lucroEditando, setLucroEditando] = useState(false);
   const readOnly = !canEditModule(pessoa, "fin-crediario");
 
   const entriesQuery = useQuery({
@@ -156,6 +169,55 @@ export function FinanceiroCrediarioPage() {
           : "Não foi possível estornar agora. Tente de novo.",
       ),
   });
+
+  // ---- Crediário no lucro do mês -------------------------------------------
+  // O caixa é acumulado: o app sugere só o que AINDA NÃO foi para o lucro, para
+  // o mesmo dinheiro nunca contar duas vezes em dois meses.
+  const financeiro = useFinanceiro(Number(lucroMes.slice(0, 4)));
+  const jaNoLucroDoMes = crediarioProfitOfMonth(financeiro.crediarioProfits, lucroMes);
+  const jaNoLucroTotal = crediarioProfitTotal(financeiro.crediarioProfits);
+  const sugestaoLucro = crediarioProfitSuggestion(totals.saldo, financeiro.crediarioProfits, lucroMes);
+  const mesIncluido = jaNoLucroDoMes > 0;
+  const registroDoMes = financeiro.crediarioProfits.find((item) => item.monthRef === lucroMes);
+  const suspeitosEmRisco = useMemo(() => suspects.reduce((acc, item) => acc + item.valorEmRisco, 0), [suspects]);
+
+  function mesBR(month: string) {
+    return new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  }
+
+  function abrirLucro() {
+    setLucroValor(
+      (mesIncluido ? jaNoLucroDoMes : sugestaoLucro).toFixed(2).replace(".", ","),
+    );
+    setLucroNota(registroDoMes?.note ?? "");
+    setLucroFeedback("");
+    setLucroEditando(true);
+  }
+
+  function confirmarLucro() {
+    setLucroFeedback("");
+    if (readOnly) return setLucroFeedback("Você não tem permissão para mexer no lucro.");
+    const valor = parseMoneyBR(lucroValor);
+    if (!Number.isFinite(valor) || valor <= 0) return setLucroFeedback("Informe o valor — digite como 10.939,30.");
+    if (valor > totals.saldo + 0.01) {
+      return setLucroFeedback(
+        `O caixa tem ${moneyFin(totals.saldo)}. Não dá para somar ${moneyFin(valor)} no lucro — confira o valor.`,
+      );
+    }
+    financeiro.setCrediarioNoLucro(lucroMes, valor, lucroNota.trim());
+    setLucroEditando(false);
+    setLucroFeedback(
+      `${moneyFin(valor)} somados ao lucro de ${mesBR(lucroMes)}. O dinheiro continua no cofre — mudou só o resultado do mês na P12, nas Metas e nos Relatórios.`,
+    );
+  }
+
+  function removerLucro() {
+    if (readOnly) return setLucroFeedback("Você não tem permissão para mexer no lucro.");
+    if (!window.confirm(`Tirar ${moneyFin(jaNoLucroDoMes)} do lucro de ${mesBR(lucroMes)}?`)) return;
+    financeiro.removeCrediarioNoLucro(lucroMes);
+    setLucroEditando(false);
+    setLucroFeedback(`Removido do lucro de ${mesBR(lucroMes)}. O caixa do crediário voltou a ficar fora do resultado.`);
+  }
 
   function tirarDoCofre(item: CofreItem) {
     setEstornoFeedback("");
@@ -297,6 +359,162 @@ export function FinanceiroCrediarioPage() {
             </CardContent>
           </Card>
         </section>
+
+        {/* CREDIÁRIO NO LUCRO (31/07/2026, pedido do Lucas): botão manual, por mês.
+            Nunca automático — o caixa do crediário segue fora da P12 por padrão. */}
+        <Card className="border-brand-musgo/30 bg-white/70">
+          <CardHeader>
+            <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+              <Sparkles className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
+              Somar este caixa no lucro do mês
+              <InfoTip title="Quando usar">
+                Por padrão o dinheiro do crediário fica FORA do lucro — é caixa físico, separado da P12. Quando você quiser
+                reconhecer esse dinheiro como resultado de um mês (no fechamento, por exemplo), escolha o mês e aperte o
+                botão. Vale só para o mês escolhido, e o dinheiro continua no cofre: muda o lucro, não o saldo.
+              </InfoTip>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="lucro-mes">Mês do lucro</Label>
+                <Input
+                  id="lucro-mes"
+                  type="month"
+                  value={lucroMes}
+                  onChange={(event) => {
+                    setLucroMes(event.target.value);
+                    setLucroEditando(false);
+                    setLucroFeedback("");
+                  }}
+                  className="w-44"
+                />
+              </div>
+              <div className="rounded-lg border border-brand-oliva/20 bg-brand-papel/70 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Caixa hoje</p>
+                <p className="text-lg font-bold text-brand-tinta">{moneyFin(totals.saldo)}</p>
+              </div>
+              <div className="rounded-lg border border-brand-oliva/20 bg-brand-papel/70 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Já no lucro (todos os meses)</p>
+                <p className="text-lg font-bold text-brand-tinta">{moneyFin(jaNoLucroTotal)}</p>
+              </div>
+              {mesIncluido ? (
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                    No lucro de {mesBR(lucroMes)}
+                  </p>
+                  <p className="text-lg font-bold text-emerald-800">{moneyFin(jaNoLucroDoMes)}</p>
+                </div>
+              ) : null}
+            </div>
+
+            {mesIncluido && !lucroEditando ? (
+              <div className="rounded-lg border border-emerald-300/70 bg-emerald-50/60 p-3">
+                <p className="text-sm font-semibold text-emerald-900">
+                  {mesBR(lucroMes)} já está com {moneyFin(jaNoLucroDoMes)} do crediário somados ao lucro.
+                </p>
+                {registroDoMes?.note ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">Observação: {registroDoMes.note}</p>
+                ) : null}
+                {registroDoMes?.includedAt ? (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Marcado em {dataBR(registroDoMes.includedAt.slice(0, 10))}.
+                  </p>
+                ) : null}
+                {readOnly ? null : (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={abrirLucro}>
+                      Corrigir o valor
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/5"
+                      onClick={removerLucro}
+                    >
+                      Tirar do lucro
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {!mesIncluido && !lucroEditando ? (
+              <div className="grid gap-2">
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {sugestaoLucro > 0 ? (
+                    <>
+                      Este mês ainda não tem crediário no lucro. O app sugere{" "}
+                      <strong className="text-brand-tinta">{moneyFin(sugestaoLucro)}</strong>
+                      {jaNoLucroTotal > 0
+                        ? ` — é o caixa de hoje menos os ${moneyFin(jaNoLucroTotal)} que já foram para o lucro em outros meses, para o mesmo dinheiro não contar duas vezes.`
+                        : " — o caixa inteiro, porque nada foi reconhecido ainda."}
+                    </>
+                  ) : (
+                    <>Todo o caixa de hoje já foi reconhecido como lucro em outros meses — não há valor novo para somar.</>
+                  )}
+                </p>
+                {readOnly || sugestaoLucro <= 0 ? null : (
+                  <div>
+                    <LiquidButton type="button" size="sm" onClick={abrirLucro}>
+                      <Sparkles className="h-4 w-4" aria-hidden="true" />
+                      Somar {moneyFin(sugestaoLucro)} no lucro de {mesBR(lucroMes)}
+                    </LiquidButton>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {lucroEditando ? (
+              <div className="grid gap-3 rounded-lg border border-brand-musgo/30 bg-brand-creme/25 p-3">
+                {suspeitosEmRisco > 0 ? (
+                  <p className="flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs font-semibold text-destructive">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    A conferência do cofre aponta {moneyFin(suspeitosEmRisco)} que podem estar sobrando no caixa. Resolva ali
+                    antes de somar no lucro, senão o resultado do mês entra inflado.
+                  </p>
+                ) : null}
+                <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+                  <div className="space-y-1">
+                    <Label htmlFor="lucro-valor">Valor a somar</Label>
+                    <Input
+                      id="lucro-valor"
+                      inputMode="decimal"
+                      value={lucroValor}
+                      onChange={(event) => setLucroValor(event.target.value)}
+                      placeholder="10.939,30"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="lucro-nota">Observação (opcional)</Label>
+                    <Input
+                      id="lucro-nota"
+                      value={lucroNota}
+                      onChange={(event) => setLucroNota(event.target.value)}
+                      placeholder="Ex.: fechamento de julho, dinheiro conferido no cofre"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  Isto NÃO tira dinheiro do cofre e não cria lançamento na P12: entra como uma linha de resultado no mês
+                  escolhido ({mesBR(lucroMes)}), somando no lucro da P12, das Metas e dos Relatórios. Fica registrado quem
+                  marcou e quando, e dá para desfazer.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <LiquidButton type="button" size="sm" onClick={confirmarLucro}>
+                    Confirmar
+                  </LiquidButton>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setLucroEditando(false)}>
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {lucroFeedback ? <p className="text-sm font-semibold text-brand-musgo">{lucroFeedback}</p> : null}
+          </CardContent>
+        </Card>
 
         {/* CONFERÊNCIA DO COFRE — informe o dinheiro contado e o app aponta a
             diferença e os lançamentos suspeitos (28/07). */}

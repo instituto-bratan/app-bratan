@@ -78,8 +78,8 @@ export function FinanceiroRelatoriosPage() {
   const financeiro = useFinanceiro(year);
 
   const matrix = useMemo(
-    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves],
+    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits],
   );
   const serie = useMemo(() => buildMonthlyResultSeries(matrix), [matrix]);
   const heat = useMemo(() => buildCalendarHeat(financeiro.sales, monthKey), [financeiro.sales, monthKey]);
@@ -107,8 +107,8 @@ export function FinanceiroRelatoriosPage() {
   );
   const resumo = useMemo(
     () =>
-      buildResumoMes(financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.savingsMoves, metasConfig, monthKey),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.savingsMoves, metasConfig, monthKey],
+      buildResumoMes(financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.savingsMoves, metasConfig, monthKey, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.savingsMoves, metasConfig, monthKey, financeiro.crediarioProfits],
   );
 
   const monthOptions = useMemo(
