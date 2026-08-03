@@ -477,13 +477,12 @@ export function buildP12Matrix(
 
   for (const expense of expenses) {
     // Competência mensal: o mês da despesa é o do vencimento, não o do pagamento.
-    let reference = expense.dueDate || expense.paidAt || "";
-    // Impostos Mensais (provisão): o valor separado no mês M é o imposto que se
-    // paga em M+1 — a linha SEMPRE pertence ao mês seguinte (Lucas, 03/08/2026:
-    // "esses 10.924,08 que ficaram em junho já iam somar em julho").
-    if (expense.categoryRef === IMPOSTOS_PROVISAO_CATEGORY && reference) {
-      reference = nextMonthlyDueDate(reference, 1).slice(0, 7) + "-01";
-    }
+    // Vale para TODAS as categorias, inclusive a provisão de impostos: o valor
+    // separado no mês M é GASTO de M (Lucas, 03/08/2026: "os dezesseis mil foram
+    // um gasto de julho"); no mês seguinte ele volta como FATURAMENTO no
+    // fechamento contábil (item "ficou do mês anterior p/ impostos") — nunca
+    // como gasto de novo.
+    const reference = expense.dueDate || expense.paidAt || "";
     if (Number(reference.slice(0, 4)) !== year) continue;
     const month = monthIndex(reference);
     if (month < 0) continue;
@@ -629,12 +628,8 @@ export function buildResumoMes(
   const aPagar = expenses
     .filter((expense) => {
       if (!operationalRefs.has(expense.categoryRef) || expense.paidAt) return false;
-      let competencia = (expense.dueDate || expense.paidAt || "").slice(0, 7);
-      // Mesma regra da matriz: a provisão de impostos pertence ao mês seguinte.
-      if (expense.categoryRef === IMPOSTOS_PROVISAO_CATEGORY && competencia) {
-        competencia = nextMonthlyDueDate(`${competencia}-01`, 1).slice(0, 7);
-      }
-      return competencia === monthKey;
+      // Mesma regra da matriz: competência pelo vencimento, sem deslocamento.
+      return (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey;
     })
     .reduce((sum, expense) => sum + (expense.amount || 0), 0);
   return {
@@ -1028,6 +1023,10 @@ export type FechamentoContabil = {
   impostosDoMesAnterior: number;
   /** Soma automática dos 4 itens — o que vai para a contabilidade. */
   faturamentoBruto: number;
+  /** Todas as despesas do mês (competência pelo vencimento), obra incluída. */
+  custosDoMes: number;
+  /** Lucro p/ contabilidade = Faturamento Bruto − custos do mês. SEM crediário. */
+  lucroContabil: number;
   /** Só visão interna: NUNCA somar nem enviar à contabilidade. */
   crediarioInterno: number;
 };
@@ -1074,6 +1073,14 @@ export function buildFechamentoContabil(
   const faturamentoBruto =
     Math.round((faturamentoSemCrediario + entradaPoupancaObra + entradaPoupancaProvisoes + impostosDoMesAnterior) * 100) / 100;
 
+  // Lucro p/ contabilidade (Lucas, 03/08/2026): Faturamento Bruto − TODAS as
+  // despesas do mês (obra e provisão de impostos do próprio mês incluídas).
+  // Crediário fica fora dos dois lados — é só visão interna.
+  const custosDoMes = expenses
+    .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey)
+    .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  const lucroContabil = Math.round((faturamentoBruto - custosDoMes) * 100) / 100;
+
   return {
     monthKey,
     faturamentoSemCrediario: Math.round(faturamentoSemCrediario * 100) / 100,
@@ -1081,6 +1088,8 @@ export function buildFechamentoContabil(
     entradaPoupancaProvisoes: Math.round(entradaPoupancaProvisoes * 100) / 100,
     impostosDoMesAnterior: Math.round(impostosDoMesAnterior * 100) / 100,
     faturamentoBruto,
+    custosDoMes: Math.round(custosDoMes * 100) / 100,
+    lucroContabil,
     crediarioInterno: crediarioProfitOfMonth(crediarioProfits, monthKey),
   };
 }

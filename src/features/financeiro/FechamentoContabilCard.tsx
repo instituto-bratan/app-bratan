@@ -52,6 +52,8 @@ export function FechamentoContabilCard({
       `FECHAMENTO ${mesLabel} — Instituto Bratan`,
       ...linhas.map((linha) => `${linha.label}: ${moneyFin(linha.valor)}`),
       `FATURAMENTO BRUTO: ${moneyFin(f.faturamentoBruto)}`,
+      `Custos do mês (contas a pagar, obra incluída): ${moneyFin(f.custosDoMes)}`,
+      `LUCRO (contabilidade, sem crediário): ${moneyFin(f.lucroContabil)}`,
     ].join("\n");
     navigator.clipboard
       ?.writeText(texto)
@@ -89,6 +91,28 @@ export function FechamentoContabilCard({
         <div className="mt-1 flex items-center justify-between gap-3 rounded-lg border border-brand-dourado/45 bg-brand-creme/45 px-3 py-2.5">
           <span className="text-sm font-bold uppercase tracking-wide text-brand-tinta">Faturamento Bruto (auto-soma)</span>
           <span className="text-lg font-bold tabular-nums text-brand-musgo">{moneyFin(f.faturamentoBruto)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-sm text-brand-tinta">
+            − Custos do mês (contas a pagar)
+            <InfoTip title="Custos do mês">
+              Todas as despesas com vencimento no mês: operacionais, obra (CAPEX) e a provisão de impostos separada NESTE
+              mês (ela é gasto daqui; no mês seguinte volta como faturamento, nunca como gasto de novo).
+            </InfoTip>
+          </span>
+          <span className="text-sm font-bold tabular-nums text-brand-tinta">{moneyFin(f.custosDoMes)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-musgo/40 bg-brand-musgo/5 px-3 py-2.5">
+          <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-brand-tinta">
+            Lucro (p/ contabilidade)
+            <InfoTip title="Lucro para a contabilidade">
+              Faturamento Bruto menos os custos do mês. SEM crediário dos dois lados — o crediário é só visão interna e
+              nunca vai para a contabilidade.
+            </InfoTip>
+          </span>
+          <span className={f.lucroContabil < 0 ? "text-lg font-bold tabular-nums text-red-700" : "text-lg font-bold tabular-nums text-brand-musgo"}>
+            {moneyFin(f.lucroContabil)}
+          </span>
         </div>
         <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-brand-oliva/30 bg-brand-papel/70 px-3 py-2">
           <span className="flex items-center gap-2 text-xs text-muted-foreground">

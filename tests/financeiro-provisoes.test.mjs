@@ -185,20 +185,14 @@ function despesaF(dia, valor, cat, id) {
     notes: "", createdAt: dia + "T10:00:00.000Z", recorrencia: null };
 }
 
-test("P12: a linha Impostos Mensais (provisão) desloca para o MÊS SEGUINTE", () => {
+test("P12: a provisão de impostos é GASTO do próprio mês (03/08: 'os dezesseis mil foram um gasto de julho')", () => {
   const m = fin.buildP12Matrix(
     [],
     [despesaF("2026-06-28", 10924.08, "cat-poup-impostos-mensais"), despesaF("2026-06-05", 20883, "cat-aluguel")],
     [catImpostos, catAluguel], 2026, [], [],
   );
-  assert.equal(Math.round(m.totalExpensesMonths[5] * 100) / 100, 20883, "junho fica só com o aluguel");
-  assert.equal(Math.round(m.totalExpensesMonths[6] * 100) / 100, 10924.08, "a provisão de junho vira custo de JULHO");
-});
-
-test("virada de ano: provisão de dezembro cai em janeiro do ano seguinte (some da matriz do ano)", () => {
-  const m = fin.buildP12Matrix([], [despesaF("2026-12-28", 15000, "cat-poup-impostos-mensais")], [catImpostos], 2026, [], []);
-  assert.equal(m.totalExpensesMonths[11], 0, "dezembro não conta");
-  assert.equal(m.totalExpensesYear, 0, "vai para jan/2027");
+  assert.equal(Math.round(m.totalExpensesMonths[5] * 100) / 100, 31807.08, "junho = aluguel + provisão de junho");
+  assert.equal(Math.round(m.totalExpensesMonths[6] * 100) / 100, 0, "julho NÃO herda o custo — herda o valor como faturamento no fechamento");
 });
 
 test("dois cofres: OBRA (uso/empréstimo/devolução) separado das PROVISÕES", () => {
@@ -241,6 +235,10 @@ test("FECHAMENTO CONTÁBIL: 4 itens somam o Faturamento Bruto; crediário fica F
   assert.equal(f.faturamentoBruto, 406487.36, "auto-soma dos 4 itens");
   assert.equal(f.crediarioInterno, 34309.10, "aparece só como visão interna");
   assert.ok(Math.abs(f.faturamentoBruto - (f.faturamentoSemCrediario + f.entradaPoupancaObra + f.entradaPoupancaProvisoes + f.impostosDoMesAnterior)) < 0.01);
+  // Lucro p/ contabilidade: custos do mês = provisão de JULHO (16.813,07) — a
+  // de junho é gasto de junho. Lucro = bruto − custos. Crediário fora dos dois lados.
+  assert.equal(f.custosDoMes, 16813.07, "só a despesa com vencimento em julho");
+  assert.equal(f.lucroContabil, Math.round((f.faturamentoBruto - 16813.07) * 100) / 100);
 });
 
 test("FECHAMENTO: devolução ao CDB no mesmo mês ABATE do item da obra (resgates − devoluções)", () => {
