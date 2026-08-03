@@ -168,3 +168,85 @@ test("aporte sem kind NÃO vira juros (a tolerância é só para razão de rendi
   const m = fin.buildP12Matrix([], [], cats, 2026, moves, []);
   assert.equal(m.financialIncomeMonths[6], 0);
 });
+
+// ---------------------------------------------------------------- 03/08/2026
+// Fechamento contábil: 4 itens auto-somados, crediário fora, e a linha de
+// impostos deslocada um mês (provisionou em junho = imposto de julho).
+const catImpostos = { id: "cat-poup-impostos-mensais", name: "Impostos Mensais (provisão)", groupKey: "POUPANCA", sortOrder: 1, isCapex: false, active: true };
+const catAluguel = { id: "cat-aluguel", name: "Aluguel", groupKey: "CUSTO_FIXO", sortOrder: 1, isCapex: false, active: true };
+function vendaF(dia, valor, id) {
+  return { id: id ?? ("s" + dia), saleDate: dia, patientName: "P", crmContactRef: "", notes: "",
+    items: [{ id: "i", itemType: "TRATAMENTO", amount: valor, description: "" }],
+    payments: [{ id: "p", method: "PIX", amount: valor, installments: 1 }], createdAt: dia + "T10:00:00.000Z" };
+}
+function despesaF(dia, valor, cat, id) {
+  return { id: id ?? ("e" + dia + cat), description: "x", categoryRef: cat, amount: valor, dueDate: dia, paidAt: null,
+    method: "BOLETO", supplier: "", installmentNum: null, installmentTotal: null, documentNote: "", isCapex: false,
+    notes: "", createdAt: dia + "T10:00:00.000Z", recorrencia: null };
+}
+
+test("P12: a linha Impostos Mensais (provisão) desloca para o MÊS SEGUINTE", () => {
+  const m = fin.buildP12Matrix(
+    [],
+    [despesaF("2026-06-28", 10924.08, "cat-poup-impostos-mensais"), despesaF("2026-06-05", 20883, "cat-aluguel")],
+    [catImpostos, catAluguel], 2026, [], [],
+  );
+  assert.equal(Math.round(m.totalExpensesMonths[5] * 100) / 100, 20883, "junho fica só com o aluguel");
+  assert.equal(Math.round(m.totalExpensesMonths[6] * 100) / 100, 10924.08, "a provisão de junho vira custo de JULHO");
+});
+
+test("virada de ano: provisão de dezembro cai em janeiro do ano seguinte (some da matriz do ano)", () => {
+  const m = fin.buildP12Matrix([], [despesaF("2026-12-28", 15000, "cat-poup-impostos-mensais")], [catImpostos], 2026, [], []);
+  assert.equal(m.totalExpensesMonths[11], 0, "dezembro não conta");
+  assert.equal(m.totalExpensesYear, 0, "vai para jan/2027");
+});
+
+test("dois cofres: OBRA (uso/empréstimo/devolução) separado das PROVISÕES", () => {
+  const moves = [
+    { id: "a", moveDate: "2026-07-13", direction: "SAIDA", amount: 54005.45, reason: "obra", source: "MANUAL", kind: "USO_OBRA", monthRef: "2026-07", createdAt: "" },
+    { id: "b", moveDate: "2026-07-13", direction: "SAIDA", amount: 39557.83, reason: "sobra", source: "MANUAL", kind: "EMPRESTIMO", monthRef: "2026-07", createdAt: "" },
+    { id: "c", moveDate: "2026-07-29", direction: "ENTRADA", amount: 40000, reason: "volta", source: "MANUAL", kind: "DEVOLUCAO", monthRef: "2026-07", createdAt: "" },
+    { id: "d", moveDate: "2026-07-30", direction: "ENTRADA", amount: 15487.09, reason: "provisões", source: "MANUAL", kind: "PROVISAO", monthRef: "2026-07", createdAt: "" },
+    { id: "e", moveDate: "2026-07-01", direction: "ENTRADA", amount: 10015, reason: "aporte", source: "MANUAL", kind: "APORTE", monthRef: "2026-07", createdAt: "" },
+  ];
+  const dual = fin.buildDualSavings(moves);
+  assert.equal(dual.obra.entradas, 40000);
+  assert.equal(Math.round(dual.obra.saidas * 100) / 100, 93563.28);
+  assert.equal(Math.round(dual.obra.saldo * 100) / 100, -53563.28);
+  assert.equal(Math.round(dual.provisoes.entradas * 100) / 100, 25502.09);
+  assert.equal(dual.provisoes.saidas, 0);
+});
+
+test("FECHAMENTO CONTÁBIL: 4 itens somam o Faturamento Bruto; crediário fica FORA", () => {
+  const sales = [vendaF("2026-07-10", 300000)];
+  const expenses = [
+    despesaF("2026-06-28", 10924.08, "cat-poup-impostos-mensais"),   // impostos do mês anterior → item (iii)
+    despesaF("2026-07-28", 16813.07, "cat-poup-impostos-mensais"),   // provisão de julho (é de agosto — NÃO entra)
+  ];
+  const moves = [
+    { id: "a", moveDate: "2026-07-13", direction: "SAIDA", amount: 54005.45, reason: "obra", source: "MANUAL", kind: "USO_OBRA", monthRef: "2026-07", createdAt: "" },
+    { id: "b", moveDate: "2026-07-13", direction: "SAIDA", amount: 39557.83, reason: "sobra", source: "MANUAL", kind: "EMPRESTIMO", monthRef: "2026-07", createdAt: "" },
+    { id: "c", moveDate: "2026-07-20", direction: "SAIDA", amount: 2000, reason: "urgência do time", source: "MANUAL", kind: "PROVISAO", monthRef: "2026-07", createdAt: "" },
+    { id: "d", moveDate: "2026-06-15", direction: "SAIDA", amount: 999, reason: "obra de junho", source: "MANUAL", kind: "USO_OBRA", monthRef: "2026-06", createdAt: "" },
+  ];
+  const f = fin.buildFechamentoContabil(sales, expenses, moves, "2026-07", [
+    { id: "crediario-lucro-2026-07", monthRef: "2026-07", amount: 34309.10, note: "", includedAt: "" },
+  ]);
+  assert.equal(f.faturamentoSemCrediario, 300000, "comandas puras, sem crediário");
+  assert.equal(f.entradaPoupancaObra, 54005.45, "só USO_OBRA do mês (empréstimo é tesouraria; junho fica em junho)");
+  assert.equal(f.entradaPoupancaProvisoes, 2000, "saída de provisão do mês");
+  assert.equal(f.impostosDoMesAnterior, 10924.08, "provisão separada em junho paga os impostos de julho");
+  assert.equal(f.faturamentoBruto, 300000 + 54005.45 + 2000 + 10924.08, "auto-soma dos 4 itens");
+  assert.equal(f.crediarioInterno, 34309.10, "aparece só como visão interna");
+  assert.ok(Math.abs(f.faturamentoBruto - (f.faturamentoSemCrediario + f.entradaPoupancaObra + f.entradaPoupancaProvisoes + f.impostosDoMesAnterior)) < 0.01);
+});
+
+test("aporte com 'obra'/'CDB' no motivo cai no cofre da OBRA (saldo inicial do CDB)", () => {
+  const moves = [
+    { id: "a", moveDate: "2026-07-01", direction: "ENTRADA", amount: 100000, reason: "Saldo inicial do CDB (obra)", source: "MANUAL", kind: "SALDO_INICIAL", monthRef: "2026-07", createdAt: "" },
+    { id: "b", moveDate: "2026-07-01", direction: "ENTRADA", amount: 10015, reason: "Transferência Itaú → Poupança institucional", source: "MANUAL", kind: "APORTE", monthRef: "2026-07", createdAt: "" },
+  ];
+  const dual = fin.buildDualSavings(moves);
+  assert.equal(dual.obra.entradas, 100000, "saldo inicial do CDB é da obra");
+  assert.equal(dual.provisoes.entradas, 10015, "aporte comum segue nas provisões");
+});

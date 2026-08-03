@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
+  buildDualSavings,
   createFinId,
   moneyFin,
   monthProvisionsDone,
@@ -65,6 +66,10 @@ export function FinanceiroPoupancaPage() {
 
   const balance = useMemo(() => savingsBalance(financeiro.savingsMoves), [financeiro.savingsMoves]);
   const debt = useMemo(() => operationalDebtToCofre(financeiro.savingsMoves), [financeiro.savingsMoves]);
+  // Dois cofres separados (03/08/2026, pedido do Lucas p/ fechamento): OBRA
+  // (CDB — uso na obra, empréstimo e devolução) × PROVISÕES (13º, férias,
+  // impostos, urgências, aportes e rendimentos).
+  const dual = useMemo(() => buildDualSavings(financeiro.savingsMoves), [financeiro.savingsMoves]);
 
   // Uso do CDB no MÊS ATUAL, derivado AUTOMÁTICO: a obra vem das contas da P12
   // (categoria CAPEX/Obras) e a sobra é o CDB resgatado no mês menos a obra.
@@ -181,6 +186,23 @@ export function FinanceiroPoupancaPage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {debt > 0.005 ? "Dinheiro do cofre que cobriu contas do operacional — a devolver." : "Nada pendente. Nada misturado. 👌"}
                 </p>
+              </div>
+              {/* Cofre da OBRA × Cofre das PROVISÕES — o fechamento contábil lê daqui. */}
+              <div className="rounded-xl border border-brand-oliva/20 bg-white/60 px-5 py-4">
+                <p className="text-xs font-semibold uppercase text-brand-oliva">🏗️ Poupança da OBRA (CDB)</p>
+                <p className={cn("mt-1 text-2xl font-bold", dual.obra.saldo < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(dual.obra.saldo)}</p>
+                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                  entrou {moneyFin(dual.obra.entradas)} · saiu {moneyFin(dual.obra.saidas)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Uso na obra, empréstimo ao operacional e devoluções.</p>
+              </div>
+              <div className="rounded-xl border border-brand-oliva/20 bg-white/60 px-5 py-4">
+                <p className="text-xs font-semibold uppercase text-brand-oliva">🛟 Poupança das PROVISÕES</p>
+                <p className={cn("mt-1 text-2xl font-bold", dual.provisoes.saldo < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(dual.provisoes.saldo)}</p>
+                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                  entrou {moneyFin(dual.provisoes.entradas)} · saiu {moneyFin(dual.provisoes.saidas)}
+                </p>
+                <p className="text-[11px] text-muted-foreground">13º, férias, impostos, urgências, aportes e rendimentos.</p>
               </div>
             </div>
           </div>

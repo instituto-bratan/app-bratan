@@ -215,6 +215,8 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
         "Repare na linha Entrada de valores: ela mostra o que foi para a poupança.",
       ],
       tips: [
+        "O card 'Fechamento para a contabilidade' soma sozinho os 4 itens do fechamento (comandas sem crediário + poupança da obra + poupança das provisões + impostos do mês anterior) — use 'Copiar fechamento' para enviar; o crediário NUNCA vai junto.",
+        "A linha 'Impostos Mensais (provisão)' pertence ao mês SEGUINTE ao em que foi separada — a P12 já desloca sozinha.",
         "Se um valor parece errado, o problema está na origem (comanda ou conta) — corrija lá e o P12 se ajusta sozinho.",
         "Use a prova viva nas reuniões: cada número tem os lançamentos que o sustentam.",
       ],

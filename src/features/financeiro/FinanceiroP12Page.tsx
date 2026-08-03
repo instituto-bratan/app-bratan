@@ -18,6 +18,7 @@ import {
 } from "./financeiroData";
 import { defaultMetasConfig, type MetasConfig } from "./metasData";
 import { ResumoMesCard } from "./ResumoMesCard";
+import { FechamentoContabilCard } from "./FechamentoContabilCard";
 import { useFinanceiro } from "./useFinanceiro";
 
 const metasStorageKey = "app-bratan-fin-metas-config-v1";
@@ -157,6 +158,16 @@ export function FinanceiroP12Page() {
             {hideEmpty ? "Só categorias com valor" : "Todas as categorias"}
           </button>
         </section>
+
+        {/* FECHAMENTO PARA A CONTABILIDADE (03/08/2026, regra do Lucas + CEO):
+            4 itens que se auto-somam no Faturamento Bruto; crediário fica FORA. */}
+        <FechamentoContabilCard
+          sales={financeiro.sales}
+          expenses={financeiro.expenses}
+          savingsMoves={financeiro.savingsMoves}
+          crediarioProfits={financeiro.crediarioProfits}
+          monthKey={resumoMonthKey}
+        />
 
         <ResumoMesCard
           crediarioProfits={financeiro.crediarioProfits}

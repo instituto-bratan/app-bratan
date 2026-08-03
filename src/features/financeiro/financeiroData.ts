@@ -477,7 +477,13 @@ export function buildP12Matrix(
 
   for (const expense of expenses) {
     // Competência mensal: o mês da despesa é o do vencimento, não o do pagamento.
-    const reference = expense.dueDate || expense.paidAt || "";
+    let reference = expense.dueDate || expense.paidAt || "";
+    // Impostos Mensais (provisão): o valor separado no mês M é o imposto que se
+    // paga em M+1 — a linha SEMPRE pertence ao mês seguinte (Lucas, 03/08/2026:
+    // "esses 10.924,08 que ficaram em junho já iam somar em julho").
+    if (expense.categoryRef === IMPOSTOS_PROVISAO_CATEGORY && reference) {
+      reference = nextMonthlyDueDate(reference, 1).slice(0, 7) + "-01";
+    }
     if (Number(reference.slice(0, 4)) !== year) continue;
     const month = monthIndex(reference);
     if (month < 0) continue;
@@ -621,12 +627,15 @@ export function buildResumoMes(
   // jaPago = custos − aPagar nunca fica negativo por causa de categoria órfã.
   const operationalRefs = new Set(categories.filter((category) => !category.isCapex).map((category) => category.id));
   const aPagar = expenses
-    .filter(
-      (expense) =>
-        operationalRefs.has(expense.categoryRef) &&
-        !expense.paidAt &&
-        (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey,
-    )
+    .filter((expense) => {
+      if (!operationalRefs.has(expense.categoryRef) || expense.paidAt) return false;
+      let competencia = (expense.dueDate || expense.paidAt || "").slice(0, 7);
+      // Mesma regra da matriz: a provisão de impostos pertence ao mês seguinte.
+      if (expense.categoryRef === IMPOSTOS_PROVISAO_CATEGORY && competencia) {
+        competencia = nextMonthlyDueDate(`${competencia}-01`, 1).slice(0, 7);
+      }
+      return competencia === monthKey;
+    })
     .reduce((sum, expense) => sum + (expense.amount || 0), 0);
   return {
     faturamento,
@@ -960,6 +969,113 @@ export function saleFromLembretePayment(values: {
       },
     ],
     createdAt: now,
+  };
+}
+
+// ---- Fechamento contábil e cofres separados (03/08/2026) -----------------------
+// Regras do Lucas para o fechamento que vai à CONTABILIDADE:
+//  · a linha "Impostos Mensais (provisão)" pertence ao MÊS SEGUINTE ao em que
+//    foi separada (provisionou em junho = imposto de julho);
+//  · existem DOIS cofres: o da OBRA (CDB) e o das PROVISÕES (13º, férias,
+//    urgências, impostos…) — entradas e saídas separadas;
+//  · Faturamento Bruto contábil = comandas (SEM crediário) + o que entrou da
+//    poupança para obra + o que entrou para colaboradores/urgências + o que
+//    ficou do mês anterior para os impostos;
+//  · o crediário é visão INTERNA: nunca soma no que vai para a contabilidade.
+export const IMPOSTOS_PROVISAO_CATEGORY = "cat-poup-impostos-mensais";
+
+// Kinds que pertencem ao cofre da OBRA (CDB): uso na obra, empréstimo da sobra
+// ao operacional e a devolução dele. Todo o resto é cofre das PROVISÕES.
+const OBRA_KINDS = new Set<FinSavingsKind>(["USO_OBRA", "EMPRESTIMO", "DEVOLUCAO"]);
+
+export type CofreResumo = { entradas: number; saidas: number; saldo: number };
+export type DualSavings = { obra: CofreResumo; provisoes: CofreResumo };
+
+function isObraMove(move: FinSavingsMove) {
+  if (move.kind && OBRA_KINDS.has(move.kind)) return true;
+  // Aporte/saldo inicial/ajuste com "obra" ou "CDB" no motivo pertence ao cofre
+  // da obra — é como se registra o dinheiro que JÁ estava no CDB antes do app.
+  if (move.kind === "APORTE" || move.kind === "SALDO_INICIAL" || move.kind === "AJUSTE") {
+    return /\bobra\b|\bcdb\b/i.test(move.reason || "");
+  }
+  return false;
+}
+
+/** Separa o cofre único em Obra (CDB) × Provisões, no período pedido (ou tudo). */
+export function buildDualSavings(moves: FinSavingsMove[], monthKey?: string): DualSavings {
+  const zero = (): CofreResumo => ({ entradas: 0, saidas: 0, saldo: 0 });
+  const result: DualSavings = { obra: zero(), provisoes: zero() };
+  for (const move of moves) {
+    if (monthKey && move.moveDate.slice(0, 7) !== monthKey) continue;
+    const pot = isObraMove(move) ? result.obra : result.provisoes;
+    if (move.direction === "ENTRADA") pot.entradas += move.amount || 0;
+    else pot.saidas += move.amount || 0;
+  }
+  result.obra.saldo = Math.round((result.obra.entradas - result.obra.saidas) * 100) / 100;
+  result.provisoes.saldo = Math.round((result.provisoes.entradas - result.provisoes.saidas) * 100) / 100;
+  return result;
+}
+
+export type FechamentoContabil = {
+  monthKey: string;
+  /** (iv) Comandas do mês — SEM crediário. */
+  faturamentoSemCrediario: number;
+  /** (i) Saídas do cofre da OBRA usadas na obra no mês (USO_OBRA). */
+  entradaPoupancaObra: number;
+  /** (ii) Saídas do cofre das PROVISÕES no mês (colaboradores, urgências…). */
+  entradaPoupancaProvisoes: number;
+  /** (iii) Impostos do mês = a provisão separada no MÊS ANTERIOR. */
+  impostosDoMesAnterior: number;
+  /** Soma automática dos 4 itens — o que vai para a contabilidade. */
+  faturamentoBruto: number;
+  /** Só visão interna: NUNCA somar nem enviar à contabilidade. */
+  crediarioInterno: number;
+};
+
+export function buildFechamentoContabil(
+  sales: FinSale[],
+  expenses: FinExpense[],
+  savingsMoves: FinSavingsMove[],
+  monthKey: string,
+  crediarioProfits: FinCrediarioProfit[] = [],
+): FechamentoContabil {
+  const faturamentoSemCrediario = sales
+    .filter((sale) => sale.saleDate.slice(0, 7) === monthKey)
+    .reduce((sum, sale) => sum + saleTotal(sale), 0);
+
+  let entradaPoupancaObra = 0;
+  let entradaPoupancaProvisoes = 0;
+  for (const move of savingsMoves) {
+    if (move.direction !== "SAIDA" || move.moveDate.slice(0, 7) !== monthKey) continue;
+    // O empréstimo da sobra do CDB ao operacional NÃO é pagamento de obra — é
+    // tesouraria; fica fora dos dois itens do fechamento.
+    if (move.kind === "USO_OBRA") entradaPoupancaObra += move.amount || 0;
+    else if (!isObraMove(move)) entradaPoupancaProvisoes += move.amount || 0;
+  }
+
+  // (iii) A provisão de impostos separada no mês ANTERIOR é o dinheiro que ficou
+  // na conta para pagar os impostos deste mês.
+  const [ano, mes] = monthKey.split("-").map(Number);
+  const anterior = mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
+  const impostosDoMesAnterior = expenses
+    .filter(
+      (expense) =>
+        expense.categoryRef === IMPOSTOS_PROVISAO_CATEGORY &&
+        (expense.dueDate || expense.paidAt || "").slice(0, 7) === anterior,
+    )
+    .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+
+  const faturamentoBruto =
+    Math.round((faturamentoSemCrediario + entradaPoupancaObra + entradaPoupancaProvisoes + impostosDoMesAnterior) * 100) / 100;
+
+  return {
+    monthKey,
+    faturamentoSemCrediario: Math.round(faturamentoSemCrediario * 100) / 100,
+    entradaPoupancaObra: Math.round(entradaPoupancaObra * 100) / 100,
+    entradaPoupancaProvisoes: Math.round(entradaPoupancaProvisoes * 100) / 100,
+    impostosDoMesAnterior: Math.round(impostosDoMesAnterior * 100) / 100,
+    faturamentoBruto,
+    crediarioInterno: crediarioProfitOfMonth(crediarioProfits, monthKey),
   };
 }
 
