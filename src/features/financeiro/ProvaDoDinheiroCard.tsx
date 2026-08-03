@@ -2,13 +2,13 @@
 // Ele digita o saldo do Itaú (do app do banco); o card desconta a reserva de
 // impostos (provisão do mês anterior) e soma as notas contadas no cofre físico
 // (registro do crediário). Resultado: o dinheiro NA MÃO, do jeito que ele confere.
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
+import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
   buildProvaDoDinheiro,
@@ -18,20 +18,19 @@ import {
   type FinExpense,
 } from "./financeiroData";
 
-const SALDO_KEY = "app-bratan-fin-saldo-itau-v1";
-
-type SaldoSalvo = { texto: string; atualizadoEm: string };
-
 export function ProvaDoDinheiroCard({
   expenses,
   crediarioProfits,
+  texto,
+  atualizadoEm,
+  onSaldoChange,
 }: {
   expenses: FinExpense[];
   crediarioProfits: FinCrediarioProfit[];
+  texto: string;
+  atualizadoEm: string;
+  onSaldoChange: (valor: string) => void;
 }) {
-  const salvo = readLocalValue<SaldoSalvo>(SALDO_KEY, { texto: "", atualizadoEm: "" });
-  const [texto, setTexto] = useState(salvo.texto);
-  const [atualizadoEm, setAtualizadoEm] = useState(salvo.atualizadoEm);
   const saldo = parseFinAmount(texto);
   const hoje = todayISO();
 
@@ -39,13 +38,6 @@ export function ProvaDoDinheiroCard({
     () => buildProvaDoDinheiro(expenses, crediarioProfits, saldo, hoje),
     [expenses, crediarioProfits, saldo, hoje],
   );
-
-  function salvar(valor: string) {
-    setTexto(valor);
-    const agora = new Date().toISOString();
-    setAtualizadoEm(agora);
-    writeLocalValue<SaldoSalvo>(SALDO_KEY, { texto: valor, atualizadoEm: agora });
-  }
 
   const linhas = [
     {
@@ -84,7 +76,7 @@ export function ProvaDoDinheiroCard({
               inputMode="decimal"
               placeholder="ex.: 35.427,61"
               value={texto}
-              onChange={(event) => salvar(event.target.value)}
+              onChange={(event) => onSaldoChange(event.target.value)}
             />
           </div>
           <div className="pb-1 text-xs text-muted-foreground">

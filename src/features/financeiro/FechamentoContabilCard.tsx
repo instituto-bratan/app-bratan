@@ -11,8 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
+import { todayISO } from "@/lib/localStore";
 import {
   buildFechamentoContabil,
+  buildProvaDoDinheiro,
   moneyFin,
   type FinCrediarioProfit,
   type FinExpense,
@@ -26,12 +28,14 @@ export function FechamentoContabilCard({
   savingsMoves,
   crediarioProfits,
   monthKey,
+  saldoItau = 0,
 }: {
   sales: FinSale[];
   expenses: FinExpense[];
   savingsMoves: FinSavingsMove[];
   crediarioProfits: FinCrediarioProfit[];
   monthKey: string;
+  saldoItau?: number;
 }) {
   const f = useMemo(
     () => buildFechamentoContabil(sales, expenses, savingsMoves, monthKey, crediarioProfits),
@@ -39,6 +43,19 @@ export function FechamentoContabilCard({
   );
   const [copiado, setCopiado] = useState("");
   const mesLabel = `${monthKey.slice(5, 7)}/${monthKey.slice(0, 4)}`;
+  // LUCRO REAL (03/08/2026, definição do Lucas): o que SOBROU no banco depois de
+  // pagar tudo do mês — sem crediário e sem poupança. Vem do saldo digitado na
+  // Prova do dinheiro (menos a reserva de impostos ainda não transferida). Só
+  // faz sentido para o mês que acabou de fechar ou o atual — meses antigos
+  // mostram apenas a conferência por competência.
+  const hoje = todayISO();
+  const mesAtual = hoje.slice(0, 7);
+  const [anoA, mesA] = mesAtual.split("-").map(Number);
+  const mesAnterior = mesA === 1 ? `${anoA - 1}-12` : `${anoA}-${String(mesA - 1).padStart(2, "0")}`;
+  const mostraLucroReal = saldoItau > 0 && (monthKey === mesAtual || monthKey === mesAnterior);
+  const lucroReal = mostraLucroReal
+    ? buildProvaDoDinheiro(expenses, crediarioProfits, saldoItau, hoje).livreNoBanco
+    : 0;
 
   const linhas = [
     { label: "Faturamento mensal (sem crediário)", valor: f.faturamentoSemCrediario, hint: "Comandas do Lançar Dia. O crediário fica fora — é visão interna." },
@@ -53,7 +70,10 @@ export function FechamentoContabilCard({
       ...linhas.map((linha) => `${linha.label}: ${moneyFin(linha.valor)}`),
       `FATURAMENTO BRUTO: ${moneyFin(f.faturamentoBruto)}`,
       `Custos do mês (contas a pagar, obra incluída): ${moneyFin(f.custosDoMes)}`,
-      `LUCRO (contabilidade, sem crediário): ${moneyFin(f.lucroContabil)}`,
+      ...(mostraLucroReal
+        ? [`LUCRO REAL DO MÊS (o que sobrou no banco, sem crediário e sem poupança): ${moneyFin(lucroReal)}`]
+        : []),
+      `Conferência por competência (faturamento bruto − custos): ${moneyFin(f.lucroContabil)}`,
     ].join("\n");
     navigator.clipboard
       ?.writeText(texto)
@@ -102,17 +122,36 @@ export function FechamentoContabilCard({
           </span>
           <span className="text-sm font-bold tabular-nums text-brand-tinta">{moneyFin(f.custosDoMes)}</span>
         </div>
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-musgo/40 bg-brand-musgo/5 px-3 py-2.5">
-          <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-brand-tinta">
-            Lucro (p/ contabilidade)
-            <InfoTip title="Lucro para a contabilidade">
-              Faturamento Bruto menos os custos do mês. SEM crediário dos dois lados — o crediário é só visão interna e
-              nunca vai para a contabilidade.
+        {mostraLucroReal ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-musgo/45 bg-brand-musgo/8 px-3 py-2.5">
+            <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-brand-tinta">
+              Lucro REAL do mês
+              <InfoTip title="Lucro real (caixa)">
+                Definição da casa: o que SOBROU no banco depois de pagar tudo do mês — sem crediário e sem poupança.
+                Vem do saldo do Itaú digitado na Prova do dinheiro (descontando a reserva de impostos, se ainda estiver
+                na conta). É este o número do mês.
+              </InfoTip>
+            </span>
+            <span className={lucroReal < 0 ? "text-xl font-bold tabular-nums text-red-700" : "text-xl font-bold tabular-nums text-brand-musgo"}>
+              {moneyFin(lucroReal)}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-brand-oliva/25 bg-white/50 px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              Lucro REAL do mês: digite o saldo do Itaú no card "Prova do dinheiro" logo abaixo.
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/50 px-3 py-2">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Conferência por competência (faturamento bruto − custos)
+            <InfoTip title="Conferência do contador">
+              Conta técnica: Faturamento Bruto menos os custos do mês, sem crediário. Serve de conferência para a
+              contabilidade — o número oficial do mês é o Lucro REAL (caixa) acima.
             </InfoTip>
           </span>
-          <span className={f.lucroContabil < 0 ? "text-lg font-bold tabular-nums text-red-700" : "text-lg font-bold tabular-nums text-brand-musgo"}>
-            {moneyFin(f.lucroContabil)}
-          </span>
+          <span className="text-sm font-semibold tabular-nums text-muted-foreground">{moneyFin(f.lucroContabil)}</span>
         </div>
         <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-brand-oliva/30 bg-brand-papel/70 px-3 py-2">
           <span className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -6,12 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { canFinanceiroView } from "@/lib/access";
-import { readLocalValue } from "@/lib/localStore";
+import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
   buildP12Matrix,
   moneyFin,
   p12MonthLabels,
+  parseFinAmount,
   saleTotal,
   type FinCategory,
   type P12Matrix,
@@ -32,6 +33,18 @@ function cellValue(value: number, isRevenue = false) {
 }
 
 export function FinanceiroP12Page() {
+  // Saldo do Itaú digitado (Prova do dinheiro) — compartilhado com o card do
+  // fechamento, onde vira o LUCRO REAL do mês (definição do Lucas, 03/08/2026).
+  const SALDO_KEY = "app-bratan-fin-saldo-itau-v1";
+  const saldoSalvo = readLocalValue<{ texto: string; atualizadoEm: string }>(SALDO_KEY, { texto: "", atualizadoEm: "" });
+  const [saldoTexto, setSaldoTexto] = useState(saldoSalvo.texto);
+  const [saldoAtualizadoEm, setSaldoAtualizadoEm] = useState(saldoSalvo.atualizadoEm);
+  function handleSaldoChange(valor: string) {
+    setSaldoTexto(valor);
+    const agora = new Date().toISOString();
+    setSaldoAtualizadoEm(agora);
+    writeLocalValue(SALDO_KEY, { texto: valor, atualizadoEm: agora });
+  }
   const [year, setYear] = useState(new Date().getFullYear());
   const [monthFilter, setMonthFilter] = useState<number | null>(null);
   const [hideEmpty, setHideEmpty] = useState(true);
@@ -168,11 +181,18 @@ export function FinanceiroP12Page() {
           savingsMoves={financeiro.savingsMoves}
           crediarioProfits={financeiro.crediarioProfits}
           monthKey={resumoMonthKey}
+          saldoItau={parseFinAmount(saldoTexto)}
         />
 
         {/* PROVA DO DINHEIRO (03/08/2026, pedido do Lucas): saldo do Itaú −
             reserva de impostos + notas do cofre = dinheiro NA MÃO, agora. */}
-        <ProvaDoDinheiroCard expenses={financeiro.expenses} crediarioProfits={financeiro.crediarioProfits} />
+        <ProvaDoDinheiroCard
+          expenses={financeiro.expenses}
+          crediarioProfits={financeiro.crediarioProfits}
+          texto={saldoTexto}
+          atualizadoEm={saldoAtualizadoEm}
+          onSaldoChange={handleSaldoChange}
+        />
 
         <ResumoMesCard
           crediarioProfits={financeiro.crediarioProfits}
