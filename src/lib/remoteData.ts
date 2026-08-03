@@ -2182,7 +2182,14 @@ async function upsertCrmTable(table: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return;
   const client = requireSupabase();
   const { error } = await client.from(table).upsert(rows, { onConflict: "client_ref" });
-  if (error) throw error;
+  if (error) {
+    // O erro do Supabase é um objeto simples: String() vira "[object Object]" e o
+    // banner ficava mudo (bug da Aline, 03/08). Agora sobe legível e COM a tabela.
+    const detalhe = [error.message, error.details, error.hint, error.code ? `código ${error.code}` : ""]
+      .filter(Boolean)
+      .join(" · ");
+    throw new Error(`${table}: ${detalhe || "erro desconhecido"}`);
+  }
 }
 
 export async function listRemoteCrmState(): Promise<CrmState> {
@@ -2439,9 +2446,13 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
   );
 
   if (includeCatalog) {
+  // Catálogo NUNCA vai por diff: o mergeCrmCatalogWithSeeds injeta os seeds no
+  // baseline, o diff acha que nada mudou e a cadência nova jamais chega ao
+  // banco — aí a FK de crm_cadence_enrollments derruba o save de quem não é
+  // coordenação (bug da Aline, 03/08). São ~100 linhas: sobe tudo, sempre.
   await upsertCrmTable(
     "crm_cadences",
-    pick.cadences.map((record) => ({
+    state.cadences.map((record) => ({
       client_ref: record.id,
       name: record.name,
       description: record.description || null,
@@ -2455,7 +2466,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_cadence_steps",
-    pick.cadenceSteps.map((record) => ({
+    state.cadenceSteps.map((record) => ({
       client_ref: record.id,
       cadence_id: record.cadenceId,
       step_order: record.stepOrder,
@@ -2475,7 +2486,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
 
   await upsertCrmTable(
     "crm_message_templates",
-    pick.messageTemplates.map((record) => ({
+    state.messageTemplates.map((record) => ({
       client_ref: record.id,
       name: record.name,
       category: record.category || null,
