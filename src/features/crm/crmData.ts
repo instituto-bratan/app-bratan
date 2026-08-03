@@ -356,6 +356,9 @@ export type CrmMoveDealOptions = {
   partialReason?: string;
   // POP v3.1: canal escolhido no fechamento (Programa / Clube / Tratamento).
   adhesionChannel?: CrmAdhesionChannel;
+  // USO INTERNO (ponte tarefa→Kanban): deixa mover sem a data da consulta — o
+  // radar "fora do 3·1" fica responsável por cobrar. A tela NUNCA passa isto.
+  allowMissingConsultaDate?: boolean;
 };
 
 // v2 (03/07/2026): chave trocada para descartar caches antigos que continham dados fictícios.
@@ -1994,10 +1997,15 @@ export function generateCadenceTasks(state: CrmState, reference = new Date()) {
     // verdade) e a janela de 7 dias.
     const anchoredSteps = steps.filter((step) => step.offsetType !== "DAYS_AFTER_TRIGGER");
     let anchoredMaterialized = false;
+    const enrolledDay = (enrollment.enrolledAt || enrollment.createdAt || "").slice(0, 10);
     const pendingBeyondWindow: { step: CrmCadenceStep; dueTime: number }[] = [];
     for (const step of anchoredSteps) {
       const workingState = { ...state, tasks: [...state.tasks, ...tasksToAdd] };
-      const due = new Date(`${dueDateForStep(enrollment, step, reference)}T23:59:59`);
+      const dueStr = dueDateForStep(enrollment, step, reference);
+      // Passo cuja data caiu ANTES da inscrição nunca foi possível — não nasce
+      // "atrasado" (ex.: consulta marcada em cima da hora pula o −15/−7).
+      if (enrolledDay && dueStr < enrolledDay) continue;
+      const due = new Date(`${dueStr}T23:59:59`);
       if (due.getTime() > reference.getTime() + 7 * 24 * 60 * 60 * 1000) {
         pendingBeyondWindow.push({ step, dueTime: due.getTime() });
         continue;
@@ -3338,7 +3346,15 @@ export function checkContactFatigue(state: CrmState, contactId: string, referenc
 export function completeCrmTask(
   state: CrmState,
   taskId: string,
-  values: { result: CrmTaskResult; resultNotes?: string; actorId: string; sentiment?: CrmSentiment },
+  values: {
+    result: CrmTaskResult;
+    resultNotes?: string;
+    actorId: string;
+    sentiment?: CrmSentiment;
+    // Quando o resultado é "agendou/reagendou": a DATA da consulta liga o
+    // paciente direto no 3·1 (−3/−1). Sem ela, o card anda mas o radar acusa.
+    scheduledDate?: string;
+  },
 ) {
   const task = state.tasks.find((item) => item.id === taskId);
   if (!task) return state;
@@ -3514,7 +3530,11 @@ export function completeCrmTask(
       const moved = moveDealStage(completed, deal.id, {
         actorId: values.actorId,
         stage: target,
+        scheduledAt: values.scheduledDate,
         objection: target === "NAO_FECHOU" ? values.resultNotes?.trim() || "Não fechou (registrado ao concluir a tarefa)" : undefined,
+        // Ponte interna: sem a data o card ainda anda (o avanço é real) e o
+        // radar "fora do 3·1" acusa na hora — melhor que travar a conclusão.
+        allowMissingConsultaDate: !values.scheduledDate,
       });
       if (moved.ok) completed = moved.state;
     }
@@ -3609,7 +3629,10 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
   const tasks: CrmTask[] = [];
   const today = todayISO();
 
-  if (options.stage === "CONSULTA_AGENDADA" || options.stage === "CONSULTA_CONFIRMADA") {
+  // Agendou COM data → o Ciclo de retorno (−15/−7/−3/−1) assume a confirmação
+  // via scheduleConsultation (chamado no moveDealStage). A tarefa genérica solta
+  // só nasce no caminho sem data (não deveria existir mais, mas fica o paraquedas).
+  if ((options.stage === "CONSULTA_AGENDADA" || options.stage === "CONSULTA_CONFIRMADA") && !options.scheduledAt) {
     tasks.push(
       createTask({
         ...taskBase,
@@ -3620,7 +3643,7 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
         taskType: "SCHEDULE",
         assignedToUserId: "recepcao",
         assignedToRole: "RECEPCAO",
-        dueAt: options.scheduledAt ?? atLocalTime(addDays(today, 1), 11),
+        dueAt: atLocalTime(addDays(today, 1), 11),
         priority: "HIGH",
       }),
     );
@@ -3729,6 +3752,113 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
   return newTasks;
 }
 
+// ---- Agendamento → Ciclo de retorno (−15/−7/−3/−1) — 01/08/2026 ---------------
+// Furo que o Lucas sofreu: paciente agendava e NÃO entrava no 3·1 de confirmação.
+// Três causas: o Kanban não pedia a data; a inscrição manual era descartada em
+// silêncio pela regra "1 cadência por paciente"; e remarcação não movia as
+// tarefas. Esta função é o caminho ÚNICO: agendou/remarcou → passa por aqui.
+export const RETURN_CYCLE_CADENCE_ID = "cad-return-cycle";
+
+export function scheduleConsultation(
+  state: CrmState,
+  values: { contactId: string; dealId?: string; eventDate: string; actorId: string; source?: string },
+) {
+  const nowISO = new Date().toISOString();
+  const active = state.cadenceEnrollments.filter(
+    (item) => item.contactId === values.contactId && item.status === "ACTIVE",
+  );
+  const sameCycle = active.find((item) => item.cadenceId === RETURN_CYCLE_CADENCE_ID);
+
+  // Mesma data já ativa → nada a fazer (idempotente entre aparelhos/cliques).
+  if (sameCycle && sameCycle.triggerDate === values.eventDate) {
+    return { state, changed: false, message: "Este paciente já está no 3·1 desta consulta." };
+  }
+
+  let next = state;
+
+  // Remarcação: encerra o ciclo antigo e cancela as tarefas abertas dele.
+  if (sameCycle) {
+    const de = sameCycle.triggerDate?.split("-").reverse().join("/") ?? "?";
+    const para = values.eventDate.split("-").reverse().join("/");
+    next = {
+      ...next,
+      cadenceEnrollments: next.cadenceEnrollments.map((item) =>
+        item.id === sameCycle.id
+          ? { ...item, status: "CANCELED" as const, canceledReason: `Consulta remarcada de ${de} para ${para}.`, updatedAt: nowISO }
+          : item,
+      ),
+      tasks: next.tasks.map((task) =>
+        task.status === "PENDING" && task.cadenceId === RETURN_CYCLE_CADENCE_ID && task.contactId === values.contactId
+          ? { ...task, status: "CANCELED" as const, resultNotes: `Consulta remarcada para ${para}.`, updatedAt: nowISO }
+          : task,
+      ),
+    };
+  }
+
+  // Agendou = a régua anterior cumpriu o papel (lead que agendou, resgate que
+  // voltou). A confirmação assume no lugar — com o motivo registrado, nunca em
+  // silêncio.
+  next = enrollContactInCadence(
+    next,
+    {
+      cadenceId: RETURN_CYCLE_CADENCE_ID,
+      contactId: values.contactId,
+      dealId: values.dealId ?? "",
+      triggerSource: values.source ?? "consulta agendada",
+      triggerDate: values.eventDate,
+      ownerUserId: "recepcao",
+      ownerRole: "RECEPCAO",
+    },
+    { replaceActive: true },
+  );
+
+  const enrolled = next.cadenceEnrollments.some(
+    (item) =>
+      item.contactId === values.contactId &&
+      item.cadenceId === RETURN_CYCLE_CADENCE_ID &&
+      item.status === "ACTIVE" &&
+      item.triggerDate === values.eventDate,
+  );
+  if (!enrolled) return { state, changed: false, message: "Não consegui inscrever no 3·1 — tente de novo." };
+
+  next = {
+    ...next,
+    timelineEvents: [
+      createTimelineEvent({
+        contactId: values.contactId,
+        eventType: "CONSULTA_AGENDADA_31",
+        eventTitle: `Consulta agendada para ${values.eventDate.split("-").reverse().join("/")}`,
+        eventDescription: "Entrou no Ciclo de retorno: exames −15/−7, confirmação −3 e lembrete −1.",
+        sourceModule: "CRM",
+        sourceId: values.dealId ?? values.contactId,
+        createdBy: values.actorId,
+      }),
+      ...next.timelineEvents,
+    ],
+  };
+  // As tarefas −15/−7/−3/−1 nascem já — sem esperar o próximo refresh.
+  next = generateCadenceTasks(next);
+  return { state: next, changed: true, message: "Paciente no 3·1: confirmação −3 e lembrete −1 criados para a recepção." };
+}
+
+/**
+ * Radar dos furos: negociações em "Consulta agendada/confirmada" cujo paciente
+ * NÃO está no Ciclo de retorno ativo — é exatamente o buraco do erro de agenda.
+ */
+export function dealsScheduledWithoutConfirmation(state: CrmState) {
+  const inCycle = new Set(
+    state.cadenceEnrollments
+      .filter((item) => item.status === "ACTIVE" && item.cadenceId === RETURN_CYCLE_CADENCE_ID)
+      .map((item) => item.contactId),
+  );
+  return state.deals.filter(
+    (deal) =>
+      deal.status === "OPEN" &&
+      (deal.stage === "CONSULTA_AGENDADA" || deal.stage === "CONSULTA_CONFIRMADA") &&
+      !inCycle.has(deal.contactId),
+  );
+}
+
 export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveDealOptions) {
   const deal = state.deals.find((item) => item.id === dealId);
   if (!deal) return { state, ok: false, message: "Negociação não encontrada." };
@@ -3736,6 +3866,15 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   if (options.stage === "CHURN" && !options.objection?.trim()) return { state, ok: false, message: "Informe o motivo do churn (ex.: sem condições financeiras agora) — é ele que orienta o resgate futuro." };
   if (options.stage === "FECHOU_COMPLETO" && !options.soldAmount) return { state, ok: false, message: "Informe o valor vendido antes de fechar completo." };
   if (options.stage === "FECHOU_PARCIAL" && (!options.soldAmount || !options.partialReason?.trim())) return { state, ok: false, message: "Informe valor vendido e motivo do parcial." };
+  // Agendamento sem data é o buraco que gera erro de agenda: sem a data, o 3·1
+  // (−3/−1) não tem de onde contar. A data passa a ser obrigatória aqui.
+  if (
+    (options.stage === "CONSULTA_AGENDADA" || options.stage === "CONSULTA_CONFIRMADA") &&
+    !options.scheduledAt &&
+    !options.allowMissingConsultaDate
+  ) {
+    return { state, ok: false, message: "Informe a DATA da consulta — é ela que liga o paciente no 3·1 de confirmação (−3/−1)." };
+  }
 
   const now = new Date().toISOString();
   // Churn preserva o status: quem fechou continua contando como fechado no 360 —
@@ -3836,6 +3975,18 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   const pipelineTasks = addPipelineTasksForStage(nextState, updatedDeal, options);
   if (pipelineTasks.length) {
     nextState = { ...nextState, tasks: [...pipelineTasks, ...nextState.tasks] };
+  }
+
+  // Consulta agendada/confirmada COM data → o paciente entra (ou remarca) no
+  // Ciclo de retorno: exames −15/−7, confirmação −3, lembrete −1 (01/08/2026).
+  if ((options.stage === "CONSULTA_AGENDADA" || options.stage === "CONSULTA_CONFIRMADA") && options.scheduledAt) {
+    nextState = scheduleConsultation(nextState, {
+      contactId: deal.contactId,
+      dealId: deal.id,
+      eventDate: options.scheduledAt.slice(0, 10),
+      actorId: options.actorId,
+      source: options.stage === "CONSULTA_CONFIRMADA" ? "consulta confirmada (kanban)" : "consulta agendada (kanban)",
+    }).state;
   }
 
   if (options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL") {

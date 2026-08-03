@@ -148,6 +148,8 @@ export function CrmTasksPage() {
   const [priority, setPriority] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [result, setResult] = useState<CrmTaskResult>("SENT");
+  // Data da consulta quando o resultado é "agendou/reagendou": liga o 3·1 na hora.
+  const [dataConsulta, setDataConsulta] = useState("");
   const [notes, setNotes] = useState("");
   const [unhappy, setUnhappy] = useState(false);
   const tasks = useFilteredTasks(visibleTasks, tab, query, type, priority);
@@ -190,11 +192,16 @@ export function CrmTasksPage() {
 
   function completeSelected() {
     if (!selectedTask) return;
+    if ((result === "SCHEDULED" || result === "RESCHEDULED") && !dataConsulta) {
+      setConciergeFeedback("Informe a DATA da consulta agendada — é ela que coloca o paciente no 3·1 de confirmação (−3/−1).");
+      return;
+    }
     persist((current) =>
       completeCrmTask(current, selectedTask.id, {
         actorId: pessoa?.id ?? "preview",
         result,
         resultNotes: notes,
+        scheduledDate: result === "SCHEDULED" || result === "RESCHEDULED" ? dataConsulta : undefined,
         // Regra 2.3 do POP: insatisfação → a Concierge recebe a tarefa HOJE.
         sentiment: unhappy ? "NEGATIVE" : undefined,
       }),
@@ -202,6 +209,7 @@ export function CrmTasksPage() {
     setSelectedTaskId("");
     setNotes("");
     setResult("SENT");
+    setDataConsulta("");
     setUnhappy(false);
   }
 
@@ -401,6 +409,21 @@ export function CrmTasksPage() {
                   <Label>Observação</Label>
                   <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Resumo curto" />
                 </div>
+                {result === "SCHEDULED" || result === "RESCHEDULED" ? (
+                  <div className="sm:col-span-2">
+                    <Label>Data da consulta (obrigatória)</Label>
+                    <Input
+                      type="date"
+                      value={dataConsulta}
+                      onChange={(event) => setDataConsulta(event.target.value)}
+                      className="mt-1"
+                    />
+                    <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                      Com a data, o paciente entra sozinho no 3·1 da recepção (confirmação −3 e lembrete −1) e o card anda no
+                      Kanban. Remarcou? As tarefas da data antiga são canceladas sozinhas.
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <label className="mt-2 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50/50 p-2.5 text-sm leading-5">
                 <input type="checkbox" checked={unhappy} onChange={(event) => setUnhappy(event.target.checked)} className="mt-0.5" />

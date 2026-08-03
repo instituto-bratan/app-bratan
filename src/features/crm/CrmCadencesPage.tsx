@@ -19,6 +19,9 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  RETURN_CYCLE_CADENCE_ID,
+  dealsScheduledWithoutConfirmation,
+  scheduleConsultation,
   applyContactChannels,
   applyMessageTemplate,
   canUserAccessCadence,
@@ -131,6 +134,12 @@ export function CrmCadencesPage() {
 
     setFeedback("Inscrevendo…");
     let createdName = "";
+    // O motor descarta a inscrição EM SILÊNCIO quando o paciente já tem outra
+    // cadência ativa (regra nº 5) — e a tela dizia "✅ inscrito" mesmo assim.
+    // Foi assim que paciente agendado ficou fora do 3·1 (01/08/2026). Agora a
+    // gente confere se a inscrição realmente nasceu e fala a verdade.
+    let enrolledOk = false;
+    let blockedBy = "";
     const saved = await persist((current) => {
       let next = current;
       let targetId = contactIdToEnroll;
@@ -154,7 +163,22 @@ export function CrmCadencesPage() {
         next = applyContactChannels(next, targetId, contactChannelsValues(createValues.channels), pessoa?.id ?? "sistema");
         createdName = contactDisplayName(result.contact);
       }
-      return enrollContactInCadence(next, {
+      // O Ciclo de retorno passa pelo caminho oficial do agendamento: remarca,
+      // cancela tarefas antigas e substitui a régua ativa com motivo.
+      if (cadenceId === RETURN_CYCLE_CADENCE_ID) {
+        const agendado = scheduleConsultation(next, {
+          contactId: targetId,
+          dealId,
+          eventDate: needsEventDate ? eventDate : todayISO(),
+          actorId: pessoa?.id ?? "sistema",
+          source: "inscricao manual (cadências)",
+        });
+        enrolledOk = agendado.changed || agendado.message.includes("já está");
+        blockedBy = enrolledOk ? "" : agendado.message;
+        return agendado.state;
+      }
+      const before = next.cadenceEnrollments.filter((item) => item.status === "ACTIVE" && item.contactId === targetId);
+      const enrolled = enrollContactInCadence(next, {
         cadenceId,
         contactId: targetId,
         dealId,
@@ -163,9 +187,27 @@ export function CrmCadencesPage() {
         ownerUserId: pessoa?.id ?? cadence.defaultOwnerRole.toLowerCase(),
         ownerRole: cadence.defaultOwnerRole,
       });
+      enrolledOk = enrolled.cadenceEnrollments.some(
+        (item) => item.status === "ACTIVE" && item.contactId === targetId && item.cadenceId === cadenceId,
+      );
+      if (!enrolledOk) {
+        const ativa = before[0];
+        const nomeAtiva = ativa ? state.cadences.find((item) => item.id === ativa.cadenceId)?.name ?? ativa.cadenceId : "";
+        blockedBy = ativa
+          ? `${nomeAtiva}`
+          : "regra de 1 cadência ativa por paciente";
+      }
+      return enrolled;
     });
 
     const who = createdName || displayName;
+    if (!enrolledOk) {
+      setFeedback(
+        `⚠️ ${who} NÃO entrou em "${cadence.name}": já existe a cadência ativa "${blockedBy}" (regra: 1 por paciente). ` +
+          `Encerre/cancele a ativa no cartão dela abaixo e inscreva de novo — nada foi criado agora.`,
+      );
+      return;
+    }
     if (saved) {
       // Se a régua não estiver na vista "Só as minhas", abre a visão completa
       // para a inscrição recém-criada aparecer (antes ela "sumia" da tela).
@@ -185,6 +227,30 @@ export function CrmCadencesPage() {
         `${who} foi inscrito(a) neste aparelho, mas NÃO sincronizou com o Supabase. Confira a internet e toque em "Tentar sincronizar" no aviso acima antes de sair desta tela.`,
       );
     }
+  }
+
+  // Radar do 3·1: agendados/confirmados SEM Ciclo de retorno ativo — é o furo
+  // exato que causou o erro de agenda (01/08/2026).
+  const forasDo31 = useMemo(() => dealsScheduledWithoutConfirmation(state), [state]);
+  const [radarDatas, setRadarDatas] = useState<Record<string, string>>({});
+
+  function corrigirFora31(dealIdAlvo: string, contactIdAlvo: string) {
+    const data = radarDatas[dealIdAlvo];
+    if (!data) {
+      setFeedback("Informe a DATA da consulta para colocar o paciente no 3·1.");
+      return;
+    }
+    void persist((current) =>
+      scheduleConsultation(current, {
+        contactId: contactIdAlvo,
+        dealId: dealIdAlvo,
+        eventDate: data,
+        actorId: pessoa?.id ?? "sistema",
+        source: "radar 3·1 (correção)",
+      }).state,
+    );
+    const nome = contactDisplayName(state.contacts.find((item) => item.id === contactIdAlvo));
+    setFeedback(`✅ ${nome} entrou no 3·1 da consulta de ${data.split("-").reverse().join("/")} — confirmação −3 e lembrete −1 na fila da recepção.`);
   }
 
   function handleEnroll(event: FormEvent) {
@@ -348,6 +414,45 @@ export function CrmCadencesPage() {
       </Card>
 
       <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+
+      {forasDo31.length ? (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-lg text-destructive">
+              <ShieldAlert className="h-5 w-5" aria-hidden="true" />
+              {forasDo31.length} paciente(s) com consulta marcada FORA do 3·1
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2.5">
+            <p className="text-xs leading-5 text-muted-foreground">
+              Estão em "Consulta agendada/confirmada" no Kanban mas sem o Ciclo de retorno ativo — ou seja, ninguém vai
+              receber a tarefa de confirmar (−3) nem o lembrete (−1). Foi exatamente isso que gerou o erro de agenda.
+              Informe a data e corrija em um toque.
+            </p>
+            {forasDo31.map((deal) => {
+              const contato = state.contacts.find((item) => item.id === deal.contactId);
+              return (
+                <div key={deal.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/15 bg-white/70 p-2.5">
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-brand-tinta">
+                    {contactDisplayName(contato)}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">{dealStageLabels[deal.stage]}</span>
+                  </span>
+                  <Input
+                    type="date"
+                    value={radarDatas[deal.id] ?? ""}
+                    onChange={(event) => setRadarDatas((current) => ({ ...current, [deal.id]: event.target.value }))}
+                    className="h-9 w-40"
+                    aria-label={`Data da consulta de ${contactDisplayName(contato)}`}
+                  />
+                  <Button type="button" size="sm" onClick={() => corrigirFora31(deal.id, deal.contactId)}>
+                    Colocar no 3·1
+                  </Button>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
       {isManagement ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant={onlyMine ? "default" : "outline"} size="sm" onClick={() => setOnlyMine(true)}>

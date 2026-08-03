@@ -415,6 +415,9 @@ export function CrmKanbanPage() {
   const [fullscreen, setFullscreen] = useState(false);
   const [selectedDealId, setSelectedDealId] = useState("");
   const [targetStage, setTargetStage] = useState<CrmDealStage>("CONTATADO");
+  // Data da consulta: obrigatória ao mover para Agendada/Confirmada — é ela que
+  // liga o paciente no 3·1 (−3/−1) da recepção (01/08/2026).
+  const [targetConsultaData, setTargetConsultaData] = useState("");
   const [prescribed, setPrescribed] = useState("");
   const [sold, setSold] = useState("");
   const [received, setReceived] = useState("");
@@ -766,6 +769,7 @@ export function CrmKanbanPage() {
       const moved = moveDealStage(current, selectedDeal.id, {
         actorId: pessoa?.id ?? "preview",
         stage: targetStage,
+        scheduledAt: targetConsultaData || undefined,
         prescribedAmount: prescribed ? Number(prescribed) : undefined,
         soldAmount: sold ? Number(sold) : undefined,
         receivedAmount: received ? Number(received) : undefined,
@@ -835,6 +839,7 @@ export function CrmKanbanPage() {
     setEditDealTitle(deal.title);
     setNameFeedback("");
     setTargetStage(stageOverride ?? deal.stage);
+    setTargetConsultaData("");
     setPrescribed(deal.prescribedAmount ? String(deal.prescribedAmount) : "");
     setSold(deal.soldAmount ? String(deal.soldAmount) : "");
     setReceived(deal.receivedAmount ? String(deal.receivedAmount) : "");
@@ -1226,6 +1231,21 @@ export function CrmKanbanPage() {
                   {dealStages.map((stage) => <option key={stage} value={stage}>{dealStageLabels[stage]}</option>)}
                 </select>
               </div>
+              {targetStage === "CONSULTA_AGENDADA" || targetStage === "CONSULTA_CONFIRMADA" ? (
+                <div>
+                  <Label>Data da consulta (obrigatória)</Label>
+                  <Input
+                    type="date"
+                    value={targetConsultaData}
+                    onChange={(event) => setTargetConsultaData(event.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                    Com a data, o paciente entra sozinho no 3·1 da recepção: exames −15/−7, confirmação −3 e lembrete −1.
+                    Remarcou? Mova de novo com a data nova — as tarefas antigas são canceladas sozinhas.
+                  </p>
+                </div>
+              ) : null}
               {targetStage === "FECHOU_COMPLETO" || targetStage === "FECHOU_PARCIAL" ? (
                 <div>
                   <Label>O que o paciente fechou? (canal)</Label>
