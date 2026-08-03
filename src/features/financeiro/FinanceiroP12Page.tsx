@@ -19,6 +19,7 @@ import {
 import { defaultMetasConfig, type MetasConfig } from "./metasData";
 import { ResumoMesCard } from "./ResumoMesCard";
 import { FechamentoContabilCard } from "./FechamentoContabilCard";
+import { ProvaDoDinheiroCard } from "./ProvaDoDinheiroCard";
 import { useFinanceiro } from "./useFinanceiro";
 
 const metasStorageKey = "app-bratan-fin-metas-config-v1";
@@ -168,6 +169,10 @@ export function FinanceiroP12Page() {
           crediarioProfits={financeiro.crediarioProfits}
           monthKey={resumoMonthKey}
         />
+
+        {/* PROVA DO DINHEIRO (03/08/2026, pedido do Lucas): saldo do Itaú −
+            reserva de impostos + notas do cofre = dinheiro NA MÃO, agora. */}
+        <ProvaDoDinheiroCard expenses={financeiro.expenses} crediarioProfits={financeiro.crediarioProfits} />
 
         <ResumoMesCard
           crediarioProfits={financeiro.crediarioProfits}

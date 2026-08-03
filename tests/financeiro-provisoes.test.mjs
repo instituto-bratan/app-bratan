@@ -260,3 +260,31 @@ test("aporte com 'obra'/'CDB' no motivo cai no cofre da OBRA (saldo inicial do C
   assert.equal(dual.obra.entradas, 100000, "saldo inicial do CDB é da obra");
   assert.equal(dual.provisoes.entradas, 10015, "aporte comum segue nas provisões");
 });
+
+// ------------------------------------------------------------- 03/08/2026 (2)
+// PROVA DO DINHEIRO: a conta do banco é a régua (pedido do Lucas: "faça chegar
+// naqueles dezoito mil mais os trinta e um").
+test("PROVA DO DINHEIRO: saldo Itaú − provisão do mês anterior + notas do cofre = na mão", () => {
+  const expenses = [
+    despesaF("2026-07-31", 16813.07, "cat-poup-impostos-mensais"), // reserva p/ agosto
+    despesaF("2026-06-28", 10924.08, "cat-poup-impostos-mensais"), // junho: não é a reserva de hoje
+  ];
+  const profits = [
+    { id: "crediario-lucro-2026-06", monthRef: "2026-06", amount: 999, note: "", includedAt: "" },
+    { id: "crediario-lucro-2026-07", monthRef: "2026-07", amount: 31250, note: "", includedAt: "" },
+  ];
+  const prova = fin.buildProvaDoDinheiro(expenses, profits, 35427.61, "2026-08-03");
+  assert.equal(prova.reservadoImpostos, 16813.07, "reserva = provisão separada em julho");
+  assert.equal(prova.reservaMes, "07/2026");
+  assert.equal(prova.livreNoBanco, 18614.54, "35.427,61 − 16.813,07");
+  assert.equal(prova.notasNoCofre, 31250, "registro de crediário mais recente");
+  assert.equal(prova.naMao, 49864.54, "18.614,54 + 31.250 — os números do Lucas");
+});
+
+test("PROVA DO DINHEIRO: virada de ano usa dezembro como mês anterior", () => {
+  const expenses = [despesaF("2026-12-31", 15000, "cat-poup-impostos-mensais")];
+  const prova = fin.buildProvaDoDinheiro(expenses, [], 20000, "2027-01-05");
+  assert.equal(prova.reservadoImpostos, 15000);
+  assert.equal(prova.reservaMes, "12/2026");
+  assert.equal(prova.livreNoBanco, 5000);
+});

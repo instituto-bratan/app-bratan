@@ -1011,6 +1011,56 @@ export function buildDualSavings(moves: FinSavingsMove[], monthKey?: string): Du
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// PROVA DO DINHEIRO (03/08/2026, pedido do Lucas: "faça chegar naqueles dezoito
+// mil mais os trinta e um"). A conta do banco é a RÉGUA: saldo do Itaú (digitado
+// do app do banco) − reserva de impostos (a provisão separada no mês anterior)
+// + as notas contadas no cofre físico (registro do crediário) = dinheiro NA MÃO.
+export type ProvaDoDinheiro = {
+  saldoItau: number;
+  reservadoImpostos: number;
+  reservaMes: string; // "MM/AAAA" da provisão usada como reserva
+  livreNoBanco: number;
+  notasNoCofre: number;
+  notasMes: string; // "MM/AAAA" do registro de crediário usado
+  naMao: number;
+};
+
+export function buildProvaDoDinheiro(
+  expenses: FinExpense[],
+  crediarioProfits: FinCrediarioProfit[],
+  saldoItau: number,
+  todayKey: string, // "YYYY-MM-DD"
+): ProvaDoDinheiro {
+  const mesAtual = todayKey.slice(0, 7);
+  const [ano, mes] = mesAtual.split("-").map(Number);
+  const anterior = mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
+  // Reserva = provisão de impostos separada no mês ANTERIOR (paga os impostos do mês atual).
+  const reservadoImpostos = expenses
+    .filter(
+      (expense) =>
+        expense.categoryRef === IMPOSTOS_PROVISAO_CATEGORY &&
+        (expense.dueDate || expense.paidAt || "").slice(0, 7) === anterior,
+    )
+    .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  // Notas no cofre = registro de crediário mais recente (o Lucas conta e registra).
+  const latest = [...crediarioProfits]
+    .filter((profit) => profit.monthRef <= mesAtual)
+    .sort((a, b) => a.monthRef.localeCompare(b.monthRef))
+    .pop();
+  const notasNoCofre = latest?.amount ?? 0;
+  const livreNoBanco = Math.round((saldoItau - reservadoImpostos) * 100) / 100;
+  return {
+    saldoItau: Math.round(saldoItau * 100) / 100,
+    reservadoImpostos: Math.round(reservadoImpostos * 100) / 100,
+    reservaMes: anterior.split("-").reverse().join("/"),
+    livreNoBanco,
+    notasNoCofre: Math.round(notasNoCofre * 100) / 100,
+    notasMes: (latest?.monthRef ?? mesAtual).split("-").reverse().join("/"),
+    naMao: Math.round((livreNoBanco + notasNoCofre) * 100) / 100,
+  };
+}
+
 export type FechamentoContabil = {
   monthKey: string;
   /** (iv) Comandas do mês — SEM crediário. */
