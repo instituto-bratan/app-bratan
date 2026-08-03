@@ -288,3 +288,14 @@ test("PROVA DO DINHEIRO: virada de ano usa dezembro como mês anterior", () => {
   assert.equal(prova.reservaMes, "12/2026");
   assert.equal(prova.livreNoBanco, 5000);
 });
+
+test("PROVA DO DINHEIRO: provisão PAGA não desconta (o dinheiro já saiu da conta)", () => {
+  // 03/08 à noite: os 16.813,07 debitaram (35.427,61 → 18.614,54). O saldo que
+  // o Lucas digita já vem sem eles — descontar de novo daria 1.801,47 (errado).
+  const paga = { ...despesaF("2026-07-31", 16813.07, "cat-poup-impostos-mensais"), paidAt: "2026-08-03" };
+  const profits = [{ id: "crediario-lucro-2026-07", monthRef: "2026-07", amount: 31250, note: "", includedAt: "" }];
+  const prova = fin.buildProvaDoDinheiro([paga], profits, 18614.54, "2026-08-03");
+  assert.equal(prova.reservadoImpostos, 0, "paga = já fora da conta, não desconta");
+  assert.equal(prova.livreNoBanco, 18614.54);
+  assert.equal(prova.naMao, 49864.54, "18.614,54 + 31.250 — exatamente a conta do Lucas");
+});

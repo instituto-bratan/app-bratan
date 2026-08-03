@@ -1035,12 +1035,16 @@ export function buildProvaDoDinheiro(
   const mesAtual = todayKey.slice(0, 7);
   const [ano, mes] = mesAtual.split("-").map(Number);
   const anterior = mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
-  // Reserva = provisão de impostos separada no mês ANTERIOR (paga os impostos do mês atual).
+  // Reserva = provisão de impostos separada no mês ANTERIOR e AINDA EM ABERTO.
+  // Quando ela é marcada como paga, o dinheiro JÁ SAIU da conta (transferência
+  // executada) — o saldo digitado já vem sem ela, então não desconta de novo
+  // (03/08/2026: os 16.813,07 debitaram à noite e a conta foi a 18.614,54).
   const reservadoImpostos = expenses
     .filter(
       (expense) =>
         expense.categoryRef === IMPOSTOS_PROVISAO_CATEGORY &&
-        (expense.dueDate || expense.paidAt || "").slice(0, 7) === anterior,
+        !expense.paidAt &&
+        (expense.dueDate || "").slice(0, 7) === anterior,
     )
     .reduce((sum, expense) => sum + (expense.amount || 0), 0);
   // Notas no cofre = registro de crediário mais recente (o Lucas conta e registra).

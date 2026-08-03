@@ -48,7 +48,14 @@ export function ProvaDoDinheiroCard({
   }
 
   const linhas = [
-    { label: `− Reservado p/ impostos (provisão de ${prova.reservaMes})`, valor: prova.reservadoImpostos, negativo: true },
+    {
+      label:
+        prova.reservadoImpostos > 0
+          ? `− Reservado p/ impostos (provisão de ${prova.reservaMes}, ainda na conta)`
+          : `− Reservado p/ impostos: a provisão de ${prova.reservaMes} JÁ SAIU da conta ✓`,
+      valor: prova.reservadoImpostos,
+      negativo: true,
+    },
     { label: "= Livre no banco", valor: prova.livreNoBanco, destaque: false },
     { label: `+ Dinheiro em notas no cofre (contagem ${prova.notasMes})`, valor: prova.notasNoCofre, negativo: false },
   ];
@@ -60,10 +67,11 @@ export function ProvaDoDinheiroCard({
           <Wallet className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
           Prova do dinheiro — na mão hoje
           <InfoTip title="Como funciona">
-            A conta do banco é a régua: saldo do Itaú (você digita, direto do app do banco) menos a reserva de impostos
-            (a provisão separada no mês anterior), mais as notas contadas no cofre físico (o registro do crediário).
-            Isso é POSIÇÃO DE CAIXA — o dinheiro que existe agora. O lucro da P12 é outra lente: o resultado do mês.
-            Os dois estão certos; medem coisas diferentes.
+            A conta do banco é a régua: saldo do Itaú (você digita, direto do app do banco) menos a reserva de impostos,
+            mais as notas contadas no cofre físico (o registro do crediário). A reserva só desconta enquanto a provisão
+            do mês anterior estiver EM ABERTO — quando você marca como paga (o dinheiro saiu da conta de verdade), ela
+            para de descontar, porque o saldo digitado já vem sem ela. Isso é POSIÇÃO DE CAIXA — o dinheiro que existe
+            agora. O lucro da P12 é outra lente: o resultado do mês. Os dois estão certos; medem coisas diferentes.
           </InfoTip>
         </CardTitle>
       </CardHeader>
