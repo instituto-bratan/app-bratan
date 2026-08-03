@@ -991,7 +991,7 @@ const OBRA_KINDS = new Set<FinSavingsKind>(["USO_OBRA", "EMPRESTIMO", "DEVOLUCAO
 export type CofreResumo = { entradas: number; saidas: number; saldo: number };
 export type DualSavings = { obra: CofreResumo; provisoes: CofreResumo };
 
-function isObraMove(move: FinSavingsMove) {
+export function isObraMove(move: FinSavingsMove) {
   if (move.kind && OBRA_KINDS.has(move.kind)) return true;
   // Aporte/saldo inicial/ajuste com "obra" ou "CDB" no motivo pertence ao cofre
   // da obra — é como se registra o dinheiro que JÁ estava no CDB antes do app.
@@ -1046,12 +1046,18 @@ export function buildFechamentoContabil(
   let entradaPoupancaObra = 0;
   let entradaPoupancaProvisoes = 0;
   for (const move of savingsMoves) {
-    if (move.direction !== "SAIDA" || move.moveDate.slice(0, 7) !== monthKey) continue;
-    // O empréstimo da sobra do CDB ao operacional NÃO é pagamento de obra — é
-    // tesouraria; fica fora dos dois itens do fechamento.
-    if (move.kind === "USO_OBRA") entradaPoupancaObra += move.amount || 0;
-    else if (!isObraMove(move)) entradaPoupancaProvisoes += move.amount || 0;
+    if (move.moveDate.slice(0, 7) !== monthKey) continue;
+    // Regra do Lucas (03/08/2026): TODO resgate do CDB é obra e TODA devolução
+    // ao CDB também. O item do fechamento é o LÍQUIDO que veio da poupança da
+    // obra no mês: resgates − devoluções.
+    if (isObraMove(move)) {
+      if (move.direction === "SAIDA") entradaPoupancaObra += move.amount || 0;
+      else if (move.kind === "DEVOLUCAO") entradaPoupancaObra -= move.amount || 0;
+    } else if (move.direction === "SAIDA") {
+      entradaPoupancaProvisoes += move.amount || 0;
+    }
   }
+  entradaPoupancaObra = Math.max(entradaPoupancaObra, 0);
 
   // (iii) A provisão de impostos separada no mês ANTERIOR é o dinheiro que ficou
   // na conta para pagar os impostos deste mês.
@@ -1194,11 +1200,15 @@ export function savingsBalance(moves: FinSavingsMove[]) {
 // Quanto o OPERACIONAL deve ao cofre: soma dos empréstimos (cofre cobriu conta)
 // menos as devoluções. É o valor "misturado" que ainda precisa ser compensado.
 export function operationalDebtToCofre(moves: FinSavingsMove[]) {
-  return moves.reduce((sum, move) => {
+  // Regra simplificada (Lucas, 03/08/2026): todo resgate do CDB é OBRA — o
+  // "empréstimo ao operacional" saiu de cena. A dívida nunca fica negativa:
+  // devolução além do emprestado é dinheiro da obra voltando, não crédito.
+  const debt = moves.reduce((sum, move) => {
     if (move.kind === "EMPRESTIMO") return sum + move.amount;
     if (move.kind === "DEVOLUCAO") return sum - move.amount;
     return sum;
   }, 0);
+  return Math.max(debt, 0);
 }
 
 // Total já usado do cofre para a obra (uso legítimo).

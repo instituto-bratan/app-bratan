@@ -233,12 +233,24 @@ test("FECHAMENTO CONTÁBIL: 4 itens somam o Faturamento Bruto; crediário fica F
     { id: "crediario-lucro-2026-07", monthRef: "2026-07", amount: 34309.10, note: "", includedAt: "" },
   ]);
   assert.equal(f.faturamentoSemCrediario, 300000, "comandas puras, sem crediário");
-  assert.equal(f.entradaPoupancaObra, 54005.45, "só USO_OBRA do mês (empréstimo é tesouraria; junho fica em junho)");
+  // Regra do Lucas (03/08): TODO resgate do CDB é obra; devolução abate.
+  // 54.005,45 + 39.557,83 (junho fica em junho; sem devolução neste cenário).
+  assert.equal(f.entradaPoupancaObra, 93563.28, "todos os resgates do mês são obra");
   assert.equal(f.entradaPoupancaProvisoes, 2000, "saída de provisão do mês");
   assert.equal(f.impostosDoMesAnterior, 10924.08, "provisão separada em junho paga os impostos de julho");
-  assert.equal(f.faturamentoBruto, 300000 + 54005.45 + 2000 + 10924.08, "auto-soma dos 4 itens");
+  assert.equal(f.faturamentoBruto, 406487.36, "auto-soma dos 4 itens");
   assert.equal(f.crediarioInterno, 34309.10, "aparece só como visão interna");
   assert.ok(Math.abs(f.faturamentoBruto - (f.faturamentoSemCrediario + f.entradaPoupancaObra + f.entradaPoupancaProvisoes + f.impostosDoMesAnterior)) < 0.01);
+});
+
+test("FECHAMENTO: devolução ao CDB no mesmo mês ABATE do item da obra (resgates − devoluções)", () => {
+  const moves = [
+    { id: "a", moveDate: "2026-07-13", direction: "SAIDA", amount: 93563.28, reason: "resgate CDB", source: "MANUAL", kind: "USO_OBRA", monthRef: "2026-07", createdAt: "" },
+    { id: "b", moveDate: "2026-07-29", direction: "SAIDA", amount: 15856.18, reason: "resgates finais", source: "MANUAL", kind: "USO_OBRA", monthRef: "2026-07", createdAt: "" },
+    { id: "c", moveDate: "2026-07-29", direction: "ENTRADA", amount: 40000, reason: "devolução ao CDB", source: "MANUAL", kind: "DEVOLUCAO", monthRef: "2026-07", createdAt: "" },
+  ];
+  const f = fin.buildFechamentoContabil([], [], moves, "2026-07", []);
+  assert.equal(f.entradaPoupancaObra, 69419.46, "109.419,46 resgatados − 40.000 devolvidos");
 });
 
 test("aporte com 'obra'/'CDB' no motivo cai no cofre da OBRA (saldo inicial do CDB)", () => {

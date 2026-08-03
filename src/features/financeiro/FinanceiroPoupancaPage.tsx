@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   buildDualSavings,
   createFinId,
+  isObraMove,
   moneyFin,
   monthProvisionsDone,
   operationalDebtToCofre,
@@ -33,8 +34,8 @@ import { useFinanceiro } from "./useFinanceiro";
 const KIND_OPTIONS: { value: FinSavingsKind; hint: string }[] = [
   { value: "APORTE", hint: "Reservou dinheiro no cofre (ex.: guardar lucro para a obra)." },
   { value: "USO_OBRA", hint: "Usou o cofre para pagar a obra. Uso normal, não vira dívida." },
-  { value: "EMPRESTIMO", hint: "O cofre cobriu uma conta do operacional. O operacional passa a DEVER ao cofre." },
-  { value: "DEVOLUCAO", hint: "O operacional devolveu dinheiro ao cofre (quita o empréstimo)." },
+  { value: "EMPRESTIMO", hint: "(pouco usado) O cofre cobriu conta do operacional e vira dívida. Regra da casa: resgate do CDB é USO_OBRA." },
+  { value: "DEVOLUCAO", hint: "Devolveu dinheiro ao CDB/cofre (ex.: sobra do mês de volta para a poupança da obra)." },
   { value: "RENDIMENTO", hint: "Rendimento pago pelo banco." },
   { value: "SALDO_INICIAL", hint: "Saldo que já existia no cofre quando começou o controle." },
   { value: "AJUSTE", hint: "Correção manual (entra como entrada)." },
@@ -71,26 +72,41 @@ export function FinanceiroPoupancaPage() {
   // impostos, urgências, aportes e rendimentos).
   const dual = useMemo(() => buildDualSavings(financeiro.savingsMoves), [financeiro.savingsMoves]);
 
-  // Uso do CDB no MÊS ATUAL, derivado AUTOMÁTICO: a obra vem das contas da P12
-  // (categoria CAPEX/Obras) e a sobra é o CDB resgatado no mês menos a obra.
-  // Assim, se uma conta de obra muda (ex.: dividir a fatura), estes números se
-  // ajustam sozinhos — sem re-sincronizar nada à mão.
+  // Conta da OBRA por mês (regra do Lucas, 03/08/2026): TODO resgate do CDB é
+  // obra, TODA devolução ao CDB é obra, e o abatimento é contra os gastos de
+  // obra (CAPEX) do Contas a Pagar. Tudo derivado — mudou uma conta, muda aqui.
   const mesAtual = now.slice(0, 7);
+  const obraMeses = useMemo(() => {
+    const set = new Set<string>([mesAtual]);
+    for (const move of financeiro.savingsMoves) if (isObraMove(move)) set.add(move.moveDate.slice(0, 7));
+    return [...set].sort().reverse();
+  }, [financeiro.savingsMoves, mesAtual]);
+  const [obraMes, setObraMes] = useState("");
+  const obraMesKey =
+    obraMes || obraMeses.find((m) => financeiro.savingsMoves.some((mv) => isObraMove(mv) && mv.direction === "SAIDA" && mv.moveDate.slice(0, 7) === m)) || mesAtual;
   const obraDoMes = useMemo(
     () =>
       financeiro.expenses
-        .filter((expense) => expense.isCapex && (expense.dueDate || expense.paidAt || "").slice(0, 7) === mesAtual)
+        .filter((expense) => expense.isCapex && (expense.dueDate || expense.paidAt || "").slice(0, 7) === obraMesKey)
         .reduce((sum, expense) => sum + (expense.amount || 0), 0),
-    [financeiro.expenses, mesAtual],
+    [financeiro.expenses, obraMesKey],
   );
   const cdbResgatadoMes = useMemo(
     () =>
       financeiro.savingsMoves
-        .filter((move) => (move.kind === "USO_OBRA" || move.kind === "EMPRESTIMO") && move.monthRef === mesAtual)
+        .filter((move) => isObraMove(move) && move.direction === "SAIDA" && move.moveDate.slice(0, 7) === obraMesKey)
         .reduce((sum, move) => sum + move.amount, 0),
-    [financeiro.savingsMoves, mesAtual],
+    [financeiro.savingsMoves, obraMesKey],
   );
-  const sobraDoMes = cdbResgatadoMes - obraDoMes;
+  const cdbDevolvidoMes = useMemo(
+    () =>
+      financeiro.savingsMoves
+        .filter((move) => move.kind === "DEVOLUCAO" && move.direction === "ENTRADA" && move.moveDate.slice(0, 7) === obraMesKey)
+        .reduce((sum, move) => sum + move.amount, 0),
+    [financeiro.savingsMoves, obraMesKey],
+  );
+  const cdbLiquidoMes = cdbResgatadoMes - cdbDevolvidoMes;
+  const sobraDoMes = cdbLiquidoMes - obraDoMes;
   const provisionsDone = monthProvisionsDone(financeiro.savingsMoves, provisionMonth);
   const provisionTotal = financeiro.provisionRules.reduce(
     (sum, rule) => sum + parseFinAmount(provisionAmounts[rule.id] ?? String(rule.monthlyAmount).replace(".", ",")),
@@ -161,13 +177,13 @@ export function FinanceiroPoupancaPage() {
               <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
                 Cofre / Poupança
                 <InfoTip title="Como funciona o cofre?">
-                  O cofre guarda o dinheiro reservado (obra/CDB, provisões de 13º e férias). Cada movimento tem um TIPO: guardei
-                  (aporte), usei na obra, o cofre cobriu uma conta do operacional (empréstimo, que fica como dívida a devolver)
-                  ou o operacional devolveu. Assim a obra nunca se mistura com o dia a dia. O saldo é a soma dos movimentos.
+                  O cofre guarda o dinheiro reservado (obra/CDB, provisões de 13º e férias). Regra da casa: TODO resgate do CDB é
+                  obra e TODA devolução ao CDB também — o abatimento é contra as contas de obra do Contas a Pagar. Os outros
+                  tipos (aporte, rendimento, provisão) são o cofre das provisões. O saldo é a soma dos movimentos.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Tudo separado: o que é da obra, o que foi guardado e o que o operacional pegou emprestado do cofre.
+                Tudo separado: o que a obra resgatou do CDB, o que devolveu, e o que está guardado para provisões.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -194,7 +210,7 @@ export function FinanceiroPoupancaPage() {
                 <p className="mt-1 text-xs tabular-nums text-muted-foreground">
                   entrou {moneyFin(dual.obra.entradas)} · saiu {moneyFin(dual.obra.saidas)}
                 </p>
-                <p className="text-[11px] text-muted-foreground">Uso na obra, empréstimo ao operacional e devoluções.</p>
+                <p className="text-[11px] text-muted-foreground">Todo resgate do CDB sai daqui; toda devolução volta para cá.</p>
               </div>
               <div className="rounded-xl border border-brand-oliva/20 bg-white/60 px-5 py-4">
                 <p className="text-xs font-semibold uppercase text-brand-oliva">🛟 Poupança das PROVISÕES</p>
@@ -208,35 +224,58 @@ export function FinanceiroPoupancaPage() {
           </div>
         </motion.section>
 
-        {cdbResgatadoMes > 0.005 ? (
+        {cdbResgatadoMes > 0.005 || cdbDevolvidoMes > 0.005 ? (
           <Card className="border-brand-dourado/30 bg-brand-creme/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
                 <HandCoins className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                Uso do CDB neste mês
+                Conta da OBRA — CDB × gastos
                 <Badge variant="muted" className="text-[10px]">automático</Badge>
+                <select
+                  value={obraMesKey}
+                  onChange={(event) => setObraMes(event.target.value)}
+                  className="ml-auto rounded-md border border-brand-oliva/25 bg-white/80 px-2 py-1 text-xs font-semibold text-brand-tinta"
+                  aria-label="Mês da conta da obra"
+                >
+                  {obraMeses.map((m) => (
+                    <option key={m} value={m}>
+                      {m.split("-").reverse().join("/")}
+                    </option>
+                  ))}
+                </select>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">CDB resgatado no mês</p>
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">Resgatado do CDB (tudo é obra)</p>
                   <p className="mt-1 text-2xl font-bold text-brand-musgo">{moneyFin(cdbResgatadoMes)}</p>
                 </div>
                 <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">− Obra do mês (P12)</p>
-                  <p className="mt-1 text-2xl font-bold text-brand-tinta">{moneyFin(obraDoMes)}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">puxado das contas de obra</p>
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">− Devolvido ao CDB</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-musgo">{moneyFin(cdbDevolvidoMes)}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">líquido usado: {moneyFin(cdbLiquidoMes)}</p>
                 </div>
-                <div className={cn("rounded-lg border px-4 py-3", sobraDoMes > 0.005 ? "border-amber-400/50 bg-amber-50/60" : "border-brand-oliva/16 bg-white/70")}>
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">= Sobra (cobriu operacional)</p>
-                  <p className={cn("mt-1 text-2xl font-bold", sobraDoMes > 0.005 ? "text-amber-700" : "text-brand-musgo")}>{moneyFin(sobraDoMes)}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">a devolver ao cofre</p>
+                <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">− Gasto na obra (Contas a Pagar)</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-tinta">{moneyFin(obraDoMes)}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">contas da categoria Obras (CAPEX)</p>
+                </div>
+                <div className={cn("rounded-lg border px-4 py-3", Math.abs(sobraDoMes) > 0.005 ? "border-amber-400/50 bg-amber-50/60" : "border-brand-oliva/16 bg-white/70")}>
+                  <p className="text-xs font-semibold uppercase text-brand-oliva">= Diferença</p>
+                  <p className={cn("mt-1 text-2xl font-bold", Math.abs(sobraDoMes) > 0.005 ? "text-amber-700" : "text-brand-musgo")}>{moneyFin(sobraDoMes)}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {sobraDoMes > 0.005
+                      ? "resgatou mais do que a obra paga no app — falta lançar conta de obra?"
+                      : sobraDoMes < -0.005
+                        ? "a obra paga passou o CDB líquido — parte saiu da conta corrente"
+                        : "bate no centavo"}
+                  </p>
                 </div>
               </div>
               <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                Atualiza sozinho: a obra vem das contas da categoria Obras (P12). Mexeu numa conta de obra? Estes números se
-                ajustam na hora — sem re-lançar nada.
+                Regra da casa: todo resgate do CDB é obra e toda devolução ao CDB é obra. O abatimento é contra as contas da
+                categoria Obras no Contas a Pagar — mexeu numa conta, estes números se ajustam na hora.
               </p>
             </CardContent>
           </Card>

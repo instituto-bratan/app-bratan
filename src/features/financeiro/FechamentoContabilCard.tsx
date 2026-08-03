@@ -42,7 +42,7 @@ export function FechamentoContabilCard({
 
   const linhas = [
     { label: "Faturamento mensal (sem crediário)", valor: f.faturamentoSemCrediario, hint: "Comandas do Lançar Dia. O crediário fica fora — é visão interna." },
-    { label: "Entrada da poupança p/ pagamento de obra", valor: f.entradaPoupancaObra, hint: "Saídas do cofre da OBRA (CDB) usadas na obra neste mês." },
+    { label: "Entrada da poupança p/ pagamento de obra", valor: f.entradaPoupancaObra, hint: "Resgates do CDB no mês menos as devoluções ao CDB (regra da casa: todo resgate é obra)." },
     { label: "Entrada da poupança p/ colaboradores, urgências etc.", valor: f.entradaPoupancaProvisoes, hint: "Saídas do cofre das PROVISÕES neste mês (13º, férias, urgências…)." },
     { label: `Ficou do mês anterior p/ impostos`, valor: f.impostosDoMesAnterior, hint: "A provisão de impostos separada no mês anterior — é ela que paga os impostos deste mês." },
   ];
