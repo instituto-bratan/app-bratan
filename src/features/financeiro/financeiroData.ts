@@ -1821,3 +1821,375 @@ export function partnerSuggestions(sales: FinSale[], entries: FinPartnerEntry[],
   }
   return suggestions;
 }
+
+// ===========================================================================
+// GESTÃO MENSAL — Reunião de Líderes (planilha do Coordenador Financeiro).
+// Réplica viva da "Planilha_Gestao_Coordenador_Financeiro": comparativo mês
+// anterior × mês atual, evolução de 6 meses e PDCA. TODOS os números são
+// derivados dos lançamentos — só as explicações e o PDCA são escritos à mão
+// (regra da casa: nada de valor digitado, nada de valor fictício).
+// ===========================================================================
+
+export type GestaoMensal = {
+  monthKey: string;
+  faturamento: number; // comandas do mês (o que os pacientes pagaram)
+  entradasTratamento: number; // itens de tratamento/medicação
+  entradasConsultas: number; // consulta, bioimpedância, sinal, retorno, destravar
+  outrasEntradas: number; // psicóloga, nutricionista, outros
+  custosFixos: number;
+  folhaMeritocracia: number;
+  custosVariaveis: number;
+  provisoes: number;
+  custosTotais: number; // operacionais (sem obra)
+  obra: number; // CAPEX — fora do lucro, pago pelo cofre
+  lucroLiquido: number; // faturamento − custos operacionais
+  margem: number; // % do faturamento
+  crediario: number; // visão interna, NUNCA na contabilidade
+  comandas: number;
+  ticketMedio: number;
+};
+
+export function buildGestaoMensal(
+  sales: FinSale[],
+  expenses: FinExpense[],
+  categories: FinCategory[],
+  monthKey: string,
+  crediarioProfits: FinCrediarioProfit[] = [],
+): GestaoMensal {
+  const doMes = sales.filter((sale) => sale.saleDate.slice(0, 7) === monthKey);
+  let entradasTratamento = 0;
+  let entradasConsultas = 0;
+  let outrasEntradas = 0;
+  for (const sale of doMes) {
+    for (const item of sale.items) {
+      const valor = item.amount || 0;
+      if (item.itemType === "TRATAMENTO") entradasTratamento += valor;
+      else if (consultaLikeTypes.includes(item.itemType)) entradasConsultas += valor;
+      else outrasEntradas += valor;
+    }
+  }
+  const faturamento = entradasTratamento + entradasConsultas + outrasEntradas;
+
+  const grupoPorRef = new Map(categories.map((category) => [category.id, category]));
+  let custosFixos = 0;
+  let folhaMeritocracia = 0;
+  let custosVariaveis = 0;
+  let provisoes = 0;
+  let obra = 0;
+  for (const expense of expenses) {
+    if ((expense.dueDate || expense.paidAt || "").slice(0, 7) !== monthKey) continue;
+    const category = grupoPorRef.get(expense.categoryRef);
+    const valor = expense.amount || 0;
+    if (!category) continue;
+    if (category.isCapex) {
+      obra += valor;
+      continue;
+    }
+    if (category.groupKey === "CUSTO_FIXO") custosFixos += valor;
+    else if (category.groupKey === "MAO_DE_OBRA") folhaMeritocracia += valor;
+    else if (category.groupKey === "CUSTO_VARIAVEL") custosVariaveis += valor;
+    else if (category.groupKey === "POUPANCA") provisoes += valor;
+  }
+  const custosTotais = custosFixos + folhaMeritocracia + custosVariaveis + provisoes;
+  const lucroLiquido = faturamento - custosTotais;
+  const cents = (valor: number) => Math.round(valor * 100) / 100;
+  return {
+    monthKey,
+    faturamento: cents(faturamento),
+    entradasTratamento: cents(entradasTratamento),
+    entradasConsultas: cents(entradasConsultas),
+    outrasEntradas: cents(outrasEntradas),
+    custosFixos: cents(custosFixos),
+    folhaMeritocracia: cents(folhaMeritocracia),
+    custosVariaveis: cents(custosVariaveis),
+    provisoes: cents(provisoes),
+    custosTotais: cents(custosTotais),
+    obra: cents(obra),
+    lucroLiquido: cents(lucroLiquido),
+    margem: faturamento > 0 ? Math.round((lucroLiquido / faturamento) * 10000) / 100 : 0,
+    crediario: crediarioProfitOfMonth(crediarioProfits, monthKey),
+    comandas: doMes.length,
+    ticketMedio: doMes.length ? cents(faturamento / doMes.length) : 0,
+  };
+}
+
+/** Mês anterior a "YYYY-MM" (vira o ano em janeiro). */
+export function previousMonthKey(monthKey: string) {
+  const [ano, mes] = monthKey.split("-").map(Number);
+  return mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
+}
+
+export type GestaoIndicador = {
+  key: string;
+  label: string;
+  anterior: number;
+  atual: number;
+  variacao: number;
+  /** null quando o mês anterior é zero (não existe variação % contra zero). */
+  variacaoPercent: number | null;
+  formato: "dinheiro" | "percentual" | "numero";
+  /** Para pintar a seta: no custo, subir é ruim. */
+  subirEhBom: boolean;
+};
+
+export function buildGestaoComparativo(anterior: GestaoMensal, atual: GestaoMensal): GestaoIndicador[] {
+  const linhas: { key: keyof GestaoMensal; label: string; formato: GestaoIndicador["formato"]; subirEhBom: boolean }[] = [
+    { key: "faturamento", label: "Faturamento bruto", formato: "dinheiro", subirEhBom: true },
+    { key: "entradasTratamento", label: "Entradas de tratamento", formato: "dinheiro", subirEhBom: true },
+    { key: "entradasConsultas", label: "Entradas de consultas", formato: "dinheiro", subirEhBom: true },
+    { key: "custosFixos", label: "Custos fixos", formato: "dinheiro", subirEhBom: false },
+    { key: "custosVariaveis", label: "Custos variáveis", formato: "dinheiro", subirEhBom: false },
+    { key: "folhaMeritocracia", label: "Folha + meritocracias", formato: "dinheiro", subirEhBom: false },
+    { key: "provisoes", label: "Provisões (13º, férias, impostos)", formato: "dinheiro", subirEhBom: false },
+    { key: "lucroLiquido", label: "Lucro líquido", formato: "dinheiro", subirEhBom: true },
+    { key: "margem", label: "Margem de lucro (%)", formato: "percentual", subirEhBom: true },
+    { key: "comandas", label: "Comandas no mês", formato: "numero", subirEhBom: true },
+    { key: "ticketMedio", label: "Ticket médio", formato: "dinheiro", subirEhBom: true },
+  ];
+  return linhas.map(({ key, label, formato, subirEhBom }) => {
+    const valorAnterior = Number(anterior[key] ?? 0);
+    const valorAtual = Number(atual[key] ?? 0);
+    const variacao = Math.round((valorAtual - valorAnterior) * 100) / 100;
+    return {
+      key: String(key),
+      label,
+      anterior: valorAnterior,
+      atual: valorAtual,
+      variacao,
+      variacaoPercent: valorAnterior !== 0 ? Math.round((variacao / Math.abs(valorAnterior)) * 10000) / 100 : null,
+      formato,
+      subirEhBom,
+    };
+  });
+}
+
+/** Últimos N meses terminando em monthKey (do mais antigo para o mais novo). */
+export function buildEvolucaoMeses(
+  sales: FinSale[],
+  expenses: FinExpense[],
+  categories: FinCategory[],
+  monthKey: string,
+  quantidade = 6,
+  crediarioProfits: FinCrediarioProfit[] = [],
+): GestaoMensal[] {
+  const meses: string[] = [monthKey];
+  for (let i = 1; i < quantidade; i += 1) meses.unshift(previousMonthKey(meses[0]));
+  return meses.map((mes) => buildGestaoMensal(sales, expenses, categories, mes, crediarioProfits));
+}
+
+export const mesLongoLabels = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+export function monthKeyLabel(monthKey: string) {
+  const [ano, mes] = monthKey.split("-").map(Number);
+  return `${mesLongoLabels[(mes || 1) - 1]}/${ano}`;
+}
+
+// ===========================================================================
+// RELATÓRIOS PARA A CONTABILIDADE — CSV pronto para abrir no Excel brasileiro
+// (separador ponto e vírgula, vírgula decimal, BOM UTF-8 para não quebrar acento).
+// ===========================================================================
+
+function csvCell(valor: string | number | null | undefined) {
+  if (valor === null || valor === undefined) return "";
+  const texto = typeof valor === "number" ? valor.toFixed(2).replace(".", ",") : String(valor);
+  return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+export function buildCsv(linhas: (string | number | null | undefined)[][]) {
+  return "﻿" + linhas.map((linha) => linha.map(csvCell).join(";")).join("\r\n");
+}
+
+function dataBr(iso: string | null | undefined) {
+  if (!iso) return "";
+  const dia = iso.slice(0, 10).split("-");
+  return dia.length === 3 ? `${dia[2]}/${dia[1]}/${dia[0]}` : iso;
+}
+
+/** Faturamento do mês, uma linha por ITEM da comanda (o que a contabilidade precisa). */
+export function buildFaturamentoCsv(sales: FinSale[], monthKey: string) {
+  const doMes = sales
+    .filter((sale) => sale.saleDate.slice(0, 7) === monthKey)
+    .sort((a, b) => a.saleDate.localeCompare(b.saleDate));
+  const linhas: (string | number)[][] = [
+    ["Data", "Paciente", "Tipo do item", "Descrição", "Valor do item", "Formas de pagamento", "Total da comanda", "Comanda (id)"],
+  ];
+  let total = 0;
+  for (const sale of doMes) {
+    const formas = sale.payments
+      .map((pagamento) => `${paymentMethodLabels[pagamento.method] ?? pagamento.method} ${moneyFin(pagamento.amount)}`)
+      .join(" + ");
+    const totalComanda = saleTotal(sale);
+    for (const item of sale.items) {
+      total += item.amount || 0;
+      linhas.push([
+        dataBr(sale.saleDate),
+        sale.patientName,
+        saleItemTypeLabels[item.itemType] ?? item.itemType,
+        item.description || "",
+        item.amount || 0,
+        formas,
+        totalComanda,
+        sale.id,
+      ]);
+    }
+  }
+  linhas.push([]);
+  linhas.push(["TOTAL DO FATURAMENTO", "", "", "", Math.round(total * 100) / 100, "", "", ""]);
+  return buildCsv(linhas);
+}
+
+/** Gastos do mês (competência pelo vencimento), uma linha por conta. */
+export function buildGastosCsv(expenses: FinExpense[], categories: FinCategory[], monthKey: string) {
+  const porRef = new Map(categories.map((category) => [category.id, category]));
+  const doMes = expenses
+    .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey)
+    .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
+  const linhas: (string | number)[][] = [
+    ["Vencimento", "Pagamento", "Descrição", "Fornecedor", "Categoria (P12)", "Grupo", "É obra (CAPEX)?", "Valor", "Forma", "Parcela", "Nota fiscal", "Observações"],
+  ];
+  let totalOperacional = 0;
+  let totalObra = 0;
+  for (const expense of doMes) {
+    const category = porRef.get(expense.categoryRef);
+    const ehObra = Boolean(category?.isCapex);
+    if (ehObra) totalObra += expense.amount || 0;
+    else totalOperacional += expense.amount || 0;
+    linhas.push([
+      dataBr(expense.dueDate),
+      expense.paidAt ? dataBr(expense.paidAt) : "EM ABERTO",
+      expense.description,
+      expense.supplier || "",
+      category?.name ?? expense.categoryRef,
+      category ? finGroupLabels[category.groupKey] : "",
+      ehObra ? "SIM" : "não",
+      expense.amount || 0,
+      expense.method ? paymentMethodLabels[expense.method] ?? expense.method : "",
+      expense.installmentNum && expense.installmentTotal ? `${expense.installmentNum}/${expense.installmentTotal}` : "",
+      expense.documentNote || "",
+      expense.notes || "",
+    ]);
+  }
+  linhas.push([]);
+  linhas.push(["TOTAL OPERACIONAL (entra no lucro)", "", "", "", "", "", "", Math.round(totalOperacional * 100) / 100]);
+  linhas.push(["TOTAL OBRA / CAPEX (fora do lucro)", "", "", "", "", "", "", Math.round(totalObra * 100) / 100]);
+  linhas.push(["TOTAL GERAL PAGO/A PAGAR NO MÊS", "", "", "", "", "", "", Math.round((totalOperacional + totalObra) * 100) / 100]);
+  return buildCsv(linhas);
+}
+
+/** Resumo do fechamento — a folha de capa que vai junto com os dois anexos. */
+export function buildResumoContabilCsv(gestao: GestaoMensal, fechamento: FechamentoContabil, lucroReal: number | null) {
+  const linhas: (string | number | null)[][] = [
+    [`FECHAMENTO ${monthKeyLabel(gestao.monthKey)} — INSTITUTO BRATAN`],
+    [],
+    ["RECEITA"],
+    ["Faturamento bruto (comandas do mês)", gestao.faturamento],
+    ["  Entradas de tratamento", gestao.entradasTratamento],
+    ["  Entradas de consultas", gestao.entradasConsultas],
+    ["  Outras entradas (psi/nutri/outros)", gestao.outrasEntradas],
+    [],
+    ["CUSTOS OPERACIONAIS (competência pelo vencimento)"],
+    ["Custos fixos", gestao.custosFixos],
+    ["Folha + meritocracias", gestao.folhaMeritocracia],
+    ["Custos variáveis", gestao.custosVariaveis],
+    ["Provisões (13º, férias, impostos)", gestao.provisoes],
+    ["TOTAL DOS CUSTOS OPERACIONAIS", gestao.custosTotais],
+    [],
+    ["RESULTADO"],
+    ["Lucro líquido (faturamento − custos operacionais)", gestao.lucroLiquido],
+    ["Margem de lucro (%)", gestao.margem],
+    lucroReal !== null ? ["Lucro REAL do mês (sobrou no banco, sem crediário)", lucroReal] : [],
+    [],
+    ["INVESTIMENTO — FORA DO LUCRO (pago pelo cofre/CDB)"],
+    ["Obra (CAPEX) paga no mês", gestao.obra],
+    ["Entrada da poupança usada na obra (resgates − devoluções)", fechamento.entradaPoupancaObra],
+    ["Entrada da poupança p/ colaboradores e urgências", fechamento.entradaPoupancaProvisoes],
+    ["Ficou do mês anterior para pagar os impostos", fechamento.impostosDoMesAnterior],
+    ["FATURAMENTO BRUTO CONTÁBIL (soma dos 4 itens do fechamento)", fechamento.faturamentoBruto],
+    [],
+    ["CONTROLE INTERNO — NÃO VAI PARA A CONTABILIDADE"],
+    ["Crediário reconhecido no mês (caixa físico)", gestao.crediario],
+    [],
+    ["Comandas no mês", gestao.comandas],
+    ["Ticket médio", gestao.ticketMedio],
+  ];
+  return buildCsv(linhas.filter((linha) => linha.length > 0 || true));
+}
+
+// ===========================================================================
+// PONTE DO LUCRO (03/08/2026) — por que existem três números de lucro e como
+// um vira o outro. Nasceu para acabar com a dúvida recorrente da CEO: cada
+// lente responde uma pergunta diferente, e a ponte mostra a passagem exata.
+//   1. Lucro OPERACIONAL: a clínica se paga? (comandas − custos do dia a dia)
+//   2. Lucro CONTÁBIL: o que vai para a contabilidade (soma poupanças e obra)
+//   3. Lucro REAL/caixa: o que sobrou no banco depois de pagar tudo
+// ===========================================================================
+
+export type PonteLucroPasso = {
+  label: string;
+  valor: number;
+  tipo: "base" | "mais" | "menos" | "total";
+  explicacao: string;
+};
+
+export function buildPonteLucro(gestao: GestaoMensal, fechamento: FechamentoContabil, lucroReal: number | null): PonteLucroPasso[] {
+  const passos: PonteLucroPasso[] = [
+    {
+      label: "Lucro operacional (a clínica se paga?)",
+      valor: gestao.lucroLiquido,
+      tipo: "base",
+      explicacao: "Comandas do mês menos os custos do dia a dia (fixos, folha, variáveis e provisões). É o número da Reunião de Líderes: mede a operação, sem obra e sem dinheiro guardado.",
+    },
+    {
+      label: "+ Entrada da poupança usada na obra",
+      valor: fechamento.entradaPoupancaObra,
+      tipo: "mais",
+      explicacao: "Dinheiro que veio do CDB para a conta (resgates menos devoluções). Não é venda, mas a contabilidade precisa ver entrando.",
+    },
+    {
+      label: "+ Entrada da poupança p/ colaboradores e urgências",
+      valor: fechamento.entradaPoupancaProvisoes,
+      tipo: "mais",
+      explicacao: "Saídas do cofre das provisões usadas no mês (13º, férias, urgências).",
+    },
+    {
+      label: "+ Ficou do mês anterior p/ impostos",
+      valor: fechamento.impostosDoMesAnterior,
+      tipo: "mais",
+      explicacao: "A provisão de impostos separada no mês anterior. Ela sai do resultado daquele mês e entra neste como dinheiro disponível.",
+    },
+    {
+      label: "− Obra paga no mês (CAPEX)",
+      valor: gestao.obra,
+      tipo: "menos",
+      explicacao: "Investimento na obra. Fica fora do lucro operacional porque é patrimônio, não custo de atender paciente — mas a contabilidade abate.",
+    },
+    {
+      label: "= Lucro contábil (vai para a contabilidade)",
+      valor: fechamento.faturamentoBruto - fechamento.custosDoMes,
+      tipo: "total",
+      explicacao: "Faturamento bruto contábil menos todas as contas do mês, obra incluída. É o que sai no relatório para o contador. Crediário NUNCA entra aqui.",
+    },
+  ];
+  if (lucroReal !== null) {
+    passos.push({
+      label: "Lucro REAL / caixa (sobrou no banco)",
+      valor: lucroReal,
+      tipo: "total",
+      explicacao: "O que de fato sobrou na conta depois de pagar tudo, sem crediário e sem poupança. Difere do contábil porque o cartão do fim do mês cai depois, e porque contas de meses anteriores saíram neste mês.",
+    });
+  }
+  return passos;
+}
+
+/** Diferença que explica a passagem do lucro operacional para o contábil. */
+export function ponteLucroDiferenca(gestao: GestaoMensal, fechamento: FechamentoContabil) {
+  const contabil = Math.round((fechamento.faturamentoBruto - fechamento.custosDoMes) * 100) / 100;
+  return {
+    operacional: gestao.lucroLiquido,
+    contabil,
+    diferenca: Math.round((contabil - gestao.lucroLiquido) * 100) / 100,
+  };
+}

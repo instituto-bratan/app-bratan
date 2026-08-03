@@ -28,6 +28,7 @@ import { readLocalValue, todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { buildP12Matrix, buildResumoMes, moneyFin } from "./financeiroData";
 import { defaultMetasConfig, type MetasConfig } from "./metasData";
+import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
 import { useFinanceiro } from "./useFinanceiro";
 
 const metasStorageKey = "app-bratan-fin-metas-config-v1";
@@ -210,6 +211,16 @@ export function FinanceiroRelatoriosPage() {
             ))}
           </div>
         </motion.section>
+
+        {/* Exportação para a contabilidade (03/08/2026): as 3 planilhas do mês. */}
+        <RelatoriosContabilidadeCard
+          sales={financeiro.sales}
+          expenses={financeiro.expenses}
+          categories={financeiro.categories}
+          savingsMoves={financeiro.savingsMoves}
+          crediarioProfits={financeiro.crediarioProfits}
+          monthKey={monthKey}
+        />
 
         <ChartCard
           icon={BarChart3}

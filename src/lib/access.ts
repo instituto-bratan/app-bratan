@@ -249,6 +249,7 @@ export type ModuleKey =
   | "fin-repasses"
   | "fin-pdca"
   | "fin-relatorios"
+  | "fin-gestao"
   | "fin-canais";
 
 export const moduleLabels: Record<ModuleKey, string> = {
@@ -272,6 +273,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-repasses": "Financeiro · Repasses",
   "fin-pdca": "Financeiro · PDCA",
   "fin-relatorios": "Financeiro · Relatórios",
+  "fin-gestao": "Financeiro · Gestão Mensal (Reunião de Líderes)",
   "fin-canais": "Financeiro · Canais de Venda",
 };
 

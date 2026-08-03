@@ -26,6 +26,7 @@ import {
   listRemoteFinExpenses,
   listRemoteFinInvoices,
   listRemoteFinPartnerEntries,
+  listRemoteFinGestaoMensal,
   listRemoteFinProvisionRules,
   listRemoteFinReconciliations,
   listRemoteFinPurchases,
@@ -33,7 +34,9 @@ import {
   listRemoteFinSavings,
   markRemoteFinExpensePaid,
   updateRemoteFinExpense,
+  saveRemoteFinGestaoMensal,
   upsertRemoteFinReconciliation,
+  type FinGestaoMensalRecord,
 } from "@/lib/remoteData";
 import {
   crediarioProfitRef,
@@ -158,6 +161,12 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   const crediarioProfitQuery = useQuery({
     queryKey: ["fin-crediario-profit"],
     queryFn: listRemoteFinCrediarioProfits,
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+  const gestaoMensalQuery = useQuery({
+    queryKey: ["fin-gestao-mensal"],
+    queryFn: listRemoteFinGestaoMensal,
     enabled: useRemote,
     staleTime: 30_000,
   });
@@ -498,6 +507,19 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     return record;
   }
 
+  /**
+   * Salva a Gestão Mensal (Reunião de Líderes): explicações por indicador, PDCA
+   * e o snapshot do que foi apresentado. Os números NUNCA são salvos como
+   * verdade — o snapshot é só memória do que estava na tela naquele dia.
+   */
+  function saveGestaoMensal(record: FinGestaoMensalRecord) {
+    if (!useRemote) return record;
+    void saveRemoteFinGestaoMensal(record, pessoa?.id ?? null)
+      .then(() => invalidate("fin-gestao-mensal"))
+      .catch((error) => console.warn("Gestão mensal não sincronizou.", error));
+    return record;
+  }
+
   function removeCrediarioNoLucro(monthKey: string) {
     const ref = crediarioProfitRef(monthKey);
     setCrediarioProfits((current) => {
@@ -606,6 +628,8 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     reconciliations,
     savingsMoves,
     crediarioProfits,
+    gestaoMensal: gestaoMensalQuery.data ?? [],
+    saveGestaoMensal,
     setCrediarioNoLucro,
     removeCrediarioNoLucro,
     invoices,

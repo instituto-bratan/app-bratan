@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CircleDollarSign,
   CheckSquare,
+  ClipboardCheck,
   Coins,
   ClipboardList,
   FileText,
@@ -126,6 +127,7 @@ const flowGroups: FlowGroup[] = [
     entries: [
       { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canLancarDia, module: "fin-lancar-dia" },
       { label: "Relatórios", href: "/financeiro/relatorios", icon: BarChart3, allowed: canFinanceiroView, module: "fin-relatorios" },
+      { label: "Gestão Mensal (dia 5)", shortLabel: "Gestão", href: "/financeiro/gestao", icon: ClipboardCheck, allowed: canFinanceiroView, module: "fin-gestao" },
       { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento, module: "fin-contas" },
       { label: "Compras", href: "/financeiro/compras", icon: ShoppingCart, allowed: canFinanceiroView, module: "fin-compras" },
       { label: "Crediário (Dinheiro)", shortLabel: "Crediário", href: "/financeiro/crediario", icon: HandCoins, allowed: canLembretesPagamento, module: "fin-crediario" },

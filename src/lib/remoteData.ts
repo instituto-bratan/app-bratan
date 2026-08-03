@@ -3841,6 +3841,62 @@ export async function deleteRemoteFinCrediarioProfit(recordRef: string) {
   });
 }
 
+// ---- Gestão Mensal / Reunião de Líderes (03/08/2026) --------------------------
+// Uma linha por mês (client_ref = gestao-mensal-YYYY-MM). Guarda só o que é
+// escrito por gente: explicações por indicador, PDCA e o snapshot do que foi
+// apresentado. Os números vêm sempre dos lançamentos.
+export type FinGestaoMensalRecord = {
+  id: string;
+  monthRef: string;
+  explicacoes: Record<string, string>;
+  pdca: Record<string, string>;
+  snapshot: Record<string, unknown>;
+  apresentadoEm: string | null;
+};
+
+export async function listRemoteFinGestaoMensal(): Promise<FinGestaoMensalRecord[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_gestao_mensal")
+    .select("client_ref, month_ref, explicacoes, pdca, snapshot, apresentado_em")
+    .is("deleted_at", null)
+    .order("month_ref", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    monthRef: String(row.month_ref ?? ""),
+    explicacoes: (row.explicacoes as Record<string, string>) ?? {},
+    pdca: (row.pdca as Record<string, string>) ?? {},
+    snapshot: (row.snapshot as Record<string, unknown>) ?? {},
+    apresentadoEm: row.apresentado_em ? String(row.apresentado_em) : null,
+  }));
+}
+
+export async function saveRemoteFinGestaoMensal(record: FinGestaoMensalRecord, updatedBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_gestao_mensal").upsert(
+    {
+      client_ref: record.id,
+      month_ref: record.monthRef,
+      explicacoes: record.explicacoes ?? {},
+      pdca: record.pdca ?? {},
+      snapshot: record.snapshot ?? {},
+      apresentado_em: record.apresentadoEm,
+      updated_by: uuidOrNull(updatedBy),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+    },
+    { onConflict: "client_ref" },
+  );
+  if (error) throw new Error(`fin_gestao_mensal: ${error.message} · ${error.details ?? ""} · código ${error.code ?? "?"}`);
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.gestao.mensal.salvar",
+    entity: "fin_gestao_mensal",
+    entityId: record.id,
+    metadata: { mes: record.monthRef, apresentado: Boolean(record.apresentadoEm) },
+  });
+}
+
 export async function createRemoteFinSavingsMoves(moves: FinSavingsMove[], createdBy: string | null) {
   if (!moves.length) return;
   const client = requireSupabase();
