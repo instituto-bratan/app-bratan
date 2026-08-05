@@ -263,6 +263,7 @@ export function ComprovantesPage() {
         arquivoTamanho: file.size,
         anexadoEm: now,
         anexadoPor: pessoa?.nome ?? "Equipe Bratan",
+        anexadoPorId: pessoa?.id,
         anexadoPorCargo: pessoa?.cargo ?? "recepcionista",
         pacienteReferencia: paciente || undefined,
         crmContactRef: crmRef,
@@ -318,6 +319,7 @@ export function ComprovantesPage() {
       arquivoTamanho: 0,
       anexadoEm: new Date().toISOString(),
       anexadoPor: pessoa?.nome ?? "Equipe Bratan",
+      anexadoPorId: pessoa?.id,
       anexadoPorCargo: pessoa?.cargo ?? "gestor_financeiro",
       pacienteReferencia: record.pacienteReferencia,
       pagamentoLembreteId: record.pagamentoLembreteId,
@@ -328,6 +330,20 @@ export function ComprovantesPage() {
     };
 
     persist([estorno, ...records]);
+  }
+
+  // Quem pode excluir o quê (04/08/2026, pedido do Lucas: "a recepcionista
+  // precisa conseguir excluir comprovantes"):
+  //   • OCULTAR: qualquer pessoa que usa a tela (reversível — o registro fica
+  //     guardado e a coordenação consegue reexibir).
+  //   • EXCLUIR DE VEZ: a coordenação em qualquer um; a recepção só nos que ELA
+  //     mesma anexou — corrige o próprio erro na hora, sem poder apagar o
+  //     histórico lançado por outra pessoa. Mesma regra vale no banco (RLS).
+  const podeOcultar = canComprovantes(pessoa?.cargo);
+  function podeExcluirDeVez(record: ComprovanteRecord) {
+    if (isCoordenacao(pessoa?.cargo)) return true;
+    if (!pessoa?.id) return false;
+    return Boolean(record.anexadoPorId) && record.anexadoPorId === pessoa.id;
   }
 
   function softDelete(record: ComprovanteRecord) {
@@ -753,21 +769,21 @@ export function ComprovantesPage() {
                           Estornar
                         </Button>
                       ) : null}
-                      {isCoordenacao(pessoa?.cargo) ? (
-                        <>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => softDelete(record)}>
-                            Ocultar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:bg-red-50 hover:text-destructive"
-                            onClick={() => hardDelete(record)}
-                          >
-                            Excluir de vez
-                          </Button>
-                        </>
+                      {podeOcultar ? (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => softDelete(record)}>
+                          Ocultar
+                        </Button>
+                      ) : null}
+                      {podeExcluirDeVez(record) ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:bg-red-50 hover:text-destructive"
+                          onClick={() => hardDelete(record)}
+                        >
+                          Excluir de vez
+                        </Button>
                       ) : null}
                     </div>
                   </CardContent>

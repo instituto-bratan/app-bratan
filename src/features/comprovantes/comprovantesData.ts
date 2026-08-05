@@ -14,6 +14,8 @@ export type ComprovanteRecord = {
   arquivoTamanho: number;
   anexadoEm: string;
   anexadoPor: string;
+  /** Id do colaborador que anexou — usado para a recepção poder excluir o que ela mesma enviou. */
+  anexadoPorId?: string;
   anexadoPorCargo: Cargo;
   pacienteReferencia?: string;
   crmContactRef?: string; // vínculo com o contato do CRM (paciente único)

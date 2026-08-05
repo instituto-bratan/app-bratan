@@ -690,7 +690,7 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
   const client = requireSupabase();
   const { data, error } = await client
     .from("comprovante")
-    .select("id, tipo, storage_path, original_filename, mime_type, file_size_bytes, uploaded_at, paciente_referencia, crm_contact_ref, pagamento_lembrete_id, inteligencia_360_receivable_ref, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
+    .select("id, tipo, storage_path, original_filename, mime_type, file_size_bytes, uploaded_at, uploaded_by, paciente_referencia, crm_contact_ref, pagamento_lembrete_id, inteligencia_360_receivable_ref, valor, forma_pagamento, observacao, estorno_de, deleted_at, sharepoint_status, colaborador:uploaded_by(nome)")
     .is("deleted_at", null)
     .order("uploaded_at", { ascending: false });
 
@@ -705,6 +705,7 @@ export async function listRemoteComprovantes(uploadedByCargo: Cargo): Promise<Co
     arquivoTamanho: record.file_size_bytes,
     anexadoEm: record.uploaded_at,
     anexadoPor: record.colaborador?.nome ?? "Equipe Bratan",
+    anexadoPorId: (record as { uploaded_by?: string }).uploaded_by ?? undefined,
     anexadoPorCargo: uploadedByCargo,
     pacienteReferencia: record.paciente_referencia ?? undefined,
     crmContactRef: record.crm_contact_ref ?? undefined,
