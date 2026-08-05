@@ -23,8 +23,10 @@ import {
   buildMetaDoDiaMessage,
   buildMetasBoard,
   defaultMetasConfig,
+  metasForMonth,
   doctorAttendsOn,
   type MetasConfig,
+  type MetasMonthGoals,
 } from "./metasData";
 import { useFinanceiro } from "./useFinanceiro";
 
@@ -79,6 +81,9 @@ export function FinanceiroMetasPage() {
     [financeiro.sales, config, monthKey, financeiro.crediarioProfits],
   );
   const today = todayISO();
+  // A tela mostra as metas DO MÊS escolhido (a régua muda de mês em mês), não as
+  // do padrão — senão julho apareceria com a régua de agosto.
+  const metasDoMes = useMemo(() => metasForMonth(config, monthKey), [config, monthKey]);
   const monthLabel = new Date(`${monthKey}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
   function toggleDoctorDay(date: string) {
@@ -111,11 +116,11 @@ export function FinanceiroMetasPage() {
           heading: "Painel do mês",
           lines: [
             `Faturamento acumulado: ${moneyFin(board.accumulatedRevenue)}`,
-            `Meta mínima (${moneyFin(config.goalMinRevenue)}): falta ${moneyFin(board.missingToMin)}`,
-            `Meta (${moneyFin(config.goalTargetRevenue)}): falta ${moneyFin(board.missingToTarget)}`,
-            `Super meta (${moneyFin(config.goalSuperRevenue)}): falta ${moneyFin(board.missingToSuper)} · ${percent(board.superGoalPercent)} atingido`,
-            `Pacientes: ${board.accumulatedPatients} de ${config.goalPatients} · Ticket médio: ${moneyFin(board.avgTicket)}`,
-            `Ticket médio para a super meta (${config.goalPatients} pacientes): ${moneyFin(board.avgTicketForSuper)}`,
+            `Meta mínima (${moneyFin(metasDoMes.goalMinRevenue)}): falta ${moneyFin(board.missingToMin)}`,
+            `Meta (${moneyFin(metasDoMes.goalTargetRevenue)}): falta ${moneyFin(board.missingToTarget)}`,
+            `Super meta (${moneyFin(metasDoMes.goalSuperRevenue)}): falta ${moneyFin(board.missingToSuper)} · ${percent(board.superGoalPercent)} atingido`,
+            `Pacientes: ${board.accumulatedPatients} de ${metasDoMes.goalPatients} · Ticket médio: ${moneyFin(board.avgTicket)}`,
+            `Ticket médio para a super meta (${metasDoMes.goalPatients} pacientes): ${moneyFin(board.avgTicketForSuper)}`,
             ``,
             `Status da meritocracia: ${board.meritocracyStatus}`,
           ],
@@ -158,16 +163,26 @@ export function FinanceiroMetasPage() {
     setFeedback(ok ? "Resumo aberto para salvar em PDF." : "O navegador bloqueou a janela — libere pop-ups para gerar o PDF.");
   }
 
-  const configField = (label: string, key: keyof MetasConfig) => (
+  // Editar aqui muda as metas DESTE mês (guardadas em monthlyGoals), preservando
+  // o histórico dos meses anteriores.
+  const configField = (label: string, key: keyof MetasMonthGoals & keyof MetasConfig) => (
     <div className="space-y-1">
       <Label>{label}</Label>
       <Input
-        defaultValue={String(config[key])}
+        key={`${monthKey}-${key}`}
+        defaultValue={String(metasDoMes[key])}
         inputMode="decimal"
         disabled={!canEdit}
         onBlur={(event) => {
           const parsed = key === "goalPatients" ? Number(event.target.value) : parseMoneyBR(event.target.value);
-          if (Number.isFinite(parsed) && parsed > 0) persistConfig({ ...config, [key]: parsed });
+          if (!Number.isFinite(parsed) || parsed <= 0) return;
+          persistConfig({
+            ...config,
+            monthlyGoals: {
+              ...(config.monthlyGoals ?? {}),
+              [monthKey]: { ...(config.monthlyGoals?.[monthKey] ?? {}), [key]: parsed },
+            },
+          });
         }}
       />
     </div>
@@ -234,9 +249,23 @@ export function FinanceiroMetasPage() {
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
             { label: "Acumulado no mês", value: moneyFin(board.accumulatedRevenue), hint: `${percent(board.superGoalPercent)} da super meta` },
-            { label: `Meta mínima ${moneyFin(config.goalMinRevenue)}`, value: board.missingToMin ? `falta ${moneyFin(board.missingToMin)}` : "batida ✓", hint: "primeiro degrau" },
-            { label: `Meta ${moneyFin(config.goalTargetRevenue)}`, value: board.missingToTarget ? `falta ${moneyFin(board.missingToTarget)}` : "batida ✓", hint: "meta cheia" },
-            { label: `Super meta ${moneyFin(config.goalSuperRevenue)}`, value: board.missingToSuper ? `falta ${moneyFin(board.missingToSuper)}` : "batida ✓", hint: "meritocracia" },
+            {
+              label: `Meta mínima ${moneyFin(metasDoMes.goalMinRevenue)}`,
+              value: board.missingToMin ? `falta ${moneyFin(board.missingToMin)}` : "batida ✓",
+              hint: "abaixo dela as meritocracias zeram",
+            },
+            {
+              label: `Meta ${moneyFin(metasDoMes.goalTargetRevenue)}`,
+              value: board.missingToTarget ? `falta ${moneyFin(board.missingToTarget)}` : "batida ✓",
+              hint: "meritocracia individual + café da manhã",
+            },
+            {
+              label: `Super meta ${moneyFin(metasDoMes.goalSuperRevenue)}`,
+              value: board.missingToSuper ? `falta ${moneyFin(board.missingToSuper)}` : "batida ✓",
+              hint: board.meritocracyBonusPerPerson > 0
+                ? `jantar + ${moneyFin(board.meritocracyBonusPerPerson)} por pessoa`
+                : "jantar + R$ 200 cada (+200 a cada 10 mil)",
+            },
           ].map((cardInfo) => (
             <Card key={cardInfo.label} className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
               <CardContent className="p-4">
@@ -250,7 +279,7 @@ export function FinanceiroMetasPage() {
 
         <section className="grid gap-3 sm:grid-cols-3">
           {[
-            { label: "Pacientes no mês", value: `${board.accumulatedPatients} / ${config.goalPatients}` },
+            { label: "Pacientes no mês", value: `${board.accumulatedPatients} / ${metasDoMes.goalPatients}` },
             { label: "Ticket médio atual", value: moneyFin(board.avgTicket) },
             { label: "Ticket p/ super meta", value: moneyFin(board.avgTicketForSuper) },
           ].map((cardInfo) => (

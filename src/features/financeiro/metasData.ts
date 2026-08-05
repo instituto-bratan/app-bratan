@@ -17,17 +17,78 @@ export type MetasConfig = {
   // Ajustes explícitos por dia ("YYYY-MM" → { "YYYY-MM-DD": atende? }).
   // Padrão sem ajuste: Dr. Daniel atende seg–qui e NÃO atende às sextas.
   doctorDayOverrides?: Record<string, Record<string, boolean>>;
+  /**
+   * Metas POR MÊS (03/08/2026). A régua sobe de mês em mês ("agosto: subimos a
+   * régua"), e o histórico não pode ser reescrito: cada mês guarda as metas que
+   * valeram nele. O que não estiver aqui cai no padrão acima.
+   */
+  monthlyGoals?: Record<string, MetasMonthGoals>;
 };
 
+/** Metas de um mês específico — tudo opcional, o que faltar herda o padrão. */
+export type MetasMonthGoals = {
+  goalMinRevenue?: number;
+  goalTargetRevenue?: number;
+  goalSuperRevenue?: number;
+  goalPatients?: number;
+  dailyGoalWithDoctor?: number;
+  dailyGoalWithoutDoctor?: number;
+  /** Nome que a CEO deu ao nível intermediário (ex.: "meta medíocre"). */
+  targetLabel?: string;
+  /** Base conservadora de pacientes (ex.: 80% dos previstos). */
+  patientsConservative?: number;
+};
+
+/** Resolve as metas que valem num mês (metas do mês > padrão). */
+export function metasForMonth(config: MetasConfig, monthKey: string): MetasConfig {
+  const doMes = config.monthlyGoals?.[monthKey];
+  if (!doMes) return config;
+  return {
+    ...config,
+    goalMinRevenue: doMes.goalMinRevenue ?? config.goalMinRevenue,
+    goalTargetRevenue: doMes.goalTargetRevenue ?? config.goalTargetRevenue,
+    goalSuperRevenue: doMes.goalSuperRevenue ?? config.goalSuperRevenue,
+    goalPatients: doMes.goalPatients ?? config.goalPatients,
+    dailyGoalWithDoctor: doMes.dailyGoalWithDoctor ?? config.dailyGoalWithDoctor,
+    dailyGoalWithoutDoctor: doMes.dailyGoalWithoutDoctor ?? config.dailyGoalWithoutDoctor,
+  };
+}
+
+// Padrão = a régua VIGENTE (agosto/2026: "subimos a régua"). Meses antigos ficam
+// registrados em monthlyGoals para o histórico não mentir.
 export const defaultMetasConfig: MetasConfig = {
-  goalMinRevenue: 300000,
-  goalTargetRevenue: 330000,
-  goalSuperRevenue: 350000,
-  goalPatients: 45,
-  dailyGoalWithDoctor: 17948.72,
-  dailyGoalWithoutDoctor: 8974.36,
+  goalMinRevenue: 330000,
+  goalTargetRevenue: 370000,
+  goalSuperRevenue: 400000,
+  goalPatients: 68,
+  dailyGoalWithDoctor: 23188.41,
+  dailyGoalWithoutDoctor: 5797.1,
   doctorOffDays: {},
-  doctorDayOverrides: {},
+  // 31/08 é segunda-feira, mas é dia só de medicação (sem Dr. Daniel).
+  doctorDayOverrides: { "2026-08": { "2026-08-31": false } },
+  monthlyGoals: {
+    // Julho/2026 — régua anterior (planilha "Controle de Metas Julho 2026").
+    "2026-07": {
+      goalMinRevenue: 300000,
+      goalTargetRevenue: 330000,
+      goalSuperRevenue: 350000,
+      goalPatients: 45,
+      dailyGoalWithDoctor: 17948.72,
+      dailyGoalWithoutDoctor: 8974.36,
+    },
+    // Agosto/2026 — planilha "Controle de Metas Agosto 2026" + apresentação da CEO:
+    // 16 dias com Dr. Daniel × 23.188,41 + 5 dias de medicação × 5.797,10 = 400 mil.
+    "2026-08": {
+      goalMinRevenue: 330000,
+      goalTargetRevenue: 370000,
+      goalSuperRevenue: 400000,
+      goalPatients: 68,
+      dailyGoalWithDoctor: 23188.41,
+      dailyGoalWithoutDoctor: 5797.1,
+      targetLabel: "meta medíocre",
+      patientsConservative: 54,
+    },
+  },
 };
 
 export type MetasDay = {
@@ -69,6 +130,10 @@ export type MetasBoard = {
   superGoalPercent: number;
   avgTicketForSuper: number;
   meritocracyStatus: string;
+  /** R$ por pessoa se a super meta for passada (0 enquanto não passar). */
+  meritocracyBonusPerPerson: number;
+  /** Metas que valeram neste mês (já resolvidas). */
+  goals: { min: number; target: number; super: number; patients: number };
 };
 
 const weekdayShort = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -92,11 +157,30 @@ export function businessDaysOfMonth(monthKey: string): string[] {
   return days;
 }
 
+/**
+ * Bônus por pessoa quando a SUPER META é passada (regra da CEO, agosto/2026):
+ * R$ 200 ao bater, e + R$ 200 a cada R$ 10 mil acima. Sem teto.
+ * Ex.: 400 mil → 200 · 410 mil → 400 · 420 mil → 600.
+ */
+export function meritocracyBonusPerPerson(accumulated: number, config: MetasConfig) {
+  if (accumulated <= config.goalSuperRevenue) return 0;
+  const acima = accumulated - config.goalSuperRevenue;
+  return 200 + Math.floor(acima / 10000) * 200;
+}
+
 export function meritocracyStatusText(accumulated: number, config: MetasConfig) {
-  if (accumulated >= config.goalSuperRevenue) return "SUPER META BATIDA! Meritocracia máxima desbloqueada — parabéns, time!";
-  if (accumulated >= config.goalTargetRevenue) return "Meta batida! Agora é caçar a super meta.";
-  if (accumulated >= config.goalMinRevenue) return "Meta mínima garantida — vamos buscar a meta cheia.";
-  return "Ainda abaixo da meta mínima — vamos juntos, um dia de cada vez.";
+  // Faixas combinadas na apresentação de agosto/2026:
+  //   < mínima ......... todas as meritocracias zeradas
+  //   mínima → meta .... meritocracia individual (por função)
+  //   meta → super ..... meritocracia + café da manhã em equipe
+  //   > super .......... meritocracia + jantar + R$ 200 cada (+200 a cada 10 mil)
+  if (accumulated > config.goalSuperRevenue) {
+    const bonus = meritocracyBonusPerPerson(accumulated, config);
+    return `SUPER META BATIDA! Meritocracia individual + jantar em equipe + R$ ${bonus.toLocaleString("pt-BR")} para cada um.`;
+  }
+  if (accumulated >= config.goalTargetRevenue) return "Meta batida! Meritocracia individual + café da manhã em equipe. Agora é caçar a super meta.";
+  if (accumulated >= config.goalMinRevenue) return "Meta mínima atingida — meritocracia individual por função garantida. Vamos buscar a meta cheia.";
+  return "Ainda abaixo da meta mínima — abaixo dela as meritocracias zeram. Vamos juntos, um dia de cada vez.";
 }
 
 // Regra combinada com a CEO: sexta-feira o Dr. Daniel não atende; nos outros
@@ -111,12 +195,14 @@ export function doctorAttendsOn(date: string, config: MetasConfig): boolean {
 
 export function buildMetasBoard(
   sales: FinSale[],
-  config: MetasConfig,
+  baseConfig: MetasConfig,
   monthKey: string,
   // Crediário reconhecido no mês (botão do Crediário): soma no faturamento
   // acumulado e no % da meta, sem inventar comanda em dia nenhum.
   extraRevenue = 0,
 ): MetasBoard {
+  // As metas do MÊS mandam (a régua muda de mês em mês).
+  const config = metasForMonth(baseConfig, monthKey);
   const dayList = businessDaysOfMonth(monthKey);
 
   const revenueByDay = new Map<string, number>();
@@ -213,6 +299,13 @@ export function buildMetasBoard(
     superGoalPercent: config.goalSuperRevenue > 0 ? monthRevenue / config.goalSuperRevenue : 0,
     avgTicketForSuper: config.goalPatients > 0 ? config.goalSuperRevenue / config.goalPatients : 0,
     meritocracyStatus: meritocracyStatusText(monthRevenue, config),
+    meritocracyBonusPerPerson: meritocracyBonusPerPerson(monthRevenue, config),
+    goals: {
+      min: config.goalMinRevenue,
+      target: config.goalTargetRevenue,
+      super: config.goalSuperRevenue,
+      patients: config.goalPatients,
+    },
   };
 }
 
