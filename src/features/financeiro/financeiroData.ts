@@ -350,6 +350,85 @@ export function saleTotal(sale: FinSale) {
   return sale.items.reduce((sum, item) => sum + (item.amount || 0), 0);
 }
 
+/**
+ * TICKET MÉDIO — o SINAL não conta (04/08/2026, regra do Lucas: "o ticket médio
+ * está contando com os sinais de consulta, e não é pra contar").
+ *
+ * O sinal é adiantamento de um tratamento que será lançado por inteiro depois:
+ * contá-lo dobra a receita na média e, pior, uma comanda só de sinal (R$ 429 em
+ * média em julho) entra na conta como se fosse uma venda e afunda o indicador.
+ * O FATURAMENTO continua somando o sinal — dinheiro que entrou é dinheiro que
+ * entrou. Só o TICKET ignora.
+ */
+export const TICKET_IGNORED_ITEM_TYPES: FinSaleItemType[] = ["SINAL"];
+
+export function saleTotalForTicket(sale: FinSale) {
+  return sale.items.reduce(
+    (sum, item) => (TICKET_IGNORED_ITEM_TYPES.includes(item.itemType) ? sum : sum + (item.amount || 0)),
+    0,
+  );
+}
+
+export type TicketMedio = {
+  geral: number;
+  novos: number;
+  recorrentes: number;
+  /** Comandas que entraram na conta (as que sobraram só com sinal ficam fora). */
+  count: number;
+  /** Comandas do período que foram ignoradas por serem apenas sinal. */
+  ignoradasSoSinal: number;
+};
+
+/**
+ * Ticket médio das comandas de um período, separando paciente novo de
+ * recorrente (novo = a 1ª comanda registrada dele cai no período).
+ */
+export function buildTicketMedio(sales: FinSale[], start: string, end: string): TicketMedio {
+  const patientKey = (sale: FinSale) => sale.crmContactRef || (sale.patientName || "").trim().toLowerCase();
+  const firstSaleDate = new Map<string, string>();
+  for (const sale of sales) {
+    const key = patientKey(sale);
+    if (!key) continue;
+    const current = firstSaleDate.get(key);
+    if (!current || sale.saleDate < current) firstSaleDate.set(key, sale.saleDate);
+  }
+  let geralSum = 0;
+  let geralN = 0;
+  let novoSum = 0;
+  let novoN = 0;
+  let recSum = 0;
+  let recN = 0;
+  let ignoradas = 0;
+  for (const sale of sales) {
+    if (sale.saleDate < start || sale.saleDate > end) continue;
+    const total = saleTotalForTicket(sale);
+    if (total <= 0) {
+      // Sobrou zero depois de tirar o sinal: é comanda só de sinal.
+      if (saleTotal(sale) > 0) ignoradas += 1;
+      continue;
+    }
+    geralSum += total;
+    geralN += 1;
+    const key = patientKey(sale);
+    const novo = Boolean(key) && firstSaleDate.get(key) === sale.saleDate;
+    if (novo) {
+      novoSum += total;
+      novoN += 1;
+    } else {
+      recSum += total;
+      recN += 1;
+    }
+  }
+  const cents = (valor: number) => Math.round(valor * 100) / 100;
+  return {
+    geral: geralN ? cents(geralSum / geralN) : 0,
+    novos: novoN ? cents(novoSum / novoN) : 0,
+    recorrentes: recN ? cents(recSum / recN) : 0,
+    count: geralN,
+    ignoradasSoSinal: ignoradas,
+  };
+}
+
 export function salePaymentsTotal(sale: FinSale) {
   return sale.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
 }
@@ -1909,7 +1988,8 @@ export function buildGestaoMensal(
     margem: faturamento > 0 ? Math.round((lucroLiquido / faturamento) * 10000) / 100 : 0,
     crediario: crediarioProfitOfMonth(crediarioProfits, monthKey),
     comandas: doMes.length,
-    ticketMedio: doMes.length ? cents(faturamento / doMes.length) : 0,
+    // Ticket médio pela regra da casa: sem os sinais (ver buildTicketMedio).
+    ticketMedio: buildTicketMedio(sales, `${monthKey}-01`, `${monthKey}-31`).geral,
   };
 }
 

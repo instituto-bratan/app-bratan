@@ -41,7 +41,7 @@ import { exportBrandedPdf } from "@/lib/brandedPdf";
 import { readLocalValue } from "@/lib/localStore";
 import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasConfig } from "@/features/financeiro/metasData";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
-import { saleTotal as saleTotal360 } from "@/features/financeiro/financeiroData";
+import { buildTicketMedio, saleTotal as saleTotal360 } from "@/features/financeiro/financeiroData";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { clusterPersonNames, extractPersonName, personNamesMatch } from "@/features/crm/nameMatch";
 import { useCrmState } from "@/features/crm/useCrmState";
@@ -690,37 +690,14 @@ export function Inteligencia360DashboardPage() {
         .reduce((sum, record) => sum + record.soldAmount, 0),
     [state.prescriptions, periodRange],
   );
-  // Ticket médio DERIVADO das comandas (Lançar Dia) — antes vinha do formulário
-  // manual "Ticket Médio Semanal" e vivia zerado/pendente. Geral = média das
-  // comandas do período; novo = paciente cuja 1ª comanda registrada cai no
-  // período; recorrente = já tinha comanda antes.
-  const ticketDerived = useMemo(() => {
-    const patientKey = (sale: (typeof financeiro.sales)[number]) =>
-      sale.crmContactRef || (sale.patientName || "").trim().toLowerCase();
-    const firstSaleDate = new Map<string, string>();
-    for (const sale of financeiro.sales) {
-      const key = patientKey(sale);
-      if (!key) continue;
-      const current = firstSaleDate.get(key);
-      if (!current || sale.saleDate < current) firstSaleDate.set(key, sale.saleDate);
-    }
-    let geralSum = 0, geralN = 0, novoSum = 0, novoN = 0, recSum = 0, recN = 0;
-    for (const sale of financeiro.sales) {
-      if (sale.saleDate < periodRange.start || sale.saleDate > periodRange.end) continue;
-      const total = saleTotal360(sale);
-      if (total <= 0) continue;
-      geralSum += total; geralN += 1;
-      const key = patientKey(sale);
-      const isNovo = Boolean(key) && firstSaleDate.get(key) === sale.saleDate;
-      if (isNovo) { novoSum += total; novoN += 1; } else { recSum += total; recN += 1; }
-    }
-    return {
-      geral: geralN ? geralSum / geralN : 0,
-      novos: novoN ? novoSum / novoN : 0,
-      recorrentes: recN ? recSum / recN : 0,
-      count: geralN,
-    };
-  }, [financeiro.sales, periodRange]);
+  // Ticket médio DERIVADO das comandas (Lançar Dia). O SINAL não entra na conta
+  // (regra do Lucas, 04/08/2026): é adiantamento do tratamento, que será lançado
+  // por inteiro depois — e comanda só de sinal afundava a média. A regra mora em
+  // buildTicketMedio (financeiroData), a mesma usada na Gestão Mensal.
+  const ticketDerived = useMemo(
+    () => buildTicketMedio(financeiro.sales, periodRange.start, periodRange.end),
+    [financeiro.sales, periodRange],
+  );
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   // Visão em gráficos (28/07): as mesmas fontes, em imagem. Nada digitado aqui.
   const chartMatrix = useMemo(
@@ -785,7 +762,11 @@ export function Inteligencia360DashboardPage() {
     {
       label: `Ticket médio geral ${periodRange.label}`,
       value: money360(ticketDerived.geral),
-      detail: `Fonte: comandas (Lançar Dia) · ${ticketDerived.count} comanda(s)`,
+      detail: `Fonte: comandas (Lançar Dia) · ${ticketDerived.count} comanda(s)${
+        ticketDerived.ignoradasSoSinal
+          ? ` · ${ticketDerived.ignoradasSoSinal} só de sinal fora da conta`
+          : " · sinal não conta"
+      }`,
       href: "/financeiro/lancar-dia",
       icon: TrendingUp,
       periodic: true,
@@ -793,7 +774,7 @@ export function Inteligencia360DashboardPage() {
     {
       label: "Ticket novos",
       value: money360(ticketDerived.novos),
-      detail: "Fonte: comandas — 1ª comanda do paciente",
+      detail: "Fonte: comandas — 1ª comanda do paciente (sem sinal)",
       href: "/financeiro/lancar-dia",
       icon: UsersRound,
       periodic: true,
@@ -801,7 +782,7 @@ export function Inteligencia360DashboardPage() {
     {
       label: "Ticket recorrentes",
       value: money360(ticketDerived.recorrentes),
-      detail: "Fonte: comandas — paciente que já comprou",
+      detail: "Fonte: comandas — paciente que já comprou (sem sinal)",
       href: "/financeiro/lancar-dia",
       icon: RefreshCw,
       periodic: true,
