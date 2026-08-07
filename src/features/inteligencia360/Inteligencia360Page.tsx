@@ -42,10 +42,11 @@ import { readLocalValue } from "@/lib/localStore";
 import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasConfig } from "@/features/financeiro/metasData";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { buildTicketMedio, saleTotal as saleTotal360 } from "@/features/financeiro/financeiroData";
+import { buildNpsResumo, npsFaixa } from "./npsData";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { clusterPersonNames, extractPersonName, personNamesMatch } from "@/features/crm/nameMatch";
 import { useCrmState } from "@/features/crm/useCrmState";
-import { listRemoteInteligencia360State, saveRemoteInteligencia360State } from "@/lib/remoteData";
+import { listRemoteInteligencia360State, listRemoteNpsRespostas, saveRemoteInteligencia360State } from "@/lib/remoteData";
 import { BarsWithLine, CalendarHeatGrid, Donut, RankBars, chartColors } from "@/components/charts/BratanCharts";
 import {
   buildCalendarHeat,
@@ -648,7 +649,7 @@ function ComandaKanbanReconciliation() {
 
 export function Inteligencia360DashboardPage() {
   const { state, persist, syncMode, isSyncing, syncError } = useInteligenciaState();
-  const { pessoa } = useAuth();
+  const { pessoa, session, isPreview } = useAuth();
   const hoje = new Date().toISOString().slice(0, 10);
   const financeiro = useFinanceiro(Number(hoje.slice(0, 4)));
   const [copyFeedback, setCopyFeedback] = useState("");
@@ -697,6 +698,18 @@ export function Inteligencia360DashboardPage() {
   const ticketDerived = useMemo(
     () => buildTicketMedio(financeiro.sales, periodRange.start, periodRange.end),
     [financeiro.sales, periodRange],
+  );
+  // NPS do TOTEM (04/08/2026): o paciente dá a nota na recepção e ela cai aqui,
+  // sem ninguém digitar. Respostas anônimas — nota e comentário, sem nome (LGPD).
+  const npsQuery = useQuery({
+    queryKey: ["nps-totem"],
+    queryFn: listRemoteNpsRespostas,
+    enabled: Boolean(pessoa && session && !isPreview),
+    staleTime: 60_000,
+  });
+  const npsTotem = useMemo(
+    () => buildNpsResumo(npsQuery.data ?? [], periodRange.start, periodRange.end),
+    [npsQuery.data, periodRange],
   );
   const snapshot = useMemo(() => buildDashboard360Snapshot(state), [state]);
   // Visão em gráficos (28/07): as mesmas fontes, em imagem. Nada digitado aqui.
@@ -811,11 +824,19 @@ export function Inteligencia360DashboardPage() {
       tone: snapshot.rescueOpenCount ? "gold" as const : undefined,
     },
     {
-      label: "NPS médio",
-      value: snapshot.npsAverage ? snapshot.npsAverage.toFixed(1).replace(".", ",") : "Sem dado",
-      detail: "Fonte: Experiência do Paciente",
+      label: `NPS ${periodRange.label}`,
+      value: npsTotem.total
+        ? `${npsTotem.score > 0 ? "+" : ""}${npsTotem.score}`
+        : snapshot.npsAverage
+          ? snapshot.npsAverage.toFixed(1).replace(".", ",")
+          : "Sem dado",
+      detail: npsTotem.total
+        ? `Totem · nota média ${npsTotem.media.toFixed(1).replace(".", ",")} · ${npsTotem.promotores}P / ${npsTotem.neutros}N / ${npsTotem.detratores}D`
+        : "Fonte: totem da recepção (ainda sem resposta) · manual em Experiência",
       href: moduleRoutes360.experience,
       icon: Activity,
+      periodic: true,
+      tone: npsTotem.detratores > 0 ? ("gold" as const) : undefined,
     },
     {
       label: "Recebíveis em aberto",

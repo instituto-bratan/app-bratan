@@ -4145,6 +4145,28 @@ export async function deleteRemoteAvatar(pessoaId: string) {
   if (error) throw error;
 }
 
+// ---- NPS do totem (04/08/2026) ------------------------------------------------
+// O totem só INSERE (policy anon). Aqui é o lado de leitura, da coordenação.
+export async function listRemoteNpsRespostas(): Promise<
+  { id: string; nota: number; comentario: string; origem: string; criadoEm: string }[]
+> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("nps_resposta")
+    .select("id, nota, comentario, origem, criado_em")
+    .is("deleted_at", null)
+    .order("criado_em", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    nota: Number(row.nota ?? 0),
+    comentario: String(row.comentario ?? ""),
+    origem: String(row.origem ?? "TOTEM"),
+    criadoEm: String(row.criado_em ?? ""),
+  }));
+}
+
 export async function hardDeleteRemoteComprovante(values: { id: string; storagePath?: string }) {
   const client = requireSupabase();
   // Itens ainda não enviados ao SharePoint saem da fila para não subirem depois.
