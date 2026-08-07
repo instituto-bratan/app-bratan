@@ -42,7 +42,7 @@ import { readLocalValue } from "@/lib/localStore";
 import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasConfig } from "@/features/financeiro/metasData";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { buildTicketMedio, saleTotal as saleTotal360 } from "@/features/financeiro/financeiroData";
-import { buildNpsResumo, npsFaixa } from "./npsData";
+import { buildNpsResumo, npsFaixa, npsFaixaLabels } from "./npsData";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { clusterPersonNames, extractPersonName, personNamesMatch } from "@/features/crm/nameMatch";
 import { useCrmState } from "@/features/crm/useCrmState";
@@ -1535,6 +1535,98 @@ const moduleGuides: Partial<Record<ModuleSlug, ModuleGuide>> = {
   },
 };
 
+// NPS DO TOTEM na aba Experiência (07/08/2026). O paciente responde no totem da
+// recepção e cai aqui, sem ninguém digitar — read-only, porque a fonte é o totem.
+// Fica junto do formulário manual: os dois convivem, cada um com sua origem.
+function NpsTotemCard() {
+  const { pessoa, session, isPreview } = useAuth();
+  const npsQuery = useQuery({
+    queryKey: ["nps-totem"],
+    queryFn: listRemoteNpsRespostas,
+    enabled: Boolean(pessoa && session && !isPreview),
+    staleTime: 60_000,
+  });
+  const respostas = npsQuery.data ?? [];
+  const resumo = useMemo(() => buildNpsResumo(respostas), [respostas]);
+  const dataHora = (iso: string) =>
+    iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+
+  return (
+    <Card className="border-brand-dourado/40 bg-brand-creme/30 shadow-none backdrop-blur">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          NPS do totem
+          <Badge variant="muted" className="text-[10px]">automático · anônimo</Badge>
+          {resumo.detratores > 0 ? (
+            <Badge variant="gold" className="text-[10px] text-destructive">
+              {resumo.detratores} detrator(es) para tratar
+            </Badge>
+          ) : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {npsQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando as respostas do totem…</p> : null}
+        {!npsQuery.isLoading && !resumo.total ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma resposta ainda. Assim que um paciente avaliar no totem da recepção, aparece aqui sozinho.
+          </p>
+        ) : null}
+        {resumo.total ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { rotulo: "Score NPS", valor: `${resumo.score > 0 ? "+" : ""}${resumo.score}`, dica: "% promotores − % detratores" },
+                { rotulo: "Nota média", valor: resumo.media.toFixed(1).replace(".", ","), dica: `${resumo.total} resposta(s)` },
+                { rotulo: "Promotores / Neutros", valor: `${resumo.promotores} / ${resumo.neutros}`, dica: "nota 9-10 e 7-8" },
+                { rotulo: "Detratores", valor: String(resumo.detratores), dica: "nota 0-6 — exige contato" },
+              ].map((card) => (
+                <div key={card.rotulo} className="rounded-xl border border-brand-oliva/20 bg-white/70 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{card.rotulo}</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-musgo">{card.valor}</p>
+                  <p className="text-[11px] text-muted-foreground">{card.dica}</p>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-brand-oliva/20 text-left text-xs uppercase text-brand-oliva">
+                    <th className="py-2 pr-3">Nota</th>
+                    <th className="py-2 pr-3">Faixa</th>
+                    <th className="py-2 pr-3">O que o paciente escreveu</th>
+                    <th className="py-2">Quando</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {respostas.slice(0, 30).map((resposta) => {
+                    const faixa = npsFaixa(resposta.nota);
+                    return (
+                      <tr key={resposta.id} className="border-b border-brand-oliva/10 align-top">
+                        <td className="py-2 pr-3 text-lg font-bold tabular-nums text-brand-musgo">{resposta.nota}</td>
+                        <td className="py-2 pr-3">
+                          <Badge variant={faixa === "DETRATOR" ? "gold" : "muted"} className={faixa === "DETRATOR" ? "text-destructive" : undefined}>
+                            {npsFaixaLabels[faixa]}
+                          </Badge>
+                        </td>
+                        <td className="py-2 pr-3 text-brand-tinta">{resposta.comentario || <span className="text-muted-foreground">—</span>}</td>
+                        <td className="py-2 whitespace-nowrap text-muted-foreground">{dataHora(resposta.criadoEm)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
+        <p className="text-xs leading-5 text-muted-foreground">
+          Vem do totem da recepção, sem ninguém digitar. As respostas são anônimas por decisão do Instituto (LGPD): nota e
+          comentário, sem nome. O formulário abaixo continua para registrar experiência com paciente identificado.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: Inteligencia360State; persist: ReturnType<typeof useInteligenciaState>["persist"] }) {
   if (slug === "ticket-medio") return <TicketModule state={state} persist={persist} />;
 
@@ -1785,6 +1877,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
     const [form, setForm] = useState({ patientReference: "", npsScore: "8", satisfactionScore: "9", feedbackType: "PRAISE" as FeedbackType360, feedbackText: "" });
     return (
       <>
+        <NpsTotemCard />
         <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
           <CardHeader><CardTitle>Registrar experiência</CardTitle></CardHeader>
           <CardContent>
