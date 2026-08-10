@@ -17,6 +17,8 @@ import {
   buildProvisionExpenses,
   buildProvisionPlan,
   createFinId,
+  isProvisaoExpense,
+  semProvisoes,
   addMonthsToDue,
   futureOpenInstallments,
   installmentSummary,
@@ -166,7 +168,12 @@ export function FinanceiroContasPage() {
   }, [financeiro.expenses, month, now]);
 
   // Aviso de vencimento olha o ANO inteiro, não só o mês da tela.
-  const avisos = useMemo(() => upcomingExpenses(financeiro.expenses, now, AVISO_DIAS), [financeiro.expenses, now]);
+  // Provisão é reserva, não conta a pagar: fica fora do aviso de vencimento
+  // (regra do Lucas, 07/08/2026).
+  const avisos = useMemo(
+    () => upcomingExpenses(semProvisoes(financeiro.expenses, financeiro.categories), now, AVISO_DIAS),
+    [financeiro.expenses, financeiro.categories, now],
+  );
 
   // Pré-visualização do parcelamento enquanto a pessoa digita "1/12".
   const previewParcelas = useMemo(() => {
@@ -723,7 +730,13 @@ export function FinanceiroContasPage() {
                           <td className="px-3 py-2.5 text-xs">{expense.method ? paymentMethodLabels[expense.method] : "—"}</td>
                           <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-brand-musgo">{moneyFin(expense.amount)}</td>
                           <td className="whitespace-nowrap px-3 py-2.5">
-                            {readOnly ? (
+                            {isProvisaoExpense(expense, financeiro.categories) ? (
+                              // Reserva para VÁRIOS impostos/encargos — sai junto com o
+                              // pagamento deles, então não se marca como paga.
+                              <Badge className="bg-brand-creme text-brand-tinta" title="Dinheiro separado para vários impostos/encargos. Sai junto com o pagamento deles — não se marca como paga.">
+                                Provisionado
+                              </Badge>
+                            ) : readOnly ? (
                               expense.paidAt ? <Badge className="bg-emerald-100 text-emerald-800">Paga</Badge> : <Badge variant="muted">Pendente</Badge>
                             ) : expense.paidAt ? (
                               <button type="button" onClick={() => financeiro.setExpensePaid(expense.id, null)} title="Desfazer pagamento">

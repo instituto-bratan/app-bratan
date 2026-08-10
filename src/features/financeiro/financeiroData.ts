@@ -268,6 +268,25 @@ export function installmentSummary(expenses: FinExpense[], anchor: FinExpense) {
 // Contas em aberto separadas em vencidas e chegando (vencem em até `days` dias).
 // Vencidas olham no máximo `maxOverdueDays` para trás — histórico importado ou
 // esquecido de meses fechados não inunda o aviso.
+/**
+ * PROVISÃO ≠ CONTA A PAGAR (07/08/2026, regra do Lucas: "a gente provisionou pra
+ * vários impostos, não pra uma conta específica — não devia nem ter marcar como
+ * pago"). As categorias do grupo POUPANÇA (13º, férias, urgências, impostos
+ * mensais) são RESERVA: o dinheiro fica separado e sai depois, junto com o
+ * pagamento dos impostos de verdade (ISS, PIS, COFINS...). Elas seguem contando
+ * como custo do mês na P12 — o que muda é que não se cobra "marcar como paga"
+ * nem entram no aviso de vencimento.
+ */
+export function isProvisaoExpense(expense: FinExpense, categories: FinCategory[]) {
+  const categoria = categories.find((item) => item.id === expense.categoryRef);
+  return categoria?.groupKey === "POUPANCA";
+}
+
+/** Tira as provisões de uma lista de contas (para avisos e pendências). */
+export function semProvisoes(expenses: FinExpense[], categories: FinCategory[]) {
+  return expenses.filter((expense) => !isProvisaoExpense(expense, categories));
+}
+
 export function upcomingExpenses(expenses: FinExpense[], todayISO: string, days: number, maxOverdueDays = 60) {
   const shift = (base: string, deltaDays: number) => {
     const date = new Date(`${base}T12:00:00`);

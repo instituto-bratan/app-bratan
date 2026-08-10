@@ -299,3 +299,50 @@ test("PROVA DO DINHEIRO: provisão PAGA não desconta (o dinheiro já saiu da co
   assert.equal(prova.livreNoBanco, 18614.54);
   assert.equal(prova.naMao, 49864.54, "18.614,54 + 31.250 — exatamente a conta do Lucas");
 });
+
+// ------------------------------------------------------------- 07/08/2026
+// PROVISÃO É RESERVA, NÃO CONTA A PAGAR (regra do Lucas: "provisionamos para
+// vários impostos, não para uma conta específica — não devia nem ter marcar
+// como pago"). Ela continua sendo custo do mês na P12; o que muda é que não
+// cobra pagamento nem entra no aviso de vencimento.
+test("provisão é reconhecida pelo grupo POUPANÇA da categoria", () => {
+  const cats = [
+    { id: "cat-poup-impostos-mensais", groupKey: "POUPANCA", name: "Impostos Mensais (provisão)", sortOrder: 1, isCapex: false, active: true },
+    { id: "cat-aluguel", groupKey: "CUSTO_FIXO", name: "Aluguel", sortOrder: 2, isCapex: false, active: true },
+  ];
+  const provisao = despesaF("2026-07-31", 16813.07, "cat-poup-impostos-mensais");
+  const aluguel = despesaF("2026-07-09", 13989.23, "cat-aluguel");
+  assert.equal(fin.isProvisaoExpense(provisao, cats), true);
+  assert.equal(fin.isProvisaoExpense(aluguel, cats), false);
+  assert.equal(fin.isProvisaoExpense({ ...aluguel, categoryRef: "categoria-que-nao-existe" }, cats), false, "categoria órfã não é provisão");
+});
+
+test("provisão fica FORA do aviso de vencimento (não é conta a cobrar)", () => {
+  const cats = [
+    { id: "cat-poup-impostos-mensais", groupKey: "POUPANCA", name: "Impostos (provisão)", sortOrder: 1, isCapex: false, active: true },
+    { id: "cat-aluguel", groupKey: "CUSTO_FIXO", name: "Aluguel", sortOrder: 2, isCapex: false, active: true },
+  ];
+  const contas = [
+    despesaF("2026-08-11", 16813.07, "cat-poup-impostos-mensais"),
+    despesaF("2026-08-11", 13989.23, "cat-aluguel"),
+    despesaF("2026-08-05", 500, "cat-aluguel"),
+  ];
+  const semProv = fin.semProvisoes(contas, cats);
+  assert.equal(semProv.length, 2, "a provisão saiu da lista");
+  const avisos = fin.upcomingExpenses(semProv, "2026-08-10", 3);
+  assert.equal(avisos.chegando.length, 1, "só o aluguel chega");
+  assert.equal(avisos.chegando[0].amount, 13989.23);
+  assert.equal(avisos.vencidas.length, 1, "a de 05/08 está vencida");
+  const comProvisao = fin.upcomingExpenses(contas, "2026-08-10", 3);
+  assert.equal(comProvisao.chegando.length, 2, "antes da regra, a provisão aparecia cobrando pagamento");
+});
+
+test("provisão continua sendo CUSTO do mês na P12 (a regra não mudou)", () => {
+  const cats = [catImpostos, catAluguel];
+  const matrix = fin.buildP12Matrix(
+    [],
+    [despesaF("2026-07-31", 16813.07, "cat-poup-impostos-mensais"), despesaF("2026-07-09", 20883, "cat-aluguel")],
+    cats, 2026, [], [],
+  );
+  assert.equal(Math.round(matrix.totalExpensesMonths[6] * 100) / 100, 37696.07, "provisão + aluguel entram no custo de julho");
+});
