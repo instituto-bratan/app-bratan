@@ -4,11 +4,13 @@
 // GASTOS (conta por conta, com categoria da P12) e RESUMO (folha de capa).
 // O crediário só aparece no resumo, marcado como controle interno.
 import { useMemo, useState } from "react";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, Sheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Label } from "@/components/ui/label";
+import { baixarXlsx } from "@/lib/xlsxWriter";
+import { buildPlanilhasContabilidade, nomeArquivoContabilidade } from "./contabilidadeXlsx";
 import {
   buildFaturamentoCsv,
   buildFechamentoContabil,
@@ -129,7 +131,29 @@ export function RelatoriosContabilidadeCard({
           ) : null}
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-3">
+      <CardContent className="grid gap-3">
+        {/* EXCEL (07/08/2026, pedido do Lucas): um arquivo com as 5 abas, no
+            formato dos anexos que ele já manda para a contabilidade. */}
+        <Button
+          type="button"
+          className="h-auto flex-col items-start gap-1 py-4 text-left"
+          onClick={() =>
+            baixarXlsx(nomeArquivoContabilidade(monthKey), buildPlanilhasContabilidade({
+              sales, expenses, categories, savingsMoves, crediarioProfits, monthKey,
+            }))
+          }
+        >
+          <span className="flex items-center gap-2 text-base font-bold">
+            <Sheet className="h-5 w-5" aria-hidden="true" /> Baixar planilha Excel para a contabilidade
+          </span>
+          <span className="text-xs font-normal opacity-90">
+            5 abas formatadas: RESUMO · ENTRADAS (dia a dia) · RECEBIMENTOS · CONTAS A PAGAR · POUPANÇA
+          </span>
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Precisa de um arquivo solto (para outro sistema ou conferência rápida)? Os três abaixo saem em CSV:
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
         {botoes.map((botao) => (
           <Button
             key={botao.titulo}
@@ -147,6 +171,7 @@ export function RelatoriosContabilidadeCard({
             <span className="text-xs font-normal text-muted-foreground">{botao.detalhe}</span>
           </Button>
         ))}
+        </div>
       </CardContent>
     </Card>
   );
