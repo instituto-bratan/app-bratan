@@ -174,7 +174,7 @@ test("conciliação: transferência automática e rendimento não viram 'venda s
   const balde = ex.conciliarExtrato(entradas, [], [], [], "2026-08-01", "2026-08-07");
   const transferencia = balde.casadas.find((c) => /TRANSFER/i.test(c.entry.description));
   assert.ok(transferencia, "a transferência da aplicação casa sozinha");
-  assert.match(transferencia.comQue, /cartão\/aplicação/);
+  assert.match(transferencia.comQue, /adiantamento da maquininha/);
   assert.ok(!balde.entrouSemRegistro.some((e) => /TRANSFER/i.test(e.description)));
 });
 

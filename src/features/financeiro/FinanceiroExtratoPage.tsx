@@ -334,6 +334,59 @@ export function FinanceiroExtratoPage() {
           </CardContent>
         </Card>
 
+        {/* MAQUININHA (regra do Lucas): toda TRANSFERÊNCIA AUTOM. RECEBIDA é o
+            crédito da véspera caindo, líquido da taxa — tem que bater com os
+            cartões das comandas. */}
+        <Card
+          className={cn(
+            "shadow-none",
+            balde.maquininha.situacao === "OK"
+              ? "border-emerald-200 bg-emerald-50/50"
+              : balde.maquininha.situacao === "SEM_DADOS"
+                ? "border-brand-oliva/20 bg-white/60"
+                : "border-amber-300 bg-amber-50/70",
+          )}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              Maquininha: adiantamentos × cartão das comandas
+              <InfoTip title="Como funciona">
+                O crédito de um dia cai no dia seguinte como "TRANSFERÊNCIA AUTOM. RECEBIDA", já com a taxa descontada.
+                Então a soma dessas transferências tem que bater com os cartões das comandas da véspera, menos a taxa
+                (~8%). Se cair mais do que as comandas dizem, tem venda no crédito sem comanda; se a diferença passar
+                muito de 8%, tem crédito que não caiu ou comanda com forma de pagamento errada.
+              </InfoTip>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-sm">
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <span>
+                Transferências recebidas: <strong className="tabular-nums">{moneyFin(balde.maquininha.transferencias)}</strong>
+              </span>
+              <span>
+                Cartão das comandas (véspera): <strong className="tabular-nums">{moneyFin(balde.maquininha.cartaoComandas)}</strong>
+              </span>
+              {balde.maquininha.taxaImplicita !== null ? (
+                <span>
+                  Taxa implícita: <strong className="tabular-nums">{String(balde.maquininha.taxaImplicita).replace(".", ",")}%</strong>
+                </span>
+              ) : null}
+            </div>
+            <p
+              className={cn(
+                "font-semibold",
+                balde.maquininha.situacao === "OK"
+                  ? "text-emerald-800"
+                  : balde.maquininha.situacao === "SEM_DADOS"
+                    ? "text-muted-foreground"
+                    : "text-amber-900",
+              )}
+            >
+              {balde.maquininha.leitura}
+            </p>
+          </CardContent>
+        </Card>
+
         {/* As quatro caixas */}
         {caixas.map((caixa) => (
           <Card key={caixa.chave} className={cn("shadow-none", caixa.itens.length ? caixa.cor : "border-brand-oliva/20 bg-white/60")}>

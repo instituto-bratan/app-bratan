@@ -266,8 +266,30 @@ export type BaldeConciliacao = {
   comandaSemDinheiro: { sale: FinSale; valor: number; forma: string }[];
   /** Está marcada como paga no app e não saiu do banco. */
   contaSemSaida: FinExpense[];
+  /**
+   * MAQUININHA (regra do Lucas, 10/08/2026): toda "TRANSFERÊNCIA AUTOM.
+   * RECEBIDA" do Itaú é adiantamento da maquininha — o crédito de ontem caindo
+   * hoje, já líquido da taxa. Então a soma das transferências tem que bater com
+   * os CRÉDITOS das comandas da véspera, menos a taxa (~8%). Transferência a
+   * mais = venda no crédito sem comanda; taxa implícita alta demais = crédito
+   * que não caiu ou comanda de cartão errada.
+   */
+  maquininha: {
+    /** Soma das transferências automáticas recebidas no período. */
+    transferencias: number;
+    /** Cartão das comandas na janela deslocada (véspera → cai no dia seguinte). */
+    cartaoComandas: number;
+    /** (cartão − transferências) / cartão: deve ficar perto da taxa real (~8%). */
+    taxaImplicita: number | null;
+    situacao: "OK" | "SOBROU_NO_BANCO" | "FALTOU_CAIR" | "SEM_DADOS";
+    leitura: string;
+  };
   totais: { entrouBanco: number; saiuBanco: number; faturadoApp: number; pagoApp: number };
 };
+
+/** Faixa normal da taxa da maquininha (%). Fora dela, a conferência acusa. */
+export const TAXA_MAQUININHA_MIN = 0;
+export const TAXA_MAQUININHA_MAX = 12;
 
 const TOLERANCIA = 0.02;
 /**
@@ -369,9 +391,12 @@ export function conciliarExtrato(
     return lista.find((item) => Math.abs(item.valor - valor) < TOLERANCIA && diasDeDiferenca(item.dia, entry.entryDate) <= 3);
   };
 
+  let somaTransferencias = 0;
   for (const entry of lancamentos) {
-    // Linhas que não são venda nem conta: cartão caindo, rendimento, resgate.
+    // Linhas que não são venda nem conta: adiantamento da maquininha, rendimento, resgate.
     if (EH_TRANSFERENCIA_APLICACAO.test(entry.description) || EH_RENDIMENTO.test(entry.description)) {
+      const ehRendimento = EH_RENDIMENTO.test(entry.description);
+      if (!ehRendimento && entry.amount > 0) somaTransferencias += entry.amount;
       const noCofre = acharCandidato(restamCofre, entry);
       if (noCofre) {
         restamCofre.splice(restamCofre.indexOf(noCofre), 1);
@@ -379,7 +404,7 @@ export function conciliarExtrato(
       } else {
         casadas.push({
           entry,
-          comQue: EH_RENDIMENTO.test(entry.description) ? "rendimento do banco" : "cartão/aplicação caindo na conta",
+          comQue: ehRendimento ? "rendimento do banco" : "adiantamento da maquininha (crédito da véspera)",
           tipo: "COFRE",
         });
       }
@@ -401,6 +426,46 @@ export function conciliarExtrato(
   }
 
   const cents = (valor: number) => Math.round(valor * 100) / 100;
+
+  // ---- maquininha: transferências × créditos das comandas da véspera ---------
+  // O cartão de D cai em D+1 como "TRANSFERÊNCIA AUTOM. RECEBIDA", já líquido da
+  // taxa. Comparo as transferências do período com o cartão das comandas na
+  // janela deslocada um dia para trás (start−1 .. end−1).
+  const diaAnterior = (iso: string) => {
+    const data = new Date(`${iso}T12:00:00`);
+    data.setDate(data.getDate() - 1);
+    return data.toISOString().slice(0, 10);
+  };
+  const janelaCartao = { start: diaAnterior(start), end: diaAnterior(end) };
+  let cartaoComandas = 0;
+  for (const sale of sales) {
+    if (sale.saleDate < janelaCartao.start || sale.saleDate > janelaCartao.end) continue;
+    for (const payment of sale.payments) {
+      if (payment.method === "CARTAO_CREDITO" || payment.method === "CARTAO_DEBITO") cartaoComandas += payment.amount || 0;
+    }
+  }
+  const taxaImplicita =
+    cartaoComandas > 0 && somaTransferencias > 0
+      ? Math.round(((cartaoComandas - somaTransferencias) / cartaoComandas) * 10000) / 100
+      : null;
+  const brl = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  let situacaoMaquininha: BaldeConciliacao["maquininha"]["situacao"] = "SEM_DADOS";
+  let leituraMaquininha = "Sem transferência da maquininha ou sem comanda de cartão no período.";
+  if (taxaImplicita !== null) {
+    if (taxaImplicita < TAXA_MAQUININHA_MIN) {
+      situacaoMaquininha = "SOBROU_NO_BANCO";
+      leituraMaquininha = `Caiu ${brl(cents(somaTransferencias - cartaoComandas))} a MAIS do que as comandas de cartão da véspera: tem venda no crédito sem comanda lançada.`;
+    } else if (taxaImplicita > TAXA_MAQUININHA_MAX) {
+      situacaoMaquininha = "FALTOU_CAIR";
+      leituraMaquininha = `A diferença dá ${String(taxaImplicita).replace(".", ",")}% — muito acima da taxa normal (~8%). Ou tem crédito que ainda não caiu, ou comanda lançada como cartão que foi paga de outro jeito.`;
+    } else {
+      situacaoMaquininha = "OK";
+      leituraMaquininha = `Bate: a diferença de ${String(taxaImplicita).replace(".", ",")}% é a taxa da maquininha.`;
+    }
+  } else if (somaTransferencias > 0 && cartaoComandas === 0) {
+    situacaoMaquininha = "SOBROU_NO_BANCO";
+    leituraMaquininha = `Caíram ${brl(cents(somaTransferencias))} de adiantamento da maquininha e NÃO há comanda de cartão na véspera: falta lançar comanda.`;
+  }
 
   // ---- segunda passada: o que sobrou ainda pode casar de dois jeitos --------
   const sobraDoBanco = [...entrouSemRegistro, ...saiuSemRegistro];
@@ -459,6 +524,13 @@ export function conciliarExtrato(
       .filter((item) => item.sale)
       .map((item) => ({ sale: item.sale!, valor: cents(item.valor), forma: item.forma ?? "" })),
     contaSemSaida: restamSaidas.map((item) => item.expense!).filter(Boolean),
+    maquininha: {
+      transferencias: cents(somaTransferencias),
+      cartaoComandas: cents(cartaoComandas),
+      taxaImplicita,
+      situacao: situacaoMaquininha,
+      leitura: leituraMaquininha,
+    },
     totais: {
       entrouBanco: cents(lancamentos.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0)),
       saiuBanco: cents(lancamentos.filter((e) => e.amount < 0).reduce((s, e) => s - e.amount, 0)),
