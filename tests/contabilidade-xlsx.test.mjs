@@ -162,12 +162,30 @@ const COFRE = [
 ];
 const DADOS = { sales: VENDAS, expenses: DESPESAS, categories: CATS, savingsMoves: COFRE, crediarioProfits: [], monthKey: "2026-08" };
 
-test("as 5 abas saem na ordem que a contabilidade lê", () => {
-  const abas = conta.buildPlanilhasContabilidade(DADOS);
-  assert.equal(abas.map((a) => a.name).join(" | "), "RESUMO | ENTRADAS | RECEBIMENTOS | CONTAS A PAGAR | POUPANÇA (COFRE)");
-  for (const aba of abas) {
-    assert.ok(aba.title && aba.title.includes("AGOSTO/2026"), `${aba.name} tem título com o mês`);
-    assert.ok(aba.columns.length > 0, `${aba.name} tem colunas`);
+test("UMA planilha por assunto, cada uma em arquivo separado (nada unificado)", () => {
+  assert.equal(conta.planilhasContabilidade.length, 5);
+  assert.equal(
+    conta.planilhasContabilidade.map((p) => p.chave).join(" | "),
+    "valor-faturado | recebimentos | contas-a-pagar | poupanca | resumo",
+  );
+  const nomes = conta.planilhasContabilidade.map((p) => p.arquivo("2026-08"));
+  assert.equal(new Set(nomes).size, 5, "cada arquivo tem nome próprio");
+  for (const nome of nomes) assert.ok(nome.includes("2026-08"), `${nome} tem o mês no nome`);
+  assert.ok(nomes.some((n) => n.includes("CONTAS-A-PAGAR")), "arquivo separado só de saídas");
+  assert.ok(nomes.some((n) => n.includes("VALOR-FATURADO")), "arquivo separado só de entradas");
+  for (const planilha of conta.planilhasContabilidade) {
+    const aba = planilha.aba(DADOS);
+    assert.ok(aba.title && aba.title.includes("AGOSTO/2026"), `${planilha.chave} tem título com o mês`);
+    assert.ok(aba.columns.length > 0, `${planilha.chave} tem colunas`);
+    assert.ok(planilha.descricao(DADOS).length > 0, `${planilha.chave} descreve o conteúdo no botão`);
+  }
+});
+
+test("cada arquivo sai com UMA aba só", async () => {
+  for (const planilha of conta.planilhasContabilidade) {
+    const partes = await gerar([planilha.aba(DADOS)]);
+    assert.ok(partes.has("xl/worksheets/sheet1.xml"), `${planilha.chave} tem a aba`);
+    assert.ok(!partes.has("xl/worksheets/sheet2.xml"), `${planilha.chave} NÃO vem unificado`);
   }
 });
 
@@ -232,11 +250,14 @@ test("RECEBIMENTOS: uma linha por comanda, com forma e parcelas", () => {
   assert.equal(aba.totalRow[5], 9000);
 });
 
-test("o arquivo final das 5 abas abre e tem conteúdo em todas", async () => {
-  const partes = await gerar(conta.buildPlanilhasContabilidade(DADOS));
-  for (const n of [1, 2, 3, 4, 5]) {
-    const sheet = partes.get(`xl/worksheets/sheet${n}.xml`);
-    assert.ok(sheet && sheet.includes("<sheetData>"), `sheet${n} tem dados`);
-  }
-  assert.equal(conta.nomeArquivoContabilidade("2026-08"), "Instituto-Bratan-contabilidade-2026-08.xlsx");
+test("os arquivos de entrada e de saída não se misturam", async () => {
+  const buscar = (chave) => conta.planilhasContabilidade.find((p) => p.chave === chave);
+  const saidas = await gerar([buscar("contas-a-pagar").aba(DADOS)]);
+  const xmlSaidas = saidas.get("xl/worksheets/sheet1.xml");
+  assert.ok(xmlSaidas.includes("DESCRIÇÃO DO DÉBITO"), "o arquivo de saídas traz as contas");
+  assert.ok(!xmlSaidas.includes("ENTRADA TOTAL"), "e NÃO traz a grade de entradas");
+  const entradas = await gerar([buscar("valor-faturado").aba(DADOS)]);
+  const xmlEntradas = entradas.get("xl/worksheets/sheet1.xml");
+  assert.ok(xmlEntradas.includes("ENTRADA TOTAL"), "o arquivo de entradas traz a grade");
+  assert.ok(!xmlEntradas.includes("DESCRIÇÃO DO DÉBITO"), "e NÃO traz contas a pagar");
 });

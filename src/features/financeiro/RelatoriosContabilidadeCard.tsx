@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Label } from "@/components/ui/label";
 import { baixarXlsx } from "@/lib/xlsxWriter";
-import { buildPlanilhasContabilidade, nomeArquivoContabilidade } from "./contabilidadeXlsx";
+import { planilhasContabilidade } from "./contabilidadeXlsx";
 import {
   buildFaturamentoCsv,
   buildFechamentoContabil,
@@ -79,6 +79,10 @@ export function RelatoriosContabilidadeCard({
     () => buildFechamentoContabil(sales, expenses, savingsMoves, monthKey, crediarioProfits),
     [sales, expenses, savingsMoves, monthKey, crediarioProfits],
   );
+  const dadosDoMes = useMemo(
+    () => ({ sales, expenses, categories, savingsMoves, crediarioProfits, monthKey }),
+    [sales, expenses, categories, savingsMoves, crediarioProfits, monthKey],
+  );
 
   const botoes = [
     {
@@ -105,10 +109,11 @@ export function RelatoriosContabilidadeCard({
           <FileSpreadsheet className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
           Relatórios para a contabilidade — {monthKeyLabel(monthKey)}
           <InfoTip title="O que vai em cada arquivo">
-            Três planilhas prontas para abrir no Excel: FATURAMENTO (uma linha por item de comanda, com paciente, tipo e
-            forma de pagamento), GASTOS (uma linha por conta, com fornecedor, categoria da P12, se é obra e a NF) e
-            RESUMO (folha de capa com receita, custos, lucro, margem e o que é investimento). O crediário aparece só no
-            resumo, marcado como controle interno — não vai para a contabilidade.
+            Cada botão baixa UM arquivo Excel separado, com uma aba só — nada unificado. VALOR FATURADO é a grade
+            diária (dinheiro, PIX, cartão, medicação, consulta…); RECEBIMENTOS é comanda por comanda; CONTAS A PAGAR
+            traz vencimento, pagamento, categoria da P12 e o que é obra; POUPANÇA mostra o que entrou e saiu do cofre;
+            RESUMO é a folha de capa. O crediário aparece só no resumo, marcado como controle interno — não vai para a
+            contabilidade.
           </InfoTip>
           {mostrarSeletor ? (
             <div className="ml-auto flex items-center gap-2">
@@ -132,26 +137,26 @@ export function RelatoriosContabilidadeCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
-        {/* EXCEL (07/08/2026, pedido do Lucas): um arquivo com as 5 abas, no
-            formato dos anexos que ele já manda para a contabilidade. */}
-        <Button
-          type="button"
-          className="h-auto flex-col items-start gap-1 py-4 text-left"
-          onClick={() =>
-            baixarXlsx(nomeArquivoContabilidade(monthKey), buildPlanilhasContabilidade({
-              sales, expenses, categories, savingsMoves, crediarioProfits, monthKey,
-            }))
-          }
-        >
-          <span className="flex items-center gap-2 text-base font-bold">
-            <Sheet className="h-5 w-5" aria-hidden="true" /> Baixar planilha Excel para a contabilidade
-          </span>
-          <span className="text-xs font-normal opacity-90">
-            5 abas formatadas: RESUMO · ENTRADAS (dia a dia) · RECEBIMENTOS · CONTAS A PAGAR · POUPANÇA
-          </span>
-        </Button>
+        {/* EXCEL, UM ARQUIVO POR ASSUNTO (07/08/2026 — o Lucas pediu separado:
+            "não quero unificado, quero uma planilha pra saídas e uma pra
+            entradas"). Cada botão baixa o seu próprio .xlsx. */}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {planilhasContabilidade.map((planilha) => (
+            <Button
+              key={planilha.chave}
+              type="button"
+              className="h-auto flex-col items-start gap-1 py-3 text-left"
+              onClick={() => baixarXlsx(planilha.arquivo(monthKey), [planilha.aba(dadosDoMes)])}
+            >
+              <span className="flex items-center gap-2 text-sm font-bold">
+                <Sheet className="h-4 w-4 shrink-0" aria-hidden="true" /> {planilha.titulo}
+              </span>
+              <span className="text-[11px] font-normal opacity-90">{planilha.descricao(dadosDoMes)}</span>
+            </Button>
+          ))}
+        </div>
         <p className="text-xs text-muted-foreground">
-          Precisa de um arquivo solto (para outro sistema ou conferência rápida)? Os três abaixo saem em CSV:
+          Cada botão baixa um arquivo Excel separado — nada unificado. Precisa de CSV (para outro sistema)? Abaixo:
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
         {botoes.map((botao) => (

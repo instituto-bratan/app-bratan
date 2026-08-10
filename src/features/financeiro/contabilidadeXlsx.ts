@@ -286,11 +286,73 @@ export function abaResumo(dados: DadosContabilidade): XlsxSheet {
   };
 }
 
-/** As cinco abas na ordem em que a contabilidade lê. */
-export function buildPlanilhasContabilidade(dados: DadosContabilidade): XlsxSheet[] {
-  return [abaResumo(dados), abaEntradasDiarias(dados), abaRecebimentos(dados), abaContasAPagar(dados), abaPoupanca(dados)];
-}
+/**
+ * UMA PLANILHA POR ASSUNTO — cada arquivo separado (07/08/2026, correção do
+ * Lucas: "não quero unificado, quero uma planilha pra saídas e uma pra
+ * entradas"). Cada item aqui é um .xlsx próprio, com uma aba só.
+ */
+export type PlanilhaContabilidade = {
+  chave: string;
+  /** Rótulo do botão. */
+  titulo: string;
+  /** O que o contador recebe, em uma linha. */
+  descricao: (dados: DadosContabilidade) => string;
+  /** Nome do arquivo, sem extensão. */
+  arquivo: (monthKey: string) => string;
+  aba: (dados: DadosContabilidade) => XlsxSheet;
+};
 
-export function nomeArquivoContabilidade(monthKey: string) {
-  return `Instituto-Bratan-contabilidade-${monthKey}.xlsx`;
-}
+const brl = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+export const planilhasContabilidade: PlanilhaContabilidade[] = [
+  {
+    chave: "valor-faturado",
+    titulo: "Controle do valor faturado",
+    descricao: (dados) => {
+      const aba = abaEntradasDiarias(dados);
+      return `${aba.rows.length} dia(s) com movimento · ${brl(Number(aba.totalRow?.[1] ?? 0))}`;
+    },
+    arquivo: (mes) => `Instituto-Bratan-VALOR-FATURADO-${mes}`,
+    aba: abaEntradasDiarias,
+  },
+  {
+    chave: "recebimentos",
+    titulo: "Controle de recebimentos",
+    descricao: (dados) => {
+      const aba = abaRecebimentos(dados);
+      return `${aba.rows.length} comanda(s) · ${brl(Number(aba.totalRow?.[5] ?? 0))}`;
+    },
+    arquivo: (mes) => `Instituto-Bratan-RECEBIMENTOS-${mes}`,
+    aba: abaRecebimentos,
+  },
+  {
+    chave: "contas-a-pagar",
+    titulo: "Contas a pagar (saídas)",
+    descricao: (dados) => {
+      const aba = abaContasAPagar(dados);
+      return `${aba.rows.length} conta(s) · ${brl(Number(aba.totalRow?.[3] ?? 0))} · pago ${brl(Number(aba.totalRow?.[8] ?? 0))}`;
+    },
+    arquivo: (mes) => `Instituto-Bratan-CONTAS-A-PAGAR-${mes}`,
+    aba: abaContasAPagar,
+  },
+  {
+    chave: "poupanca",
+    titulo: "Poupança (cofre)",
+    descricao: (dados) => {
+      const aba = abaPoupanca(dados);
+      return `${aba.rows.length} movimento(s) · entrou ${brl(Number(aba.totalRow?.[4] ?? 0))} · saiu ${brl(Number(aba.totalRow?.[5] ?? 0))}`;
+    },
+    arquivo: (mes) => `Instituto-Bratan-POUPANCA-${mes}`,
+    aba: abaPoupanca,
+  },
+  {
+    chave: "resumo",
+    titulo: "Resumo (folha de capa)",
+    descricao: (dados) => {
+      const g = buildGestaoMensal(dados.sales, dados.expenses, dados.categories, dados.monthKey, dados.crediarioProfits);
+      return `tudo que entrou × tudo que saiu · lucro ${brl(g.lucroLiquido)}`;
+    },
+    arquivo: (mes) => `Instituto-Bratan-RESUMO-${mes}`,
+    aba: abaResumo,
+  },
+];
