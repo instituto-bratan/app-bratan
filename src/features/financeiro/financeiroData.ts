@@ -38,14 +38,33 @@ export type FinSaleItem = {
   description: string;
 };
 
+/**
+ * Estado do comprovante de UM pagamento (10/08/2026, processo à prova de erro).
+ * PENDENTE é o padrão: ninguém decidiu ainda — é o que gera o aviso. AGUARDANDO
+ * é "o paciente manda depois", e NAO_SE_APLICA é dinheiro na gaveta. Assim
+ * "sem comprovante" deixa de ser ambíguo: dá para saber se ESQUECERAM ou se o
+ * dinheiro AINDA NÃO ENTROU.
+ */
+export type ComprovanteStatus = "PENDENTE" | "ANEXADO" | "AGUARDANDO" | "NAO_SE_APLICA";
+
+export const comprovanteStatusLabels: Record<ComprovanteStatus, string> = {
+  PENDENTE: "Falta comprovante",
+  ANEXADO: "Comprovante anexado",
+  AGUARDANDO: "Aguardando o paciente",
+  NAO_SE_APLICA: "Não se aplica (dinheiro)",
+};
+
 export type FinSalePayment = {
   id: string;
   method: FinPaymentMethod;
   amount: number;
   installments: number;
   cardMachine?: FinCardMachine | null;
+  comprovanteStatus?: ComprovanteStatus;
+  comprovanteRef?: string | null;
 };
 
+/** Quem pagou, quando é diferente do paciente (preenchido só na exceção). */
 export type FinAdhesion = "ABERTO" | "SIM" | "NAO";
 
 export const adhesionLabels: Record<FinAdhesion, string> = {
@@ -983,6 +1002,10 @@ export type FinReconciliation = {
   feeSafra: number;
   status: FinReconciliationStatus;
   divergenceNote: string;
+  /** O que a recepção CONTOU no fim do dia (10/08/2026). null = não informado. */
+  countedDinheiro?: number | null;
+  countedCard?: number | null;
+  countedPix?: number | null;
   confirmedAt: string | null;
 };
 
@@ -1344,6 +1367,113 @@ export function buildDayExpected(sales: FinSale[], day: string): DayExpected {
     }
   }
   return expected;
+}
+
+/** Pagamentos que ainda precisam de uma decisão sobre o comprovante. */
+export function pagamentosSemComprovante(sales: FinSale[], start?: string, end?: string) {
+  const pendentes: { sale: FinSale; payment: FinSalePayment }[] = [];
+  for (const sale of sales) {
+    if (start && sale.saleDate < start) continue;
+    if (end && sale.saleDate > end) continue;
+    for (const payment of sale.payments) {
+      const status = payment.comprovanteStatus ?? "PENDENTE";
+      if (status === "PENDENTE") pendentes.push({ sale, payment });
+    }
+  }
+  return pendentes.sort((a, b) => b.sale.saleDate.localeCompare(a.sale.saleDate));
+}
+
+// ---------------------------------------------------------------------------
+// FECHAMENTO DO DIA COM CONTAGEM REAL (10/08/2026).
+// Antes o fechamento comparava o app com o app. Agora a recepção diz quanto
+// CONTOU e o app aponta a diferença no mesmo dia — foi assim que passaram
+// R$ 31.250 em dinheiro e uma taxa de cartão de 24% sem ninguém ver.
+// ---------------------------------------------------------------------------
+export type ContagemDoDia = {
+  dinheiro: number | null;
+  cartao: number | null;
+  pix: number | null;
+};
+
+export type LinhaConferencia = {
+  rotulo: string;
+  esperado: number;
+  contado: number | null;
+  diferenca: number | null;
+  bate: boolean;
+  /** Mensagem curta explicando o que a diferença provavelmente é. */
+  pista: string;
+};
+
+export type ConferenciaDoDia = {
+  linhas: LinhaConferencia[];
+  /** Soma das diferenças em módulo (0 = dia redondo). */
+  diferencaTotal: number;
+  bate: boolean;
+  /** O dia só fecha sem justificativa quando a diferença é até 1 real. */
+  precisaJustificar: boolean;
+  /** % da taxa de cartão sobre o cartão do dia (bandeira vermelha acima de 9%). */
+  taxaPercentual: number | null;
+  taxaSuspeita: boolean;
+};
+
+export const TOLERANCIA_FECHAMENTO = 1;
+export const TAXA_CARTAO_SUSPEITA = 9;
+
+export function buildConferenciaDoDia(
+  sales: FinSale[],
+  day: string,
+  contagem: ContagemDoDia,
+  taxaCartao = 0,
+): ConferenciaDoDia {
+  const esperado = buildDayExpected(sales, day);
+  const cartaoEsperado = esperado.cardItau + esperado.cardSafra + esperado.cardOutra;
+  const cents = (valor: number) => Math.round(valor * 100) / 100;
+
+  const montar = (rotulo: string, esperadoValor: number, contado: number | null, pistaSobra: string, pistaFalta: string): LinhaConferencia => {
+    const diferenca = contado === null ? null : cents(contado - esperadoValor);
+    const bate = diferenca === null ? false : Math.abs(diferenca) <= TOLERANCIA_FECHAMENTO;
+    let pista = "";
+    if (diferenca !== null && !bate) pista = diferenca > 0 ? pistaSobra : pistaFalta;
+    return { rotulo, esperado: cents(esperadoValor), contado, diferenca, bate, pista };
+  };
+
+  const linhas = [
+    montar(
+      "Dinheiro na gaveta",
+      esperado.dinheiro,
+      contagem.dinheiro,
+      "Sobrou dinheiro: tem venda em espécie sem comanda lançada.",
+      "Faltou dinheiro: comanda lançada como dinheiro que não foi paga assim, ou saída da gaveta sem registro.",
+    ),
+    montar(
+      "Cartão (maquininha)",
+      cartaoEsperado,
+      contagem.cartao,
+      "A maquininha passou mais do que as comandas: falta lançar comanda de cartão.",
+      "A maquininha passou menos: comanda lançada como cartão que foi paga de outro jeito.",
+    ),
+    montar(
+      "PIX recebido",
+      esperado.pix,
+      contagem.pix,
+      "Entrou PIX a mais: falta lançar comanda.",
+      "Entrou PIX a menos: comanda lançada como PIX que não caiu (confira a forma de pagamento).",
+    ),
+  ];
+
+  const informadas = linhas.filter((linha) => linha.contado !== null);
+  const diferencaTotal = cents(informadas.reduce((soma, linha) => soma + Math.abs(linha.diferenca ?? 0), 0));
+  const taxaPercentual = cartaoEsperado > 0 && taxaCartao > 0 ? Math.round((taxaCartao / cartaoEsperado) * 10000) / 100 : null;
+
+  return {
+    linhas,
+    diferencaTotal,
+    bate: informadas.length > 0 && informadas.every((linha) => linha.bate),
+    precisaJustificar: informadas.length > 0 && diferencaTotal > TOLERANCIA_FECHAMENTO,
+    taxaPercentual,
+    taxaSuspeita: taxaPercentual !== null && taxaPercentual > TAXA_CARTAO_SUSPEITA,
+  };
 }
 
 export function monthDaysWithSales(sales: FinSale[], month: string) {

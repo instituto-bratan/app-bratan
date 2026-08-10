@@ -3418,7 +3418,7 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_sales")
-    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, adhesion, created_at, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine)")
+    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, adhesion, created_at, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine, comprovante_status, comprovante_ref)")
     .gte("sale_date", `${year}-01-01`)
     .lte("sale_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -3449,6 +3449,8 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
       amount: Number(payment.amount ?? 0),
       installments: Number(payment.installments ?? 1),
       cardMachine: (payment.card_machine as FinSale["payments"][number]["cardMachine"]) ?? null,
+      comprovanteStatus: (payment.comprovante_status as FinSale["payments"][number]["comprovanteStatus"]) ?? "PENDENTE",
+      comprovanteRef: payment.comprovante_ref ? String(payment.comprovante_ref) : null,
     })),
   }));
 }
@@ -3488,6 +3490,8 @@ export async function createRemoteFinSale(sale: FinSale, createdBy: string | nul
         amount: payment.amount,
         installments: payment.installments,
         card_machine: payment.cardMachine ?? null,
+        comprovante_status: payment.comprovanteStatus ?? (payment.method === "DINHEIRO" ? "NAO_SE_APLICA" : "PENDENTE"),
+        comprovante_ref: payment.comprovanteRef ?? null,
       })),
     );
     if (paymentsError) throw paymentsError;
@@ -3709,7 +3713,7 @@ export async function listRemoteFinReconciliations(year: number): Promise<FinRec
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_reconciliations")
-    .select("client_ref, day, expected_pix, expected_card_itau, expected_card_safra, expected_card_outra, expected_dinheiro, fee_itau, fee_safra, status, divergence_note, confirmed_at")
+    .select("client_ref, day, expected_pix, expected_card_itau, expected_card_safra, expected_card_outra, expected_dinheiro, fee_itau, fee_safra, status, divergence_note, confirmed_at, counted_dinheiro, counted_card, counted_pix")
     .gte("day", `${year}-01-01`)
     .lte("day", `${year}-12-31`);
 
@@ -3722,6 +3726,9 @@ export async function listRemoteFinReconciliations(year: number): Promise<FinRec
     expectedCardSafra: Number(row.expected_card_safra ?? 0),
     expectedCardOutra: Number(row.expected_card_outra ?? 0),
     expectedDinheiro: Number(row.expected_dinheiro ?? 0),
+    countedDinheiro: row.counted_dinheiro === null || row.counted_dinheiro === undefined ? null : Number(row.counted_dinheiro),
+    countedCard: row.counted_card === null || row.counted_card === undefined ? null : Number(row.counted_card),
+    countedPix: row.counted_pix === null || row.counted_pix === undefined ? null : Number(row.counted_pix),
     feeItau: Number(row.fee_itau ?? 0),
     feeSafra: Number(row.fee_safra ?? 0),
     status: row.status as FinReconciliation["status"],
@@ -3741,6 +3748,9 @@ export async function upsertRemoteFinReconciliation(record: FinReconciliation, c
       expected_card_safra: record.expectedCardSafra,
       expected_card_outra: record.expectedCardOutra,
       expected_dinheiro: record.expectedDinheiro,
+      counted_dinheiro: record.countedDinheiro ?? null,
+      counted_card: record.countedCard ?? null,
+      counted_pix: record.countedPix ?? null,
       fee_itau: record.feeItau,
       fee_safra: record.feeSafra,
       status: record.status,
@@ -3757,6 +3767,112 @@ export async function upsertRemoteFinReconciliation(record: FinReconciliation, c
     entityId: record.id,
     metadata: { day: record.day, status: record.status, feeItau: record.feeItau, feeSafra: record.feeSafra },
   });
+}
+
+// ---- Extrato do banco (10/08/2026) --------------------------------------------
+export type FinBankEntryRow = {
+  clientRef: string;
+  entryDate: string;
+  description: string;
+  counterparty: string;
+  document: string;
+  amount: number;
+  balance: number | null;
+  matchKind: "COMANDA" | "DESPESA" | "COFRE" | "IGNORADO" | null;
+  matchRef: string | null;
+  matchNote: string | null;
+};
+
+/** Muda o estado do comprovante de um pagamento (10/08/2026). */
+export async function updateRemotePaymentComprovante(
+  paymentRef: string,
+  status: "PENDENTE" | "ANEXADO" | "AGUARDANDO" | "NAO_SE_APLICA",
+  comprovanteRef: string | null = null,
+) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_sale_payments")
+    .update({ comprovante_status: status, comprovante_ref: comprovanteRef })
+    .eq("client_ref", paymentRef);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.comanda.comprovante",
+    entity: "fin_sale_payments",
+    entityId: paymentRef,
+    metadata: { status },
+  });
+}
+
+export async function listRemoteFinBankEntries(): Promise<FinBankEntryRow[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_bank_entry")
+    .select("client_ref, entry_date, description, counterparty, document, amount, balance, match_kind, match_ref, match_note")
+    .is("deleted_at", null)
+    .order("entry_date", { ascending: false })
+    .limit(3000);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    clientRef: String(row.client_ref),
+    entryDate: String(row.entry_date ?? "").slice(0, 10),
+    description: String(row.description ?? ""),
+    counterparty: String(row.counterparty ?? ""),
+    document: String(row.document ?? ""),
+    amount: Number(row.amount ?? 0),
+    balance: row.balance === null || row.balance === undefined ? null : Number(row.balance),
+    matchKind: (row.match_kind as FinBankEntryRow["matchKind"]) ?? null,
+    matchRef: row.match_ref ? String(row.match_ref) : null,
+    matchNote: row.match_note ? String(row.match_note) : null,
+  }));
+}
+
+/** Importa (ou reimporta) linhas do extrato. O client_ref determinístico evita duplicar. */
+export async function saveRemoteFinBankEntries(entries: FinBankEntryRow[], importedBy: string | null) {
+  if (!entries.length) return 0;
+  const client = requireSupabase();
+  const { error } = await client.from("fin_bank_entry").upsert(
+    entries.map((entry) => ({
+      client_ref: entry.clientRef,
+      entry_date: entry.entryDate,
+      description: entry.description,
+      counterparty: entry.counterparty,
+      document: entry.document,
+      amount: entry.amount,
+      balance: entry.balance,
+      source: "ITAU",
+      imported_by: uuidOrNull(importedBy),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+    })),
+    { onConflict: "client_ref", ignoreDuplicates: true },
+  );
+  if (error) throw new Error(`fin_bank_entry: ${error.message} · ${error.details ?? ""} · código ${error.code ?? "?"}`);
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.extrato.importar",
+    entity: "fin_bank_entry",
+    metadata: { linhas: entries.length, de: entries[entries.length - 1]?.entryDate, ate: entries[0]?.entryDate },
+  });
+  return entries.length;
+}
+
+/** Marca um lançamento do extrato (ex.: IGNORADO para o que não é do Instituto). */
+export async function updateRemoteFinBankEntry(
+  clientRef: string,
+  patch: { matchKind?: FinBankEntryRow["matchKind"]; matchNote?: string | null },
+  matchedBy: string | null,
+) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_bank_entry")
+    .update({
+      match_kind: patch.matchKind ?? null,
+      match_note: patch.matchNote ?? null,
+      matched_by: uuidOrNull(matchedBy),
+      matched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("client_ref", clientRef);
+  if (error) throw error;
 }
 
 export async function listRemoteFinSavings(): Promise<FinSavingsMove[]> {

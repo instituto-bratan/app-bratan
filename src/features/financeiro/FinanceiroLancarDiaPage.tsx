@@ -50,12 +50,15 @@ import {
   type FinSale,
   type FinSaleItem,
   type FinSaleItemType,
+  type ComprovanteStatus,
   type FinSalePayment,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
 
 type DraftItem = { itemType: FinSaleItemType; amount: string; description: string };
-type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine };
+type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine
+  comprovanteStatus?: ComprovanteStatus;
+};
 
 function parseAmount(value: string) {
   const amount = parseMoneyBR(value);
@@ -82,7 +85,7 @@ export function FinanceiroLancarDiaPage() {
   const [patientChannels, setPatientChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DraftItem[]>([{ itemType: "CONSULTA", amount: "", description: "" }]);
-  const [payments, setPayments] = useState<DraftPayment[]>([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
+  const [payments, setPayments] = useState<DraftPayment[]>([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }]);
   const [adhesion, setAdhesion] = useState<FinAdhesion>("ABERTO");
   const [feedback, setFeedback] = useState("");
   // ENCAIXE COM OS LEMBRETES (28/07): se o paciente da comanda tem valor em
@@ -158,7 +161,7 @@ export function FinanceiroLancarDiaPage() {
     setPatientChannels(emptyContactChannels);
     setNotes("");
     setItems([{ itemType: "CONSULTA", amount: "", description: "" }]);
-    setPayments([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU" }]);
+    setPayments([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }]);
   }
 
   function amountToDraft(amount: number) {
@@ -178,6 +181,7 @@ export function FinanceiroLancarDiaPage() {
         amount: amountToDraft(payment.amount),
         installments: String(payment.installments),
         cardMachine: payment.cardMachine ?? "ITAU",
+        comprovanteStatus: payment.comprovanteStatus ?? "PENDENTE",
       })),
     );
     setFeedback(`Editando a comanda de ${sale.patientName} — ajuste e salve para aplicar.`);
@@ -198,6 +202,13 @@ export function FinanceiroLancarDiaPage() {
         amount: parseAmount(payment.amount),
         installments: Math.max(1, Number(payment.installments) || 1),
         cardMachine: payment.method === "CARTAO_CREDITO" || payment.method === "CARTAO_DEBITO" ? payment.cardMachine : null,
+        // Dinheiro nunca tem comprovante: já nasce resolvido para não gerar aviso falso.
+        comprovanteStatus:
+          payment.comprovanteStatus && payment.comprovanteStatus !== "PENDENTE"
+            ? payment.comprovanteStatus
+            : payment.method === "DINHEIRO"
+              ? "NAO_SE_APLICA"
+              : "PENDENTE",
       }));
 
     if (!patientName.trim()) return setFeedback("Informe o paciente.");
@@ -481,7 +492,7 @@ export function FinanceiroLancarDiaPage() {
                   <div>
                     <div className="mb-2 flex items-center justify-between">
                       <Label>Pagamentos (como foi pago)</Label>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setPayments((current) => [...current, { method: "CARTAO_CREDITO", amount: "", installments: "1", cardMachine: "ITAU" }])}>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setPayments((current) => [...current, { method: "CARTAO_CREDITO", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }])}>
                         <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Pagamento
                       </Button>
                     </div>
@@ -529,6 +540,39 @@ export function FinanceiroLancarDiaPage() {
                             <Button type="button" variant="ghost" size="icon" aria-label="Remover pagamento" onClick={() => setPayments((current) => current.filter((_, i) => i !== index))}>
                               <Trash2 className="h-4 w-4" aria-hidden="true" />
                             </Button>
+                            {/* COMPROVANTE (10/08/2026): resolvido aqui, em um toque, na
+                                mesma tela. Antes era outro módulo — e esquecer era o
+                                comportamento natural. "Falta" deixa de ser ambíguo. */}
+                            <div className="sm:col-span-5 -mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] font-semibold uppercase text-brand-oliva">Comprovante:</span>
+                              {(["ANEXADO", "AGUARDANDO", "NAO_SE_APLICA"] as ComprovanteStatus[]).map((opcao) => {
+                                const ativo = (payment.comprovanteStatus ?? "PENDENTE") === opcao;
+                                const rotulo =
+                                  opcao === "ANEXADO" ? "Tenho o comprovante" : opcao === "AGUARDANDO" ? "Vai mandar depois" : "Não se aplica (dinheiro)";
+                                return (
+                                  <button
+                                    key={opcao}
+                                    type="button"
+                                    onClick={() =>
+                                      setPayments((current) =>
+                                        current.map((p, i) => (i === index ? { ...p, comprovanteStatus: ativo ? "PENDENTE" : opcao } : p)),
+                                      )
+                                    }
+                                    className={cn(
+                                      "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                                      ativo
+                                        ? "border-brand-musgo bg-brand-musgo text-white"
+                                        : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-musgo/50",
+                                    )}
+                                  >
+                                    {rotulo}
+                                  </button>
+                                );
+                              })}
+                              {(payment.comprovanteStatus ?? "PENDENTE") === "PENDENTE" ? (
+                                <span className="text-[11px] font-semibold text-amber-700">— escolha um (evita erro no fechamento)</span>
+                              ) : null}
+                            </div>
                           </div>
                         );
                       })}

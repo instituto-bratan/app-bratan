@@ -56,8 +56,8 @@ import {
   formatEstalecas,
   type EstalecaTransaction,
 } from "@/features/estalecas/estalecasData";
-import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemotePagamentos } from "@/lib/remoteData";
-import { loadLocalFinExpenses, moneyFin, upcomingExpenses } from "@/features/financeiro/financeiroData";
+import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemoteFinSales, listRemotePagamentos } from "@/lib/remoteData";
+import { loadLocalFinExpenses, loadLocalFinSales, moneyFin, pagamentosSemComprovante, upcomingExpenses } from "@/features/financeiro/financeiroData";
 
 const modules = [
   {
@@ -364,11 +364,30 @@ export function HomePage() {
     enabled: useRemote && canFinanceiroView(cargo),
     staleTime: 60_000,
   });
+  const finSalesQuery = useQuery({
+    queryKey: ["home-fin-sales"],
+    queryFn: () => listRemoteFinSales(new Date().getFullYear()),
+    enabled: useRemote && canFinanceiroView(cargo),
+    staleTime: 60_000,
+  });
   const contasChegando = useMemo(() => {
     if (!canFinanceiroView(cargo)) return null;
     const records = useRemote ? finExpensesQuery.data ?? [] : loadLocalFinExpenses();
-    return upcomingExpenses(records, todayISO(), 3);
+    // Provisão é reserva, não conta a cobrar (10/08/2026).
+    const semProvisao = records.filter((expense) => !expense.categoryRef.startsWith("cat-poup-"));
+    return upcomingExpenses(semProvisao, todayISO(), 3);
   }, [cargo, finExpensesQuery.data, useRemote]);
+
+  // AVISO QUE CHEGA SOZINHO (10/08/2026): comandas com pagamento sem decisão
+  // sobre o comprovante. Antes o Lucas descobria isso na conciliação, dias
+  // depois; agora aparece na Home de quem pode resolver.
+  const comprovantesPendentes = useMemo(() => {
+    if (!canFinanceiroView(cargo)) return null;
+    const vendas = useRemote ? finSalesQuery.data ?? [] : loadLocalFinSales();
+    const inicioDoMes = `${todayISO().slice(0, 7)}-01`;
+    const pendentes = pagamentosSemComprovante(vendas, inicioDoMes, todayISO());
+    return pendentes.length ? pendentes : null;
+  }, [cargo, finSalesQuery.data, useRemote]);
 
   const estalecas = useMemo(() => {
     if (!pessoa) return null;
@@ -521,6 +540,31 @@ export function HomePage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            {comprovantesPendentes ? (
+              <Link
+                to="/financeiro/lancar-dia"
+                {...warmRouteProps("/financeiro/lancar-dia")}
+                className="block rounded-lg border border-amber-300 bg-amber-50/80 p-4 transition hover:border-amber-400"
+              >
+                <div className="flex items-start gap-3">
+                  <BellRing className="mt-1 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-900">
+                      {comprovantesPendentes.length} pagamento{comprovantesPendentes.length > 1 ? "s" : ""} sem definir o comprovante
+                    </p>
+                    <p className="mt-0.5 text-xs text-amber-900/80">
+                      Um toque na comanda resolve: tenho o comprovante · vai mandar depois · não se aplica.
+                    </p>
+                    {comprovantesPendentes.slice(0, 3).map(({ sale, payment }: { sale: { id: string; saleDate: string; patientName: string }; payment: { id: string; amount: number } }) => (
+                      <p key={payment.id} className="mt-1 truncate text-sm text-amber-900/80">
+                        {sale.saleDate.split("-").reverse().slice(0, 2).join("/")} · {sale.patientName} · {moneyFin(payment.amount)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </Link>
+            ) : null}
+
             {contasChegando && (contasChegando.vencidas.length > 0 || contasChegando.chegando.length > 0) ? (
               <Link
                 to="/financeiro/contas"

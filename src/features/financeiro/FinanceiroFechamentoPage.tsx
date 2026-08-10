@@ -14,6 +14,7 @@ import { parseMoneyBR } from "@/lib/money";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
+  buildConferenciaDoDia,
   buildDayExpected,
   createFinId,
   moneyFin,
@@ -44,6 +45,26 @@ function DayRow({
   const [feeItau, setFeeItau] = useState(saved ? String(saved.feeItau).replace(".", ",") : "");
   const [feeSafra, setFeeSafra] = useState(saved && saved.feeSafra ? String(saved.feeSafra).replace(".", ",") : "");
   const [note, setNote] = useState(saved?.divergenceNote ?? "");
+  // CONTAGEM REAL (10/08/2026): antes o fechamento comparava o app com o app.
+  // Agora a recepção diz quanto CONTOU e a diferença aparece no mesmo dia.
+  const paraCampo = (valor: number | null | undefined) =>
+    valor === null || valor === undefined ? "" : String(valor).replace(".", ",");
+  const [contDinheiro, setContDinheiro] = useState(paraCampo(saved?.countedDinheiro));
+  const [contCartao, setContCartao] = useState(paraCampo(saved?.countedCard));
+  const [contPix, setContPix] = useState(paraCampo(saved?.countedPix));
+  const numeroOuNulo = (texto: string) => (texto.trim() === "" ? null : parseFinAmount(texto));
+  const conferencia = useMemo(
+    () =>
+      buildConferenciaDoDia(
+        financeiro.sales,
+        day,
+        { dinheiro: numeroOuNulo(contDinheiro), cartao: numeroOuNulo(contCartao), pix: numeroOuNulo(contPix) },
+        parseFinAmount(feeItau) + parseFinAmount(feeSafra),
+      ),
+    [financeiro.sales, day, contDinheiro, contCartao, contPix, feeItau, feeSafra],
+  );
+  // Trava macia: o dia só fecha "conferido" se bater ou se houver explicação.
+  const podeConferir = !conferencia.precisaJustificar || note.trim().length >= 3;
 
   function save(status: FinReconciliation["status"]) {
     const record: FinReconciliation = {
@@ -57,7 +78,10 @@ function DayRow({
       feeItau: parseFinAmount(feeItau),
       feeSafra: parseFinAmount(feeSafra),
       status,
-      divergenceNote: status === "DIVERGENTE" ? note.trim() : "",
+      divergenceNote: status === "DIVERGENTE" || conferencia.precisaJustificar ? note.trim() : "",
+      countedDinheiro: numeroOuNulo(contDinheiro),
+      countedCard: numeroOuNulo(contCartao),
+      countedPix: numeroOuNulo(contPix),
       confirmedAt: new Date().toISOString(),
     };
     financeiro.saveReconciliation(record);
@@ -83,7 +107,14 @@ function DayRow({
           <span className="text-xs text-muted-foreground">{expected.salesCount} comandas · {moneyFin(expected.total)}</span>
         </div>
         <div className={cn("flex gap-2", readOnly && "hidden")}>
-          <Button type="button" size="sm" variant={status === "CONFERIDO" ? "default" : "outline"} onClick={() => save("CONFERIDO")}>
+          <Button
+            type="button"
+            size="sm"
+            variant={status === "CONFERIDO" ? "default" : "outline"}
+            disabled={!podeConferir}
+            title={podeConferir ? undefined : "Explique a diferença na observação para fechar o dia."}
+            onClick={() => save("CONFERIDO")}
+          >
             <CheckCircle2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Bateu
           </Button>
@@ -114,6 +145,59 @@ function DayRow({
         <div className="rounded-md bg-white/70 px-3 py-2">
           <p className="text-[11px] font-semibold uppercase text-brand-oliva">Outros</p>
           <p className="font-semibold text-brand-tinta">{moneyFin(expected.outros)}</p>
+        </div>
+      </div>
+
+      {/* CONTAGEM DO DIA — 3 números, 30 segundos. É o que pega dinheiro fora da
+          comanda e taxa de maquininha errada no mesmo dia. */}
+      <div className="mt-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">
+          Conferi de verdade (deixe em branco o que não conferiu)
+        </p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-3">
+          <label className="grid gap-1">
+            <span className="text-[11px] font-semibold text-brand-tinta">Dinheiro na gaveta</span>
+            <Input value={contDinheiro} onChange={(event) => setContDinheiro(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" disabled={readOnly} />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-[11px] font-semibold text-brand-tinta">Total da maquininha</span>
+            <Input value={contCartao} onChange={(event) => setContCartao(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" disabled={readOnly} />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-[11px] font-semibold text-brand-tinta">PIX recebido</span>
+            <Input value={contPix} onChange={(event) => setContPix(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" disabled={readOnly} />
+          </label>
+        </div>
+        <div className="mt-2 grid gap-1">
+          {conferencia.linhas
+            .filter((linha) => linha.contado !== null)
+            .map((linha) => (
+              <div
+                key={linha.rotulo}
+                className={cn(
+                  "flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs",
+                  linha.bate ? "border-emerald-200 bg-emerald-50/70 text-emerald-900" : "border-red-200 bg-red-50/70 text-red-800",
+                )}
+              >
+                <span className="font-semibold">
+                  {linha.rotulo}: comanda diz {moneyFin(linha.esperado)} · você contou {moneyFin(linha.contado ?? 0)}
+                </span>
+                <span className="font-bold tabular-nums">
+                  {linha.bate ? "bate ✓" : `${linha.diferenca && linha.diferenca > 0 ? "+" : ""}${moneyFin(linha.diferenca ?? 0)}`}
+                </span>
+                {linha.pista ? <span className="w-full text-[11px] font-normal">{linha.pista}</span> : null}
+              </div>
+            ))}
+          {conferencia.taxaSuspeita ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50/80 px-2.5 py-1.5 text-xs font-semibold text-amber-900">
+              A taxa lançada dá {conferencia.taxaPercentual?.toFixed(2).replace(".", ",")}% do cartão do dia — o normal é até 9%. Confira antes de fechar.
+            </div>
+          ) : null}
+          {conferencia.precisaJustificar && !podeConferir ? (
+            <div className="rounded-md border border-red-300 bg-red-50/80 px-2.5 py-1.5 text-xs font-semibold text-red-800">
+              Diferença de {moneyFin(conferencia.diferencaTotal)}. Escreva na observação o que aconteceu para poder fechar o dia.
+            </div>
+          ) : null}
         </div>
       </div>
 
