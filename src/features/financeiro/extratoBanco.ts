@@ -301,9 +301,18 @@ const TOLERANCIA = 0.02;
 function toleranciaLarga(valor: number) {
   return Math.max(2, valor * 0.005);
 }
-/** Transferência automática da aplicação = cartão caindo, não é venda nova. */
-const EH_TRANSFERENCIA_APLICACAO = /transfer[êe]ncia autom|aplic\w* autom|resgate/i;
-const EH_RENDIMENTO = /rendimento/i;
+/**
+ * Linhas do banco que não são venda nem conta.
+ *
+ * ATENÇÃO à separação (corrigida em 12/08/2026): só a TRANSFERÊNCIA AUTOM.
+ * RECEBIDA é adiantamento da maquininha. O RESGATE DE CDB é dinheiro da obra
+ * voltando do cofre — juntar os dois inflava a conferência da maquininha
+ * (um resgate de 40 mil aparecia como "caiu 40 mil de cartão a mais").
+ */
+const EH_ADIANTAMENTO_MAQUININHA = /transfer[êe]ncia autom|aplic\w* autom(?!.*resgate)/i;
+const EH_COFRE_CDB = /resgate|aplica[çc][ãa]o cdb|cdb di/i;
+/** "RENDIMENTOS ..." e "REND PAGO APLIC AUT APR" são a mesma coisa. */
+const EH_RENDIMENTO = /rendimento|rend\.? pago/i;
 
 /**
  * Casa o extrato com o que o app tem. Casa por VALOR, preferindo a mesma data e
@@ -394,9 +403,12 @@ export function conciliarExtrato(
   let somaTransferencias = 0;
   for (const entry of lancamentos) {
     // Linhas que não são venda nem conta: adiantamento da maquininha, rendimento, resgate.
-    if (EH_TRANSFERENCIA_APLICACAO.test(entry.description) || EH_RENDIMENTO.test(entry.description)) {
+    if (EH_ADIANTAMENTO_MAQUININHA.test(entry.description) || EH_COFRE_CDB.test(entry.description) || EH_RENDIMENTO.test(entry.description)) {
       const ehRendimento = EH_RENDIMENTO.test(entry.description);
-      if (!ehRendimento && entry.amount > 0) somaTransferencias += entry.amount;
+      // Só o adiantamento da maquininha entra na conferência do cartão.
+      if (!ehRendimento && entry.amount > 0 && EH_ADIANTAMENTO_MAQUININHA.test(entry.description)) {
+        somaTransferencias += entry.amount;
+      }
       const noCofre = acharCandidato(restamCofre, entry);
       if (noCofre) {
         restamCofre.splice(restamCofre.indexOf(noCofre), 1);
@@ -404,7 +416,11 @@ export function conciliarExtrato(
       } else {
         casadas.push({
           entry,
-          comQue: ehRendimento ? "rendimento do banco" : "adiantamento da maquininha (crédito da véspera)",
+          comQue: ehRendimento
+            ? "rendimento do banco"
+            : EH_COFRE_CDB.test(entry.description)
+              ? "movimento do CDB (obra/cofre)"
+              : "adiantamento da maquininha (crédito da véspera)",
           tipo: "COFRE",
         });
       }

@@ -102,3 +102,30 @@ test("maquininha: sem transferência e sem cartão → SEM_DADOS, nada de alarme
   const balde = ex.conciliarExtrato(entradas, [], [], [], "2026-08-01", "2026-08-07");
   assert.equal(balde.maquininha.situacao, "SEM_DADOS");
 });
+
+test("resgate de CDB NÃO conta como adiantamento da maquininha", () => {
+  // Achado na conciliação de 12/08/2026: um resgate de CDB de R$ 40.000,22 caía
+  // na mesma regra da transferência automática e inflava a conferência do cartão
+  // (aparecia como "caiu 40 mil de cartão a mais"). São coisas diferentes: a
+  // transferência é crédito da véspera; o resgate é dinheiro da obra voltando.
+  const entradas = extrato([
+    "10/08/2026;RESGATE CDB DI;;;40000,22;",
+    "11/08/2026;TRANSFERÊNCIA AUTOM. RECEBIDA 0138.46448-2;;;20010,59;",
+  ]);
+  const vendas = [venda("a", "2026-08-10", [{ method: "CARTAO_CREDITO", amount: 21200 }])];
+  const balde = ex.conciliarExtrato(entradas, vendas, [], [], "2026-08-01", "2026-08-12");
+  assert.equal(balde.maquininha.transferencias, 20010.59, "só a transferência automática");
+  assert.equal(balde.maquininha.situacao, "OK");
+  const cdb = balde.casadas.find((item) => /RESGATE/i.test(item.entry.description));
+  assert.ok(cdb, "o resgate casa sozinho");
+  assert.match(cdb.comQue, /CDB \(obra\/cofre\)/);
+  assert.ok(!balde.entrouSemRegistro.length, "e não vira 'entrou sem comanda'");
+});
+
+test("REND PAGO APLIC AUT APR também é rendimento (não é venda)", () => {
+  const entradas = extrato(["11/08/2026;REND PAGO APLIC AUT APR;;;0,11;"]);
+  const balde = ex.conciliarExtrato(entradas, [], [], [], "2026-08-01", "2026-08-12");
+  assert.equal(balde.entrouSemRegistro.length, 0, "antes aparecia como venda sem comanda");
+  assert.match(balde.casadas[0].comQue, /rendimento/);
+  assert.equal(balde.maquininha.transferencias, 0);
+});
