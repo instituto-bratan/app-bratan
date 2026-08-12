@@ -581,6 +581,23 @@ export function formatCrmDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+/**
+ * Dono de uma cadência = quem responde pelo PAPEL dela — nunca o dono do deal.
+ *
+ * Bug corrigido em 12/08/2026 (Lucas: "a cadência de 14 em 14 dias da enfermeira
+ * não está chegando pra ela"): a inscrição herdava `deal.ownerUserId`, que é o
+ * dono COMERCIAL (quem fechou a venda). A régua da enfermeira nascia no nome do
+ * vendedor — 8 das 12 inscrições estavam com o gestor, e a enfermeira não era
+ * dona de nenhuma das 52 tarefas de enfermagem. Resultado: a régua parava no 1º
+ * ciclo, porque ninguém sabia que aquilo era seu.
+ *
+ * Devolve o slug do papel; o banco tem um gatilho que troca o slug pela pessoa
+ * ativa daquele cargo (crm_role_owner), então funciona em qualquer cliente.
+ */
+export function cadenceOwnerSlug(role: CrmRole | null | undefined) {
+  return (role ?? "CONCIERGE").toLowerCase();
+}
+
 export function cargoToCrmRole(cargo: Cargo | null | undefined): CrmRole | null {
   if (!cargo) return null;
   if (cargo === "dr_daniel") return "MEDICO";
@@ -2439,7 +2456,7 @@ export function ensureCadenceCoverage(state: CrmState) {
       dealId: deal.id,
       triggerSource: "cobertura automatica (POP)",
       triggerDate: todayISO(),
-      ownerUserId: deal.ownerUserId || cadence.defaultOwnerRole.toLowerCase(),
+      ownerUserId: cadenceOwnerSlug(cadence.defaultOwnerRole),
       ownerRole: cadence.defaultOwnerRole,
     });
   }
@@ -2659,7 +2676,7 @@ function materializeProgramPhase(state: CrmState, deal: CrmDeal, phase: CrmProgr
         dealId: deal.id,
         triggerSource: "programa (fase)",
         triggerDate: enteredISO,
-        ownerUserId: deal.ownerUserId || (cadence?.defaultOwnerRole ?? "CONCIERGE").toLowerCase(),
+        ownerUserId: cadenceOwnerSlug(cadence?.defaultOwnerRole),
         ownerRole: cadence?.defaultOwnerRole ?? "CONCIERGE",
       },
       // A cadência da fase nova assume o lugar de qualquer outra (1 por paciente).

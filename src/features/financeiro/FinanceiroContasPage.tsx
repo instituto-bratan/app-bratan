@@ -10,7 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { useQuery } from "@tanstack/react-query";
+import { listRemoteExpenseNotas } from "@/lib/remoteData";
 import { useAuth } from "@/hooks/useAuth";
+import { NotaDaContaCell } from "./NotaDaContaCell";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -30,6 +33,7 @@ import {
   moneyFin,
   monthLastDay,
   paymentMethodLabels,
+  contasSemNota,
   upcomingExpenses,
   type FinExpense,
   type FinPaymentMethod,
@@ -46,7 +50,16 @@ function parseAmount(value: string) {
 }
 
 export function FinanceiroContasPage() {
-  const { pessoa } = useAuth();
+  const { pessoa, session, isPreview } = useAuth();
+  const usaRemoto = Boolean(pessoa && session && !isPreview);
+  // Notas já anexadas, uma consulta para a tela inteira (não uma por linha).
+  const notasQuery = useQuery({
+    queryKey: ["fin-expense-notas"],
+    queryFn: listRemoteExpenseNotas,
+    enabled: usaRemoto,
+    staleTime: 30_000,
+  });
+  const notasDaContas = notasQuery.data ?? [];
   const readOnly = !canEditModule(pessoa, "fin-contas");
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
@@ -170,6 +183,10 @@ export function FinanceiroContasPage() {
   // Aviso de vencimento olha o ANO inteiro, não só o mês da tela.
   // Provisão é reserva, não conta a pagar: fica fora do aviso de vencimento
   // (regra do Lucas, 07/08/2026).
+  const semNotaNoMes = useMemo(
+    () => contasSemNota(semProvisoes(financeiro.expenses, financeiro.categories), month),
+    [financeiro.expenses, financeiro.categories, month],
+  );
   const avisos = useMemo(
     () => upcomingExpenses(semProvisoes(financeiro.expenses, financeiro.categories), now, AVISO_DIAS),
     [financeiro.expenses, financeiro.categories, now],
@@ -400,6 +417,19 @@ export function FinanceiroContasPage() {
                   </span>
                 </div>
               ))}
+              {/* Notas fiscais que ainda esperam decisão (12/08/2026). Não cobra
+                  arquivo: cobra a DECISÃO — anexar, "vai mandar" ou "não gera". */}
+              {semNotaNoMes.length ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-dourado/40 bg-brand-creme/40 px-3 py-2">
+                  <span className="text-brand-tinta">
+                    <strong>{semNotaNoMes.length} conta(s) deste mês sem nota fiscal definida</strong> — a coluna "Nota fiscal"
+                    resolve em um clique (anexar · vai mandar · não gera nota).
+                  </span>
+                  <span className="font-bold tabular-nums text-brand-musgo">
+                    {moneyFin(semNotaNoMes.reduce((soma, item) => soma + item.amount, 0))}
+                  </span>
+                </div>
+              ) : null}
               {avisos.chegando.map((expense) => (
                 <div key={expense.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-white/70 px-3 py-1.5 text-sm">
                   <div className="flex flex-wrap items-center gap-1.5 font-semibold text-amber-900">
@@ -660,6 +690,7 @@ export function FinanceiroContasPage() {
                     <th className="px-3 py-2">Forma</th>
                     <th className="px-3 py-2 text-right">Valor</th>
                     <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Nota fiscal</th>
                     <th className="px-3 py-2" />
                   </tr>
                 </thead>
@@ -748,6 +779,17 @@ export function FinanceiroContasPage() {
                               </Button>
                             )}
                           </td>
+                          {/* NOTA FISCAL DO FORNECEDOR (12/08/2026): anexar aqui manda o
+                              arquivo para a pasta do SharePoint, igual ao comprovante. */}
+                          <td className="px-3 py-2.5">
+                            <NotaDaContaCell
+                              expense={expense}
+                              notas={notasDaContas}
+                              pessoaId={pessoa?.id ?? null}
+                              readOnly={readOnly}
+                              habilitado={usaRemoto}
+                            />
+                          </td>
                           <td className="whitespace-nowrap px-3 py-2.5">
                             {readOnly ? null : (
                               <>
@@ -775,7 +817,7 @@ export function FinanceiroContasPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                      <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                         {filtroAtivo
                           ? `Nenhuma conta ${nomeDoFiltro ? `em ${nomeDoFiltro} ` : ""}neste mês com esse filtro — toque em "Limpar filtros" para ver todas.`
                           : "Nenhuma conta lançada neste mês."}

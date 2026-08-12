@@ -1,5 +1,6 @@
 export type SharePointModule =
   | "COMPROVANTE"
+  | "NOTA_FISCAL_DESPESA"
   | "ESTORNO"
   | "CRM_DOCUMENTO"
   | "POP"
@@ -13,6 +14,9 @@ export type SharePointDispatchStatus = "PENDING" | "PROCESSING" | "SENT" | "FAIL
 // as pastas que já existem lá; subpastas de ano/mês são criadas pela função.
 export const sharePointFolderMap: Record<SharePointModule, string> = {
   COMPROVANTE: "NOTA FISCAL E COMPROVANTES",
+  // Nota do FORNECEDOR anexada à conta a pagar (12/08/2026). Vai para a mesma
+  // biblioteca do comprovante, em subpasta própria com ano/mês.
+  NOTA_FISCAL_DESPESA: "NOTA FISCAL E COMPROVANTES/NOTAS FISCAIS RECEBIDAS",
   ESTORNO: "NOTA FISCAL E COMPROVANTES/ESTORNOS",
   CRM_DOCUMENTO: "CRM - Documentos",
   POP: "POPs",
@@ -20,7 +24,7 @@ export const sharePointFolderMap: Record<SharePointModule, string> = {
   OUTRO: "APP BRATAN - Outros",
 };
 
-const monthlyModules: SharePointModule[] = ["COMPROVANTE", "ESTORNO"];
+const monthlyModules: SharePointModule[] = ["COMPROVANTE", "NOTA_FISCAL_DESPESA", "ESTORNO"];
 
 export function sharePointTargetFolder(module: SharePointModule, reference = new Date()) {
   const base = sharePointFolderMap[module] ?? sharePointFolderMap.OUTRO;

@@ -3569,7 +3569,7 @@ export async function listRemoteFinExpenses(year: number): Promise<FinExpense[]>
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_expenses")
-    .select("client_ref, description, category_ref, amount, due_date, paid_at, method, supplier, installment_num, installment_total, document_note, is_capex, notes, created_at, recurrence")
+    .select("client_ref, description, category_ref, amount, due_date, paid_at, method, supplier, installment_num, installment_total, document_note, is_capex, notes, created_at, recurrence, nota_status")
     .gte("due_date", `${year}-01-01`)
     .lte("due_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -3589,6 +3589,7 @@ export async function listRemoteFinExpenses(year: number): Promise<FinExpense[]>
     installmentTotal: row.installment_total == null ? null : Number(row.installment_total),
     documentNote: String(row.document_note ?? ""),
     isCapex: Boolean(row.is_capex),
+    notaStatus: (row.nota_status as FinExpense["notaStatus"]) ?? "PENDENTE",
     notes: String(row.notes ?? ""),
     createdAt: String(row.created_at ?? ""),
     recorrencia: (row.recurrence as FinExpense["recorrencia"]) ?? null,
@@ -3658,6 +3659,7 @@ export async function createRemoteFinExpensesIgnoreDuplicates(expenses: FinExpen
       installment_total: expense.installmentTotal,
       document_note: expense.documentNote,
       is_capex: expense.isCapex,
+      nota_status: expense.notaStatus ?? "PENDENTE",
       notes: expense.notes,
       recurrence: expense.recorrencia ?? null,
       created_by: uuidOrNull(createdBy),
@@ -4299,6 +4301,137 @@ export async function hardDeleteRemoteComprovante(values: { id: string; storageP
     entityId: values.id,
     metadata: { storagePath: values.storagePath ?? null },
   });
+}
+
+// ---- NOTA FISCAL DA CONTA A PAGAR (12/08/2026) ------------------------------
+// A nota do FORNECEDOR anexada à conta. Segue o MESMO caminho do comprovante:
+// storage privado + fila do SharePoint (a Edge Function sharepoint-dispatch lê o
+// bucket da própria linha, então não precisou de mudança nela).
+export type FinExpenseNotaRecord = {
+  clientRef: string;
+  expenseRef: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  numero: string;
+  emitente: string;
+  valor: number | null;
+  emitidaEm: string | null;
+  observacao: string;
+  uploadedBy: string | null;
+  createdAt: string;
+};
+
+export async function listRemoteExpenseNotas(): Promise<FinExpenseNotaRecord[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_expense_nota")
+    .select("client_ref, expense_ref, storage_path, file_name, mime_type, numero, emitente, valor, emitida_em, observacao, uploaded_by, created_at")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    clientRef: String(row.client_ref),
+    expenseRef: String(row.expense_ref),
+    storagePath: String(row.storage_path),
+    fileName: String(row.file_name ?? ""),
+    mimeType: String(row.mime_type ?? ""),
+    numero: String(row.numero ?? ""),
+    emitente: String(row.emitente ?? ""),
+    valor: row.valor === null || row.valor === undefined ? null : Number(row.valor),
+    emitidaEm: row.emitida_em ? String(row.emitida_em).slice(0, 10) : null,
+    observacao: String(row.observacao ?? ""),
+    uploadedBy: row.uploaded_by ? String(row.uploaded_by) : null,
+    createdAt: String(row.created_at ?? ""),
+  }));
+}
+
+export async function uploadRemoteExpenseNota(values: {
+  expenseRef: string;
+  expenseDescription: string;
+  file: File;
+  pessoaId: string | null;
+  numero?: string;
+  emitente?: string;
+  valor?: number | null;
+  emitidaEm?: string | null;
+  observacao?: string;
+}) {
+  const client = requireSupabase();
+  const id = crypto.randomUUID();
+  const safeName = publicUrlSafeName(values.file.name) || "nota-fiscal";
+  const storagePath = `${todayISO().slice(0, 7)}/${id}-${safeName}`;
+
+  const { error: storageError } = await client.storage
+    .from("notas-fiscais-despesa")
+    .upload(storagePath, values.file, { cacheControl: "3600", upsert: false });
+  if (storageError) throw storageError;
+
+  const { error: insertError } = await client.from("fin_expense_nota").insert({
+    client_ref: `nf-desp-${id}`,
+    expense_ref: values.expenseRef,
+    storage_bucket: "notas-fiscais-despesa",
+    storage_path: storagePath,
+    file_name: values.file.name,
+    mime_type: values.file.type || "application/octet-stream",
+    file_size: values.file.size,
+    numero: values.numero ?? "",
+    emitente: values.emitente ?? "",
+    valor: values.valor ?? null,
+    emitida_em: values.emitidaEm ?? null,
+    observacao: values.observacao ?? "",
+    uploaded_by: uuidOrNull(values.pessoaId),
+  });
+  if (insertError) throw insertError;
+
+  // Nome do arquivo no SharePoint com a conta na frente: quem abrir a pasta
+  // entende do que é a nota sem precisar abrir o app.
+  const nomeNaPasta = `${values.expenseDescription} - ${values.file.name}`.slice(0, 180);
+  const { error: dispatchError } = await client.from("sharepoint_dispatch_queue").insert({
+    module: "NOTA_FISCAL_DESPESA",
+    entity_id: id,
+    storage_bucket: "notas-fiscais-despesa",
+    storage_path: storagePath,
+    file_name: nomeNaPasta,
+    mime_type: values.file.type || "application/octet-stream",
+    target_folder: sharePointTargetFolder("NOTA_FISCAL_DESPESA"),
+    created_by: uuidOrNull(values.pessoaId),
+  });
+  if (dispatchError) console.warn("Nota salva, mas não entrou na fila do SharePoint.", dispatchError);
+
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.conta.nota.anexar",
+    entity: "fin_expense_nota",
+    entityId: id,
+    metadata: { conta: values.expenseRef, arquivo: values.file.name },
+  });
+  return { id, storagePath };
+}
+
+/** Marca a conta como "não gera nota" ou "fornecedor vai mandar", sem arquivo. */
+export async function setRemoteExpenseNotaStatus(expenseRef: string, status: "PENDENTE" | "AGUARDANDO" | "SEM_NOTA") {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_expenses")
+    .update({ nota_status: status, updated_at: new Date().toISOString() })
+    .eq("client_ref", expenseRef);
+  if (error) throw error;
+}
+
+export async function deleteRemoteExpenseNota(clientRef: string) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_expense_nota")
+    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("client_ref", clientRef);
+  if (error) throw error;
+}
+
+export async function getRemoteExpenseNotaUrl(storagePath: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("notas-fiscais-despesa").createSignedUrl(storagePath, 60 * 10);
+  if (error) throw error;
+  return data.signedUrl as string;
 }
 
 export async function getRemoteComprovanteUrl(storagePath: string) {

@@ -87,6 +87,23 @@ export type FinSale = {
   createdAt: string;
 };
 
+export type FinNotaStatus = "PENDENTE" | "ANEXADA" | "AGUARDANDO" | "SEM_NOTA";
+
+export const finNotaStatusLabels: Record<FinNotaStatus, string> = {
+  PENDENTE: "Falta a nota",
+  ANEXADA: "Nota anexada",
+  AGUARDANDO: "Fornecedor vai mandar",
+  SEM_NOTA: "Não gera nota",
+};
+
+/** Contas que ainda precisam de uma decisão sobre a nota fiscal. */
+export function contasSemNota(expenses: FinExpense[], monthKey?: string) {
+  return expenses
+    .filter((expense) => (expense.notaStatus ?? "PENDENTE") === "PENDENTE")
+    .filter((expense) => !monthKey || (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey)
+    .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""));
+}
+
 export type FinExpense = {
   id: string;
   description: string;
@@ -104,6 +121,13 @@ export type FinExpense = {
   createdAt: string;
   // "MENSAL" = repete todo mês (o app materializa a cópia do mês seguinte).
   recorrencia?: "MENSAL" | null;
+  /**
+   * Nota fiscal do fornecedor (12/08/2026). PENDENTE = ninguém decidiu;
+   * ANEXADA = tem arquivo; AGUARDANDO = fornecedor vai mandar; SEM_NOTA =
+   * não gera nota (salário, imposto, sócio). Mesma lógica do comprovante da
+   * comanda: nunca obrigar, mas nunca deixar ambíguo.
+   */
+  notaStatus?: FinNotaStatus;
 };
 
 // ---- Contas recorrentes -------------------------------------------------------
