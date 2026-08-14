@@ -84,14 +84,37 @@ test("a comanda carrega o caminho das pedras do fechamento", () => {
   assert.equal(typeof fin.saleTotal, "function");
 });
 
-test("o fechamento no Kanban lança a comanda com o valor RECEBIDO, não o vendido", () => {
-  // O valor vendido é o contrato; o que entra no caixa (e no fechamento diário e
-  // no extrato) é o recebido. Guarda de regressão sobre o código da tela.
+test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
+  // O Lucas pediu o comprovante nos dois momentos da tela: ao cadastrar/vincular
+  // o paciente e ao registrar o fechamento. A lógica mora numa função só, para
+  // não existir chance de um caminho se comportar diferente do outro.
   const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
-  assert.ok(fonte.includes("financeiro.addSale(comanda)"), "o fechamento cria a comanda");
-  assert.ok(/amount: receivedAmount/.test(fonte), "a comanda usa o valor recebido");
+  assert.ok(fonte.includes("function lancarComandaEComprovante("), "existe a função única");
+  const chamadas = fonte.match(/lancarComandaEComprovante\(\{/g) ?? [];
+  assert.equal(chamadas.length, 2, `os dois caminhos chamam a função única (achei ${chamadas.length})`);
+  assert.ok(fonte.includes("financeiro.addSale(comanda)"), "ela cria a comanda do dia");
   assert.ok(fonte.includes("saleRef: saleId"), "o comprovante nasce amarrado à comanda");
-  assert.ok(/comprovanteStatus: fcArquivo \? "ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
+  assert.ok(/comprovanteStatus: values\.arquivo \? "ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
+  assert.ok(/values\.forma === "DINHEIRO" \? "NAO_SE_APLICA"/.test(fonte), "dinheiro não gera comprovante");
+});
+
+test("o fechamento lança o valor RECEBIDO, não o vendido", () => {
+  // O vendido é o contrato; o que entra no caixa — e é o que o fechamento diário
+  // e o extrato conferem — é o recebido.
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  assert.ok(/valorRecebido: receivedAmount/.test(fonte), "o fechamento passa o recebido");
+  assert.ok(!/valorRecebido: soldAmount/.test(fonte), "nunca o vendido");
+  assert.ok(/amount: values\.valorRecebido/.test(fonte), "e é ele que virou o valor da comanda");
+});
+
+test("o cadastro do paciente também lança, e como AGENDAMENTO", () => {
+  // Caso da reunião: quem está com o celular recebe o sinal de consulta,
+  // cadastra o paciente e anexa o comprovante ali mesmo.
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  const noCadastro = fonte.slice(fonte.indexOf("function handleCreateLead"), fonte.indexOf("function handleRegistrarFechamento"));
+  assert.ok(noCadastro.includes("lancarComandaEComprovante({"), "o cadastro lança a comanda");
+  assert.ok(/setor: "AGENDAMENTO"/.test(noCadastro), "quem recebe pelo celular é o agendamento");
+  assert.ok(/parseFinAmount\(newRecebido\)/.test(noCadastro), "só lança se informou valor recebido");
 });
 
 // ---------------------------------------------- PAINEL DA REUNIÃO DE LÍDERES
