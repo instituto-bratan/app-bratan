@@ -486,7 +486,12 @@ test("régua do não-fechou: resposta à Concierge encerra; sem resposta a régu
   assert.equal(d2.assignedToRole, "CONCIERGE");
 });
 
-test("ciclo de retorno conta para trás da data da consulta", () => {
+test("3·1·3·1 conta para trás da data da consulta e é do agendamento", () => {
+  // REUNIÃO DE 14/08/2026: a CEO ditou o 3·1·3·1 — "três semanas antes manda o
+  // aviso e pergunta se coletou os exames; uma semana antes pede os exames;
+  // três dias antes pede os resultados; e um dia antes confirma". O primeiro
+  // passo era de 15 dias e passou a 21. E a régua saiu da RECEPÇÃO: a reunião
+  // tirou a Isabela do fluxo e concentrou no setor de agendamento (CONCIERGE).
   const state = cloneState();
   assert.equal(crm.cadenceNeedsEventDate(state, "cad-return-cycle"), true);
   assert.equal(crm.cadenceNeedsEventDate(state, "cad-cold-lead"), false);
@@ -496,15 +501,23 @@ test("ciclo de retorno conta para trás da data da consulta", () => {
     contactId: "crm-contact-lead-quente",
     dealId: "",
     triggerSource: "teste",
-    triggerDate: "2026-08-30",
-    ownerUserId: "recepcao",
-    ownerRole: "RECEPCAO",
+    // Consulta bem à frente: assim os quatro passos ainda estão no futuro. (Um
+    // passo cuja data já passou não nasce atrasado — regra do motor.)
+    triggerDate: "2026-09-30",
+    ownerUserId: "concierge",
+    ownerRole: "CONCIERGE",
   });
-  const tasks = next.tasks
-    .filter((task) => task.contactId === "crm-contact-lead-quente" && task.cadenceId === "cad-return-cycle")
-    .map((task) => task.dueAt.slice(0, 10))
-    .sort();
-  assert.ok(tasks.includes("2026-08-15"), `exames 15 dias antes (veio ${tasks.join(", ")})`);
+  const doPaciente = next.tasks.filter(
+    (task) => task.contactId === "crm-contact-lead-quente" && task.cadenceId === "cad-return-cycle",
+  );
+  const datas = doPaciente.map((task) => task.dueAt.slice(0, 10)).sort();
+  // O motor materializa a próxima ancorada: 3 semanas antes de 30/09 = 09/09.
+  // Antes da reunião esse primeiro passo era de 15 dias (15/09).
+  assert.ok(datas.includes("2026-09-09"), `3 semanas antes de 30/09 é 09/09 (veio ${datas.join(", ")})`);
+  assert.ok(!datas.includes("2026-09-15"), "não é mais 15 dias antes");
+  for (const tarefa of doPaciente) {
+    assert.equal(tarefa.assignedToRole, "CONCIERGE", "a régua é do setor de agendamento");
+  }
 });
 
 test("mensagem do concierge pede avaliação no Google (POP)", () => {

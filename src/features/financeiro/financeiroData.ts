@@ -85,6 +85,24 @@ export type FinSale = {
   // sinal NÃO significa adesão — pode ser sinal só de consulta.
   adhesion?: FinAdhesion;
   createdAt: string;
+  // ---- ENTRADA ÚNICA (reunião de 14/08/2026 com a CEO) --------------------
+  // A comanda passa a carregar o "caminho das pedras": é ela que o fechamento
+  // diário, a nota fiscal e o CRM já leem, então a informação mora aqui em vez
+  // de numa tabela paralela que depois desencontra.
+  /** Do que se trata: define para onde o lançamento vai. */
+  tipoAtendimento?: "SINAL_CONSULTA" | "PRIMEIRA_CONSULTA" | "TRATAMENTO" | "RETORNO" | null;
+  /** "não vai poder errar nisso pra gente não ter erro no Kanban" (CEO). */
+  planoOuAvulsa?: "PLANO" | "AVULSA" | null;
+  /** "indicação do bispo", "paciente fidelizada" — as palavras dela. */
+  origemIndicacao?: string;
+  /** Do que se trata a nota e como deve ser emitida. */
+  notaInstrucao?: string;
+  notaQuando?: "AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO" | null;
+  /** Data da consulta: é ela que dispara o 3·1·3·1. */
+  consultaAgendadaEm?: string | null;
+  lancadoPorSetor?: "VENDAS" | "AGENDAMENTO" | "RECEPCAO" | null;
+  /** "mensagem não lida": quem recebeu não sabe do que se trata. */
+  aguardandoExplicacao?: boolean;
 };
 
 export type FinNotaStatus = "PENDENTE" | "ANEXADA" | "AGUARDANDO" | "SEM_NOTA";

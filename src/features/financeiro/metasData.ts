@@ -2,6 +2,7 @@
 // meta do dia depende de o Dr. Daniel atender; faturamento e pacientes vêm
 // das comandas (fin_sales) — nada é digitado duas vezes.
 
+import { todayISO } from "@/lib/localStore";
 import { saleTotal, type FinSale } from "./financeiroData";
 
 export type MetasConfig = {
@@ -191,6 +192,110 @@ export function doctorAttendsOn(date: string, config: MetasConfig): boolean {
   if (override !== undefined) return override;
   if ((config.doctorOffDays[monthKey] ?? []).includes(date)) return false;
   return toDate(date).getDay() !== 5;
+}
+
+// ---------------------------------------------------------------------------
+// REUNIÃO DE LÍDERES — o que a CEO pediu na reunião de 14/08/2026
+// ---------------------------------------------------------------------------
+// Palavras dela: "eu preciso que o Lucas venha com quanto nós já fizemos,
+// primeira semana, segunda semana, quanto que tá a nossa meta — e nós vamos
+// trabalhar com SUPERMETA. Só a supermeta eu quero saber. O resto é medíocre,
+// se a gente fizer, amém, mas não é isso que a gente vai buscar."
+//
+// Por isso a régua deste painel é a SUPERMETA, não a meta mínima. E existe um
+// nível acima dela (a "super-supermeta"), que é onde a porcentagem da equipe
+// aumenta.
+export const NIVEL_META_LABELS = {
+  min: "Meta (o mínimo)",
+  target: "SUPERMETA",
+  super: "SUPER-SUPERMETA",
+} as const;
+
+export type NivelAtingido = "ABAIXO" | "META" | "SUPERMETA" | "SUPER_SUPERMETA";
+
+export type SemanaDaReuniao = {
+  semana: number;
+  periodo: string;
+  faturado: number;
+  /** Quanto a semana precisaria render para a SUPERMETA sair no fim do mês. */
+  ritmoNecessario: number;
+  diferenca: number;
+  noRitmo: boolean;
+  pacientes: number;
+};
+
+export type PainelReuniao = {
+  monthKey: string;
+  /** A régua: supermeta. */
+  supermeta: number;
+  superSupermeta: number;
+  faturado: number;
+  faltaParaSupermeta: number;
+  percentualDaSupermeta: number;
+  nivel: NivelAtingido;
+  semanas: SemanaDaReuniao[];
+  /** Quanto falta por dia útil restante para fechar a supermeta. */
+  precisaPorDiaUtilRestante: number;
+  diasUteisRestantes: number;
+  /** Frase pronta para abrir a reunião. */
+  leitura: string;
+};
+
+export function buildPainelReuniao(board: MetasBoard, hoje = todayISO()): PainelReuniao {
+  const supermeta = board.goals.target;
+  const superSupermeta = board.goals.super;
+  const faturado = board.accumulatedRevenue;
+  const cents = (valor: number) => Math.round(valor * 100) / 100;
+
+  // Ritmo: a supermeta dividida pelas semanas do mês, proporcional aos dias
+  // úteis de cada semana (semana curta não é cobrada como semana cheia).
+  const totalDiasUteis = board.days.length || 1;
+  const semanas: SemanaDaReuniao[] = board.weeks.map((semana) => {
+    const diasDaSemana = board.days.filter((dia) => dia.weekIndex === semana.weekIndex).length;
+    const ritmo = cents((supermeta * diasDaSemana) / totalDiasUteis);
+    return {
+      semana: semana.weekIndex,
+      periodo: semana.periodLabel,
+      faturado: cents(semana.revenue),
+      ritmoNecessario: ritmo,
+      diferenca: cents(semana.revenue - ritmo),
+      noRitmo: semana.revenue >= ritmo,
+      pacientes: semana.patients,
+    };
+  });
+
+  const diasUteisRestantes = board.days.filter((dia) => dia.date >= hoje).length;
+  const falta = Math.max(0, cents(supermeta - faturado));
+  const nivel: NivelAtingido =
+    faturado >= superSupermeta ? "SUPER_SUPERMETA" : faturado >= supermeta ? "SUPERMETA" : faturado >= board.goals.min ? "META" : "ABAIXO";
+
+  const percentual = supermeta > 0 ? Math.round((faturado / supermeta) * 1000) / 10 : 0;
+  const dinheiro = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  let leitura: string;
+  if (nivel === "SUPER_SUPERMETA") {
+    leitura = `Super-supermeta batida: ${dinheiro(faturado)} contra ${dinheiro(superSupermeta)}. É aqui que a porcentagem da equipe aumenta.`;
+  } else if (nivel === "SUPERMETA") {
+    leitura = `Supermeta batida (${dinheiro(faturado)}). Faltam ${dinheiro(Math.max(0, cents(superSupermeta - faturado)))} para a super-supermeta.`;
+  } else if (diasUteisRestantes > 0) {
+    leitura = `${percentual.toFixed(1).replace(".", ",")}% da supermeta. Faltam ${dinheiro(falta)} em ${diasUteisRestantes} dia(s) útil(eis) — ${dinheiro(cents(falta / diasUteisRestantes))} por dia.`;
+  } else {
+    leitura = `Mês encerrado com ${dinheiro(faturado)} — ${dinheiro(falta)} abaixo da supermeta.`;
+  }
+
+  return {
+    monthKey: board.monthKey,
+    supermeta,
+    superSupermeta,
+    faturado: cents(faturado),
+    faltaParaSupermeta: falta,
+    percentualDaSupermeta: percentual,
+    nivel,
+    semanas,
+    diasUteisRestantes,
+    precisaPorDiaUtilRestante: diasUteisRestantes > 0 ? cents(falta / diasUteisRestantes) : 0,
+    leitura,
+  };
 }
 
 export function buildMetasBoard(

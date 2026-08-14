@@ -735,6 +735,9 @@ export async function uploadRemoteComprovante(values: {
   formaPagamento?: FormaPagamento;
   observacao?: string;
   alimentarRecebiveis360?: boolean;
+  /** Comanda a que este comprovante pertence (Entrada Única, 14/08/2026). */
+  saleRef?: string;
+  salePaymentRef?: string;
 }) {
   const client = requireSupabase();
   const id = crypto.randomUUID();
@@ -767,6 +770,10 @@ export async function uploadRemoteComprovante(values: {
     valor: values.valor ?? null,
     forma_pagamento: values.formaPagamento ?? null,
     observacao: values.observacao ?? null,
+    // Amarra o comprovante à comanda: é o que faz "sem comprovante" deixar de
+    // ser invisível (processo à prova de erro, 10/08) e o que a Entrada Única usa.
+    sale_ref: values.saleRef ?? null,
+    sale_payment_ref: values.salePaymentRef ?? null,
     sharepoint_job_payload: prepareSharePointDispatch(id, values.file.name),
   });
 
@@ -3418,7 +3425,7 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_sales")
-    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, adhesion, created_at, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine, comprovante_status, comprovante_ref)")
+    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, adhesion, created_at, tipo_atendimento, plano_ou_avulsa, origem_indicacao, nota_instrucao, nota_quando, consulta_agendada_em, lancado_por_setor, aguardando_explicacao, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine, comprovante_status, comprovante_ref)")
     .gte("sale_date", `${year}-01-01`)
     .lte("sale_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -3437,6 +3444,15 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
     // sobrescrito e ao reeditar a comanda a adesão marcada virava "ABERTO".
     adhesion: (row.adhesion as FinSale["adhesion"]) ?? "ABERTO",
     createdAt: String(row.created_at ?? ""),
+    // Entrada Única (14/08/2026).
+    tipoAtendimento: (row.tipo_atendimento as FinSale["tipoAtendimento"]) ?? null,
+    planoOuAvulsa: (row.plano_ou_avulsa as FinSale["planoOuAvulsa"]) ?? null,
+    origemIndicacao: String(row.origem_indicacao ?? ""),
+    notaInstrucao: String(row.nota_instrucao ?? ""),
+    notaQuando: (row.nota_quando as FinSale["notaQuando"]) ?? null,
+    consultaAgendadaEm: row.consulta_agendada_em ? String(row.consulta_agendada_em).slice(0, 10) : null,
+    lancadoPorSetor: (row.lancado_por_setor as FinSale["lancadoPorSetor"]) ?? null,
+    aguardandoExplicacao: Boolean(row.aguardando_explicacao),
     items: ((row.fin_sale_items ?? []) as Record<string, unknown>[]).map((item) => ({
       id: String(item.client_ref),
       itemType: item.item_type as FinSale["items"][number]["itemType"],
@@ -3455,6 +3471,49 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   }));
 }
 
+/**
+ * Registro da distribuição de UMA entrada única (reunião de 14/08/2026).
+ * Guarda o que foi alimentado — serve de prova ("um clique e a gente já coloca
+ * todos funcionando") e de idempotência: repetir o lançamento não cria em dobro.
+ */
+export async function registrarEntradaUnica(values: {
+  clientRef: string;
+  saleRef: string | null;
+  crmContactRef: string | null;
+  crmDealRef: string | null;
+  comprovanteId: string | null;
+  cadenciaId: string | null;
+  payload: Record<string, unknown>;
+  destinos: string[];
+  lancadoPor: string | null;
+  setor: "VENDAS" | "AGENDAMENTO" | "RECEPCAO";
+}) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_entrada_unica").upsert(
+    {
+      client_ref: values.clientRef,
+      sale_ref: values.saleRef,
+      crm_contact_ref: values.crmContactRef,
+      crm_deal_ref: values.crmDealRef,
+      comprovante_id: values.comprovanteId,
+      cadencia_id: values.cadenciaId,
+      payload: values.payload,
+      destinos: values.destinos,
+      lancado_por: uuidOrNull(values.lancadoPor),
+      setor: values.setor,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "client_ref" },
+  );
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.entrada_unica.lancar",
+    entity: "fin_entrada_unica",
+    entityId: values.clientRef,
+    metadata: { destinos: values.destinos, setor: values.setor, comanda: values.saleRef },
+  });
+}
+
 export async function createRemoteFinSale(sale: FinSale, createdBy: string | null) {
   const client = requireSupabase();
   const { error } = await client.from("fin_sales").insert({
@@ -3464,6 +3523,15 @@ export async function createRemoteFinSale(sale: FinSale, createdBy: string | nul
     crm_contact_ref: sale.crmContactRef || null,
     notes: sale.notes,
     adhesion: sale.adhesion ?? "ABERTO",
+    // Entrada Única (14/08/2026): o "caminho das pedras" viaja com a comanda.
+    tipo_atendimento: sale.tipoAtendimento ?? null,
+    plano_ou_avulsa: sale.planoOuAvulsa ?? null,
+    origem_indicacao: sale.origemIndicacao || null,
+    nota_instrucao: sale.notaInstrucao || null,
+    nota_quando: sale.notaQuando ?? null,
+    consulta_agendada_em: sale.consultaAgendadaEm || null,
+    lancado_por_setor: sale.lancadoPorSetor ?? null,
+    aguardando_explicacao: sale.aguardandoExplicacao ?? false,
     created_by: uuidOrNull(createdBy),
   });
   if (error) throw error;

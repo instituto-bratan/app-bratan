@@ -892,10 +892,17 @@ const cadences: CrmCadence[] = [
   },
   {
     id: "cad-return-cycle",
-    name: "Ciclo de retorno",
-    description: "Exames, confirmação e lembrete final sem excesso de toque.",
+    // REUNIÃO DE 14/08/2026: a CEO ditou o 3·1·3·1 de preparo da consulta —
+    // "três semanas antes manda o aviso e pergunta se coletou os exames; uma
+    // semana antes pede os exames; três dias antes pede os resultados; e um dia
+    // antes confirma a consulta". O primeiro passo era de 15 dias e virou 21.
+    // O dono deixou de ser a RECEPÇÃO: a reunião tirou a Isabela do fluxo e
+    // concentrou no setor de agendamento (a Aline, que no CRM é CONCIERGE).
+    name: "3·1·3·1 antes da consulta",
+    description:
+      "Preparo da consulta, ancorado na data marcada: 3 semanas antes avisa e pede os exames; 1 semana antes confirma a coleta; 3 dias antes pede o resultado; 1 dia antes confirma. Dono: setor de agendamento.",
     cadenceType: "RETURN_CYCLE",
-    defaultOwnerRole: "RECEPCAO",
+    defaultOwnerRole: "CONCIERGE",
     active: true,
     createdAt: baseNow,
     updatedAt: baseNow,
@@ -960,10 +967,11 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-3131-1s", "cad-gestor-3131", 2, "Gestor - 1 semana", 7, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-3s", "cad-gestor-3131", 3, "Gestor - 3 semanas", 21, "tpl-gestor-3131", "ADMIN_GESTAO"],
   ["step-3131-1m", "cad-gestor-3131", 4, "Gestor - 1 mês", 30, "tpl-gestor-3131", "ADMIN_GESTAO"],
-  ["step-exams-21", "cad-return-cycle", 1, "Exames 15 dias antes", -15, "tpl-exames-3-semanas", "RECEPCAO"],
-  ["step-exams-7", "cad-return-cycle", 2, "Exames 1 semana antes", -7, "tpl-exames-1-semana", "RECEPCAO"],
-  ["step-confirm-3", "cad-return-cycle", 3, "Confirmar consulta 3 dias", -3, "tpl-confirmacao-3", "RECEPCAO"],
-  ["step-reminder-1", "cad-return-cycle", 4, "Lembrete 1 dia", -1, "tpl-lembrete-1", "RECEPCAO"],
+  // 3·1·3·1 de preparo (reunião de 14/08/2026, ditado pela CEO).
+  ["step-exams-21", "cad-return-cycle", 1, "3 semanas antes — avisa e pede os exames", -21, "tpl-exames-3-semanas", "CONCIERGE"],
+  ["step-exams-7", "cad-return-cycle", 2, "1 semana antes — confirma a coleta", -7, "tpl-exames-1-semana", "CONCIERGE"],
+  ["step-confirm-3", "cad-return-cycle", 3, "3 dias antes — pede o resultado", -3, "tpl-confirmacao-3", "CONCIERGE"],
+  ["step-reminder-1", "cad-return-cycle", 4, "1 dia antes — confirma a consulta", -1, "tpl-lembrete-1", "CONCIERGE"],
 ].map(([id, cadenceId, stepOrder, name, offsetValue, messageTemplateId, assignedToRole]) => ({
   id: id as string,
   cadenceId: cadenceId as string,
@@ -1008,10 +1016,10 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-concierge-reenvio", "Concierge reenvio", "Concierge", "CONCIERGE", "POST_SALE_CONCIERGE", "{{primeiro_nome}}, reforçando que ficamos à disposição. Quando puder, me diga se está tudo claro para o início do seu plano."],
   ["tpl-enfermagem-14", "Enfermagem 14 dias", "Enfermagem", "ENFERMAGEM", "NURSING_14_DAYS", "Olá, {{primeiro_nome}}. Passando para acompanhar como você está se sentindo no tratamento e se apareceu alguma dúvida ou intercorrência."],
   ["tpl-pos-aplicacao", "Pós-aplicação", "Enfermagem", "ENFERMAGEM", "POST_APPLICATION_NURSING", "Olá, {{primeiro_nome}}. Como você está hoje após a aplicação/bioimpedância de ontem? Teve alguma reação ou dúvida?"],
-  ["tpl-exames-3-semanas", "Exames 15 dias", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, seu retorno está se aproximando. Estou reenviando o lembrete dos exames para chegarmos na consulta com tudo pronto."],
-  ["tpl-exames-1-semana", "Exames 1 semana", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, passando para confirmar se os exames foram feitos e quando ficam disponíveis para o Dr. Daniel avaliar."],
-  ["tpl-confirmacao-3", "Confirmação 3 dias", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, confirmando sua consulta em {{data_consulta}} às {{hora_consulta}}. Podemos contar com você?"],
-  ["tpl-lembrete-1", "Lembrete 1 dia", "Recepção", "RECEPCAO", "RETURN_CYCLE", "{{primeiro_nome}}, passando só para lembrar da consulta de amanhã. Esperamos você no Instituto Bratan."],
+  ["tpl-exames-3-semanas", "3 semanas antes", "Agendamento", "CONCIERGE", "RETURN_CYCLE", "{{primeiro_nome}}, sua consulta com o Dr. Daniel é em três semanas. Já estou te enviando a guia dos exames — assim chegamos no dia com tudo em mãos. Você já conseguiu coletar?"],
+  ["tpl-exames-1-semana", "1 semana antes", "Agendamento", "CONCIERGE", "RETURN_CYCLE", "{{primeiro_nome}}, falta uma semana para sua consulta. Você conseguiu coletar os exames? Guarde o resultado que vou te pedir alguns dias antes."],
+  ["tpl-confirmacao-3", "3 dias antes", "Agendamento", "CONCIERGE", "RETURN_CYCLE", "{{primeiro_nome}}, sua consulta é em três dias. Pode me enviar o resultado dos exames? O Dr. Daniel avalia tudo antes de te receber."],
+  ["tpl-lembrete-1", "1 dia antes", "Agendamento", "CONCIERGE", "RETURN_CYCLE", "{{primeiro_nome}}, passando só para lembrar da sua consulta amanhã, {{data_consulta}} às {{hora_consulta}}. Esperamos você no Instituto Bratan."],
 ].map(([id, name, category, roleOwner, cadenceType, body]) => ({
   id: id as string,
   name: name as string,

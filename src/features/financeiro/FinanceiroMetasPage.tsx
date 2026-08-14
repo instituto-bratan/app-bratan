@@ -20,8 +20,10 @@ import { cn } from "@/lib/utils";
 import { crediarioProfitOfMonth, moneyFin } from "./financeiroData";
 import { ResumoMesCard } from "./ResumoMesCard";
 import {
+  NIVEL_META_LABELS,
   buildMetaDoDiaMessage,
   buildMetasBoard,
+  buildPainelReuniao,
   defaultMetasConfig,
   metasForMonth,
   doctorAttendsOn,
@@ -81,6 +83,10 @@ export function FinanceiroMetasPage() {
     [financeiro.sales, config, monthKey, financeiro.crediarioProfits],
   );
   const today = todayISO();
+  // Painel da REUNIÃO DE LÍDERES (segunda-feira). A CEO pediu: "quanto nós já
+  // fizemos, primeira semana, segunda semana, quanto que tá a nossa meta — e
+  // nós vamos trabalhar com SUPERMETA. Só a supermeta eu quero saber."
+  const painel = useMemo(() => buildPainelReuniao(board, today), [board, today]);
   // A tela mostra as metas DO MÊS escolhido (a régua muda de mês em mês), não as
   // do padrão — senão julho apareceria com a régua de agosto.
   const metasDoMes = useMemo(() => metasForMonth(config, monthKey), [config, monthKey]);
@@ -116,7 +122,7 @@ export function FinanceiroMetasPage() {
           heading: "Painel do mês",
           lines: [
             `Faturamento acumulado: ${moneyFin(board.accumulatedRevenue)}`,
-            `Meta mínima (${moneyFin(metasDoMes.goalMinRevenue)}): falta ${moneyFin(board.missingToMin)}`,
+            `${NIVEL_META_LABELS.min} (${moneyFin(metasDoMes.goalMinRevenue)}): falta ${moneyFin(board.missingToMin)}`,
             `Meta (${moneyFin(metasDoMes.goalTargetRevenue)}): falta ${moneyFin(board.missingToTarget)}`,
             `Super meta (${moneyFin(metasDoMes.goalSuperRevenue)}): falta ${moneyFin(board.missingToSuper)} · ${percent(board.superGoalPercent)} atingido`,
             `Pacientes: ${board.accumulatedPatients} de ${metasDoMes.goalPatients} · Ticket médio: ${moneyFin(board.avgTicket)}`,
@@ -230,6 +236,80 @@ export function FinanceiroMetasPage() {
           </div>
         </motion.section>
 
+      {/* REUNIÃO DE LÍDERES — segunda-feira (reunião de 14/08/2026 com a CEO) */}
+      <Card
+        className={cn(
+          "shadow-none",
+          painel.nivel === "SUPER_SUPERMETA"
+            ? "border-brand-dourado bg-brand-creme/60"
+            : painel.nivel === "SUPERMETA"
+              ? "border-emerald-300 bg-emerald-50/60"
+              : "border-brand-oliva/25 bg-white/70",
+        )}
+      >
+        <CardHeader className="pb-2">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+            <Trophy className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
+            Reunião de líderes — a régua é a {NIVEL_META_LABELS.target}
+            <Badge variant={painel.nivel === "ABAIXO" ? "outline" : "gold"}>
+              {painel.percentualDaSupermeta.toFixed(1).replace(".", ",")}%
+            </Badge>
+            <InfoTip title="Por que a supermeta">
+              Decisão da CEO na reunião de 14/08: "só a supermeta eu quero saber. O resto é medíocre — se a gente fizer,
+              amém, mas não é isso que a gente vai buscar." Acima dela existe a super-supermeta, onde a porcentagem da
+              equipe aumenta.
+            </InfoTip>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-sm font-semibold text-brand-musgo">{painel.leitura}</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {[
+              { rotulo: "Faturado no mês", valor: moneyFin(painel.faturado) },
+              { rotulo: NIVEL_META_LABELS.target, valor: moneyFin(painel.supermeta) },
+              { rotulo: NIVEL_META_LABELS.super, valor: moneyFin(painel.superSupermeta) },
+            ].map((item) => (
+              <div key={item.rotulo} className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{item.rotulo}</p>
+                <p className="text-xl font-bold text-brand-musgo">{item.valor}</p>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[34rem] text-left text-sm">
+              <thead className="text-xs uppercase text-brand-oliva">
+                <tr>
+                  <th className="px-2 py-1.5">Semana</th>
+                  <th className="px-2 py-1.5">Período</th>
+                  <th className="px-2 py-1.5 text-right">Faturado</th>
+                  <th className="px-2 py-1.5 text-right">Ritmo da supermeta</th>
+                  <th className="px-2 py-1.5 text-right">Diferença</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-oliva/12">
+                {painel.semanas.map((semana) => (
+                  <tr key={semana.semana} className={cn(semana.noRitmo ? "bg-emerald-50/40" : "bg-red-50/40")}>
+                    <td className="px-2 py-1.5 font-semibold text-brand-tinta">{semana.semana}ª</td>
+                    <td className="px-2 py-1.5 text-xs text-muted-foreground">{semana.periodo}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-brand-musgo">{moneyFin(semana.faturado)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{moneyFin(semana.ritmoNecessario)}</td>
+                    <td
+                      className={cn(
+                        "px-2 py-1.5 text-right font-bold tabular-nums",
+                        semana.noRitmo ? "text-emerald-800" : "text-red-800",
+                      )}
+                    >
+                      {semana.diferenca > 0 ? "+" : ""}
+                      {moneyFin(semana.diferenca)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
         {feedback ? (
           <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
             {feedback}
@@ -250,7 +330,7 @@ export function FinanceiroMetasPage() {
           {[
             { label: "Acumulado no mês", value: moneyFin(board.accumulatedRevenue), hint: `${percent(board.superGoalPercent)} da super meta` },
             {
-              label: `Meta mínima ${moneyFin(metasDoMes.goalMinRevenue)}`,
+              label: `${NIVEL_META_LABELS.min} ${moneyFin(metasDoMes.goalMinRevenue)}`,
               value: board.missingToMin ? `falta ${moneyFin(board.missingToMin)}` : "batida ✓",
               hint: "abaixo dela as meritocracias zeram",
             },
@@ -353,7 +433,7 @@ export function FinanceiroMetasPage() {
           <CardContent>
             {showConfig ? (
               <div className="mb-4 grid gap-3 rounded-lg border border-brand-dourado/30 bg-brand-creme/40 p-4 sm:grid-cols-3">
-                {configField("Meta mínima (R$)", "goalMinRevenue")}
+                {configField(`${NIVEL_META_LABELS.min} (R$)`, "goalMinRevenue")}
                 {configField("Meta (R$)", "goalTargetRevenue")}
                 {configField("Super meta (R$)", "goalSuperRevenue")}
                 {configField("Meta de pacientes", "goalPatients")}
