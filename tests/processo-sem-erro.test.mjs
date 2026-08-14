@@ -149,10 +149,18 @@ test("extrato: o id é determinístico — importar duas vezes não duplica", ()
   const b = ex.lerExtratoDeTexto(EXTRATO_CSV);
   assert.equal(a.map((e) => e.clientRef).join(","), b.map((e) => e.clientRef).join(","));
   assert.equal(new Set(a.map((e) => e.clientRef)).size, a.length, "cada linha tem id próprio");
+  // REGRA REVISTA EM 14/08/2026: a descrição NÃO entra na chave, porque o Itaú
+  // reescreve o texto do mesmo lançamento entre exports (era assim que a
+  // reimportação duplicava). O que separa é data + valor + documento + ocorrência.
+  assert.equal(
+    ex.refDoLancamento("2026-08-03", 2000, "053.824.187-05", 0),
+    ex.refDoLancamento("2026-08-03", 2000, "05382418705", 0),
+    "o documento é comparado só pelos números",
+  );
   assert.notEqual(
-    ex.refDoLancamento("2026-08-03", 2000, "PIX RECEBIDO ELIAS"),
-    ex.refDoLancamento("2026-08-03", 2000, "PIX RECEBIDO OUTRO"),
-    "descrição diferente = id diferente",
+    ex.refDoLancamento("2026-08-03", 2000, "053.824.187-05", 0),
+    ex.refDoLancamento("2026-08-03", 2000, "422.926.858-09", 0),
+    "pessoas diferentes = lançamentos diferentes",
   );
 });
 

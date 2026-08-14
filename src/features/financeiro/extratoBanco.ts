@@ -61,8 +61,23 @@ function dataISO(bruto: string) {
   return null;
 }
 
-export function refDoLancamento(entryDate: string, amount: number, description: string) {
-  const chave = `${entryDate}|${amount.toFixed(2)}|${description.trim().toLowerCase().replace(/\s+/g, " ")}`;
+/**
+ * Identidade de um lançamento: DATA + VALOR + CPF/CNPJ + ocorrência.
+ *
+ * A descrição ficou FORA de propósito (corrigido em 14/08/2026). O Itaú reescreve
+ * o texto entre exports do mesmo lançamento — o mesmo rendimento de R$ 0,11 saiu
+ * como "REND PAGO APLIC AUT APR" num arquivo e "RENDIMENTOS REND PAGO APLIC AUT
+ * MAIS" no outro, e a mesma transferência de R$ 6.169,37 saiu como
+ * "...RECEBIDA 0138.46448-2" e depois "...RECEBIDA AAB". Com a descrição na
+ * chave, reimportar o extrato DUPLICAVA essas linhas e o total do mês mentia.
+ *
+ * Data + valor + documento é praticamente único; a ocorrência (0, 1, 2…) cobre o
+ * caso raro de dois lançamentos idênticos no mesmo dia, na ordem do arquivo, que
+ * o banco mantém cronológica.
+ */
+export function refDoLancamento(entryDate: string, amount: number, document = "", occurrence = 0) {
+  const doc = (document || "").replace(/\D/g, "");
+  const chave = `${entryDate}|${amount.toFixed(2)}|${doc}|${occurrence}`;
   // Hash curto e estável (djb2) — não precisa ser criptográfico, só determinístico.
   let hash = 5381;
   for (let i = 0; i < chave.length; i += 1) hash = ((hash << 5) + hash + chave.charCodeAt(i)) >>> 0;
@@ -77,6 +92,7 @@ export function refDoLancamento(entryDate: string, amount: number, description: 
  */
 export function lerLinhasDoExtrato(matriz: string[][]): BankEntry[] {
   const entradas: BankEntry[] = [];
+  const ocorrencias = new Map<string, number>();
   for (const linha of matriz) {
     const celulas = linha.map((celula) => (celula ?? "").toString().trim());
     if (!celulas.some(Boolean)) continue;
@@ -97,24 +113,24 @@ export function lerLinhasDoExtrato(matriz: string[][]): BankEntry[] {
     }
     if (valor === null || valor === 0) continue;
 
+    const valorArredondado = Math.round(valor * 100) / 100;
+    const documento = celulas[3] || "";
+    // Quantas vezes este trio (dia, valor, documento) já apareceu no arquivo.
+    const assinatura = `${data}|${valorArredondado.toFixed(2)}|${documento.replace(/\D/g, "")}`;
+    const ocorrencia = ocorrencias.get(assinatura) ?? 0;
+    ocorrencias.set(assinatura, ocorrencia + 1);
+
     entradas.push({
-      clientRef: refDoLancamento(data, valor, descricao),
+      clientRef: refDoLancamento(data, valorArredondado, documento, ocorrencia),
       entryDate: data,
       description: descricao,
       counterparty: celulas[2] || "",
-      document: celulas[3] || "",
-      amount: Math.round(valor * 100) / 100,
+      document: documento,
+      amount: valorArredondado,
       balance: saldo,
     });
   }
-  // Dedupe por client_ref (o mesmo valor no mesmo dia com a mesma descrição
-  // seria uma linha só — raro, mas o banco repete "PIX ENVIADO" às vezes).
-  const vistos = new Set<string>();
-  return entradas.filter((entrada) => {
-    if (vistos.has(entrada.clientRef)) return false;
-    vistos.add(entrada.clientRef);
-    return true;
-  });
+  return entradas;
 }
 
 /** CSV/TSV colado ou baixado. */
@@ -234,14 +250,11 @@ export async function lerExtratoDeXlsx(buffer: ArrayBuffer): Promise<BankEntry[]
     );
   }
   const abas = nomes.filter((nome) => /^xl\/worksheets\/sheet\d+\.xml$/.test(nome)).sort();
-  const todas: BankEntry[] = [];
-  for (const aba of abas) todas.push(...lerLinhasDoExtrato(celulasDoSheetXml(decodificar(aba), shared)));
-  const vistos = new Set<string>();
-  return todas.filter((entrada) => {
-    if (vistos.has(entrada.clientRef)) return false;
-    vistos.add(entrada.clientRef);
-    return true;
-  });
+  // Uma chamada só para todas as abas: assim a contagem de ocorrências é global
+  // no arquivo, e não reinicia por aba.
+  const linhas: string[][] = [];
+  for (const aba of abas) linhas.push(...celulasDoSheetXml(decodificar(aba), shared));
+  return lerLinhasDoExtrato(linhas);
 }
 
 // ---------------------------------------------------------------------------
@@ -507,9 +520,24 @@ export function conciliarExtrato(
       }
       // (b) uma conta do app paga em DOIS lançamentos (o Mensal Gestor foi
       //     4.000 + 2.292,72 e o app tinha uma linha só de 6.292,72).
+      //
+      //     EXIGÊNCIA ADICIONADA EM 14/08/2026: os dois lançamentos têm de ser da
+      //     MESMA pessoa/empresa. Sem isso o casamento inventava pares: uma
+      //     comanda de R$ 1.500 da Luana "casou" com o PIX de R$ 1.000 do Gustavo
+      //     mais o de R$ 500 do Jonas — três pessoas diferentes, e o problema
+      //     real (a comanda sem dinheiro e o PIX sem comanda) ficava escondido.
+      const mesmaOrigem = (a: BankEntry, b: BankEntry) => {
+        const docA = (a.document || "").replace(/\D/g, "");
+        const docB = (b.document || "").replace(/\D/g, "");
+        if (docA && docB) return docA === docB;
+        const nomeA = (a.counterparty || "").trim().toUpperCase();
+        const nomeB = (b.counterparty || "").trim().toUpperCase();
+        return Boolean(nomeA) && nomeA === nomeB;
+      };
       let par: [BankEntry, BankEntry] | null = null;
       for (let i = 0; i < pendentesDoBanco.length && !par; i += 1) {
         for (let j = i + 1; j < pendentesDoBanco.length; j += 1) {
+          if (!mesmaOrigem(pendentesDoBanco[i], pendentesDoBanco[j])) continue;
           const soma = Math.abs(pendentesDoBanco[i].amount) + Math.abs(pendentesDoBanco[j].amount);
           if (Math.abs(soma - candidato.valor) < TOLERANCIA) {
             par = [pendentesDoBanco[i], pendentesDoBanco[j]];

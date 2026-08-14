@@ -129,3 +129,58 @@ test("REND PAGO APLIC AUT APR também é rendimento (não é venda)", () => {
   assert.match(balde.casadas[0].comQue, /rendimento/);
   assert.equal(balde.maquininha.transferencias, 0);
 });
+
+test("chave do lançamento ignora a descrição (o Itaú reescreve o texto)", () => {
+  // Caso real (14/08/2026): o MESMO rendimento de R$ 0,11 saiu como
+  // "REND PAGO APLIC AUT APR" num export e "RENDIMENTOS REND PAGO APLIC AUT
+  // MAIS" no outro; a MESMA transferência de R$ 6.169,37 saiu como
+  // "...RECEBIDA 0138.46448-2" e depois "...RECEBIDA AAB". Com a descrição na
+  // chave, reimportar duplicava e o total do mês mentia.
+  const a = ex.refDoLancamento("2026-08-11", 0.11, "", 0);
+  const b = ex.refDoLancamento("2026-08-11", 0.11, "", 0);
+  assert.equal(a, b, "mesma data, mesmo valor, mesmo documento = mesma linha");
+  const antes = ex.lerExtratoDeTexto(["Data;Lanc;Razao;Doc;Valor;Saldo", "11/08/2026;REND PAGO APLIC AUT APR;;;0,11;"].join("\n"));
+  const depois = ex.lerExtratoDeTexto(["Data;Lanc;Razao;Doc;Valor;Saldo", "11/08/2026;RENDIMENTOS REND PAGO APLIC AUT MAIS;;;0,11;"].join("\n"));
+  assert.equal(antes[0].clientRef, depois[0].clientRef, "descrição diferente NÃO cria linha nova");
+});
+
+test("dois lançamentos de valor igual no mesmo dia continuam sendo duas linhas", () => {
+  // 04/08: PIX de R$ 200 da Lilian e R$ 200 do Ullysses — mesmo dia, mesmo
+  // valor, pessoas diferentes. Não podem colapsar em uma.
+  const lidas = ex.lerExtratoDeTexto([
+    "Data;Lanc;Razao;Doc;Valor;Saldo",
+    "04/08/2026;PIX RECEBIDO LILIAN;LILIAN BRUMANA;187.963.788-08;200,00;",
+    "04/08/2026;PIX RECEBIDO ULLYSSE;ULLYSSES FRANCO;000.600.736-83;200,00;",
+  ].join("\n"));
+  assert.equal(lidas.length, 2);
+  assert.notEqual(lidas[0].clientRef, lidas[1].clientRef);
+});
+
+test("valores iguais no mesmo dia SEM documento também não colapsam", () => {
+  const lidas = ex.lerExtratoDeTexto([
+    "Data;Lanc;Razao;Doc;Valor;Saldo",
+    "10/08/2026;TARIFA;;;-8,82;",
+    "10/08/2026;TARIFA;;;-8,82;",
+  ].join("\n"));
+  assert.equal(lidas.length, 2, "a ocorrência (0, 1) separa lançamentos idênticos");
+  assert.notEqual(lidas[0].clientRef, lidas[1].clientRef);
+});
+
+test("conta paga em 2 lançamentos só casa se for a MESMA pessoa/empresa", () => {
+  // Caso real: uma comanda de R$ 1.500 da Luana "casava" com o PIX de R$ 1.000
+  // do Gustavo + o de R$ 500 do Jonas — e escondia dois problemas de verdade.
+  const entradas = ex.lerExtratoDeTexto([
+    "Data;Lanc;Razao;Doc;Valor;Saldo",
+    "10/08/2026;PIX QR CODE RECEBIDO GUSTAVO;GUSTAVO ALVES;415.557.868-98;1000,00;",
+    "10/08/2026;PIX RECEBIDO JONAS;JONAS TADEU;170.145.568-43;500,00;",
+  ].join("\n"));
+  const comanda = {
+    id: "s1", saleDate: "2026-08-10", patientName: "luana silva", crmContactRef: "", notes: "", createdAt: "",
+    items: [{ id: "i", itemType: "TRATAMENTO", amount: 1500, description: "" }],
+    payments: [{ id: "p", method: "PIX", amount: 1500, installments: 1 }],
+  };
+  const balde = ex.conciliarExtrato(entradas, [comanda], [], [], "2026-08-01", "2026-08-14");
+  assert.equal(balde.casadasAgrupadas.length, 0, "pessoas diferentes não formam par");
+  assert.equal(balde.comandaSemDinheiro.length, 1, "a comanda da Luana fica visível como pendência");
+  assert.equal(balde.entrouSemRegistro.length, 2, "e os dois PIX sem comanda também");
+});
