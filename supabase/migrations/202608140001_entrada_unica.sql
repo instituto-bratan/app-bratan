@@ -1,4 +1,8 @@
--- ENTRADA ÚNICA (14/08/2026) — decisões da reunião com a CEO.
+-- REUNIÃO DE 14/08/2026 — decisões da reunião com a CEO, implementadas no
+-- FECHAMENTO DO KANBAN (o Lucas descartou a ideia de uma tela separada:
+-- "não quero mais uma tela... na tela do Kanban, quando vai cadastrar o paciente
+--  ou ligar um existente, já anexa ali o comprovante e dali já lança a comanda
+--  automaticamente... pra gente evitar esse retrabalho").
 --
 -- "O que não dá é eu escrever no CRM, anexar nos comprovantes e depois escrever
 --  na ficha diária. Isso acaba com o meu dia e de qualquer um."
@@ -46,49 +50,7 @@ create index if not exists idx_fin_sales_aguardando on public.fin_sales(aguardan
 create index if not exists idx_fin_sales_consulta on public.fin_sales(consulta_agendada_em);
 
 -- ===========================================================================
--- 2. Registro da distribuição: o que UM lançamento alimentou
--- ===========================================================================
--- Serve para duas coisas: prova de que tudo foi ligado (a CEO quer "um clique e
--- a gente já coloca todos funcionando") e idempotência — repetir o mesmo
--- lançamento não cria nada em dobro.
-create table if not exists public.fin_entrada_unica (
-  id uuid primary key default gen_random_uuid(),
-  client_ref text unique not null,
-  sale_ref text,
-  crm_contact_ref text,
-  crm_deal_ref text,
-  comprovante_id uuid,
-  cadencia_id text,
-  -- Snapshot do que foi informado, para auditoria (nada é recalculado depois).
-  payload jsonb not null default '{}'::jsonb,
-  -- Lista dos destinos alimentados, em português, como a tela mostrou.
-  destinos text[] not null default array[]::text[],
-  lancado_por uuid references public.colaborador(id) on delete set null,
-  setor text check (setor in ('VENDAS', 'AGENDAMENTO', 'RECEPCAO')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_entrada_unica_sale on public.fin_entrada_unica(sale_ref);
-create index if not exists idx_entrada_unica_data on public.fin_entrada_unica(created_at desc);
-
-comment on table public.fin_entrada_unica is
-  'Um lançamento da Entrada Única e tudo que ele alimentou (comanda, comprovante, CRM, cadência, nota). Reunião de 14/08/2026.';
-
-alter table public.fin_entrada_unica enable row level security;
-
-drop policy if exists "fin_entrada_unica_select" on public.fin_entrada_unica;
-create policy "fin_entrada_unica_select" on public.fin_entrada_unica
-for select to authenticated using (public.is_coordenacao(auth.uid()) or public.can_comprovantes(auth.uid()));
-
-drop policy if exists "fin_entrada_unica_write" on public.fin_entrada_unica;
-create policy "fin_entrada_unica_write" on public.fin_entrada_unica
-for all to authenticated
-using (public.is_coordenacao(auth.uid()) or public.can_comprovantes(auth.uid()))
-with check (public.is_coordenacao(auth.uid()) or public.can_comprovantes(auth.uid()));
-
--- ===========================================================================
--- 3. O 3·1·3·1 de preparo, como a CEO definiu
+-- 2. O 3·1·3·1 de preparo, como a CEO definiu
 -- ===========================================================================
 -- Ela ditou: "três semanas antes, manda o aviso e pergunta se coletou os exames;
 --  uma semana antes pede os exames; três dias antes pede os resultados; e um dia

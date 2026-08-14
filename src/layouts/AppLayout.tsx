@@ -131,7 +131,6 @@ const flowGroups: FlowGroup[] = [
       { label: "Relatórios", href: "/financeiro/relatorios", icon: BarChart3, allowed: canFinanceiroView, module: "fin-relatorios" },
       { label: "Gestão Mensal (dia 5)", shortLabel: "Gestão", href: "/financeiro/gestao", icon: ClipboardCheck, allowed: canFinanceiroView, module: "fin-gestao" },
       { label: "Extrato do banco", shortLabel: "Extrato", href: "/financeiro/extrato", icon: Landmark, allowed: canFinanceiroView, module: "fin-extrato" },
-      { label: "Recebi um pagamento", shortLabel: "Entrada", href: "/entrada", icon: Sparkles, allowed: canFinanceiroView, module: "entrada-unica" },
       { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento, module: "fin-contas" },
       { label: "Compras", href: "/financeiro/compras", icon: ShoppingCart, allowed: canFinanceiroView, module: "fin-compras" },
       { label: "Crediário (Dinheiro)", shortLabel: "Crediário", href: "/financeiro/crediario", icon: HandCoins, allowed: canLembretesPagamento, module: "fin-crediario" },

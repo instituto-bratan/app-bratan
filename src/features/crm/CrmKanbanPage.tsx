@@ -18,6 +18,18 @@ import { Upload,
   X,
   Trash2,
 } from "lucide-react";
+import {
+  createFinId,
+  moneyFin,
+  parseFinAmount,
+  paymentMethodLabels,
+  salePaymentMethods,
+  type FinPaymentMethod,
+  type FinSale,
+} from "@/features/financeiro/financeiroData";
+import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
+import { uploadRemoteComprovante } from "@/lib/remoteData";
+import { todayISO } from "@/lib/localStore";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-tour";
@@ -124,6 +136,16 @@ const roleTones: Partial<Record<CrmRole, { chip: string; dot: string }>> = {
   COMERCIAL_VENDEDOR: { chip: "border-sky-300 bg-sky-50 text-sky-800", dot: "bg-sky-500" },
 };
 const roleTone = (role: CrmRole) => roleTones[role] ?? { chip: "border-slate-300 bg-slate-50 text-slate-700", dot: "bg-slate-400" };
+
+/** A comanda usa MAIÚSCULO, o comprovante usa o enum minúsculo do banco. */
+function formaParaComprovante(forma: FinPaymentMethod) {
+  if (forma === "PIX") return "pix" as const;
+  if (forma === "CARTAO_CREDITO") return "cartao_credito" as const;
+  if (forma === "CARTAO_DEBITO") return "cartao_debito" as const;
+  if (forma === "DINHEIRO") return "dinheiro" as const;
+  if (forma === "TRANSFERENCIA") return "transferencia" as const;
+  return "outro" as const;
+}
 
 const channelLabels: Record<CrmAdhesionChannel, string> = {
   PROGRAMA_ACOMPANHAMENTO: "Programa de Acompanhamento",
@@ -407,6 +429,10 @@ function ProgramCard({
 export function CrmKanbanPage() {
   const { pessoa } = useAuth();
   const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead } = useCrmState();
+  // O fechamento aqui também lança a comanda do dia (pedido do Lucas, 14/08).
+  const { pessoa: pessoaAuth, session, isPreview } = useAuth();
+  const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
+  const podeSubirArquivo = Boolean(pessoaAuth && session && !isPreview);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
@@ -447,6 +473,16 @@ export function CrmKanbanPage() {
   const [fcCompleto, setFcCompleto] = useState(true);
   const [fcSold, setFcSold] = useState("");
   const [fcReceived, setFcReceived] = useState("");
+  // FECHAMENTO QUE JÁ LANÇA A COMANDA E O COMPROVANTE (pedido do Lucas em
+  // 14/08/2026, depois da reunião com a CEO): "na tela do Kanban, quando vai
+  // cadastrar o paciente ou ligar um existente, já anexa ali o comprovante e
+  // dali já lança a comanda automaticamente... pra gente evitar o retrabalho."
+  const [fcForma, setFcForma] = useState<FinPaymentMethod>("PIX");
+  const [fcParcelas, setFcParcelas] = useState("1");
+  const [fcNotaInstrucao, setFcNotaInstrucao] = useState("");
+  const [fcNotaQuando, setFcNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
+  const [fcArquivo, setFcArquivo] = useState<File | null>(null);
+  const fcInputArquivo = useRef<HTMLInputElement>(null);
   const [fcObjection, setFcObjection] = useState("");
   const [fcObjectionCategory, setFcObjectionCategory] = useState<CrmObjectionCategory>("PRICE");
   const [fcPartialReason, setFcPartialReason] = useState("");
@@ -687,20 +723,23 @@ export function CrmKanbanPage() {
     if (fcResultado !== "NAO_FECHOU" && soldAmount <= 0) return setFcFeedback("Fechou: informe o valor vendido.");
     if (fcResultado !== "NAO_FECHOU" && !fcCompleto && !fcPartialReason.trim()) return setFcFeedback("Fechamento parcial: registre o motivo do parcial.");
 
+    // Resolve o paciente ANTES de gravar: a comanda e o comprovante precisam do
+    // ref para nascerem ligados. O id é determinístico, então resolver no
+    // snapshot e persistir depois com o MESMO id não duplica cadastro.
+    const valoresDoContato = {
+      fullName: fcPatient.name.trim(),
+      ...contactChannelsValues(fcChannels),
+      sourceChannel: "Fechamento (Estevão)",
+      ownerUserId: pessoa?.id ?? "gestao",
+    };
+    const refDoPaciente =
+      fcPatient.ref || findOrCreateCrmContact(state, valoresDoContato, pessoa?.id ?? "gestao").contact.id;
+
     persist((current) => {
       let working = current;
       let contactId = fcPatient.ref;
       if (!contactId) {
-        const created = findOrCreateCrmContact(
-          working,
-          {
-            fullName: fcPatient.name.trim(),
-            ...contactChannelsValues(fcChannels),
-            sourceChannel: "Fechamento (Estevão)",
-            ownerUserId: pessoa?.id ?? "gestao",
-          },
-          pessoa?.id ?? "gestao",
-        );
+        const created = findOrCreateCrmContact(working, { ...valoresDoContato, id: refDoPaciente }, pessoa?.id ?? "gestao");
         working = created.state;
         contactId = created.contact.id;
       }
@@ -745,6 +784,81 @@ export function CrmKanbanPage() {
       );
       return moved.state;
     });
+    // ------------------------------------------------------------------------
+    // DAQUI SAI TUDO: a comanda do dia e o comprovante, sem retrabalho.
+    // Pedido do Lucas (14/08/2026): "quando vai cadastrar o paciente ou ligar um
+    // existente, já anexa ali o comprovante e dali já lança a comanda
+    // automaticamente... vai pra todas as outras abas".
+    // A comanda leva o que ENTROU (valor recebido) — é isso que o fechamento
+    // diário e o extrato conferem. O valor vendido é o contrato, não o caixa.
+    if (fcResultado !== "NAO_FECHOU" && receivedAmount > 0) {
+      const nomeDoPaciente =
+        fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente";
+      const ehPlano = fcResultado === "PROGRAMA_ACOMPANHAMENTO" || fcResultado === "CLUBE_BRATAN";
+      const saleId = createFinId("fsale");
+      const comanda: FinSale = {
+        id: saleId,
+        saleDate: todayISO(),
+        patientName: nomeDoPaciente,
+        crmContactRef: refDoPaciente,
+        notes: [
+          `Fechamento no Kanban — ${fcResultado === "AVULSA" ? "consulta avulsa" : channelLabels[fcResultado as CrmAdhesionChannel]}`,
+          fcCompleto ? "" : `parcial: ${fcPartialReason.trim()}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        adhesion: ehPlano ? "SIM" : "ABERTO",
+        createdAt: new Date().toISOString(),
+        items: [
+          {
+            id: createFinId("fitem"),
+            itemType: fcResultado === "AVULSA" ? "CONSULTA" : "TRATAMENTO",
+            amount: receivedAmount,
+            description: fcResultado === "AVULSA" ? "Consulta avulsa" : `Vendido ${moneyFin(soldAmount)}`,
+          },
+        ],
+        payments: [
+          {
+            id: createFinId("fpay"),
+            method: fcForma,
+            amount: receivedAmount,
+            installments: Math.max(1, Number(fcParcelas) || 1),
+            cardMachine: fcForma === "CARTAO_CREDITO" || fcForma === "CARTAO_DEBITO" ? "ITAU" : null,
+            // Com arquivo em mãos o comprovante já nasce ANEXADO; dinheiro não
+            // gera comprovante; o resto fica AGUARDANDO e aparece nos avisos.
+            comprovanteStatus: fcArquivo ? "ANEXADO" : fcForma === "DINHEIRO" ? "NAO_SE_APLICA" : "AGUARDANDO",
+          },
+        ],
+        tipoAtendimento: fcResultado === "AVULSA" ? "PRIMEIRA_CONSULTA" : "TRATAMENTO",
+        planoOuAvulsa: ehPlano ? "PLANO" : "AVULSA",
+        origemIndicacao: "",
+        notaInstrucao: fcNotaInstrucao.trim(),
+        notaQuando: fcNotaQuando,
+        consultaAgendadaEm: null,
+        lancadoPorSetor: "VENDAS",
+        aguardandoExplicacao: false,
+      };
+      financeiro.addSale(comanda);
+
+      if (fcArquivo && podeSubirArquivo && pessoaAuth) {
+        void uploadRemoteComprovante({
+          pessoa: pessoaAuth as never,
+          file: fcArquivo,
+          pacienteReferencia: nomeDoPaciente,
+          crmContactRef: refDoPaciente,
+          valor: receivedAmount,
+          formaPagamento: formaParaComprovante(fcForma),
+          observacao: [`Fechamento no Kanban`, fcNotaInstrucao.trim()].filter(Boolean).join(" · "),
+          saleRef: saleId,
+          alimentarRecebiveis360: false,
+        }).catch((falha) =>
+          setFeedback(
+            `Fechamento e comanda salvos, mas o comprovante NÃO subiu (${(falha as Error).message}). Anexe pelo módulo Comprovantes para não ficar sem.`,
+          ),
+        );
+      }
+    }
+
     setFechamentoOpen(false);
     setFcPatient({ ref: "", name: "" });
     setFcChannels(emptyContactChannels);
@@ -754,6 +868,11 @@ export function CrmKanbanPage() {
     setFcPartialReason("");
     setFcCompleto(true);
     setFcResultado("PROGRAMA_ACOMPANHAMENTO");
+    setFcForma("PIX");
+    setFcParcelas("1");
+    setFcNotaInstrucao("");
+    setFcNotaQuando("COM_A_CONSULTA");
+    setFcArquivo(null);
   }
 
   function handleMoveDeal(event: FormEvent) {
@@ -1655,8 +1774,89 @@ export function CrmKanbanPage() {
                       <div>
                         <Label>Valor já recebido (R$)</Label>
                         <Input value={fcReceived} onChange={(event) => setFcReceived(event.target.value)} inputMode="decimal" placeholder="0" />
+                        <p className="mt-1 text-[11px] text-muted-foreground">É este valor que vira a comanda do dia.</p>
                       </div>
                     </div>
+
+                    {/* DAQUI SAI TUDO — comanda do dia + comprovante, sem digitar
+                        de novo em outra tela (pedido do Lucas, 14/08/2026). */}
+                    {parseFinAmount(fcReceived) > 0 ? (
+                      <div className="grid gap-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">
+                          Recebimento — daqui já sai a comanda do dia e o comprovante
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <Label>Forma de pagamento</Label>
+                            <select
+                              value={fcForma}
+                              onChange={(event) => setFcForma(event.target.value as FinPaymentMethod)}
+                              className="mt-1 h-10 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                            >
+                              {salePaymentMethods.map((method) => (
+                                <option key={method} value={method}>
+                                  {paymentMethodLabels[method]}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <Label>Parcelas</Label>
+                            <Input
+                              value={fcParcelas}
+                              onChange={(event) => setFcParcelas(event.target.value)}
+                              inputMode="numeric"
+                              disabled={fcForma !== "CARTAO_CREDITO"}
+                            />
+                          </div>
+                          <div>
+                            <Label>Nota fiscal</Label>
+                            <select
+                              value={fcNotaQuando}
+                              onChange={(event) => setFcNotaQuando(event.target.value as typeof fcNotaQuando)}
+                              className="mt-1 h-10 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                            >
+                              <option value="COM_A_CONSULTA">Emitir junto com a consulta</option>
+                              <option value="AGORA">Emitir agora</option>
+                              <option value="AGUARDANDO_ORIENTACAO">Aguardando orientação</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <Label>Do que se trata a nota e como emitir</Label>
+                          <Input
+                            value={fcNotaInstrucao}
+                            onChange={(event) => setFcNotaInstrucao(event.target.value)}
+                            placeholder="Ex.: sinal de consulta, paciente fidelizada — emitir junto com a consulta"
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            ref={fcInputArquivo}
+                            type="file"
+                            accept="image/*,.pdf"
+                            className="hidden"
+                            onChange={(event) => setFcArquivo(event.target.files?.[0] ?? null)}
+                          />
+                          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => fcInputArquivo.current?.click()}>
+                            <Upload className="h-4 w-4" aria-hidden="true" /> {fcArquivo ? "Trocar comprovante" : "Anexar comprovante"}
+                          </Button>
+                          {fcArquivo ? (
+                            <span className="text-sm font-semibold text-brand-musgo">{fcArquivo.name}</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              Sem arquivo o pagamento fica marcado como aguardando comprovante — e aparece nos avisos.
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] leading-5 text-muted-foreground">
+                          Ao registrar, este fechamento alimenta de uma vez: o cadastro no CRM, o card do Kanban com a régua
+                          certa, a <strong>comanda do dia</strong> de {moneyFin(parseFinAmount(fcReceived))}, o{" "}
+                          <strong>fechamento diário</strong> e os <strong>comprovantes</strong>
+                          {fcArquivo ? " (com o arquivo indo para a pasta do SharePoint)" : ""}.
+                        </p>
+                      </div>
+                    ) : null}
                     {!fcCompleto ? (
                       <div>
                         <Label>Motivo do parcial</Label>
