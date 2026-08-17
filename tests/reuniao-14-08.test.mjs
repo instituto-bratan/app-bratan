@@ -94,8 +94,8 @@ test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
   assert.equal(chamadas.length, 2, `os dois caminhos chamam a função única (achei ${chamadas.length})`);
   assert.ok(fonte.includes("financeiro.addSale(comanda)"), "ela cria a comanda do dia");
   assert.ok(fonte.includes("saleRef: saleId"), "o comprovante nasce amarrado à comanda");
-  assert.ok(/comprovanteStatus: values\.arquivo \? "ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
-  assert.ok(/values\.forma === "DINHEIRO" \? "NAO_SE_APLICA"/.test(fonte), "dinheiro não gera comprovante");
+  assert.ok(/comprovanteStatus: values\.arquivo \? \("ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
+  assert.ok(/parcela\.forma === "DINHEIRO" \? \("NAO_SE_APLICA"/.test(fonte), "dinheiro não gera comprovante");
 });
 
 test("o fechamento lança o valor RECEBIDO, não o vendido", () => {
@@ -388,4 +388,63 @@ test("mês fechado NÃO ganha o ponto de projeção", () => {
     hoje: "2026-08-17",
   });
   assert.ok(!pontos.some((p) => p.id === "projecao"), "projetar mês fechado não faz sentido");
+});
+
+// ------------------------------- PAGAMENTO DIVIDIDO E O QUE FOI VENDIDO (17/08)
+// O Lucas confirmou o fluxo: "com o anexar o comprovante do registrar o
+// fechamento já vai ser preenchida a comanda diária e já vai ser preenchido
+// também o comprovante relacionado a essa pessoa" — e abriu para trazer "o que
+// tem na comanda diária". Faltavam duas coisas, e as duas quebram número.
+const rec2 = loadTsModule("src/features/crm/recebimentoKanbanData.ts");
+const parse = (texto) => Number(String(texto).replace(/\./g, "").replace(",", ".")) || 0;
+
+test("divisão em duas formas: a soma tem que fechar com o recebido", () => {
+  const divisao = [
+    { forma: "PIX", valorTexto: "2000", parcelas: "1" },
+    { forma: "CARTAO_CREDITO", valorTexto: "1500", parcelas: "6" },
+  ];
+  assert.equal(rec2.somaDasParcelas(divisao, parse), 3500);
+  assert.equal(rec2.conferirDivisao(3500, divisao, parse), "", "fechando, fica em silêncio");
+});
+
+test("divisão que não fecha avisa, e diz para que lado", () => {
+  const divisao = [
+    { forma: "PIX", valorTexto: "2000", parcelas: "1" },
+    { forma: "CARTAO_CREDITO", valorTexto: "1000", parcelas: "1" },
+  ];
+  const faltando = rec2.conferirDivisao(3500, divisao, parse);
+  assert.match(faltando, /MENOS/);
+  assert.match(faltando, /R\$\s*500,00/);
+
+  const sobrando = rec2.conferirDivisao(2500, divisao, parse);
+  assert.match(sobrando, /MAIS/);
+});
+
+test("uma forma só nunca é cobrada de fechar (o valor inteiro é dela)", () => {
+  const unica = [{ forma: "PIX", valorTexto: "", parcelas: "1" }];
+  assert.equal(rec2.conferirDivisao(3500, unica, parse), "", "sem divisão não há o que conferir");
+});
+
+test("diferença de centavo passa (arredondamento de maquininha)", () => {
+  const divisao = [
+    { forma: "PIX", valorTexto: "2000", parcelas: "1" },
+    { forma: "CARTAO_CREDITO", valorTexto: "1500,01", parcelas: "1" },
+  ];
+  assert.equal(rec2.conferirDivisao(3500, divisao, parse), "");
+});
+
+test("os tipos de item oferecidos cobrem o que a recepção usa", () => {
+  for (const esperado of ["TRATAMENTO", "CONSULTA", "SINAL", "BIOIMPEDANCIA"]) {
+    assert.ok(rec2.tiposDeItem.includes(esperado), `falta ${esperado}`);
+  }
+  // SINAL importa: o ticket médio ignora comandas que são só sinal.
+  assert.ok(rec2.tiposDeItem.includes("SINAL"));
+});
+
+test("o fechamento cria UM pagamento por forma, e o item com o tipo escolhido", () => {
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  assert.ok(/payments: \(values\.divisao/.test(fonte), "a comanda monta os pagamentos da divisão");
+  assert.ok(/itemType: values\.itemTipo/.test(fonte), "o item leva o tipo escolhido na tela");
+  // Com uma forma só, ela leva o valor inteiro; com várias, cada uma o seu.
+  assert.ok(/lista\.length === 1 \? values\.valorRecebido : parseFinAmount\(parcela\.valorTexto\)/.test(fonte));
 });

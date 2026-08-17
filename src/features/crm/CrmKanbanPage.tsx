@@ -26,12 +26,13 @@ import {
   salePaymentMethods,
   type FinPaymentMethod,
   type FinSale,
+  type FinSaleItemType,
 } from "@/features/financeiro/financeiroData";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { uploadRemoteComprovante } from "@/lib/remoteData";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
-import type { TipoRecebimento } from "./recebimentoKanbanData";
+import { parcelaVazia, type ParcelaDoRecebimento, type TipoRecebimento } from "./recebimentoKanbanData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-tour";
@@ -466,7 +467,8 @@ export function CrmKanbanPage() {
   // sinal de consulta — quem está com o celular recebe o PIX, cadastra o
   // paciente e anexa o comprovante aqui mesmo, sem passar por outra tela.
   const [newRecebido, setNewRecebido] = useState("");
-  const [newForma, setNewForma] = useState<FinPaymentMethod>("PIX");
+  const [newDivisao, setNewDivisao] = useState<ParcelaDoRecebimento[]>([parcelaVazia("PIX")]);
+  const [newItemTipo, setNewItemTipo] = useState<FinSaleItemType>("SINAL");
   const [newTipo, setNewTipo] = useState<"SINAL_CONSULTA" | "PRIMEIRA_CONSULTA" | "RETORNO">("SINAL_CONSULTA");
   const [newNotaInstrucao, setNewNotaInstrucao] = useState("");
   const [newNotaQuando, setNewNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
@@ -489,9 +491,9 @@ export function CrmKanbanPage() {
   // 14/08/2026, depois da reunião com a CEO): "na tela do Kanban, quando vai
   // cadastrar o paciente ou ligar um existente, já anexa ali o comprovante e
   // dali já lança a comanda automaticamente... pra gente evitar o retrabalho."
-  const [fcForma, setFcForma] = useState<FinPaymentMethod>("PIX");
+  const [fcDivisao, setFcDivisao] = useState<ParcelaDoRecebimento[]>([parcelaVazia("PIX")]);
   const [fcTipo, setFcTipo] = useState<TipoRecebimento>("TRATAMENTO");
-  const [fcParcelas, setFcParcelas] = useState("1");
+  const [fcItemTipo, setFcItemTipo] = useState<FinSaleItemType>("TRATAMENTO");
   const [fcNotaInstrucao, setFcNotaInstrucao] = useState("");
   const [fcNotaQuando, setFcNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
   const [fcArquivo, setFcArquivo] = useState<File | null>(null);
@@ -689,8 +691,9 @@ export function CrmKanbanPage() {
     contactRef: string;
     pacienteNome: string;
     valorRecebido: number;
-    forma: FinPaymentMethod;
-    parcelas: number;
+    /** Uma linha por forma de pagamento (dividido quando tem mais de uma). */
+    divisao: ParcelaDoRecebimento[];
+    itemTipo: FinSaleItemType;
     arquivo: File | null;
     notaInstrucao: string;
     notaQuando: "AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO";
@@ -713,23 +716,27 @@ export function CrmKanbanPage() {
       items: [
         {
           id: createFinId("fitem"),
-          itemType: values.tipo === "TRATAMENTO" ? "TRATAMENTO" : values.tipo === "SINAL_CONSULTA" ? "SINAL" : "CONSULTA",
+          itemType: values.itemTipo,
           amount: values.valorRecebido,
           description: values.notaInstrucao.trim(),
         },
       ],
-      payments: [
-        {
+      // PAGAMENTO DIVIDIDO: uma linha por forma. Com uma só, ela leva o valor
+      // inteiro; com várias, cada uma leva o que foi digitado nela.
+      payments: (values.divisao.length ? values.divisao : [parcelaVazia("PIX")]).map((parcela, indice, lista) => {
+        const valorDaForma = lista.length === 1 ? values.valorRecebido : parseFinAmount(parcela.valorTexto);
+        const ehCartao = parcela.forma === "CARTAO_CREDITO" || parcela.forma === "CARTAO_DEBITO";
+        return {
           id: createFinId("fpay"),
-          method: values.forma,
-          amount: values.valorRecebido,
-          installments: Math.max(1, values.parcelas),
-          cardMachine: values.forma === "CARTAO_CREDITO" || values.forma === "CARTAO_DEBITO" ? "ITAU" : null,
+          method: parcela.forma,
+          amount: valorDaForma,
+          installments: Math.max(1, Number(parcela.parcelas) || 1),
+          cardMachine: ehCartao ? ("ITAU" as const) : null,
           // Com arquivo em mãos o comprovante já nasce ANEXADO; dinheiro não gera
           // comprovante; o resto fica AGUARDANDO e aparece nos avisos.
-          comprovanteStatus: values.arquivo ? "ANEXADO" : values.forma === "DINHEIRO" ? "NAO_SE_APLICA" : "AGUARDANDO",
-        },
-      ],
+          comprovanteStatus: values.arquivo ? ("ANEXADO" as const) : parcela.forma === "DINHEIRO" ? ("NAO_SE_APLICA" as const) : ("AGUARDANDO" as const),
+        };
+      }),
       tipoAtendimento: values.tipo,
       planoOuAvulsa: values.plano ? "PLANO" : "AVULSA",
       origemIndicacao: values.origem.trim(),
@@ -748,7 +755,7 @@ export function CrmKanbanPage() {
         pacienteReferencia: values.pacienteNome,
         crmContactRef: values.contactRef,
         valor: values.valorRecebido,
-        formaPagamento: formaParaComprovante(values.forma),
+        formaPagamento: formaParaComprovante(values.divisao[0]?.forma ?? "PIX"),
         observacao: [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban",
         saleRef: saleId,
         alimentarRecebiveis360: false,
@@ -810,8 +817,8 @@ export function CrmKanbanPage() {
         contactRef: refDoLead,
         pacienteNome: newName.trim() || newPhone.trim(),
         valorRecebido: recebidoAgora,
-        forma: newForma,
-        parcelas: 1,
+        divisao: newDivisao,
+        itemTipo: newItemTipo,
         arquivo: newArquivo,
         notaInstrucao: newNotaInstrucao,
         notaQuando: newNotaQuando,
@@ -830,7 +837,8 @@ export function CrmKanbanPage() {
     setNewPhone("");
     setNewEmail("");
     setNewRecebido("");
-    setNewForma("PIX");
+    setNewDivisao([parcelaVazia("PIX")]);
+    setNewItemTipo("SINAL");
     setNewTipo("SINAL_CONSULTA");
     setNewNotaInstrucao("");
     setNewNotaQuando("COM_A_CONSULTA");
@@ -923,8 +931,8 @@ export function CrmKanbanPage() {
         pacienteNome:
           fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
         valorRecebido: receivedAmount,
-        forma: fcForma,
-        parcelas: Number(fcParcelas) || 1,
+        divisao: fcDivisao,
+        itemTipo: fcItemTipo,
         arquivo: fcArquivo,
         notaInstrucao: fcNotaInstrucao,
         notaQuando: fcNotaQuando,
@@ -945,9 +953,9 @@ export function CrmKanbanPage() {
     setFcPartialReason("");
     setFcCompleto(true);
     setFcResultado("PROGRAMA_ACOMPANHAMENTO");
-    setFcForma("PIX");
+    setFcDivisao([parcelaVazia("PIX")]);
     setFcTipo("TRATAMENTO");
-    setFcParcelas("1");
+    setFcItemTipo("TRATAMENTO");
     setFcNotaInstrucao("");
     setFcNotaQuando("COM_A_CONSULTA");
     setFcArquivo(null);
@@ -1858,10 +1866,10 @@ export function CrmKanbanPage() {
                       valorTexto={fcReceived}
                       onValorChange={setFcReceived}
                       valor={parseFinAmount(fcReceived)}
-                      forma={fcForma}
-                      onFormaChange={setFcForma}
-                      parcelas={fcParcelas}
-                      onParcelasChange={setFcParcelas}
+                      divisao={fcDivisao}
+                      onDivisaoChange={setFcDivisao}
+                      itemTipo={fcItemTipo}
+                      onItemTipoChange={setFcItemTipo}
                       tipo={fcTipo}
                       onTipoChange={setFcTipo}
                       tiposDisponiveis={["TRATAMENTO", "PRIMEIRA_CONSULTA", "RETORNO"]}
@@ -1992,10 +2000,10 @@ export function CrmKanbanPage() {
                     valorTexto={newRecebido}
                     onValorChange={setNewRecebido}
                     valor={parseFinAmount(newRecebido)}
-                    forma={newForma}
-                    onFormaChange={setNewForma}
-                    parcelas="1"
-                    onParcelasChange={() => undefined}
+                    divisao={newDivisao}
+                    onDivisaoChange={setNewDivisao}
+                    itemTipo={newItemTipo}
+                    onItemTipoChange={setNewItemTipo}
                     tipo={newTipo}
                     onTipoChange={(tipo) => setNewTipo(tipo as typeof newTipo)}
                     tiposDisponiveis={["SINAL_CONSULTA", "PRIMEIRA_CONSULTA", "RETORNO"]}

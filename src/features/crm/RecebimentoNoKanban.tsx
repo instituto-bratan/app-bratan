@@ -20,11 +20,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { paymentMethodLabels, salePaymentMethods, type FinPaymentMethod } from "@/features/financeiro/financeiroData";
 import {
+  parseFinAmount,
+  paymentMethodLabels,
+  moneyFin,
+  saleItemTypeLabels,
+  salePaymentMethods,
+  type FinPaymentMethod,
+  type FinSaleItemType,
+} from "@/features/financeiro/financeiroData";
+import {
+  conferirDivisao,
   destinosDoRecebimento,
+  parcelaVazia,
   quandoNotaLabels,
+  somaDasParcelas,
   tipoRecebimentoLabels,
+  tiposDeItem,
+  type ParcelaDoRecebimento,
   type QuandoNota,
   type TipoRecebimento,
 } from "./recebimentoKanbanData";
@@ -33,10 +46,10 @@ export function RecebimentoNoKanban({
   valorTexto,
   onValorChange,
   valor,
-  forma,
-  onFormaChange,
-  parcelas,
-  onParcelasChange,
+  divisao,
+  onDivisaoChange,
+  itemTipo,
+  onItemTipoChange,
   tipo,
   onTipoChange,
   tiposDisponiveis,
@@ -53,10 +66,12 @@ export function RecebimentoNoKanban({
   valorTexto: string;
   onValorChange: (valor: string) => void;
   valor: number;
-  forma: FinPaymentMethod;
-  onFormaChange: (forma: FinPaymentMethod) => void;
-  parcelas: string;
-  onParcelasChange: (parcelas: string) => void;
+  /** Como o paciente pagou. Mais de uma linha = pagamento dividido. */
+  divisao: ParcelaDoRecebimento[];
+  onDivisaoChange: (divisao: ParcelaDoRecebimento[]) => void;
+  /** O que foi vendido (entra no item da comanda). */
+  itemTipo: FinSaleItemType;
+  onItemTipoChange: (tipo: FinSaleItemType) => void;
   tipo: TipoRecebimento;
   onTipoChange: (tipo: TipoRecebimento) => void;
   tiposDisponiveis: TipoRecebimento[];
@@ -95,35 +110,100 @@ export function RecebimentoNoKanban({
           <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">1</span>
           Quanto entrou
         </p>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <div>
-            <Label>Valor recebido (R$)</Label>
-            <Input value={valorTexto} onChange={(event) => onValorChange(event.target.value)} inputMode="decimal" placeholder="0,00" />
-          </div>
-          <div>
-            <Label>Forma</Label>
-            <select
-              value={forma}
-              onChange={(event) => onFormaChange(event.target.value as FinPaymentMethod)}
-              className="mt-1 h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
-            >
-              {salePaymentMethods.map((method) => (
-                <option key={method} value={method}>
-                  {paymentMethodLabels[method]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Parcelas</Label>
-            <Input
-              value={parcelas}
-              onChange={(event) => onParcelasChange(event.target.value)}
-              inputMode="numeric"
-              disabled={forma !== "CARTAO_CREDITO"}
-            />
-          </div>
+        <div>
+          <Label>Valor recebido (R$)</Label>
+          <Input
+            value={valorTexto}
+            onChange={(event) => onValorChange(event.target.value)}
+            inputMode="decimal"
+            placeholder="0,00"
+            className="sm:max-w-xs"
+          />
         </div>
+
+        {valor > 0 ? (
+          <div className="grid gap-2">
+            <p className="text-xs font-semibold text-brand-tinta">Como ele pagou</p>
+            {divisao.map((parcela, indice) => (
+              <div key={indice} className="grid gap-2 sm:grid-cols-[1.2fr_0.8fr_0.6fr_auto]">
+                <select
+                  value={parcela.forma}
+                  onChange={(event) =>
+                    onDivisaoChange(divisao.map((item, i) => (i === indice ? { ...item, forma: event.target.value as FinPaymentMethod } : item)))
+                  }
+                  className="h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
+                  aria-label="Forma de pagamento"
+                >
+                  {salePaymentMethods.map((method) => (
+                    <option key={method} value={method}>
+                      {paymentMethodLabels[method]}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  value={divisao.length === 1 ? valorTexto : parcela.valorTexto}
+                  onChange={(event) =>
+                    onDivisaoChange(divisao.map((item, i) => (i === indice ? { ...item, valorTexto: event.target.value } : item)))
+                  }
+                  inputMode="decimal"
+                  placeholder="valor"
+                  disabled={divisao.length === 1}
+                  aria-label="Valor nesta forma"
+                />
+                <Input
+                  value={parcela.parcelas}
+                  onChange={(event) =>
+                    onDivisaoChange(divisao.map((item, i) => (i === indice ? { ...item, parcelas: event.target.value } : item)))
+                  }
+                  inputMode="numeric"
+                  disabled={parcela.forma !== "CARTAO_CREDITO"}
+                  aria-label="Parcelas"
+                  placeholder="1x"
+                />
+                {divisao.length > 1 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Remover esta forma"
+                    onClick={() => onDivisaoChange(divisao.filter((_, i) => i !== indice))}
+                  >
+                    ×
+                  </Button>
+                ) : (
+                  <span />
+                )}
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  onDivisaoChange([
+                    ...divisao.map((item, i) =>
+                      i === 0 && divisao.length === 1 ? { ...item, valorTexto: valorTexto } : item,
+                    ),
+                    parcelaVazia("CARTAO_CREDITO"),
+                  ])
+                }
+              >
+                + Dividiu em duas formas
+              </Button>
+              {divisao.length > 1 ? (
+                <span className="text-xs text-muted-foreground">
+                  somando {moneyFin(somaDasParcelas(divisao, parseFinAmount))} de {moneyFin(valor)}
+                </span>
+              ) : null}
+            </div>
+            {conferirDivisao(valor, divisao, parseFinAmount) ? (
+              <p className="rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs font-semibold leading-snug text-amber-900">
+                {conferirDivisao(valor, divisao, parseFinAmount)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {valor > 0 ? (
@@ -150,6 +230,26 @@ export function RecebimentoNoKanban({
                   {tipoRecebimentoLabels[opcao]}
                 </button>
               ))}
+            </div>
+            <div>
+              <Label>O que foi vendido (entra na comanda)</Label>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {tiposDeItem.map((opcao) => (
+                  <button
+                    key={opcao}
+                    type="button"
+                    onClick={() => onItemTipoChange(opcao)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                      itemTipo === opcao
+                        ? "border-brand-dourado bg-brand-creme text-brand-tinta"
+                        : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-dourado",
+                    )}
+                  >
+                    {saleItemTypeLabels[opcao]}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
               <div>
