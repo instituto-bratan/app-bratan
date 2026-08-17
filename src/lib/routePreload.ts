@@ -34,8 +34,7 @@ const routeLoaders = {
   finImpostos: namedPage(() => import("@/features/financeiro/FinanceiroImpostosPage"), "FinanceiroImpostosPage"),
   finRepasses: namedPage(() => import("@/features/financeiro/FinanceiroRepassesPage"), "FinanceiroRepassesPage"),
   finPdca: namedPage(() => import("@/features/financeiro/FinanceiroPdcaPage"), "FinanceiroPdcaPage"),
-  finRelatorios: namedPage(() => import("@/features/financeiro/FinanceiroRelatoriosPage"), "FinanceiroRelatoriosPage"),
-  finGestao: namedPage(() => import("@/features/financeiro/FinanceiroGestaoPage"), "FinanceiroGestaoPage"),
+  finPainel: namedPage(() => import("@/features/financeiro/FinanceiroPainelPage"), "FinanceiroPainelPage"),
   finExtrato: namedPage(() => import("@/features/financeiro/FinanceiroExtratoPage"), "FinanceiroExtratoPage"),
   crmTasks: namedPage(() => import("@/features/crm/CrmTasksPage"), "CrmTasksPage"),
   crmKanban: namedPage(() => import("@/features/crm/CrmKanbanPage"), "CrmKanbanPage"),
@@ -92,8 +91,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/financeiro/impostos") return "finImpostos";
   if (pathname === "/financeiro/repasses") return "finRepasses";
   if (pathname === "/financeiro/pdca") return "finPdca";
-  if (pathname === "/financeiro/relatorios") return "finRelatorios";
-  if (pathname === "/financeiro/gestao") return "finGestao";
+  if (pathname === "/financeiro/painel" || pathname === "/financeiro/gestao" || pathname === "/financeiro/relatorios") return "finPainel";
   if (pathname === "/financeiro/extrato") return "finExtrato";
   if (pathname === "/crm" || pathname === "/crm/minhas-tarefas") return "crmTasks";
   if (pathname === "/crm/vendas") return "crmKanban";

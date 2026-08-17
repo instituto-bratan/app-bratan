@@ -128,8 +128,7 @@ const flowGroups: FlowGroup[] = [
     allowed: (cargo) => canLancarDia(cargo) || canFinanceiroView(cargo),
     entries: [
       { label: "Lançar Dia", shortLabel: "Caixa", href: "/financeiro/lancar-dia", icon: HandCoins, allowed: canLancarDia, module: "fin-lancar-dia" },
-      { label: "Relatórios", href: "/financeiro/relatorios", icon: BarChart3, allowed: canFinanceiroView, module: "fin-relatorios" },
-      { label: "Gestão Mensal (dia 5)", shortLabel: "Gestão", href: "/financeiro/gestao", icon: ClipboardCheck, allowed: canFinanceiroView, module: "fin-gestao" },
+      { label: "Painel do Mês (reunião)", shortLabel: "Painel", href: "/financeiro/painel", icon: BarChart3, allowed: canFinanceiroView, module: "fin-gestao" },
       { label: "Extrato do banco", shortLabel: "Extrato", href: "/financeiro/extrato", icon: Landmark, allowed: canFinanceiroView, module: "fin-extrato" },
       { label: "Contas a Pagar", shortLabel: "Contas", href: "/financeiro/contas", icon: ReceiptText, allowed: canLembretesPagamento, module: "fin-contas" },
       { label: "Compras", href: "/financeiro/compras", icon: ShoppingCart, allowed: canFinanceiroView, module: "fin-compras" },

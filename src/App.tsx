@@ -29,8 +29,7 @@ const FinanceiroPoupancaPage = lazyRoute("finPoupanca");
 const FinanceiroImpostosPage = lazyRoute("finImpostos");
 const FinanceiroRepassesPage = lazyRoute("finRepasses");
 const FinanceiroPdcaPage = lazyRoute("finPdca");
-const FinanceiroRelatoriosPage = lazyRoute("finRelatorios");
-const FinanceiroGestaoPage = lazyRoute("finGestao");
+const FinanceiroPainelPage = lazyRoute("finPainel");
 const FinanceiroExtratoPage = lazyRoute("finExtrato");
 const CrmTasksPage = lazyRoute("crmTasks");
 const CrmKanbanPage = lazyRoute("crmKanban");
@@ -92,8 +91,12 @@ export function App() {
               <Route path="/financeiro/impostos" element={<FinanceiroImpostosPage />} />
               <Route path="/financeiro/repasses" element={<FinanceiroRepassesPage />} />
               <Route path="/financeiro/pdca" element={<FinanceiroPdcaPage />} />
-              <Route path="/financeiro/relatorios" element={<FinanceiroRelatoriosPage />} />
-              <Route path="/financeiro/gestao" element={<FinanceiroGestaoPage />} />
+              {/* Relatórios + Gestão Mensal viraram um Painel só (17/08/2026).
+                  As rotas antigas continuam funcionando: quem tinha link ou
+                  favorito cai no lugar novo em vez de tomar tela branca. */}
+              <Route path="/financeiro/painel" element={<FinanceiroPainelPage />} />
+              <Route path="/financeiro/gestao" element={<Navigate to="/financeiro/painel" replace />} />
+              <Route path="/financeiro/relatorios" element={<Navigate to="/financeiro/painel" replace />} />
               <Route path="/financeiro/extrato" element={<FinanceiroExtratoPage />} />
               <Route path="/crm" element={<Navigate to="/crm/minhas-tarefas" replace />} />
               <Route path="/crm/minhas-tarefas" element={<CrmTasksPage />} />

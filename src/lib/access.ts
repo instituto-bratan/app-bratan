@@ -248,7 +248,6 @@ export type ModuleKey =
   | "fin-impostos"
   | "fin-repasses"
   | "fin-pdca"
-  | "fin-relatorios"
   | "fin-gestao"
   | "fin-extrato"
   | "fin-canais";
@@ -273,8 +272,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-impostos": "Financeiro · Impostos & NF",
   "fin-repasses": "Financeiro · Repasses",
   "fin-pdca": "Financeiro · PDCA",
-  "fin-relatorios": "Financeiro · Relatórios",
-  "fin-gestao": "Financeiro · Gestão Mensal (Reunião de Líderes)",
+  "fin-gestao": "Financeiro · Painel do Mês (Reunião de Líderes)",
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-canais": "Financeiro · Canais de Venda",
 };
