@@ -5,3 +5,5 @@ dist-single
 .env.local
 .env*.swp
 .DS_Store
+.vercel
+.env*
