@@ -226,7 +226,12 @@ export type SemanaDaReuniao = {
 
 export type PainelReuniao = {
   monthKey: string;
-  /** A régua: supermeta. */
+  /**
+   * A RÉGUA. Era a supermeta; passou a ser a SUPER-SUPERMETA em 17/08/2026, por
+   * decisão do Lucas: "não faça com base na supermeta, é na super-supermeta".
+   * `supermeta` segue exposta como o degrau anterior, para a tela mostrar os dois.
+   */
+  regua: number;
   supermeta: number;
   superSupermeta: number;
   faturado: number;
@@ -244,6 +249,8 @@ export type PainelReuniao = {
 export function buildPainelReuniao(board: MetasBoard, hoje = todayISO()): PainelReuniao {
   const supermeta = board.goals.target;
   const superSupermeta = board.goals.super;
+  // A régua da apresentação é a super-supermeta (17/08/2026).
+  const regua = superSupermeta;
   const faturado = board.accumulatedRevenue;
   const cents = (valor: number) => Math.round(valor * 100) / 100;
 
@@ -252,7 +259,7 @@ export function buildPainelReuniao(board: MetasBoard, hoje = todayISO()): Painel
   const totalDiasUteis = board.days.length || 1;
   const semanas: SemanaDaReuniao[] = board.weeks.map((semana) => {
     const diasDaSemana = board.days.filter((dia) => dia.weekIndex === semana.weekIndex).length;
-    const ritmo = cents((supermeta * diasDaSemana) / totalDiasUteis);
+    const ritmo = cents((regua * diasDaSemana) / totalDiasUteis);
     return {
       semana: semana.weekIndex,
       periodo: semana.periodLabel,
@@ -265,26 +272,26 @@ export function buildPainelReuniao(board: MetasBoard, hoje = todayISO()): Painel
   });
 
   const diasUteisRestantes = board.days.filter((dia) => dia.date >= hoje).length;
-  const falta = Math.max(0, cents(supermeta - faturado));
+  const falta = Math.max(0, cents(regua - faturado));
   const nivel: NivelAtingido =
     faturado >= superSupermeta ? "SUPER_SUPERMETA" : faturado >= supermeta ? "SUPERMETA" : faturado >= board.goals.min ? "META" : "ABAIXO";
 
-  const percentual = supermeta > 0 ? Math.round((faturado / supermeta) * 1000) / 10 : 0;
+  const percentual = regua > 0 ? Math.round((faturado / regua) * 1000) / 10 : 0;
   const dinheiro = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   let leitura: string;
   if (nivel === "SUPER_SUPERMETA") {
-    leitura = `Super-supermeta batida: ${dinheiro(faturado)} contra ${dinheiro(superSupermeta)}. É aqui que a porcentagem da equipe aumenta.`;
-  } else if (nivel === "SUPERMETA") {
-    leitura = `Supermeta batida (${dinheiro(faturado)}). Faltam ${dinheiro(Math.max(0, cents(superSupermeta - faturado)))} para a super-supermeta.`;
+    leitura = `SUPER-SUPERMETA batida: ${dinheiro(faturado)} contra ${dinheiro(regua)}. É aqui que a porcentagem da equipe aumenta.`;
   } else if (diasUteisRestantes > 0) {
-    leitura = `${percentual.toFixed(1).replace(".", ",")}% da supermeta. Faltam ${dinheiro(falta)} em ${diasUteisRestantes} dia(s) útil(eis) — ${dinheiro(cents(falta / diasUteisRestantes))} por dia.`;
+    const degrau = nivel === "SUPERMETA" ? ` A supermeta (${dinheiro(supermeta)}) já passou.` : "";
+    leitura = `${percentual.toFixed(1).replace(".", ",")}% da super-supermeta. Faltam ${dinheiro(falta)} em ${diasUteisRestantes} dia(s) útil(eis) — ${dinheiro(cents(falta / diasUteisRestantes))} por dia.${degrau}`;
   } else {
-    leitura = `Mês encerrado com ${dinheiro(faturado)} — ${dinheiro(falta)} abaixo da supermeta.`;
+    leitura = `Mês encerrado com ${dinheiro(faturado)} — ${dinheiro(falta)} abaixo da super-supermeta.`;
   }
 
   return {
     monthKey: board.monthKey,
+    regua,
     supermeta,
     superSupermeta,
     faturado: cents(faturado),

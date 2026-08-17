@@ -131,12 +131,15 @@ function vendaEm(dia, valor) {
   };
 }
 
-test("a régua do painel é a SUPERMETA, não a meta mínima", () => {
+test("a régua do painel é a SUPER-SUPERMETA (mudança de 17/08/2026)", () => {
+  // O Lucas: "não faça com base na supermeta. É na super-supermeta."
   const board = metas.buildMetasBoard([vendaEm("2026-08-05", 100000)], metas.defaultMetasConfig, "2026-08");
   const painel = metas.buildPainelReuniao(board, "2026-08-14");
-  assert.equal(painel.supermeta, board.goals.target, "supermeta = meta alvo do mês");
+  assert.equal(painel.regua, board.goals.super, "a régua é o degrau de cima");
+  assert.equal(painel.supermeta, board.goals.target, "a supermeta segue exposta como degrau anterior");
   assert.equal(painel.superSupermeta, board.goals.super);
-  assert.equal(metas.NIVEL_META_LABELS.target, "SUPERMETA");
+  // O que falta e o % são medidos contra a RÉGUA, não contra a supermeta.
+  assert.equal(painel.faltaParaSupermeta, Math.round((board.goals.super - 100000) * 100) / 100);
   assert.equal(metas.NIVEL_META_LABELS.super, "SUPER-SUPERMETA");
 });
 
@@ -153,9 +156,9 @@ test("o painel mostra semana por semana com o ritmo necessário", () => {
     assert.equal(Math.round((semana.faturado - semana.ritmoNecessario) * 100) / 100, semana.diferenca);
     assert.equal(semana.noRitmo, semana.faturado >= semana.ritmoNecessario);
   }
-  // O ritmo somado das semanas fecha a supermeta (proporcional aos dias úteis).
+  // O ritmo somado das semanas fecha a RÉGUA (super-supermeta desde 17/08/2026).
   const somaRitmo = painel.semanas.reduce((s, x) => s + x.ritmoNecessario, 0);
-  assert.ok(Math.abs(somaRitmo - painel.supermeta) < 1, `soma dos ritmos ${somaRitmo} ≈ supermeta ${painel.supermeta}`);
+  assert.ok(Math.abs(somaRitmo - painel.regua) < 1, `soma dos ritmos ${somaRitmo} ≈ régua ${painel.regua}`);
 });
 
 test("o nível sobe conforme o faturamento: abaixo → meta → supermeta → super-supermeta", () => {
@@ -268,4 +271,121 @@ test("o caixa do crediário conta dinheiro SEM comanda (a regra que gerou o bug)
   const noCaixa = pag.crediarioCashMoves(entradas);
   assert.equal(noCaixa.length, 1, "só dinheiro sem comanda");
   assert.equal(noCaixa[0].saleRef, null);
+});
+
+// ------------------------------------------------- O MOMENTO DO MÊS (17/08/2026)
+// "o mês ainda não acabou, então você tem que apresentar o que a gente está até
+//  agora no mês... quando clicar no botão, ele vai calcular em que momento do mês
+//  nós estamos e vai fazer a apresentação com base nisso."
+const mom = loadTsModule("src/features/financeiro/momentoDoMes.ts");
+const pr = loadTsModule("src/features/financeiro/pontosDaReuniao.ts");
+
+test("a fase do mês é medida em DIAS ÚTEIS, não em dias do calendário", () => {
+  // Agosto/2026: 21 dias úteis. O dia 5 é o 3º dia útil (1=sáb, 2=dom).
+  const comeco = mom.momentoDoMes("2026-08", "2026-08-05");
+  assert.equal(comeco.diasUteisTotais, 21);
+  assert.equal(comeco.fase, "COMECO");
+  assert.ok(comeco.percorrido <= 0.35, `percorrido ${comeco.percorrido}`);
+
+  const meio = mom.momentoDoMes("2026-08", "2026-08-17");
+  assert.equal(meio.fase, "MEIO", `dia 17 é meio do mês (percorrido ${meio.percorrido})`);
+  assert.equal(meio.faseLabel, "meio do mês");
+
+  const reta = mom.momentoDoMes("2026-08", "2026-08-27");
+  assert.equal(reta.fase, "RETA_FINAL");
+  assert.ok(reta.diasUteisRestantes < meio.diasUteisRestantes);
+});
+
+test("mês passado é FECHADO, com todos os dias úteis percorridos", () => {
+  const julho = mom.momentoDoMes("2026-07", "2026-08-17");
+  assert.equal(julho.fase, "FECHADO");
+  assert.equal(julho.emAndamento, false);
+  assert.equal(julho.diasUteisRestantes, 0);
+  assert.equal(julho.percorrido, 1);
+});
+
+test("cada fase tem um foco diferente para a apresentação", () => {
+  assert.match(mom.faseFoco.COMECO, /ritmo necessário/i);
+  assert.match(mom.faseFoco.MEIO, /PROJEÇÃO/);
+  assert.match(mom.faseFoco.RETA_FINAL, /força-tarefa/i);
+  assert.match(mom.faseFoco.FECHADO, /resultado/i);
+});
+
+test("a projeção usa o ritmo por dia útil já trabalhado", () => {
+  const momento = mom.momentoDoMes("2026-08", "2026-08-17");
+  // 4 vendas de 25.000 = 100.000 até o dia 17.
+  const vendas = ["2026-08-03", "2026-08-05", "2026-08-11", "2026-08-13"].map((dia) => vendaEm(dia, 25000));
+  const proj = mom.projecaoDoMes(vendas, momento, 400000);
+  assert.equal(proj.faturadoAteAgora, 100000);
+  assert.equal(proj.ritmoAtual, Math.round((100000 / momento.diasUteisPassados) * 100) / 100);
+  // A projeção é calculada do ritmo NÃO arredondado (mais exata que multiplicar
+  // o ritmo já arredondado), então comparo com tolerância de centavos.
+  const esperado = (100000 / momento.diasUteisPassados) * momento.diasUteisTotais;
+  assert.ok(Math.abs(proj.projecao - esperado) < 0.02, `projeção ${proj.projecao} ≈ ${esperado}`);
+  assert.equal(proj.alvo, 400000, "a régua é a super-supermeta");
+  assert.equal(proj.falta, 300000);
+  assert.equal(proj.noCaminho, false);
+  assert.ok(proj.aumentoNecessario > 0, "diz quanto o ritmo precisa subir");
+  assert.match(proj.leitura, /ritmo atual/i);
+  assert.match(proj.leitura, /dias úteis que faltam/);
+});
+
+test("ritmo bom projeta acima da régua e a leitura muda de tom", () => {
+  const momento = mom.momentoDoMes("2026-08", "2026-08-17");
+  const forte = Array.from({ length: 10 }, (_, i) => vendaEm(`2026-08-${String(i + 3).padStart(2, "0")}`, 40000));
+  const proj = mom.projecaoDoMes(forte, momento, 400000);
+  assert.equal(proj.noCaminho, true);
+  assert.equal(proj.aumentoNecessario, null, "não precisa aumentar nada");
+  assert.match(proj.leitura, /acima da régua/);
+});
+
+test("o título da apresentação muda com o momento", () => {
+  const meio = mom.momentoDoMes("2026-08", "2026-08-17");
+  const fraco = mom.projecaoDoMes([vendaEm("2026-08-05", 10000)], meio, 400000);
+  assert.match(mom.tituloDaApresentacao(meio, fraco), /Metade do mês.*acelerar/i);
+
+  const forte = mom.projecaoDoMes(
+    Array.from({ length: 12 }, (_, i) => vendaEm(`2026-08-${String(i + 3).padStart(2, "0")}`, 40000)),
+    meio,
+    400000,
+  );
+  assert.match(mom.tituloDaApresentacao(meio, forte), /no caminho/i);
+
+  const comeco = mom.momentoDoMes("2026-08", "2026-08-04");
+  assert.match(mom.tituloDaApresentacao(comeco, fraco), /Começo do mês/);
+
+  const fechado = mom.momentoDoMes("2026-07", "2026-08-17");
+  const projFechada = mom.projecaoDoMes([vendaEm("2026-07-10", 500000)], fechado, 400000);
+  assert.match(mom.tituloDaApresentacao(fechado, projFechada), /acima da régua/i);
+});
+
+test("mês em andamento ganha o ponto da PROJEÇÃO, e ele vem no topo", () => {
+  const pontos = pr.buildPontosDaReuniao({
+    sales: [vendaEm("2026-08-05", 30000)],
+    expenses: [],
+    categories: [],
+    savingsMoves: [],
+    crediarioProfits: [],
+    monthKey: "2026-08",
+    hoje: "2026-08-17",
+  });
+  const projecao = pontos.find((p) => p.id === "projecao");
+  assert.ok(projecao, "o ponto da projeção existe no mês em andamento");
+  assert.match(projecao.numero, /projetado/);
+  assert.match(projecao.leitura, /meio do mês/);
+  assert.equal(pontos[0].id, "projecao", "e abre a lista");
+  assert.ok(!pontos.some((p) => p.id === "supermeta"), "e substitui o ponto da régua, para não repetir a mesma informação");
+});
+
+test("mês fechado NÃO ganha o ponto de projeção", () => {
+  const pontos = pr.buildPontosDaReuniao({
+    sales: [vendaEm("2026-07-10", 300000)],
+    expenses: [],
+    categories: [],
+    savingsMoves: [],
+    crediarioProfits: [],
+    monthKey: "2026-07",
+    hoje: "2026-08-17",
+  });
+  assert.ok(!pontos.some((p) => p.id === "projecao"), "projetar mês fechado não faz sentido");
 });

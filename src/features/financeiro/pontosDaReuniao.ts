@@ -27,6 +27,7 @@ import {
 } from "./financeiroData";
 import { todayISO } from "@/lib/localStore";
 import { buildWeekdayStrength } from "@/lib/chartData";
+import { momentoDoMes, projecaoDoMes } from "./momentoDoMes";
 import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, type MetasConfig } from "./metasData";
 
 export type TomDoPonto = "BOM" | "ATENCAO" | "RUIM" | "NEUTRO";
@@ -173,41 +174,63 @@ export function buildPontosDaReuniao(dados: {
   }
 
   // ---------------------------------------------------------------------- META
-  if (painel.supermeta > 0) {
+  // Num mês em andamento o ponto da PROJEÇÃO (abaixo) já diz onde estamos em
+  // relação à régua, e diz melhor: com ritmo e com para onde o mês vai. Emitir os
+  // dois seria repetir a mesma informação na frente da equipe.
+  if (painel.regua > 0 && !emAndamento) {
     pontos.push({
       id: "supermeta",
       titulo:
         painel.nivel === "SUPER_SUPERMETA"
-          ? "Super-supermeta batida"
+          ? "SUPER-SUPERMETA batida"
           : painel.nivel === "SUPERMETA"
-            ? "Supermeta batida"
-            : "Onde estamos na supermeta",
-      numero: `${pct(painel.percentualDaSupermeta)} de ${brl(painel.supermeta)}`,
+            ? "Supermeta passada, super-supermeta no alvo"
+            : "Onde estamos na super-supermeta",
+      numero: `${pct(painel.percentualDaSupermeta)} de ${brl(painel.regua)}`,
       leitura:
         painel.nivel === "ABAIXO" || painel.nivel === "META"
           ? painel.diasUteisRestantes > 0
             ? `Faltam ${brl(painel.faltaParaSupermeta)} em ${painel.diasUteisRestantes} dia(s) útil(eis) — ${brl(painel.precisaPorDiaUtilRestante)} por dia. É esse o número que a equipe precisa ouvir, não o total do mês.`
-            : `O mês fechou ${brl(painel.faltaParaSupermeta)} abaixo da supermeta (${pct(painel.percentualDaSupermeta)} dela). Vale abrir em que semana a diferença nasceu, para não repetir.`
-          : `Passamos a régua. O próximo alvo é ${brl(painel.superSupermeta)}, onde a porcentagem da equipe aumenta — vale anunciar isso na reunião.`,
+            : `O mês fechou ${brl(painel.faltaParaSupermeta)} abaixo da super-supermeta (${pct(painel.percentualDaSupermeta)} dela). Vale abrir em que semana a diferença nasceu, para não repetir.`
+          : `Passamos a régua de ${brl(painel.regua)} — é aqui que a porcentagem da equipe aumenta. Vale anunciar na reunião.`,
       tom: painel.nivel === "ABAIXO" ? "RUIM" : painel.nivel === "META" ? "ATENCAO" : "BOM",
       peso: painel.faltaParaSupermeta || painel.supermeta * 0.3,
       grupo: "META",
     });
 
-    // Semana fora do ritmo é o ponto mais acionável que existe.
-    const fracas = painel.semanas.filter((semana) => !semana.noRitmo && semana.faturado > 0);
-    if (fracas.length) {
-      const pior = fracas.reduce((a, b) => (a.diferenca < b.diferenca ? a : b));
-      pontos.push({
-        id: "semana-fraca",
-        titulo: `A ${pior.semana}ª semana ficou para trás`,
-        numero: `${brl(pior.faturado)} contra ${brl(pior.ritmoNecessario)} de ritmo`,
-        leitura: `Ficaram ${brl(Math.abs(pior.diferenca))} atrás no período de ${pior.periodo}. Uma semana fraca não se recupera sozinha: ou entra força-tarefa de repescagem, ou a supermeta do mês já está comprometida.`,
-        tom: "ATENCAO",
-        peso: Math.abs(pior.diferenca),
-        grupo: "META",
-      });
-    }
+  }
+
+  // Semana fora do ritmo é o ponto mais acionável que existe.
+  const fracas = painel.semanas.filter((semana) => !semana.noRitmo && semana.faturado > 0);
+  if (fracas.length) {
+    const pior = fracas.reduce((a, b) => (a.diferenca < b.diferenca ? a : b));
+    pontos.push({
+      id: "semana-fraca",
+      titulo: `A ${pior.semana}ª semana ficou para trás`,
+      numero: `${brl(pior.faturado)} contra ${brl(pior.ritmoNecessario)} de ritmo`,
+      leitura: `Ficaram ${brl(Math.abs(pior.diferenca))} atrás no período de ${pior.periodo}. Uma semana fraca não se recupera sozinha: ou entra força-tarefa de repescagem, ou a régua do mês já está comprometida.`,
+      tom: "ATENCAO",
+      peso: Math.abs(pior.diferenca),
+      grupo: "META",
+    });
+  }
+
+
+  // PROJEÇÃO: no meio do mês é o número que mais importa, porque ainda dá tempo
+  // de corrigir. Entra sempre no topo quando o mês está em andamento.
+  if (emAndamento) {
+    const momento = momentoDoMes(monthKey, hoje);
+    const proj = projecaoDoMes(sales, momento, painel.regua);
+    pontos.push({
+      id: "projecao",
+      titulo: proj.noCaminho ? "No ritmo atual, batemos a régua" : "No ritmo atual, não chegamos",
+      numero: `${brl(proj.projecao)} projetado · régua ${brl(proj.alvo)}`,
+      leitura: `${proj.leitura} Estamos no ${momento.faseLabel}: ${momento.diasUteisPassados} de ${momento.diasUteisTotais} dias úteis.`,
+      tom: proj.noCaminho ? "BOM" : "RUIM",
+      // Peso alto de propósito: é o ponto que abre a reunião de mês em andamento.
+      peso: Math.max(proj.falta, painel.regua * 0.6),
+      grupo: "META",
+    });
   }
 
   // ------------------------------------------------------------------- OPERAÇÃO

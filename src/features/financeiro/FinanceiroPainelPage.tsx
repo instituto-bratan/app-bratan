@@ -67,7 +67,8 @@ import {
   previousMonthKey,
   type GestaoIndicador,
 } from "./financeiroData";
-import { defaultMetasConfig, type MetasConfig } from "./metasData";
+import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, type MetasConfig } from "./metasData";
+import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMes";
 import { buildPontosDaReuniao, type PontoDaReuniao } from "./pontosDaReuniao";
 import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
 import { useFinanceiro } from "./useFinanceiro";
@@ -112,6 +113,7 @@ export function FinanceiroPainelPage() {
   const [monthKey, setMonthKey] = useState(mesPadrao);
   const [apresentando, setApresentando] = useState(false);
   const [bloco, setBloco] = useState(0);
+  const [degrauAberto, setDegrauAberto] = useState("");
   const financeiro = useFinanceiro(Number(monthKey.slice(0, 4)));
   const mesAnterior = previousMonthKey(monthKey);
   const emAndamento = monthKey === hoje.slice(0, 7);
@@ -157,6 +159,12 @@ export function FinanceiroPainelPage() {
     () => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }),
     [],
   );
+  // MOMENTO DO MÊS (17/08/2026): a apresentação muda com o dia em que estamos.
+  const momento = useMemo(() => momentoDoMes(monthKey, hoje), [monthKey, hoje]);
+  const board = useMemo(() => buildMetasBoard(financeiro.sales, metasConfig, monthKey), [financeiro.sales, metasConfig, monthKey]);
+  const painelMetas = useMemo(() => buildPainelReuniao(board, hoje), [board, hoje]);
+  const projecao = useMemo(() => projecaoDoMes(financeiro.sales, momento, painelMetas.regua), [financeiro.sales, momento, painelMetas.regua]);
+
   const pontos = useMemo(
     () =>
       buildPontosDaReuniao({
@@ -281,11 +289,76 @@ export function FinanceiroPainelPage() {
     },
   ];
 
+  /** Os três degraus da meta, com a SUPER-SUPERMETA como régua (17/08/2026). */
+  const degraus = [
+    { rotulo: "Meta", valor: board.goals.min, atingido: projecao.faturadoAteAgora >= board.goals.min },
+    { rotulo: "Supermeta", valor: board.goals.target, atingido: projecao.faturadoAteAgora >= board.goals.target },
+    { rotulo: "SUPER-SUPERMETA", valor: board.goals.super, atingido: projecao.faturadoAteAgora >= board.goals.super, regua: true },
+  ];
+
   const blocos = [
     {
       chave: "olhar",
-      titulo: "1. O mês em um olhar",
+      titulo: momento.emAndamento ? `1. Onde estamos — ${momento.faseLabel}` : "1. Como o mês fechou",
       corpo: (
+        <div className="grid gap-4">
+          {/* ONDE ESTAMOS NO MÊS: a barra mostra dias úteis percorridos e o quanto
+              do alvo já foi feito — as duas coisas lado a lado deixam na hora
+              claro se estamos adiantados ou atrasados. */}
+          {momento.emAndamento ? (
+            <div className="rounded-xl border-2 border-brand-musgo/30 bg-brand-papel p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className={cn("font-bold text-brand-musgo", apresentando ? "text-2xl" : "text-lg")}>
+                  {tituloDaApresentacao(momento, projecao)}
+                </p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">
+                  dia {momento.dia} · {momento.diasUteisPassados} de {momento.diasUteisTotais} dias úteis
+                </p>
+              </div>
+              <p className={cn("mt-1 leading-snug text-brand-tinta", apresentando ? "text-base" : "text-sm")}>{momento.foco}</p>
+
+              <div className="mt-3 grid gap-2">
+                {[
+                  { rotulo: "O mês já andou", valor: momento.percorrido, texto: `${Math.round(momento.percorrido * 100)}% dos dias úteis`, cor: "bg-brand-oliva/50" },
+                  {
+                    rotulo: "Já faturamos",
+                    valor: Math.min(1, projecao.alvo > 0 ? projecao.faturadoAteAgora / projecao.alvo : 0),
+                    texto: `${projecao.percentualDoAlvo.toFixed(1).replace(".", ",")}% da régua (${moneyFin(projecao.faturadoAteAgora)})`,
+                    cor: projecao.percentualDoAlvo >= momento.percorrido * 100 ? "bg-emerald-500" : "bg-amber-500",
+                  },
+                ].map((barra) => (
+                  <div key={barra.rotulo}>
+                    <div className="flex items-baseline justify-between gap-2 text-xs">
+                      <span className="font-semibold text-brand-tinta">{barra.rotulo}</span>
+                      <span className="text-muted-foreground">{barra.texto}</span>
+                    </div>
+                    <div className="mt-1 h-3 overflow-hidden rounded-full bg-brand-oliva/15">
+                      <div className={cn("h-full rounded-full transition-all", barra.cor)} style={{ width: `${Math.max(2, barra.valor * 100)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* PROJEÇÃO — o número mais importante do mês em andamento */}
+              <div
+                className={cn(
+                  "mt-3 rounded-lg border p-3",
+                  projecao.noCaminho ? "border-emerald-300 bg-emerald-50/70" : "border-amber-300 bg-amber-50/70",
+                )}
+              >
+                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
+                  Se o ritmo continuar, o mês fecha em
+                </p>
+                <p className={cn("font-bold tabular-nums", apresentando ? "text-4xl" : "text-3xl", projecao.noCaminho ? "text-emerald-900" : "text-amber-900")}>
+                  {moneyFin(projecao.projecao)}
+                </p>
+                <p className={cn("mt-1 leading-snug", apresentando ? "text-base" : "text-sm", projecao.noCaminho ? "text-emerald-900" : "text-amber-900")}>
+                  {projecao.leitura}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {kpis.map((kpi) => {
             const variacao = kpi.antes > 0 ? ((kpi.agora - kpi.antes) / kpi.antes) * 100 : null;
@@ -311,12 +384,97 @@ export function FinanceiroPainelPage() {
               </div>
             );
           })}
+          </div>
+        </div>
+      ),
+    },
+    {
+      chave: "escada",
+      titulo: "2. A escada da meta — a régua é a super-supermeta",
+      corpo: (
+        <div className="grid gap-3">
+          <p className="text-sm text-muted-foreground">
+            Três degraus. A régua da apresentação é o de cima: é nele que a porcentagem da equipe aumenta.
+          </p>
+          <div className="grid gap-2">
+            {degraus.map((degrau) => {
+              const feito = projecao.alvo > 0 ? Math.min(1, projecao.faturadoAteAgora / degrau.valor) : 0;
+              const falta = Math.max(0, degrau.valor - projecao.faturadoAteAgora);
+              return (
+                <button
+                  key={degrau.rotulo}
+                  type="button"
+                  onClick={() => setDegrauAberto((atual) => (atual === degrau.rotulo ? "" : degrau.rotulo))}
+                  className={cn(
+                    "w-full rounded-xl border-2 p-3 text-left transition",
+                    degrau.atingido
+                      ? "border-emerald-400 bg-emerald-50/70"
+                      : degrau.regua
+                        ? "border-brand-dourado bg-brand-creme/50"
+                        : "border-brand-oliva/25 bg-white/70",
+                    degrauAberto === degrau.rotulo && "ring-2 ring-brand-musgo/30",
+                  )}
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className={cn("font-bold", apresentando ? "text-xl" : "text-base", degrau.regua ? "text-brand-musgo" : "text-brand-tinta")}>
+                      {degrau.atingido ? "✓ " : ""}
+                      {degrau.rotulo}
+                    </span>
+                    <span className={cn("font-bold tabular-nums text-brand-musgo", apresentando ? "text-2xl" : "text-lg")}>
+                      {moneyFin(degrau.valor)}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-brand-oliva/15">
+                    <div
+                      className={cn("h-full rounded-full", degrau.atingido ? "bg-emerald-500" : degrau.regua ? "bg-brand-dourado" : "bg-brand-oliva/50")}
+                      style={{ width: `${Math.max(2, feito * 100)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {degrau.atingido
+                      ? "Atingido."
+                      : `Faltam ${moneyFin(falta)}${momento.diasUteisRestantes > 0 ? ` · ${moneyFin(falta / momento.diasUteisRestantes)} por dia útil` : ""}`}
+                  </p>
+                  {degrauAberto === degrau.rotulo ? (
+                    <p className="mt-2 rounded-md bg-white/80 p-2 text-xs leading-snug text-brand-tinta">
+                      {degrau.regua
+                        ? "É a régua da reunião. Acima dela a equipe ganha porcentagem maior — foi a decisão da CEO em 14/08."
+                        : degrau.rotulo === "Meta"
+                          ? "O mínimo. Nas palavras da CEO: 'o resto é medíocre, se a gente fizer, amém' — não é o que buscamos."
+                          : "O degrau do meio. Bom, mas não é onde a equipe ganha mais."}
+                    </p>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {[
+              { rotulo: "Ritmo atual", valor: moneyFin(projecao.ritmoAtual), dica: "por dia útil trabalhado" },
+              {
+                rotulo: "Ritmo necessário",
+                valor: momento.diasUteisRestantes > 0 ? moneyFin(projecao.precisaPorDia) : "—",
+                dica: `para a régua em ${momento.diasUteisRestantes} dia(s)`,
+              },
+              {
+                rotulo: "Aumento necessário",
+                valor: projecao.aumentoNecessario === null ? "no caminho ✓" : `+${projecao.aumentoNecessario.toFixed(0)}%`,
+                dica: "sobre o ritmo de hoje",
+              },
+            ].map((item) => (
+              <div key={item.rotulo} className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{item.rotulo}</p>
+                <p className={cn("font-bold tabular-nums text-brand-musgo", apresentando ? "text-2xl" : "text-xl")}>{item.valor}</p>
+                <p className="text-[11px] text-muted-foreground">{item.dica}</p>
+              </div>
+            ))}
+          </div>
         </div>
       ),
     },
     {
       chave: "pontos",
-      titulo: "2. Pontos para a reunião",
+      titulo: "3. Pontos para a reunião",
       corpo: (
         <div className="grid gap-2.5">
           {!pontos.length ? (
@@ -340,7 +498,7 @@ export function FinanceiroPainelPage() {
     },
     {
       chave: "lucros",
-      titulo: "3. Os três lucros",
+      titulo: "4. Os três lucros",
       corpo: (
         <div className="grid gap-2">
           <p className="text-sm text-muted-foreground">
@@ -375,7 +533,7 @@ export function FinanceiroPainelPage() {
     },
     {
       chave: "evolucao",
-      titulo: "4. Evolução dos últimos 6 meses",
+      titulo: "5. Evolução dos últimos 6 meses",
       corpo: (
         <div className="grid gap-3">
           <BarsWithLine
@@ -417,7 +575,7 @@ export function FinanceiroPainelPage() {
     },
     {
       chave: "fluxo",
-      titulo: "5. De onde vem e para onde vai",
+      titulo: "6. De onde vem e para onde vai",
       corpo: (
         <div className="grid gap-4 lg:grid-cols-2">
           <div>
@@ -441,7 +599,7 @@ export function FinanceiroPainelPage() {
     },
     {
       chave: "ritmo",
-      titulo: "6. Ritmo do mês",
+      titulo: "7. Ritmo do mês",
       corpo: (
         <div className="grid gap-4">
           <div>
@@ -471,16 +629,26 @@ export function FinanceiroPainelPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="gold">Reunião de Líderes</Badge>
             <Badge variant="muted">{financeiro.syncMode}</Badge>
-            {emAndamento ? <Badge variant="outline">mês em andamento</Badge> : null}
+            {momento.emAndamento ? (
+              <Badge variant="outline">
+                dia {momento.dia} · {Math.round(momento.percorrido * 100)}% do mês
+              </Badge>
+            ) : null}
             {registroSalvo?.apresentadoEm ? <Badge variant="muted">apresentado</Badge> : null}
           </div>
           <h1 className={cn("mt-3 flex flex-wrap items-center gap-2 leading-tight text-brand-musgo", apresentando ? "text-5xl" : "text-3xl sm:text-4xl")}>
             <BarChart3 className={apresentando ? "h-10 w-10" : "h-7 w-7"} aria-hidden="true" />
             Painel de {monthKeyLabel(monthKey)}
-            <InfoTip title="Uma tela só">
-              Relatórios e Gestão Mensal viraram este painel. Os seis blocos seguem a ordem de uma reunião: o mês em um
-              olhar, os pontos para falar, os três lucros, a evolução, de onde vem o dinheiro e o ritmo do mês. O botão
-              "Apresentar" esconde a navegação e aumenta a letra para você apresentar direto daqui.
+            {momento.emAndamento ? (
+              <span className={cn("font-normal text-brand-oliva", apresentando ? "text-2xl" : "text-base")}>
+                · {momento.faseLabel}
+              </span>
+            ) : null}
+            <InfoTip title="A apresentação se ajusta ao dia">
+              Relatórios e Gestão Mensal viraram este painel. Quando você clica em "Apresentar", ele calcula em que
+              momento do mês estamos (começo, meio, reta final ou fechado) e muda o que enfatiza: no começo, o ritmo
+              necessário; no meio, a PROJEÇÃO de fechamento; na reta final, quanto falta por dia; com o mês fechado, o
+              resultado e a análise. A régua é a SUPER-SUPERMETA.
             </InfoTip>
           </h1>
 
@@ -522,10 +690,11 @@ export function FinanceiroPainelPage() {
             ) : null}
           </div>
           {feedback ? <p className="mt-3 text-sm font-semibold text-brand-musgo">{feedback}</p> : null}
-          {emAndamento ? (
+          {momento.emAndamento ? (
             <p className="mt-3 rounded-md border border-brand-dourado/40 bg-brand-creme/40 px-3 py-2 text-xs leading-snug text-brand-tinta">
-              Mês em andamento: as contas do mês inteiro já estão lançadas, mas o faturamento ainda está entrando. Por isso
-              margem e ponto de equilíbrio só aparecem com o mês fechado, e as comparações são feitas no{" "}
+              Estamos no <strong>{momento.faseLabel}</strong> ({momento.diasUteisPassados} de {momento.diasUteisTotais} dias
+              úteis). As contas do mês inteiro já estão lançadas e o faturamento ainda entra — por isso margem e ponto de
+              equilíbrio só aparecem com o mês fechado, e as comparações são feitas no{" "}
               <strong>mesmo ponto do mês</strong> (dia 1 até hoje, nos dois meses).
             </p>
           ) : null}
