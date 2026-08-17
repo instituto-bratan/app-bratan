@@ -104,10 +104,38 @@ export function RecebimentoNoKanban({
         </span>
       </div>
 
-      {/* PASSO 1 — quanto entrou */}
+      {/* O COMPROVANTE VEM PRIMEIRO E SEMPRE VISÍVEL (corrigido em 17/08/2026).
+      Estava escondido atrás de "valor > 0": quem abria a tela não via o botão
+      de anexar e concluía que nada havia mudado. É o que o Lucas mais pediu —
+      então é a primeira coisa da tela, sempre. */}
       <div className="grid gap-2">
         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
           <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">1</span>
+          Comprovante de pagamento
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={inputArquivo}
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={(event) => onArquivoChange(event.target.files?.[0] ?? null)}
+          />
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => inputArquivo.current?.click()}>
+            <Paperclip className="h-4 w-4" aria-hidden="true" /> {arquivo ? "Trocar arquivo" : "Anexar comprovante"}
+          </Button>
+          {arquivo ? (
+            <span className="max-w-[16rem] truncate text-sm font-semibold text-brand-musgo">{arquivo.name}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">Sem arquivo fica como aguardando — e aparece nos avisos.</span>
+          )}
+        </div>
+      </div>
+
+      {/* PASSO 1 — quanto entrou */}
+      <div className="grid gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
+          <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">2</span>
           Quanto entrou
         </p>
         <div>
@@ -211,7 +239,7 @@ export function RecebimentoNoKanban({
           {/* PASSO 2 — do que se trata e a nota */}
           <div className="grid gap-2">
             <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-              <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">2</span>
+              <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">3</span>
               Do que se trata
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -274,31 +302,6 @@ export function RecebimentoNoKanban({
                   ))}
                 </select>
               </div>
-            </div>
-          </div>
-
-          {/* PASSO 3 — comprovante */}
-          <div className="grid gap-2">
-            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-              <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">3</span>
-              Comprovante
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={inputArquivo}
-                type="file"
-                accept="image/*,.pdf"
-                className="hidden"
-                onChange={(event) => onArquivoChange(event.target.files?.[0] ?? null)}
-              />
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => inputArquivo.current?.click()}>
-                <Paperclip className="h-4 w-4" aria-hidden="true" /> {arquivo ? "Trocar arquivo" : "Anexar comprovante"}
-              </Button>
-              {arquivo ? (
-                <span className="max-w-[16rem] truncate text-sm font-semibold text-brand-musgo">{arquivo.name}</span>
-              ) : (
-                <span className="text-xs text-muted-foreground">Sem arquivo fica como aguardando — e aparece nos avisos.</span>
-              )}
             </div>
           </div>
 

@@ -448,3 +448,28 @@ test("o fechamento cria UM pagamento por forma, e o item com o tipo escolhido", 
   // Com uma forma só, ela leva o valor inteiro; com várias, cada uma o seu.
   assert.ok(/lista\.length === 1 \? values\.valorRecebido : parseFinAmount\(parcela\.valorTexto\)/.test(fonte));
 });
+
+test("o botão de anexar comprovante NÃO pode ficar escondido atrás de condição", () => {
+  // BUG REAL (17/08/2026): o "Anexar comprovante" estava dentro do bloco
+  // {valor > 0 ? ...}, então quem abria o Registrar fechamento não via o botão e
+  // concluía, com razão, que nada havia mudado. É o que o Lucas mais pediu —
+  // tem de ser a PRIMEIRA coisa da tela e estar sempre visível.
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/RecebimentoNoKanban.tsx"), "utf8");
+  const posComprovante = fonte.indexOf("Anexar comprovante");
+  const posCondicao = fonte.indexOf("{valor > 0 ? (");
+  assert.ok(posComprovante > 0, "o botão existe");
+  assert.ok(posCondicao > 0, "a condição existe (o resto do formulário depende do valor)");
+  assert.ok(
+    posComprovante < posCondicao,
+    "o anexar comprovante vem ANTES da condição de valor — ou seja, sempre visível",
+  );
+  // E é o passo 1 da tela.
+  const passo1 = fonte.indexOf('text-white">1</span>');
+  const passo2 = fonte.indexOf('text-white">2</span>');
+  assert.ok(passo1 < posCondicao, "o passo 1 está fora da condição");
+  assert.ok(
+    fonte.slice(passo1, passo1 + 400).includes("Comprovante"),
+    "o passo 1 é o comprovante",
+  );
+  assert.ok(fonte.slice(passo2, passo2 + 300).includes("Quanto entrou"), "o passo 2 é o valor");
+});
