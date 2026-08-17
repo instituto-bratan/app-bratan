@@ -40,6 +40,11 @@ import type { PagamentoLembreteStatus } from "@/types/database";
 import {
   filterPagamentos,
   formatDate,
+  avisoDoDestino,
+  destinoGeraComanda,
+  destinoRecebimentoExplica,
+  destinoRecebimentoLabels,
+  destinoSugerido,
   isPagamentoHoje,
   isPagamentoProximo,
   isPagamentoVencido,
@@ -50,6 +55,7 @@ import {
   pagamentosSummary,
   pagamentoStatusLabels,
   sortPagamentos,
+  type DestinoRecebimento,
   type PagamentoFiltro,
   type PagamentoLembrete,
 } from "./pagamentosData";
@@ -119,7 +125,12 @@ export function PagamentosPage() {
   const [recebendo, setRecebendo] = useState<PagamentoLembrete | null>(null);
   const [recValor, setRecValor] = useState("");
   const [recForma, setRecForma] = useState<"DINHEIRO" | "PIX" | "CARTAO" | "OUTRO">("PIX");
-  const [recGerarComanda, setRecGerarComanda] = useState(true);
+  // UMA escolha só decide o caminho do dinheiro (17/08/2026). Antes havia dois
+  // controles que podiam se contradizer, e foi assim que R$ 8.000 de crediário
+  // não chegaram no caixa do Crediário.
+  const [recDestino, setRecDestino] = useState<DestinoRecebimento>("SO_BAIXA");
+  /** O app achou comanda deste paciente? Alimenta a sugestão e o aviso da tela. */
+  const [recTemComanda, setRecTemComanda] = useState(false);
   const [recErro, setRecErro] = useState("");
   const [feedbackRecebimento, setFeedbackRecebimento] = useState("");
   const [postponeTarget, setPostponeTarget] = useState<string | null>(null);
@@ -296,7 +307,10 @@ export function PagamentosPage() {
     setRecebendo(record);
     setRecValor(record.valorPendente.toFixed(2).replace(".", ","));
     setRecForma("PIX");
-    setRecGerarComanda(!temComanda);
+    // O app já sabe se existe comanda deste paciente — então sugere o destino
+    // certo em vez de deixar a escolha no ar. A sugestão fica visível na tela.
+    setRecDestino(temComanda ? "SO_BAIXA" : "FATURAMENTO");
+    setRecTemComanda(temComanda);
     setRecErro("");
   }
 
@@ -317,7 +331,7 @@ export function PagamentosPage() {
     // Dívida SEM comanda: a comanda nasce agora e o recebimento fica amarrado
     // nela (saleRef) — assim o valor entra no faturamento uma única vez.
     let saleRef: string | null = null;
-    if (recGerarComanda) {
+    if (destinoGeraComanda(recDestino)) {
       const sale = saleFromLembretePayment({
         lembreteId: record.id,
         patientName: record.pacienteNome,
@@ -376,7 +390,7 @@ export function PagamentosPage() {
     setRecebendo(null);
     setError(null);
     setFeedbackRecebimento(
-      recGerarComanda
+      destinoGeraComanda(recDestino)
         ? `${money(valor)} de ${record.pacienteNome} recebido em ${formaLabel[recForma]} — comanda lançada, então já entrou no faturamento de hoje e na P12.${quitou ? " Dívida quitada." : ` Falta ${money(novoPendente)}.`}`
         : `${money(valor)} de ${record.pacienteNome} recebido em ${formaLabel[recForma]} — baixa no recebível (o faturamento já tinha esse valor pela comanda).${quitou ? " Dívida quitada." : ` Falta ${money(novoPendente)}.`}`,
     );
@@ -687,10 +701,9 @@ export function PagamentosPage() {
                         onChange={(event) => {
                           const forma = event.target.value as typeof recForma;
                           setRecForma(forma);
-                          // Dinheiro fica no cofre do crediário (fora da P12, como
-                          // sempre). PIX/cartão precisam de comanda, senão o valor
-                          // não aparece em lugar nenhum.
-                          setRecGerarComanda(forma !== "DINHEIRO");
+                          // Trocar a forma sugere o destino coerente: dinheiro é
+                          // crediário; o resto cai em "só baixa" (o mais comum).
+                          setRecDestino(destinoSugerido(forma));
                         }}
                         className="h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
                       >
@@ -702,50 +715,65 @@ export function PagamentosPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-                    <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">
-                      Essa dívida já tem comanda lançada?
+                  {/* PARA ONDE VAI ESTE DINHEIRO — uma escolha só, com o
+                      resultado escrito. Substituiu os dois controles que se
+                      contradiziam (17/08/2026). */}
+                  <div className="grid gap-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">Para onde vai este dinheiro?</p>
+                    <p className="text-xs leading-snug text-muted-foreground">
+                      {recTemComanda
+                        ? "Achei comanda deste paciente no faturamento — por isso sugeri só dar baixa."
+                        : "Não achei comanda deste paciente — por isso sugeri lançar no faturamento. Se for parcela de crediário em dinheiro, escolha o caixa do Crediário."}
                     </p>
-                    <label className="flex items-start gap-2.5 text-sm">
-                      <input
-                        type="radio"
-                        name="rec-comanda"
-                        className="mt-1 h-4 w-4"
-                        checked={recGerarComanda}
-                        onChange={() => setRecGerarComanda(true)}
-                      />
-                      <span>
-                        <span className="font-semibold text-brand-tinta">Não tem comanda — lançar agora</span>
-                        <span className="block text-xs text-muted-foreground">
-                          O app cria a comanda deste valor e o dinheiro entra no faturamento de hoje e na P12. Use quando a
-                          dívida foi combinada direto no Lembretes, sem passar pela recepção.
-                        </span>
+                    <div className="grid gap-2">
+                      {(["CREDIARIO", "FATURAMENTO", "SO_BAIXA"] as DestinoRecebimento[]).map((destino) => {
+                        const ativo = recDestino === destino;
+                        const cor =
+                          destino === "CREDIARIO"
+                            ? "border-brand-dourado bg-brand-creme/60"
+                            : destino === "FATURAMENTO"
+                              ? "border-emerald-300 bg-emerald-50/70"
+                              : "border-brand-oliva/25 bg-white/70";
+                        return (
+                          <button
+                            key={destino}
+                            type="button"
+                            onClick={() => setRecDestino(destino)}
+                            className={`flex w-full items-start gap-2.5 rounded-lg border p-3 text-left transition ${
+                              ativo ? `${cor} ring-2 ring-brand-musgo/30` : "border-brand-oliva/20 bg-white/50 hover:border-brand-musgo/40"
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
+                                ativo ? "border-brand-musgo bg-brand-musgo" : "border-brand-oliva/40"
+                              }`}
+                            >
+                              {ativo ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                            </span>
+                            <span>
+                              <span className="block text-sm font-semibold text-brand-tinta">{destinoRecebimentoLabels[destino]}</span>
+                              <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                                {destinoRecebimentoExplica[destino]}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {avisoDoDestino(recForma, recDestino) ? (
+                      <p className="rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs font-semibold leading-snug text-amber-900">
+                        {avisoDoDestino(recForma, recDestino)}
+                      </p>
+                    ) : null}
+                    <p className="rounded-md border border-brand-musgo/25 bg-brand-papel px-3 py-2 text-sm">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">Resultado</span>
+                      <span className="mt-0.5 block font-semibold text-brand-musgo">
+                        {money(Number(recValor.replace(/\./g, "").replace(",", ".")) || 0)} em {formaLabel[recForma]} →{" "}
+                        {destinoRecebimentoLabels[recDestino]}
+                        {destinoGeraComanda(recDestino) ? " (cria comanda)" : " (sem comanda)"}
                       </span>
-                    </label>
-                    <label className="flex items-start gap-2.5 text-sm">
-                      <input
-                        type="radio"
-                        name="rec-comanda"
-                        className="mt-1 h-4 w-4"
-                        checked={!recGerarComanda}
-                        onChange={() => setRecGerarComanda(false)}
-                      />
-                      <span>
-                        <span className="font-semibold text-brand-tinta">Já tem comanda — só dar baixa</span>
-                        <span className="block text-xs text-muted-foreground">
-                          O faturamento já contou esse valor quando a comanda foi lançada. Aqui só a dívida diminui — somar
-                          de novo contaria o mesmo dinheiro duas vezes.
-                        </span>
-                      </span>
-                    </label>
+                    </p>
                   </div>
-
-                  {recForma === "DINHEIRO" && !recGerarComanda ? (
-                    <p className="text-[11px] leading-snug text-muted-foreground">
-                      Dinheiro sem comanda entra no caixa do Crediário. Para reconhecer como lucro do mês, use o botão
-                      "Somar este caixa no lucro do mês" na tela do Crediário.
-                    </p>
-                  ) : null}
 
                   {recErro ? <p className="text-sm font-semibold text-destructive">{recErro}</p> : null}
 

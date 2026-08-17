@@ -30,6 +30,8 @@ import {
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { uploadRemoteComprovante } from "@/lib/remoteData";
 import { todayISO } from "@/lib/localStore";
+import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
+import type { TipoRecebimento } from "./recebimentoKanbanData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-tour";
@@ -488,6 +490,7 @@ export function CrmKanbanPage() {
   // cadastrar o paciente ou ligar um existente, já anexa ali o comprovante e
   // dali já lança a comanda automaticamente... pra gente evitar o retrabalho."
   const [fcForma, setFcForma] = useState<FinPaymentMethod>("PIX");
+  const [fcTipo, setFcTipo] = useState<TipoRecebimento>("TRATAMENTO");
   const [fcParcelas, setFcParcelas] = useState("1");
   const [fcNotaInstrucao, setFcNotaInstrucao] = useState("");
   const [fcNotaQuando, setFcNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
@@ -925,7 +928,7 @@ export function CrmKanbanPage() {
         arquivo: fcArquivo,
         notaInstrucao: fcNotaInstrucao,
         notaQuando: fcNotaQuando,
-        tipo: fcResultado === "AVULSA" ? "PRIMEIRA_CONSULTA" : "TRATAMENTO",
+        tipo: fcTipo,
         plano: ehPlano,
         origem: `Fechamento no Kanban — ${fcResultado === "AVULSA" ? "consulta avulsa" : channelLabels[fcResultado as CrmAdhesionChannel]}`,
         observacao: fcCompleto ? "" : `parcial: ${fcPartialReason.trim()}`,
@@ -943,6 +946,7 @@ export function CrmKanbanPage() {
     setFcCompleto(true);
     setFcResultado("PROGRAMA_ACOMPANHAMENTO");
     setFcForma("PIX");
+    setFcTipo("TRATAMENTO");
     setFcParcelas("1");
     setFcNotaInstrucao("");
     setFcNotaQuando("COM_A_CONSULTA");
@@ -1845,92 +1849,34 @@ export function CrmKanbanPage() {
                         <Label>Valor vendido (R$)</Label>
                         <Input value={fcSold} onChange={(event) => setFcSold(event.target.value)} inputMode="decimal" placeholder="9000" />
                       </div>
-                      <div>
-                        <Label>Valor já recebido (R$)</Label>
-                        <Input value={fcReceived} onChange={(event) => setFcReceived(event.target.value)} inputMode="decimal" placeholder="0" />
-                        <p className="mt-1 text-[11px] text-muted-foreground">É este valor que vira a comanda do dia.</p>
-                      </div>
                     </div>
 
-                    {/* DAQUI SAI TUDO — comanda do dia + comprovante, sem digitar
-                        de novo em outra tela (pedido do Lucas, 14/08/2026). */}
-                    {parseFinAmount(fcReceived) > 0 ? (
-                      <div className="grid gap-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">
-                          Recebimento — daqui já sai a comanda do dia e o comprovante
-                        </p>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div>
-                            <Label>Forma de pagamento</Label>
-                            <select
-                              value={fcForma}
-                              onChange={(event) => setFcForma(event.target.value as FinPaymentMethod)}
-                              className="mt-1 h-10 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                            >
-                              {salePaymentMethods.map((method) => (
-                                <option key={method} value={method}>
-                                  {paymentMethodLabels[method]}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <Label>Parcelas</Label>
-                            <Input
-                              value={fcParcelas}
-                              onChange={(event) => setFcParcelas(event.target.value)}
-                              inputMode="numeric"
-                              disabled={fcForma !== "CARTAO_CREDITO"}
-                            />
-                          </div>
-                          <div>
-                            <Label>Nota fiscal</Label>
-                            <select
-                              value={fcNotaQuando}
-                              onChange={(event) => setFcNotaQuando(event.target.value as typeof fcNotaQuando)}
-                              className="mt-1 h-10 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                            >
-                              <option value="COM_A_CONSULTA">Emitir junto com a consulta</option>
-                              <option value="AGORA">Emitir agora</option>
-                              <option value="AGUARDANDO_ORIENTACAO">Aguardando orientação</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <Label>Do que se trata a nota e como emitir</Label>
-                          <Input
-                            value={fcNotaInstrucao}
-                            onChange={(event) => setFcNotaInstrucao(event.target.value)}
-                            placeholder="Ex.: sinal de consulta, paciente fidelizada — emitir junto com a consulta"
-                          />
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <input
-                            ref={fcInputArquivo}
-                            type="file"
-                            accept="image/*,.pdf"
-                            className="hidden"
-                            onChange={(event) => setFcArquivo(event.target.files?.[0] ?? null)}
-                          />
-                          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => fcInputArquivo.current?.click()}>
-                            <Upload className="h-4 w-4" aria-hidden="true" /> {fcArquivo ? "Trocar comprovante" : "Anexar comprovante"}
-                          </Button>
-                          {fcArquivo ? (
-                            <span className="text-sm font-semibold text-brand-musgo">{fcArquivo.name}</span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              Sem arquivo o pagamento fica marcado como aguardando comprovante — e aparece nos avisos.
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] leading-5 text-muted-foreground">
-                          Ao registrar, este fechamento alimenta de uma vez: o cadastro no CRM, o card do Kanban com a régua
-                          certa, a <strong>comanda do dia</strong> de {moneyFin(parseFinAmount(fcReceived))}, o{" "}
-                          <strong>fechamento diário</strong> e os <strong>comprovantes</strong>
-                          {fcArquivo ? " (com o arquivo indo para a pasta do SharePoint)" : ""}.
-                        </p>
-                      </div>
-                    ) : null}
+                    {/* Recebimento: mesmo bloco do cadastro, três passos e a
+                        lista de destinos se completando (17/08/2026). */}
+                    <RecebimentoNoKanban
+                      titulo="Recebimento — daqui saem a comanda e o comprovante"
+                      valorTexto={fcReceived}
+                      onValorChange={setFcReceived}
+                      valor={parseFinAmount(fcReceived)}
+                      forma={fcForma}
+                      onFormaChange={setFcForma}
+                      parcelas={fcParcelas}
+                      onParcelasChange={setFcParcelas}
+                      tipo={fcTipo}
+                      onTipoChange={setFcTipo}
+                      tiposDisponiveis={["TRATAMENTO", "PRIMEIRA_CONSULTA", "RETORNO"]}
+                      notaInstrucao={fcNotaInstrucao}
+                      onNotaInstrucaoChange={setFcNotaInstrucao}
+                      quandoNota={fcNotaQuando}
+                      onQuandoNotaChange={setFcNotaQuando}
+                      arquivo={fcArquivo}
+                      onArquivoChange={setFcArquivo}
+                      pacienteNovo={!fcPatient.ref}
+                      // Este bloco só aparece quando o paciente FECHOU, então
+                      // aqui fcResultado nunca é "NAO_FECHOU".
+                      regua={fcResultado === "AVULSA" ? "sem esteira — só agenda" : channelLabels[fcResultado as CrmAdhesionChannel]}
+                    />
+
                     {!fcCompleto ? (
                       <div>
                         <Label>Motivo do parcial</Label>
@@ -2040,102 +1986,30 @@ export function CrmKanbanPage() {
                   <Input value={newValue} onChange={(event) => setNewValue(event.target.value)} inputMode="decimal" />
                 </div>
 
-                {/* RECEBEU JÁ NO CADASTRO? Daqui saem a comanda do dia e o
-                    comprovante — é o caso do sinal de consulta que chega pelo
-                    celular (pedido do Lucas, 14/08/2026). */}
-                <div className="sm:col-span-2 grid gap-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">
-                    Recebeu algum valor agora? Daqui já sai a comanda do dia e o comprovante
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <Label>Valor recebido (R$)</Label>
-                      <Input
-                        value={newRecebido}
-                        onChange={(event) => setNewRecebido(event.target.value)}
-                        inputMode="decimal"
-                        placeholder="deixe vazio se não recebeu"
-                      />
-                    </div>
-                    <div>
-                      <Label>Forma</Label>
-                      <select
-                        value={newForma}
-                        onChange={(event) => setNewForma(event.target.value as FinPaymentMethod)}
-                        className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                      >
-                        {salePaymentMethods.map((method) => (
-                          <option key={method} value={method}>
-                            {paymentMethodLabels[method]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <Label>Do que se trata</Label>
-                      <select
-                        value={newTipo}
-                        onChange={(event) => setNewTipo(event.target.value as typeof newTipo)}
-                        className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                      >
-                        <option value="SINAL_CONSULTA">Sinal de consulta</option>
-                        <option value="PRIMEIRA_CONSULTA">Primeira consulta</option>
-                        <option value="RETORNO">Retorno (fidelizado)</option>
-                      </select>
-                    </div>
-                  </div>
-                  {parseFinAmount(newRecebido) > 0 ? (
-                    <>
-                      <div>
-                        <Label>Do que se trata a nota e como emitir</Label>
-                        <Input
-                          value={newNotaInstrucao}
-                          onChange={(event) => setNewNotaInstrucao(event.target.value)}
-                          placeholder="Ex.: sinal de consulta, indicação do bispo — emitir junto com a consulta"
-                        />
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <Label>Nota fiscal</Label>
-                          <select
-                            value={newNotaQuando}
-                            onChange={(event) => setNewNotaQuando(event.target.value as typeof newNotaQuando)}
-                            className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                          >
-                            <option value="COM_A_CONSULTA">Emitir junto com a consulta</option>
-                            <option value="AGORA">Emitir agora</option>
-                            <option value="AGUARDANDO_ORIENTACAO">Aguardando orientação</option>
-                          </select>
-                        </div>
-                        <div className="flex items-end">
-                          <input
-                            ref={newInputArquivo}
-                            type="file"
-                            accept="image/*,.pdf"
-                            className="hidden"
-                            onChange={(event) => setNewArquivo(event.target.files?.[0] ?? null)}
-                          />
-                          <Button type="button" variant="outline" className="w-full gap-2" onClick={() => newInputArquivo.current?.click()}>
-                            <Upload className="h-4 w-4" aria-hidden="true" /> {newArquivo ? "Trocar comprovante" : "Anexar comprovante"}
-                          </Button>
-                        </div>
-                      </div>
-                      {newArquivo ? (
-                        <p className="text-sm font-semibold text-brand-musgo">{newArquivo.name}</p>
-                      ) : (
-                        <p className="text-[11px] text-muted-foreground">
-                          Sem arquivo o pagamento fica marcado como aguardando comprovante — e aparece nos avisos.
-                        </p>
-                      )}
-                      <p className="text-[11px] leading-5 text-muted-foreground">
-                        Ao criar, este cadastro alimenta de uma vez: o paciente no CRM, o card no Kanban, a{" "}
-                        <strong>comanda do dia</strong> de {moneyFin(parseFinAmount(newRecebido))}, o{" "}
-                        <strong>fechamento diário</strong> e os <strong>comprovantes</strong>
-                        {newArquivo ? " (com o arquivo indo para a pasta do SharePoint)" : ""}.
-                      </p>
-                    </>
-                  ) : null}
+                <div className="sm:col-span-2">
+                  <RecebimentoNoKanban
+                    titulo="Recebeu algum valor agora? Daqui saem a comanda e o comprovante"
+                    valorTexto={newRecebido}
+                    onValorChange={setNewRecebido}
+                    valor={parseFinAmount(newRecebido)}
+                    forma={newForma}
+                    onFormaChange={setNewForma}
+                    parcelas="1"
+                    onParcelasChange={() => undefined}
+                    tipo={newTipo}
+                    onTipoChange={(tipo) => setNewTipo(tipo as typeof newTipo)}
+                    tiposDisponiveis={["SINAL_CONSULTA", "PRIMEIRA_CONSULTA", "RETORNO"]}
+                    notaInstrucao={newNotaInstrucao}
+                    onNotaInstrucaoChange={setNewNotaInstrucao}
+                    quandoNota={newNotaQuando}
+                    onQuandoNotaChange={setNewNotaQuando}
+                    arquivo={newArquivo}
+                    onArquivoChange={setNewArquivo}
+                    pacienteNovo
+                    regua="entra no Kanban para o agendamento seguir"
+                  />
                 </div>
+
                 <div>
                   <Label>Temperatura</Label>
                   <select value={newTemp} onChange={(event) => setNewTemp(event.target.value as CrmLeadTemperature)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">

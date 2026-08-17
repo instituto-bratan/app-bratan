@@ -458,6 +458,60 @@ export function findCofreSuspects(input: { recebimentos: CofreItem[]; manuais: C
   return suspects.sort((a, b) => b.valorEmRisco - a.valorEmRisco);
 }
 
+// ---------------------------------------------------------------------------
+// PARA ONDE VAI O RECEBIMENTO (17/08/2026)
+// ---------------------------------------------------------------------------
+// Bug do Lucas: "eu fui colocar nos lembretes que alguém pagou no crediário, e
+// não foi pro caixa do crediário". A causa era a tela: havia DOIS controles
+// independentes que podiam se contradizer — a forma dizia "Dinheiro (vai para o
+// crediário)" e, ao lado, a pergunta "essa dívida já tem comanda?" podia estar em
+// "lançar agora". Gerando comanda, o recebimento ganha saleRef e sai do caixa do
+// crediário (senão o mesmo dinheiro contaria duas vezes). Ninguém era avisado.
+//
+// Agora existe UMA escolha: o destino. A forma de pagamento continua sendo
+// registrada, mas quem decide o caminho do dinheiro é este campo.
+export type DestinoRecebimento = "CREDIARIO" | "FATURAMENTO" | "SO_BAIXA";
+
+export const destinoRecebimentoLabels: Record<DestinoRecebimento, string> = {
+  CREDIARIO: "Caixa do Crediário",
+  FATURAMENTO: "Faturamento de hoje (lança comanda)",
+  SO_BAIXA: "Só baixa na dívida",
+};
+
+export const destinoRecebimentoExplica: Record<DestinoRecebimento, string> = {
+  CREDIARIO:
+    "Parcela de crediário paga em dinheiro. O valor entra no caixa do Crediário e você reconhece no lucro quando quiser, pelo botão da tela do Crediário. NÃO cria comanda — a venda que gerou a dívida já aconteceu antes, e lançar de novo contaria a receita duas vezes.",
+  FATURAMENTO:
+    "A dívida nunca teve comanda e o dinheiro entrou agora. O app cria a comanda, e o valor aparece no faturamento de hoje, no fechamento diário e na P12.",
+  SO_BAIXA:
+    "A comanda já foi lançada quando a venda aconteceu. Aqui só a dívida diminui — somar outra vez contaria o mesmo dinheiro duas vezes.",
+};
+
+/** O destino sugerido pela forma de pagamento (dinheiro é crediário). */
+export function destinoSugerido(forma: string): DestinoRecebimento {
+  return forma === "DINHEIRO" ? "CREDIARIO" : "SO_BAIXA";
+}
+
+/** Só o destino FATURAMENTO cria comanda. */
+export function destinoGeraComanda(destino: DestinoRecebimento) {
+  return destino === "FATURAMENTO";
+}
+
+/**
+ * O aviso quando a combinação não faz sentido. Devolve "" quando está tudo bem.
+ * Era exatamente a contradição silenciosa que fez os R$ 8.000 do crediário
+ * sumirem do caixa em 17/08.
+ */
+export function avisoDoDestino(forma: string, destino: DestinoRecebimento) {
+  if (destino === "CREDIARIO" && forma !== "DINHEIRO") {
+    return "O caixa do Crediário é só para dinheiro em espécie. Nesta forma de pagamento, escolha faturamento ou só baixa.";
+  }
+  if (destino === "FATURAMENTO" && forma === "DINHEIRO") {
+    return "Atenção: em dinheiro, lançar comanda coloca o valor no faturamento de hoje e ele NÃO vai para o caixa do Crediário. Se é parcela de crediário, escolha Caixa do Crediário.";
+  }
+  return "";
+}
+
 export function crediarioCashMoves<T extends { forma: string; saleRef?: string | null }>(recebimentos: T[]): T[] {
   return recebimentos.filter((item) => item.forma === "DINHEIRO" && !item.saleRef);
 }

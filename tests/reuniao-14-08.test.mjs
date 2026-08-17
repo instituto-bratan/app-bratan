@@ -188,3 +188,84 @@ test("batida a supermeta, a leitura passa a apontar a super-supermeta", () => {
   assert.equal(painel.nivel, "SUPERMETA");
   assert.match(painel.leitura, /super-supermeta/i);
 });
+
+// ---------------------------------------------- FLUXO MAIS FÁCIL DE ENTENDER
+// Pedido do Lucas (17/08): "melhore esse fluxo e deixe mais fácil de entender, e
+// visualmente também muito mais fácil de entender."
+const receb = loadTsModule("src/features/crm/recebimentoKanbanData.ts");
+
+test("a lista de destinos marca ✓ só o que já está resolvido", () => {
+  const vazio = receb.destinosDoRecebimento({ valor: 0, temArquivo: false, temNota: false, pacienteNovo: true, regua: "x" });
+  assert.equal(vazio.length, 6, "cadastro · card · comanda · fechamento · comprovante · nota");
+  assert.equal(vazio.filter((d) => d.pronto).length, 2, "sem valor, só cadastro e card estão prontos");
+
+  const completo = receb.destinosDoRecebimento({ valor: 3500, temArquivo: true, temNota: true, pacienteNovo: false, regua: "x" });
+  assert.equal(completo.filter((d) => d.pronto).length, 6, "com tudo preenchido, os seis destinos ficam prontos");
+});
+
+test("o valor aparece no destino da comanda; sem valor, o pedido do que falta", () => {
+  const com = receb.destinosDoRecebimento({ valor: 3500, temArquivo: false, temNota: false, pacienteNovo: true, regua: "x" });
+  const comanda = com.find((d) => d.titulo === "Comanda do dia");
+  assert.match(comanda.detalhe, /3\.500,00/);
+  const sem = receb.destinosDoRecebimento({ valor: 0, temArquivo: false, temNota: false, pacienteNovo: true, regua: "x" });
+  assert.match(sem.find((d) => d.titulo === "Comanda do dia").detalhe, /informe o valor/i);
+});
+
+test("o cadastro do paciente diz se é novo ou vinculado", () => {
+  const novo = receb.destinosDoRecebimento({ valor: 1, temArquivo: false, temNota: false, pacienteNovo: true, regua: "x" });
+  assert.match(novo[0].titulo, /novo/i);
+  assert.match(novo[0].detalhe, /sem duplicar/i);
+  const ligado = receb.destinosDoRecebimento({ valor: 1, temArquivo: false, temNota: false, pacienteNovo: false, regua: "x" });
+  assert.match(ligado[0].detalhe, /já existe/i);
+});
+
+test("os DOIS momentos do Kanban usam o MESMO componente", () => {
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  const usos = fonte.match(/<RecebimentoNoKanban/g) ?? [];
+  assert.equal(usos.length, 2, `cadastro e fechamento (achei ${usos.length})`);
+  // E o bloco denso antigo não voltou.
+  assert.ok(!fonte.includes("Ao registrar, este fechamento alimenta de uma vez"), "o parágrafo comprido saiu");
+  assert.ok(!fonte.includes("Ao criar, este cadastro alimenta de uma vez"), "o parágrafo comprido saiu do cadastro");
+});
+
+// -------------------------------------------------- CREDIÁRIO NOS LEMBRETES
+// Bug do Lucas (17/08): "fui colocar nos lembretes que alguém pagou no crediário
+// e não foi pro caixa do crediário". Dois controles independentes se
+// contradiziam; agora existe UMA escolha de destino.
+const pag = loadTsModule("src/features/pagamentos/pagamentosData.ts");
+
+test("dinheiro sugere o caixa do crediário; o resto sugere só baixa", () => {
+  assert.equal(pag.destinoSugerido("DINHEIRO"), "CREDIARIO");
+  assert.equal(pag.destinoSugerido("PIX"), "SO_BAIXA");
+  assert.equal(pag.destinoSugerido("CARTAO"), "SO_BAIXA");
+});
+
+test("só o destino FATURAMENTO cria comanda", () => {
+  assert.equal(pag.destinoGeraComanda("FATURAMENTO"), true);
+  assert.equal(pag.destinoGeraComanda("CREDIARIO"), false, "crediário NÃO gera comanda — a venda original é anterior");
+  assert.equal(pag.destinoGeraComanda("SO_BAIXA"), false);
+});
+
+test("a combinação que causou o bug agora avisa", () => {
+  // Era exatamente isto: forma DINHEIRO com comanda sendo gerada.
+  const aviso = pag.avisoDoDestino("DINHEIRO", "FATURAMENTO");
+  assert.match(aviso, /NÃO vai para o caixa do Crediário/);
+  assert.match(aviso, /parcela de crediário/i);
+  // Crediário com forma que não é dinheiro também é incoerente.
+  assert.match(pag.avisoDoDestino("PIX", "CREDIARIO"), /só para dinheiro/i);
+  // As combinações coerentes ficam em silêncio.
+  assert.equal(pag.avisoDoDestino("DINHEIRO", "CREDIARIO"), "");
+  assert.equal(pag.avisoDoDestino("PIX", "FATURAMENTO"), "");
+  assert.equal(pag.avisoDoDestino("PIX", "SO_BAIXA"), "");
+});
+
+test("o caixa do crediário conta dinheiro SEM comanda (a regra que gerou o bug)", () => {
+  const entradas = [
+    { forma: "DINHEIRO", saleRef: null },
+    { forma: "DINHEIRO", saleRef: "fsale-x" },
+    { forma: "PIX", saleRef: null },
+  ];
+  const noCaixa = pag.crediarioCashMoves(entradas);
+  assert.equal(noCaixa.length, 1, "só dinheiro sem comanda");
+  assert.equal(noCaixa[0].saleRef, null);
+});
