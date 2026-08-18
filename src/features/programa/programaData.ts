@@ -17,6 +17,7 @@ import {
   type CrmProgramPhase,
   type CrmState,
 } from "@/features/crm/crmData";
+import { personNameTokens, personNamesMatch } from "@/features/crm/nameMatch";
 
 export type ProgramMilestoneType = "CHECK" | "BIO" | "MEDICO";
 
@@ -319,3 +320,184 @@ export function programSummaryLines(cards: ProgramPatientCard[]): string[] {
   ];
 }
 
+
+// ---------------------------------------------------------------------------
+// FILTRO POR CANAL E CONFERÊNCIA DO ACOMPANHAMENTO (17/08/2026)
+// ---------------------------------------------------------------------------
+// Pedido do Lucas: "adicionasse um filtro pra gente filtrar quem está em
+// acompanhamento de tratamento, de só programa... e conferisse se está todo
+// conectado, se está tudo linkado, e se está faltando alguma pessoa que deixou
+// passar."
+//
+// O filtro é a parte fácil. A conferência é a que importa: ela responde, com
+// nome e sobrenome, quem deveria estar no acompanhamento e não está — e por quê.
+// Sem isso, "faltou alguém?" é uma pergunta que ninguém consegue responder.
+
+export type CanalFiltro = "TODOS" | CrmAdhesionChannel | "SEM_CANAL";
+
+export const canalFiltroLabels: Record<CanalFiltro, string> = {
+  TODOS: "Todos os canais",
+  PROGRAMA_ACOMPANHAMENTO: "Programa de Acompanhamento",
+  CLUBE_BRATAN: "Clube Bratan",
+  SOMENTE_TRATAMENTO: "Somente Tratamento",
+  SEM_CANAL: "Sem canal definido",
+};
+
+/** Quantos pacientes há em cada canal (para o filtro mostrar o número). */
+export function contagemPorCanal(board: ProgramPatientCard[]): Record<CanalFiltro, number> {
+  const contagem: Record<CanalFiltro, number> = {
+    TODOS: board.length,
+    PROGRAMA_ACOMPANHAMENTO: 0,
+    CLUBE_BRATAN: 0,
+    SOMENTE_TRATAMENTO: 0,
+    SEM_CANAL: 0,
+  };
+  for (const card of board) {
+    if (card.channel) contagem[card.channel] += 1;
+    else contagem.SEM_CANAL += 1;
+  }
+  return contagem;
+}
+
+export function cardNoCanal(card: ProgramPatientCard, filtro: CanalFiltro) {
+  if (filtro === "TODOS") return true;
+  if (filtro === "SEM_CANAL") return !card.channel;
+  return card.channel === filtro;
+}
+
+// ---- conferência ----------------------------------------------------------
+export type PendenciaAcompanhamento = {
+  chave: "SEM_CANAL" | "GANHOU_FORA" | "PACIENTE_SEM_NEGOCIACAO" | "NOME_DUPLICADO";
+  titulo: string;
+  porque: string;
+  oQueFazer: string;
+  gravidade: "ALTA" | "MEDIA" | "BAIXA";
+  pessoas: { contactId: string; nome: string; detalhe: string }[];
+};
+
+/**
+ * Tudo que está desconectado no acompanhamento, em quatro perguntas:
+ *  1. Quem está no quadro mas sem canal? (escapa de qualquer filtro)
+ *  2. Quem ganhou venda e ficou fora do quadro? (falha de verdade)
+ *  3. Quem é marcado como paciente e não tem negociação nenhuma? (comanda
+ *     lançada sem passar pelo Kanban — o paciente existe, mas sem jornada)
+ *  4. Que nomes parecem a mesma pessoa cadastrada duas vezes?
+ */
+export function conferenciaAcompanhamento(state: CrmState, todayISO: string): PendenciaAcompanhamento[] {
+  const board = buildProgramaBoard(state, todayISO);
+  const noBoard = new Set(board.map((card) => card.contactId));
+  const nomeDe = (contactId: string) => {
+    const contact = state.contacts.find((item) => item.id === contactId);
+    return contact ? contactDisplayName(contact) : "Contato";
+  };
+  const pendencias: PendenciaAcompanhamento[] = [];
+
+  // 1. No quadro, sem canal.
+  const semCanal = board.filter((card) => !card.channel);
+  if (semCanal.length) {
+    pendencias.push({
+      chave: "SEM_CANAL",
+      titulo: `${semCanal.length} paciente(s) no acompanhamento sem canal definido`,
+      porque: "Sem canal, o paciente não aparece em nenhum filtro (Programa, Clube ou Só tratamento) e fica invisível nas contagens.",
+      oQueFazer: "Abra a ficha e registre o que ele fechou. Em geral são cadastros feitos direto no programa, sem passar pelo fechamento.",
+      gravidade: "ALTA",
+      pessoas: semCanal.map((card) => ({
+        contactId: card.contactId,
+        nome: card.patientName,
+        detalhe: `${card.phaseLabel} · desde ${card.startedAt.slice(0, 10).split("-").reverse().join("/")}`,
+      })),
+    });
+  }
+
+  // 2. Ganhou a venda e está fora do quadro.
+  const ganhouFora = state.deals.filter(
+    (deal) =>
+      (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL") &&
+      !deal.programPhase &&
+      !noBoard.has(deal.contactId) &&
+      // Consulta avulsa fecha sem canal e SEM jornada, de propósito — não é falha.
+      deal.adhesionChannel !== null &&
+      deal.adhesionChannel !== undefined,
+  );
+  if (ganhouFora.length) {
+    pendencias.push({
+      chave: "GANHOU_FORA",
+      titulo: `${ganhouFora.length} venda(s) fechada(s) que não entraram no acompanhamento`,
+      porque: "O paciente aderiu a um plano mas a jornada nunca começou — então concierge, enfermeira e Dr. Daniel não receberam as tarefas dele.",
+      oQueFazer: "Cadastre no programa por “Adicionar paciente ao programa”, informando o canal e a data da adesão.",
+      gravidade: "ALTA",
+      pessoas: ganhouFora.map((deal) => ({
+        contactId: deal.contactId,
+        nome: nomeDe(deal.contactId),
+        detalhe: `fechou ${deal.adhesionChannel ?? ""} · ${(deal.closedAt || deal.updatedAt || "").slice(0, 10).split("-").reverse().join("/")}`,
+      })),
+    });
+  }
+
+  // 3. Paciente sem negociação nenhuma (típico de comanda lançada direto).
+  const semNegociacao = state.contacts.filter(
+    (contact) =>
+      !contact.archivedAt &&
+      ["CLOSED_PATIENT", "ACTIVE_PATIENT"].includes(contact.lifecycleStage) &&
+      !noBoard.has(contact.id) &&
+      !state.deals.some((deal) => deal.contactId === contact.id),
+  );
+  if (semNegociacao.length) {
+    pendencias.push({
+      chave: "PACIENTE_SEM_NEGOCIACAO",
+      titulo: `${semNegociacao.length} paciente(s) sem nenhuma negociação no Kanban`,
+      porque:
+        "São cadastros criados por uma comanda ou importação: o paciente existe e pagou, mas nunca passou pelo fechamento — então não tem jornada nem régua.",
+      oQueFazer:
+        "Quem aderiu a um plano deve ser cadastrado no programa. Quem foi consulta avulsa pode ficar fora — mas vale conferir um por um.",
+      gravidade: "MEDIA",
+      pessoas: semNegociacao
+        .map((contact) => ({
+          contactId: contact.id,
+          nome: contactDisplayName(contact),
+          detalhe: contact.sourceChannel || contact.lifecycleStage,
+        }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+    });
+  }
+
+  // 4. Nomes que parecem a mesma pessoa duas vezes.
+  //    Usa personNamesMatch (o mesmo comparador do CRM), que trata subconjunto:
+  //    "Alessandra Sales" ⊆ "Alessandra Sales Oliveira" casa; "Maria Silva" ×
+  //    "Maria Souza" não. Comparação exata de tokens deixava passar justamente
+  //    os casos reais de cadastro repetido.
+  const ativos = state.contacts.filter((contact) => !contact.archivedAt);
+  const grupos: { contactId: string; nome: string }[][] = [];
+  const jaAgrupado = new Set<string>();
+  for (const contact of ativos) {
+    if (jaAgrupado.has(contact.id)) continue;
+    const nome = contactDisplayName(contact);
+    if (!personNameTokens(nome).length) continue;
+    const grupo = [{ contactId: contact.id, nome }];
+    jaAgrupado.add(contact.id);
+    for (const outro of ativos) {
+      if (jaAgrupado.has(outro.id)) continue;
+      const nomeOutro = contactDisplayName(outro);
+      if (personNamesMatch(nome, nomeOutro)) {
+        grupo.push({ contactId: outro.id, nome: nomeOutro });
+        jaAgrupado.add(outro.id);
+      }
+    }
+    if (grupo.length > 1) grupos.push(grupo);
+  }
+  const duplicados = grupos;
+  if (duplicados.length) {
+    pendencias.push({
+      chave: "NOME_DUPLICADO",
+      titulo: `${duplicados.length} nome(s) cadastrado(s) mais de uma vez`,
+      porque: "O histórico do paciente fica partido em dois cadastros — comandas em um, tarefas em outro.",
+      oQueFazer: "Junte os cadastros pela ficha do paciente, mantendo o que tem mais histórico.",
+      gravidade: "BAIXA",
+      pessoas: duplicados.flatMap((lista) =>
+        lista.map((item) => ({ contactId: item.contactId, nome: item.nome, detalhe: `${lista.length} cadastros com este nome` })),
+      ),
+    });
+  }
+
+  return pendencias;
+}

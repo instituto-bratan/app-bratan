@@ -29,7 +29,12 @@ import {
   enrollPatientInProgram,
   milestoneResponsible,
   milestoneTypeLabels,
+  canalFiltroLabels,
+  cardNoCanal,
+  conferenciaAcompanhamento,
+  contagemPorCanal,
   patientsNotInProgram,
+  type CanalFiltro,
   programSummaryLines,
   toggleProgramMilestone,
   type ProgramMilestone,
@@ -91,6 +96,10 @@ export function ProgramaAcompanhamentoPage() {
   const hoje = todayISO();
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState<CrmProgramPhase | "TODAS">("TODAS");
+  // FILTRO POR CANAL (17/08/2026, pedido do Lucas): separar quem está em
+  // acompanhamento de tratamento de quem está no programa.
+  const [canalFiltro, setCanalFiltro] = useState<CanalFiltro>("TODOS");
+  const [conferenciaAberta, setConferenciaAberta] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [days, setDays] = useState(7);
   const [enrollOpen, setEnrollOpen] = useState(false);
@@ -102,10 +111,15 @@ export function ProgramaAcompanhamentoPage() {
     const term = search.trim().toLowerCase();
     return board.filter((card) => {
       if (phaseFilter !== "TODAS" && card.phase !== phaseFilter) return false;
+      if (!cardNoCanal(card, canalFiltro)) return false;
       if (term && !card.patientName.toLowerCase().includes(term)) return false;
       return true;
     });
-  }, [board, search, phaseFilter]);
+  }, [board, search, phaseFilter, canalFiltro]);
+
+  const porCanal = useMemo(() => contagemPorCanal(board), [board]);
+  const pendencias = useMemo(() => conferenciaAcompanhamento(state, hoje), [state, hoje]);
+  const pendenciasAltas = pendencias.filter((item) => item.gravidade === "ALTA").length;
 
   const totals = useMemo(
     () => ({
@@ -210,8 +224,104 @@ export function ProgramaAcompanhamentoPage() {
           </div>
         ) : null}
 
+        {/* CONFERÊNCIA — "está tudo linkado? faltou alguém?" (17/08/2026).
+            Sem este bloco, essa pergunta não tinha resposta: dava para olhar o
+            quadro e não saber quem deveria estar nele e não está. */}
+        {pendencias.length ? (
+          <section
+            className={cn(
+              "rounded-lg border-2 p-3 backdrop-blur-xl",
+              pendenciasAltas ? "border-red-300 bg-red-50/60" : "border-brand-dourado/50 bg-brand-creme/40",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => setConferenciaAberta((atual) => !atual)}
+              className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+            >
+              <span className="flex flex-wrap items-center gap-2">
+                <ClipboardCheck className={cn("h-4 w-4", pendenciasAltas ? "text-red-700" : "text-brand-musgo")} aria-hidden="true" />
+                <strong className={cn("text-sm", pendenciasAltas ? "text-red-900" : "text-brand-musgo")}>
+                  Conferência: {pendencias.length} ponto(s) para olhar
+                </strong>
+                {pendencias.map((item) => (
+                  <Badge key={item.chave} variant={item.gravidade === "ALTA" ? "outline" : "muted"} className={item.gravidade === "ALTA" ? "border-red-300 text-red-800" : undefined}>
+                    {item.pessoas.length} {item.chave === "SEM_CANAL" ? "sem canal" : item.chave === "GANHOU_FORA" ? "fechou e ficou fora" : item.chave === "PACIENTE_SEM_NEGOCIACAO" ? "sem negociação" : "nome repetido"}
+                  </Badge>
+                ))}
+              </span>
+              <span className="text-xs font-semibold text-brand-oliva">{conferenciaAberta ? "esconder" : "ver detalhes"}</span>
+            </button>
+
+            {conferenciaAberta ? (
+              <div className="mt-3 grid gap-2.5">
+                {pendencias.map((item) => (
+                  <div key={item.chave} className="rounded-lg border border-brand-oliva/20 bg-white/80 p-3">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-brand-tinta">
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white",
+                          item.gravidade === "ALTA" ? "bg-red-600" : item.gravidade === "MEDIA" ? "bg-amber-500" : "bg-brand-oliva",
+                        )}
+                      >
+                        {item.gravidade}
+                      </span>
+                      {item.titulo}
+                    </p>
+                    <p className="mt-1 text-xs leading-snug text-muted-foreground">
+                      <strong className="text-brand-tinta">Por que importa:</strong> {item.porque}
+                    </p>
+                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                      <strong className="text-brand-tinta">O que fazer:</strong> {item.oQueFazer}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {item.pessoas.map((pessoa) => (
+                        <Link
+                          key={`${item.chave}-${pessoa.contactId}`}
+                          to={crmModuleRoutes.contact(pessoa.contactId)}
+                          title={pessoa.detalhe}
+                          className="rounded-md border border-brand-oliva/25 bg-white px-2 py-1 text-[11px] font-semibold text-brand-tinta transition hover:border-brand-musgo hover:bg-brand-creme/50"
+                        >
+                          {pessoa.nome}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/15 bg-white/50 p-2.5 backdrop-blur-xl">
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar paciente" className="h-10 w-full sm:w-56" aria-label="Buscar paciente" />
+
+          {/* CANAL: o que o paciente fechou. É o filtro que separa quem está em
+              acompanhamento de tratamento de quem está no programa. */}
+          {(["TODOS", "PROGRAMA_ACOMPANHAMENTO", "CLUBE_BRATAN", "SOMENTE_TRATAMENTO", "SEM_CANAL"] as CanalFiltro[])
+            .filter((opcao) => opcao === "TODOS" || porCanal[opcao] > 0)
+            .map((opcao) => (
+              <button
+                key={opcao}
+                type="button"
+                onClick={() => setCanalFiltro(opcao)}
+                className={cn(
+                  "ios-pressable rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                  canalFiltro === opcao
+                    ? opcao === "SEM_CANAL"
+                      ? "border-red-400 bg-red-600 text-white"
+                      : "border-brand-dourado bg-brand-dourado text-brand-tinta"
+                    : opcao === "SEM_CANAL"
+                      ? "border-red-300 bg-red-50 text-red-800 hover:bg-red-100"
+                      : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-white",
+                )}
+              >
+                {opcao === "TODOS" ? "Todos" : opcao === "SEM_CANAL" ? "Sem canal" : channelShort[opcao as CrmAdhesionChannel]}
+                <span className="ml-1.5 opacity-70">{porCanal[opcao]}</span>
+              </button>
+            ))}
+          <span className="mx-1 hidden h-5 w-px bg-brand-oliva/20 sm:block" />
+
           <button
             type="button"
             onClick={() => setPhaseFilter("TODAS")}
