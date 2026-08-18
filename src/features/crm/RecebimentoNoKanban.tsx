@@ -15,7 +15,7 @@
 // Um componente só, usado pelo cadastro do paciente E pelo fechamento: assim os
 // dois caminhos têm a mesma cara e a mesma explicação.
 import { useRef } from "react";
-import { Check, Paperclip } from "lucide-react";
+import { AlertTriangle, Check, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,8 +57,10 @@ export function RecebimentoNoKanban({
   onNotaInstrucaoChange,
   quandoNota,
   onQuandoNotaChange,
-  arquivo,
-  onArquivoChange,
+  arquivos,
+  onArquivosChange,
+  mandaDepois,
+  onMandaDepoisChange,
   pacienteNovo,
   regua,
   titulo,
@@ -79,16 +81,33 @@ export function RecebimentoNoKanban({
   onNotaInstrucaoChange: (texto: string) => void;
   quandoNota: QuandoNota;
   onQuandoNotaChange: (quando: QuandoNota) => void;
-  arquivo: File | null;
-  onArquivoChange: (arquivo: File | null) => void;
+  /**
+   * COMPROVANTES (plural, 18/08/2026 — pedido do Lucas). Um recebimento pode ter
+   * mais de um: metade no PIX e metade no cartão são dois comprovantes, e a
+   * família que paga junto manda o print de cada um.
+   */
+  arquivos: File[];
+  onArquivosChange: (arquivos: File[]) => void;
+  /** Marcou "vou mandar depois" — é o que libera salvar sem anexar. */
+  mandaDepois: boolean;
+  onMandaDepoisChange: (valor: boolean) => void;
   pacienteNovo: boolean;
   regua: string;
   titulo: string;
 }) {
   const inputArquivo = useRef<HTMLInputElement>(null);
+  // Só dinheiro não gera comprovante; qualquer outra forma gera.
+  const soDinheiro = divisao.length > 0 && divisao.every((parcela) => parcela.forma === "DINHEIRO");
+  /**
+   * FALTA COMPROVANTE (18/08/2026). O caso real: um fechamento de R$ 2.548 foi
+   * salvo com o comprovante marcado como "aguardando" e ninguém percebeu — o
+   * financeiro descobriu depois, na conferência. Agora a tela avisa aqui, e o
+   * botão de salvar não passa sem uma decisão: anexar ou dizer que vem depois.
+   */
+  const faltaComprovante = valor > 0 && !soDinheiro && arquivos.length === 0 && !mandaDepois;
   const destinos = destinosDoRecebimento({
     valor,
-    temArquivo: Boolean(arquivo),
+    temArquivo: arquivos.length > 0,
     temNota: notaInstrucao.trim().length > 0,
     pacienteNovo,
     regua,
@@ -118,18 +137,73 @@ export function RecebimentoNoKanban({
             ref={inputArquivo}
             type="file"
             accept="image/*,.pdf"
+            multiple
             className="hidden"
-            onChange={(event) => onArquivoChange(event.target.files?.[0] ?? null)}
+            onChange={(event) => {
+              // ACUMULA em vez de substituir: quem anexa um por vez (o PIX e
+              // depois o cartão) não perde o primeiro. Repetido não entra duas
+              // vezes — a chave é nome + tamanho.
+              const novos = [...(event.target.files ?? [])];
+              if (!novos.length) return;
+              const chave = (arquivo: File) => `${arquivo.name}|${arquivo.size}`;
+              const jaTem = new Set(arquivos.map(chave));
+              onArquivosChange([...arquivos, ...novos.filter((arquivo) => !jaTem.has(chave(arquivo)))]);
+              if (novos.length) onMandaDepoisChange(false);
+              // Zera o input para o mesmo arquivo poder ser escolhido de novo
+              // depois de removido (o onChange não dispara com o mesmo value).
+              event.target.value = "";
+            }}
           />
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => inputArquivo.current?.click()}>
-            <Paperclip className="h-4 w-4" aria-hidden="true" /> {arquivo ? "Trocar arquivo" : "Anexar comprovante"}
+            <Paperclip className="h-4 w-4" aria-hidden="true" />
+            {arquivos.length ? "Anexar outro comprovante" : "Anexar comprovante"}
           </Button>
-          {arquivo ? (
-            <span className="max-w-[16rem] truncate text-sm font-semibold text-brand-musgo">{arquivo.name}</span>
+          {arquivos.length ? (
+            <span className="text-xs font-semibold text-brand-musgo">
+              {arquivos.length} arquivo{arquivos.length > 1 ? "s" : ""} — todos vão para a mesma comanda
+            </span>
           ) : (
-            <span className="text-xs text-muted-foreground">Sem arquivo fica como aguardando — e aparece nos avisos.</span>
+            <span className="text-xs text-muted-foreground">Pode anexar mais de um (PIX + cartão, ou quem pagou junto).</span>
           )}
         </div>
+        {arquivos.length ? (
+          <ul className="grid gap-1">
+            {arquivos.map((arquivo, indice) => (
+              <li
+                key={`${arquivo.name}-${arquivo.size}-${indice}`}
+                className="flex items-center justify-between gap-2 rounded-md border border-brand-oliva/20 bg-white/70 px-2.5 py-1.5"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-brand-musgo">{arquivo.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onArquivosChange(arquivos.filter((_, i) => i !== indice))}
+                  className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-brand-creme hover:text-brand-tinta"
+                  aria-label={`Remover ${arquivo.name}`}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {faltaComprovante ? (
+          <div className="flex flex-wrap items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <div className="flex-1">
+              <strong>Entrou dinheiro e não tem comprovante anexado.</strong> Anexe agora — ou marque abaixo que vem depois,
+              para o financeiro saber que está pendente de propósito.
+              <label className="mt-1.5 flex cursor-pointer items-center gap-2 font-semibold">
+                <input type="checkbox" checked={mandaDepois} onChange={(event) => onMandaDepoisChange(event.target.checked)} />
+                Vou mandar o comprovante depois
+              </label>
+            </div>
+          </div>
+        ) : null}
+        {mandaDepois && arquivos.length === 0 ? (
+          <p className="text-xs font-semibold text-brand-oliva">
+            Fica registrado como AGUARDANDO comprovante — aparece nos avisos até alguém anexar.
+          </p>
+        ) : null}
       </div>
 
       {/* PASSO 1 — quanto entrou */}

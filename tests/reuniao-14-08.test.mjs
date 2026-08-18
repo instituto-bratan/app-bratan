@@ -94,8 +94,10 @@ test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
   assert.equal(chamadas.length, 2, `os dois caminhos chamam a função única (achei ${chamadas.length})`);
   assert.ok(fonte.includes("financeiro.addSale(comanda)"), "ela cria a comanda do dia");
   assert.ok(fonte.includes("saleRef: saleId"), "o comprovante nasce amarrado à comanda");
-  assert.ok(/comprovanteStatus: values\.arquivo \? \("ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
-  assert.ok(/parcela\.forma === "DINHEIRO" \? \("NAO_SE_APLICA"/.test(fonte), "dinheiro não gera comprovante");
+  // PLURAL desde 18/08/2026: o recebimento aceita mais de um comprovante
+  // (PIX + cartão, ou quem pagou junto), então o status olha a quantidade.
+  assert.ok(/comprovanteStatus: values\.arquivos\.length\s*\n?\s*\? \("ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
+  assert.ok(/parcela\.forma === "DINHEIRO"\s*\n?\s*\? \("NAO_SE_APLICA"/.test(fonte), "dinheiro não gera comprovante");
 });
 
 test("o fechamento lança o valor RECEBIDO, não o vendido", () => {

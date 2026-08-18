@@ -110,3 +110,53 @@ export function conferirDivisao(total: number, parcelas: ParcelaDoRecebimento[],
 
 /** O que foi vendido, nas opções que a recepção realmente usa. */
 export const tiposDeItem: FinSaleItemType[] = ["TRATAMENTO", "CONSULTA", "SINAL", "BIOIMPEDANCIA", "RETORNO", "PSICOLOGA", "NUTRICIONISTA", "DESTRAVAR"];
+
+/**
+ * O QUE O FECHAMENTO FECHOU. Os três primeiros são canais de adesão de verdade
+ * (existem no banco); os outros três são resultados de tela.
+ *
+ * TRATAMENTO_CONTINUACAO (18/08/2026 — pedido da Dra. Andrya em vídeo): "o
+ * paciente que fecha só a tirzepatida no dia, que já passou em consulta há dois
+ * meses, ou um tratamento que o Daniel solicita por telefone e WhatsApp... uma
+ * reposição hormonal. Pacientes com tratamento fora da consulta."
+ *
+ * POR QUE ISSO PRECISAVA DE OPÇÃO PRÓPRIA: sem ela, essas vendas eram marcadas
+ * como "Somente Tratamento", que é um CANAL DE ADESÃO — e isso REESCREVIA o
+ * canal de quem já era do Programa. Em 17 e 18/08, quatro pacientes do Programa
+ * (Josephine, Guilherme Ortiz, Ana Flávia, Maria Angélica) viraram "só
+ * tratamento" no quadro de Acompanhamento só por comprar a dose seguinte.
+ */
+export type ResultadoDoFechamento =
+  | "PROGRAMA_ACOMPANHAMENTO"
+  | "CLUBE_BRATAN"
+  | "SOMENTE_TRATAMENTO"
+  | "TRATAMENTO_CONTINUACAO"
+  | "AVULSA"
+  | "NAO_FECHOU";
+
+/** Continuação NÃO é adesão nova: o canal do paciente fica como está. */
+export function ehContinuacao(resultado: ResultadoDoFechamento) {
+  return resultado === "TRATAMENTO_CONTINUACAO";
+}
+
+/**
+ * Trava do comprovante (18/08/2026). Um fechamento de R$ 2.548 foi salvo sem
+ * comprovante e ninguém viu — o financeiro só descobriu na conferência. Agora
+ * entrou dinheiro, a forma não é só dinheiro e não tem arquivo: só salva se
+ * alguém disser, explicitamente, que o comprovante vem depois.
+ *
+ * Devolve a mensagem do bloqueio, ou null quando pode salvar.
+ */
+export function travaDoComprovante(values: {
+  valor: number;
+  formas: FinPaymentMethod[];
+  quantosArquivos: number;
+  mandaDepois: boolean;
+}) {
+  if (values.valor <= 0) return null;
+  if (values.quantosArquivos > 0) return null;
+  if (values.mandaDepois) return null;
+  const soDinheiro = values.formas.length > 0 && values.formas.every((forma) => forma === "DINHEIRO");
+  if (soDinheiro) return null;
+  return 'Anexe o comprovante do pagamento — ou marque "Vou mandar o comprovante depois" para salvar com a pendência registrada.';
+}

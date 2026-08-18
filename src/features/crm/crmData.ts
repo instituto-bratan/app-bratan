@@ -520,6 +520,26 @@ export const cadenceTypeLabels: Record<CrmCadenceType, string> = {
   GOOGLE_REVIEW: "Avaliação Google",
 };
 
+/**
+ * CANAL ATUAL DO PACIENTE (18/08/2026).
+ *
+ * O canal (Programa / Clube / Só Tratamento) mora no DEAL, não no contato. Como
+ * cada compra abre um deal novo, "qual é o canal deste paciente" só se responde
+ * olhando o histórico dele: vale o canal do fechamento mais recente que teve um.
+ *
+ * Isso é o que permite o TRATAMENTO DE CONTINUAÇÃO não reescrever o canal de
+ * quem já é do Programa. Sem isso, o paciente que voltou para comprar a dose
+ * seguinte virava "só tratamento" no quadro de Acompanhamento — foi o que
+ * aconteceu com quatro pacientes em 17 e 18/08/2026.
+ */
+export function canalAtualDoPaciente(deals: CrmDeal[], contactId: string): CrmAdhesionChannel | null {
+  const quando = (deal: CrmDeal) => deal.closedAt || deal.updatedAt || deal.createdAt || "";
+  const comCanal = deals
+    .filter((deal) => deal.contactId === contactId && Boolean(deal.adhesionChannel))
+    .sort((a, b) => quando(b).localeCompare(quando(a)));
+  return comCanal[0]?.adhesionChannel ?? null;
+}
+
 export const crmModuleRoutes = {
   tasks: "/crm/minhas-tarefas",
   deals: "/crm/vendas",

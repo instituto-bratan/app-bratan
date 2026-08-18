@@ -34,7 +34,14 @@ import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
-import { parcelaVazia, type ParcelaDoRecebimento, type TipoRecebimento } from "./recebimentoKanbanData";
+import {
+  ehContinuacao,
+  parcelaVazia,
+  travaDoComprovante,
+  type ParcelaDoRecebimento,
+  type ResultadoDoFechamento,
+  type TipoRecebimento,
+} from "./recebimentoKanbanData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-tour";
@@ -48,31 +55,33 @@ import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
   applyContactChannels,
+  canalAtualDoPaciente,
   canUserAccessContact,
   contactDisplayName,
   createDealForContact,
   crmModuleRoutes,
   crmRoleLabels,
   dealStageHints,
-  objectionCategoryLabels,
   dealStageLabels,
   dealStages,
   findOrCreateCrmContact,
   formatCrmDateTime,
   moneyCrm,
   moveDealStage,
+  objectionCategoryLabels,
   programGateStatus,
   programOutcomeLabels,
-  programPhaseSpecs,
   programPhaseHints,
   programPhaseLabels,
   programPhases,
+  programPhaseSpecs,
   setProgramPhase,
   taskEffectiveStatus,
+  updateContactChannels,
   type CrmAdhesionChannel,
+  type CrmContact,
   type CrmDeal,
   type CrmDealStage,
-  type CrmContact,
   type CrmLeadTemperature,
   type CrmObjectionCategory,
   type CrmPersonaFit,
@@ -81,7 +90,6 @@ import {
   type CrmRole,
   type CrmState,
   type CrmTask,
-  updateContactChannels,
 } from "./crmData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
@@ -483,7 +491,8 @@ export function CrmKanbanPage() {
   const [newTipo, setNewTipo] = useState<"SINAL_CONSULTA" | "PRIMEIRA_CONSULTA" | "RETORNO">("SINAL_CONSULTA");
   const [newNotaInstrucao, setNewNotaInstrucao] = useState("");
   const [newNotaQuando, setNewNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
-  const [newArquivo, setNewArquivo] = useState<File | null>(null);
+  const [newArquivos, setNewArquivos] = useState<File[]>([]);
+  const [newMandaDepois, setNewMandaDepois] = useState(false);
   const newInputArquivo = useRef<HTMLInputElement>(null);
   const [newFit, setNewFit] = useState<CrmPersonaFit>("UNKNOWN");
   const [feedback, setFeedback] = useState("");
@@ -494,7 +503,7 @@ export function CrmKanbanPage() {
   const [fechamentoOpen, setFechamentoOpen] = useState(false);
   const [fcPatient, setFcPatient] = useState<PatientPickerValue>({ ref: "", name: "" });
   const [fcChannels, setFcChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
-  const [fcResultado, setFcResultado] = useState<CrmAdhesionChannel | "AVULSA" | "NAO_FECHOU">("PROGRAMA_ACOMPANHAMENTO");
+  const [fcResultado, setFcResultado] = useState<ResultadoDoFechamento>("PROGRAMA_ACOMPANHAMENTO");
   const [fcCompleto, setFcCompleto] = useState(true);
   const [fcSold, setFcSold] = useState("");
   const [fcReceived, setFcReceived] = useState("");
@@ -507,7 +516,8 @@ export function CrmKanbanPage() {
   const [fcItemTipo, setFcItemTipo] = useState<FinSaleItemType>("TRATAMENTO");
   const [fcNotaInstrucao, setFcNotaInstrucao] = useState("");
   const [fcNotaQuando, setFcNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
-  const [fcArquivo, setFcArquivo] = useState<File | null>(null);
+  const [fcArquivos, setFcArquivos] = useState<File[]>([]);
+  const [fcMandaDepois, setFcMandaDepois] = useState(false);
   const fcInputArquivo = useRef<HTMLInputElement>(null);
   const [fcObjection, setFcObjection] = useState("");
   const [fcObjectionCategory, setFcObjectionCategory] = useState<CrmObjectionCategory>("PRICE");
@@ -705,7 +715,10 @@ export function CrmKanbanPage() {
     /** Uma linha por forma de pagamento (dividido quando tem mais de uma). */
     divisao: ParcelaDoRecebimento[];
     itemTipo: FinSaleItemType;
-    arquivo: File | null;
+    /** Vários (18/08/2026): PIX + cartão, ou quem pagou junto, são N arquivos. */
+    arquivos: File[];
+    /** Marcou "vou mandar depois": fica AGUARDANDO de propósito. */
+    mandaDepois: boolean;
     notaInstrucao: string;
     notaQuando: "AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO";
     tipo: "SINAL_CONSULTA" | "PRIMEIRA_CONSULTA" | "TRATAMENTO" | "RETORNO";
@@ -745,7 +758,11 @@ export function CrmKanbanPage() {
           cardMachine: ehCartao ? ("ITAU" as const) : null,
           // Com arquivo em mãos o comprovante já nasce ANEXADO; dinheiro não gera
           // comprovante; o resto fica AGUARDANDO e aparece nos avisos.
-          comprovanteStatus: values.arquivo ? ("ANEXADO" as const) : parcela.forma === "DINHEIRO" ? ("NAO_SE_APLICA" as const) : ("AGUARDANDO" as const),
+          comprovanteStatus: values.arquivos.length
+            ? ("ANEXADO" as const)
+            : parcela.forma === "DINHEIRO"
+              ? ("NAO_SE_APLICA" as const)
+              : ("AGUARDANDO" as const),
         };
       }),
       tipoAtendimento: values.tipo,
@@ -759,22 +776,57 @@ export function CrmKanbanPage() {
     };
     financeiro.addSale(comanda);
 
-    if (values.arquivo && podeSubirArquivo && pessoaAuth) {
-      void uploadRemoteComprovante({
-        pessoa: pessoaAuth as never,
-        file: values.arquivo,
-        pacienteReferencia: values.pacienteNome,
-        crmContactRef: values.contactRef,
-        valor: values.valorRecebido,
-        formaPagamento: formaParaComprovante(values.divisao[0]?.forma ?? "PIX"),
-        observacao: [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban",
-        saleRef: saleId,
-        alimentarRecebiveis360: false,
-      }).catch((falha) =>
+    if (values.arquivos.length && podeSubirArquivo && pessoaAuth) {
+      // UM POR ARQUIVO. Cada comprovante é uma linha na tabela, todas ligadas à
+      // MESMA comanda (saleRef) — é assim que o financeiro vê "R$ 5.000: 2.000
+      // no PIX + 3.000 no cartão" com os dois prints.
+      //
+      // Quando há uma forma por arquivo (o caso comum do pagamento dividido),
+      // cada comprovante leva a forma e o valor da sua parcela; se não bate
+      // (3 arquivos para 1 forma), todos levam a forma principal e o valor total
+      // fica no primeiro, para a soma dos comprovantes não inflar o dia.
+      const umPorForma = values.arquivos.length === values.divisao.length && values.divisao.length > 1;
+      const observacaoBase =
+        [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban";
+      void Promise.all(
+        values.arquivos.map((file, indice) => {
+          const parcela = umPorForma ? values.divisao[indice] : values.divisao[0];
+          const valorDoComprovante = umPorForma
+            ? parseFinAmount(values.divisao[indice].valorTexto)
+            : indice === 0
+              ? values.valorRecebido
+              : 0;
+          return uploadRemoteComprovante({
+            pessoa: pessoaAuth as never,
+            file,
+            pacienteReferencia: values.pacienteNome,
+            crmContactRef: values.contactRef,
+            valor: valorDoComprovante,
+            formaPagamento: formaParaComprovante(parcela?.forma ?? "PIX"),
+            observacao:
+              values.arquivos.length > 1
+                ? `${observacaoBase} · comprovante ${indice + 1} de ${values.arquivos.length}`
+                : observacaoBase,
+            saleRef: saleId,
+            alimentarRecebiveis360: false,
+          });
+        }),
+      ).catch((falha) => {
+        // O STATUS NÃO PODE MENTIR (18/08/2026). Antes a comanda nascia
+        // "ANEXADO" e, se o upload falhasse, ela continuava dizendo que tinha
+        // comprovante — o furo só aparecia na conferência, dias depois. Agora
+        // volta para AGUARDANDO e o aviso é alto.
+        financeiro.updateSale({
+          ...comanda,
+          payments: comanda.payments.map((pagamento) => ({
+            ...pagamento,
+            comprovanteStatus: pagamento.method === "DINHEIRO" ? ("NAO_SE_APLICA" as const) : ("AGUARDANDO" as const),
+          })),
+        });
         setFeedback(
-          `Comanda salva, mas o comprovante NÃO subiu (${(falha as Error).message}). Anexe pelo módulo Comprovantes para não ficar sem.`,
-        ),
-      );
+          `Comanda salva, mas o comprovante NÃO subiu (${(falha as Error).message}). A comanda ficou marcada como AGUARDANDO — anexe pelo módulo Comprovantes para não ficar sem.`,
+        );
+      });
     }
     return saleId;
   }
@@ -802,6 +854,19 @@ export function CrmKanbanPage() {
       ownerUserId: pessoa?.id ?? "manual",
       commercialOwnerId: pessoa?.id ?? "manual",
     };
+    // Mesma trava do fechamento: recebeu dinheiro no cadastro, o comprovante
+    // não fica no silêncio (18/08/2026).
+    const travaComprovanteLead = travaDoComprovante({
+      valor: parseFinAmount(newRecebido),
+      formas: newDivisao.map((parcela) => parcela.forma),
+      quantosArquivos: newArquivos.length,
+      mandaDepois: newMandaDepois,
+    });
+    if (travaComprovanteLead) {
+      setFeedback(travaComprovanteLead);
+      return;
+    }
+
     // Resolve o ref ANTES de gravar: a comanda e o comprovante precisam dele
     // para nascerem ligados ao paciente (id determinístico → não duplica).
     const refDoLead = findOrCreateCrmContact(state, valoresDoLead, pessoa?.id ?? "manual").contact.id;
@@ -830,7 +895,8 @@ export function CrmKanbanPage() {
         valorRecebido: recebidoAgora,
         divisao: newDivisao,
         itemTipo: newItemTipo,
-        arquivo: newArquivo,
+        arquivos: newArquivos,
+        mandaDepois: newMandaDepois,
         notaInstrucao: newNotaInstrucao,
         notaQuando: newNotaQuando,
         tipo: newTipo,
@@ -840,7 +906,7 @@ export function CrmKanbanPage() {
         setor: "AGENDAMENTO",
       });
       setFeedback(
-        `Paciente cadastrado e ${moneyFin(recebidoAgora)} lançados na comanda do dia${newArquivo ? " com o comprovante anexado" : " (comprovante fica aguardando)"}.`,
+        `Paciente cadastrado e ${moneyFin(recebidoAgora)} lançados na comanda do dia${newArquivos.length ? ` com ${newArquivos.length} comprovante(s) anexado(s)` : " (comprovante fica aguardando)"}.`,
       );
     }
 
@@ -853,7 +919,8 @@ export function CrmKanbanPage() {
     setNewTipo("SINAL_CONSULTA");
     setNewNotaInstrucao("");
     setNewNotaQuando("COM_A_CONSULTA");
-    setNewArquivo(null);
+    setNewArquivos([]);
+    setNewMandaDepois(false);
     setLeadModalOpen(false);
   }
 
@@ -870,6 +937,16 @@ export function CrmKanbanPage() {
     const soldAmount = Number(fcSold.replace(/\./g, "").replace(",", ".")) || 0;
     const receivedAmount = Number(fcReceived.replace(/\./g, "").replace(",", ".")) || 0;
     if (fcResultado !== "NAO_FECHOU" && soldAmount <= 0) return setFcFeedback("Fechou: informe o valor vendido.");
+    // O comprovante não pode se perder no silêncio (18/08/2026).
+    if (fcResultado !== "NAO_FECHOU") {
+      const travaComprovante = travaDoComprovante({
+        valor: receivedAmount,
+        formas: fcDivisao.map((parcela) => parcela.forma),
+        quantosArquivos: fcArquivos.length,
+        mandaDepois: fcMandaDepois,
+      });
+      if (travaComprovante) return setFcFeedback(travaComprovante);
+    }
     if (fcResultado !== "NAO_FECHOU" && !fcCompleto && !fcPartialReason.trim()) return setFcFeedback("Fechamento parcial: registre o motivo do parcial.");
 
     // Resolve o paciente ANTES de gravar: a comanda e o comprovante precisam do
@@ -915,7 +992,18 @@ export function CrmKanbanPage() {
         stage,
         soldAmount: fcResultado === "NAO_FECHOU" ? undefined : soldAmount,
         receivedAmount: fcResultado === "NAO_FECHOU" ? undefined : receivedAmount,
-        adhesionChannel: fcResultado !== "NAO_FECHOU" && fcResultado !== "AVULSA" ? fcResultado : undefined,
+        // CANAL. Continuação NÃO é adesão nova, então ela REPETE o canal que o
+        // paciente já tem. E o canal vem do HISTÓRICO dele, não deste deal:
+        // cada compra abre um deal novo, que nasce sem canal — se eu olhasse só
+        // o deal recém-criado, o paciente do Programa continuaria virando "só
+        // tratamento", que é exatamente o erro que a Dra. Andrya apontou.
+        // Sem canal nenhum no histórico (primeira compra, só a dose) cai em
+        // Somente Tratamento, para a enfermeira ainda receber a tarefa das doses.
+        adhesionChannel: ehContinuacao(fcResultado)
+          ? canalAtualDoPaciente(working.deals, contactId) ?? deal.adhesionChannel ?? "SOMENTE_TRATAMENTO"
+          : fcResultado !== "NAO_FECHOU" && fcResultado !== "AVULSA"
+            ? (fcResultado as CrmAdhesionChannel)
+            : undefined,
         objection: fcObjection.trim() || undefined,
         objectionCategory: fcResultado === "NAO_FECHOU" ? fcObjectionCategory : undefined,
         partialReason: fcPartialReason.trim() || undefined,
@@ -929,7 +1017,9 @@ export function CrmKanbanPage() {
           ? "Fechamento registrado como NÃO FECHOU — a Concierge acolhe amanhã (D+1) e a régua segue sozinha."
           : fcResultado === "AVULSA"
             ? "Consulta avulsa registrada — sem jornada (segue o fluxo normal de agenda)."
-            : `Fechamento registrado! A esteira ${fcResultado === "PROGRAMA_ACOMPANHAMENTO" ? "do Programa" : fcResultado === "CLUBE_BRATAN" ? "do Clube" : "de Tratamento"} ligou sozinha — as tarefas do D+1 já nasceram para as pessoas certas.`,
+            : ehContinuacao(fcResultado)
+              ? "Tratamento de continuação registrado — o canal do paciente ficou como estava e a enfermeira agenda as doses no D+1."
+              : `Fechamento registrado! A esteira ${fcResultado === "PROGRAMA_ACOMPANHAMENTO" ? "do Programa" : fcResultado === "CLUBE_BRATAN" ? "do Clube" : "de Tratamento"} ligou sozinha — as tarefas do D+1 já nasceram para as pessoas certas.`,
       );
       return moved.state;
     });
@@ -944,12 +1034,19 @@ export function CrmKanbanPage() {
         valorRecebido: receivedAmount,
         divisao: fcDivisao,
         itemTipo: fcItemTipo,
-        arquivo: fcArquivo,
+        arquivos: fcArquivos,
+        mandaDepois: fcMandaDepois,
         notaInstrucao: fcNotaInstrucao,
         notaQuando: fcNotaQuando,
         tipo: fcTipo,
         plano: ehPlano,
-        origem: `Fechamento no Kanban — ${fcResultado === "AVULSA" ? "consulta avulsa" : channelLabels[fcResultado as CrmAdhesionChannel]}`,
+        origem: `Fechamento no Kanban — ${
+          fcResultado === "AVULSA"
+            ? "consulta avulsa"
+            : ehContinuacao(fcResultado)
+              ? "tratamento de continuação (fora da consulta)"
+              : channelLabels[fcResultado as CrmAdhesionChannel]
+        }`,
         observacao: fcCompleto ? "" : `parcial: ${fcPartialReason.trim()}`,
         setor: "VENDAS",
       });
@@ -969,7 +1066,8 @@ export function CrmKanbanPage() {
     setFcItemTipo("TRATAMENTO");
     setFcNotaInstrucao("");
     setFcNotaQuando("COM_A_CONSULTA");
-    setFcArquivo(null);
+    setFcArquivos([]);
+    setFcMandaDepois(false);
   }
 
   function handleMoveDeal(event: FormEvent) {
@@ -1848,7 +1946,12 @@ export function CrmKanbanPage() {
                       [
                         ["PROGRAMA_ACOMPANHAMENTO", "Plano de Acompanhamento", "Concierge + Recepção + Enfermeira no D+1"],
                         ["CLUBE_BRATAN", "Clube Bratan", "Concierge + Recepção no D+1"],
-                        ["SOMENTE_TRATAMENTO", "Somente Tratamento", "Concierge + Enfermeira no D+1"],
+                        ["SOMENTE_TRATAMENTO", "Somente Tratamento", "aderiu na consulta, sem plano · Concierge + Enfermeira no D+1"],
+                        [
+                          "TRATAMENTO_CONTINUACAO",
+                          "Tratamento de continuação",
+                          "fora da consulta (dose seguinte, pedido por WhatsApp) · NÃO troca o canal do paciente",
+                        ],
                         ["AVULSA", "Consulta avulsa", "sem esteira — só agenda"],
                         ["NAO_FECHOU", "Não fechou", "Concierge acolhe no D+1 (régua D1–D5)"],
                       ] as const
@@ -1868,6 +1971,38 @@ export function CrmKanbanPage() {
                     ))}
                   </div>
                 </div>
+                {/* CONTINUAÇÃO: mostra o canal que o paciente já tem, porque é ele
+                    que será repetido. Quando o app não conhece canal nenhum
+                    (adesão feita antes do CRM), avisa — senão a continuação
+                    grava "Somente Tratamento" e ninguém percebe. */}
+                {ehContinuacao(fcResultado) ? (
+                  (() => {
+                    const canalDoPaciente = fcPatient.ref ? canalAtualDoPaciente(state.deals, fcPatient.ref) : null;
+                    return (
+                      <p
+                        className={cn(
+                          "rounded-lg border px-3 py-2 text-xs leading-5",
+                          canalDoPaciente
+                            ? "border-brand-oliva/25 bg-white/70 text-brand-tinta"
+                            : "border-amber-400 bg-amber-50 text-amber-900",
+                        )}
+                      >
+                        {canalDoPaciente ? (
+                          <>
+                            Canal deste paciente: <strong>{channelLabels[canalDoPaciente]}</strong> — a continuação mantém esse
+                            canal, não troca.
+                          </>
+                        ) : (
+                          <>
+                            <strong>Este paciente ainda não tem canal registrado no CRM.</strong> A continuação vai gravar
+                            "Somente Tratamento". Se ele já é do Programa ou do Clube (adesão feita antes), escolha o card do
+                            plano dele em vez desta opção — assim o quadro de Acompanhamento fica certo.
+                          </>
+                        )}
+                      </p>
+                    );
+                  })()
+                ) : null}
                 {fcResultado !== "NAO_FECHOU" ? (
                   <>
                     <div className="flex flex-wrap items-center gap-2">
@@ -1900,12 +2035,20 @@ export function CrmKanbanPage() {
                       onNotaInstrucaoChange={setFcNotaInstrucao}
                       quandoNota={fcNotaQuando}
                       onQuandoNotaChange={setFcNotaQuando}
-                      arquivo={fcArquivo}
-                      onArquivoChange={setFcArquivo}
+                      arquivos={fcArquivos}
+                      onArquivosChange={setFcArquivos}
+                      mandaDepois={fcMandaDepois}
+                      onMandaDepoisChange={setFcMandaDepois}
                       pacienteNovo={!fcPatient.ref}
                       // Este bloco só aparece quando o paciente FECHOU, então
                       // aqui fcResultado nunca é "NAO_FECHOU".
-                      regua={fcResultado === "AVULSA" ? "sem esteira — só agenda" : channelLabels[fcResultado as CrmAdhesionChannel]}
+                      regua={
+                        fcResultado === "AVULSA"
+                          ? "sem esteira — só agenda"
+                          : ehContinuacao(fcResultado)
+                            ? "continuação — enfermeira agenda as doses (canal do paciente não muda)"
+                            : channelLabels[fcResultado as CrmAdhesionChannel]
+                      }
                     />
 
                     {!fcCompleto ? (
@@ -2034,8 +2177,10 @@ export function CrmKanbanPage() {
                     onNotaInstrucaoChange={setNewNotaInstrucao}
                     quandoNota={newNotaQuando}
                     onQuandoNotaChange={setNewNotaQuando}
-                    arquivo={newArquivo}
-                    onArquivoChange={setNewArquivo}
+                    arquivos={newArquivos}
+                    onArquivosChange={setNewArquivos}
+                    mandaDepois={newMandaDepois}
+                    onMandaDepoisChange={setNewMandaDepois}
                     pacienteNovo
                     regua="entra no Kanban para o agendamento seguir"
                   />
