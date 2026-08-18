@@ -296,6 +296,26 @@ export type BaldeConciliacao = {
     taxaImplicita: number | null;
     situacao: "OK" | "SOBROU_NO_BANCO" | "FALTOU_CAIR" | "SEM_DADOS";
     leitura: string;
+    /**
+     * DIA POR DIA (18/08/2026). O total do mês esconde o furo: a taxa de um dia
+     * compensa a sobra de outro. Foi o que aconteceu com o dia 12/08 — caiu
+     * R$ 20.309,14 no dia 13 para R$ 14.702,00 de cartão lançado (138% do que a
+     * comanda dizia, impossível: a maquininha nunca manda mais que o bruto), e
+     * no fechado do mês isso virava só "sobrou um pouco". Aqui cada dia aparece
+     * sozinho, com o dia do cartão que o originou.
+     */
+    porDia: {
+      /** Dia em que o dinheiro caiu no banco. */
+      diaTransferencia: string;
+      /** Dia útil anterior — o dia em que o cartão foi passado. */
+      diaCartao: string;
+      transferencia: number;
+      cartao: number;
+      taxaImplicita: number | null;
+      /** Quanto caiu além do que as comandas do dia dizem (só quando sobra). */
+      sobra: number;
+      situacao: "OK" | "SOBROU_NO_BANCO" | "FALTOU_CAIR";
+    }[];
   };
   totais: { entrouBanco: number; saiuBanco: number; faturadoApp: number; pagoApp: number };
 };
@@ -326,6 +346,27 @@ const EH_ADIANTAMENTO_MAQUININHA = /transfer[êe]ncia autom|aplic\w* autom(?!.*r
 const EH_COFRE_CDB = /resgate|aplica[çc][ãa]o cdb|cdb di/i;
 /** "RENDIMENTOS ..." e "REND PAGO APLIC AUT APR" são a mesma coisa. */
 const EH_RENDIMENTO = /rendimento|rend\.? pago/i;
+
+/**
+ * Dia útil anterior (pula sábado e domingo). O cartão passado na sexta cai na
+ * segunda, então "a véspera" do adiantamento não é sempre ontem.
+ */
+export function diaUtilAnterior(iso: string) {
+  const data = new Date(`${iso}T12:00:00`);
+  do {
+    data.setDate(data.getDate() - 1);
+  } while (data.getDay() === 0 || data.getDay() === 6);
+  return data.toISOString().slice(0, 10);
+}
+
+/** Dia útil seguinte — quando o cartão de hoje deve cair no banco. */
+export function proximoDiaUtil(iso: string) {
+  const data = new Date(`${iso}T12:00:00`);
+  do {
+    data.setDate(data.getDate() + 1);
+  } while (data.getDay() === 0 || data.getDay() === 6);
+  return data.toISOString().slice(0, 10);
+}
 
 /**
  * Casa o extrato com o que o app tem. Casa por VALOR, preferindo a mesma data e
@@ -414,6 +455,7 @@ export function conciliarExtrato(
   };
 
   let somaTransferencias = 0;
+  const transferenciasPorDia = new Map<string, number>();
   for (const entry of lancamentos) {
     // Linhas que não são venda nem conta: adiantamento da maquininha, rendimento, resgate.
     if (EH_ADIANTAMENTO_MAQUININHA.test(entry.description) || EH_COFRE_CDB.test(entry.description) || EH_RENDIMENTO.test(entry.description)) {
@@ -421,6 +463,7 @@ export function conciliarExtrato(
       // Só o adiantamento da maquininha entra na conferência do cartão.
       if (!ehRendimento && entry.amount > 0 && EH_ADIANTAMENTO_MAQUININHA.test(entry.description)) {
         somaTransferencias += entry.amount;
+        transferenciasPorDia.set(entry.entryDate, (transferenciasPorDia.get(entry.entryDate) ?? 0) + entry.amount);
       }
       const noCofre = acharCandidato(restamCofre, entry);
       if (noCofre) {
@@ -467,10 +510,12 @@ export function conciliarExtrato(
   };
   const janelaCartao = { start: diaAnterior(start), end: diaAnterior(end) };
   let cartaoComandas = 0;
+  const cartaoPorDia = new Map<string, number>();
   for (const sale of sales) {
-    if (sale.saleDate < janelaCartao.start || sale.saleDate > janelaCartao.end) continue;
     for (const payment of sale.payments) {
-      if (payment.method === "CARTAO_CREDITO" || payment.method === "CARTAO_DEBITO") cartaoComandas += payment.amount || 0;
+      if (payment.method !== "CARTAO_CREDITO" && payment.method !== "CARTAO_DEBITO") continue;
+      cartaoPorDia.set(sale.saleDate, (cartaoPorDia.get(sale.saleDate) ?? 0) + (payment.amount || 0));
+      if (sale.saleDate >= janelaCartao.start && sale.saleDate <= janelaCartao.end) cartaoComandas += payment.amount || 0;
     }
   }
   const taxaImplicita =
@@ -494,6 +539,45 @@ export function conciliarExtrato(
   } else if (somaTransferencias > 0 && cartaoComandas === 0) {
     situacaoMaquininha = "SOBROU_NO_BANCO";
     leituraMaquininha = `Caíram ${brl(cents(somaTransferencias))} de adiantamento da maquininha e NÃO há comanda de cartão na véspera: falta lançar comanda.`;
+  }
+
+  // ---- maquininha DIA POR DIA ----------------------------------------------
+  // Cada adiantamento é confrontado só com o cartão do dia útil que o originou.
+  // Também entram os dias que TÊM cartão e cujo adiantamento deveria ter caído
+  // dentro do período e não caiu — do contrário "faltou cair" ficaria invisível.
+  const diasDaMaquininha = new Set<string>(transferenciasPorDia.keys());
+  for (const [dia, valor] of cartaoPorDia) {
+    if (valor <= 0) continue;
+    const cai = proximoDiaUtil(dia);
+    if (cai >= start && cai <= end) diasDaMaquininha.add(cai);
+  }
+  const porDia = [...diasDaMaquininha]
+    .sort()
+    .map((diaTransferencia) => {
+      const diaCartao = diaUtilAnterior(diaTransferencia);
+      const transferencia = cents(transferenciasPorDia.get(diaTransferencia) ?? 0);
+      const cartao = cents(cartaoPorDia.get(diaCartao) ?? 0);
+      const taxa = cartao > 0 && transferencia > 0 ? Math.round(((cartao - transferencia) / cartao) * 10000) / 100 : null;
+      let situacao: "OK" | "SOBROU_NO_BANCO" | "FALTOU_CAIR" = "OK";
+      if (cartao === 0 && transferencia > 0) situacao = "SOBROU_NO_BANCO";
+      else if (cartao > 0 && transferencia === 0) situacao = "FALTOU_CAIR";
+      else if (taxa !== null && taxa < TAXA_MAQUININHA_MIN) situacao = "SOBROU_NO_BANCO";
+      else if (taxa !== null && taxa > TAXA_MAQUININHA_MAX) situacao = "FALTOU_CAIR";
+      return {
+        diaTransferencia,
+        diaCartao,
+        transferencia,
+        cartao,
+        taxaImplicita: taxa,
+        sobra: transferencia > cartao ? cents(transferencia - cartao) : 0,
+        situacao,
+      };
+    });
+  // O dia que sobrou dinheiro é mais grave que o total do mês: manda a leitura.
+  const piorDia = porDia.find((dia) => dia.situacao === "SOBROU_NO_BANCO" && dia.sobra > 0);
+  if (piorDia) {
+    situacaoMaquininha = "SOBROU_NO_BANCO";
+    leituraMaquininha = `Dia ${piorDia.diaTransferencia.split("-").reverse().join("/")}: caiu ${brl(piorDia.transferencia)} para ${brl(piorDia.cartao)} de cartão lançado no dia ${piorDia.diaCartao.split("-").reverse().join("/")} — ${brl(piorDia.sobra)} a mais do que as comandas dizem, e a maquininha nunca manda mais que o bruto. Falta comanda de cartão nesse dia.`;
   }
 
   // ---- segunda passada: o que sobrou ainda pode casar de dois jeitos --------
@@ -574,6 +658,7 @@ export function conciliarExtrato(
       taxaImplicita,
       situacao: situacaoMaquininha,
       leitura: leituraMaquininha,
+      porDia,
     },
     totais: {
       entrouBanco: cents(lancamentos.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0)),

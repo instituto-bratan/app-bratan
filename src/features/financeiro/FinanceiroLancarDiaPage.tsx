@@ -53,6 +53,7 @@ import {
   type ComprovanteStatus,
   type FinSalePayment,
 } from "./financeiroData";
+import { ConferenciaFechamentoCard } from "./ConferenciaFechamentoCard";
 import { useFinanceiro } from "./useFinanceiro";
 
 type DraftItem = { itemType: FinSaleItemType; amount: string; description: string };
@@ -375,6 +376,12 @@ export function FinanceiroLancarDiaPage() {
             {feedback}
           </div>
         ) : null}
+
+        {/* CONFERÊNCIA DO FECHAMENTO (18/08/2026): fechar no Kanban e lançar o
+            dinheiro são dois atos, e nada avisava quando o segundo não vinha.
+            R$ 13.808 de um paciente ficaram invisíveis até o Lucas comparar o
+            extrato com a agenda do Dr. Daniel. Agora o app avisa. */}
+        <ConferenciaFechamentoCard crmState={crmState} sales={financeiro.sales} lembretes={lembretes} hoje={todayISO()} />
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
           <div className="flex flex-col gap-5">

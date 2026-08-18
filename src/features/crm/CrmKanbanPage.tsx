@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { Upload,
   AlertTriangle,
   ArrowRight,
@@ -28,8 +29,9 @@ import {
   type FinSale,
   type FinSaleItemType,
 } from "@/features/financeiro/financeiroData";
+import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFechamentoCard";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
-import { uploadRemoteComprovante } from "@/lib/remoteData";
+import { listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
 import { parcelaVazia, type ParcelaDoRecebimento, type TipoRecebimento } from "./recebimentoKanbanData";
@@ -436,6 +438,15 @@ export function CrmKanbanPage() {
   const { pessoa: pessoaAuth, session, isPreview } = useAuth();
   const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
   const podeSubirArquivo = Boolean(pessoaAuth && session && !isPreview);
+  // Os lembretes entram só para a CONFERÊNCIA não dar alarme falso: quem fechou
+  // e combinou pagar dia 21 tem dinheiro agendado, não dinheiro faltando.
+  // Mesma chave do módulo Pagamentos — o TanStack reaproveita o cache.
+  const lembretesQuery = useQuery({
+    queryKey: ["pagamentos-lembretes"],
+    queryFn: listRemotePagamentos,
+    enabled: podeSubirArquivo,
+    staleTime: 30_000,
+  });
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
@@ -1149,6 +1160,18 @@ export function CrmKanbanPage() {
       )}
     >
       <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+      {/* CONFERÊNCIA DO FECHAMENTO (18/08/2026): fica aqui porque é aqui que o
+          fechamento acontece. R$ 13.808 de um paciente foram dados como ganhos
+          e nunca viraram comanda — o financeiro só descobriu comparando o
+          extrato do banco com a agenda do Dr. Daniel na mão. */}
+      {!fullscreen ? (
+        <ConferenciaFechamentoCard
+          crmState={state}
+          sales={financeiro.sales}
+          lembretes={lembretesQuery.data ?? []}
+          hoje={todayISO()}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge variant="gold">CRM Bratan</Badge>

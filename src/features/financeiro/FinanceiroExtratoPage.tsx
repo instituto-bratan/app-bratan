@@ -384,6 +384,56 @@ export function FinanceiroExtratoPage() {
             >
               {balde.maquininha.leitura}
             </p>
+
+            {/* DIA POR DIA (18/08/2026). No total do mês a taxa de um dia
+                compensa a sobra de outro e o furo desaparece: foi assim que
+                R$ 13.808 fechados no Kanban e nunca lançados ficaram escondidos.
+                Aqui cada adiantamento é confrontado só com o cartão do dia útil
+                que o originou. */}
+            {balde.maquininha.porDia.length ? (
+              <div className="mt-1 overflow-x-auto">
+                <table className="w-full min-w-[34rem] border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-brand-oliva/25 text-left text-muted-foreground">
+                      <th className="py-1 pr-3 font-medium">Caiu no banco</th>
+                      <th className="py-1 pr-3 font-medium">Cartão do dia</th>
+                      <th className="py-1 pr-3 text-right font-medium">Adiantamento</th>
+                      <th className="py-1 pr-3 text-right font-medium">Comandas</th>
+                      <th className="py-1 pr-3 text-right font-medium">Taxa</th>
+                      <th className="py-1 font-medium">Leitura</th>
+                    </tr>
+                  </thead>
+                  <tbody className="tabular-nums">
+                    {balde.maquininha.porDia.map((dia) => (
+                      <tr
+                        key={dia.diaTransferencia}
+                        className={cn(
+                          "border-b border-brand-oliva/10 last:border-0",
+                          dia.situacao === "SOBROU_NO_BANCO" ? "bg-rose-50/80" : dia.situacao === "FALTOU_CAIR" ? "bg-amber-50/70" : "",
+                        )}
+                      >
+                        <td className="py-1 pr-3">{dataBr(dia.diaTransferencia)}</td>
+                        <td className="py-1 pr-3 text-muted-foreground">{dataBr(dia.diaCartao)}</td>
+                        <td className="py-1 pr-3 text-right">{moneyFin(dia.transferencia)}</td>
+                        <td className="py-1 pr-3 text-right">{moneyFin(dia.cartao)}</td>
+                        <td className="py-1 pr-3 text-right">
+                          {dia.taxaImplicita === null ? "—" : `${String(dia.taxaImplicita).replace(".", ",")}%`}
+                        </td>
+                        <td className={cn("py-1", dia.situacao === "SOBROU_NO_BANCO" ? "font-semibold text-rose-800" : dia.situacao === "FALTOU_CAIR" ? "text-amber-900" : "text-emerald-800")}>
+                          {dia.situacao === "OK"
+                            ? "bate"
+                            : dia.situacao === "SOBROU_NO_BANCO"
+                              ? `sobrou ${moneyFin(dia.sobra)} — falta comanda de cartão`
+                              : dia.cartao > 0 && dia.transferencia === 0
+                                ? "o dinheiro do cartão não caiu"
+                                : "caiu menos do que a comanda diz"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 

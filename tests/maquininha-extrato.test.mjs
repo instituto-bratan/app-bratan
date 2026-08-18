@@ -60,7 +60,11 @@ test("maquininha: caiu MAIS do que as comandas de cartão → venda no crédito 
   const vendas = [venda("a", "2026-08-04", [{ method: "CARTAO_CREDITO", amount: 10000 }])];
   const balde = ex.conciliarExtrato(entradas, vendas, [], [], "2026-08-01", "2026-08-07");
   assert.equal(balde.maquininha.situacao, "SOBROU_NO_BANCO");
-  assert.match(balde.maquininha.leitura, /sem comanda/);
+  // A leitura passou a nomear O DIA (18/08/2026): o total do mês escondia o furo,
+  // porque a taxa de um dia compensava a sobra de outro.
+  assert.match(balde.maquininha.leitura, /Dia 05\/08\/2026/);
+  assert.match(balde.maquininha.leitura, /Falta comanda de cartão/);
+  assert.equal(balde.maquininha.porDia[0].sobra, 2000);
 });
 
 test("maquininha: diferença muito acima da taxa → crédito que não caiu ou comanda errada", () => {
@@ -75,7 +79,8 @@ test("maquininha: transferência sem NENHUMA comanda de cartão na véspera acus
   const entradas = extrato(["05/08/2026;TRANSFERÊNCIA AUTOM. RECEBIDA 0138.46448-2;;;3000,00;"]);
   const balde = ex.conciliarExtrato(entradas, [], [], [], "2026-08-01", "2026-08-07");
   assert.equal(balde.maquininha.situacao, "SOBROU_NO_BANCO");
-  assert.match(balde.maquininha.leitura, /falta lançar comanda/i);
+  assert.match(balde.maquininha.leitura, /Falta comanda de cartão/i);
+  assert.equal(balde.maquininha.porDia[0].cartao, 0);
 });
 
 test("maquininha: janela deslocada — cartão de 31/07 conta para transferências de agosto", () => {
