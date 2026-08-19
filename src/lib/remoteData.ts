@@ -2511,9 +2511,18 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
   );
   }
 
+  // ORDEM IMPORTA (19/08/2026): o banco garante UMA jornada aberta por paciente
+  // (crm_deals_one_active_journey) e confere linha a linha DENTRO do mesmo
+  // comando. Se a jornada nova entrar antes de a antiga ser encerrada, a trava
+  // dispara mesmo com o encerramento logo atrás no lote. Então: primeiro as
+  // linhas que ENCERRAM/não têm jornada, depois as que ABREM jornada.
+  const dealsOrdenados = [...pick.deals].sort((a, b) => {
+    const abre = (record: (typeof pick.deals)[number]) => (record.programPhase && !record.programOutcome ? 1 : 0);
+    return abre(a) - abre(b);
+  });
   await upsertCrmTable(
     "crm_deals",
-    pick.deals.map((record) => ({
+    dealsOrdenados.map((record) => ({
       client_ref: record.id,
       contact_id: record.contactId,
       title: record.title,

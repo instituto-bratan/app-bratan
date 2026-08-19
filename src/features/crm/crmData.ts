@@ -1933,6 +1933,7 @@ export function sanitizeCrmState(state: CrmState, options?: { curative?: boolean
   let next = dedupeCrmState(state);
   if (curative) {
     next = archiveDuplicateActiveDeals(retireObsoleteCrmWork(next));
+    next = enforceOneActiveJourneyPerContact(next);
   }
   // Daqui pra baixo é o pipeline que SEMPRE rodou para todos os papéis
   // (rotina de segunda, cobertura, geração, escalação, avanço de gate).
@@ -1944,6 +1945,42 @@ export function sanitizeCrmState(state: CrmState, options?: { curative?: boolean
   next = collapseSequentialLadders(dedupeCrmState(next));
   if (curative) next = enforceOneTaskPerPersonPerPatient(next);
   return next;
+}
+
+// UM PACIENTE, UMA JORNADA — a versão curativa (19/08/2026). O banco tem a
+// trava crm_deals_one_active_journey (máx. UMA jornada aberta por paciente);
+// quando um estado local ainda carrega duas (o bug da Gabriela: a adesão nova
+// não encerrava a antiga), o salvamento inteiro morria no Supabase. Aqui a
+// coordenação cura o estado: fica aberta só a jornada mais RECENTE; as outras
+// são encerradas como Renovação, com as tarefas de gate pendentes canceladas.
+export function enforceOneActiveJourneyPerContact(state: CrmState): CrmState {
+  const abertasPorContato = new Map<string, CrmDeal[]>();
+  for (const deal of state.deals) {
+    if (!deal.programPhase || deal.programOutcome) continue;
+    const lista = abertasPorContato.get(deal.contactId) ?? [];
+    lista.push(deal);
+    abertasPorContato.set(deal.contactId, lista);
+  }
+  const encerrar = new Set<string>();
+  for (const lista of abertasPorContato.values()) {
+    if (lista.length < 2) continue;
+    const quando = (deal: CrmDeal) => deal.programPhaseEnteredAt || deal.closedAt || deal.updatedAt || deal.createdAt || "";
+    const ordenadas = [...lista].sort((a, b) => quando(b).localeCompare(quando(a)));
+    for (const antiga of ordenadas.slice(1)) encerrar.add(antiga.id);
+  }
+  if (!encerrar.size) return state;
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    deals: state.deals.map((deal) =>
+      encerrar.has(deal.id) ? { ...deal, programOutcome: "RENOVACAO" as CrmProgramOutcome, updatedAt: now } : deal,
+    ),
+    tasks: state.tasks.map((task) =>
+      task.dealId && encerrar.has(task.dealId) && task.isGate && task.status === "PENDING"
+        ? { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: "Jornada substituída por nova adesão.", updatedAt: now }
+        : task,
+    ),
+  };
 }
 
 // REGRA DE OURO nº 3 — autocorreção: se por qualquer caminho a mesma PESSOA
@@ -2719,8 +2756,47 @@ export function startProgramJourney(state: CrmState, dealId: string, channel: Cr
   const deal = state.deals.find((item) => item.id === dealId);
   if (!deal || deal.programPhase) return state;
   const now = new Date().toISOString();
+
+  // UM PACIENTE, UMA JORNADA (19/08/2026). O banco tem uma trava
+  // (crm_deals_one_active_journey) que garante no máximo UMA jornada aberta por
+  // paciente — e ela está certa: duas réguas de cuidado ao mesmo tempo é o
+  // Concierge dando boas-vindas duas vezes. Só que o motor não encerrava a
+  // jornada antiga ao abrir a nova: o paciente que voltava e fechava de novo
+  // (Gabriela, 19/08) estourava a trava e o salvamento INTEIRO morria com
+  // "erro no Supabase". Agora a adesão nova encerra a anterior como RENOVAÇÃO
+  // e cancela as tarefas de gate que ficaram pendentes nela.
+  const jornadaAntiga = state.deals.find(
+    (item) => item.id !== dealId && item.contactId === deal.contactId && item.programPhase && !item.programOutcome,
+  );
+  let next: CrmState = state;
+  if (jornadaAntiga) {
+    next = {
+      ...next,
+      deals: next.deals.map((item) =>
+        item.id === jornadaAntiga.id ? { ...item, programOutcome: "RENOVACAO" as CrmProgramOutcome, updatedAt: now } : item,
+      ),
+      tasks: next.tasks.map((task) =>
+        task.dealId === jornadaAntiga.id && task.isGate && task.status === "PENDING"
+          ? { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: "Jornada substituída por nova adesão.", updatedAt: now }
+          : task,
+      ),
+      timelineEvents: [
+        createTimelineEvent({
+          contactId: deal.contactId,
+          eventType: "PROGRAM_STARTED",
+          eventTitle: "Jornada anterior encerrada (renovação)",
+          eventDescription: "O paciente fechou de novo: a jornada antiga foi encerrada como Renovação e a nova assume.",
+          sourceModule: "JORNADA",
+          sourceId: jornadaAntiga.id,
+          createdBy: actorId,
+        }),
+        ...next.timelineEvents,
+      ],
+    };
+  }
+
   const started: CrmDeal = { ...deal, programPhase: "FECHAMENTO_D0", programPhaseEnteredAt: now, programPhaseActorId: actorId, adhesionChannel: channel ?? deal.adhesionChannel ?? null, updatedAt: now };
-  let next: CrmState = { ...state, deals: state.deals.map((item) => (item.id === dealId ? started : item)) };
+  next = { ...next, deals: next.deals.map((item) => (item.id === dealId ? started : item)) };
   next = materializeProgramPhase(next, started, "FECHAMENTO_D0", reference);
   next = {
     ...next,
