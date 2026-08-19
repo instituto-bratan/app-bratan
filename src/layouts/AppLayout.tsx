@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useState, type ComponentType } from "reac
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Boxes,
   BarChart3,
   Bell,
   BrainCircuit,
@@ -107,6 +108,17 @@ const flowGroups: FlowGroup[] = [
       { label: "Planilha de Cadências", shortLabel: "Planilha", href: "/crm/planilha", icon: ClipboardList, allowed: canCrmBratan, module: "crm" },
       { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento, module: "acompanhamento" },
       { label: "Canais de Venda", shortLabel: "Canais", href: "/crm/canais", icon: Target, allowed: canCrmBratan, module: "crm" },
+    ],
+  },
+  {
+    label: "Estoque",
+    detail: "recepção e enfermagem",
+    href: "/estoque",
+    icon: Boxes,
+    // Donas dos setores + coordenação; a exceção por pessoa (Acessos) vence.
+    allowed: (cargo) => cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista" || canFinanceiroView(cargo) || canAdministracao(cargo),
+    entries: [
+      { label: "Estoque", href: "/estoque", icon: Boxes, allowed: () => true, module: "estoque" },
     ],
   },
   {

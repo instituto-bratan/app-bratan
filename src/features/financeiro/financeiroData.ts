@@ -830,6 +830,12 @@ export type FinPurchase = {
   receivedAt: string | null;
   expenseRef: string | null;
   notes: string;
+  /**
+   * ESTOQUE (19/08/2026): para onde este item vai quando chegar. null = não é
+   * item de estoque (boleto, serviço, obra). Preenchido = aparece como chegada
+   * pendente para a dona do setor dar a entrada.
+   */
+  estoqueSetor?: "RECEPCAO" | "ENFERMAGEM" | null;
   createdAt: string;
 };
 

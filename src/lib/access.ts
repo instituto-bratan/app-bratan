@@ -250,7 +250,8 @@ export type ModuleKey =
   | "fin-pdca"
   | "fin-gestao"
   | "fin-extrato"
-  | "fin-canais";
+  | "fin-canais"
+  | "estoque";
 
 export const moduleLabels: Record<ModuleKey, string> = {
   hoje: "Hoje (tarefas, almoço, mural)",
@@ -275,6 +276,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-gestao": "Financeiro · Painel do Mês (Reunião de Líderes)",
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-canais": "Financeiro · Canais de Venda",
+  estoque: "Estoque (Recepção & Enfermagem)",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
@@ -294,6 +296,11 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       return canComprovantes(cargo) ? "EDITAR" : "OCULTO";
     case "marketing":
       return canMarketing(cargo) ? "EDITAR" : "OCULTO";
+    case "estoque":
+      // Cada dona edita o próprio setor (a divisão por setor é feita na tela e
+      // na RLS); a coordenação enxerga e edita os dois.
+      if (cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista") return "EDITAR";
+      return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
       return canInteligencia360(cargo) ? "VER" : "OCULTO";

@@ -55,6 +55,10 @@ export function FinanceiroComprasPage() {
   const [installments, setInstallments] = useState("1");
   const [nfNote, setNfNote] = useState("");
   const [deliveryEta, setDeliveryEta] = useState("");
+  // ESTOQUE (19/08/2026): para onde este item vai quando chegar. Marcado aqui,
+  // ele vira "chegada pendente" para a dona do setor confirmar — a confirmação
+  // dá a entrada no estoque e carimba o "Chegou" desta compra, num ato só.
+  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM">("");
   const [feedback, setFeedback] = useState("");
 
   const isCredit = method === "CARTAO_CREDITO";
@@ -73,6 +77,7 @@ export function FinanceiroComprasPage() {
     setInstallments("1");
     setNfNote("");
     setDeliveryEta("");
+    setEstoqueSetor("");
   }
 
   function handleSubmit(event: FormEvent) {
@@ -101,6 +106,7 @@ export function FinanceiroComprasPage() {
       receivedAt: null,
       expenseRef: null,
       notes: "",
+      estoqueSetor: estoqueSetor || null,
       createdAt: new Date().toISOString(),
     });
 
@@ -298,6 +304,25 @@ export function FinanceiroComprasPage() {
                     <Label>Vai chegar em (opcional)</Label>
                     <Input type="date" value={deliveryEta} onChange={(event) => setDeliveryEta(event.target.value)} />
                   </div>
+                  <div>
+                    <Label>
+                      Vai para o estoque?
+                      <InfoTip title="O elo com o Estoque">
+                        Medicação e insumo → Enfermagem; material administrativo → Recepção. A compra aparece na tela
+                        Estoque como chegada pendente, e a confirmação da dona do setor dá a entrada e carimba o
+                        "Chegou" daqui sozinha. Deixe "Não" para boleto de serviço, obra etc.
+                      </InfoTip>
+                    </Label>
+                    <select
+                      value={estoqueSetor}
+                      onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM")}
+                      className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm"
+                    >
+                      <option value="">Não (serviço, obra, conta)</option>
+                      <option value="ENFERMAGEM">Sim — Enfermagem (medicações & saúde)</option>
+                      <option value="RECEPCAO">Sim — Recepção (administrativo)</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Onde vai entrar — clareza antes de salvar */}
@@ -334,7 +359,14 @@ export function FinanceiroComprasPage() {
               {totals.toArrive.map((purchase) => (
                 <div key={purchase.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/12 bg-white/70 px-3 py-2">
                   <div className="min-w-0">
-                    <p className="font-semibold text-brand-tinta">{purchase.description}</p>
+                    <p className="font-semibold text-brand-tinta">
+                      {purchase.description}
+                      {purchase.estoqueSetor ? (
+                        <span className="ml-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
+                          → Estoque {purchase.estoqueSetor === "ENFERMAGEM" ? "Enfermagem" : "Recepção"}
+                        </span>
+                      ) : null}
+                    </p>
                     <p className="text-xs text-muted-foreground">Previsto {shortDate(purchase.deliveryEta)}{purchase.supplier ? ` · ${purchase.supplier}` : ""}</p>
                   </div>
                   <div className="flex items-center gap-3">
