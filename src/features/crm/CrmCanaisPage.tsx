@@ -1,9 +1,17 @@
+// INDICAÇÕES (19/08/2026, pedido do Lucas): "os canais de venda, que agora vai
+// virar indicações... vão ser as pessoas que vão indicar pra gente, e essas
+// pessoas vão ter vouchers... quinhentos reais por paciente que passar com o
+// doutor". A tabela de canais (site, cadências...) foi zerada — esta tela é
+// sobre PESSOAS: quem indica, quem foi indicado, e o voucher de cada um.
+//
+// O elo automático: o indicado registrado aqui JÁ nasce no CRM (mesmo cadastro,
+// sem duplicar — telefone é a chave). Quando a consulta dele vira comanda no
+// financeiro, o voucher libera sozinho — ninguém precisa avisar esta tela.
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CircleDollarSign, Gift, Megaphone, Share2, UserPlus } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleDollarSign, Gift, UserPlus, Users } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -12,19 +20,20 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canCrmBratan, isCoordenacao } from "@/lib/access";
+import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
+import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import {
   applyContactChannels,
   REFERRAL_REWARD_VALUE,
   contactDisplayName,
   crmModuleRoutes,
   findOrCreateCrmContact,
+  indicadoresResumo,
   markReferralRewardPaid,
   moneyCrm,
   referralRewardStatusLabels,
-  referralRewardTotals,
   referralRewards,
-  salesChannelStats,
   setContactReferrer,
   type ReferralRewardStatus,
 } from "./crmData";
@@ -47,8 +56,10 @@ const statusTones: Record<ReferralRewardStatus, string> = {
 export function CrmCanaisPage() {
   const { pessoa } = useAuth();
   const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState();
+  const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
   const canPay = isCoordenacao(pessoa?.cargo);
   const [feedback, setFeedback] = useState("");
+  const [indicadorAberto, setIndicadorAberto] = useState("");
 
   // Registro de indicação
   const [referrerQuery, setReferrerQuery] = useState("");
@@ -57,10 +68,31 @@ export function CrmCanaisPage() {
   const [referredId, setReferredId] = useState("");
   const [novoContato, setNovoContato] = useState<ContactChannelsDraft>(emptyContactChannels);
 
-  const stats = useMemo(() => salesChannelStats(state), [state]);
-  const rewards = useMemo(() => referralRewards(state), [state]);
-  const totals = useMemo(() => referralRewardTotals(rewards), [rewards]);
-  const maxContacts = Math.max(1, ...stats.map((item) => item.contacts));
+  // "Passou com o doutor" = a consulta virou comanda no financeiro. É a prova
+  // em dinheiro — nem agenda, nem promessa. Item CONSULTA ou primeira consulta.
+  const passouComDoutor = useMemo(() => {
+    const passou = new Set<string>();
+    for (const sale of financeiro.sales) {
+      if (!sale.crmContactRef) continue;
+      const temConsulta =
+        sale.items.some((item) => item.itemType === "CONSULTA") || sale.tipoAtendimento === "PRIMEIRA_CONSULTA";
+      if (temConsulta) passou.add(sale.crmContactRef);
+    }
+    return passou;
+  }, [financeiro.sales]);
+
+  const rewards = useMemo(() => referralRewards(state, passouComDoutor), [state, passouComDoutor]);
+  const porIndicador = useMemo(() => indicadoresResumo(rewards), [rewards]);
+  const totais = useMemo(
+    () => ({
+      indicadores: porIndicador.length,
+      indicados: rewards.length,
+      aReceber: rewards.filter((r) => r.status === "A_PAGAR").length * REFERRAL_REWARD_VALUE,
+      pago: rewards.filter((r) => r.status === "PAGO").length * REFERRAL_REWARD_VALUE,
+      aguardando: rewards.filter((r) => r.status === "AGUARDANDO").length,
+    }),
+    [rewards, porIndicador],
+  );
 
   const activeContacts = useMemo(() => state.contacts.filter((contact) => !contact.archivedAt), [state.contacts]);
   function suggestions(query: string) {
@@ -75,7 +107,7 @@ export function CrmCanaisPage() {
     event.preventDefault();
     setFeedback("");
     if (!referrerId) {
-      setFeedback("Escolha QUEM indicou (busque o paciente na primeira caixa).");
+      setFeedback("Escolha QUEM indicou (busque a pessoa na primeira caixa).");
       return;
     }
     if (!referredId && referredQuery.trim().length < 3) {
@@ -100,18 +132,17 @@ export function CrmCanaisPage() {
             lifecycleStage: "COLD_LEAD",
             sourceChannel: "Indicação",
           },
-          pessoa?.id ?? "canais",
+          pessoa?.id ?? "indicacoes",
         );
         next = created.state;
         targetId = created.contact.id;
       }
-      // Indicado que já existia sem número: completa o cadastro agora.
-      next = applyContactChannels(next, targetId, contactChannelsValues(novoContato), pessoa?.id ?? "canais");
-      next = setContactReferrer(next, targetId, referrerId, pessoa?.id ?? "canais");
+      next = applyContactChannels(next, targetId, contactChannelsValues(novoContato), pessoa?.id ?? "indicacoes");
+      next = setContactReferrer(next, targetId, referrerId, pessoa?.id ?? "indicacoes");
       const referrer = next.contacts.find((item) => item.id === referrerId);
       const referred = next.contacts.find((item) => item.id === targetId);
       setFeedback(
-        `✅ Indicação registrada: ${contactDisplayName(referrer)} indicou ${contactDisplayName(referred)}. Quando fechar o plano, o prêmio de ${moneyCrm(REFERRAL_REWARD_VALUE)} aparece aqui como "A pagar".`,
+        `✅ ${contactDisplayName(referrer)} indicou ${contactDisplayName(referred)}. O indicado já está no CRM; quando a consulta dele virar comanda, o voucher de ${moneyCrm(REFERRAL_REWARD_VALUE)} libera sozinho aqui.`,
       );
       return next;
     });
@@ -123,28 +154,28 @@ export function CrmCanaisPage() {
   }
 
   function handleMarkPaid(referredContactId: string, referredName: string) {
-    if (!window.confirm(`Confirmar o pagamento de ${moneyCrm(REFERRAL_REWARD_VALUE)} pela indicação de ${referredName}?`)) return;
+    if (!window.confirm(`Confirmar a entrega do voucher de ${moneyCrm(REFERRAL_REWARD_VALUE)} pela indicação de ${referredName}?`)) return;
     persist((current) => markReferralRewardPaid(current, referredContactId, pessoa?.id ?? "coordenacao"));
-    setFeedback(`Prêmio da indicação de ${referredName} marcado como pago.`);
+    setFeedback(`Voucher da indicação de ${referredName} marcado como pago.`);
   }
 
   return (
-    <AccessGate allowed={canCrmBratan} label="CRM · Canais de Venda" module="crm">
+    <AccessGate allowed={canCrmBratan} label="CRM · Indicações" module="crm">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
         <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
           <div className="flex items-center gap-2">
-            <Share2 className="h-6 w-6 text-brand-musgo" aria-hidden="true" />
-            <h1 className="text-3xl text-brand-musgo">Canais de Venda</h1>
-            <InfoTip title="Para que serve esta aba?">
-              Mostra por onde cada paciente chega (indicação, Instagram, Google…) e quanto investimos em cada canal. Na
-              indicação, quem indica ganha {moneyCrm(REFERRAL_REWARD_VALUE)} quando o indicado fecha o plano — registre aqui
-              quem indicou quem e controle os prêmios a pagar.
+            <Gift className="h-6 w-6 text-brand-musgo" aria-hidden="true" />
+            <h1 className="text-3xl text-brand-musgo">Indicações</h1>
+            <InfoTip title="Como funciona o voucher">
+              Cada pessoa que indica tem os seus indicados listados aqui. Quando o indicado PASSA COM O DOUTOR (a
+              consulta vira comanda no financeiro), o voucher de {moneyCrm(REFERRAL_REWARD_VALUE)} libera sozinho — a
+              coordenação só marca quando entregar. Indicado registrado aqui já nasce no CRM, sem cadastro duplicado.
             </InfoTip>
           </div>
           <p className="text-sm text-muted-foreground">
-            De onde vêm nossos pacientes e quanto custa cada canal. Indicação: {moneyCrm(REFERRAL_REWARD_VALUE)} para quem
-            indica, pagos quando o indicado fecha.
+            Quem indica, quem foi indicado e o voucher de {moneyCrm(REFERRAL_REWARD_VALUE)} por paciente que passar com o
+            doutor.
           </p>
         </motion.header>
 
@@ -152,30 +183,38 @@ export function CrmCanaisPage() {
           <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/70 p-3 text-sm font-medium text-brand-tinta">{feedback}</div>
         ) : null}
 
-        {/* Resumo do investimento em indicações */}
-        <div className="grid gap-3 sm:grid-cols-3">
+        {/* Placar */}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="p-4">
+              <Users className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
+              <p className="mt-2 text-sm font-semibold text-brand-musgo">Pessoas que indicam</p>
+              <p className="text-2xl font-bold text-brand-tinta">{totais.indicadores}</p>
+              <p className="text-xs text-muted-foreground">{totais.indicados} indicado(s) no total</p>
+            </CardContent>
+          </Card>
+          <Card className={cn(totais.aReceber > 0 && "border-amber-300 bg-amber-50/50")}>
+            <CardContent className="p-4">
               <Gift className="h-5 w-5 text-amber-600" aria-hidden="true" />
-              <p className="mt-2 text-sm font-semibold text-brand-musgo">Prêmios a pagar</p>
-              <p className="text-2xl font-bold text-amber-700">{moneyCrm(totals.aPagar)}</p>
-              <p className="text-xs text-muted-foreground">{totals.aPagar / REFERRAL_REWARD_VALUE} indicação(ões) fechou(aram) o plano</p>
+              <p className="mt-2 text-sm font-semibold text-brand-musgo">Vouchers liberados</p>
+              <p className="text-2xl font-bold text-amber-700">{moneyCrm(totais.aReceber)}</p>
+              <p className="text-xs text-muted-foreground">indicados que já passaram com o Dr.</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <CircleDollarSign className="h-5 w-5 text-emerald-600" aria-hidden="true" />
-              <p className="mt-2 text-sm font-semibold text-brand-musgo">Já pago em indicações</p>
-              <p className="text-2xl font-bold text-emerald-700">{moneyCrm(totals.pago)}</p>
-              <p className="text-xs text-muted-foreground">investimento realizado no canal</p>
+              <p className="mt-2 text-sm font-semibold text-brand-musgo">Vouchers pagos</p>
+              <p className="text-2xl font-bold text-emerald-700">{moneyCrm(totais.pago)}</p>
+              <p className="text-xs text-muted-foreground">investimento no canal indicação</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <Megaphone className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-              <p className="mt-2 text-sm font-semibold text-brand-musgo">Indicações aguardando</p>
-              <p className="text-2xl font-bold text-brand-tinta">{totals.aguardando}</p>
-              <p className="text-xs text-muted-foreground">indicados que ainda não fecharam</p>
+              <UserPlus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
+              <p className="mt-2 text-sm font-semibold text-brand-musgo">Aguardando consulta</p>
+              <p className="text-2xl font-bold text-brand-tinta">{totais.aguardando}</p>
+              <p className="text-xs text-muted-foreground">indicados que ainda não passaram</p>
             </CardContent>
           </Card>
         </div>
@@ -187,13 +226,13 @@ export function CrmCanaisPage() {
               <UserPlus className="h-5 w-5" aria-hidden="true" /> Registrar indicação
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Quem indicou ganha {moneyCrm(REFERRAL_REWARD_VALUE)} quando o indicado fechar o plano de acompanhamento.
+              Paciente X indicou Y: busque o X, digite (ou busque) o Y — o Y já entra no CRM ligado ao X.
             </p>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleRegister} className="grid gap-3 lg:grid-cols-3">
               <div className="space-y-1.5">
-                <Label>Quem indicou (paciente da casa)</Label>
+                <Label>Quem indicou</Label>
                 <Input
                   value={referrerQuery}
                   onChange={(event) => {
@@ -266,102 +305,83 @@ export function CrmCanaisPage() {
           </CardContent>
         </Card>
 
-        {/* Prêmios de indicação */}
+        {/* Por pessoa: X indicou Y e Z */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Gift className="h-5 w-5" aria-hidden="true" /> Indicações e prêmios ({rewards.length})
+              <Users className="h-5 w-5" aria-hidden="true" /> Por pessoa ({porIndicador.length})
             </CardTitle>
+            <p className="text-xs text-muted-foreground">Clique na pessoa para abrir os indicados dela.</p>
           </CardHeader>
           <CardContent className="space-y-2">
-            {rewards.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma indicação registrada ainda — registre a primeira acima.</p>
+            {porIndicador.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma indicação ainda — registre a primeira acima.</p>
             ) : (
-              rewards.map((reward) => (
-                <div
-                  key={reward.referred.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-oliva/20 bg-white/70 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-brand-musgo">
-                      {reward.referrer ? contactDisplayName(reward.referrer) : "—"}
-                      <span className="mx-1.5 text-muted-foreground">indicou</span>
-                      <Link to={crmModuleRoutes.contact(reward.referred.id)} className="hover:underline">
-                        {contactDisplayName(reward.referred)}
-                      </Link>
-                    </p>
-                    {reward.soldTotal > 0 ? (
-                      <p className="text-xs text-muted-foreground">Fechou {moneyCrm(reward.soldTotal)}</p>
+              porIndicador.map((grupo) => {
+                const chave = grupo.indicador?.id ?? "?";
+                const aberto = indicadorAberto === chave;
+                return (
+                  <div key={chave} className="rounded-xl border border-brand-oliva/20 bg-white/70">
+                    <button
+                      type="button"
+                      className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-left"
+                      onClick={() => setIndicadorAberto((atual) => (atual === chave ? "" : chave))}
+                    >
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-musgo">
+                        {aberto ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+                        {grupo.indicador ? contactDisplayName(grupo.indicador) : "(indicador removido)"}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">
+                          {grupo.indicacoes.length} indicado(s) · {grupo.passaram} passaram
+                        </span>
+                        {grupo.aReceber > 0 ? (
+                          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-bold text-amber-800">
+                            {moneyCrm(grupo.aReceber)} a entregar
+                          </span>
+                        ) : null}
+                        {grupo.vouchersPagos > 0 ? (
+                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">
+                            {grupo.vouchersPagos} voucher(s) pago(s)
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                    {aberto ? (
+                      <div className="space-y-1.5 border-t border-brand-oliva/10 px-3 py-2.5">
+                        {grupo.indicacoes.map((reward) => (
+                          <div key={reward.referred.id} className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0 text-sm">
+                              <Link to={crmModuleRoutes.contact(reward.referred.id)} className="font-semibold text-brand-tinta hover:underline">
+                                {contactDisplayName(reward.referred)}
+                              </Link>
+                              {reward.soldTotal > 0 ? (
+                                <span className="ml-2 text-xs text-muted-foreground">fechou {moneyCrm(reward.soldTotal)}</span>
+                              ) : null}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", statusTones[reward.status])}>
+                                {referralRewardStatusLabels[reward.status]}
+                              </span>
+                              {reward.status === "A_PAGAR" && canPay ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleMarkPaid(reward.referred.id, contactDisplayName(reward.referred))}
+                                >
+                                  Voucher entregue
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     ) : null}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", statusTones[reward.status])}>
-                      {referralRewardStatusLabels[reward.status]}
-                    </span>
-                    {reward.status === "A_PAGAR" && canPay ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleMarkPaid(reward.referred.id, contactDisplayName(reward.referred))}
-                      >
-                        Marcar pago
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
-          </CardContent>
-        </Card>
-
-        {/* Tabela por canal */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Megaphone className="h-5 w-5" aria-hidden="true" /> De onde vêm nossos pacientes
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Contatos, fechamentos, valor vendido e investimento por canal. Indicação = {moneyCrm(REFERRAL_REWARD_VALUE)} por
-              indicado que fecha.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="text-xs uppercase text-brand-oliva">
-                  <tr>
-                    <th className="px-3 py-2">Canal</th>
-                    <th className="px-3 py-2">Contatos</th>
-                    <th className="px-3 py-2">Fecharam</th>
-                    <th className="px-3 py-2 text-right">Valor vendido</th>
-                    <th className="px-3 py-2 text-right">Investimento</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand-oliva/10">
-                  {stats.map((item) => (
-                    <tr key={item.channel}>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          {item.channel === "Indicação" ? <Badge variant="gold">★</Badge> : null}
-                          <span className="font-semibold text-brand-tinta">{item.channel}</span>
-                        </div>
-                        <div className="mt-1 h-1.5 w-full max-w-[180px] overflow-hidden rounded-full bg-brand-papel">
-                          <div
-                            className="h-full rounded-full bg-brand-oliva/60"
-                            style={{ width: `${Math.max(4, Math.round((item.contacts / maxContacts) * 100))}%` }}
-                          />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 font-semibold tabular-nums">{item.contacts}</td>
-                      <td className="px-3 py-2.5 tabular-nums">{item.won}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-brand-musgo">{moneyCrm(item.soldTotal)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{item.investment ? moneyCrm(item.investment) : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </CardContent>
         </Card>
       </div>

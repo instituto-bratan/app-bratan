@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Boxes,
+  Gift,
   BarChart3,
   Bell,
   BrainCircuit,
@@ -107,7 +108,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Cadências", href: "/crm/cadencias", icon: MessageCircle, allowed: canCrmBratan, module: "crm" },
       { label: "Planilha de Cadências", shortLabel: "Planilha", href: "/crm/planilha", icon: ClipboardList, allowed: canCrmBratan, module: "crm" },
       { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento, module: "acompanhamento" },
-      { label: "Canais de Venda", shortLabel: "Canais", href: "/crm/canais", icon: Target, allowed: canCrmBratan, module: "crm" },
+      { label: "Indicações", href: "/crm/indicacoes", icon: Gift, allowed: canCrmBratan, module: "crm" },
     ],
   },
   {

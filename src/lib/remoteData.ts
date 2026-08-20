@@ -3401,7 +3401,7 @@ export async function listRemoteEstoqueItems(): Promise<EstoqueItem[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("estoque_item")
-    .select("client_ref, setor, nome, categoria, unidade, minimo, observacao, created_at")
+    .select("client_ref, setor, nome, categoria, unidade, minimo, codigo_barras, observacao, created_at")
     .is("deleted_at", null)
     .order("nome");
   if (error) throw error;
@@ -3412,6 +3412,7 @@ export async function listRemoteEstoqueItems(): Promise<EstoqueItem[]> {
     categoria: String(row.categoria ?? ""),
     unidade: String(row.unidade ?? "un"),
     minimo: Number(row.minimo ?? 0),
+    codigoBarras: String(row.codigo_barras ?? ""),
     observacao: String(row.observacao ?? ""),
     createdAt: String(row.created_at ?? new Date().toISOString()),
   }));
@@ -3427,6 +3428,7 @@ export async function upsertRemoteEstoqueItem(item: EstoqueItem, createdBy: stri
       categoria: item.categoria,
       unidade: item.unidade,
       minimo: item.minimo,
+      codigo_barras: item.codigoBarras,
       observacao: item.observacao,
       created_by: uuidOrNull(createdBy),
     },

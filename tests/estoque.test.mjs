@@ -171,3 +171,58 @@ test("setores não vazam um no outro", () => {
   const csvRec = es.csvMovimentos(items, moves, "RECEPCAO", "2026-08-01", "2026-08-31");
   assert.ok(csvRec.includes("Papel A4") && !csvRec.includes("Undecilato"));
 });
+
+// ------------------------- v2: bip, GS1 e reposição -------------------------
+
+test("GS1 DataMatrix de medicação: um bip traz GTIN + validade + lote", () => {
+  const GS = String.fromCharCode(29);
+  // AI 01 (GTIN-14) + 17 (validade AAMMDD) + 10 (lote, variável)
+  const lido = es.parseGs1(`01078987134500171727063010ABC123`);
+  assert.equal(lido.gtin, "7898713450017");
+  assert.equal(lido.validade, "2027-06-30");
+  assert.equal(lido.lote, "ABC123");
+  // Com série (21) no meio, separada por FNC1, e prefixo de simbologia ]d2
+  const completo = es.parseGs1(`]d2010789871345001721XYZ99${GS}1727060010L44`);
+  assert.equal(completo.gtin, "7898713450017");
+  assert.equal(completo.validade, "2027-06-30", "dia 00 vira o último dia do mês");
+  assert.equal(completo.lote, "L44");
+});
+
+test("EAN-13 puro e código desconhecido", () => {
+  assert.equal(es.parseGs1("7891234567895").gtin, "7891234567895");
+  assert.equal(es.parseGs1(""), null);
+});
+
+test("acharPorCodigo casa EAN-13 com GTIN-14 (zeros à esquerda não separam)", () => {
+  const items = [item("und", { codigoBarras: "7898713450017" })];
+  assert.equal(es.acharPorCodigo(items, "01078987134500171727063010ABC")?.id, "und");
+  assert.equal(es.acharPorCodigo(items, "7898713450017")?.id, "und");
+  assert.equal(es.acharPorCodigo(items, "7899999999999"), null);
+  assert.equal(es.acharPorCodigo([item("sem")], "7898713450017"), null, "item sem código não casa");
+});
+
+test("consumo médio, cobertura e mínimo sugerido", () => {
+  const moves = [
+    mov("und", "SAIDA", 6, "2026-08-01"),
+    mov("und", "SAIDA", 6, "2026-08-10"),
+    mov("und", "ENTRADA", 50, "2026-07-01"),
+    mov("und", "SAIDA", 99, "2026-05-01"), // fora da janela de 60 dias
+  ];
+  const consumo = es.consumoDiario(moves, "und", HOJE, 60);
+  assert.equal(consumo, 0.2); // 12 unidades / 60 dias
+  assert.equal(es.coberturaDias(10, consumo), 50);
+  assert.equal(es.coberturaDias(10, 0), null, "sem consumo medido não inventa cobertura");
+  assert.equal(es.minimoSugerido(consumo), 3); // 0,2 × 7 × 1,5 = 2,1 → 3
+  assert.equal(es.minimoSugerido(0), 0);
+});
+
+test("lista de compras: só quem precisa, com sugestão de reposição (2× mínimo)", () => {
+  const items = [item("a", { minimo: 10, nome: "Agulha" }), item("b", { nome: "Zerado" }), item("c", { minimo: 2, nome: "Cheio" })];
+  const moves = [mov("a", "ENTRADA", 4, "2026-08-01"), mov("c", "ENTRADA", 30, "2026-08-01")];
+  const lista = es.listaDeCompra(items, moves, "ENFERMAGEM");
+  assert.equal(lista.length, 2);
+  const agulha = lista.find((linha) => linha.item.nome === "Agulha");
+  assert.equal(agulha.comprar, 16); // 2×10 − 4
+  const zerado = lista.find((linha) => linha.item.nome === "Zerado");
+  assert.equal(zerado.comprar, 1, "sem mínimo definido, pelo menos 1");
+});

@@ -2382,24 +2382,67 @@ export type ReferralReward = {
 };
 
 export const referralRewardStatusLabels: Record<ReferralRewardStatus, string> = {
-  AGUARDANDO: "Aguardando fechar",
-  A_PAGAR: "A pagar R$500",
-  PAGO: "Pago",
+  AGUARDANDO: "Ainda não passou com o Dr.",
+  A_PAGAR: "Voucher liberado — R$ 500",
+  PAGO: "Voucher pago",
 };
 
-export function referralRewards(state: CrmState): ReferralReward[] {
+/**
+ * INDICAÇÕES (19/08/2026, pedido do Lucas): o voucher de R$ 500 libera quando o
+ * indicado "PASSA COM O DOUTOR" — não quando fecha plano. A prova de que passou
+ * é dinheiro: uma comanda com item CONSULTA (o chamador monta o conjunto a
+ * partir do financeiro e passa aqui). Negociação ganha também conta — fechou na
+ * consulta, logo passou. Sem o conjunto (telas antigas), vale só o "ganhou".
+ */
+export function referralRewards(state: CrmState, passouComDoutor?: Set<string>): ReferralReward[] {
   return state.contacts
     .filter((contact) => contact.referrerContactId && !contact.archivedAt)
     .map((referred) => {
       const referrer = state.contacts.find((item) => item.id === referred.referrerContactId) ?? null;
-      const won = contactHasWonDeal(state, referred.id);
+      const passou = Boolean(passouComDoutor?.has(referred.id)) || contactHasWonDeal(state, referred.id);
       const soldTotal = state.deals
         .filter((deal) => deal.contactId === referred.id && (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL"))
         .reduce((sum, deal) => sum + (deal.soldAmount || 0), 0);
-      const status: ReferralRewardStatus = referred.referralRewardPaidAt ? "PAGO" : won ? "A_PAGAR" : "AGUARDANDO";
+      const status: ReferralRewardStatus = referred.referralRewardPaidAt ? "PAGO" : passou ? "A_PAGAR" : "AGUARDANDO";
       return { referred, referrer, status, soldTotal };
     })
     .sort((a, b) => (a.status === "A_PAGAR" ? -1 : 1) - (b.status === "A_PAGAR" ? -1 : 1));
+}
+
+export type IndicadorResumo = {
+  /** null = indicações cujo indicador foi apagado (não deveria acontecer). */
+  indicador: CrmContact | null;
+  indicacoes: ReferralReward[];
+  passaram: number;
+  vouchersLiberados: number;
+  vouchersPagos: number;
+  /** R$ liberado e ainda não pago. */
+  aReceber: number;
+};
+
+/** A visão POR PESSOA: "paciente X indicou o Y e o Z" com os vouchers de cada um. */
+export function indicadoresResumo(rewards: ReferralReward[]): IndicadorResumo[] {
+  const porIndicador = new Map<string, IndicadorResumo>();
+  for (const reward of rewards) {
+    const chave = reward.referrer?.id ?? "?";
+    const atual = porIndicador.get(chave) ?? {
+      indicador: reward.referrer,
+      indicacoes: [],
+      passaram: 0,
+      vouchersLiberados: 0,
+      vouchersPagos: 0,
+      aReceber: 0,
+    };
+    atual.indicacoes.push(reward);
+    if (reward.status !== "AGUARDANDO") atual.passaram += 1;
+    if (reward.status === "A_PAGAR") {
+      atual.vouchersLiberados += 1;
+      atual.aReceber += REFERRAL_REWARD_VALUE;
+    }
+    if (reward.status === "PAGO") atual.vouchersPagos += 1;
+    porIndicador.set(chave, atual);
+  }
+  return [...porIndicador.values()].sort((a, b) => b.aReceber - a.aReceber || b.indicacoes.length - a.indicacoes.length);
 }
 
 export function referralRewardTotals(rewards: ReferralReward[]) {

@@ -36,6 +36,8 @@ export type EstoqueItem = {
   unidade: string;
   /** Ponto de pedido: abaixo disso o app acusa "comprar". */
   minimo: number;
+  /** EAN/GTIN do produto — o que o leitor bipa. Vazio = item sem código. */
+  codigoBarras: string;
   observacao: string;
   createdAt: string;
 };
@@ -287,4 +289,141 @@ export function csvMovimentos(
       ].join(";"),
     );
   return ["Data;Item;Tipo;Quantidade;Lote;Validade;Origem;Motivo", ...linhas].join("\n");
+}
+
+
+// ---------------------------------------------------------------------------
+// Código de barras e GS1 (a automação do "bip")
+// ---------------------------------------------------------------------------
+
+export type Gs1Lido = {
+  /** GTIN do produto (o "código do item"), sem zeros à esquerda. */
+  gtin: string;
+  /** Validade (ISO), quando o código carrega — DataMatrix de medicação carrega. */
+  validade: string | null;
+  lote: string;
+  /** O texto cru, para gravar/depurar. */
+  cru: string;
+};
+
+/**
+ * Lê o que o leitor bipou. Três formas chegam aqui:
+ *   · EAN-13/EAN-14 puro (só dígitos) — código comum de qualquer produto;
+ *   · GS1 DataMatrix das caixas de MEDICAÇÃO no Brasil (padrão ANVISA/SNCM):
+ *     AIs 01=GTIN, 17=validade AAMMDD, 10=lote, 21=série. Campos de tamanho
+ *     variável terminam no separador FNC1 (ASCII 29) — ou no fim do texto;
+ *   · o mesmo GS1 com o prefixo de simbologia "]d2" que alguns leitores mandam.
+ *
+ * É isso que faz a entrada de medicação se preencher sozinha: um bip traz
+ * item + lote + validade de uma vez.
+ */
+export function parseGs1(texto: string): Gs1Lido | null {
+  const cru = texto.trim();
+  if (!cru) return null;
+  let corpo = cru.replace(/^\]d2/i, "").replace(/^\]C1/i, "");
+  // Código simples: só dígitos (EAN-8/12/13/14).
+  if (/^\d{8,14}$/.test(corpo)) {
+    return { gtin: corpo.replace(/^0+/, ""), validade: null, lote: "", cru };
+  }
+  const GS = String.fromCharCode(29);
+  let gtin = "";
+  let validade: string | null = null;
+  let lote = "";
+  let i = 0;
+  const fixos: Record<string, number> = { "01": 14, "17": 6, "11": 6, "15": 6 };
+  while (i < corpo.length - 1) {
+    if (corpo[i] === GS) {
+      i += 1;
+      continue;
+    }
+    const ai = corpo.slice(i, i + 2);
+    i += 2;
+    if (fixos[ai]) {
+      const valor = corpo.slice(i, i + fixos[ai]);
+      i += fixos[ai];
+      if (ai === "01") gtin = valor.replace(/^0+/, "");
+      if (ai === "17" && /^\d{6}$/.test(valor)) {
+        const ano = 2000 + Number(valor.slice(0, 2));
+        const mes = Number(valor.slice(2, 4));
+        let dia = Number(valor.slice(4, 6));
+        // Dia 00 no GS1 = "vale o mês inteiro" → último dia do mês.
+        if (dia === 0) dia = new Date(ano, mes, 0).getDate();
+        validade = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+      }
+    } else if (ai === "10" || ai === "21" || ai === "30") {
+      const fim = corpo.indexOf(GS, i);
+      const valor = fim === -1 ? corpo.slice(i) : corpo.slice(i, fim);
+      i = fim === -1 ? corpo.length : fim;
+      if (ai === "10") lote = valor;
+    } else {
+      // AI desconhecido: não dá para saber o tamanho — para de ler.
+      break;
+    }
+  }
+  if (!gtin && !validade && !lote) return null;
+  return { gtin, validade, lote, cru };
+}
+
+/** Acha o item pelo código bipado (compara GTIN sem zeros à esquerda). */
+export function acharPorCodigo(items: EstoqueItem[], codigo: string): EstoqueItem | null {
+  const lido = parseGs1(codigo);
+  const chave = (valor: string) => valor.replace(/\D/g, "").replace(/^0+/, "");
+  const alvo = lido?.gtin ? lido.gtin : chave(codigo);
+  if (!alvo) return null;
+  return items.find((item) => item.codigoBarras && chave(item.codigoBarras) === alvo) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Consumo e reposição (a inteligência do ponto de pedido)
+// ---------------------------------------------------------------------------
+
+/** Consumo médio por dia: saídas dos últimos `janelaDias`, dividido pela janela. */
+export function consumoDiario(moves: EstoqueMovimento[], itemRef: string, todayISO: string, janelaDias = 60) {
+  const inicio = new Date(`${todayISO}T12:00:00`);
+  inicio.setDate(inicio.getDate() - janelaDias);
+  const desde = inicio.toISOString().slice(0, 10);
+  let total = 0;
+  for (const mov of moves) {
+    if (mov.itemRef !== itemRef || mov.tipo !== "SAIDA") continue;
+    if (mov.movDate < desde || mov.movDate > todayISO) continue;
+    total += mov.quantidade;
+  }
+  return Math.round((total / janelaDias) * 1000) / 1000;
+}
+
+/** Para quantos dias o saldo dá, no ritmo atual. null = sem consumo medido. */
+export function coberturaDias(saldo: number, consumoPorDia: number): number | null {
+  if (consumoPorDia <= 0) return null;
+  return Math.floor(saldo / consumoPorDia);
+}
+
+/**
+ * Mínimo sugerido = consumo × (dias até repor) × margem de segurança.
+ * A fórmula clássica do ponto de pedido, com números da clínica: uma compra
+ * demora ~7 dias para chegar e a margem de 50% cobre semana cheia.
+ */
+export function minimoSugerido(consumoPorDia: number, leadTimeDias = 7, margem = 1.5) {
+  if (consumoPorDia <= 0) return 0;
+  return Math.ceil(consumoPorDia * leadTimeDias * margem);
+}
+
+export type ItemDaListaDeCompra = {
+  item: EstoqueItem;
+  saldo: number;
+  comprar: number;
+};
+
+/**
+ * Lista de compras do setor: todo item zerado/abaixo do mínimo, com a sugestão
+ * de quanto comprar — repõe até 2× o mínimo (chega em cima do ponto de pedido
+ * de novo em ~duas janelas), nunca menos que 1.
+ */
+export function listaDeCompra(items: EstoqueItem[], moves: EstoqueMovimento[], setor: EstoqueSetor): ItemDaListaDeCompra[] {
+  return posicaoDoSetor(items, moves, setor)
+    .filter((linha) => linha.status !== "OK")
+    .map((linha) => ({
+      item: linha.item,
+      saldo: linha.saldo,
+      comprar: Math.max(Math.ceil(linha.item.minimo * 2 - linha.saldo), 1),
+    }));
 }

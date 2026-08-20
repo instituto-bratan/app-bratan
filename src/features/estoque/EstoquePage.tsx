@@ -9,6 +9,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
+  Barcode,
   Boxes,
   CheckCircle2,
   ChevronDown,
@@ -34,12 +35,19 @@ import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import type { FinPurchase } from "@/features/financeiro/financeiroData";
 import {
+  acharPorCodigo,
+  saldoDoItem,
   alertasDeValidade,
   chegadasPendentes,
+  coberturaDias,
+  consumoDiario,
   csvMovimentos,
+  listaDeCompra,
   lotesDoItem,
   loteSugerido,
+  minimoSugerido,
   movTipoLabels,
+  parseGs1,
   posicaoDoSetor,
   relatorioPosicao,
   setorLabels,
@@ -97,6 +105,7 @@ export function EstoquePage() {
   const [categoria, setCategoria] = useState("");
   const [unidade, setUnidade] = useState("un");
   const [minimo, setMinimo] = useState("");
+  const [codigoBarras, setCodigoBarras] = useState("");
 
   async function salvarItem(event: FormEvent) {
     event.preventDefault();
@@ -112,6 +121,7 @@ export function EstoquePage() {
       categoria: categoria.trim(),
       unidade: unidade.trim() || "un",
       minimo: Number(minimo.replace(",", ".")) || 0,
+      codigoBarras: codigoBarras.trim(),
       observacao: "",
       createdAt: new Date().toISOString(),
     };
@@ -119,6 +129,7 @@ export function EstoquePage() {
     setNome("");
     setCategoria("");
     setMinimo("");
+    setCodigoBarras("");
     setFeedback(`Item "${item.nome}" criado no estoque da ${setorLabels[setor]}.`);
   }
 
@@ -203,6 +214,89 @@ export function EstoquePage() {
     setFeedback(`Entrada confirmada: ${quantidade} ${item.unidade} de ${item.nome}. A compra foi carimbada como recebida.`);
   }
 
+  // ---------------- modo bipe (leitor de código de barras) ----------------
+  // O leitor USB é um teclado: bipa, "digita" o código e manda Enter. Por isso
+  // não existe integração — só um campo que entende o que chegou. O DataMatrix
+  // das caixas de medicação (padrão GS1/ANVISA) carrega GTIN + validade + lote:
+  // um bip preenche a entrada inteira.
+  const [bipTexto, setBipTexto] = useState("");
+  const [bipItem, setBipItem] = useState<EstoqueItem | null>(null);
+  const [bipLido, setBipLido] = useState<ReturnType<typeof parseGs1>>(null);
+  const [bipDesconhecido, setBipDesconhecido] = useState("");
+  const [bipVincularRef, setBipVincularRef] = useState("");
+
+  function receberBip(codigo: string) {
+    setErro("");
+    setFeedback("");
+    const lido = parseGs1(codigo);
+    if (!lido) {
+      setErro("Não entendi esse código — bipe de novo, ou digite o código e aperte Enter.");
+      return;
+    }
+    const item = acharPorCodigo(estoque.items.filter((existing) => existing.setor === setor), codigo);
+    setBipLido(lido);
+    if (item) {
+      setBipItem(item);
+      setBipDesconhecido("");
+    } else {
+      setBipItem(null);
+      setBipDesconhecido(lido.gtin || lido.cru);
+    }
+  }
+
+  async function bipSaida(item: EstoqueItem) {
+    const sugestao = loteSugerido(estoque.moves, item.id);
+    await estoque.createMove({
+      id: novoId("estqmov"),
+      itemRef: item.id,
+      setor: item.setor,
+      tipo: "SAIDA",
+      quantidade: 1,
+      movDate: hoje,
+      lote: bipLido?.lote || sugestao?.lote || "",
+      validade: bipLido?.validade ?? sugestao?.validade ?? null,
+      compraRef: null,
+      motivo: "bip (leitor)",
+      createdAt: new Date().toISOString(),
+    });
+    setFeedback(`Saída de 1 ${item.unidade} — ${item.nome} (bip).`);
+    setBipItem(null);
+    setBipLido(null);
+    setBipTexto("");
+  }
+
+  async function bipEntrada(item: EstoqueItem, quantidade: number) {
+    await estoque.createMove({
+      id: novoId("estqmov"),
+      itemRef: item.id,
+      setor: item.setor,
+      tipo: "ENTRADA",
+      quantidade,
+      movDate: hoje,
+      lote: bipLido?.lote ?? "",
+      validade: bipLido?.validade ?? null,
+      compraRef: null,
+      motivo: "bip (leitor)",
+      createdAt: new Date().toISOString(),
+    });
+    setFeedback(
+      `Entrada de ${quantidade} ${item.unidade} — ${item.nome}${bipLido?.lote ? ` · lote ${bipLido.lote}` : ""}${bipLido?.validade ? ` · val. ${diaBR(bipLido.validade)}` : ""} (bip).`,
+    );
+    setBipItem(null);
+    setBipLido(null);
+    setBipTexto("");
+  }
+
+  async function bipVincular() {
+    const item = estoque.items.find((existing) => existing.id === bipVincularRef);
+    if (!item || !bipDesconhecido) return;
+    await estoque.upsertItem({ ...item, codigoBarras: bipLido?.gtin || bipDesconhecido });
+    setFeedback(`Código ${bipLido?.gtin || bipDesconhecido} gravado no item "${item.nome}" — o próximo bip acha sozinho.`);
+    setBipDesconhecido("");
+    setBipVincularRef("");
+    setBipItem(item);
+  }
+
   // ---------------- relatórios ----------------
   function imprimirPosicao() {
     const relatorio = relatorioPosicao(estoque.items, estoque.moves, setor, hoje);
@@ -228,6 +322,38 @@ export function EstoquePage() {
       <p class="resumo"><strong>${relatorio.resumo.total}</strong> itens · <strong>${relatorio.resumo.zerados}</strong> zerados · <strong>${relatorio.resumo.comprar}</strong> abaixo do mínimo · <strong>${relatorio.resumo.vencendo}</strong> lote(s) vencendo</p>
       <table><thead><tr><th>Item</th><th>Categoria</th><th>Saldo</th><th>Mínimo</th><th>Situação</th><th>Último mov.</th></tr></thead>
       <tbody>${linhas}</tbody></table>
+      <script>window.print()</script></body></html>`;
+    const janela = window.open("", "_blank", "width=900,height=700");
+    if (!janela) return;
+    janela.document.write(html);
+    janela.document.close();
+  }
+
+  function imprimirListaDeCompra() {
+    const lista = listaDeCompra(estoque.items, estoque.moves, setor);
+    if (!lista.length) {
+      setFeedback("Nada para comprar: nenhum item zerado ou abaixo do mínimo. 👌");
+      return;
+    }
+    const linhas = lista
+      .map(
+        (linha) =>
+          `<tr><td>${linha.item.nome}</td><td>${linha.item.categoria || "—"}</td><td class="num">${linha.saldo.toLocaleString("pt-BR")} ${linha.item.unidade}</td><td class="num"><strong>${linha.comprar.toLocaleString("pt-BR")} ${linha.item.unidade}</strong></td></tr>`,
+      )
+      .join("");
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Lista de compras — ${setorLabels[setor]}</title>
+      <style>
+        body{font-family:-apple-system,Segoe UI,sans-serif;color:#2B2E24;margin:28px}
+        h1{font-size:20px;margin:0}
+        p.meta{color:#666;font-size:12px;margin:4px 0 16px}
+        table{width:100%;border-collapse:collapse;font-size:13px}
+        th,td{border-bottom:1px solid #ddd;text-align:left;padding:7px 8px}
+        th{text-transform:uppercase;font-size:10px;letter-spacing:.04em;color:#4D563B}
+        td.num{text-align:right;font-variant-numeric:tabular-nums}
+      </style></head><body>
+      <h1>Lista de compras — ${setorLabels[setor]}</h1>
+      <p class="meta">Instituto Bratan · gerada em ${diaBR(hoje)} · sugestão repõe até 2× o mínimo</p>
+      <table><thead><tr><th>Item</th><th>Categoria</th><th>Saldo</th><th>Comprar</th></tr></thead><tbody>${linhas}</tbody></table>
       <script>window.print()</script></body></html>`;
     const janela = window.open("", "_blank", "width=900,height=700");
     if (!janela) return;
@@ -296,6 +422,9 @@ export function EstoquePage() {
               <Button type="button" variant="outline" size="sm" onClick={imprimirPosicao}>
                 <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir posição
               </Button>
+              <Button type="button" variant="outline" size="sm" onClick={imprimirListaDeCompra}>
+                <ClipboardList className="mr-1.5 h-4 w-4" aria-hidden="true" /> Lista de compras
+              </Button>
               <Button type="button" variant="outline" size="sm" onClick={baixarCsv}>
                 <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> CSV do mês
               </Button>
@@ -314,6 +443,99 @@ export function EstoquePage() {
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {erro}
           </div>
+        ) : null}
+
+        {/* MODO BIPE: o leitor USB digita o código e manda Enter — sem integração. */}
+        {podeEditar ? (
+          <Card className="border-brand-musgo/30 bg-white/70 shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Barcode className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
+                Bipar código de barras
+                <InfoTip title="Como usar o leitor">
+                  Qualquer leitor USB/Bluetooth funciona: ele "digita" o código e dá Enter sozinho — só deixar o cursor
+                  nesta caixa. Nas caixas de medicação, o quadradinho DataMatrix (padrão ANVISA) carrega o produto, o
+                  lote E a validade: um bip preenche a entrada inteira. Código desconhecido? Vincule uma vez e o próximo
+                  bip acha sozinho.
+                </InfoTip>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <form
+                className="flex flex-wrap gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (bipTexto.trim()) receberBip(bipTexto.trim());
+                }}
+              >
+                <Input
+                  value={bipTexto}
+                  onChange={(event) => setBipTexto(event.target.value)}
+                  placeholder="Clique aqui e bipe (ou digite o código e Enter)"
+                  className="max-w-md font-mono"
+                  autoComplete="off"
+                />
+                <Button type="submit" variant="outline">Ler</Button>
+              </form>
+
+              {bipItem ? (
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
+                  <div className="min-w-0 text-sm">
+                    <p className="font-semibold text-brand-tinta">{bipItem.nome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      saldo {saldoDoItem(estoque.moves, bipItem.id).toLocaleString("pt-BR")} {bipItem.unidade}
+                      {bipLido?.lote ? ` · lote lido: ${bipLido.lote}` : ""}
+                      {bipLido?.validade ? ` · validade lida: ${diaBR(bipLido.validade)}` : ""}
+                    </p>
+                  </div>
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => bipSaida(bipItem)}>Saída de 1 {bipItem.unidade}</Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const resposta = window.prompt(`Entrada de quantas ${bipItem.unidade} de ${bipItem.nome}?`, "1");
+                        const quantidade = Number((resposta ?? "").replace(",", "."));
+                        if (quantidade > 0) void bipEntrada(bipItem, quantidade);
+                      }}
+                    >
+                      Entrada…
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {bipDesconhecido ? (
+                <div className="grid gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-3 py-2.5 text-sm">
+                  <p className="font-semibold text-amber-900">
+                    Código {bipDesconhecido} ainda não está em nenhum item deste setor.
+                  </p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <Label>Vincular ao item</Label>
+                      <select
+                        value={bipVincularRef}
+                        onChange={(event) => setBipVincularRef(event.target.value)}
+                        className="flex h-9 w-64 rounded-md border border-input bg-white/80 px-3 py-1.5 text-sm"
+                      >
+                        <option value="">— escolha o item —</option>
+                        {estoque.items
+                          .filter((item) => item.setor === setor)
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>{item.nome}</option>
+                          ))}
+                      </select>
+                    </div>
+                    <Button type="button" size="sm" onClick={() => void bipVincular()} disabled={!bipVincularRef}>
+                      Vincular código
+                    </Button>
+                    <span className="text-xs text-muted-foreground">ou crie o item em "Novo item" com este código.</span>
+                  </div>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
         ) : null}
 
         {/* Placar */}
@@ -442,7 +664,7 @@ export function EstoquePage() {
               ) : null}
             </div>
             {novoAberto && podeEditar ? (
-              <form className="mt-3 grid gap-3 rounded-lg border border-brand-oliva/20 bg-brand-creme/30 p-3 md:grid-cols-[1.5fr_1fr_0.5fr_0.6fr_auto]" onSubmit={salvarItem}>
+              <form className="mt-3 grid gap-3 rounded-lg border border-brand-oliva/20 bg-brand-creme/30 p-3 md:grid-cols-[1.4fr_0.9fr_0.45fr_0.9fr_0.55fr_auto]" onSubmit={salvarItem}>
                 <div>
                   <Label>Nome do item</Label>
                   <Input value={nome} onChange={(event) => setNome(event.target.value)} placeholder={setor === "ENFERMAGEM" ? "Ex.: Undecilato 250mg" : "Ex.: Papel A4"} autoFocus />
@@ -459,6 +681,13 @@ export function EstoquePage() {
                 <div>
                   <Label>Unidade</Label>
                   <Input value={unidade} onChange={(event) => setUnidade(event.target.value)} placeholder="un, cx, ml" />
+                </div>
+                <div>
+                  <Label>
+                    Código de barras
+                    <InfoTip title="Bipe aqui">Clique no campo e bipe a caixa do produto — o leitor digita o código sozinho. Pode deixar vazio.</InfoTip>
+                  </Label>
+                  <Input value={codigoBarras} onChange={(event) => setCodigoBarras(event.target.value)} placeholder="bipe ou digite" className="font-mono" />
                 </div>
                 <div>
                   <Label>
@@ -487,6 +716,13 @@ export function EstoquePage() {
                       <th className="py-2 pr-3 font-semibold">Categoria</th>
                       <th className="py-2 pr-3 text-right font-semibold">Saldo</th>
                       <th className="py-2 pr-3 text-right font-semibold">Mínimo</th>
+                      <th className="py-2 pr-3 text-right font-semibold">
+                        Cobertura
+                        <InfoTip title="Para quantos dias dá">
+                          Saldo dividido pelo consumo médio dos últimos 60 dias (só saídas). Também sugere o mínimo:
+                          consumo × 7 dias de reposição × 1,5 de segurança.
+                        </InfoTip>
+                      </th>
                       <th className="py-2 pr-3 font-semibold">Situação</th>
                       <th className="py-2 font-semibold">Último mov.</th>
                     </tr>
@@ -503,6 +739,8 @@ export function EstoquePage() {
                         <FragmentoItem
                           key={linha.item.id}
                           linha={linha}
+                          cobertura={coberturaDias(linha.saldo, consumoDiario(estoque.moves, linha.item.id, hoje))}
+                          sugestaoMinimo={minimoSugerido(consumoDiario(estoque.moves, linha.item.id, hoje))}
                           aberto={aberto}
                           lotes={lotes}
                           kardex={kardex}
@@ -566,6 +804,8 @@ export function EstoquePage() {
 // tabela principal não virar um bloco ilegível.
 function FragmentoItem({
   linha,
+  cobertura,
+  sugestaoMinimo,
   aberto,
   lotes,
   kardex,
@@ -576,6 +816,8 @@ function FragmentoItem({
   formMovimento,
 }: {
   linha: ReturnType<typeof posicaoDoSetor>[number];
+  cobertura: number | null;
+  sugestaoMinimo: number;
   aberto: boolean;
   lotes: ReturnType<typeof lotesDoItem>;
   kardex: EstoqueMovimento[];
@@ -600,6 +842,12 @@ function FragmentoItem({
           {linha.saldo.toLocaleString("pt-BR")} {linha.item.unidade}
         </td>
         <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">{linha.item.minimo > 0 ? linha.item.minimo.toLocaleString("pt-BR") : "—"}</td>
+        <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
+          {cobertura === null ? "—" : `${cobertura} d`}
+          {sugestaoMinimo > 0 && sugestaoMinimo !== linha.item.minimo ? (
+            <span className="ml-1 text-[10px] text-brand-oliva" title="Mínimo sugerido pelo consumo">(mín. sug. {sugestaoMinimo})</span>
+          ) : null}
+        </td>
         <td className="py-2 pr-3">
           <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold", chip.classe)}>{chip.rotulo}</span>
         </td>
@@ -607,7 +855,7 @@ function FragmentoItem({
       </tr>
       {aberto ? (
         <tr className="border-b border-brand-oliva/10 bg-brand-creme/20">
-          <td colSpan={6} className="px-3 py-3">
+          <td colSpan={7} className="px-3 py-3">
             <div className="grid gap-4">
               {podeEditar ? formMovimento : null}
               {lotes.length ? (

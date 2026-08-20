@@ -100,7 +100,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname.startsWith("/crm/contatos/")) return "crmContact";
   if (pathname === "/crm/cadencias") return "crmCadences";
   if (pathname === "/acompanhamento") return "acompanhamento";
-  if (pathname === "/crm/canais") return "crmCanais";
+  if (pathname === "/crm/indicacoes" || pathname === "/crm/canais") return "crmCanais";
   if (pathname === "/crm/planilha") return "crmPlanilha";
   if (pathname.startsWith("/administracao/colaboradores/")) return "colaboradorPerfil";
   if (pathname === "/administracao" || pathname === "/administracao/colaboradores") return "colaboradores";

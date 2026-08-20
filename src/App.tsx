@@ -108,7 +108,9 @@ export function App() {
               {/* "Listas do Dr. Daniel" foi unificada na aba Acompanhamento. */}
               <Route path="/crm/listas" element={<Navigate to="/acompanhamento" replace />} />
               <Route path="/acompanhamento" element={<ProgramaAcompanhamentoPage />} />
-              <Route path="/crm/canais" element={<CrmCanaisPage />} />
+              {/* Canais de Venda virou INDICAÇÕES (19/08/2026) — link antigo redireciona. */}
+              <Route path="/crm/indicacoes" element={<CrmCanaisPage />} />
+              <Route path="/crm/canais" element={<Navigate to="/crm/indicacoes" replace />} />
               <Route path="/crm/planilha" element={<CrmPlanilhaCadenciasPage />} />
               <Route path="/administracao" element={<Navigate to="/administracao/colaboradores" replace />} />
               <Route path="/administracao/colaboradores" element={<ColaboradoresPage />} />
