@@ -11,6 +11,7 @@
 // para poder ser testado.
 import type { CrmDeal, CrmState } from "@/features/crm/crmData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
+import type { FinCashEntry } from "@/lib/remoteData";
 import type { FinSale } from "./financeiroData";
 
 export type PendenciaFechamento = {
@@ -49,7 +50,7 @@ function diaBR(iso: string) {
  * dinheiro agendado. Foi o caso da Fabiana (R$ 8.831 para 21/08): sem essa
  * regra ela apareceria como furo do mesmo tamanho do Gabriel, e não é.
  */
-function registradoDoPaciente(contactId: string, sales: FinSale[], lembretes: PagamentoLembrete[]) {
+function registradoDoPaciente(contactId: string, sales: FinSale[], lembretes: PagamentoLembrete[], cashEntries: FinCashEntry[]) {
   let comandas = 0;
   for (const sale of sales) {
     if (sale.crmContactRef !== contactId) continue;
@@ -62,7 +63,15 @@ function registradoDoPaciente(contactId: string, sales: FinSale[], lembretes: Pa
     if (lembrete.status !== "aberto") continue;
     crediario += lembrete.valorPendente || 0;
   }
-  return { comandas, crediario, total: comandas + crediario };
+  // Dinheiro do fechamento vive no CAIXA do crediário, não em comanda (regra do
+  // Lucas, 20/08/2026) — sem contar essas entradas, todo fechamento em dinheiro
+  // viraria alarme falso aqui.
+  let dinheiroNoCaixa = 0;
+  for (const entry of cashEntries) {
+    if (entry.crmContactRef !== contactId || entry.direction !== "ENTRADA") continue;
+    dinheiroNoCaixa += entry.amount || 0;
+  }
+  return { comandas, crediario, dinheiroNoCaixa, total: comandas + crediario + dinheiroNoCaixa };
 }
 
 /**
@@ -77,6 +86,7 @@ export function conferenciaFechamentos(
   lembretes: PagamentoLembrete[],
   todayISO: string,
   diasParaTras = 45,
+  cashEntries: FinCashEntry[] = [],
 ): PendenciaFechamento[] {
   const limite = new Date(`${todayISO}T12:00:00`);
   limite.setDate(limite.getDate() - diasParaTras);
@@ -96,7 +106,7 @@ export function conferenciaFechamentos(
     if (vendido <= 0) continue;
 
     const nome = nomePor.get(deal.contactId) ?? deal.title;
-    const registrado = registradoDoPaciente(deal.contactId, sales, lembretes);
+    const registrado = registradoDoPaciente(deal.contactId, sales, lembretes, cashEntries);
     // Sobra de até R$ 1 é arredondamento, não furo.
     const falta = Math.round((vendido - registrado.total) * 100) / 100;
     if (falta <= 1) continue;

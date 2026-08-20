@@ -20,6 +20,7 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import {
   RETURN_CYCLE_CADENCE_ID,
+  cadenceOwnerSlug,
   dealsScheduledWithoutConfirmation,
   scheduleConsultation,
   applyContactChannels,
@@ -45,6 +46,8 @@ import {
   roleRuleExplainers,
 } from "./crmData";
 import { todayISO } from "@/lib/localStore";
+import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
+import { cadenciaDaFaixa, faixaLabels, radarDeResgate, radarPorFaixa, type FaixaDeResgate } from "./resgateData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { useCrmState } from "./useCrmState";
 import { ContactChannelsFields } from "./ContactChannelsFields";
@@ -79,6 +82,30 @@ export function CrmCadencesPage() {
   const isManagement = isCrmManagement(pessoa?.cargo);
   const myRole = cargoToCrmRole(pessoa?.cargo);
   const [onlyMine, setOnlyMine] = useState(true);
+  // TRÊS TRABALHOS, UMA TELA (20/08/2026, pedido do Lucas: "são muitas abas e a
+  // gente acaba se confundindo"): Agir (inscrever alguém), Radar de resgate
+  // (quem sumiu — 60d/6m/1a) e Aprender (a aula + o catálogo). Pílulas em vez
+  // de rolagem infinita.
+  const [secao, setSecao] = useState<"AGIR" | "RADAR" | "APRENDER">("AGIR");
+  const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
+  const radar = useMemo(() => radarDeResgate(state, financeiro.sales, todayISO()), [state, financeiro.sales]);
+  const radarFaixas = useMemo(() => radarPorFaixa(radar), [radar]);
+
+  function inscreverNoResgate(contactId: string, faixa: Exclude<FaixaDeResgate, "CHEGANDO">) {
+    persist((current) =>
+      enrollContactInCadence(current, {
+        cadenceId: cadenciaDaFaixa[faixa],
+        contactId,
+        dealId: "",
+        triggerSource: "radar de resgate",
+        triggerDate: todayISO(),
+        ownerUserId: cadenceOwnerSlug("CONCIERGE"),
+        ownerRole: "CONCIERGE",
+      }),
+    );
+    const contato = state.contacts.find((item) => item.id === contactId);
+    setFeedback(`${contactDisplayName(contato)} inscrito(a) no ${faixaLabels[faixa]} — as 5 tentativas da Aline já viraram tarefas.`);
+  }
   const cadenceInvolvesMyRole = (cadenceId: string, ownerRole: string) =>
     myRole === ownerRole || state.cadenceSteps.some((step) => step.cadenceId === cadenceId && step.assignedToRole === myRole);
   const accessibleCadences = state.cadences.filter((cadence) => !pessoa || canUserAccessCadence(pessoa, cadence));
@@ -348,9 +375,34 @@ export function CrmCadencesPage() {
         </div>
       </motion.section>
 
+      {/* As três pílulas: cada trabalho no seu lugar. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            ["AGIR", "Inscrever alguém"],
+            ["RADAR", `Radar de resgate${radar.filter((pessoa) => pessoa.faixa !== "CHEGANDO").length ? ` (${radar.filter((pessoa) => pessoa.faixa !== "CHEGANDO").length})` : ""}`],
+            ["APRENDER", "Como funciona + catálogo"],
+          ] as const
+        ).map(([chave, rotulo]) => (
+          <button
+            key={chave}
+            type="button"
+            onClick={() => setSecao(chave)}
+            className={
+              secao === chave
+                ? "rounded-full border border-brand-musgo bg-brand-musgo px-4 py-1.5 text-sm font-semibold text-brand-papel"
+                : "rounded-full border border-brand-oliva/25 bg-white/60 px-4 py-1.5 text-sm font-semibold text-brand-oliva hover:text-brand-musgo"
+            }
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
       {/* A AULA (pedido do Lucas, 22/07): cada esteira explicada + o que cada
           pessoa vê. Conteúdo espelha gatesForPhase/nextPhaseFor — se o motor
           mudar, atualizar aqui junto. */}
+      {secao === "APRENDER" ? (
       <Card className="border-brand-dourado/30 bg-brand-creme/25">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">Como funcionam as esteiras (a aula)</CardTitle>
@@ -412,6 +464,7 @@ export function CrmCadencesPage() {
           </div>
         </CardContent>
       </Card>
+      ) : null}
 
       <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
 
@@ -453,7 +506,7 @@ export function CrmCadencesPage() {
           </CardContent>
         </Card>
       ) : null}
-      {isManagement ? (
+      {isManagement && secao === "APRENDER" ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant={onlyMine ? "default" : "outline"} size="sm" onClick={() => setOnlyMine(true)}>
             Só as minhas réguas
@@ -469,6 +522,7 @@ export function CrmCadencesPage() {
         </div>
       ) : null}
 
+      {secao === "AGIR" ? (
       <div className="grid gap-4 xl:grid-cols-[0.86fr_1.14fr]">
         <Card>
           <CardHeader>
@@ -614,11 +668,66 @@ export function CrmCadencesPage() {
           </CardContent>
         </Card>
       </div>
+      ) : null}
+
+      {secao === "RADAR" ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">Radar de resgate — quem sumiu e há quanto tempo</CardTitle>
+            <p className="text-xs leading-5 text-muted-foreground">
+              A última comanda diz quando o paciente veio pela última vez. Só aparece quem NINGUÉM está cuidando (sem
+              negociação aberta, sem jornada, sem cadência ativa). Um toque inscreve no resgate certo — as 5 tentativas
+              da Aline viram tarefas na hora.
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {radar.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                Ninguém sumido fora de cuidado. 👏
+              </p>
+            ) : (
+              (["D60", "CHEGANDO", "M6", "A1"] as const).map((faixa) => {
+                const pessoas = radarFaixas.get(faixa) ?? [];
+                if (!pessoas.length) return null;
+                return (
+                  <div key={faixa}>
+                    <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-oliva">
+                      {faixaLabels[faixa]}
+                      <Badge variant={faixa === "D60" ? "gold" : "muted"}>{pessoas.length}</Badge>
+                      {faixa === "CHEGANDO" ? <span className="font-normal normal-case text-muted-foreground">— ainda dá para trazer de volta ANTES de virar resgate</span> : null}
+                    </p>
+                    <div className="grid gap-1.5">
+                      {pessoas.map((pessoa) => (
+                        <div key={pessoa.contact.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/15 bg-white/70 px-3 py-2">
+                          <div className="min-w-0 text-sm">
+                            <Link to={crmModuleRoutes.contact(pessoa.contact.id)} className="font-semibold text-brand-musgo hover:underline">
+                              {contactDisplayName(pessoa.contact)}
+                            </Link>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              última visita {pessoa.ultimaVisita.split("-").reverse().join("/")} · {pessoa.diasSemVir} dias
+                            </span>
+                          </div>
+                          {faixa !== "CHEGANDO" ? (
+                            <Button type="button" size="sm" variant="outline" onClick={() => inscreverNoResgate(pessoa.contact.id, faixa)}>
+                              Inscrever no resgate
+                            </Button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {feedback ? (
         <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/70 p-3 text-sm text-brand-tinta">{feedback}</div>
       ) : null}
 
+      {secao === "APRENDER" ? (
       <div className="grid gap-4 xl:grid-cols-2">
         {visibleCadences.map((cadence) => {
           const steps = stepsByCadence.get(cadence.id) ?? [];
@@ -696,6 +805,7 @@ export function CrmCadencesPage() {
           );
         })}
       </div>
+      ) : null}
     </div>
   );
 }

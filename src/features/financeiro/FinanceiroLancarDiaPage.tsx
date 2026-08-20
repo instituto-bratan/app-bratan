@@ -32,7 +32,7 @@ import {
   planEncaixeComanda,
   type PagamentoLembrete,
 } from "@/features/pagamentos/pagamentosData";
-import { listRemotePagamentos, registerRemotePagamentoRecebimento } from "@/lib/remoteData";
+import { listRemoteFinCashEntries, listRemotePagamentos, registerRemotePagamentoRecebimento } from "@/lib/remoteData";
 import {
   buildDailyCardSummary,
   cardMachineLabels,
@@ -95,6 +95,12 @@ export function FinanceiroLancarDiaPage() {
   const [abaterLembrete, setAbaterLembrete] = useState(true);
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
+  const caixaQuery = useQuery({
+    queryKey: ["fin-cash-entries"],
+    queryFn: listRemoteFinCashEntries,
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
   const lembretesQuery = useQuery({
     queryKey: ["pagamentos-lembretes"],
     queryFn: listRemotePagamentos,
@@ -381,7 +387,7 @@ export function FinanceiroLancarDiaPage() {
             dinheiro são dois atos, e nada avisava quando o segundo não vinha.
             R$ 13.808 de um paciente ficaram invisíveis até o Lucas comparar o
             extrato com a agenda do Dr. Daniel. Agora o app avisa. */}
-        <ConferenciaFechamentoCard crmState={crmState} sales={financeiro.sales} lembretes={lembretes} hoje={todayISO()} />
+        <ConferenciaFechamentoCard crmState={crmState} sales={financeiro.sales} lembretes={lembretes} cashEntries={caixaQuery.data ?? []} hoje={todayISO()} />
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
           <div className="flex flex-col gap-5">

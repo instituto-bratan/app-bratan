@@ -219,3 +219,18 @@ test("cartão do último dia da janela não vira alarme (o dinheiro cai depois d
   const balde = eb.conciliarExtrato([], [comanda("c-hoje", "2026-08-18", 2548)], [], [], "2026-08-01", "2026-08-18");
   assert.equal(balde.maquininha.porDia.length, 0);
 });
+
+test("dinheiro do fechamento no CAIXA do crediário conta como registrado (regra 20/08)", () => {
+  const state = estado(
+    [contato("c-cash", "Paciente Dinheiro")],
+    [deal("deal-cash", "c-cash", 3000, "2026-08-15")],
+  );
+  const caixa = [{ id: "fcash-1", entryDate: "2026-08-15", direction: "ENTRADA", description: "Fechamento — Paciente Dinheiro (dinheiro)", amount: 3000, crmContactRef: "c-cash" }];
+  assert.equal(cf.conferenciaFechamentos(state, [], [], HOJE, 45, caixa).length, 0, "dinheiro no caixa não é furo");
+  // saída do caixa não conta, e caixa de OUTRO paciente também não
+  const caixaErrado = [
+    { id: "fcash-2", entryDate: "2026-08-15", direction: "SAIDA", description: "x", amount: 3000, crmContactRef: "c-cash" },
+    { id: "fcash-3", entryDate: "2026-08-15", direction: "ENTRADA", description: "y", amount: 3000, crmContactRef: "c-outro" },
+  ];
+  assert.equal(cf.conferenciaFechamentos(state, [], [], HOJE, 45, caixaErrado).length, 1);
+});

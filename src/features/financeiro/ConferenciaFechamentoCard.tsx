@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { crmModuleRoutes, type CrmState } from "@/features/crm/crmData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
+import type { FinCashEntry } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import { conferenciaFechamentos } from "./conferenciaFechamento";
 import type { FinSale } from "./financeiroData";
@@ -25,15 +26,17 @@ export function ConferenciaFechamentoCard({
   crmState,
   sales,
   lembretes,
+  cashEntries = [],
   hoje,
 }: {
   crmState: CrmState;
   sales: FinSale[];
   lembretes: PagamentoLembrete[];
+  cashEntries?: FinCashEntry[];
   hoje: string;
 }) {
   const [aberto, setAberto] = useState(false);
-  const pendencias = conferenciaFechamentos(crmState, sales, lembretes, hoje);
+  const pendencias = conferenciaFechamentos(crmState, sales, lembretes, hoje, 45, cashEntries);
 
   if (!pendencias.length) {
     return (

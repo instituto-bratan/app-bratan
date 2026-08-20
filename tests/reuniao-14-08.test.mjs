@@ -96,8 +96,12 @@ test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
   assert.ok(fonte.includes("saleRef: saleId"), "o comprovante nasce amarrado à comanda");
   // PLURAL desde 18/08/2026: o recebimento aceita mais de um comprovante
   // (PIX + cartão, ou quem pagou junto), então o status olha a quantidade.
-  assert.ok(/comprovanteStatus: values\.arquivos\.length\s*\n?\s*\? \("ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
-  assert.ok(/parcela\.forma === "DINHEIRO"\s*\n?\s*\? \("NAO_SE_APLICA"/.test(fonte), "dinheiro não gera comprovante");
+  assert.ok(/comprovanteStatus: values\.arquivos\.length \? \("ANEXADO"/.test(fonte), "com arquivo o comprovante já é ANEXADO");
+  // REGRA 20/08/2026: dinheiro NÃO vira pagamento de comanda — vai direto pro
+  // caixa do crediário, com o vínculo do paciente (é a regra da casa desde o
+  // caso Guilherme R$ 8.000).
+  assert.ok(/parcelasDinheiro/.test(fonte) && /createRemoteFinCashEntry\(entradaNoCaixa/.test(fonte), "dinheiro vai pro caixa do crediário");
+  assert.ok(/parcelasComanda = divisaoBase\.filter\(\(parcela\) => parcela\.forma !== "DINHEIRO"\)/.test(fonte), "a comanda fica só com o que o banco confere");
 });
 
 test("o fechamento lança o valor RECEBIDO, não o vendido", () => {
@@ -106,7 +110,8 @@ test("o fechamento lança o valor RECEBIDO, não o vendido", () => {
   const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
   assert.ok(/valorRecebido: receivedAmount/.test(fonte), "o fechamento passa o recebido");
   assert.ok(!/valorRecebido: soldAmount/.test(fonte), "nunca o vendido");
-  assert.ok(/amount: values\.valorRecebido/.test(fonte), "e é ele que virou o valor da comanda");
+  // Desde 20/08/2026 a comanda leva o recebido MENOS o dinheiro (que foi pro caixa).
+  assert.ok(/amount: valorComanda/.test(fonte), "e é ele (sem o dinheiro) que virou o valor da comanda");
 });
 
 test("o cadastro do paciente também lança, e como AGENDAMENTO", () => {
@@ -445,10 +450,10 @@ test("os tipos de item oferecidos cobrem o que a recepção usa", () => {
 
 test("o fechamento cria UM pagamento por forma, e o item com o tipo escolhido", () => {
   const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
-  assert.ok(/payments: \(values\.divisao/.test(fonte), "a comanda monta os pagamentos da divisão");
+  assert.ok(/payments: parcelasComanda\.map/.test(fonte), "a comanda monta os pagamentos da divisão (sem o dinheiro)");
   assert.ok(/itemType: values\.itemTipo/.test(fonte), "o item leva o tipo escolhido na tela");
-  // Com uma forma só, ela leva o valor inteiro; com várias, cada uma o seu.
-  assert.ok(/lista\.length === 1 \? values\.valorRecebido : parseFinAmount\(parcela\.valorTexto\)/.test(fonte));
+  // Com uma forma só, ela leva o valor da comanda inteiro; com várias, cada uma o seu.
+  assert.ok(/parcelasComanda\.length === 1 \? valorComanda : valorDaParcela\(parcela\)/.test(fonte));
 });
 
 test("o botão de anexar comprovante NÃO pode ficar escondido atrás de condição", () => {

@@ -1064,13 +1064,15 @@ export type FinCashEntry = {
   direction: "ENTRADA" | "SAIDA";
   description: string;
   amount: number;
+  /** Paciente do CRM (dinheiro de fechamento) — a Conferência lê por aqui. */
+  crmContactRef?: string | null;
 };
 
 export async function listRemoteFinCashEntries(): Promise<FinCashEntry[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_cash_entries")
-    .select("client_ref, entry_date, direction, description, amount")
+    .select("client_ref, entry_date, direction, description, amount, crm_contact_ref")
     .is("deleted_at", null)
     .order("entry_date", { ascending: false })
     .limit(500);
@@ -1081,6 +1083,7 @@ export async function listRemoteFinCashEntries(): Promise<FinCashEntry[]> {
     direction: row.direction as FinCashEntry["direction"],
     description: String(row.description ?? ""),
     amount: Number(row.amount ?? 0),
+    crmContactRef: (row.crm_contact_ref as string | null) ?? null,
   }));
 }
 
@@ -1092,6 +1095,7 @@ export async function createRemoteFinCashEntry(entry: FinCashEntry, createdBy: s
     direction: entry.direction,
     description: entry.description,
     amount: entry.amount,
+    crm_contact_ref: entry.crmContactRef ?? null,
     created_by: uuidOrNull(createdBy),
   });
   if (error) throw error;

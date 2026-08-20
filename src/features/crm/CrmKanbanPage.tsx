@@ -31,7 +31,7 @@ import {
 } from "@/features/financeiro/financeiroData";
 import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFechamentoCard";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
-import { listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
+import { createRemoteFinCashEntry, listRemoteFinCashEntries, listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
 import {
@@ -455,6 +455,13 @@ export function CrmKanbanPage() {
     enabled: podeSubirArquivo,
     staleTime: 30_000,
   });
+  // O caixa do crediário entra na Conferência: dinheiro de fechamento mora lá.
+  const caixaQuery = useQuery({
+    queryKey: ["fin-cash-entries"],
+    queryFn: listRemoteFinCashEntries,
+    enabled: podeSubirArquivo,
+    staleTime: 30_000,
+  });
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
@@ -728,6 +735,42 @@ export function CrmKanbanPage() {
     setor: "VENDAS" | "AGENDAMENTO" | "RECEPCAO";
   }) {
     if (values.valorRecebido <= 0) return null;
+
+    // DINHEIRO VAI PRO CAIXA, NÃO PRA COMANDA (20/08/2026, regra do Lucas). A
+    // casa já vivia isso nos Lembretes e no caso Guilherme R$ 8.000: nota física
+    // mora no caixa do crediário e é reconhecida como lucro no mês; comanda é o
+    // que o banco confere (PIX/cartão). Então a parte em dinheiro vira ENTRADA
+    // no caixa (com o vínculo do paciente) e SÓ o resto vira comanda.
+    const divisaoBase = values.divisao.length ? values.divisao : [parcelaVazia("PIX")];
+    const valorDaParcela = (parcela: ParcelaDoRecebimento) =>
+      divisaoBase.length === 1 ? values.valorRecebido : parseFinAmount(parcela.valorTexto);
+    const parcelasDinheiro = divisaoBase.filter((parcela) => parcela.forma === "DINHEIRO");
+    const parcelasComanda = divisaoBase.filter((parcela) => parcela.forma !== "DINHEIRO");
+    const valorDinheiro = Math.round(parcelasDinheiro.reduce((soma, parcela) => soma + valorDaParcela(parcela), 0) * 100) / 100;
+    const valorComanda = Math.round((values.valorRecebido - valorDinheiro) * 100) / 100;
+
+    if (valorDinheiro > 0) {
+      const entradaNoCaixa = {
+        id: createFinId("fcash"),
+        entryDate: todayISO(),
+        direction: "ENTRADA" as const,
+        description: `Fechamento — ${values.pacienteNome} (dinheiro)`,
+        amount: valorDinheiro,
+        crmContactRef: values.contactRef,
+      };
+      if (podeSubirArquivo) {
+        void createRemoteFinCashEntry(entradaNoCaixa, pessoaAuth?.id ?? null).catch((falha) =>
+          console.warn("Entrada do caixa não sincronizou.", falha),
+        );
+      }
+    }
+
+    if (valorComanda <= 0) {
+      // Tudo em dinheiro: o registro é o caixa do crediário. Comanda de valor
+      // zero só faria ruído no Lançar Dia.
+      return { saleId: null, valorDinheiro, valorComanda: 0 };
+    }
+
     const saleId = createFinId("fsale");
     const comanda: FinSale = {
       id: saleId,
@@ -741,14 +784,15 @@ export function CrmKanbanPage() {
         {
           id: createFinId("fitem"),
           itemType: values.itemTipo,
-          amount: values.valorRecebido,
+          // A comanda leva só o que o BANCO vai conferir — o dinheiro foi pro caixa.
+          amount: valorComanda,
           description: values.notaInstrucao.trim(),
         },
       ],
-      // PAGAMENTO DIVIDIDO: uma linha por forma. Com uma só, ela leva o valor
-      // inteiro; com várias, cada uma leva o que foi digitado nela.
-      payments: (values.divisao.length ? values.divisao : [parcelaVazia("PIX")]).map((parcela, indice, lista) => {
-        const valorDaForma = lista.length === 1 ? values.valorRecebido : parseFinAmount(parcela.valorTexto);
+      // PAGAMENTO DIVIDIDO: uma linha por forma (sem as de dinheiro, que já
+      // entraram no caixa do crediário).
+      payments: parcelasComanda.map((parcela) => {
+        const valorDaForma = parcelasComanda.length === 1 ? valorComanda : valorDaParcela(parcela);
         const ehCartao = parcela.forma === "CARTAO_CREDITO" || parcela.forma === "CARTAO_DEBITO";
         return {
           id: createFinId("fpay"),
@@ -756,13 +800,8 @@ export function CrmKanbanPage() {
           amount: valorDaForma,
           installments: Math.max(1, Number(parcela.parcelas) || 1),
           cardMachine: ehCartao ? ("ITAU" as const) : null,
-          // Com arquivo em mãos o comprovante já nasce ANEXADO; dinheiro não gera
-          // comprovante; o resto fica AGUARDANDO e aparece nos avisos.
-          comprovanteStatus: values.arquivos.length
-            ? ("ANEXADO" as const)
-            : parcela.forma === "DINHEIRO"
-              ? ("NAO_SE_APLICA" as const)
-              : ("AGUARDANDO" as const),
+          // Com arquivo em mãos o comprovante já nasce ANEXADO; sem, AGUARDANDO.
+          comprovanteStatus: values.arquivos.length ? ("ANEXADO" as const) : ("AGUARDANDO" as const),
         };
       }),
       tipoAtendimento: values.tipo,
@@ -785,16 +824,16 @@ export function CrmKanbanPage() {
       // cada comprovante leva a forma e o valor da sua parcela; se não bate
       // (3 arquivos para 1 forma), todos levam a forma principal e o valor total
       // fica no primeiro, para a soma dos comprovantes não inflar o dia.
-      const umPorForma = values.arquivos.length === values.divisao.length && values.divisao.length > 1;
+      const umPorForma = values.arquivos.length === parcelasComanda.length && parcelasComanda.length > 1;
       const observacaoBase =
         [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban";
       void Promise.all(
         values.arquivos.map((file, indice) => {
-          const parcela = umPorForma ? values.divisao[indice] : values.divisao[0];
+          const parcela = umPorForma ? parcelasComanda[indice] : (parcelasComanda[0] ?? divisaoBase[0]);
           const valorDoComprovante = umPorForma
-            ? parseFinAmount(values.divisao[indice].valorTexto)
+            ? parseFinAmount(parcelasComanda[indice].valorTexto)
             : indice === 0
-              ? values.valorRecebido
+              ? valorComanda
               : 0;
           return uploadRemoteComprovante({
             pessoa: pessoaAuth as never,
@@ -820,7 +859,7 @@ export function CrmKanbanPage() {
           ...comanda,
           payments: comanda.payments.map((pagamento) => ({
             ...pagamento,
-            comprovanteStatus: pagamento.method === "DINHEIRO" ? ("NAO_SE_APLICA" as const) : ("AGUARDANDO" as const),
+            comprovanteStatus: "AGUARDANDO" as const,
           })),
         });
         setFeedback(
@@ -828,7 +867,7 @@ export function CrmKanbanPage() {
         );
       });
     }
-    return saleId;
+    return { saleId, valorDinheiro, valorComanda };
   }
 
   function handleCreateLead(event: FormEvent) {
@@ -889,7 +928,7 @@ export function CrmKanbanPage() {
     // Recebeu junto com o cadastro? A comanda e o comprovante saem daqui.
     const recebidoAgora = parseFinAmount(newRecebido);
     if (recebidoAgora > 0) {
-      lancarComandaEComprovante({
+      const lancado = lancarComandaEComprovante({
         contactRef: refDoLead,
         pacienteNome: newName.trim() || newPhone.trim(),
         valorRecebido: recebidoAgora,
@@ -906,7 +945,11 @@ export function CrmKanbanPage() {
         setor: "AGENDAMENTO",
       });
       setFeedback(
-        `Paciente cadastrado e ${moneyFin(recebidoAgora)} lançados na comanda do dia${newArquivos.length ? ` com ${newArquivos.length} comprovante(s) anexado(s)` : " (comprovante fica aguardando)"}.`,
+        lancado && lancado.valorDinheiro > 0
+          ? lancado.valorComanda > 0
+            ? `Paciente cadastrado: ${moneyFin(lancado.valorComanda)} na comanda do dia e ${moneyFin(lancado.valorDinheiro)} em dinheiro direto no caixa do crediário.`
+            : `Paciente cadastrado e ${moneyFin(lancado.valorDinheiro)} em dinheiro lançados direto no caixa do crediário (dinheiro não vira comanda).`
+          : `Paciente cadastrado e ${moneyFin(recebidoAgora)} lançados na comanda do dia${newArquivos.length ? ` com ${newArquivos.length} comprovante(s) anexado(s)` : " (comprovante fica aguardando)"}.`,
       );
     }
 
@@ -1027,7 +1070,7 @@ export function CrmKanbanPage() {
     // diário e o extrato conferem. O valor vendido é o contrato, não o caixa.
     if (fcResultado !== "NAO_FECHOU" && receivedAmount > 0) {
       const ehPlano = fcResultado === "PROGRAMA_ACOMPANHAMENTO" || fcResultado === "CLUBE_BRATAN";
-      lancarComandaEComprovante({
+      const lancado = lancarComandaEComprovante({
         contactRef: refDoPaciente,
         pacienteNome:
           fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
@@ -1050,6 +1093,13 @@ export function CrmKanbanPage() {
         observacao: fcCompleto ? "" : `parcial: ${fcPartialReason.trim()}`,
         setor: "VENDAS",
       });
+      if (lancado && lancado.valorDinheiro > 0) {
+        setFeedback(
+          lancado.valorComanda > 0
+            ? `Fechamento registrado: ${moneyFin(lancado.valorComanda)} na comanda do dia e ${moneyFin(lancado.valorDinheiro)} em dinheiro direto no caixa do crediário.`
+            : `Fechamento registrado e ${moneyFin(lancado.valorDinheiro)} em dinheiro lançados direto no caixa do crediário (dinheiro não vira comanda).`,
+        );
+      }
     }
 
     setFechamentoOpen(false);
@@ -1073,6 +1123,10 @@ export function CrmKanbanPage() {
   function handleMoveDeal(event: FormEvent) {
     event.preventDefault();
     if (!selectedDeal) return;
+    if (targetStage === "FECHOU_COMPLETO" || targetStage === "FECHOU_PARCIAL") {
+      abrirFechamentoDoDeal(selectedDeal.id);
+      return;
+    }
     setFeedback("");
     setDrawerFeedback("");
     if (targetStage === selectedDeal.stage) {
@@ -1090,7 +1144,9 @@ export function CrmKanbanPage() {
         objection,
         objectionCategory,
         partialReason,
-        adhesionChannel: targetStage === "FECHOU_COMPLETO" || targetStage === "FECHOU_PARCIAL" ? adhesion : undefined,
+        // Fechou não passa mais por aqui (o guard acima manda pro Registrar
+        // fechamento), então canal de adesão nunca é decidido nesta gaveta.
+        adhesionChannel: undefined,
       });
       if (!moved.ok) {
         // Validação barrou: o aviso precisa aparecer DENTRO do painel.
@@ -1162,9 +1218,30 @@ export function CrmKanbanPage() {
     setPartialReason("");
   }
 
+  // FECHAMENTO SÓ TEM UM CAMINHO (20/08/2026). Arrastar o card para "Fechou"
+  // (ou mover pela gaveta) movia a etapa SEM lançar a comanda — o valor ficava
+  // no CRM e o dinheiro nunca chegava ao Lançar Dia. Era o "não sobe a comanda"
+  // que o Lucas viu. Agora qualquer tentativa de fechar por fora abre o
+  // Registrar fechamento com o paciente já escolhido: um fechamento, um
+  // formulário, uma comanda.
+  function abrirFechamentoDoDeal(dealId: string) {
+    const deal = state.deals.find((item) => item.id === dealId);
+    if (!deal) return;
+    const contact = state.contacts.find((item) => item.id === deal.contactId);
+    setFcFeedback("");
+    setFcPatient({ ref: deal.contactId, name: contact ? contactDisplayName(contact) : "" });
+    setSelectedDealId("");
+    setFechamentoOpen(true);
+    setFeedback('Fechou? Ótimo — registre pelo formulário (já abri com o paciente escolhido). É ele que lança a comanda e o comprovante.');
+  }
+
   function attemptMoveDeal(dealId: string, stage: CrmDealStage) {
     const deal = state.deals.find((item) => item.id === dealId);
     if (!deal || deal.stage === stage) return;
+    if (stage === "FECHOU_COMPLETO" || stage === "FECHOU_PARCIAL") {
+      abrirFechamentoDoDeal(dealId);
+      return;
+    }
     setFeedback("");
     persist((current) => {
       const moved = moveDealStage(current, dealId, {
@@ -1267,6 +1344,7 @@ export function CrmKanbanPage() {
           crmState={state}
           sales={financeiro.sales}
           lembretes={lembretesQuery.data ?? []}
+          cashEntries={caixaQuery.data ?? []}
           hoje={todayISO()}
         />
       ) : null}
