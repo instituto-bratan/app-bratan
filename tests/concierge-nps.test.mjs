@@ -90,3 +90,50 @@ test("top 5: limpa vazios, apara espaços e corta no quinto", () => {
   assert.equal(lista[0].acao, "mais braços");
   assert.ok(!lista.some((item) => item.texto === "f"), "o sexto cai");
 });
+
+// ------------------- v2: a fila conectada às comandas -------------------
+
+const contatoCrm = (id, nome, telefone = "11999990000") => ({
+  id, fullName: nome, preferredName: "", phone: telefone, whatsapp: "", archivedAt: null,
+});
+const comanda = (contactRef, dia) => ({ crmContactRef: contactRef, saleDate: dia, patientName: contactRef });
+
+test("fila: quem passou na clínica e ainda não recebeu contato — D+1 primeiro, D0 no fim", () => {
+  const contacts = [contatoCrm("a", "Ana"), contatoCrm("b", "Bia"), contatoCrm("c", "Caio"), contatoCrm("d", "Duda")];
+  const sales = [
+    comanda("a", "2026-08-20"), // ontem  → primeiro
+    comanda("b", "2026-08-18"), // 3 dias
+    comanda("c", "2026-08-21"), // HOJE   → fim da fila
+    comanda("d", "2026-08-01"), // 20 dias → fora da janela de 14
+  ];
+  const fila = nps.filaDeContatos(contacts, sales, [], "2026-08-21");
+  assert.equal(fila.map((item) => item.contactRef).join("|"), "a|b|c");
+  assert.equal(fila[0].diasDesde, 1);
+});
+
+test("fila: contato registrado DEPOIS da visita tira da fila; antes da visita não tira", () => {
+  const contacts = [contatoCrm("a", "Ana"), contatoCrm("b", "Bia")];
+  const sales = [comanda("a", "2026-08-19"), comanda("b", "2026-08-19")];
+  const contatos = [
+    contato("2026-08-20", "SATISFATORIA", { crmContactRef: "a" }),   // depois → sai
+    contato("2026-08-10", "SATISFATORIA", { crmContactRef: "b" }),   // antes → continua
+  ];
+  const fila = nps.filaDeContatos(contacts, sales, contatos, "2026-08-21");
+  assert.equal(fila.map((item) => item.contactRef).join("|"), "b");
+});
+
+test("fila: casa também pelo NOME (registro manual sem vínculo) e nova visita reabre", () => {
+  const contacts = [contatoCrm("a", "Ana Souza")];
+  const sales = [comanda("a", "2026-08-15"), comanda("a", "2026-08-20")];
+  // contato manual, sem crmContactRef, feito após a 1ª visita mas antes da 2ª
+  const contatos = [contato("2026-08-16", "SATISFATORIA", { pacienteNome: "ana souza" })];
+  const fila = nps.filaDeContatos(contacts, sales, contatos, "2026-08-21");
+  assert.equal(fila.length, 1, "a visita de 20/08 reabre a fila");
+});
+
+test("link do WhatsApp: 55 + número, mensagem com o primeiro nome; sem telefone = null", () => {
+  const link = nps.linkWhatsApp("11987654321", "Barbara Lombizani do Carmo");
+  assert.ok(link.startsWith("https://wa.me/5511987654321?text="));
+  assert.ok(decodeURIComponent(link).includes("Olá, Barbara!"));
+  assert.equal(nps.linkWhatsApp("", "Ana"), null);
+});

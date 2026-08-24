@@ -1,14 +1,24 @@
-// NPS DA CONCIERGE (21/08/2026, pedido do Lucas): a Planilha_Gestao_Concierge_NPS
-// vira tela — "muito mais simples e prática. Nada é um bicho de sete cabeças."
+// NPS DA CONCIERGE — v2 (21/08/2026, segunda rodada do Lucas: "ainda está muito
+// difícil de entender, preciso que deixe mais fácil ainda, e tudo conectado").
 //
-// O desenho: registrar um contato são TRÊS toques (paciente, canal, carinha).
-// Os campos de insatisfação só aparecem quando precisa. O Resumo do Mês, que a
-// planilha mandava calcular na mão, aqui se calcula sozinho. As dores e elogios
-// ganham os comentários do totem ao lado — escolher em vez de lembrar. E o
-// botão Imprimir entrega a folha pronta da Reunião de Líderes do dia 5.
+// A mudança de desenho: a Aline NÃO monta lista — o app monta. Quem passou na
+// clínica está nas comandas; a fila mostra quem veio e ainda não recebeu o
+// contato. Cada linha tem o botão do WhatsApp (mensagem pronta) e as duas
+// carinhas: um toque registra. O resto da tela (mês, dores, PDCA) fica dobrado
+// até o dia 5 — no dia a dia ela só vê a fila e as pendências.
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, HeartHandshake, Printer, Smile, Frown, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Frown,
+  HeartHandshake,
+  MessageCircle,
+  Printer,
+  Smile,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
@@ -30,16 +40,20 @@ import {
   upsertRemoteNpsContato,
   upsertRemoteNpsMes,
 } from "@/lib/remoteData";
+import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { PatientPicker, type PatientPickerValue } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
   canalLabels,
+  filaDeContatos,
   limparListaTop5,
+  linkWhatsApp,
   npsMesVazio,
   problemaDoContato,
   resumoDoMes,
   totemDoMes,
   type DorOuElogio,
+  type ItemDaFila,
   type NpsCanal,
   type NpsContato,
   type NpsMes,
@@ -51,12 +65,19 @@ const mesKey = (monthKey: string) => `app-bratan-concierge-nps-mes-${monthKey}`;
 const diaBR = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 const novoId = () => `npsc-${crypto.randomUUID()}`;
 
+function quandoVeio(diasDesde: number) {
+  if (diasDesde === 0) return "veio HOJE";
+  if (diasDesde === 1) return "veio ontem";
+  return `veio há ${diasDesde} dias`;
+}
+
 export function ConciergeNpsPage() {
   const { pessoa, session, isPreview } = useAuth();
   const useRemote = Boolean(pessoa && session && !isPreview);
   const podeEditar = canEditModule(pessoa, "concierge-nps");
   const queryClient = useQueryClient();
   const { state: crmState } = useCrmState();
+  const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
   const hoje = todayISO();
   const [monthKey, setMonthKey] = useState(hoje.slice(0, 7));
   const [feedback, setFeedback] = useState("");
@@ -69,7 +90,7 @@ export function ConciergeNpsPage() {
   const [localContatos, setLocalContatos] = useState<NpsContato[]>(() => readLocalValue<NpsContato[]>(contatosKey, []));
   const contatos = useRemote ? (contatosQuery.data ?? []) : localContatos;
 
-  const salvarContato = useMutation({
+  const salvarContatoMutation = useMutation({
     mutationFn: (contato: NpsContato) => upsertRemoteNpsContato(contato, pessoa?.id ?? null),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["concierge-nps-contatos"] }),
   });
@@ -77,14 +98,14 @@ export function ConciergeNpsPage() {
     mutationFn: deleteRemoteNpsContato,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["concierge-nps-contatos"] }),
   });
-  const salvarMes = useMutation({
+  const salvarMesMutation = useMutation({
     mutationFn: (mes: NpsMes) => upsertRemoteNpsMes(mes, pessoa?.id ?? null),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["concierge-nps-mes", monthKey] }),
   });
 
   async function persistContato(contato: NpsContato) {
     if (useRemote) {
-      await salvarContato.mutateAsync(contato);
+      await salvarContatoMutation.mutateAsync(contato);
       return;
     }
     setLocalContatos((prev) => {
@@ -96,7 +117,43 @@ export function ConciergeNpsPage() {
     });
   }
 
-  // ---------------- registro rápido ----------------
+  // ---------------- A FILA (tudo conectado) ----------------
+  const fila = useMemo(
+    () => filaDeContatos(crmState.contacts, financeiro.sales, contatos, hoje),
+    [crmState.contacts, financeiro.sales, contatos, hoje],
+  );
+  // Quem teve o WhatsApp aberto agora há pouco (para o canal sair certo).
+  const [waAbertos, setWaAbertos] = useState<Record<string, boolean>>({});
+  const [triste, setTriste] = useState<Record<string, string>>({}); // contactRef -> texto da insatisfação
+
+  async function registrarDaFila(item: ItemDaFila, resultado: NpsResultado) {
+    setErro("");
+    const descricao = (triste[item.contactRef] ?? "").trim();
+    if (resultado === "INSATISFATORIA" && !descricao) {
+      setErro(`Escreva em uma linha o que a(o) ${item.nome.split(" ")[0]} relatou — é isso que vira dor do mês.`);
+      return;
+    }
+    await persistContato({
+      id: novoId(),
+      contatoDate: hoje,
+      pacienteNome: item.nome,
+      crmContactRef: item.contactRef,
+      canal: waAbertos[item.contactRef] ? "WHATSAPP" : item.telefone ? "WHATSAPP" : "PRESENCIAL",
+      resultado,
+      descricao: resultado === "INSATISFATORIA" ? descricao : "",
+      resolucao: "",
+      createdAt: new Date().toISOString(),
+    });
+    setTriste((prev) => ({ ...prev, [item.contactRef]: "" }));
+    setFeedback(
+      resultado === "SATISFATORIA"
+        ? `${item.nome}: contato registrado. 😊 Próximo da fila!`
+        : `${item.nome}: insatisfação registrada — ela entra nas pendências até você escrever a resolução.`,
+    );
+  }
+
+  // ---------------- registro manual (fora da fila) ----------------
+  const [manualAberto, setManualAberto] = useState(false);
   const [paciente, setPaciente] = useState<PatientPickerValue>({ ref: "", name: "" });
   const [canal, setCanal] = useState<NpsCanal>("WHATSAPP");
   const [resultado, setResultado] = useState<NpsResultado>("SATISFATORIA");
@@ -104,7 +161,7 @@ export function ConciergeNpsPage() {
   const [resolucao, setResolucao] = useState("");
   const [dataContato, setDataContato] = useState(hoje);
 
-  async function registrar(event: FormEvent) {
+  async function registrarManual(event: FormEvent) {
     event.preventDefault();
     setErro("");
     const problema = problemaDoContato({ pacienteNome: paciente.name, resultado, descricao });
@@ -123,28 +180,23 @@ export function ConciergeNpsPage() {
       resolucao: resultado === "INSATISFATORIA" ? resolucao.trim() : "",
       createdAt: new Date().toISOString(),
     });
-    setFeedback(
-      resultado === "SATISFATORIA"
-        ? `Contato com ${paciente.name.trim()} registrado. 😊`
-        : resolucao.trim()
-          ? `Insatisfação de ${paciente.name.trim()} registrada COM a resolução. 👏`
-          : `Insatisfação de ${paciente.name.trim()} registrada — ela fica em aberto até você escrever a resolução.`,
-    );
+    setFeedback(`Contato com ${paciente.name.trim()} registrado.`);
     setPaciente({ ref: "", name: "" });
     setResultado("SATISFATORIA");
     setDescricao("");
     setResolucao("");
     setDataContato(hoje);
+    setManualAberto(false);
   }
 
-  // resolução depois (pendências)
+  // ---------------- resoluções pendentes ----------------
   const [resolucaoDraft, setResolucaoDraft] = useState<Record<string, string>>({});
   async function registrarResolucao(contato: NpsContato) {
     const texto = (resolucaoDraft[contato.id] ?? "").trim();
     if (!texto) return;
     await persistContato({ ...contato, resolucao: texto });
     setResolucaoDraft((prev) => ({ ...prev, [contato.id]: "" }));
-    setFeedback(`Resolução registrada para ${contato.pacienteNome}.`);
+    setFeedback(`Resolução registrada para ${contato.pacienteNome}. 👏`);
   }
 
   // ---------------- mês (dores/elogios/pdca) ----------------
@@ -157,10 +209,10 @@ export function ConciergeNpsPage() {
 
   async function salvarMesAgora() {
     const limpo: NpsMes = { ...mes, monthKey, dores: limparListaTop5(mes.dores), elogios: limparListaTop5(mes.elogios) };
-    if (useRemote) await salvarMes.mutateAsync(limpo);
+    if (useRemote) await salvarMesMutation.mutateAsync(limpo);
     else writeLocalValue(mesKey(monthKey), limpo);
     setMes(limpo);
-    setFeedback("Dores, elogios e PDCA do mês salvos.");
+    setFeedback("Fechamento do mês salvo — pronto para imprimir no dia 5.");
   }
 
   function editarLista(tipo: "dores" | "elogios", indice: number, campo: keyof DorOuElogio, valor: string) {
@@ -175,14 +227,13 @@ export function ConciergeNpsPage() {
   // ---------------- derivados ----------------
   const resumo = useMemo(() => resumoDoMes(contatos, monthKey), [contatos, monthKey]);
   const totem = useMemo(() => totemDoMes(totemQuery.data ?? [], monthKey), [totemQuery.data, monthKey]);
-  const contatosDoMes = useMemo(
-    () => contatos.filter((contato) => contato.contatoDate.startsWith(monthKey)),
-    [contatos, monthKey],
-  );
+  const contatosDoMes = useMemo(() => contatos.filter((contato) => contato.contatoDate.startsWith(monthKey)), [contatos, monthKey]);
   const pendencias = contatosDoMes.filter((contato) => contato.resultado === "INSATISFATORIA" && !contato.resolucao.trim());
   const monthLabel = monthKey.split("-").reverse().join("/");
+  const [listaAberta, setListaAberta] = useState(false);
+  const [mesAberto, setMesAberto] = useState(false);
 
-  // ---------------- impressão (a folha da Reunião de Líderes) ----------------
+  // ---------------- impressão ----------------
   function imprimir() {
     const linhaTop5 = (lista: DorOuElogio[], vazio: string) =>
       lista.length
@@ -238,26 +289,24 @@ export function ConciergeNpsPage() {
 
   return (
     <AccessGate allowed={(c) => canSeeModule({ cargo: c }, "concierge-nps")} label="NPS da Concierge" module="concierge-nps">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="gold">Experiência do Paciente</Badge>
-            <Badge variant="muted">{useRemote ? "Supabase" : "Somente local"}</Badge>
-          </div>
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
-            <h1 className="flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-              <HeartHandshake className="h-8 w-8 text-brand-oliva" aria-hidden="true" />
-              NPS da Concierge
-              <InfoTip title="O que virou o quê">
-                A planilha de gestão virou esta tela: registrar um contato são três toques; o Resumo do Mês se calcula
-                sozinho; as dores e elogios ficam ao lado dos comentários reais do totem; e o botão Imprimir entrega a
-                folha pronta para a Reunião de Líderes do dia 5.
-              </InfoTip>
-            </h1>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <Badge variant="gold">Experiência do Paciente</Badge>
+              <h1 className="mt-2 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
+                <HeartHandshake className="h-8 w-8 text-brand-oliva" aria-hidden="true" />
+                NPS da Concierge
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A fila abaixo já é quem passou na clínica e falta contatar. Toque no WhatsApp, converse, e registre com
+                uma carinha. Só isso. 💚
+              </p>
+            </div>
             <span className="flex items-center gap-2">
               <Input type="month" value={monthKey} onChange={(event) => setMonthKey(event.target.value || hoje.slice(0, 7))} className="w-40" aria-label="Mês" />
               <Button type="button" variant="outline" onClick={imprimir}>
@@ -280,17 +329,102 @@ export function ConciergeNpsPage() {
           </div>
         ) : null}
 
-        {/* Registro em 3 toques */}
-        {podeEditar ? (
-          <Card className="border-brand-musgo/25">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Registrar contato</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-4" onSubmit={registrar}>
-                <div className="grid gap-4 md:grid-cols-[1.4fr_auto]">
+        {/* ================= 1. A FILA ================= */}
+        <Card className="border-brand-musgo/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              Para contatar {fila.length ? <Badge variant="gold">{fila.length}</Badge> : null}
+              <InfoTip title="De onde vem esta lista">
+                De quem passou na clínica: toda comanda dos últimos 14 dias entra aqui até você registrar o contato.
+                Quem veio ontem aparece primeiro (o contato D+1 é o mais quente); quem veio hoje fica para amanhã, no fim
+                da lista.
+              </InfoTip>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2">
+            {fila.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                Fila em dia: todo mundo que passou na clínica já recebeu o seu contato. 👏
+              </p>
+            ) : (
+              fila.map((item) => {
+                const wa = linkWhatsApp(item.telefone, item.nome);
+                const tristeAberto = (triste[item.contactRef] ?? "") !== "" || triste[item.contactRef] === "";
+                const expandiu = Object.prototype.hasOwnProperty.call(triste, item.contactRef);
+                return (
+                  <div key={item.contactRef} className="rounded-xl border border-brand-oliva/15 bg-white/75 px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-brand-tinta">{item.nome}</p>
+                        <p className={cn("text-xs", item.diasDesde === 1 ? "font-semibold text-brand-musgo" : "text-muted-foreground")}>
+                          {quandoVeio(item.diasDesde)} ({diaBR(item.ultimaVisita)})
+                        </p>
+                      </div>
+                      {wa ? (
+                        <a
+                          href={wa}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() => setWaAbertos((prev) => ({ ...prev, [item.contactRef]: true }))}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                        >
+                          <MessageCircle className="h-4 w-4" aria-hidden="true" /> WhatsApp
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">sem telefone — ligar/presencial</span>
+                      )}
+                      {podeEditar ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void registrarDaFila(item, "SATISFATORIA")}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+                            title="Conversa satisfatória — registra e sai da fila"
+                          >
+                            <Smile className="h-4 w-4" aria-hidden="true" /> Foi bem
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTriste((prev) => (Object.prototype.hasOwnProperty.call(prev, item.contactRef) ? (() => { const next = { ...prev }; delete next[item.contactRef]; return next; })() : { ...prev, [item.contactRef]: "" }))}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold",
+                              expandiu ? "border-rose-400 bg-rose-50 text-rose-800" : "border-rose-300 bg-white text-rose-700 hover:bg-rose-50",
+                            )}
+                            title="Teve reclamação — abre o campo para anotar"
+                          >
+                            <Frown className="h-4 w-4" aria-hidden="true" /> Reclamou
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                    {expandiu && tristeAberto ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Input
+                          value={triste[item.contactRef] ?? ""}
+                          onChange={(event) => setTriste((prev) => ({ ...prev, [item.contactRef]: event.target.value }))}
+                          placeholder="O que houve? (uma linha — vira dor do mês)"
+                          className="min-w-64 flex-1"
+                          autoFocus
+                        />
+                        <Button type="button" size="sm" onClick={() => void registrarDaFila(item, "INSATISFATORIA")}>
+                          Registrar reclamação
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
+            {podeEditar ? (
+              <button type="button" className="mt-1 w-fit text-xs font-semibold text-brand-oliva hover:text-brand-musgo hover:underline" onClick={() => setManualAberto((valor) => !valor)}>
+                {manualAberto ? "▾ fechar" : "▸ Registrar alguém fora da lista (contato antigo, indicação…)"}
+              </button>
+            ) : null}
+            {manualAberto && podeEditar ? (
+              <form className="grid gap-3 rounded-lg border border-brand-oliva/20 bg-brand-creme/30 p-3" onSubmit={registrarManual}>
+                <div className="grid gap-3 md:grid-cols-[1.4fr_auto]">
                   <div>
-                    <Label>1 · Com quem foi?</Label>
+                    <Label>Com quem foi?</Label>
                     <PatientPicker contacts={crmState.contacts} value={paciente} onChange={setPaciente} id="nps-paciente" />
                   </div>
                   <div>
@@ -298,98 +432,52 @@ export function ConciergeNpsPage() {
                     <Input type="date" value={dataContato} onChange={(event) => setDataContato(event.target.value)} className="w-40" />
                   </div>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-wrap items-end gap-3">
                   <div>
-                    <Label>2 · Por onde?</Label>
+                    <Label>Por onde</Label>
                     <div className="mt-1 flex gap-1.5">
                       {(Object.keys(canalLabels) as NpsCanal[]).map((chave) => (
-                        <button
-                          key={chave}
-                          type="button"
-                          onClick={() => setCanal(chave)}
-                          className={cn(
-                            "rounded-full border px-3.5 py-1.5 text-sm font-semibold transition",
-                            canal === chave ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70 text-brand-oliva hover:text-brand-musgo",
-                          )}
-                        >
+                        <button key={chave} type="button" onClick={() => setCanal(chave)} className={cn("rounded-full border px-3 py-1.5 text-sm font-semibold", canal === chave ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70 text-brand-oliva")}>
                           {canalLabels[chave]}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <Label>3 · Como foi a conversa?</Label>
+                    <Label>Como foi</Label>
                     <div className="mt-1 flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setResultado("SATISFATORIA")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-semibold transition",
-                          resultado === "SATISFATORIA" ? "border-emerald-400 bg-emerald-50 text-emerald-800" : "border-brand-oliva/25 bg-white/70 text-muted-foreground",
-                        )}
-                      >
-                        <Smile className="h-4 w-4" aria-hidden="true" /> Satisfatória
+                      <button type="button" onClick={() => setResultado("SATISFATORIA")} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold", resultado === "SATISFATORIA" ? "border-emerald-400 bg-emerald-50 text-emerald-800" : "border-brand-oliva/25 bg-white/70 text-muted-foreground")}>
+                        <Smile className="h-4 w-4" aria-hidden="true" /> Foi bem
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setResultado("INSATISFATORIA")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-semibold transition",
-                          resultado === "INSATISFATORIA" ? "border-rose-400 bg-rose-50 text-rose-800" : "border-brand-oliva/25 bg-white/70 text-muted-foreground",
-                        )}
-                      >
-                        <Frown className="h-4 w-4" aria-hidden="true" /> Insatisfatória
+                      <button type="button" onClick={() => setResultado("INSATISFATORIA")} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold", resultado === "INSATISFATORIA" ? "border-rose-400 bg-rose-50 text-rose-800" : "border-brand-oliva/25 bg-white/70 text-muted-foreground")}>
+                        <Frown className="h-4 w-4" aria-hidden="true" /> Reclamou
                       </button>
                     </div>
                   </div>
                 </div>
                 {resultado === "INSATISFATORIA" ? (
-                  <div className="grid gap-3 rounded-lg border border-rose-200 bg-rose-50/50 p-3 sm:grid-cols-2">
-                    <div>
-                      <Label>O que houve? (vira dor do mês)</Label>
-                      <Input value={descricao} onChange={(event) => setDescricao(event.target.value)} placeholder="Ex.: esperou 40 min para aplicação" />
-                    </div>
-                    <div>
-                      <Label>O que foi feito? (pode preencher depois)</Label>
-                      <Input value={resolucao} onChange={(event) => setResolucao(event.target.value)} placeholder="Ex.: reagendado com prioridade + mimo" />
-                    </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input value={descricao} onChange={(event) => setDescricao(event.target.value)} placeholder="O que houve?" />
+                    <Input value={resolucao} onChange={(event) => setResolucao(event.target.value)} placeholder="O que foi feito? (pode deixar para depois)" />
                   </div>
                 ) : null}
                 <div>
-                  <LiquidButton type="submit" size="default">Registrar contato</LiquidButton>
+                  <LiquidButton type="submit" size="sm">Registrar</LiquidButton>
                 </div>
               </form>
-            </CardContent>
-          </Card>
-        ) : null}
+            ) : null}
+          </CardContent>
+        </Card>
 
-        {/* Resumo derivado (a antiga aba "Resumo do Mês") */}
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            { label: "Contatos no mês", value: String(resumo.total), hint: monthLabel },
-            { label: "Satisfação", value: resumo.percentualSatisfacao === null ? "—" : `${String(resumo.percentualSatisfacao).replace(".", ",")}%`, hint: `${resumo.satisfatorias} satisfatória(s)` },
-            { label: "Insatisfações", value: String(resumo.insatisfatorias), hint: `${resumo.resolvidas} com resolução`, alerta: resumo.insatisfatorias > 0 },
-            { label: "Sem resolução", value: String(resumo.semResolucao), hint: "pendência da concierge", alerta: resumo.semResolucao > 0 },
-            { label: "Totem (recepção)", value: totem.media === null ? "—" : String(totem.media).replace(".", ","), hint: `${totem.respostas} resposta(s) · ${totem.detratores} detrator(es)` },
-          ].map((cardInfo) => (
-            <Card key={cardInfo.label} className={cn("shadow-none backdrop-blur", cardInfo.alerta ? "border-amber-300 bg-amber-50/70" : "border-brand-oliva/20 bg-white/70")}>
-              <CardContent className="p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{cardInfo.label}</p>
-                <p className={cn("mt-1 text-2xl font-bold tabular-nums", cardInfo.alerta ? "text-amber-900" : "text-brand-tinta")}>{cardInfo.value}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{cardInfo.hint}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
-
-        {/* Pendências: insatisfação sem resolução */}
+        {/* ================= 2. PENDÊNCIAS ================= */}
         {pendencias.length && podeEditar ? (
           <Card className="border-amber-300 bg-amber-50/50 shadow-none">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
-                {pendencias.length} insatisfação(ões) sem resolução — escreva o que foi feito
+                Reclamações esperando a resolução ({pendencias.length})
               </CardTitle>
+              <p className="text-xs text-muted-foreground">Resolveu com o paciente? Escreva aqui o que foi feito — é isso que fecha o ciclo.</p>
             </CardHeader>
             <CardContent className="grid gap-2">
               {pendencias.map((contato) => (
@@ -404,7 +492,7 @@ export function ConciergeNpsPage() {
                     placeholder="O que foi feito para resolver?"
                   />
                   <Button type="button" size="sm" onClick={() => void registrarResolucao(contato)} disabled={!(resolucaoDraft[contato.id] ?? "").trim()}>
-                    Salvar resolução
+                    Resolvido ✓
                   </Button>
                 </div>
               ))}
@@ -412,141 +500,143 @@ export function ConciergeNpsPage() {
           </Card>
         ) : null}
 
-        {/* Contatos do mês */}
-        <Card>
+        {/* ================= 3. PLACAR ================= */}
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: "Contatos no mês", value: String(resumo.total) },
+            { label: "Satisfação", value: resumo.percentualSatisfacao === null ? "—" : `${String(resumo.percentualSatisfacao).replace(".", ",")}%` },
+            { label: "Reclamações", value: String(resumo.insatisfatorias), alerta: resumo.semResolucao > 0, hint: resumo.semResolucao ? `${resumo.semResolucao} sem resolução` : "todas resolvidas" },
+            { label: "Nota do totem", value: totem.media === null ? "—" : String(totem.media).replace(".", ","), hint: `${totem.respostas} resposta(s)` },
+          ].map((cardInfo) => (
+            <Card key={cardInfo.label} className={cn("shadow-none backdrop-blur", cardInfo.alerta ? "border-amber-300 bg-amber-50/70" : "border-brand-oliva/20 bg-white/70")}>
+              <CardContent className="p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{cardInfo.label}</p>
+                <p className={cn("mt-1 text-2xl font-bold tabular-nums", cardInfo.alerta ? "text-amber-900" : "text-brand-tinta")}>{cardInfo.value}</p>
+                {"hint" in cardInfo && cardInfo.hint ? <p className="mt-0.5 text-xs text-muted-foreground">{cardInfo.hint}</p> : null}
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+
+        {/* ================= 4. DOBRADO: contatos do mês ================= */}
+        <Card className="shadow-none">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Contatos de {monthLabel} ({contatosDoMes.length})</CardTitle>
+            <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setListaAberta((valor) => !valor)}>
+              {listaAberta ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+              <CardTitle className="text-base">Todos os contatos de {monthLabel} ({contatosDoMes.length})</CardTitle>
+            </button>
           </CardHeader>
-          <CardContent className="grid gap-1.5">
-            {contatosDoMes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum contato registrado neste mês ainda.</p>
-            ) : (
-              contatosDoMes.map((contato) => (
-                <div key={contato.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/12 bg-white/70 px-3 py-2 text-sm">
-                  <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full", contato.resultado === "SATISFATORIA" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>
-                    {contato.resultado === "SATISFATORIA" ? <Smile className="h-4 w-4" aria-hidden="true" /> : <Frown className="h-4 w-4" aria-hidden="true" />}
-                  </span>
-                  <span className="font-semibold text-brand-tinta">{contato.pacienteNome}</span>
-                  <span className="text-xs text-muted-foreground">{diaBR(contato.contatoDate)} · {canalLabels[contato.canal]}</span>
-                  {contato.descricao ? <span className="text-xs text-rose-800">{contato.descricao}</span> : null}
-                  {contato.resolucao ? <span className="text-xs text-emerald-800">✓ {contato.resolucao}</span> : null}
-                  {podeEditar ? (
-                    <button
-                      type="button"
-                      className="ml-auto text-rose-600 hover:text-rose-800"
-                      title="Apagar registro"
-                      onClick={() => {
-                        if (!window.confirm(`Apagar o contato com ${contato.pacienteNome}?`)) return;
-                        if (useRemote) void apagarContato.mutateAsync(contato.id);
-                        else {
-                          setLocalContatos((prev) => {
-                            const next = prev.filter((existing) => existing.id !== contato.id);
-                            writeLocalValue(contatosKey, next);
-                            return next;
-                          });
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Dores & Elogios + matéria-prima do totem */}
-        <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">
-                5 dores · 5 elogios do mês
-                <InfoTip title="De onde tirar">
-                  Use as insatisfações registradas acima e os comentários do totem ao lado — é escolher, não lembrar.
-                  Máximo de 5 de cada, como na planilha.
-                </InfoTip>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              {(["dores", "elogios"] as const).map((tipo) => (
-                <div key={tipo}>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">
-                    {tipo === "dores" ? "Principais dores → ação proposta" : "Principais elogios → como reforçar"}
-                  </p>
-                  <div className="grid gap-1.5">
-                    {[0, 1, 2, 3, 4].map((indice) => (
-                      <div key={indice} className="grid gap-1.5 sm:grid-cols-2">
-                        <Input
-                          value={mes[tipo][indice]?.texto ?? ""}
-                          onChange={(event) => editarLista(tipo, indice, "texto", event.target.value)}
-                          placeholder={`${indice + 1}. ${tipo === "dores" ? "dor" : "elogio"}`}
-                          disabled={!podeEditar}
-                        />
-                        <Input
-                          value={mes[tipo][indice]?.acao ?? ""}
-                          onChange={(event) => editarLista(tipo, indice, "acao", event.target.value)}
-                          placeholder={tipo === "dores" ? "ação proposta" : "como padronizar"}
-                          disabled={!podeEditar}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {/* PDCA — as 4 caixas da última aba da planilha */}
-              <div>
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">PDCA — experiência do paciente</p>
-                <div className="grid gap-1.5 sm:grid-cols-2">
-                  {(
-                    [
-                      ["plan", "PLAN — o que vamos melhorar"],
-                      ["do", "DO — o que foi feito"],
-                      ["check", "CHECK — o que os números dizem"],
-                      ["act", "ACT — o que vira padrão"],
-                    ] as const
-                  ).map(([chave, rotulo]) => (
-                    <Input
-                      key={chave}
-                      value={mes.pdca[chave]}
-                      onChange={(event) => setMes((atual) => ({ ...atual, pdca: { ...atual.pdca, [chave]: event.target.value } }))}
-                      placeholder={rotulo}
-                      disabled={!podeEditar}
-                    />
-                  ))}
-                </div>
-              </div>
-              {podeEditar ? (
-                <div>
-                  <LiquidButton type="button" size="default" onClick={() => void salvarMesAgora()}>
-                    Salvar mês
-                  </LiquidButton>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card className="border-brand-oliva/20 bg-brand-creme/25 shadow-none">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Comentários do totem em {monthLabel}</CardTitle>
-              <p className="text-xs text-muted-foreground">A matéria-prima das dores e elogios — direto da recepção.</p>
-            </CardHeader>
-            <CardContent className="grid max-h-96 gap-1.5 overflow-y-auto">
-              {totem.comentarios.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum comentário no totem neste mês.</p>
+          {listaAberta ? (
+            <CardContent className="grid gap-1.5">
+              {contatosDoMes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum contato registrado neste mês ainda.</p>
               ) : (
-                totem.comentarios.map((comentario, indice) => (
-                  <p key={indice} className="rounded-lg border border-brand-oliva/12 bg-white/70 px-3 py-2 text-sm">
-                    <span className={cn("mr-2 inline-flex rounded-full border px-1.5 text-xs font-bold", comentario.nota >= 9 ? "border-emerald-300 bg-emerald-50 text-emerald-800" : comentario.nota <= 6 ? "border-rose-300 bg-rose-50 text-rose-800" : "border-amber-300 bg-amber-50 text-amber-800")}>
-                      {comentario.nota}
+                contatosDoMes.map((contato) => (
+                  <div key={contato.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/12 bg-white/70 px-3 py-2 text-sm">
+                    <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full", contato.resultado === "SATISFATORIA" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>
+                      {contato.resultado === "SATISFATORIA" ? <Smile className="h-4 w-4" aria-hidden="true" /> : <Frown className="h-4 w-4" aria-hidden="true" />}
                     </span>
-                    {comentario.comentario}
-                  </p>
+                    <span className="font-semibold text-brand-tinta">{contato.pacienteNome}</span>
+                    <span className="text-xs text-muted-foreground">{diaBR(contato.contatoDate)} · {canalLabels[contato.canal]}</span>
+                    {contato.descricao ? <span className="text-xs text-rose-800">{contato.descricao}</span> : null}
+                    {contato.resolucao ? <span className="text-xs text-emerald-800">✓ {contato.resolucao}</span> : null}
+                    {podeEditar ? (
+                      <button
+                        type="button"
+                        className="ml-auto text-xs text-rose-600 hover:underline"
+                        onClick={() => {
+                          if (!window.confirm(`Apagar o contato com ${contato.pacienteNome}?`)) return;
+                          if (useRemote) void apagarContato.mutateAsync(contato.id);
+                          else {
+                            setLocalContatos((prev) => {
+                              const next = prev.filter((existing) => existing.id !== contato.id);
+                              writeLocalValue(contatosKey, next);
+                              return next;
+                            });
+                          }
+                        }}
+                      >
+                        apagar
+                      </button>
+                    ) : null}
+                  </div>
                 ))
               )}
             </CardContent>
-          </Card>
-        </div>
+          ) : null}
+        </Card>
+
+        {/* ================= 5. DOBRADO: fechar o mês (dia 5) ================= */}
+        <Card className="shadow-none">
+          <CardHeader className="pb-2">
+            <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setMesAberto((valor) => !valor)}>
+              {mesAberto ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+              <CardTitle className="text-base">Fechar o mês para a reunião do dia 5 (dores, elogios e PDCA)</CardTitle>
+            </button>
+            {!mesAberto ? <p className="pl-6 text-xs text-muted-foreground">Só precisa abrir aqui uma vez por mês, antes da Reunião de Líderes.</p> : null}
+          </CardHeader>
+          {mesAberto ? (
+            <CardContent className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <div className="grid gap-4">
+                {(["dores", "elogios"] as const).map((tipo) => (
+                  <div key={tipo}>
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">
+                      {tipo === "dores" ? "Principais dores → ação proposta" : "Principais elogios → como reforçar"}
+                    </p>
+                    <div className="grid gap-1.5">
+                      {[0, 1, 2, 3, 4].map((indice) => (
+                        <div key={indice} className="grid gap-1.5 sm:grid-cols-2">
+                          <Input value={mes[tipo][indice]?.texto ?? ""} onChange={(event) => editarLista(tipo, indice, "texto", event.target.value)} placeholder={`${indice + 1}. ${tipo === "dores" ? "dor" : "elogio"}`} disabled={!podeEditar} />
+                          <Input value={mes[tipo][indice]?.acao ?? ""} onChange={(event) => editarLista(tipo, indice, "acao", event.target.value)} placeholder={tipo === "dores" ? "ação proposta" : "como padronizar"} disabled={!podeEditar} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">PDCA — experiência do paciente</p>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {(
+                      [
+                        ["plan", "PLAN — o que vamos melhorar"],
+                        ["do", "DO — o que foi feito"],
+                        ["check", "CHECK — o que os números dizem"],
+                        ["act", "ACT — o que vira padrão"],
+                      ] as const
+                    ).map(([chave, rotulo]) => (
+                      <Input key={chave} value={mes.pdca[chave]} onChange={(event) => setMes((atual) => ({ ...atual, pdca: { ...atual.pdca, [chave]: event.target.value } }))} placeholder={rotulo} disabled={!podeEditar} />
+                    ))}
+                  </div>
+                </div>
+                {podeEditar ? (
+                  <div className="flex gap-2">
+                    <LiquidButton type="button" size="default" onClick={() => void salvarMesAgora()}>Salvar mês</LiquidButton>
+                    <Button type="button" variant="outline" onClick={imprimir}>
+                      <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">Comentários do totem em {monthLabel} (matéria-prima)</p>
+                <div className="grid max-h-96 gap-1.5 overflow-y-auto">
+                  {totem.comentarios.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum comentário no totem neste mês.</p>
+                  ) : (
+                    totem.comentarios.map((comentario, indice) => (
+                      <p key={indice} className="rounded-lg border border-brand-oliva/12 bg-white/70 px-3 py-2 text-sm">
+                        <span className={cn("mr-2 inline-flex rounded-full border px-1.5 text-xs font-bold", comentario.nota >= 9 ? "border-emerald-300 bg-emerald-50 text-emerald-800" : comentario.nota <= 6 ? "border-rose-300 bg-rose-50 text-rose-800" : "border-amber-300 bg-amber-50 text-amber-800")}>
+                          {comentario.nota}
+                        </span>
+                        {comentario.comentario}
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          ) : null}
+        </Card>
       </div>
     </AccessGate>
   );
