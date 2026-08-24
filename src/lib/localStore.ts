@@ -16,8 +16,21 @@ export function writeLocalValue<T>(key: string, value: T) {
   }
 }
 
+/**
+ * O DIA DE HOJE, NO FUSO DE QUEM ESTÁ USANDO (25/08/2026).
+ *
+ * Era `new Date().toISOString().slice(0,10)` — data em UTC. Como o Brasil é
+ * UTC−3, das 21h em diante o app já achava que era o dia SEGUINTE: um
+ * fechamento registrado às 21h30 nascia com a data de amanhã e sumia do
+ * "Lançar dia" de hoje (e da conferência do dia, e do fechamento diário).
+ * Agora a data é montada dos campos LOCAIS — o dia vira à meia-noite de
+ * Brasília, como para as pessoas que trabalham aqui.
+ */
 export function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const agora = new Date();
+  const mes = String(agora.getMonth() + 1).padStart(2, "0");
+  const dia = String(agora.getDate()).padStart(2, "0");
+  return `${agora.getFullYear()}-${mes}-${dia}`;
 }
 
 export function formatShortTime(dateString?: string) {

@@ -38,7 +38,7 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { deriveInteligencia360FromCrm, loadCrmState } from "@/features/crm/crmData";
 import { useAuth } from "@/hooks/useAuth";
 import { exportBrandedPdf } from "@/lib/brandedPdf";
-import { readLocalValue } from "@/lib/localStore";
+import { readLocalValue, todayISO } from "@/lib/localStore";
 import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasConfig } from "@/features/financeiro/metasData";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { buildTicketMedio, saleTotal as saleTotal360 } from "@/features/financeiro/financeiroData";
@@ -650,7 +650,7 @@ function ComandaKanbanReconciliation() {
 export function Inteligencia360DashboardPage() {
   const { state, persist, syncMode, isSyncing, syncError } = useInteligenciaState();
   const { pessoa, session, isPreview } = useAuth();
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = todayISO();
   const financeiro = useFinanceiro(Number(hoje.slice(0, 4)));
   const [copyFeedback, setCopyFeedback] = useState("");
   const metasConfig = useMemo<MetasConfig>(
@@ -1307,7 +1307,7 @@ function ReceivableStatusControls({
 
 function TicketModule({ state, persist }: { state: Inteligencia360State; persist: ReturnType<typeof useInteligenciaState>["persist"] }) {
   const [form, setForm] = useState({
-    weekStartDate: new Date().toISOString().slice(0, 10),
+    weekStartDate: todayISO(),
     weekEndDate: todayPlus(6),
     doctorName: "Dr. Daniel",
     patientType: "NEW" as PatientType360,

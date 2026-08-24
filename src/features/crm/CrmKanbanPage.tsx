@@ -38,6 +38,7 @@ import {
   ehContinuacao,
   parcelaVazia,
   travaDoComprovante,
+  travaDoValorRecebido,
   type ParcelaDoRecebimento,
   type ResultadoDoFechamento,
   type TipoRecebimento,
@@ -715,6 +716,52 @@ export function CrmKanbanPage() {
    * paciente e registrar o fechamento) chamam esta função, então não existe
    * chance de um se comportar diferente do outro.
    */
+  /**
+   * SOBE OS COMPROVANTES — um por arquivo, ligados ao paciente (e à comanda,
+   * quando existe). Virou função própria em 25/08/2026 porque o caminho do
+   * DINHEIRO saía antes do upload e o arquivo anexado no fechamento era
+   * silenciosamente descartado.
+   */
+  function subirComprovantes(values: {
+    arquivos: File[];
+    pacienteNome: string;
+    contactRef: string;
+    divisao: ParcelaDoRecebimento[];
+    valorTotal: number;
+    saleRef: string | null;
+    observacao: string;
+  }) {
+    if (!values.arquivos.length || !podeSubirArquivo || !pessoaAuth) return Promise.resolve();
+    // Uma forma por arquivo (pagamento dividido): cada comprovante leva a forma
+    // e o valor da sua parcela. Se não bate, o total fica no primeiro para a
+    // soma do dia não inflar.
+    const umPorForma = values.arquivos.length === values.divisao.length && values.divisao.length > 1;
+    return Promise.all(
+      values.arquivos.map((file, indice) => {
+        const parcela = umPorForma ? values.divisao[indice] : values.divisao[0];
+        const valorDoComprovante = umPorForma
+          ? parseFinAmount(values.divisao[indice].valorTexto)
+          : indice === 0
+            ? values.valorTotal
+            : 0;
+        return uploadRemoteComprovante({
+          pessoa: pessoaAuth as never,
+          file,
+          pacienteReferencia: values.pacienteNome,
+          crmContactRef: values.contactRef,
+          valor: valorDoComprovante,
+          formaPagamento: formaParaComprovante(parcela?.forma ?? "PIX"),
+          observacao:
+            values.arquivos.length > 1
+              ? `${values.observacao} · comprovante ${indice + 1} de ${values.arquivos.length}`
+              : values.observacao,
+          saleRef: values.saleRef ?? undefined,
+          alimentarRecebiveis360: false,
+        });
+      }),
+    ).then(() => undefined);
+  }
+
   function lancarComandaEComprovante(values: {
     contactRef: string;
     pacienteNome: string;
@@ -759,15 +806,32 @@ export function CrmKanbanPage() {
         crmContactRef: values.contactRef,
       };
       if (podeSubirArquivo) {
-        void createRemoteFinCashEntry(entradaNoCaixa, pessoaAuth?.id ?? null).catch((falha) =>
-          console.warn("Entrada do caixa não sincronizou.", falha),
-        );
+        void createRemoteFinCashEntry(entradaNoCaixa, pessoaAuth?.id ?? null).catch((falha) => {
+          console.warn("Entrada do caixa não sincronizou.", falha);
+          setFeedback(
+            `⚠️ O DINHEIRO NÃO ENTROU NO CAIXA (${(falha as Error).message}). Lance a entrada na mão em Financeiro › Crediário para o cofre não ficar furado.`,
+          );
+        });
       }
     }
 
     if (valorComanda <= 0) {
       // Tudo em dinheiro: o registro é o caixa do crediário. Comanda de valor
       // zero só faria ruído no Lançar Dia.
+      //
+      // MAS O COMPROVANTE NÃO PODE SUMIR (25/08/2026): antes esta saída
+      // acontecia ANTES do upload, então quem anexava o print de um pagamento
+      // em dinheiro perdia o arquivo — e ia subir de novo, na mão, pelo módulo
+      // Comprovantes. Agora o arquivo sobe do mesmo jeito, ligado ao paciente.
+      subirComprovantes({
+        arquivos: values.arquivos,
+        pacienteNome: values.pacienteNome,
+        contactRef: values.contactRef,
+        divisao: parcelasDinheiro.length ? parcelasDinheiro : divisaoBase,
+        valorTotal: valorDinheiro,
+        saleRef: null,
+        observacao: [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Fechamento em dinheiro (caixa do crediário)",
+      });
       return { saleId: null, valorDinheiro, valorComanda: 0 };
     }
 
@@ -813,60 +877,35 @@ export function CrmKanbanPage() {
       lancadoPorSetor: values.setor,
       aguardandoExplicacao: false,
     };
-    financeiro.addSale(comanda);
+    financeiro.addSale(comanda, (mensagem) =>
+      setFeedback(
+        `⚠️ A COMANDA NÃO FOI GRAVADA (${mensagem}). Ela está só neste aparelho — lance de novo pelo "Lançar dia" para o dinheiro entrar no fechamento.`,
+      ),
+    );
 
-    if (values.arquivos.length && podeSubirArquivo && pessoaAuth) {
-      // UM POR ARQUIVO. Cada comprovante é uma linha na tabela, todas ligadas à
-      // MESMA comanda (saleRef) — é assim que o financeiro vê "R$ 5.000: 2.000
-      // no PIX + 3.000 no cartão" com os dois prints.
-      //
-      // Quando há uma forma por arquivo (o caso comum do pagamento dividido),
-      // cada comprovante leva a forma e o valor da sua parcela; se não bate
-      // (3 arquivos para 1 forma), todos levam a forma principal e o valor total
-      // fica no primeiro, para a soma dos comprovantes não inflar o dia.
-      const umPorForma = values.arquivos.length === parcelasComanda.length && parcelasComanda.length > 1;
-      const observacaoBase =
-        [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban";
-      void Promise.all(
-        values.arquivos.map((file, indice) => {
-          const parcela = umPorForma ? parcelasComanda[indice] : (parcelasComanda[0] ?? divisaoBase[0]);
-          const valorDoComprovante = umPorForma
-            ? parseFinAmount(parcelasComanda[indice].valorTexto)
-            : indice === 0
-              ? valorComanda
-              : 0;
-          return uploadRemoteComprovante({
-            pessoa: pessoaAuth as never,
-            file,
-            pacienteReferencia: values.pacienteNome,
-            crmContactRef: values.contactRef,
-            valor: valorDoComprovante,
-            formaPagamento: formaParaComprovante(parcela?.forma ?? "PIX"),
-            observacao:
-              values.arquivos.length > 1
-                ? `${observacaoBase} · comprovante ${indice + 1} de ${values.arquivos.length}`
-                : observacaoBase,
-            saleRef: saleId,
-            alimentarRecebiveis360: false,
-          });
-        }),
-      ).catch((falha) => {
-        // O STATUS NÃO PODE MENTIR (18/08/2026). Antes a comanda nascia
-        // "ANEXADO" e, se o upload falhasse, ela continuava dizendo que tinha
-        // comprovante — o furo só aparecia na conferência, dias depois. Agora
-        // volta para AGUARDANDO e o aviso é alto.
-        financeiro.updateSale({
-          ...comanda,
-          payments: comanda.payments.map((pagamento) => ({
-            ...pagamento,
-            comprovanteStatus: "AGUARDANDO" as const,
-          })),
-        });
-        setFeedback(
-          `Comanda salva, mas o comprovante NÃO subiu (${(falha as Error).message}). A comanda ficou marcada como AGUARDANDO — anexe pelo módulo Comprovantes para não ficar sem.`,
-        );
+    // O comprovante nasce ligado a ESTA comanda (saleRef) — é assim que o
+    // financeiro vê "R$ 5.000: 2.000 no PIX + 3.000 no cartão" com os prints.
+    void subirComprovantes({
+      arquivos: values.arquivos,
+      pacienteNome: values.pacienteNome,
+      contactRef: values.contactRef,
+      divisao: parcelasComanda.length ? parcelasComanda : divisaoBase,
+      valorTotal: valorComanda,
+      saleRef: saleId,
+      observacao: [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban",
+    }).catch((falha) => {
+      // O STATUS NÃO PODE MENTIR (18/08/2026). Antes a comanda nascia
+      // "ANEXADO" e, se o upload falhasse, ela continuava dizendo que tinha
+      // comprovante — o furo só aparecia na conferência, dias depois.
+      financeiro.updateSale({
+        ...comanda,
+        payments: comanda.payments.map((pagamento) => ({ ...pagamento, comprovanteStatus: "AGUARDANDO" as const })),
       });
-    }
+      setFeedback(
+        `Comanda salva, mas o comprovante NÃO subiu (${(falha as Error).message}). A comanda ficou marcada como AGUARDANDO — anexe pelo módulo Comprovantes para não ficar sem.`,
+      );
+    });
+
     return { saleId, valorDinheiro, valorComanda };
   }
 
@@ -895,6 +934,16 @@ export function CrmKanbanPage() {
     };
     // Mesma trava do fechamento: recebeu dinheiro no cadastro, o comprovante
     // não fica no silêncio (18/08/2026).
+    const travaValorLead = travaDoValorRecebido({
+      valor: parseFinAmount(newRecebido),
+      quantosArquivos: newArquivos.length,
+      divisao: newDivisao,
+      parse: parseFinAmount,
+    });
+    if (travaValorLead) {
+      setFeedback(travaValorLead);
+      return;
+    }
     const travaComprovanteLead = travaDoComprovante({
       valor: parseFinAmount(newRecebido),
       formas: newDivisao.map((parcela) => parcela.forma),
@@ -980,8 +1029,17 @@ export function CrmKanbanPage() {
     const soldAmount = Number(fcSold.replace(/\./g, "").replace(",", ".")) || 0;
     const receivedAmount = Number(fcReceived.replace(/\./g, "").replace(",", ".")) || 0;
     if (fcResultado !== "NAO_FECHOU" && soldAmount <= 0) return setFcFeedback("Fechou: informe o valor vendido.");
-    // O comprovante não pode se perder no silêncio (18/08/2026).
-    if (fcResultado !== "NAO_FECHOU") {
+    // O comprovante não pode se perder no silêncio (18/08/2026). Vale para
+    // quem fechou E para quem não fechou mas pagou a consulta (25/08/2026).
+    {
+      // Valor em branco engolia a comanda E o comprovante em silêncio (25/08).
+      const travaValor = travaDoValorRecebido({
+        valor: receivedAmount,
+        quantosArquivos: fcArquivos.length,
+        divisao: fcDivisao,
+        parse: parseFinAmount,
+      });
+      if (travaValor) return setFcFeedback(travaValor);
       const travaComprovante = travaDoComprovante({
         valor: receivedAmount,
         formas: fcDivisao.map((parcela) => parcela.forma),
@@ -1057,7 +1115,9 @@ export function CrmKanbanPage() {
       }
       setFeedback(
         fcResultado === "NAO_FECHOU"
-          ? "Fechamento registrado como NÃO FECHOU — a Concierge acolhe amanhã (D+1) e a régua segue sozinha."
+          ? receivedAmount > 0
+            ? `Não fechou registrado — a Concierge acolhe amanhã (D+1). Os ${moneyFin(receivedAmount)} que ele pagou foram para a comanda do dia.`
+            : "Fechamento registrado como NÃO FECHOU — a Concierge acolhe amanhã (D+1) e a régua segue sozinha."
           : fcResultado === "AVULSA"
             ? "Consulta avulsa registrada — sem jornada (segue o fluxo normal de agenda)."
             : ehContinuacao(fcResultado)
@@ -1068,7 +1128,9 @@ export function CrmKanbanPage() {
     });
     // A comanda leva o que ENTROU (valor recebido) — é isso que o fechamento
     // diário e o extrato conferem. O valor vendido é o contrato, não o caixa.
-    if (fcResultado !== "NAO_FECHOU" && receivedAmount > 0) {
+    // NÃO FECHOU TAMBÉM PAGA (25/08/2026): a consulta que o paciente pagou vira
+    // comanda igual, com o item e a régua do "não fechou".
+    if (receivedAmount > 0) {
       const ehPlano = fcResultado === "PROGRAMA_ACOMPANHAMENTO" || fcResultado === "CLUBE_BRATAN";
       const lancado = lancarComandaEComprovante({
         contactRef: refDoPaciente,
@@ -1084,13 +1146,20 @@ export function CrmKanbanPage() {
         tipo: fcTipo,
         plano: ehPlano,
         origem: `Fechamento no Kanban — ${
-          fcResultado === "AVULSA"
-            ? "consulta avulsa"
-            : ehContinuacao(fcResultado)
-              ? "tratamento de continuação (fora da consulta)"
-              : channelLabels[fcResultado as CrmAdhesionChannel]
+          fcResultado === "NAO_FECHOU"
+            ? "não fechou o tratamento (pagou a consulta)"
+            : fcResultado === "AVULSA"
+              ? "consulta avulsa"
+              : ehContinuacao(fcResultado)
+                ? "tratamento de continuação (fora da consulta)"
+                : channelLabels[fcResultado as CrmAdhesionChannel]
         }`,
-        observacao: fcCompleto ? "" : `parcial: ${fcPartialReason.trim()}`,
+        observacao:
+          fcResultado === "NAO_FECHOU"
+            ? `não fechou: ${fcObjection.trim()}`
+            : fcCompleto
+              ? ""
+              : `parcial: ${fcPartialReason.trim()}`,
         setor: "VENDAS",
       });
       if (lancado && lancado.valorDinheiro > 0) {
@@ -2118,8 +2187,8 @@ export function CrmKanbanPage() {
                       mandaDepois={fcMandaDepois}
                       onMandaDepoisChange={setFcMandaDepois}
                       pacienteNovo={!fcPatient.ref}
-                      // Este bloco só aparece quando o paciente FECHOU, então
-                      // aqui fcResultado nunca é "NAO_FECHOU".
+                      // Aqui fcResultado nunca é "NAO_FECHOU" (esse caso tem o
+                      // próprio bloco, mais abaixo, para a consulta paga).
                       regua={
                         fcResultado === "AVULSA"
                           ? "sem esteira — só agenda"
@@ -2151,6 +2220,36 @@ export function CrmKanbanPage() {
                     <div>
                       <Label>Objeção / motivo (obrigatório)</Label>
                       <Input value={fcObjection} onChange={(event) => setFcObjection(event.target.value)} placeholder="Ex.: vai conversar com a família" />
+                    </div>
+                    {/* NÃO FECHOU TAMBÉM PAGA (25/08/2026, pedido do Lucas).
+                        Quem não fechou o tratamento quase sempre PAGOU A
+                        CONSULTA — e esse dinheiro não tinha onde ser lançado
+                        aqui, então virava retrabalho: comanda na mão no Lançar
+                        dia e comprovante na mão no módulo Comprovantes. */}
+                    <div className="sm:col-span-2">
+                      <RecebimentoNoKanban
+                        titulo="Pagou alguma coisa? (consulta, bioimpedância, sinal)"
+                        valorTexto={fcReceived}
+                        onValorChange={setFcReceived}
+                        valor={parseFinAmount(fcReceived)}
+                        divisao={fcDivisao}
+                        onDivisaoChange={setFcDivisao}
+                        itemTipo={fcItemTipo}
+                        onItemTipoChange={setFcItemTipo}
+                        tipo={fcTipo}
+                        onTipoChange={setFcTipo}
+                        tiposDisponiveis={["PRIMEIRA_CONSULTA", "RETORNO"]}
+                        notaInstrucao={fcNotaInstrucao}
+                        onNotaInstrucaoChange={setFcNotaInstrucao}
+                        quandoNota={fcNotaQuando}
+                        onQuandoNotaChange={setFcNotaQuando}
+                        arquivos={fcArquivos}
+                        onArquivosChange={setFcArquivos}
+                        mandaDepois={fcMandaDepois}
+                        onMandaDepoisChange={setFcMandaDepois}
+                        pacienteNovo={!fcPatient.ref}
+                        regua="não fechou o tratamento — a Concierge acolhe no D+1 (régua D1–D5)"
+                      />
                     </div>
                   </div>
                 )}

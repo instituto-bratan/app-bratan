@@ -306,14 +306,22 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
-  function addSale(sale: FinSale) {
+  /**
+   * Lança a comanda. O `onFalha` existe porque erro de gravação NÃO pode ficar
+   * só no console (25/08/2026): a comanda ficava salva no aparelho, sumia do
+   * Lançar dia de todo mundo, e ninguém era avisado.
+   */
+  function addSale(sale: FinSale, onFalha?: (mensagem: string) => void) {
     setSales((current) => {
       const next = [sale, ...current];
       saveLocalFinSales(next);
       return next;
     });
     if (useRemote) {
-      void createSaleMutation.mutateAsync(sale).catch((error) => console.warn("Venda não sincronizou.", error));
+      void createSaleMutation.mutateAsync(sale).catch((error) => {
+        console.warn("Venda não sincronizou.", error);
+        onFalha?.((error as Error)?.message ?? "erro desconhecido");
+      });
     }
   }
 

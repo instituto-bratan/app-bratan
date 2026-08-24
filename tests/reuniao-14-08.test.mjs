@@ -92,7 +92,9 @@ test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
   assert.ok(fonte.includes("function lancarComandaEComprovante("), "existe a função única");
   const chamadas = fonte.match(/lancarComandaEComprovante\(\{/g) ?? [];
   assert.equal(chamadas.length, 2, `os dois caminhos chamam a função única (achei ${chamadas.length})`);
-  assert.ok(fonte.includes("financeiro.addSale(comanda)"), "ela cria a comanda do dia");
+  // Desde 25/08/2026 addSale leva um aviso de falha (erro de gravação não pode
+  // ficar só no console) — por isso a chamada tem segundo argumento.
+  assert.ok(/financeiro\.addSale\(comanda,/.test(fonte), "ela cria a comanda do dia");
   assert.ok(fonte.includes("saleRef: saleId"), "o comprovante nasce amarrado à comanda");
   // PLURAL desde 18/08/2026: o recebimento aceita mais de um comprovante
   // (PIX + cartão, ou quem pagou junto), então o status olha a quantidade.
@@ -232,7 +234,9 @@ test("o cadastro do paciente diz se é novo ou vinculado", () => {
 test("os DOIS momentos do Kanban usam o MESMO componente", () => {
   const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
   const usos = fonte.match(/<RecebimentoNoKanban/g) ?? [];
-  assert.equal(usos.length, 2, `cadastro e fechamento (achei ${usos.length})`);
+  // TRÊS desde 25/08/2026: cadastro, fechamento e "não fechou mas pagou a
+  // consulta" — os três usam o MESMO componente, que é o que este teste guarda.
+  assert.equal(usos.length, 3, `cadastro, fechamento e não-fechou (achei ${usos.length})`);
   // E o bloco denso antigo não voltou.
   assert.ok(!fonte.includes("Ao registrar, este fechamento alimenta de uma vez"), "o parágrafo comprido saiu");
   assert.ok(!fonte.includes("Ao criar, este cadastro alimenta de uma vez"), "o parágrafo comprido saiu do cadastro");

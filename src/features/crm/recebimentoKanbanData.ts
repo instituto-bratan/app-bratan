@@ -160,3 +160,30 @@ export function travaDoComprovante(values: {
   if (soDinheiro) return null;
   return 'Anexe o comprovante do pagamento — ou marque "Vou mandar o comprovante depois" para salvar com a pendência registrada.';
 }
+
+
+/**
+ * TRAVA DO VALOR (25/08/2026). O "Valor recebido" é a chave de tudo: sem ele o
+ * fechamento salvava o card e descartava, em silêncio, a comanda E o
+ * comprovante anexado — a pessoa só descobria quando o dinheiro não aparecia
+ * no Lançar dia. Casos reais: um fechamento de R$ 12.255 e outro de R$ 10.520
+ * gravados com "recebido = 0" em 24/08/2026.
+ *
+ * Devolve a mensagem do bloqueio, ou null quando pode salvar.
+ */
+export function travaDoValorRecebido(values: {
+  valor: number;
+  quantosArquivos: number;
+  divisao: ParcelaDoRecebimento[];
+  parse: (texto: string) => number;
+}) {
+  if (values.valor > 0) return null;
+  const somaDasFormas = somaDasParcelas(values.divisao, values.parse);
+  if (values.quantosArquivos > 0) {
+    return 'Você anexou comprovante mas não preencheu "Quanto entrou". Informe o valor recebido — sem ele a comanda não nasce e o comprovante se perde.';
+  }
+  if (somaDasFormas > 0) {
+    return `As formas de pagamento somam ${moneyFin(somaDasFormas)}, mas "Quanto entrou" está zerado. Preencha o valor recebido para a comanda sair.`;
+  }
+  return null;
+}
