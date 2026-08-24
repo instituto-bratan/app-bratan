@@ -109,6 +109,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Planilha de Cadências", shortLabel: "Planilha", href: "/crm/planilha", icon: ClipboardList, allowed: canCrmBratan, module: "crm" },
       { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento, module: "acompanhamento" },
       { label: "Indicações", href: "/crm/indicacoes", icon: Gift, allowed: canCrmBratan, module: "crm" },
+      { label: "NPS da Concierge", shortLabel: "NPS", href: "/concierge/nps", icon: HeartPulse, allowed: (cargo) => canAdministracao(cargo) || cargo === "secretaria_executiva", module: "concierge-nps" },
     ],
   },
   {

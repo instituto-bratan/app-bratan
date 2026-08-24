@@ -251,7 +251,8 @@ export type ModuleKey =
   | "fin-gestao"
   | "fin-extrato"
   | "fin-canais"
-  | "estoque";
+  | "estoque"
+  | "concierge-nps";
 
 export const moduleLabels: Record<ModuleKey, string> = {
   hoje: "Hoje (tarefas, almoço, mural)",
@@ -277,6 +278,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-canais": "Financeiro · Canais de Venda",
   estoque: "Estoque (Recepção & Enfermagem)",
+  "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
@@ -296,6 +298,9 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       return canComprovantes(cargo) ? "EDITAR" : "OCULTO";
     case "marketing":
       return canMarketing(cargo) ? "EDITAR" : "OCULTO";
+    case "concierge-nps":
+      // A dona é a Aline (secretaria_executiva); coordenação toda vê e edita.
+      return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
     case "estoque":
       // Cada dona edita o próprio setor (a divisão por setor é feita na tela e
       // na RLS); a coordenação enxerga e edita os dois.

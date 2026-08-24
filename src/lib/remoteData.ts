@@ -5,6 +5,7 @@ import type { ChecklistItem } from "@/features/checklist/checklistData";
 import type { Aviso } from "@/features/mural/muralData";
 import type { ComprovanteRecord } from "@/features/comprovantes/comprovantesData";
 import type { EstoqueItem, EstoqueMovimento } from "@/features/estoque/estoqueData";
+import type { NpsContato, NpsMes } from "@/features/concierge/npsData";
 import {
   checkinCodePreview,
   defaultEstalecaConfig,
@@ -4501,6 +4502,82 @@ export async function listRemoteNpsRespostas(): Promise<
     origem: String(row.origem ?? "TOTEM"),
     criadoEm: String(row.criado_em ?? ""),
   }));
+}
+
+// ---- NPS da Concierge (21/08/2026) -----------------------------------------
+export async function listRemoteNpsContatos(): Promise<NpsContato[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("concierge_nps_contato")
+    .select("client_ref, contato_date, paciente_nome, crm_contact_ref, canal, resultado, descricao, resolucao, created_at")
+    .is("deleted_at", null)
+    .order("contato_date", { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.client_ref),
+    contatoDate: String(row.contato_date),
+    pacienteNome: String(row.paciente_nome ?? ""),
+    crmContactRef: (row.crm_contact_ref as string | null) ?? null,
+    canal: row.canal as NpsContato["canal"],
+    resultado: row.resultado as NpsContato["resultado"],
+    descricao: String(row.descricao ?? ""),
+    resolucao: String(row.resolucao ?? ""),
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  }));
+}
+
+export async function upsertRemoteNpsContato(contato: NpsContato, createdBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("concierge_nps_contato").upsert(
+    {
+      client_ref: contato.id,
+      contato_date: contato.contatoDate,
+      paciente_nome: contato.pacienteNome,
+      crm_contact_ref: contato.crmContactRef,
+      canal: contato.canal,
+      resultado: contato.resultado,
+      descricao: contato.descricao,
+      resolucao: contato.resolucao,
+      created_by: uuidOrNull(createdBy),
+    },
+    { onConflict: "client_ref" },
+  );
+  if (error) throw error;
+}
+
+export async function deleteRemoteNpsContato(contatoRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("concierge_nps_contato").update({ deleted_at: new Date().toISOString() }).eq("client_ref", contatoRef);
+  if (error) throw error;
+}
+
+export async function getRemoteNpsMes(monthKey: string): Promise<NpsMes | null> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("concierge_nps_mes")
+    .select("month_key, dores, elogios, pdca")
+    .eq("month_key", monthKey)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  const pdca = (row.pdca ?? {}) as Record<string, string>;
+  return {
+    monthKey: String(row.month_key),
+    dores: (row.dores as NpsMes["dores"]) ?? [],
+    elogios: (row.elogios as NpsMes["elogios"]) ?? [],
+    pdca: { plan: pdca.plan ?? "", do: pdca.do ?? "", check: pdca.check ?? "", act: pdca.act ?? "" },
+  };
+}
+
+export async function upsertRemoteNpsMes(mes: NpsMes, updatedBy: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("concierge_nps_mes").upsert(
+    { month_key: mes.monthKey, dores: mes.dores, elogios: mes.elogios, pdca: mes.pdca, updated_by: uuidOrNull(updatedBy) },
+    { onConflict: "month_key" },
+  );
+  if (error) throw error;
 }
 
 export async function hardDeleteRemoteComprovante(values: { id: string; storagePath?: string }) {
