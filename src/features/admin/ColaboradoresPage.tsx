@@ -196,8 +196,16 @@ export function ColaboradoresPage() {
         password,
       });
       closeAccess();
-    } catch {
-      setAccessError("Não foi possível criar o acesso. Verifique a Edge Function e tente novamente.");
+    } catch (falha) {
+      // Mostra o motivo que a função devolveu (e-mail inválido, senha curta,
+      // cargo desconhecido, já tem acesso) em vez de mandar o Lucas conferir
+      // uma Edge Function que ele não tem como abrir.
+      const motivo = (falha as Error)?.message?.trim();
+      setAccessError(
+        motivo && !/non-2xx|Failed to send|Edge Function/i.test(motivo)
+          ? motivo
+          : "Não foi possível criar o acesso agora. Confira a internet e tente de novo — se insistir, me chame.",
+      );
     }
   }
 

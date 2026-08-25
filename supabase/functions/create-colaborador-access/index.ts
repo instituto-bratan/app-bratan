@@ -107,15 +107,28 @@ Deno.serve(async (req) => {
     const cargo = String(body?.cargo ?? "").trim();
     const password = String(body?.password ?? "");
 
-    if (
-      !colaboradorId ||
-      nome.length < 2 ||
-      nome.length > 120 ||
-      !email.endsWith("@institutobratan.com.br") ||
-      !cargos.has(cargo) ||
-      password.length < 12
-    ) {
-      return json(req, { error: "Invalid payload" }, 400);
+    // QUALQUER E-MAIL É AUTORIZADO (25/08/2026, pedido do Lucas): a
+    // nutricionista não tem e-mail da casa. A trava de domínio saiu da tela
+    // ANTES daqui, e esta função continuou barrando com "Invalid payload" —
+    // era o "não foi possível criar o acesso". O que se valida é o FORMATO.
+    const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+
+    // Cada motivo é dito por extenso: "Invalid payload" não ajudava ninguém a
+    // entender o que estava errado do outro lado da tela.
+    const problema = !colaboradorId
+      ? "Colaborador não informado."
+      : nome.length < 2 || nome.length > 120
+        ? "Nome precisa ter entre 2 e 120 caracteres."
+        : !emailValido
+          ? "E-mail inválido — confira o endereço (ex.: nome@gmail.com)."
+          : !cargos.has(cargo)
+            ? "Cargo não reconhecido."
+            : password.length < 12
+              ? "A senha inicial precisa ter pelo menos 12 caracteres."
+              : null;
+
+    if (problema) {
+      return json(req, { error: problema }, 400);
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {

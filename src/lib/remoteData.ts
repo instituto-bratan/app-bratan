@@ -241,7 +241,20 @@ export async function createRemoteColaboradorAccess(values: {
     },
   });
 
-  if (error) throw error;
+  if (error) {
+    // O MOTIVO DE VERDADE (25/08/2026). Quando a função responde não-2xx, o
+    // supabase-js entrega um erro genérico ("non-2xx status code") e guarda o
+    // corpo em error.context. Sem ler isso, a tela dizia "verifique a Edge
+    // Function" para qualquer coisa — e o motivo real (e-mail, senha curta,
+    // cargo) ficava invisível.
+    const contexto = (error as { context?: Response }).context;
+    if (contexto && typeof contexto.json === "function") {
+      const corpo = await contexto.json().catch(() => null);
+      const motivo = (corpo as { error?: string } | null)?.error;
+      if (motivo) throw new Error(motivo);
+    }
+    throw error;
+  }
   return data as { authId: string; colaboradorId: string };
 }
 
