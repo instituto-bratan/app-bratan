@@ -50,8 +50,22 @@ function createSecurePassword() {
   return Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
 }
 
-function isInstitutionalEmail(email: string) {
-  return email.endsWith("@institutobratan.com.br");
+/**
+ * QUALQUER E-MAIL SERVE (25/08/2026, pedido do Lucas): "a nossa nutricionista
+ * não tem esse email, então vou pedir pra que seja qualquer email que seja
+ * autorizado". Antes o cadastro exigia @institutobratan.com.br e simplesmente
+ * barrava quem é da casa mas usa e-mail próprio.
+ *
+ * O que continua sendo checado é o FORMATO — um e-mail torto não cria login no
+ * Supabase e a pessoa fica sem acesso sem saber por quê.
+ */
+function isEmailValido(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+}
+
+/** Só para informar (não bloqueia): e-mail do domínio da casa? */
+export function isInstitutionalEmail(email: string) {
+  return email.trim().toLowerCase().endsWith("@institutobratan.com.br");
 }
 
 export function ColaboradoresPage() {
@@ -194,13 +208,13 @@ export function ColaboradoresPage() {
     const nome = form.nome.trim();
     const email = form.email.trim().toLowerCase();
 
-    if (!nome || !email.includes("@")) {
-      setError("Informe nome e e-mail válidos.");
+    if (!nome) {
+      setError("Informe o nome do colaborador.");
       return;
     }
 
-    if (!isInstitutionalEmail(email)) {
-      setError("Use um e-mail @institutobratan.com.br.");
+    if (!isEmailValido(email)) {
+      setError("Esse e-mail não parece válido — confira (ex.: nome@gmail.com).");
       return;
     }
 
@@ -403,9 +417,14 @@ export function ColaboradoresPage() {
                       id="email"
                       type="email"
                       value={form.email}
-                      placeholder="nome@institutobratan.com.br"
+                      placeholder="nome@institutobratan.com.br ou e-mail próprio"
                       onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                     />
+                    <p className="text-xs leading-snug text-muted-foreground">
+                      Pode ser e-mail próprio (Gmail, Outlook…) — é com ele que a pessoa vai entrar no app. Quando não é do
+                      domínio da casa, o e-mail fica marcado em Segurança: a caixa não é nossa, então tirar o acesso é
+                      sempre por aqui, desativando o colaborador.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cargo">Cargo</Label>

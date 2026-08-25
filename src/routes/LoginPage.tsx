@@ -86,7 +86,7 @@ export function LoginPage() {
                   id="email"
                   type="email"
                   autoComplete="email"
-                  placeholder="nome@institutobratan.com.br"
+                  placeholder="seu e-mail cadastrado"
                   {...form.register("email")}
                 />
                 {form.formState.errors.email ? (

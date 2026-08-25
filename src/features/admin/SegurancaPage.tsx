@@ -83,12 +83,16 @@ function buildSecuritySignals(colaboradores: Colaborador[], hasRemoteAudit: bool
       level: semLogin.length === 0 ? "ok" : "attention",
     },
     {
+      // E-MAIL PRÓPRIO É PERMITIDO (25/08/2026): a nutricionista não tem e-mail
+      // da casa, e barrar isso deixava gente da equipe sem acesso. Então isto
+      // deixou de ser FALHA e virou INFORMAÇÃO — antes ficava vermelho para
+      // sempre, e alarme que nunca apaga ninguém mais olha.
       title: "E-mails institucionais",
       description:
         emailsExternos.length === 0
           ? "Todos os cadastros usam e-mail institucional."
-          : `${emailsExternos.length} cadastro(s) fora do domínio institutobratan.com.br.`,
-      level: emailsExternos.length === 0 ? "ok" : "critical",
+          : `${emailsExternos.length} pessoa(s) usam e-mail próprio (permitido). A caixa não é nossa: para tirar o acesso, desative o colaborador aqui no app.`,
+      level: "ok",
     },
     {
       title: "Desligados sem acesso",
@@ -256,7 +260,11 @@ export function SegurancaPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
-                {[...semLogin, ...colaboradores.filter((colaborador) => !isInstitutionalEmail(colaborador.email))].slice(0, 8).map((colaborador) => (
+                {/* Só quem está SEM LOGIN é pendência de verdade. E-mail próprio
+                    é permitido desde 25/08/2026 — se entrasse nesta lista, a
+                    nutricionista ficaria "para revisar" para sempre. O selo
+                    continua aparecendo como contexto de quem cair aqui. */}
+                {semLogin.slice(0, 8).map((colaborador) => (
                   <div key={`${colaborador.id}-${colaborador.email}`} className="flex flex-col gap-2 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-brand-tinta">{colaborador.nome}</p>
@@ -269,7 +277,7 @@ export function SegurancaPage() {
                     </div>
                   </div>
                 ))}
-                {semLogin.length === 0 && colaboradores.every((colaborador) => isInstitutionalEmail(colaborador.email)) ? (
+                {semLogin.length === 0 ? (
                   <div className="rounded-lg border border-brand-oliva/16 bg-brand-papel/55 p-4">
                     <p className="text-sm font-semibold text-brand-tinta">Nenhum cadastro pendente nesta lista.</p>
                   </div>
