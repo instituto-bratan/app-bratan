@@ -15,7 +15,7 @@
 // Um componente só, usado pelo cadastro do paciente E pelo fechamento: assim os
 // dois caminhos têm a mesma cara e a mesma explicação.
 import { useRef } from "react";
-import { AlertTriangle, Check, Paperclip, X } from "lucide-react";
+import { AlertTriangle, Check, FileText, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -353,30 +353,6 @@ export function RecebimentoNoKanban({
                 ))}
               </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-              <div>
-                <Label>Do que se trata a nota e como emitir</Label>
-                <Input
-                  value={notaInstrucao}
-                  onChange={(event) => onNotaInstrucaoChange(event.target.value)}
-                  placeholder="Ex.: sinal de consulta, indicação — emitir junto com a consulta"
-                />
-              </div>
-              <div>
-                <Label>Emitir</Label>
-                <select
-                  value={quandoNota}
-                  onChange={(event) => onQuandoNotaChange(event.target.value as QuandoNota)}
-                  className="mt-1 h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
-                >
-                  {(Object.keys(quandoNotaLabels) as QuandoNota[]).map((quando) => (
-                    <option key={quando} value={quando}>
-                      {quandoNotaLabels[quando]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
           </div>
 
           {/* PARA ONDE VAI — a lista se completando, em vez de um parágrafo */}
@@ -408,6 +384,48 @@ export function RecebimentoNoKanban({
           paciente e o card no Kanban.
         </p>
       )}
+
+      {/* A NOTA FICA SEMPRE À VISTA (25/08/2026, pedido do Lucas: "eu queria
+          que você já colocasse isso visível... senão fica difícil pra mim ver
+          como que vai ser emitida a nota"). Antes este campo morava dentro do
+          passo 3, que só aparecia depois de digitar o valor — e o que era
+          escrito aqui não aparecia em NENHUMA outra tela. É a MESMA coisa que o
+          campo "Observações (ex.: NF unificada)" do Lançar dia, e agora com o
+          mesmo nome, para quem lança reconhecer na hora. */}
+      <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
+        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
+          <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+          Como a nota vai ser emitida
+        </p>
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <div>
+            <Label>Observações da nota (ex.: NF unificada, +11% imposto)</Label>
+            <Input
+              value={notaInstrucao}
+              onChange={(event) => onNotaInstrucaoChange(event.target.value)}
+              placeholder="Ex.: NF unificada consulta + tratamento · emitir no nome da mãe"
+            />
+          </div>
+          <div>
+            <Label>Emitir</Label>
+            <select
+              value={quandoNota}
+              onChange={(event) => onQuandoNotaChange(event.target.value as QuandoNota)}
+              className="mt-1 h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
+            >
+              {(Object.keys(quandoNotaLabels) as QuandoNota[]).map((quando) => (
+                <option key={quando} value={quando}>
+                  {quandoNotaLabels[quando]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          Isto aparece na comanda do <strong>Lançar dia</strong> e na aba de <strong>Impostos &amp; NF</strong> — é o que a
+          pessoa lê na hora de emitir.
+        </p>
+      </div>
     </div>
   );
 }

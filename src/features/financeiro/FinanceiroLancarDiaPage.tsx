@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, BellRing, CalendarDays, CheckCircle2, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, BellRing, CalendarDays, CheckCircle2, FileText, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,7 @@ import {
   type ContactChannelsDraft,
 } from "@/features/crm/contactChannels";
 import { extractPersonName } from "@/features/crm/nameMatch";
+import { quandoNotaLabels, type QuandoNota } from "@/features/crm/recebimentoKanbanData";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
@@ -119,6 +120,11 @@ export function FinanceiroLancarDiaPage() {
     },
   });
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  // Como a nota vai ser emitida — o MESMO campo do Registrar fechamento
+  // (25/08/2026). Sem ele aqui, editar uma comanda vinda do Kanban apagava a
+  // instrução da NF sem ninguém perceber.
+  const [notaInstrucao, setNotaInstrucao] = useState("");
+  const [notaQuando, setNotaQuando] = useState<QuandoNota>("COM_A_CONSULTA");
 
   const summary = useMemo(() => buildDailyCardSummary(financeiro.sales, date), [financeiro.sales, date]);
   const daySales = useMemo(
@@ -167,6 +173,8 @@ export function FinanceiroLancarDiaPage() {
     setPatientRef("");
     setPatientChannels(emptyContactChannels);
     setNotes("");
+    setNotaInstrucao("");
+    setNotaQuando("COM_A_CONSULTA");
     setItems([{ itemType: "CONSULTA", amount: "", description: "" }]);
     setPayments([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }]);
   }
@@ -180,6 +188,8 @@ export function FinanceiroLancarDiaPage() {
     setPatientName(sale.patientName);
     setPatientRef(sale.crmContactRef);
     setNotes(sale.notes);
+    setNotaInstrucao(sale.notaInstrucao ?? "");
+    setNotaQuando(sale.notaQuando ?? "COM_A_CONSULTA");
     setAdhesion(sale.adhesion ?? "ABERTO");
     setItems(sale.items.map((item) => ({ itemType: item.itemType, amount: amountToDraft(item.amount), description: item.description })));
     setPayments(
@@ -235,6 +245,17 @@ export function FinanceiroLancarDiaPage() {
       items: validItems,
       payments: validPayments,
       adhesion,
+      // O CAMINHO DAS PEDRAS NÃO PODE SE PERDER NA EDIÇÃO (25/08/2026): estes
+      // campos nascem no fechamento do Kanban e eram TODOS zerados quando
+      // alguém editava a comanda aqui.
+      notaInstrucao: notaInstrucao.trim(),
+      notaQuando,
+      tipoAtendimento: editingSale?.tipoAtendimento ?? null,
+      planoOuAvulsa: editingSale?.planoOuAvulsa ?? null,
+      origemIndicacao: editingSale?.origemIndicacao ?? "",
+      consultaAgendadaEm: editingSale?.consultaAgendadaEm ?? null,
+      lancadoPorSetor: editingSale?.lancadoPorSetor ?? null,
+      aguardandoExplicacao: editingSale?.aguardandoExplicacao ?? false,
       createdAt: editingSale?.createdAt ?? new Date().toISOString(),
     };
     // Paciente da comanda sempre existe no CRM: com o seletor, ou já vem
@@ -597,6 +618,40 @@ export function FinanceiroLancarDiaPage() {
                     <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Opcional" />
                   </div>
 
+                  {/* MESMO CAMPO DO REGISTRAR FECHAMENTO (25/08/2026): o que se
+                      escreve aqui é o que a pessoa lê na hora de emitir a nota,
+                      e aparece na lista do dia com o selo NF. */}
+                  <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
+                      <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                      Como a nota vai ser emitida
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <div>
+                        <Label>Observações da nota</Label>
+                        <Input
+                          value={notaInstrucao}
+                          onChange={(event) => setNotaInstrucao(event.target.value)}
+                          placeholder="Ex.: NF unificada consulta + tratamento · emitir no nome da mãe"
+                        />
+                      </div>
+                      <div>
+                        <Label>Emitir</Label>
+                        <select
+                          value={notaQuando}
+                          onChange={(event) => setNotaQuando(event.target.value as QuandoNota)}
+                          className="mt-1 h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
+                        >
+                          {(Object.keys(quandoNotaLabels) as QuandoNota[]).map((quando) => (
+                            <option key={quando} value={quando}>
+                              {quandoNotaLabels[quando]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <Label>Aderiu ao plano de acompanhamento?</Label>
                     <p className="mb-2 text-xs text-muted-foreground">
@@ -658,6 +713,23 @@ export function FinanceiroLancarDiaPage() {
                           {sale.items.map((item) => `${saleItemTypeLabels[item.itemType]} ${moneyFin(item.amount)}`).join(" · ")}
                           {sale.notes ? ` — ${sale.notes}` : ""}
                         </p>
+                        {/* COMO EMITIR A NOTA (25/08/2026). O fechamento do
+                            Kanban já gravava isto, mas NENHUMA tela mostrava —
+                            então quem emite a nota não tinha como saber o que
+                            foi combinado. Fica em destaque, não no meio do
+                            texto cinza. */}
+                        {sale.notaInstrucao?.trim() ? (
+                          <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-brand-dourado/45 bg-brand-creme/50 px-2 py-1 text-xs text-brand-tinta">
+                            <FileText className="h-3.5 w-3.5 shrink-0 text-brand-oliva" aria-hidden="true" />
+                            <strong className="font-semibold">NF:</strong>
+                            {sale.notaInstrucao.trim()}
+                            {sale.notaQuando ? (
+                              <span className="rounded-full bg-white/80 px-1.5 text-[10px] font-bold uppercase text-brand-oliva">
+                                {quandoNotaLabels[sale.notaQuando]}
+                              </span>
+                            ) : null}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-brand-musgo">{moneyFin(saleTotal(sale))}</span>

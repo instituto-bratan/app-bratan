@@ -12,6 +12,7 @@ import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/acces
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
+import { quandoNotaLabels } from "@/features/crm/recebimentoKanbanData";
 import {
   createFinId,
   invoiceTaxClass,
@@ -154,6 +155,21 @@ function EmissaoCard({
           {invoiced > 0.5 ? (
             <p className="mt-0.5 text-xs font-semibold text-brand-oliva">
               Já emitido {moneyFin(invoiced)} · falta {moneyFin(remaining)}
+            </p>
+          ) : null}
+          {/* COMO EMITIR — escrito no fechamento ou no Lançar dia (25/08/2026).
+              É a instrução que a pessoa precisa LER aqui, na hora de emitir:
+              "NF unificada", "no nome da mãe", "só tratamento". Antes ficava
+              guardada no banco e nunca aparecia. */}
+          {sale.notaInstrucao?.trim() ? (
+            <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-brand-dourado/45 bg-brand-creme/50 px-2 py-1 text-xs text-brand-tinta">
+              <strong className="font-semibold">Como emitir:</strong>
+              {sale.notaInstrucao.trim()}
+              {sale.notaQuando ? (
+                <span className="rounded-full bg-white/80 px-1.5 text-[10px] font-bold uppercase text-brand-oliva">
+                  {quandoNotaLabels[sale.notaQuando]}
+                </span>
+              ) : null}
             </p>
           ) : null}
         </div>
