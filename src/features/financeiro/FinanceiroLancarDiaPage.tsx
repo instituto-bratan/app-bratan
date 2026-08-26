@@ -54,6 +54,7 @@ import {
   type ComprovanteStatus,
   type FinSalePayment,
 } from "./financeiroData";
+import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { ConferenciaFechamentoCard } from "./ConferenciaFechamentoCard";
 import { useFinanceiro } from "./useFinanceiro";
 
@@ -390,10 +391,41 @@ export function FinanceiroLancarDiaPage() {
                 entram no módulo Comprovantes, como hoje.
               </p>
             </div>
-            <label className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-              <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-44" aria-label="Dia do lançamento" />
-            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
+                <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-44" aria-label="Dia do lançamento" />
+              </label>
+              {/* O QUE FOI LANÇADO NO MÊS, em Excel (25/08/2026). Duas visões,
+                  porque a contabilidade usa as duas: comanda por comanda
+                  (recebimentos) e a grade por dia (valor faturado). */}
+              <BaixarPlanilhaButton
+                chave="recebimentos"
+                rotulo="Baixar comandas do mês"
+                dados={{
+                  sales: financeiro.sales,
+                  expenses: financeiro.expenses,
+                  categories: financeiro.categories,
+                  savingsMoves: financeiro.savingsMoves,
+                  crediarioProfits: financeiro.crediarioProfits,
+                  purchases: financeiro.purchases,
+                  monthKey: date.slice(0, 7),
+                }}
+              />
+              <BaixarPlanilhaButton
+                chave="valor-faturado"
+                rotulo="Baixar grade do mês"
+                dados={{
+                  sales: financeiro.sales,
+                  expenses: financeiro.expenses,
+                  categories: financeiro.categories,
+                  savingsMoves: financeiro.savingsMoves,
+                  crediarioProfits: financeiro.crediarioProfits,
+                  purchases: financeiro.purchases,
+                  monthKey: date.slice(0, 7),
+                }}
+              />
+            </div>
           </div>
         </motion.section>
 

@@ -835,6 +835,7 @@ export function FinanceiroPainelPage() {
               categories={financeiro.categories}
               savingsMoves={financeiro.savingsMoves}
               crediarioProfits={financeiro.crediarioProfits}
+              purchases={financeiro.purchases}
               monthKey={monthKey}
               mostrarSeletor={false}
             />

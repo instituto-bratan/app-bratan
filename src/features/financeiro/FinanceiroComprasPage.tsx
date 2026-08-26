@@ -25,6 +25,7 @@ import {
   type FinPurchase,
   type FinPurchaseCard,
 } from "./financeiroData";
+import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
 
 const purchaseMethods: FinPaymentMethod[] = ["CARTAO_CREDITO", "BOLETO", "PIX", "CARTAO_DEBITO", "DINHEIRO", "TRANSFERENCIA"];
@@ -160,13 +161,29 @@ export function FinanceiroComprasPage() {
                 Seu diário de compras do mês: o que foi comprado, como foi pago, NF e o que ainda vai chegar.
               </p>
             </div>
-            <Input
-              type="month"
-              value={monthKey}
-              onChange={(event) => setMonthKey(event.target.value || todayISO().slice(0, 7))}
-              className="w-44"
-              aria-label="Mês das compras"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="month"
+                value={monthKey}
+                onChange={(event) => setMonthKey(event.target.value || todayISO().slice(0, 7))}
+                className="w-44"
+                aria-label="Mês das compras"
+              />
+              {/* A planilha do mês, aqui — onde o Lucas está olhando as compras. */}
+              <BaixarPlanilhaButton
+                chave="compras"
+                rotulo="Baixar compras"
+                dados={{
+                  sales: financeiro.sales,
+                  expenses: financeiro.expenses,
+                  categories: financeiro.categories,
+                  savingsMoves: financeiro.savingsMoves,
+                  crediarioProfits: financeiro.crediarioProfits,
+                  purchases: financeiro.purchases,
+                  monthKey,
+                }}
+              />
+            </div>
           </div>
 
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm leading-6 text-sky-900">

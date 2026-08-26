@@ -19,6 +19,7 @@ import {
   type FinCategory,
   type FinCrediarioProfit,
   type FinExpense,
+  type FinPurchase,
   type FinSale,
   type FinSavingsMove,
 } from "./financeiroData";
@@ -29,10 +30,13 @@ export type DadosContabilidade = {
   categories: FinCategory[];
   savingsMoves: FinSavingsMove[];
   crediarioProfits: FinCrediarioProfit[];
+  /** COMPRAS (25/08/2026): faltava a planilha do que foi comprado no mês. */
+  purchases?: FinPurchase[];
   monthKey: string;
 };
 
 const noMes = (iso: string | null | undefined, monthKey: string) => (iso || "").slice(0, 7) === monthKey;
+const brl = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /** Arredonda para centavos: soma de float deixa ruído (53989.229999999996) e a
  *  planilha da contabilidade não pode ter número esquisito quando alguém clica. */
@@ -291,6 +295,56 @@ export function abaResumo(dados: DadosContabilidade): XlsxSheet {
  * Lucas: "não quero unificado, quero uma planilha pra saídas e uma pra
  * entradas"). Cada item aqui é um .xlsx próprio, com uma aba só.
  */
+/**
+ * COMPRAS DO MÊS (25/08/2026, pedido do Lucas: "eu lembro que eu te pedi para
+ * que houvesse botões para exportar tanto compras quanto fechamento").
+ *
+ * Compras é CONTROLE, não custo: o crédito entra na fatura do cartão e o boleto
+ * entra em Contas a Pagar. A planilha diz isso na primeira linha, para ninguém
+ * somar duas vezes na contabilidade.
+ */
+export function abaCompras(dados: DadosContabilidade): XlsxSheet {
+  const doMes = (dados.purchases ?? [])
+    .filter((compra) => noMes(compra.purchaseDate, dados.monthKey))
+    .sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
+  const linhas = doMes.map((compra) => [
+    compra.purchaseDate,
+    compra.description,
+    compra.supplier || "—",
+    compra.method === "CARTAO_CREDITO" ? `CRÉDITO${compra.card ? ` (${compra.card})` : ""}` : compra.method,
+    compra.installments > 1 ? `${compra.installments}x` : "1x",
+    compra.amount || 0,
+    compra.estoqueSetor === "ENFERMAGEM" ? "Enfermagem" : compra.estoqueSetor === "RECEPCAO" ? "Recepção" : "—",
+    compra.receivedAt ? "chegou" : compra.deliveryEta ? `previsto ${compra.deliveryEta}` : "a caminho",
+    compra.nfNote || "",
+    compra.notes || "",
+  ]);
+  const total = cents(linhas.reduce((soma, linha) => soma + Number(linha[5]), 0));
+  const credito = cents(
+    doMes.filter((compra) => compra.method === "CARTAO_CREDITO").reduce((soma, compra) => soma + (compra.amount || 0), 0),
+  );
+  return {
+    name: "COMPRAS",
+    title: `COMPRAS DO MÊS — ${monthKeyLabel(dados.monthKey).toUpperCase()}`,
+    subtitle:
+      "CONTROLE, não custo: o que foi no crédito entra pela fatura do cartão e o boleto entra em Contas a Pagar — não somar duas vezes.",
+    columns: [
+      { header: "DATA", width: 12, kind: "data" },
+      { header: "O QUE COMPROU", width: 52 },
+      { header: "FORNECEDOR", width: 30 },
+      { header: "FORMA", width: 20 },
+      { header: "PARC.", width: 8 },
+      { header: "VALOR", width: 15, kind: "dinheiro" },
+      { header: "VAI PRO ESTOQUE", width: 16 },
+      { header: "ENTREGA", width: 20 },
+      { header: "NOTA", width: 30 },
+      { header: "OBSERVAÇÕES", width: 50 },
+    ],
+    rows: linhas,
+    totalRow: ["TOTAL", `${linhas.length} compra(s)`, "", `crédito ${brl(credito)}`, "", total, "", "", "", ""],
+  };
+}
+
 export type PlanilhaContabilidade = {
   chave: string;
   /** Rótulo do botão. */
@@ -302,7 +356,6 @@ export type PlanilhaContabilidade = {
   aba: (dados: DadosContabilidade) => XlsxSheet;
 };
 
-const brl = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const planilhasContabilidade: PlanilhaContabilidade[] = [
   {
@@ -334,6 +387,16 @@ export const planilhasContabilidade: PlanilhaContabilidade[] = [
     },
     arquivo: (mes) => `Instituto-Bratan-CONTAS-A-PAGAR-${mes}`,
     aba: abaContasAPagar,
+  },
+  {
+    chave: "compras",
+    titulo: "Compras do mês",
+    descricao: (dados) => {
+      const aba = abaCompras(dados);
+      return `${aba.rows.length} compra(s) · ${brl(Number(aba.totalRow?.[5] ?? 0))}`;
+    },
+    arquivo: (mes) => `Instituto-Bratan-COMPRAS-${mes}`,
+    aba: abaCompras,
   },
   {
     chave: "poupanca",

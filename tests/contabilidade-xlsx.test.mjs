@@ -163,13 +163,16 @@ const COFRE = [
 const DADOS = { sales: VENDAS, expenses: DESPESAS, categories: CATS, savingsMoves: COFRE, crediarioProfits: [], monthKey: "2026-08" };
 
 test("UMA planilha por assunto, cada uma em arquivo separado (nada unificado)", () => {
-  assert.equal(conta.planilhasContabilidade.length, 5);
+  // SEIS desde 25/08/2026 — entrou COMPRAS (o Lucas procurou e não achou
+  // porque ela não existia).
+  assert.equal(conta.planilhasContabilidade.length, 6);
   assert.equal(
     conta.planilhasContabilidade.map((p) => p.chave).join(" | "),
-    "valor-faturado | recebimentos | contas-a-pagar | poupanca | resumo",
+    "valor-faturado | recebimentos | contas-a-pagar | compras | poupanca | resumo",
   );
   const nomes = conta.planilhasContabilidade.map((p) => p.arquivo("2026-08"));
-  assert.equal(new Set(nomes).size, 5, "cada arquivo tem nome próprio");
+  assert.equal(new Set(nomes).size, 6, "cada arquivo tem nome próprio");
+  assert.ok(nomes.some((n) => n.includes("COMPRAS")), "arquivo separado das compras");
   for (const nome of nomes) assert.ok(nome.includes("2026-08"), `${nome} tem o mês no nome`);
   assert.ok(nomes.some((n) => n.includes("CONTAS-A-PAGAR")), "arquivo separado só de saídas");
   assert.ok(nomes.some((n) => n.includes("VALOR-FATURADO")), "arquivo separado só de entradas");

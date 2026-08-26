@@ -41,6 +41,7 @@ import {
 
 // Aviso de vencimento: contas em aberto que vencem em até 3 dias.
 const AVISO_DIAS = 3;
+import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
 
 function parseAmount(value: string) {
@@ -373,6 +374,20 @@ export function FinanceiroContasPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" aria-label="Mês" />
+              {/* As saídas do mês em Excel, aqui — não no fim do Painel. */}
+              <BaixarPlanilhaButton
+                chave="contas-a-pagar"
+                rotulo="Baixar contas"
+                dados={{
+                  sales: financeiro.sales,
+                  expenses: financeiro.expenses,
+                  categories: financeiro.categories,
+                  savingsMoves: financeiro.savingsMoves,
+                  crediarioProfits: financeiro.crediarioProfits,
+                  purchases: financeiro.purchases,
+                  monthKey: month,
+                }}
+              />
             </div>
           </div>
         </motion.section>

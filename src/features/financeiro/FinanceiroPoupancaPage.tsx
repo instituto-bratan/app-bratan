@@ -28,6 +28,7 @@ import {
   type FinSavingsKind,
   type FinSavingsMove,
 } from "./financeiroData";
+import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
 
 // Tipos oferecidos no formulário (na ordem de uso mais comum).
@@ -67,6 +68,8 @@ export function FinanceiroPoupancaPage() {
 
   const balance = useMemo(() => savingsBalance(financeiro.savingsMoves), [financeiro.savingsMoves]);
   const debt = useMemo(() => operationalDebtToCofre(financeiro.savingsMoves), [financeiro.savingsMoves]);
+  // Mês da planilha do cofre (independente do mês das provisões).
+  const [mesDaPlanilha, setMesDaPlanilha] = useState(now.slice(0, 7));
   // Dois cofres separados (03/08/2026, pedido do Lucas p/ fechamento): OBRA
   // (CDB — uso na obra, empréstimo e devolução) × PROVISÕES (13º, férias,
   // impostos, urgências, aportes e rendimentos).
@@ -185,6 +188,32 @@ export function FinanceiroPoupancaPage() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 Tudo separado: o que a obra resgatou do CDB, o que devolveu, e o que está guardado para provisões.
               </p>
+              {/* QUANTO ENTROU E SAIU DO COFRE, em Excel (25/08/2026). Era a
+                  planilha que o Lucas mais procurou ("do quanto que entrou e
+                  saiu de poupança, que no caso é da obra") e a única forma de
+                  chegar nela era descer o Painel do Mês até o fim. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Input
+                  type="month"
+                  value={mesDaPlanilha}
+                  onChange={(event) => setMesDaPlanilha(event.target.value || now.slice(0, 7))}
+                  className="h-9 w-40"
+                  aria-label="Mês da planilha do cofre"
+                />
+                <BaixarPlanilhaButton
+                  chave="poupanca"
+                  rotulo="Baixar entradas e saídas"
+                  dados={{
+                    sales: financeiro.sales,
+                    expenses: financeiro.expenses,
+                    categories: financeiro.categories,
+                    savingsMoves: financeiro.savingsMoves,
+                    crediarioProfits: financeiro.crediarioProfits,
+                    purchases: financeiro.purchases,
+                    monthKey: mesDaPlanilha,
+                  }}
+                />
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-brand-dourado/40 bg-brand-creme/50 px-5 py-4">

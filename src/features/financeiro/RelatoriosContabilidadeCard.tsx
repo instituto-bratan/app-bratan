@@ -23,6 +23,7 @@ import {
   type FinCategory,
   type FinCrediarioProfit,
   type FinExpense,
+  type FinPurchase,
   type FinSale,
   type FinSavingsMove,
 } from "./financeiroData";
@@ -46,6 +47,7 @@ export function RelatoriosContabilidadeCard({
   categories,
   savingsMoves,
   crediarioProfits,
+  purchases = [],
   monthKey: monthKeyFixo,
   mostrarSeletor = true,
 }: {
@@ -54,6 +56,8 @@ export function RelatoriosContabilidadeCard({
   categories: FinCategory[];
   savingsMoves: FinSavingsMove[];
   crediarioProfits: FinCrediarioProfit[];
+  /** COMPRAS (25/08/2026): sem isto a planilha de compras sairia vazia aqui. */
+  purchases?: FinPurchase[];
   monthKey: string;
   /** Na tela de Gestão o mês já é escolhido lá em cima; aqui o seletor some. */
   mostrarSeletor?: boolean;
@@ -80,8 +84,8 @@ export function RelatoriosContabilidadeCard({
     [sales, expenses, savingsMoves, monthKey, crediarioProfits],
   );
   const dadosDoMes = useMemo(
-    () => ({ sales, expenses, categories, savingsMoves, crediarioProfits, monthKey }),
-    [sales, expenses, categories, savingsMoves, crediarioProfits, monthKey],
+    () => ({ sales, expenses, categories, savingsMoves, crediarioProfits, purchases, monthKey }),
+    [sales, expenses, categories, savingsMoves, crediarioProfits, purchases, monthKey],
   );
 
   const botoes = [
