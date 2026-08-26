@@ -67,11 +67,13 @@ import {
   previousMonthKey,
   type GestaoIndicador,
 } from "./financeiroData";
-import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, type MetasConfig } from "./metasData";
+import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, metasForMonth, type MetasConfig } from "./metasData";
 import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMes";
 import { buildPontosDaReuniao, type PontoDaReuniao } from "./pontosDaReuniao";
 import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
 import { useFinanceiro } from "./useFinanceiro";
+import { ResumoFechamentoCard } from "./ResumoFechamentoCard";
+import { fechamentoEscritoVazio, ultimosMeses, type FechamentoEscrito } from "./resumoFechamento";
 
 const PDCA_CAMPOS: { key: string; titulo: string; ajuda: string }[] = [
   { key: "plan", titulo: "PLAN — Planejar", ajuda: "O que vamos fazer no próximo mês para melhorar o número que caiu?" },
@@ -204,10 +206,13 @@ export function FinanceiroPainelPage() {
   const registroSalvo = financeiro.gestaoMensal.find((item) => item.monthRef === monthKey);
   const [explicacoes, setExplicacoes] = useState<Record<string, string>>({});
   const [pdca, setPdca] = useState<Record<string, string>>({});
+  // RESUMO DE FECHAMENTO: só o que é digitado (saldos do dia + decisões da reunião).
+  const [escrito, setEscrito] = useState<FechamentoEscrito>(fechamentoEscritoVazio);
   const [feedback, setFeedback] = useState("");
   useEffect(() => {
     setExplicacoes(registroSalvo?.explicacoes ?? {});
     setPdca(registroSalvo?.pdca ?? {});
+    setEscrito({ ...fechamentoEscritoVazio, ...(registroSalvo?.fechamento ?? {}) });
   }, [registroSalvo?.id, monthKey]);
 
   function salvar(apresentar = false) {
@@ -216,6 +221,7 @@ export function FinanceiroPainelPage() {
       monthRef: monthKey,
       explicacoes,
       pdca,
+      fechamento: { ...escrito },
       snapshot: { atual, anterior, geradoEm: new Date().toISOString() },
       apresentadoEm: apresentar ? new Date().toISOString() : (registroSalvo?.apresentadoEm ?? null),
     });
@@ -232,8 +238,11 @@ export function FinanceiroPainelPage() {
     setFeedback("Pontos copiados — dá para colar no WhatsApp ou na ata.");
   }
 
+  // MAIS MESES (25/08/2026): a lista era montada só com o que já tinha carregado —
+  // e o hook carrega UM ano por vez, então 2025 nunca aparecia para ser escolhido.
+  // Agora a régua é o calendário: 24 meses para trás sempre disponíveis.
   const mesesDisponiveis = useMemo(() => {
-    const set = new Set<string>([monthKey, mesPadrao]);
+    const set = new Set<string>([monthKey, mesPadrao, ...ultimosMeses(mesPadrao, 24)]);
     for (const venda of financeiro.sales) set.add(venda.saleDate.slice(0, 7));
     for (const conta of financeiro.expenses) {
       const mes = (conta.dueDate || conta.paidAt || "").slice(0, 7);
@@ -241,6 +250,9 @@ export function FinanceiroPainelPage() {
     }
     return [...set].filter(Boolean).sort().reverse();
   }, [financeiro.sales, financeiro.expenses, monthKey, mesPadrao]);
+
+  // A régua da reunião é a SUPERMETA do mês (julho: 350 mil; agosto: 400 mil).
+  const metaDoMes = useMemo(() => metasForMonth(metasConfig, monthKey).goalSuperRevenue, [metasConfig, monthKey]);
 
   // ---- os blocos, na ordem da reunião --------------------------------------
   const kpis = [
@@ -827,6 +839,23 @@ export function FinanceiroPainelPage() {
                 ))}
               </CardContent>
             </Card>
+
+            {/* ---- resumo de fechamento (a folha da reunião) --------------- */}
+            <ResumoFechamentoCard
+              sales={financeiro.sales}
+              expenses={financeiro.expenses}
+              categories={financeiro.categories}
+              provisionRules={financeiro.provisionRules}
+              monthKey={monthKey}
+              meta={metaDoMes}
+              escrito={escrito}
+              onEscritoChange={(proximo) => {
+                setEscrito(proximo);
+                setFeedback("");
+              }}
+              onSalvar={() => salvar(false)}
+              readOnly={readOnly}
+            />
 
             {/* ---- arquivos para a contabilidade -------------------------- */}
             <RelatoriosContabilidadeCard

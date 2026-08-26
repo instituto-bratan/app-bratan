@@ -4202,6 +4202,9 @@ export type FinGestaoMensalRecord = {
   explicacoes: Record<string, string>;
   pdca: Record<string, string>;
   snapshot: Record<string, unknown>;
+  // Resumo de fechamento: o que é DIGITADO na reunião (saldos do dia, decisões).
+  // O que é calculado não mora aqui — sai dos lançamentos toda vez que abre.
+  fechamento: Record<string, string>;
   apresentadoEm: string | null;
 };
 
@@ -4209,7 +4212,7 @@ export async function listRemoteFinGestaoMensal(): Promise<FinGestaoMensalRecord
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_gestao_mensal")
-    .select("client_ref, month_ref, explicacoes, pdca, snapshot, apresentado_em")
+    .select("client_ref, month_ref, explicacoes, pdca, snapshot, fechamento, apresentado_em")
     .is("deleted_at", null)
     .order("month_ref", { ascending: false });
   if (error) throw error;
@@ -4219,6 +4222,7 @@ export async function listRemoteFinGestaoMensal(): Promise<FinGestaoMensalRecord
     explicacoes: (row.explicacoes as Record<string, string>) ?? {},
     pdca: (row.pdca as Record<string, string>) ?? {},
     snapshot: (row.snapshot as Record<string, unknown>) ?? {},
+    fechamento: (row.fechamento as Record<string, string>) ?? {},
     apresentadoEm: row.apresentado_em ? String(row.apresentado_em) : null,
   }));
 }
@@ -4232,6 +4236,7 @@ export async function saveRemoteFinGestaoMensal(record: FinGestaoMensalRecord, u
       explicacoes: record.explicacoes ?? {},
       pdca: record.pdca ?? {},
       snapshot: record.snapshot ?? {},
+      fechamento: record.fechamento ?? {},
       apresentado_em: record.apresentadoEm,
       updated_by: uuidOrNull(updatedBy),
       updated_at: new Date().toISOString(),
