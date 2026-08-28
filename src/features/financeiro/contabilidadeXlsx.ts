@@ -263,6 +263,7 @@ export function abaResumo(dados: DadosContabilidade): XlsxSheet {
     ["  Custos variáveis", g.custosVariaveis, ""],
     ["  Provisões (13º, férias, impostos)", g.provisoes, ""],
     ["Obra / CAPEX (investimento, fora do lucro)", g.obra, "aba CONTAS A PAGAR — tipo OBRA"],
+    ["Distribuição de lucro aos sócios (fora do lucro, não é obra)", g.distribuicaoSocios, "aba CONTAS A PAGAR"],
     ["Saiu do cofre / poupança", cents(saiuCofre), "aba POUPANÇA (COFRE)"],
     ["Total efetivamente pago no mês (caixa)", pagoNoMesCents, "aba CONTAS A PAGAR — data de pagamento"],
     ["", "", ""],

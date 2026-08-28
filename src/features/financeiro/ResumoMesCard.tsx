@@ -83,7 +83,7 @@ export function ResumoMesCard({
         <div className="grid gap-2 sm:grid-cols-3">
           <MiniCard icon={Target} label={`Meta do mês (super ${moneyFin(r.metaSuper)})`} value={`${Math.round(r.metaPercent * 100)}%`} detail={r.faltaMeta > 0 ? `faltam ${moneyFin(r.faltaMeta)} de faturamento` : "meta batida! 🏆"} tone={r.faltaMeta > 0 ? "gold" : "pos"} />
           <MiniCard icon={HandCoins} label="Contas a pagar (ainda)" value={moneyFin(r.aPagar)} detail="fatia dos custos não paga" tone={r.aPagar > 0 ? "gold" : "pos"} />
-          <MiniCard icon={Wallet} label="Cofre e obra (fora do lucro)" value={moneyFin(r.obra + r.aportes)} detail={`obra ${moneyFin(r.obra)} · aportes ${moneyFin(r.aportes)}`} tone="neutral" />
+          <MiniCard icon={Wallet} label="Cofre e obra (fora do lucro)" value={moneyFin(r.obra + r.aportes)} detail={`obra ${moneyFin(r.obra - r.distribuicaoSocios)} · aportes ${moneyFin(r.aportes)}${r.distribuicaoSocios ? ` · distribuição aos sócios ${moneyFin(r.distribuicaoSocios)}` : ""}`} tone="neutral" />
         </div>
 
         <p className="text-xs leading-5 text-muted-foreground">

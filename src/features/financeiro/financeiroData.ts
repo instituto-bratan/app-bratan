@@ -747,7 +747,9 @@ export type ResumoMes = {
   custosOperacionais: number;
   jaPago: number;
   aPagar: number;
-  obra: number;
+  obra: number; // CAPEX do mês pela P12 (obra + distribuição aos sócios)
+  /** Parte do CAPEX que é distribuição de lucro, não obra (conciliação 28/08/2026). */
+  distribuicaoSocios: number;
   lucroOperacional: number;
   metaSuper: number;
   metaAlvo: number;
@@ -791,6 +793,13 @@ export function buildResumoMes(
       return (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey;
     })
     .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  const distribuicaoSocios = expenses
+    .filter(
+      (expense) =>
+        CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has(expense.categoryRef) &&
+        (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey,
+    )
+    .reduce((soma, expense) => soma + (expense.amount || 0), 0);
   return {
     faturamento,
     rendimento,
@@ -801,6 +810,7 @@ export function buildResumoMes(
     jaPago: custosOperacionais - aPagar,
     aPagar,
     obra,
+    distribuicaoSocios: Math.round(distribuicaoSocios * 100) / 100,
     lucroOperacional,
     metaSuper: metas.goalSuperRevenue,
     metaAlvo: metas.goalTargetRevenue,
@@ -2106,6 +2116,23 @@ export function partnerSuggestions(sales: FinSale[], entries: FinPartnerEntry[],
 // (regra da casa: nada de valor digitado, nada de valor fictício).
 // ===========================================================================
 
+/**
+ * CONCILIAÇÃO DE 28/08/2026. Duas correções que saíram do extrato do Itaú:
+ *
+ * 1. "É obra?" tem de olhar TAMBÉM o lançamento, não só a categoria. A fatura
+ *    do cartão VISA é da obra, mas a categoria "Fatura cartão de crédito" não
+ *    é capex — então a fatura ficava fora do CAPEX mesmo dizendo OBRA no nome.
+ * 2. Distribuição de lucro ao sócio é capex (fica fora do lucro, de propósito),
+ *    mas NÃO é obra. Somada na mesma linha, ela inflava a obra do mês em
+ *    R$ 18.614,54 em agosto. Agora tem linha própria.
+ */
+export function expenseEhCapex(expense: FinExpense, category?: FinCategory | null) {
+  return Boolean(expense.isCapex) || Boolean(category?.isCapex);
+}
+
+/** Categorias que são capex mas NÃO são obra (saem do lucro por outro motivo). */
+export const CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA = new Set(["cat-distribuicao-lucro-socios"]);
+
 export type GestaoMensal = {
   monthKey: string;
   faturamento: number; // comandas do mês (o que os pacientes pagaram)
@@ -2117,7 +2144,8 @@ export type GestaoMensal = {
   custosVariaveis: number;
   provisoes: number;
   custosTotais: number; // operacionais (sem obra)
-  obra: number; // CAPEX — fora do lucro, pago pelo cofre
+  obra: number; // CAPEX de obra — fora do lucro, pago pelo cofre
+  distribuicaoSocios: number; // fora do lucro também, mas não é obra
   lucroLiquido: number; // faturamento − custos operacionais
   margem: number; // % do faturamento
   crediario: number; // visão interna, NUNCA na contabilidade
@@ -2152,13 +2180,15 @@ export function buildGestaoMensal(
   let custosVariaveis = 0;
   let provisoes = 0;
   let obra = 0;
+  let distribuicaoSocios = 0;
   for (const expense of expenses) {
     if ((expense.dueDate || expense.paidAt || "").slice(0, 7) !== monthKey) continue;
     const category = grupoPorRef.get(expense.categoryRef);
     const valor = expense.amount || 0;
     if (!category) continue;
-    if (category.isCapex) {
-      obra += valor;
+    if (expenseEhCapex(expense, category)) {
+      if (CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has(category.id)) distribuicaoSocios += valor;
+      else obra += valor;
       continue;
     }
     if (category.groupKey === "CUSTO_FIXO") custosFixos += valor;
@@ -2181,6 +2211,7 @@ export function buildGestaoMensal(
     provisoes: cents(provisoes),
     custosTotais: cents(custosTotais),
     obra: cents(obra),
+    distribuicaoSocios: cents(distribuicaoSocios),
     lucroLiquido: cents(lucroLiquido),
     margem: faturamento > 0 ? Math.round((lucroLiquido / faturamento) * 10000) / 100 : 0,
     crediario: crediarioProfitOfMonth(crediarioProfits, monthKey),
@@ -2331,7 +2362,7 @@ export function buildGastosCsv(expenses: FinExpense[], categories: FinCategory[]
   let totalObra = 0;
   for (const expense of doMes) {
     const category = porRef.get(expense.categoryRef);
-    const ehObra = Boolean(category?.isCapex);
+    const ehObra = expenseEhCapex(expense, category);
     if (ehObra) totalObra += expense.amount || 0;
     else totalOperacional += expense.amount || 0;
     linhas.push([
@@ -2381,6 +2412,7 @@ export function buildResumoContabilCsv(gestao: GestaoMensal, fechamento: Fechame
     [],
     ["INVESTIMENTO — FORA DO LUCRO (pago pelo cofre/CDB)"],
     ["Obra (CAPEX) paga no mês", gestao.obra],
+    ["Distribuição de lucro aos sócios (fora do lucro, não é obra)", gestao.distribuicaoSocios],
     ["Entrada da poupança usada na obra (resgates − devoluções)", fechamento.entradaPoupancaObra],
     ["Entrada da poupança p/ colaboradores e urgências", fechamento.entradaPoupancaProvisoes],
     ["Ficou do mês anterior para pagar os impostos", fechamento.impostosDoMesAnterior],
