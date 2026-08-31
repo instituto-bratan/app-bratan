@@ -25,6 +25,7 @@ import {
 } from "@/lib/remoteData";
 import { moneyFin, monthKeyLabel } from "./financeiroData";
 import { conciliarExtrato, leituraDaConciliacao, lerExtratoDeTexto, lerExtratoDeXlsx, type BankEntry } from "./extratoBanco";
+import { agendaRecebiveis, faturamentoRede, saldoRecebiveis } from "./recebiveisRede";
 import { useFinanceiro } from "./useFinanceiro";
 
 const dataBr = (iso: string) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
@@ -98,6 +99,16 @@ export function FinanceiroExtratoPage() {
   const balde = useMemo(
     () => conciliarExtrato(entries, financeiro.sales, financeiro.expenses, financeiro.savingsMoves, periodo.start, periodo.end),
     [entries, financeiro.sales, financeiro.expenses, financeiro.savingsMoves, periodo],
+  );
+  // Dois números que a antecipação escondia: o que a maquininha ainda deve e o
+  // faturamento mínimo acordado com a Rede (perder o acordado custa a taxa boa).
+  const saldoMaquininha = useMemo(
+    () => saldoRecebiveis(agendaRecebiveis(financeiro.sales), hoje),
+    [financeiro.sales, hoje],
+  );
+  const faturamentoAcordado = useMemo(
+    () => faturamentoRede(financeiro.sales, periodo.start.slice(0, 7)),
+    [financeiro.sales, periodo],
   );
 
   async function receberArquivo(arquivo: File) {
@@ -349,12 +360,13 @@ export function FinanceiroExtratoPage() {
         >
           <CardHeader className="pb-2">
             <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              Maquininha: adiantamentos × cartão das comandas
+              Maquininha: o que caiu × as parcelas que venciam
               <InfoTip title="Como funciona">
-                O crédito de um dia cai no dia seguinte como "TRANSFERÊNCIA AUTOM. RECEBIDA", já com a taxa descontada.
-                Então a soma dessas transferências tem que bater com os cartões das comandas da véspera, menos a taxa
-                (~8%). Se cair mais do que as comandas dizem, tem venda no crédito sem comanda; se a diferença passar
-                muito de 8%, tem crédito que não caiu ou comanda com forma de pagamento errada.
+                Desde 24/08/2026 vale o acordo com a Rede: <strong>sem antecipação</strong>, o crédito cai em 31 dias
+                corridos — uma parcela por mês no parcelado. Então cada dia é confrontado com as PARCELAS que venciam
+                nele, já líquidas pela tabela do contrato (1,4% à vista, 2,68% de 2x a 6x, 0,7% no débito). Antes de
+                24/08 a antecipação estava ligada e a régua era outra: cartão de um dia caindo no dia seguinte, com
+                custo de ~6% — os dias antigos continuam sendo lidos assim.
               </InfoTip>
             </CardTitle>
           </CardHeader>
@@ -365,6 +377,20 @@ export function FinanceiroExtratoPage() {
               </span>
               <span>
                 Cartão das comandas (véspera): <strong className="tabular-nums">{moneyFin(balde.maquininha.cartaoComandas)}</strong>
+              </span>
+              <span title="Soma das parcelas com vencimento depois de hoje, já líquidas da taxa do contrato.">
+                A maquininha ainda me deve:{" "}
+                <strong className="tabular-nums text-brand-musgo">{moneyFin(saldoMaquininha.aReceber)}</strong>{" "}
+                <span className="text-muted-foreground">({saldoMaquininha.parcelas} parcela(s))</span>
+              </span>
+              <span
+                className={cn(!faturamentoAcordado.bateu && "text-amber-900")}
+                title="Faturamento mensal acordado com a Rede (Tabela 1 do contrato). Se em nenhum dos 3 meses do período de apuração o volume for atingido, as taxas com desconto caem."
+              >
+                Acordado com a Rede:{" "}
+                <strong className="tabular-nums">{faturamentoAcordado.percentual.toFixed(0)}%</strong> de{" "}
+                {moneyFin(faturamentoAcordado.acordado)}
+                {faturamentoAcordado.bateu ? " ✓" : ` — faltam ${moneyFin(faturamentoAcordado.falta)}`}
               </span>
               {balde.maquininha.taxaImplicita !== null ? (
                 <span>
@@ -396,9 +422,9 @@ export function FinanceiroExtratoPage() {
                   <thead>
                     <tr className="border-b border-brand-oliva/25 text-left text-muted-foreground">
                       <th className="py-1 pr-3 font-medium">Caiu no banco</th>
-                      <th className="py-1 pr-3 font-medium">Cartão do dia</th>
-                      <th className="py-1 pr-3 text-right font-medium">Adiantamento</th>
-                      <th className="py-1 pr-3 text-right font-medium">Comandas</th>
+                      <th className="py-1 pr-3 font-medium">Origem</th>
+                      <th className="py-1 pr-3 text-right font-medium">Caiu</th>
+                      <th className="py-1 pr-3 text-right font-medium">Previsto</th>
                       <th className="py-1 pr-3 text-right font-medium">Taxa</th>
                       <th className="py-1 font-medium">Leitura</th>
                     </tr>
@@ -413,9 +439,12 @@ export function FinanceiroExtratoPage() {
                         )}
                       >
                         <td className="py-1 pr-3">{dataBr(dia.diaTransferencia)}</td>
-                        <td className="py-1 pr-3 text-muted-foreground">{dataBr(dia.diaCartao)}</td>
+                        <td className="py-1 pr-3 text-muted-foreground">{dia.origem}</td>
                         <td className="py-1 pr-3 text-right">{moneyFin(dia.transferencia)}</td>
-                        <td className="py-1 pr-3 text-right">{moneyFin(dia.cartao)}</td>
+                        <td className="py-1 pr-3 text-right">
+                          {moneyFin(dia.regime === "PRAZO" ? dia.previstoLiquido : dia.cartao)}
+                          {dia.regime === "PRAZO" ? null : <span className="ml-1 text-[10px] text-muted-foreground">bruto</span>}
+                        </td>
                         <td className="py-1 pr-3 text-right">
                           {dia.taxaImplicita === null ? "—" : `${String(dia.taxaImplicita).replace(".", ",")}%`}
                         </td>
@@ -424,9 +453,11 @@ export function FinanceiroExtratoPage() {
                             ? "bate"
                             : dia.situacao === "SOBROU_NO_BANCO"
                               ? `sobrou ${moneyFin(dia.sobra)} — falta comanda de cartão`
-                              : dia.cartao > 0 && dia.transferencia === 0
-                                ? "o dinheiro do cartão não caiu"
-                                : "caiu menos do que a comanda diz"}
+                              : dia.transferencia === 0
+                                ? dia.regime === "PRAZO"
+                                  ? "parcela não caiu — conferir no portal da Rede"
+                                  : "o dinheiro do cartão não caiu"
+                                : "caiu menos do que o previsto"}
                         </td>
                       </tr>
                     ))}

@@ -12,6 +12,7 @@
 
 import { excelSerialDate } from "@/lib/xlsxWriter";
 import { saleTotal, type FinExpense, type FinSale, type FinSavingsMove } from "./financeiroData";
+import { agendaRecebiveis, VIGENCIA_ACORDO_REDE, type Recebivel } from "./recebiveisRede";
 
 export type BankEntry = {
   /** Determinístico (data+valor+descrição): reimportar não duplica. */
@@ -307,10 +308,16 @@ export type BaldeConciliacao = {
     porDia: {
       /** Dia em que o dinheiro caiu no banco. */
       diaTransferencia: string;
-      /** Dia útil anterior — o dia em que o cartão foi passado. */
+      /** Dia da venda que originou (vazio quando o dia junta várias vendas). */
       diaCartao: string;
+      /** Texto da origem: "cartão de 24/08" ou "3 parcelas de 2 vendas". */
+      origem: string;
+      /** ANTECIPADO = régua antiga (D+1). PRAZO = acordo de 24/08 (31 dias). */
+      regime: "ANTECIPADO" | "PRAZO";
       transferencia: number;
       cartao: number;
+      /** Líquido previsto pela tabela do contrato (só no regime PRAZO). */
+      previstoLiquido: number;
       taxaImplicita: number | null;
       /** Quanto caiu além do que as comandas do dia dizem (só quando sobra). */
       sobra: number;
@@ -331,6 +338,12 @@ const TOLERANCIA = 0.02;
  * estava 6.972,00 — antes isso virava DOIS problemas (um de cada lado) em vez
  * de um par com R$ 1 de diferença.
  */
+/** "2026-08-24" → "24/08". */
+function dataCurta(iso: string) {
+  const [, mes, dia] = iso.split("-");
+  return `${dia}/${mes}`;
+}
+
 function toleranciaLarga(valor: number) {
   return Math.max(2, valor * 0.005);
 }
@@ -542,42 +555,123 @@ export function conciliarExtrato(
   }
 
   // ---- maquininha DIA POR DIA ----------------------------------------------
-  // Cada adiantamento é confrontado só com o cartão do dia útil que o originou.
-  // Também entram os dias que TÊM cartão e cujo adiantamento deveria ter caído
-  // dentro do período e não caiu — do contrário "faltou cair" ficaria invisível.
-  const diasDaMaquininha = new Set<string>(transferenciasPorDia.keys());
+  // Até 23/08/2026 a antecipação estava ligada: o cartão de um dia caía no dia
+  // útil seguinte, e a régua era "adiantamento de hoje × cartão de ontem".
+  // De 24/08 em diante vale o acordo Q-7594851: sem antecipação, o dinheiro cai
+  // em 31 dias corridos, uma parcela por mês. A régua passou a ser
+  // "crédito de hoje × parcelas que venciam hoje" — e o histórico anterior
+  // continua sendo lido pela régua antiga, para não perder informação.
+  const fila = agendaRecebiveis(sales);
+  const previstoPorDia = new Map<string, Recebivel[]>();
+  for (const parcela of fila) {
+    if (parcela.regime !== "PRAZO") continue;
+    if (parcela.diaPrevisto < start || parcela.diaPrevisto > end) continue;
+    const lista = previstoPorDia.get(parcela.diaPrevisto) ?? [];
+    lista.push(parcela);
+    previstoPorDia.set(parcela.diaPrevisto, lista);
+  }
+  // Cartão vendido ANTES do acordo: continua na régua da antecipação, ancorada
+  // no dia em que o dinheiro CAIU e olhando para trás (o crédito de sexta cai na
+  // segunda, e às vezes no sábado — ancorar na venda quebraria o fim de semana).
+  const cartaoAntecipadoDoDia = (dia: string) => {
+    const origem = diaUtilAnterior(dia);
+    if (origem >= VIGENCIA_ACORDO_REDE) return 0;
+    return cents(cartaoPorDia.get(origem) ?? 0);
+  };
+  const diasDaMaquininha = new Set<string>([...transferenciasPorDia.keys(), ...previstoPorDia.keys()]);
   for (const [dia, valor] of cartaoPorDia) {
-    if (valor <= 0) continue;
+    if (dia >= VIGENCIA_ACORDO_REDE || valor <= 0) continue;
     const cai = proximoDiaUtil(dia);
     if (cai >= start && cai <= end) diasDaMaquininha.add(cai);
   }
+  // Um dia de cartão não pode ser cobrado duas vezes (sábado e segunda olham
+  // para a mesma sexta): quem aparece primeiro fica com ele.
+  const cartaoJaCobrado = new Set<string>();
   const porDia = [...diasDaMaquininha]
     .sort()
     .map((diaTransferencia) => {
-      const diaCartao = diaUtilAnterior(diaTransferencia);
       const transferencia = cents(transferenciasPorDia.get(diaTransferencia) ?? 0);
-      const cartao = cents(cartaoPorDia.get(diaCartao) ?? 0);
-      const taxa = cartao > 0 && transferencia > 0 ? Math.round(((cartao - transferencia) / cartao) * 10000) / 100 : null;
+      const parcelas = previstoPorDia.get(diaTransferencia) ?? [];
+      const previstoLiquido = cents(parcelas.reduce((soma, p) => soma + p.liquido, 0));
+      // A régua antiga usa o BRUTO do cartão da véspera; a nova usa o LÍQUIDO
+      // das parcelas. No punhado de dias em que as duas convivem (24 a 26/08),
+      // desconto a parte já explicada pelas parcelas e aplico a faixa no resto.
+      const origemAntecipada = diaUtilAnterior(diaTransferencia);
+      const cartaoAntecipado = cartaoJaCobrado.has(origemAntecipada) ? 0 : cartaoAntecipadoDoDia(diaTransferencia);
+      if (cartaoAntecipado > 0) cartaoJaCobrado.add(origemAntecipada);
+      const regime: "ANTECIPADO" | "PRAZO" = cartaoAntecipado > 0 ? "ANTECIPADO" : "PRAZO";
+      const vendas = new Set(parcelas.map((p) => p.diaVenda));
+      const diaCartao = regime === "ANTECIPADO" ? origemAntecipada : vendas.size === 1 ? [...vendas][0] : "";
+      const origem =
+        regime === "ANTECIPADO"
+          ? `cartão de ${dataCurta(diaCartao)} (antecipado)`
+          : !parcelas.length
+            ? "sem parcela prevista"
+            : vendas.size === 1
+              ? `${parcelas.length} parcela(s) da venda de ${dataCurta([...vendas][0])}`
+              : `${parcelas.length} parcela(s) de ${vendas.size} vendas`;
+      const cartao = regime === "ANTECIPADO" ? cartaoAntecipado : cents(parcelas.reduce((soma, p) => soma + p.bruto, 0));
+      const sobrando = cents(transferencia - previstoLiquido);
+      const referencia = regime === "ANTECIPADO" ? cartao : previstoLiquido;
+      const comparado = regime === "ANTECIPADO" ? sobrando : transferencia;
+      const taxa =
+        referencia > 0 && comparado > 0 ? Math.round(((referencia - comparado) / referencia) * 10000) / 100 : null;
       let situacao: "OK" | "SOBROU_NO_BANCO" | "FALTOU_CAIR" = "OK";
-      if (cartao === 0 && transferencia > 0) situacao = "SOBROU_NO_BANCO";
-      else if (cartao > 0 && transferencia === 0) situacao = "FALTOU_CAIR";
+      if (regime === "PRAZO") {
+        const folga = Math.max(2, referencia * 0.005);
+        if (referencia === 0 && transferencia > 0) situacao = "SOBROU_NO_BANCO";
+        else if (transferencia === 0 && referencia > 0) situacao = "FALTOU_CAIR";
+        else if (transferencia - referencia > folga) situacao = "SOBROU_NO_BANCO";
+        else if (referencia - transferencia > folga) situacao = "FALTOU_CAIR";
+      } else if (comparado <= 0 && referencia > 0) situacao = "FALTOU_CAIR";
       else if (taxa !== null && taxa < TAXA_MAQUININHA_MIN) situacao = "SOBROU_NO_BANCO";
       else if (taxa !== null && taxa > TAXA_MAQUININHA_MAX) situacao = "FALTOU_CAIR";
       return {
         diaTransferencia,
         diaCartao,
+        origem,
+        regime,
         transferencia,
         cartao,
+        previstoLiquido,
         taxaImplicita: taxa,
-        sobra: transferencia > cartao ? cents(transferencia - cartao) : 0,
+        sobra: comparado > referencia ? cents(comparado - referencia) : 0,
         situacao,
       };
-    });
+    })
+    .filter((dia) => dia.transferencia > 0 || dia.previstoLiquido > 0 || dia.cartao > 0);
+
+  // A leitura do card sai do DIA A DIA, não da janela deslocada: depois de
+  // 24/08 comparar "o mês todo" com "o cartão da véspera" não quer dizer nada.
+  const diasPrazo = porDia.filter((dia) => dia.regime === "PRAZO");
+  const previstoNoPeriodo = cents(diasPrazo.reduce((soma, dia) => soma + dia.previstoLiquido, 0));
+  const caiuNoPeriodo = cents(diasPrazo.reduce((soma, dia) => soma + dia.transferencia, 0));
+  if (diasPrazo.length) {
+    const diff = cents(caiuNoPeriodo - previstoNoPeriodo);
+    const folga = Math.max(5, previstoNoPeriodo * 0.005);
+    if (previstoNoPeriodo === 0 && caiuNoPeriodo === 0) {
+      situacaoMaquininha = "SEM_DADOS";
+      leituraMaquininha = "Nenhuma parcela da maquininha vencia neste período.";
+    } else if (Math.abs(diff) <= folga) {
+      situacaoMaquininha = "OK";
+      leituraMaquininha = `Bate: venciam ${brl(previstoNoPeriodo)} de parcelas e caíram ${brl(caiuNoPeriodo)}. Sem antecipação, o crédito cai em 31 dias corridos — uma parcela por mês.`;
+    } else if (diff > 0) {
+      situacaoMaquininha = "SOBROU_NO_BANCO";
+      leituraMaquininha = `Caiu ${brl(diff)} a MAIS do que as parcelas previstas: ou tem venda no cartão sem comanda lançada, ou alguma antecipação foi comandada manualmente.`;
+    } else {
+      situacaoMaquininha = "FALTOU_CAIR";
+      leituraMaquininha = `Faltou cair ${brl(-diff)} de parcelas que venciam no período. Confira no portal da Rede antes de considerar furo.`;
+    }
+  }
+
   // O dia que sobrou dinheiro é mais grave que o total do mês: manda a leitura.
   const piorDia = porDia.find((dia) => dia.situacao === "SOBROU_NO_BANCO" && dia.sobra > 0);
   if (piorDia) {
     situacaoMaquininha = "SOBROU_NO_BANCO";
-    leituraMaquininha = `Dia ${piorDia.diaTransferencia.split("-").reverse().join("/")}: caiu ${brl(piorDia.transferencia)} para ${brl(piorDia.cartao)} de cartão lançado no dia ${piorDia.diaCartao.split("-").reverse().join("/")} — ${brl(piorDia.sobra)} a mais do que as comandas dizem, e a maquininha nunca manda mais que o bruto. Falta comanda de cartão nesse dia.`;
+    leituraMaquininha =
+      piorDia.regime === "PRAZO"
+        ? `Dia ${piorDia.diaTransferencia.split("-").reverse().join("/")}: caiu ${brl(piorDia.transferencia)} e só ${brl(piorDia.previstoLiquido)} estavam previstos (${piorDia.origem}) — ${brl(piorDia.sobra)} a mais. Ou falta comanda de cartão, ou houve antecipação manual.`
+        : `Dia ${piorDia.diaTransferencia.split("-").reverse().join("/")}: caiu ${brl(piorDia.transferencia)} para ${brl(piorDia.cartao)} de cartão lançado no dia ${piorDia.diaCartao.split("-").reverse().join("/")} — ${brl(piorDia.sobra)} a mais do que as comandas dizem, e a maquininha nunca manda mais que o bruto. Falta comanda de cartão nesse dia.`;
   }
 
   // ---- segunda passada: o que sobrou ainda pode casar de dois jeitos --------

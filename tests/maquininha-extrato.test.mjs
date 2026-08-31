@@ -189,3 +189,48 @@ test("conta paga em 2 lançamentos só casa se for a MESMA pessoa/empresa", () =
   assert.equal(balde.comandaSemDinheiro.length, 1, "a comanda da Luana fica visível como pendência");
   assert.equal(balde.entrouSemRegistro.length, 2, "e os dois PIX sem comanda também");
 });
+
+// ---- ACORDO REDE DE 24/08/2026: antecipação desligada, 31 dias corridos ----
+// A régua "adiantamento de hoje × cartão de ontem" morreu nessa data. Sem trocar,
+// a tela acusaria "o dinheiro do cartão não caiu" todos os dias, para sempre.
+
+test("depois de 24/08: venda em 6x não gera alarme no dia seguinte", () => {
+  const entradas = extrato(["26/08/2026;PIX RECEBIDO FULANO;FULANO;;100,00;"]);
+  const vendas = [venda("a", "2026-08-25", [{ method: "CARTAO_CREDITO", amount: 12000, installments: 6 }])];
+  const balde = ex.conciliarExtrato(entradas, vendas, [], [], "2026-08-24", "2026-08-31");
+  const dias = balde.maquininha.porDia;
+  assert.equal(dias.length, 0, "nada vence nesta janela: a 1ª parcela cai em 25/09");
+  assert.notEqual(balde.maquininha.situacao, "FALTOU_CAIR");
+});
+
+test("depois de 24/08: a parcela que vence e cai líquida bate", () => {
+  // 12.000 em 6x = 2.000 por parcela; 2,68% de taxa → 1.946,40 líquido.
+  const entradas = extrato(["25/09/2026;TRANSFERÊNCIA AUTOM. RECEBIDA 0138.46448-2;;;1946,40;"]);
+  const vendas = [venda("a", "2026-08-25", [{ method: "CARTAO_CREDITO", amount: 12000, installments: 6 }])];
+  const balde = ex.conciliarExtrato(entradas, vendas, [], [], "2026-09-01", "2026-09-30");
+  assert.equal(balde.maquininha.porDia.length, 1);
+  const dia = balde.maquininha.porDia[0];
+  assert.equal(dia.regime, "PRAZO");
+  assert.equal(dia.previstoLiquido, 1946.4);
+  assert.equal(dia.situacao, "OK");
+  assert.match(balde.maquininha.leitura, /31 dias corridos/);
+});
+
+test("depois de 24/08: caiu mais do que as parcelas previstas → falta comanda ou houve antecipação manual", () => {
+  const entradas = extrato(["25/09/2026;TRANSFERÊNCIA AUTOM. RECEBIDA 0138.46448-2;;;5000,00;"]);
+  const vendas = [venda("a", "2026-08-25", [{ method: "CARTAO_CREDITO", amount: 12000, installments: 6 }])];
+  const balde = ex.conciliarExtrato(entradas, vendas, [], [], "2026-09-01", "2026-09-30");
+  assert.equal(balde.maquininha.situacao, "SOBROU_NO_BANCO");
+  assert.match(balde.maquininha.leitura, /antecipa/i);
+});
+
+test("antes de 24/08 a régua antiga continua valendo — histórico não muda", () => {
+  const entradas = extrato(["21/08/2026;TRANSFERÊNCIA AUTOM. RECEBIDA 0138.46448-2;;;9200,00;"]);
+  const vendas = [venda("a", "2026-08-20", [{ method: "CARTAO_CREDITO", amount: 10000, installments: 6 }])];
+  const balde = ex.conciliarExtrato(entradas, vendas, [], [], "2026-08-18", "2026-08-23");
+  const dia = balde.maquininha.porDia[0];
+  assert.equal(dia.regime, "ANTECIPADO", "venda de 20/08 caiu antecipada, inteira");
+  assert.equal(dia.cartao, 10000, "compara com o BRUTO da véspera");
+  assert.equal(dia.taxaImplicita, 8);
+  assert.equal(dia.situacao, "OK");
+});
