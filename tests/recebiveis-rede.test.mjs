@@ -42,12 +42,13 @@ const venda = (dia, valor, parcelas, metodo = "CARTAO_CREDITO", nome = "Paciente
   createdAt: `${dia}T10:00:00.000Z`,
 });
 
-test("a tabela de taxas é a do contrato", () => {
-  assert.equal(r.taxaDoCartao(1), 0.014, "crédito à vista 1,4%");
-  assert.equal(r.taxaDoCartao(2), 0.0268);
-  assert.equal(r.taxaDoCartao(6), 0.0268, "2x a 6x custam 2,68%");
-  assert.equal(r.taxaDoCartao(7), 0.0346, "7x a 12x custam 3,46%");
-  assert.equal(r.taxaDoCartao(1, true), 0.007, "débito 0,7%");
+test("a tabela de taxas é a do contrato de cada época", () => {
+  const AGO = "2026-08-25";
+  assert.equal(r.taxaDoCartao(1, false, AGO), 0.014, "crédito à vista 1,4% em agosto");
+  assert.equal(r.taxaDoCartao(2, false, AGO), 0.0268);
+  assert.equal(r.taxaDoCartao(6, false, AGO), 0.0268, "2x a 6x custavam 2,68%");
+  assert.equal(r.taxaDoCartao(7, false, AGO), 0.0346, "7x a 12x custavam 3,46%");
+  assert.equal(r.taxaDoCartao(1, true, AGO), 0.007, "débito 0,7%");
   assert.equal(r.VIGENCIA_ACORDO_REDE, "2026-08-24");
   assert.equal(r.PRAZO_LIQUIDACAO_DIAS, 31);
   assert.equal(r.FATURAMENTO_ACORDADO_REDE, 154166.66);
@@ -106,4 +107,31 @@ test("faturamento acordado com a Rede: só o cartão conta", () => {
   const g = r.faturamentoRede([venda("2026-08-24", 160000, 6)], "2026-08");
   assert.equal(g.bateu, true);
   assert.equal(g.falta, 0);
+});
+
+// ---- ACORDO Q-7621480, assinado em 31/08/2026, valendo de 01/09 em diante ----
+// À vista subiu (1,4% → 1,7%), parcelado caiu e virou taxa única (2,39% de 2x a
+// 21x), e o teto do PIX foi de R$ 1 para R$ 150. As vendas de 24 a 31/08
+// continuam na tabela antiga — a taxa é a da DATA DA VENDA.
+
+test("a tabela muda pela data da venda: agosto no Q-7594851, setembro no Q-7621480", () => {
+  assert.equal(r.VIGENCIA_ACORDO_REDE_V2, "2026-09-01");
+  assert.equal(r.taxaDoCartao(6, false, "2026-08-25"), 0.0268, "venda de agosto fica na taxa velha");
+  assert.equal(r.taxaDoCartao(6, false, "2026-09-01"), 0.0239, "venda de setembro pega a nova");
+  assert.equal(r.taxaDoCartao(1, false, "2026-08-25"), 0.014);
+  assert.equal(r.taxaDoCartao(1, false, "2026-09-01"), 0.017, "à vista SUBIU no acordo novo");
+  assert.equal(r.taxaDoCartao(12, false, "2026-09-01"), 0.0239, "7x a 12x caiu de 3,46% para 2,39%");
+  assert.equal(r.taxaDoCartao(1, true, "2026-09-01"), 0.007, "débito não mudou");
+  assert.equal(r.TAXAS_REDE_V2.pixTetoReais, 150, "o teto do PIX foi de R$ 1 para R$ 150");
+});
+
+test("a fila usa a taxa da data da venda", () => {
+  const fila = r.agendaRecebiveis([
+    venda("2026-08-25", 12000, 6, "CARTAO_CREDITO", "Agosto"),
+    venda("2026-09-02", 12000, 6, "CARTAO_CREDITO", "Setembro"),
+  ]);
+  const ago = fila.filter((p) => p.paciente === "Agosto");
+  const set = fila.filter((p) => p.paciente === "Setembro");
+  assert.equal(ago[0].liquido, 1946.4, "2.000 − 2,68%");
+  assert.equal(set[0].liquido, 1952.2, "2.000 − 2,39%");
 });

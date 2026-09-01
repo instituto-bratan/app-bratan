@@ -17,8 +17,16 @@
 // 24/08 continua sendo lido pela régua antiga — nada de informação se perde.
 import type { FinSale } from "./financeiroData";
 
-/** Dia em que o Acordo Comercial passou a valer (informado pelo Lucas). */
+/** Dia em que o PRIMEIRO acordo (Q-7594851) passou a valer — fim da antecipação. */
 export const VIGENCIA_ACORDO_REDE = "2026-08-24";
+
+/**
+ * Dia em que o SEGUNDO acordo (Q-7621480, assinado pela Andrya em 31/08/2026)
+ * passa a valer. O contrato diz "implementação em até 5 dias corridos da
+ * assinatura"; adoto 01/09 — o corte limpo de mês. Se a Rede aplicar noutro
+ * dia, a folga da conferência absorve a diferença de centavos.
+ */
+export const VIGENCIA_ACORDO_REDE_V2 = "2026-09-01";
 
 /** Prazo padrão de liquidação do crédito, em dias corridos (cláusula 3.1). */
 export const PRAZO_LIQUIDACAO_DIAS = 31;
@@ -28,9 +36,9 @@ export const PRAZO_LIQUIDACAO_DIAS = 31;
 export const FATURAMENTO_ACORDADO_REDE = 154166.66;
 
 /**
- * Tabela 2 do acordo — taxas com desconto, em fração. O app não guarda a
- * bandeira; uso Master/Visa, que é a esmagadora maioria. Elo/Amex custam mais
- * (2,2% à vista e 3,48% no parcelado) e viram exceção conhecida, não erro.
+ * Tabela 2 do acordo Q-7594851 (24 a 31/08/2026) — taxas em fração, Master/
+ * Visa (o app não guarda a bandeira; Elo/Amex custam mais e viram exceção
+ * conhecida, não erro).
  */
 export const TAXAS_REDE = {
   debito: 0.007,
@@ -42,15 +50,37 @@ export const TAXAS_REDE = {
   pixTetoReais: 1,
 } as const;
 
+/**
+ * Tabela 2 do acordo Q-7621480 (de 01/09/2026 em diante). O que mudou:
+ * à vista subiu (1,4% → 1,7%), o parcelado caiu e virou taxa única
+ * (2x–21x = 2,39%), e o TETO DO PIX foi de R$ 1 para R$ 150 — um PIX de
+ * R$ 12.000 que custava R$ 1 passa a custar R$ 72.
+ */
+export const TAXAS_REDE_V2 = {
+  debito: 0.007,
+  creditoAVista: 0.017,
+  parcelado2a6: 0.0239,
+  parcelado7a12: 0.0239,
+  parcelado13a21: 0.0239,
+  pix: 0.006,
+  pixTetoReais: 150,
+} as const;
+
 /** Custo efetivo observado no extrato enquanto a antecipação estava ligada. */
 export const TAXA_EFETIVA_ANTECIPACAO = 0.06;
 
-export function taxaDoCartao(parcelas: number, debito = false) {
-  if (debito) return TAXAS_REDE.debito;
-  if (parcelas <= 1) return TAXAS_REDE.creditoAVista;
-  if (parcelas <= 6) return TAXAS_REDE.parcelado2a6;
-  if (parcelas <= 12) return TAXAS_REDE.parcelado7a12;
-  return TAXAS_REDE.parcelado13a21;
+/** A tabela que valia na data da venda. */
+export function tabelaRedeNaData(diaVenda: string) {
+  return diaVenda >= VIGENCIA_ACORDO_REDE_V2 ? TAXAS_REDE_V2 : TAXAS_REDE;
+}
+
+export function taxaDoCartao(parcelas: number, debito = false, diaVenda = VIGENCIA_ACORDO_REDE_V2) {
+  const tabela = tabelaRedeNaData(diaVenda);
+  if (debito) return tabela.debito;
+  if (parcelas <= 1) return tabela.creditoAVista;
+  if (parcelas <= 6) return tabela.parcelado2a6;
+  if (parcelas <= 12) return tabela.parcelado7a12;
+  return tabela.parcelado13a21;
 }
 
 const cents = (valor: number) => Math.round(valor * 100) / 100;
@@ -105,7 +135,7 @@ export function agendaRecebiveis(sales: FinSale[]): Recebivel[] {
       const antecipado = sale.saleDate < VIGENCIA_ACORDO_REDE;
       // No regime antigo tudo caía junto no dia seguinte, com o custo da antecipação.
       const parcelas = antecipado || debito ? 1 : Math.max(1, payment.installments || 1);
-      const taxa = antecipado ? TAXA_EFETIVA_ANTECIPACAO : taxaDoCartao(parcelas, debito);
+      const taxa = antecipado ? TAXA_EFETIVA_ANTECIPACAO : taxaDoCartao(parcelas, debito, sale.saleDate);
       for (let k = 1; k <= parcelas; k += 1) {
         const previsto = antecipado || debito
           ? diaUtilSeguinte(sale.saleDate)

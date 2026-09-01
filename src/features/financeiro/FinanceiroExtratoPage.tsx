@@ -362,11 +362,12 @@ export function FinanceiroExtratoPage() {
             <CardTitle className="flex flex-wrap items-center gap-2 text-base">
               Maquininha: o que caiu × as parcelas que venciam
               <InfoTip title="Como funciona">
-                Desde 24/08/2026 vale o acordo com a Rede: <strong>sem antecipação</strong>, o crédito cai em 31 dias
-                corridos — uma parcela por mês no parcelado. Então cada dia é confrontado com as PARCELAS que venciam
-                nele, já líquidas pela tabela do contrato (1,4% à vista, 2,68% de 2x a 6x, 0,7% no débito). Antes de
-                24/08 a antecipação estava ligada e a régua era outra: cartão de um dia caindo no dia seguinte, com
-                custo de ~6% — os dias antigos continuam sendo lidos assim.
+                Desde 24/08/2026 a Rede não antecipa mais: o crédito cai em 31 dias corridos — uma parcela por mês no
+                parcelado. Cada dia é confrontado com as PARCELAS que venciam nele, já líquidas pela tabela do contrato
+                que valia NA DATA DA VENDA: vendas de 24 a 31/08 pelo acordo Q-7594851 (1,4% à vista · 2,68% no
+                parcelado), vendas de 01/09 em diante pelo Q-7621480 (1,7% à vista · 2,39% em qualquer parcelado ·
+                0,7% no débito). Antes de 24/08 a antecipação estava ligada (custo ~6%) e os dias antigos continuam
+                sendo lidos assim.
               </InfoTip>
             </CardTitle>
           </CardHeader>
