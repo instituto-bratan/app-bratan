@@ -634,6 +634,24 @@ export function buildP12Matrix(
     rowByRef.set(category.id, { category, months: emptyCells(), yearTotal: 0 });
   }
 
+  // Lançamento marcado como obra dentro de categoria comum (ex.: a fatura
+  // VISA-OBRA vive na categoria "Fatura cartão de crédito"): não é custo do
+  // mês nem conta a pagar operacional — vai para a linha da obra (Lucas,
+  // 01/09/2026: "nos custos do mês, no contas a pagar, tire tudo que é de
+  // obra; deixe só realmente o que nós pagamos").
+  const obraNoLancamentoRow: P12Row = {
+    category: {
+      id: "cat-obra-marcada-no-lancamento",
+      groupKey: "CUSTO_VARIAVEL",
+      name: "Obra marcada no lançamento",
+      sortOrder: 9999,
+      isCapex: true,
+      active: true,
+    },
+    months: emptyCells(),
+    yearTotal: 0,
+  };
+
   for (const expense of expenses) {
     // Competência mensal: o mês da despesa é o do vencimento, não o do pagamento.
     // Vale para TODAS as categorias, inclusive a provisão de impostos: o valor
@@ -645,8 +663,9 @@ export function buildP12Matrix(
     if (Number(reference.slice(0, 4)) !== year) continue;
     const month = monthIndex(reference);
     if (month < 0) continue;
-    const row = rowByRef.get(expense.categoryRef);
-    if (!row) continue;
+    const categoryRow = rowByRef.get(expense.categoryRef);
+    if (!categoryRow) continue;
+    const row = !categoryRow.category.isCapex && expenseEhCapex(expense, categoryRow.category) ? obraNoLancamentoRow : categoryRow;
     row.months[month].total += expense.amount || 0;
     row.months[month].count += 1;
     row.yearTotal += expense.amount || 0;
@@ -670,6 +689,7 @@ export function buildP12Matrix(
 
   // OBRA / investimento (CAPEX): consolidado à parte, fora do lucro operacional.
   const capexRows = orderedCategories.filter((category) => category.isCapex).map((category) => rowByRef.get(category.id)!);
+  if (obraNoLancamentoRow.yearTotal > 0.005) capexRows.push(obraNoLancamentoRow);
   const capexMonths = Array.from({ length: 12 }, (_, index) =>
     capexRows.reduce((sum, row) => sum + row.months[index].total, 0),
   );
@@ -789,6 +809,9 @@ export function buildResumoMes(
   const aPagar = expenses
     .filter((expense) => {
       if (!operationalRefs.has(expense.categoryRef) || expense.paidAt) return false;
+      // Lançamento marcado como obra em categoria comum já saiu do custo do
+      // mês na matriz; tem que sair do "a pagar" também, ou o "já pago" quebra.
+      if (expense.isCapex) return false;
       // Mesma regra da matriz: competência pelo vencimento, sem deslocamento.
       return (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey;
     })

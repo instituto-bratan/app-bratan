@@ -87,3 +87,33 @@ test("a régua da distribuição fica num lugar só, nomeada", () => {
   assert.ok(fin.CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has("cat-distribuicao-lucro-socios"));
   assert.equal(fin.CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.size, 1);
 });
+
+// 01/09/2026 (Lucas): "na P12, nos custos do mês, no contas a pagar, tire tudo
+// que é de obra; deixe só realmente o que nós pagamos." A P12 bucketava por
+// CATEGORIA, então a fatura VISA-OBRA (capex no lançamento, categoria comum)
+// continuava dentro do custo do mês e do "a pagar".
+test("P12: lançamento marcado como obra sai do custo do mês e cai na linha da obra", () => {
+  const contas = [
+    conta("aluguel", 10000, "cat-fixo"),
+    conta("visa-obra", 15994.29, "cat-fatura-cartao-credito", true),
+    conta("obra-direta", 5000, "cat-compras-variaveis-obras-2026"),
+  ];
+  const m = fin.buildP12Matrix([venda(100000)], contas, categorias, 2026, [], []);
+  assert.equal(m.totalExpensesMonths[7], 10000, "custo operacional de agosto = só o aluguel");
+  assert.equal(m.capexMonths[7], 15994.29 + 5000, "a fatura VISA-OBRA soma na obra");
+  assert.equal(m.profitMonths[7], 90000, "o lucro não carrega a obra");
+  const fatura = m.groups.flatMap((g) => g.rows).find((r) => r.category.id === "cat-fatura-cartao-credito");
+  assert.equal(fatura.yearTotal, 0, "a linha da categoria fica limpa");
+  const linhaObra = m.capexRows.find((r) => r.category.id === "cat-obra-marcada-no-lancamento");
+  assert.equal(linhaObra.yearTotal, 15994.29, "a obra marcada no lançamento tem linha própria no CAPEX");
+});
+
+test("Resumo do mês: obra marcada no lançamento sai dos custos e do contas a pagar", () => {
+  const aberta = { ...conta("visa-obra", 15994.29, "cat-fatura-cartao-credito", true), paidAt: "" };
+  const metas = { goalSuperRevenue: 400000, goalTargetRevenue: 399000, goalMinRevenue: 300000 };
+  const r = fin.buildResumoMes([venda(100000)], [conta("aluguel", 10000, "cat-fixo"), aberta], categorias, [], metas, "2026-08", []);
+  assert.equal(r.custosOperacionais, 10000, "custos do mês sem a obra");
+  assert.equal(r.aPagar, 0, "a fatura da obra em aberto não entra no contas a pagar");
+  assert.equal(r.jaPago, 10000, "já pago = custos − a pagar continua fechando");
+  assert.equal(r.obra, 15994.29, "ela aparece na obra");
+});

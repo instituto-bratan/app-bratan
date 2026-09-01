@@ -28,6 +28,7 @@ import {
   MAX_INSTALLMENTS,
   missingInstallments,
   expensePaymentMethods,
+  expenseEhCapex,
   finGroupLabels,
   finGroupOrder,
   moneyFin,
@@ -122,10 +123,11 @@ export function FinanceiroContasPage() {
   function passaCategoria(expense: FinExpense) {
     if (categoryFilter === "todas") return true;
     const category = categoryById.get(expense.categoryRef);
-    // Obra segue a CATEGORIA (é o que a P12 usa). O flag da conta só decide
-    // quando a categoria sumiu — senão o "EMPRESTIMO OBRA" (pago pelo
-    // operacional, decisão de 20/07) apareceria como obra sem ser.
-    if (categoryFilter === "obra") return category ? category.isCapex : Boolean(expense.isCapex);
+    // Mesma régua da P12 (01/09/2026): é obra se a CATEGORIA é capex OU se a
+    // conta foi marcada como capex no lançamento (ex.: fatura VISA-OBRA na
+    // categoria "Fatura cartão de crédito"). A parcela do empréstimo da obra
+    // continua operacional porque não é marcada capex (decisão de 20/07).
+    if (categoryFilter === "obra") return expenseEhCapex(expense, category);
     if (categoryFilter.startsWith("grupo:")) return category?.groupKey === categoryFilter.slice(6);
     return expense.categoryRef === categoryFilter;
   }
