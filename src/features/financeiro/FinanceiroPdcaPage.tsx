@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
+import { buildPdca, type PdcaStatus } from "./pdcaData";
 import {
   deleteRemoteFinPdcaMark,
   listRemoteFinPdcaMarks,
@@ -21,79 +22,6 @@ import { consultaLikeTypes, moneyFin, type FinSale } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
 
 const pdcaMarksStorageKey = "app-bratan-fin-pdca-marks";
-
-type PdcaStatus = "ADERIU" | "ADERIU_DEPOIS" | "NAO_ADERIU";
-
-type PdcaRow = {
-  sale: FinSale;
-  consulta: number;
-  tratamento: number;
-  status: PdcaStatus;
-  detail: string;
-  objection: string;
-};
-
-function normalizeName(name: string) {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-// Regra do Lucas (13/07/2026): SEM meio termo — ou aderiu ou não aderiu.
-// 1. tratamento na comanda → aderiu; 2. comanda marcada "Aderiu" → aderiu;
-// 3. o mesmo paciente fecha tratamento em comanda POSTERIOR → aderiu depois
-//    (reclassifica sozinho); 4. todo o resto → NÃO ADERIU automaticamente.
-// A objeção pode ser registrada no card do não aderiu.
-function buildPdcaRows(sales: FinSale[], month: string, marks: Map<string, FinPdcaMark>): PdcaRow[] {
-  const adhesionDates = new Map<string, string>();
-  for (const sale of sales) {
-    const hasAdhesion = sale.items.some((item) => item.itemType === "TRATAMENTO") || sale.adhesion === "SIM";
-    if (!hasAdhesion) continue;
-    for (const key of [sale.crmContactRef, normalizeName(sale.patientName)]) {
-      if (!key) continue;
-      const existing = adhesionDates.get(key);
-      if (!existing || sale.saleDate < existing) adhesionDates.set(key, sale.saleDate);
-    }
-  }
-
-  return sales
-    .filter((sale) => sale.saleDate.slice(0, 7) === month)
-    .map((sale) => {
-      const consulta = sale.items.filter((item) => consultaLikeTypes.includes(item.itemType)).reduce((sum, item) => sum + item.amount, 0);
-      const tratamento = sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
-      const mark = marks.get(sale.id);
-
-      let status: PdcaStatus = "NAO_ADERIU";
-      let detail = "";
-      if (tratamento > 0) {
-        status = "ADERIU";
-        detail = `tratamento ${moneyFin(tratamento)}`;
-      } else if (sale.adhesion === "SIM") {
-        status = "ADERIU";
-        detail = "marcado na comanda";
-      } else if (mark?.status === "ADERIU_MANUAL") {
-        status = "ADERIU";
-        detail = "marcado manualmente";
-      } else {
-        const laterDate = [sale.crmContactRef, normalizeName(sale.patientName)]
-          .filter(Boolean)
-          .map((key) => adhesionDates.get(key as string))
-          .filter((date): date is string => Boolean(date && date > sale.saleDate))
-          .sort()[0];
-        if (laterDate) {
-          status = "ADERIU_DEPOIS";
-          detail = `voltou e fechou em ${laterDate.split("-").reverse().slice(0, 2).join("/")}`;
-        } else {
-          status = "NAO_ADERIU";
-          detail = mark?.objection
-            ? `objeção: ${mark.objection}`
-            : sale.adhesion === "NAO" && sale.notes
-              ? `objeção: ${sale.notes}`
-              : "sem tratamento na comanda";
-        }
-      }
-      return { sale, consulta, tratamento, status, detail, objection: mark?.objection ?? "" };
-    })
-    .filter((row) => row.consulta > 0 || row.tratamento > 0);
-}
 
 export function FinanceiroPdcaPage() {
   const { pessoa, session, isPreview } = useAuth();
@@ -167,7 +95,8 @@ export function FinanceiroPdcaPage() {
   }
 
   const marksMap = useMemo(() => new Map(localMarks.map((mark) => [mark.saleRef, mark])), [localMarks]);
-  const rows = useMemo(() => buildPdcaRows(financeiro.sales, month, marksMap), [financeiro.sales, month, marksMap]);
+  const pdca = useMemo(() => buildPdca(financeiro.sales, month, marksMap), [financeiro.sales, month, marksMap]);
+  const rows = pdca.rows;
 
   const totalTratamentos = rows.reduce((sum, row) => sum + row.tratamento, 0);
   const aderiram = rows.filter((row) => row.status === "ADERIU" || row.status === "ADERIU_DEPOIS");
@@ -198,9 +127,10 @@ export function FinanceiroPdcaPage() {
               <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
                 PDCA · Adesão Dr Daniel
                 <InfoTip title="Como o app classifica cada paciente">
-                  Sem meio termo: comanda com tratamento (ou marcada "Aderiu") conta como adesão; qualquer outra comanda
-                  conta automaticamente como NÃO aderiu. Se o paciente voltar e fechar depois, o app reclassifica sozinho
-                  como "aderiu depois". Registre a objeção no card do não aderiu. Meta da Operação 360: 70% a 80%.
+                  Adesão aqui é <strong>plano de acompanhamento</strong> — tratamento avulso não conta (regra da CEO,
+                  31/08). Quem <strong>só pagou o sinal</strong> ainda nem passou pela consulta, então fica FORA da
+                  conta até a consulta acontecer. Sem meio termo no resto: passou pela consulta e não fechou o plano,
+                  é não-adesão; se voltar e fechar depois, o app reclassifica sozinho. Meta da Operação 360: 70% a 80%.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -260,11 +190,19 @@ export function FinanceiroPdcaPage() {
           </div>
           <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
             <TrendingUp className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Total tratamentos</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totalTratamentos)}</p>
-            <p className="text-xs text-muted-foreground">bate com a Entrada</p>
+            <p className="mt-2 text-sm font-semibold text-brand-musgo">Ticket médio do plano</p>
+            <p className="text-2xl font-bold text-brand-tinta">{pdca.ticketPlano ? moneyFin(pdca.ticketPlano) : "—"}</p>
+            <p className="text-xs text-muted-foreground">só quem fechou o plano · tratamentos {moneyFin(totalTratamentos)}</p>
           </div>
         </div>
+
+        {pdca.sinaisAguardando.length ? (
+          <p className="rounded-lg border border-brand-oliva/14 bg-brand-creme/30 px-4 py-2.5 text-xs text-muted-foreground">
+            <strong className="text-brand-musgo">{pdca.sinaisAguardando.length} sinal(is) aguardando a consulta</strong>{" "}
+            — fora da margem de propósito (a decisão ainda não aconteceu):{" "}
+            {pdca.sinaisAguardando.map((s) => s.paciente).join(" · ")}
+          </p>
+        ) : null}
 
         <div className="grid gap-5 lg:grid-cols-2">
           <section className="rounded-lg border border-emerald-200/70 bg-white/60 p-4 backdrop-blur">
