@@ -84,3 +84,26 @@ test("auto-indicação é ignorada e quem não tem indicador fica fora", () => {
   assert.ok(!rewards.some((r) => r.referred.id === x), "X não pode indicar a si mesmo");
   assert.equal(rewards.length, 2, "só Y e Z são indicações");
 });
+
+// ---- vídeo da recepção (01/09/2026): "Registrar indicação não está indo" ----
+// Dois defeitos na TELA (o motor estava certo): o erro aparecia só no topo da
+// página (fora da vista de quem está no formulário) e quem INDICA precisava
+// já existir no CRM — mas indicador pode ser gente nova (Joel, pai do Kayo).
+// O motor não muda; estes testes seguram o contrato da tela no código-fonte.
+import { readFileSync } from "node:fs";
+
+test("a tela cria o indicador novo quando ele foi digitado sem cadastro", () => {
+  const fonte = readFileSync(new URL("../src/features/crm/CrmCanaisPage.tsx", import.meta.url), "utf8");
+  assert.match(fonte, /referrerFinalId/, "existe o caminho de criar o indicador");
+  assert.match(fonte, /Indicação \(indicador\)/, "o indicador novo nasce com origem própria");
+  assert.match(fonte, /referrerQuery\.trim\(\)\.length < 3/, "nome digitado curto ainda é barrado");
+  assert.ok(!/Escolha QUEM indicou \(busque a pessoa na primeira caixa\)/.test(fonte), "a trava antiga saiu");
+});
+
+test("o erro do formulário aparece colado no botão, não só no topo da página", () => {
+  const fonte = readFileSync(new URL("../src/features/crm/CrmCanaisPage.tsx", import.meta.url), "utf8");
+  assert.match(fonte, /formError/, "estado de erro do formulário existe");
+  const posBotao = fonte.indexOf("Registrar indicação\n                </LiquidButton>");
+  const posErro = fonte.indexOf("{formError ? (");
+  assert.ok(posErro > posBotao && posErro - posBotao < 400, "o erro renderiza logo abaixo do botão");
+});

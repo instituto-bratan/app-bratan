@@ -103,24 +103,44 @@ export function CrmCanaisPage() {
   const referrerSuggestions = useMemo(() => suggestions(referrerQuery), [referrerQuery, activeContacts]);
   const referredSuggestions = useMemo(() => suggestions(referredQuery), [referredQuery, activeContacts]);
 
+  const [formError, setFormError] = useState("");
+
   function handleRegister(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
-    if (!referrerId) {
-      setFeedback("Escolha QUEM indicou (busque a pessoa na primeira caixa).");
+    setFormError("");
+    if (!referrerId && referrerQuery.trim().length < 3) {
+      setFormError("Diga QUEM indicou: busque a pessoa, ou digite o nome completo se ela ainda não tem cadastro.");
       return;
     }
     if (!referredId && referredQuery.trim().length < 3) {
-      setFeedback("Escolha quem FOI indicado, ou digite o nome completo da pessoa nova.");
+      setFormError("Escolha quem FOI indicado, ou digite o nome completo da pessoa nova.");
       return;
     }
     const problemaCanais = contactChannelsIssue(novoContato);
     if (problemaCanais) {
-      setFeedback(problemaCanais);
+      setFormError(problemaCanais);
       return;
     }
     persist((current) => {
       let next = current;
+      // Quem indica também pode ser gente nova (não precisa ser paciente):
+      // digitou o nome completo e não selecionou, o cadastro nasce aqui.
+      let referrerFinalId = referrerId;
+      if (!referrerFinalId) {
+        const criadoIndicador = findOrCreateCrmContact(
+          next,
+          {
+            fullName: referrerQuery.trim(),
+            contactType: "LEAD",
+            lifecycleStage: "COLD_LEAD",
+            sourceChannel: "Indicação (indicador)",
+          },
+          pessoa?.id ?? "indicacoes",
+        );
+        next = criadoIndicador.state;
+        referrerFinalId = criadoIndicador.contact.id;
+      }
       let targetId = referredId;
       if (!targetId) {
         const created = findOrCreateCrmContact(
@@ -138,8 +158,8 @@ export function CrmCanaisPage() {
         targetId = created.contact.id;
       }
       next = applyContactChannels(next, targetId, contactChannelsValues(novoContato), pessoa?.id ?? "indicacoes");
-      next = setContactReferrer(next, targetId, referrerId, pessoa?.id ?? "indicacoes");
-      const referrer = next.contacts.find((item) => item.id === referrerId);
+      next = setContactReferrer(next, targetId, referrerFinalId, pessoa?.id ?? "indicacoes");
+      const referrer = next.contacts.find((item) => item.id === referrerFinalId);
       const referred = next.contacts.find((item) => item.id === targetId);
       setFeedback(
         `✅ ${contactDisplayName(referrer)} indicou ${contactDisplayName(referred)}. O indicado já está no CRM; quando a consulta dele virar comanda, o voucher de ${moneyCrm(REFERRAL_REWARD_VALUE)} libera sozinho aqui.`,
@@ -151,6 +171,7 @@ export function CrmCanaisPage() {
     setReferredQuery("");
     setReferredId("");
     setNovoContato(emptyContactChannels);
+    setFormError("");
   }
 
   function handleMarkPaid(referredContactId: string, referredName: string) {
@@ -226,7 +247,7 @@ export function CrmCanaisPage() {
               <UserPlus className="h-5 w-5" aria-hidden="true" /> Registrar indicação
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Paciente X indicou Y: busque o X, digite (ou busque) o Y — o Y já entra no CRM ligado ao X.
+              X indicou Y: busque ou DIGITE o nome completo dos dois — quem não tiver cadastro nasce aqui na hora, já ligado.
             </p>
           </CardHeader>
           <CardContent>
@@ -300,6 +321,11 @@ export function CrmCanaisPage() {
                 <LiquidButton type="submit" size="sm" className="mt-1 w-full">
                   Registrar indicação
                 </LiquidButton>
+                {formError ? (
+                  <p className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700">
+                    {formError}
+                  </p>
+                ) : null}
               </div>
             </form>
           </CardContent>
