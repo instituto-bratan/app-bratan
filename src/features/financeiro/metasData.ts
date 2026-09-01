@@ -55,18 +55,24 @@ export function metasForMonth(config: MetasConfig, monthKey: string): MetasConfi
   };
 }
 
-// Padrão = a régua VIGENTE (agosto/2026: "subimos a régua"). Meses antigos ficam
-// registrados em monthlyGoals para o histórico não mentir.
+// Padrão = a régua VIGENTE (setembro/2026, apresentação da CEO: mínima 300 mil,
+// "meta de 301 a 399 mil", super 400 mil; dia com Dr. Daniel R$ 27.000, dia de
+// tratamento R$ 10.000; 55 pacientes). Meses antigos ficam registrados em
+// monthlyGoals para o histórico não mentir.
 export const defaultMetasConfig: MetasConfig = {
-  goalMinRevenue: 330000,
-  goalTargetRevenue: 370000,
+  goalMinRevenue: 300000,
+  goalTargetRevenue: 399000,
   goalSuperRevenue: 400000,
-  goalPatients: 68,
-  dailyGoalWithDoctor: 23188.41,
-  dailyGoalWithoutDoctor: 5797.1,
+  goalPatients: 55,
+  dailyGoalWithDoctor: 27000,
+  dailyGoalWithoutDoctor: 10000,
   doctorOffDays: {},
-  // 31/08 é segunda-feira, mas é dia só de medicação (sem Dr. Daniel).
-  doctorDayOverrides: { "2026-08": { "2026-08-31": false } },
+  doctorDayOverrides: {
+    // 31/08 é segunda-feira, mas é dia só de medicação (sem Dr. Daniel).
+    "2026-08": { "2026-08-31": false },
+    // Setembro (deck da CEO): Dr. atende 01,03 · 08–10 · 14–17 · 21–23 · 29,30.
+    "2026-09": { "2026-09-02": false, "2026-09-07": false, "2026-09-24": false, "2026-09-28": false },
+  },
   monthlyGoals: {
     // Julho/2026 — régua anterior (planilha "Controle de Metas Julho 2026").
     "2026-07": {
@@ -88,6 +94,17 @@ export const defaultMetasConfig: MetasConfig = {
       dailyGoalWithoutDoctor: 5797.1,
       targetLabel: "meta medíocre",
       patientsConservative: 54,
+    },
+    // Setembro/2026 — "Apresentação Metas SETEMBRO 2026" da CEO. O degrau do
+    // meio é uma FAIXA (301 a 399 mil); guardo o teto dela como meta.
+    "2026-09": {
+      goalMinRevenue: 300000,
+      goalTargetRevenue: 399000,
+      goalSuperRevenue: 400000,
+      goalPatients: 55,
+      dailyGoalWithDoctor: 27000,
+      dailyGoalWithoutDoctor: 10000,
+      targetLabel: "meta (301 a 399 mil)",
     },
   },
 };
