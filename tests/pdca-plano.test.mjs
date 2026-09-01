@@ -1,7 +1,9 @@
-// PDCA (01/09/2026) — áudio da CEO de 31/08 + regra do Lucas:
-//  1. adesão é PLANO DE ACOMPANHAMENTO — tratamento avulso não conta;
+// PDCA (01/09/2026) — áudio da CEO de 31/08 + correção do Lucas:
+//  1. adesão é PLANO DE ACOMPANHAMENTO, e a régua é O VALOR: R$ 6.997.
+//     Tratamento abaixo disso não é adesão nem entra no ticket;
 //  2. quem só pagou SINAL fica fora da margem (a consulta nem aconteceu);
-//  3. o ticket médio do PDCA é só de quem fechou o plano.
+//  3. comanda só de tratamento pequeno sem consulta = recorrente comprando
+//     medicação — fora do PDCA por completo.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -56,22 +58,28 @@ test("quem só pagou sinal fica FORA da margem (a lista da CEO)", () => {
   assert.equal(r.sinaisAguardando[0].paciente, "Sophia Sinal");
 });
 
-test("tratamento AVULSO não é adesão — mas conta no denominador", () => {
+test("a régua é o valor: 6.997 é plano, abaixo disso não é adesão", () => {
+  assert.equal(pdca.PLANO_VALOR_MINIMO, 6997);
   const r = pdca.buildPdca([
-    venda("2026-09-02", "Avulsa", [["CONSULTA", 1000], ["TRATAMENTO", 3000]], { planoOuAvulsa: "AVULSA" }),
-    venda("2026-09-03", "Plano", [["CONSULTA", 1000], ["TRATAMENTO", 12000]], { planoOuAvulsa: "PLANO" }),
+    venda("2026-09-02", "Pequeno", [["CONSULTA", 1000], ["TRATAMENTO", 3000]]),
+    venda("2026-09-03", "Exato", [["CONSULTA", 1000], ["TRATAMENTO", 6997]]),
+    venda("2026-09-04", "Maior", [["CONSULTA", 1000], ["TRATAMENTO", 12000]]),
   ], "2026-09", marks);
-  const avulsa = r.rows.find((x) => x.sale.patientName === "Avulsa");
-  const plano = r.rows.find((x) => x.sale.patientName === "Plano");
-  assert.equal(avulsa.status, "NAO_ADERIU");
-  assert.match(avulsa.detail, /AVULSA/);
-  assert.equal(plano.status, "ADERIU");
-  assert.equal(r.rows.length, 2, "as duas passaram pela decisão");
+  const pequeno = r.rows.find((x) => x.sale.patientName === "Pequeno");
+  assert.equal(pequeno.status, "NAO_ADERIU", "3.000 < 6.997 não é plano");
+  assert.match(pequeno.detail, /abaixo do plano/);
+  assert.equal(r.rows.find((x) => x.sale.patientName === "Exato").status, "ADERIU", "6.997 cravado é plano");
+  assert.equal(r.rows.find((x) => x.sale.patientName === "Maior").status, "ADERIU");
+  assert.equal(r.rows.length, 3, "quem passou pela consulta conta no denominador");
 });
 
-test("legado sem marcação Plano/Avulsa: tratamento continua valendo adesão", () => {
-  const r = pdca.buildPdca([venda("2026-07-10", "Antiga", [["CONSULTA", 1100], ["TRATAMENTO", 8000]])], "2026-07", marks);
-  assert.equal(r.rows[0].status, "ADERIU", "histórico não reescreve");
+test("comanda só de tratamento pequeno SEM consulta fica fora do PDCA (recorrente)", () => {
+  const r = pdca.buildPdca([
+    venda("2026-09-05", "Recorrente Dose", [["TRATAMENTO", 2100]]),
+    venda("2026-09-06", "Plano Cheio", [["TRATAMENTO", 12750]]),
+  ], "2026-09", marks);
+  assert.equal(r.rows.length, 1, "a dose do recorrente não vira linha");
+  assert.equal(r.rows[0].sale.patientName, "Plano Cheio", "plano sem consulta na mesma comanda continua contando");
 });
 
 test("comanda marcada PLANO sem item de tratamento também é adesão", () => {
@@ -79,14 +87,14 @@ test("comanda marcada PLANO sem item de tratamento também é adesão", () => {
   assert.equal(r.rows[0].status, "ADERIU");
 });
 
-test("o ticket do PDCA é só de quem fechou o plano", () => {
+test("o ticket do PDCA é só de tratamento ≥ 6.997", () => {
   const r = pdca.buildPdca([
-    venda("2026-09-02", "A", [["CONSULTA", 1000], ["TRATAMENTO", 10000]], { planoOuAvulsa: "PLANO" }),
-    venda("2026-09-03", "B", [["CONSULTA", 1000], ["TRATAMENTO", 14000]], { planoOuAvulsa: "PLANO" }),
-    venda("2026-09-04", "C avulsa", [["CONSULTA", 1000], ["TRATAMENTO", 3000]], { planoOuAvulsa: "AVULSA" }),
+    venda("2026-09-02", "A", [["CONSULTA", 1000], ["TRATAMENTO", 10000]]),
+    venda("2026-09-03", "B", [["CONSULTA", 1000], ["TRATAMENTO", 14000]]),
+    venda("2026-09-04", "C pequeno", [["CONSULTA", 1000], ["TRATAMENTO", 3000]]),
     venda("2026-09-05", "D sinal", [["SINAL", 500]]),
   ], "2026-09", marks);
-  assert.equal(r.ticketPlano, 12000, "média de 10.000 e 14.000 — avulsa e sinal fora");
+  assert.equal(r.ticketPlano, 12000, "média de 10.000 e 14.000 — pequeno e sinal fora");
 });
 
 test("aderiu depois continua funcionando com a régua do plano", () => {
@@ -98,11 +106,11 @@ test("aderiu depois continua funcionando com a régua do plano", () => {
   assert.equal(consulta.status, "ADERIU_DEPOIS");
 });
 
-test("voltar e fechar AVULSA depois NÃO reclassifica a consulta", () => {
+test("voltar e fechar tratamento PEQUENO depois NÃO reclassifica a consulta", () => {
   const r = pdca.buildPdca([
-    venda("2026-09-02", "Joao Avulso", [["CONSULTA", 1100]]),
-    venda("2026-09-20", "Joao Avulso", [["TRATAMENTO", 2000]], { planoOuAvulsa: "AVULSA" }),
+    venda("2026-09-02", "Joao Pequeno", [["CONSULTA", 1100]]),
+    venda("2026-09-20", "Joao Pequeno", [["TRATAMENTO", 2000]]),
   ], "2026-09", marks);
   const consulta = r.rows.find((x) => x.consulta > 0);
-  assert.equal(consulta.status, "NAO_ADERIU", "avulsa não vira 'aderiu depois'");
+  assert.equal(consulta.status, "NAO_ADERIU", "2.000 < 6.997 não vira 'aderiu depois'");
 });

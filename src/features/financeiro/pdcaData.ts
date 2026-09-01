@@ -2,9 +2,12 @@
 //
 // Reforma pedida pela CEO em áudio de 31/08 + regra do Lucas:
 //
-// 1. ADESÃO É PLANO DE ACOMPANHAMENTO, não qualquer tratamento. Comanda com
-//    "Plano/Avulsa = AVULSA" fechou tratamento mas NÃO aderiu ao plano — conta
-//    no denominador (passou pela decisão) sem contar como adesão.
+// 1. ADESÃO É PLANO DE ACOMPANHAMENTO, não qualquer tratamento — e a régua é
+//    O VALOR (correção do Lucas, 01/09): o plano custa R$ 6.997. Tratamento
+//    abaixo disso não é adesão e não entra no ticket. Se a comanda tem
+//    consulta, ela conta no denominador (a decisão aconteceu); se é SÓ um
+//    tratamento pequeno sem consulta, é recorrente comprando medicação — fora
+//    do PDCA por completo.
 // 2. QUEM SÓ PAGOU SINAL FICA FORA DA CONTA. O sinal é ANTES da consulta: a
 //    pessoa ainda nem sentou com o doutor, não pode ser "não aderiu". Era isso
 //    que estourava a margem — a CEO listou 12 pacientes de sinal contados como
@@ -42,14 +45,18 @@ function normalizeName(name: string) {
 
 const cents = (valor: number) => Math.round(valor * 100) / 100;
 
-/** Fechou o PLANO nesta comanda? (avulsa fecha tratamento, mas não é plano) */
+/** O preço do plano de acompanhamento — a régua da adesão. */
+export const PLANO_VALOR_MINIMO = 6997;
+
+function valorTratamento(sale: FinSale) {
+  return sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((soma, item) => soma + (item.amount || 0), 0);
+}
+
+/** Fechou o PLANO nesta comanda? Régua = valor: tratamento ≥ R$ 6.997. */
 export function comandaAderiuAoPlano(sale: FinSale) {
   if (sale.adhesion === "SIM") return true;
-  const tratamento = sale.items.some((item) => item.itemType === "TRATAMENTO");
-  if (!tratamento) return sale.planoOuAvulsa === "PLANO";
-  // Legado: comanda antiga sem a marcação Plano/Avulsa — tratamento fechado
-  // continua valendo como adesão para o histórico não reescrever.
-  return sale.planoOuAvulsa !== "AVULSA";
+  if (sale.planoOuAvulsa === "PLANO") return true; // marcação explícita da recepção
+  return valorTratamento(sale) >= PLANO_VALOR_MINIMO;
 }
 
 /** A comanda é SÓ o sinal (pré-consulta)? */
@@ -80,6 +87,16 @@ export function buildPdca(sales: FinSale[], month: string, marks: Map<string, Fi
 
   const rows = doMes
     .filter((sale) => !comandaEhSoSinal(sale) || comandaAderiuAoPlano(sale))
+    // Comanda SÓ de tratamento pequeno (sem consulta): recorrente comprando
+    // medicação/dose — não há decisão de adesão ali, fica fora do PDCA.
+    .filter((sale) => {
+      if (comandaAderiuAoPlano(sale)) return true;
+      const temConsulta = sale.items.some(
+        (item) => consultaLikeTypes.includes(item.itemType) && item.itemType !== "SINAL" && (item.amount || 0) > 0,
+      );
+      const soTratamentoPequeno = !temConsulta && valorTratamento(sale) > 0;
+      return !soTratamentoPequeno;
+    })
     .map((sale) => {
       const consulta = sale.items.filter((item) => consultaLikeTypes.includes(item.itemType)).reduce((sum, item) => sum + item.amount, 0);
       const tratamento = sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
@@ -89,11 +106,11 @@ export function buildPdca(sales: FinSale[], month: string, marks: Map<string, Fi
       let detail = "";
       if (comandaAderiuAoPlano(sale)) {
         status = "ADERIU";
-        detail = sale.planoOuAvulsa === "PLANO"
-          ? `plano fechado${tratamento > 0 ? ` — ${money(tratamento)}` : ""}`
-          : sale.adhesion === "SIM"
-            ? "marcado na comanda"
-            : `tratamento ${money(tratamento)} (sem marcação Plano/Avulsa)`;
+        detail = tratamento >= PLANO_VALOR_MINIMO
+          ? `plano — ${money(tratamento)}`
+          : sale.planoOuAvulsa === "PLANO"
+            ? "plano fechado (marcado na comanda)"
+            : "marcado na comanda";
       } else if (mark?.status === "ADERIU_MANUAL") {
         status = "ADERIU";
         detail = "marcado manualmente";
@@ -109,8 +126,8 @@ export function buildPdca(sales: FinSale[], month: string, marks: Map<string, Fi
         } else {
           status = "NAO_ADERIU";
           detail =
-            tratamento > 0 && sale.planoOuAvulsa === "AVULSA"
-              ? `fechou AVULSA (${money(tratamento)}) — não é plano`
+            tratamento > 0
+              ? `tratamento ${money(tratamento)} — abaixo do plano (${money(PLANO_VALOR_MINIMO)})`
               : mark?.objection
                 ? `objeção: ${mark.objection}`
                 : sale.adhesion === "NAO" && sale.notes
@@ -122,7 +139,7 @@ export function buildPdca(sales: FinSale[], month: string, marks: Map<string, Fi
     })
     .filter((row) => row.consulta > 0 || row.tratamento > 0);
 
-  const adesoesComValor = rows.filter((row) => row.status === "ADERIU" && comandaAderiuAoPlano(row.sale) && row.tratamento > 0);
+  const adesoesComValor = rows.filter((row) => row.status === "ADERIU" && row.tratamento >= PLANO_VALOR_MINIMO);
   const ticketPlano = adesoesComValor.length
     ? cents(adesoesComValor.reduce((soma, row) => soma + row.tratamento, 0) / adesoesComValor.length)
     : 0;

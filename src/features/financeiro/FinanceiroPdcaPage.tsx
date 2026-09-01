@@ -127,10 +127,11 @@ export function FinanceiroPdcaPage() {
               <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
                 PDCA · Adesão Dr Daniel
                 <InfoTip title="Como o app classifica cada paciente">
-                  Adesão aqui é <strong>plano de acompanhamento</strong> — tratamento avulso não conta (regra da CEO,
-                  31/08). Quem <strong>só pagou o sinal</strong> ainda nem passou pela consulta, então fica FORA da
-                  conta até a consulta acontecer. Sem meio termo no resto: passou pela consulta e não fechou o plano,
-                  é não-adesão; se voltar e fechar depois, o app reclassifica sozinho. Meta da Operação 360: 70% a 80%.
+                  Adesão aqui é <strong>plano de acompanhamento — R$ 6.997</strong>: tratamento abaixo disso não conta
+                  como adesão nem entra no ticket (regra da CEO, 31/08). Quem <strong>só pagou o sinal</strong> ainda
+                  nem passou pela consulta e fica FORA da conta; comanda só de tratamento pequeno sem consulta é
+                  recorrente comprando medicação — também fora. Passou pela consulta e não fechou o plano, é
+                  não-adesão; se voltar e fechar o plano depois, o app reclassifica sozinho. Meta: 70% a 80%.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -180,19 +181,19 @@ export function FinanceiroPdcaPage() {
             <UserCheck className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Aderiram</p>
             <p className="text-2xl font-bold text-brand-tinta">{aderiram.length}</p>
-            <p className="text-xs text-muted-foreground">tratamento na comanda ou fechou depois</p>
+            <p className="text-xs text-muted-foreground">plano (≥ R$ 6.997) na comanda ou fechou depois</p>
           </div>
           <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
             <UserX className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Não aderiram</p>
             <p className="text-2xl font-bold text-brand-tinta">{naoAderiram.length}</p>
-            <p className="text-xs text-muted-foreground">sem tratamento na comanda</p>
+            <p className="text-xs text-muted-foreground">passou pela consulta e não fechou o plano</p>
           </div>
           <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
             <TrendingUp className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Ticket médio do plano</p>
             <p className="text-2xl font-bold text-brand-tinta">{pdca.ticketPlano ? moneyFin(pdca.ticketPlano) : "—"}</p>
-            <p className="text-xs text-muted-foreground">só quem fechou o plano · tratamentos {moneyFin(totalTratamentos)}</p>
+            <p className="text-xs text-muted-foreground">só tratamentos ≥ R$ 6.997 · total do mês {moneyFin(totalTratamentos)}</p>
           </div>
         </div>
 
