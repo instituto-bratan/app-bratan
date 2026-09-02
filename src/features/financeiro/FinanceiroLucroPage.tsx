@@ -184,6 +184,7 @@ export function FinanceiroLucroPage() {
   );
 
   const degrauHoje = percentuaisNoDia(config, hoje);
+  const linhaDeHoje = planilha.linhas.find((linha) => linha.dia === hoje) ?? null;
   const degrauMaisRecente = [...config.degraus].sort((a, b) => a.desde.localeCompare(b.desde)).at(-1) ?? config.degraus[0];
   const comprometido = planilha.totais.reservado.impostos + planilha.totais.reservado.lucro + planilha.totais.reservado.medicoExecutor;
   const saldoOperacional = planilha.totais.saldo.operacional;
@@ -417,31 +418,33 @@ export function FinanceiroLucroPage() {
               {moneyFin(planilha.totais.reservado.medicoExecutor)}
             </p>
           </div>
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
+          <div className={cn("rounded-lg border p-4", saldoOperacional < -0.005 ? "border-red-200 bg-red-50/60" : "border-brand-oliva/14 bg-white/55")}>
             <Wallet className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Fica para gastar</p>
+            <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-brand-musgo">
+              Cabe gastar no mês
+              <InfoTip title="Cabe gastar × contas pagas">
+                &quot;Cabe gastar&quot; é a soma do que ficou para o operacional em cada dia ({pct(operacionalDe(degrauHoje))} do líquido). &quot;Contas pagas&quot; são as
+                contas operacionais que já saíram no mês (sem obra, impostos, sócios e repasse do médico — esses têm envelope próprio). Se as contas
+                passam do que cabe, o número fica vermelho: é a despesa acima da régua que a aula manda enxugar.
+              </InfoTip>
+            </p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(planilha.totais.reservado.operacional)}</p>
-            <p className="text-xs text-muted-foreground">
-              {planilha.totais.liquido > 0 ? pct((planilha.totais.reservado.operacional / planilha.totais.liquido) * 100) : "—"} do líquido · gasto até agora{" "}
-              {moneyFin(planilha.totais.usado.operacional)}
+            <p className="text-xs text-muted-foreground">contas operacionais já pagas: {moneyFin(planilha.totais.usado.operacional)}</p>
+            <p className={cn("text-xs font-semibold", saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
+              {saldoOperacional < -0.005 ? `já passou do que cabe em ${moneyFin(-saldoOperacional)}` : `ainda cabem ${moneyFin(saldoOperacional)} de contas`}
             </p>
           </div>
-          <div
-            className={cn(
-              "rounded-lg border p-4",
-              saldoOperacional < -0.005 ? "border-red-200 bg-red-50/60" : "border-emerald-200 bg-emerald-50/60",
-            )}
-          >
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
             <Scale className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Saldo do envelope operacional</p>
-            <p className={cn("text-2xl font-bold", saldoOperacional < -0.005 ? "text-red-700" : "text-brand-tinta")}>{moneyFin(saldoOperacional)}</p>
+            <p className="mt-2 text-sm font-semibold text-brand-musgo">Disponível para separar hoje</p>
+            <p className="text-2xl font-bold text-brand-tinta">{linhaDeHoje ? moneyFin(linhaDeHoje.disponivel) : "—"}</p>
             <p className="text-xs text-muted-foreground">
-              {saldoOperacional < -0.005 ? "gastamos mais do que o envelope permitia" : "o que sobra se não gastarmos mais"} ·{" "}
-              {planilha.diasPendentes ? `${planilha.diasPendentes} dia(s) sem marcar "separado"` : "todos os dias marcados"}
+              {linhaDeHoje
+                ? `PIX/dinheiro de hoje + cartão de ontem${linhaDeHoje.antecipacao > 0.005 ? ` · puxar o cartão hoje custa ${moneyFin(linhaDeHoje.antecipacao)}` : ""}`
+                : "escolha o mês atual para ver o dia de hoje"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              disponível no mês {moneyFin(planilha.totais.disponivel)}
-              {planilha.totais.antecipacao > 0.005 ? ` · puxar todo o cartão no D+1 custaria ${moneyFin(planilha.totais.antecipacao)}` : ""}
+              {planilha.diasPendentes ? `${planilha.diasPendentes} dia(s) com entrada ainda sem marcar "separado"` : "todos os dias com entrada já marcados"}
             </p>
           </div>
         </div>
@@ -629,9 +632,8 @@ export function FinanceiroLucroPage() {
                     <th className="px-2 py-1.5 text-right">Lucro</th>
                     <th className="px-2 py-1.5 text-right">Médico</th>
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Fica p/ gastar</th>
-                    <th className="px-2 py-1.5 text-right">Acumulado p/ gastar</th>
-                    <th className="px-2 py-1.5 text-right">Gasto no dia</th>
-                    <th className="px-2 py-1.5 text-right">Saldo envelope</th>
+                    <th className="px-2 py-1.5 text-right">Contas pagas (dia)</th>
+                    <th className="px-2 py-1.5 text-right">Sobra ou falta (mês)</th>
                     <th className="px-2 py-1.5 text-center">Fechamento</th>
                     <th className="px-2 py-1.5 text-center">Separado?</th>
                   </tr>
@@ -688,10 +690,9 @@ export function FinanceiroLucroPage() {
                           {linha.reservado.operacional ? moneyFin(linha.reservado.operacional) : "—"}
                           <span className="ml-1 text-[10px] font-normal text-muted-foreground">{pct(linha.percentuais.operacional)}</span>
                         </td>
-                        <td className={cellNum}>{moneyFin(linha.acumulado.reservado.operacional)}</td>
                         <td className={cellNum}>{linha.usado.operacional ? moneyFin(linha.usado.operacional) : "—"}</td>
                         <td className={cn(cellNum, linha.acumulado.saldo.operacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
-                          {moneyFin(linha.acumulado.saldo.operacional)}
+                          {linha.acumulado.saldo.operacional < -0.005 ? `falta ${moneyFin(-linha.acumulado.saldo.operacional)}` : `sobra ${moneyFin(linha.acumulado.saldo.operacional)}`}
                         </td>
                         <td className="px-2 py-1.5 text-center">
                           {linha.fechamento === "CONFERIDO" ? (
@@ -753,9 +754,10 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.lucro)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.medicoExecutor)}</td>
                     <td className={cn(cellNum, "text-brand-musgo")}>{moneyFin(planilha.totais.reservado.operacional)}</td>
-                    <td className={cellNum} />
                     <td className={cellNum}>{moneyFin(planilha.totais.usado.operacional)}</td>
-                    <td className={cn(cellNum, saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-700")}>{moneyFin(saldoOperacional)}</td>
+                    <td className={cn(cellNum, saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
+                      {saldoOperacional < -0.005 ? `falta ${moneyFin(-saldoOperacional)}` : `sobra ${moneyFin(saldoOperacional)}`}
+                    </td>
                     <td className={cellNum} />
                     <td className={cellNum} />
                   </tr>
@@ -768,8 +770,10 @@ export function FinanceiroLucroPage() {
             &quot;Taxas&quot; é a maquininha (débito 0,7% · crédito à vista 1,7% · parcelado 2,39%) mais o PIX (0,6%, teto R$ 150); &quot;Entrou (líquido)&quot;
             é o que sobrou — e é sobre ele que os envelopes são repartidos. &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil
             anterior (pulando feriado), já líquido: a Rede deixa o crédito à disposição em D+1 e a clínica decide quando puxar; &quot;puxar hoje&quot;
-            é o custo da antecipação (TAD = SELIC a.m. + 0,9%, pelos dias que faltam até os 31 de cada parcela). Esperar os 31 dias custa zero. &quot;Gasto no dia&quot; são as contas pagas no dia que pertencem ao operacional (obra,
-            impostos, sócios e repasse do médico têm envelope próprio). Marque &quot;Separado&quot; quando as transferências do dia forem feitas.
+            é o custo da antecipação (TAD = SELIC a.m. + 0,9%, pelos dias que faltam até os 31 de cada parcela). Esperar os 31 dias custa zero.
+            &quot;Contas pagas (dia)&quot; são as contas operacionais pagas naquele dia (obra, impostos, sócios, empréstimos e repasse do médico têm
+            envelope próprio). &quot;Sobra ou falta (mês)&quot; compara, do dia 1 até ali, tudo que ficou para gastar com tudo que já foi pago: sobra = ainda
+            cabem contas; falta = as contas já passaram da régua. Marque &quot;Separado&quot; quando as transferências do dia forem feitas.
           </p>
         </section>
       </div>
