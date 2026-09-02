@@ -43,7 +43,7 @@ const marcasStorageKey = "app-bratan-fin-lucro-dias";
 const reguaLabels: Record<keyof ReguaLucro, string> = {
   impostos: "Impostos (% do líquido)",
   lucroMensal: "Lucro dos sócios (R$ por mês)",
-  medicoExecutor: "Médico executor (% do prescrito)",
+  medicoExecutor: "Médico executor (% do lucro bruto do produto — col. S)",
 };
 
 function pct(value: number) {
@@ -80,7 +80,7 @@ function valorDoCampo(regua: ReguaLucro, campo: keyof ReguaLucro) {
 }
 
 function descreveRegua(regua: ReguaLucro) {
-  return `impostos ${pct(regua.impostos)} do líquido · lucro ${moneyFin(regua.lucroMensal)}/mês · médico executor ${pct(regua.medicoExecutor)} do prescrito`;
+  return `impostos ${pct(regua.impostos)} do líquido · lucro ${moneyFin(regua.lucroMensal)}/mês · médico executor ${pct(regua.medicoExecutor)} do lucro bruto do produto`;
 }
 
 export function FinanceiroLucroPage() {
@@ -291,8 +291,9 @@ export function FinanceiroLucroPage() {
                   decide o lucro e se vira com o resto. De cada real que entra (já sem as taxas), o app separa{" "}
                   <strong>impostos</strong> (% do líquido), o <strong>lucro dos sócios</strong> — aqui um valor fixo por
                   mês, dividido pelos dias úteis (Lucas: &quot;não é em porcentagem, é sempre esse valor&quot;) — e o{" "}
-                  <strong>médico executor</strong>: 50% do que o Dr. Daniel prescreveu no dia; a metade da clínica é que
-                  carrega imposto, lucro e despesas. O que sobra é o único dinheiro para gastar. Lucro e impostos vão para
+                  <strong>médico executor</strong>: a coluna S da planilha de precificação, &quot;Margem Líquida Médico&quot; = 50% do
+                  lucro bruto de cada produto (preço − imposto/cartão − comissão − consumíveis − repasse nutri − custo de sala;
+                  Programa de R$ 6.997 → R$ 2.515,20). O que sobra é o único dinheiro para gastar. Lucro e impostos vão para
                   contas de difícil acesso. &quot;Não é meta, é decisão.&quot; (Exemplo da aula, só para referência: 25%
                   lucro · 16,6% impostos · 28% executor → sobram 30,4%.)
                 </InfoTip>
@@ -300,7 +301,7 @@ export function FinanceiroLucroPage() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 Régua de hoje: impostos {pct(reguaHoje.impostos)} do líquido · lucro {moneyFin(reguaHoje.lucroMensal)}/mês (
                 <strong className="text-brand-musgo">{moneyFin(cotaHoje)} por dia útil</strong>, {diasUteisHoje} em {mesLongo(hoje.slice(0, 7))}) · médico executor{" "}
-                {pct(reguaHoje.medicoExecutor)} do que ele prescreveu → o que sobra fica para gastar. As taxas da maquininha e do PIX saem antes
+                {pct(reguaHoje.medicoExecutor)} do lucro bruto de cada produto (coluna S da precificação) → o que sobra fica para gastar. As taxas da maquininha e do PIX saem antes
                 de repartir. O crédito conta no dia do lançamento e fica disponível no dia útil seguinte; puxar antes dos 31 dias custa a
                 antecipação (TAD {pct(taxaAntecipacaoMensal(selicDaConfig(config)) * 100)} ao mês) — a planilha mostra quanto.
               </p>
@@ -391,8 +392,10 @@ export function FinanceiroLucroPage() {
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  A planilha de precificação calcula os 50% do médico DEPOIS de imposto/cartão, comissão e custo de sala (Programa de R$ 6.997 →
-                  R$ 2.515 para o médico); aqui é 50% do valor prescrito, como o Lucas descreveu — se a regra for a da planilha, ajuste o percentual.
+                  O médico recebe a coluna S da planilha de precificação: 50% do lucro bruto do produto (preço − imposto/cartão − comissão 1% −
+                  consumíveis − repasse nutri − custo de sala). O app reconhece o produto pela descrição e pelo preço do item da comanda
+                  (Programa 6.997 → 2.515,20 · Club 6.997 → 2.812,20 · consulta 2.500 → 1.032,70 · dose 590 → 150 a 263); item sem
+                  produto reconhecido usa a fração do produto de referência do tipo.
                 </p>
               </div>
             </div>
@@ -440,7 +443,7 @@ export function FinanceiroLucroPage() {
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(comprometido)}</p>
             <p className="text-xs text-muted-foreground">
               impostos {moneyFin(planilha.totais.reservado.impostos)} · lucro {moneyFin(planilha.totais.reservado.lucro)} · médico{" "}
-              {moneyFin(planilha.totais.reservado.medicoExecutor)} (50% de {moneyFin(planilha.totais.prescrito)} prescritos)
+              {moneyFin(planilha.totais.reservado.medicoExecutor)} ({pct(reguaHoje.medicoExecutor)} do lucro bruto de {moneyFin(planilha.totais.lucroBrutoProdutos)} nos produtos)
             </p>
           </div>
           <div className={cn("rounded-lg border p-4", saldoOperacional < -0.005 ? "border-red-200 bg-red-50/60" : "border-brand-oliva/14 bg-white/55")}>
@@ -513,11 +516,17 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum}>100%</td>
                   </tr>
                   <tr className="border-t border-brand-oliva/10 text-muted-foreground">
-                    <td className="px-2 py-1.5">↳ tratamentos prescritos pelo Dr. (base dos 50%)</td>
+                    <td className="px-2 py-1.5">↳ itens do médico (consulta, tratamento, sinal) e o lucro bruto deles (col. P)</td>
                     {avaliacao.meses.map((mes) => (
-                      <td key={mes.monthKey} className={cellNum}>{moneyFin(mes.prescrito)}</td>
+                      <td key={mes.monthKey} className={cellNum}>
+                        {moneyFin(mes.prescrito)}
+                        <span className="block text-[10px]">col. P {moneyFin(mes.lucroBrutoProdutos)}</span>
+                      </td>
                     ))}
-                    <td className={cellNum}>{avaliacao.meses.length > 1 ? moneyFin(avaliacao.consolidado.prescrito) : ""}</td>
+                    <td className={cellNum}>
+                      {avaliacao.meses.length > 1 ? moneyFin(avaliacao.consolidado.prescrito) : ""}
+                      {avaliacao.meses.length > 1 ? <span className="block text-[10px]">col. P {moneyFin(avaliacao.consolidado.lucroBrutoProdutos)}</span> : null}
+                    </td>
                     <td className={cellNum} />
                     <td className={cellNum} />
                   </tr>
@@ -534,8 +543,8 @@ export function FinanceiroLucroPage() {
                       {avaliacao.meses.map((mes) => (
                         <td key={mes.monthKey} className={cn(cellNum, campo === "lucro" && mes.lucro < 0 && "text-red-700")}>
                           {moneyFin(mes[campo])} <span className="text-xs text-muted-foreground">({pct(mes.percentuais[campo])})</span>
-                          {campo === "medicoExecutor" && mes.prescrito > 0 ? (
-                            <span className="block text-[10px] text-muted-foreground">pela régua: {moneyFin((mes.prescrito * reguaHoje.medicoExecutor) / 100)}</span>
+                          {campo === "medicoExecutor" && mes.lucroBrutoProdutos > 0 ? (
+                            <span className="block text-[10px] text-muted-foreground">pela col. S: {moneyFin((mes.lucroBrutoProdutos * reguaHoje.medicoExecutor) / 100)}</span>
                           ) : null}
                         </td>
                       ))}
@@ -550,13 +559,13 @@ export function FinanceiroLucroPage() {
                       </td>
                       <td className={cn(cellNum, "text-brand-musgo")}>
                         {campo === "impostos" ? pct(reguaHoje.impostos) : null}
-                        {campo === "medicoExecutor" ? `${pct(reguaHoje.medicoExecutor)} do prescrito` : null}
+                        {campo === "medicoExecutor" ? `${pct(reguaHoje.medicoExecutor)} da col. P` : null}
                         {campo === "lucro" ? `${moneyFin(reguaHoje.lucroMensal)}/mês` : null}
                         {campo === "operacional" ? "o que sobra" : null}
                       </td>
                       <td className={cn(cellNum, "text-brand-musgo")}>
                         {campo === "impostos" ? pct(config.alvo.impostos) : null}
-                        {campo === "medicoExecutor" ? `${pct(config.alvo.medicoExecutor)} do prescrito` : null}
+                        {campo === "medicoExecutor" ? `${pct(config.alvo.medicoExecutor)} da col. P` : null}
                         {campo === "lucro" ? `${moneyFin(config.alvo.lucroMensal)}/mês` : null}
                         {campo === "operacional" ? "o que sobra" : null}
                       </td>
@@ -679,7 +688,7 @@ export function FinanceiroLucroPage() {
                     <th className="px-2 py-1.5 text-right">Disponível</th>
                     <th className="px-2 py-1.5 text-right">Impostos</th>
                     <th className="px-2 py-1.5 text-right">Lucro (cota)</th>
-                    <th className="px-2 py-1.5 text-right">Médico (50% do prescrito)</th>
+                    <th className="px-2 py-1.5 text-right">Médico (col. S)</th>
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Fica p/ gastar</th>
                     <th className="px-2 py-1.5 text-right">Contas pagas (dia)</th>
                     <th className="px-2 py-1.5 text-right">Sobra ou falta (mês)</th>
@@ -731,7 +740,11 @@ export function FinanceiroLucroPage() {
                         <td className={cellNum}>{linha.reservado.lucro ? moneyFin(linha.reservado.lucro) : "—"}</td>
                         <td className={cellNum}>
                           {linha.reservado.medicoExecutor ? moneyFin(linha.reservado.medicoExecutor) : "—"}
-                          {linha.prescrito ? <span className="block text-[10px] text-muted-foreground">de {moneyFin(linha.prescrito)}</span> : null}
+                          {linha.lucroBrutoProdutos ? (
+                            <span className="block text-[10px] text-muted-foreground" title="lucro bruto dos produtos do dia (coluna P) · itens do médico pelo preço">
+                              col. P {moneyFin(linha.lucroBrutoProdutos)} · itens {moneyFin(linha.prescrito)}
+                            </span>
+                          ) : null}
                         </td>
                         <td className={cn(cellNum, "font-bold", linha.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-musgo")}>
                           {linha.total || linha.regua.cotaLucro ? moneyFin(linha.reservado.operacional) : "—"}
@@ -800,7 +813,7 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.lucro)}</td>
                     <td className={cellNum}>
                       {moneyFin(planilha.totais.reservado.medicoExecutor)}
-                      <span className="block text-[10px] font-normal text-muted-foreground">de {moneyFin(planilha.totais.prescrito)}</span>
+                      <span className="block text-[10px] font-normal text-muted-foreground">col. P {moneyFin(planilha.totais.lucroBrutoProdutos)}</span>
                     </td>
                     <td className={cn(cellNum, planilha.totais.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(planilha.totais.reservado.operacional)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.usado.operacional)}</td>
@@ -818,7 +831,8 @@ export function FinanceiroLucroPage() {
             <strong className="text-brand-musgo">Como ler:</strong> &quot;Bruto&quot; é tudo que foi lançado nas comandas do dia (crédito incluído);
             &quot;Taxas&quot; é a maquininha (débito 0,7% · crédito à vista 1,7% · parcelado 2,39%) mais o PIX (0,6%, teto R$ 150); &quot;Entrou (líquido)&quot;
             é o que sobrou. &quot;Impostos&quot; é a % do líquido; &quot;Lucro (cota)&quot; é o lucro do mês dividido pelos dias úteis — vale todo dia útil, mesmo
-            sem entrada; &quot;Médico&quot; é a metade dos tratamentos prescritos no dia; &quot;Fica p/ gastar&quot; é o que sobra (negativo quando o dia não
+            sem entrada; &quot;Médico&quot; é a coluna S da planilha de precificação: 50% do lucro bruto de cada produto do dia (col. P = preço − imposto/cartão −
+            comissão − consumíveis − repasse nutri − custo de sala), produto reconhecido pela descrição e preço do item; &quot;Fica p/ gastar&quot; é o que sobra (negativo quando o dia não
             paga a régua). &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil anterior (pulando feriado), já líquido: a Rede deixa o crédito
             à disposição em D+1 e a clínica decide quando puxar; &quot;puxar hoje&quot; é o custo da antecipação (TAD = SELIC a.m. + 0,9%, pelos dias que
             faltam até os 31 de cada parcela). &quot;Contas pagas (dia)&quot; são as contas operacionais pagas naquele dia (obra, impostos, sócios,

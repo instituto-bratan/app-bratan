@@ -15,10 +15,13 @@
 //     o lucro, e vai dividir pelos dias úteis; esse valor vai ser o valor do
 //     lucro, é sempre esse valor" → cota fixa por dia útil, recalculada a cada
 //     mês pelos dias úteis daquele mês;
-//   · médico executor: "50% do que ele prescreveu" — metade dos tratamentos
-//     lançados no dia vai para o Dr. Daniel; a metade da clínica é que carrega
-//     imposto, lucro e operacional. (A planilha de precificação calcula os 50%
-//     depois de tirar imposto/cartão/sala — ponto em aberto com o Lucas.)
+//   · médico executor: a coluna S da planilha de precificação, "Margem Líquida
+//     Médico" (Lucas, 02/09: "50% de quê? está na coluna S") = 50% do LUCRO
+//     BRUTO DO PRODUTO — preço − imposto/cartão − comissão comercial −
+//     consumíveis − repasse nutri/psi − custo hora-sala. Programa de R$ 6.997 →
+//     lucro bruto 5.030,40 → R$ 2.515,20 para o médico (36% do preço). O
+//     catálogo abaixo guarda o lucro bruto de cada produto da tabela oficial;
+//     o item da comanda é reconhecido pela descrição e pelo preço.
 //   · operacional = o que sobra (pode ficar negativo num dia fraco).
 //
 // A aula sugere subir devagar ("regra do 1%"); a configuração guarda DEGRAUS
@@ -71,7 +74,7 @@ export type ReguaLucro = {
   impostos: number;
   /** R$ por mês para os sócios — vira cota fixa por dia útil do mês. */
   lucroMensal: number;
-  /** % do que o Dr. Daniel prescreveu no dia (itens de tratamento). */
+  /** % do LUCRO BRUTO DOS PRODUTOS do dia que vai para o Dr. Daniel (coluna S da planilha: 50%). */
   medicoExecutor: number;
 };
 
@@ -108,7 +111,7 @@ export const EXEMPLO_DA_AULA = { impostos: 16.6, lucro: 25, medicoExecutor: 28, 
  *  · impostos 16,6% = a alíquota da aula (lucro presumido), de propósito acima
  *    dos 13,33% das nossas notas — sobrar imposto separado nunca é problema;
  *  · lucro R$ 40.000/mês ("mais ou menos o lucro"), dividido pelos dias úteis;
- *  · médico executor 50% do prescrito (planilha de precificação: split 50/50).
+ *  · médico executor 50% do lucro bruto do produto (coluna S da planilha).
  */
 export const defaultLucroConfig: LucroConfig = {
   degraus: [{ desde: "2026-09-01", impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 }],
@@ -177,13 +180,114 @@ export function subirDegrau(config: LucroConfig, desde: string, reais = 2000): L
   return { ...config, degraus: [...semMesmoDia, novo].sort((a, b) => a.desde.localeCompare(b.desde)) };
 }
 
-// ---- O que conta como "prescrito pelo Dr. Daniel" -------------------------------
-// Tratamento = plano de acompanhamento, medicação, implante. Consulta,
-// bioimpedância, sinal e retorno são da clínica; nutri e psi têm repasse próprio.
-export const ITENS_PRESCRITOS = new Set<FinSaleItemType>(["TRATAMENTO"]);
+// ---- A planilha de precificação dentro do motor ---------------------------------
+// "BRATAN — PRECIFICAÇÃO E LUCRO - TAXA HORA SALA (limpa, custos comprovados)",
+// 02/09/2026. Para cada produto da tabela oficial: o preço (coluna F) e o LUCRO
+// BRUTO DO PRODUTO (coluna P = preço − imposto/cartão − comissão − consumíveis −
+// repasse nutri/psi − custo hora-sala). A coluna S, "Margem Líquida Médico", é
+// 50% desse lucro bruto — e é isso que o Dr. Daniel recebe. O item da comanda é
+// reconhecido pela descrição (palavras-chave) e, se não der, pelo preço exato.
+// Quando o valor lançado difere do preço de tabela (desconto, acréscimo do
+// cartão), o lucro bruto acompanha proporcionalmente.
+export type ProdutoPrecificado = {
+  nome: string;
+  preco: number;
+  /** Coluna P da planilha (= 2 × coluna S). */
+  lucroBruto: number;
+  tipos: FinSaleItemType[];
+  padrao?: RegExp;
+};
 
+export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
+  // APP DO DR. DANIEL — itens do plano
+  { nome: "Programa de Acompanhamento · 6 meses", preco: 6997, lucroBruto: 5030.4, tipos: ["TRATAMENTO"], padrao: /programa|acompanhamento|plano/i },
+  { nome: "Club Bratan", preco: 6997, lucroBruto: 5624.4, tipos: ["TRATAMENTO"], padrao: /club|clube/i },
+  { nome: "Testosterona base / cipionato / enantato", preco: 490, lucroBruto: 386.6, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
+  { nome: "Testosterona blend", preco: 590, lucroBruto: 424.4, tipos: ["TRATAMENTO"], padrao: /blend/i },
+  { nome: "Testosterona + HCG", preco: 790, lucroBruto: 493, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
+  { nome: "Undecilato de testosterona", preco: 590, lucroBruto: 479.4, tipos: ["TRATAMENTO"], padrao: /undecilato|nebido/i },
+  { nome: "Nandrolona", preco: 590, lucroBruto: 494.4, tipos: ["TRATAMENTO"], padrao: /nandrolona|deca/i },
+  { nome: "HCG (frasco)", preco: 590, lucroBruto: 334, tipos: ["TRATAMENTO"], padrao: /hcg/i },
+  { nome: "Vitamina D 600.000 UI", preco: 590, lucroBruto: 510.4, tipos: ["TRATAMENTO"], padrao: /vitamina d\b|vit\.? ?d\b|colecalciferol/i },
+  { nome: "Metilcobalamina · B12", preco: 590, lucroBruto: 513.8, tipos: ["TRATAMENTO"], padrao: /b12|cobalamina/i },
+  { nome: "Metilfolato · B9", preco: 590, lucroBruto: 514, tipos: ["TRATAMENTO"], padrao: /\bb9\b|folato/i },
+  { nome: "Piridoxina · B6", preco: 590, lucroBruto: 526.2, tipos: ["TRATAMENTO"], padrao: /\bb6\b|piridoxina/i },
+  { nome: "NADH", preco: 590, lucroBruto: 471.8, tipos: ["TRATAMENTO"], padrao: /nadh/i },
+  { nome: "Coenzima Q10", preco: 590, lucroBruto: 505.4, tipos: ["TRATAMENTO"], padrao: /q10|coenzima/i },
+  { nome: "Ferinject", preco: 1990, lucroBruto: 1305.4, tipos: ["TRATAMENTO"], padrao: /ferinject|carboximaltose/i },
+  { nome: "Tirzepatida · frasco", preco: 3170, lucroBruto: 1775.6, tipos: ["TRATAMENTO"], padrao: /(tirze|mounjaro|zepbound).*frasco|frasco.*(tirze|mounjaro)/i },
+  { nome: "Tirzepatida · até 30 un", preco: 390, lucroBruto: 210.8, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
+  { nome: "Tirzepatida · 31 a 49 un", preco: 590, lucroBruto: 300.8, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
+  { nome: "Tirzepatida · acima de 50 un", preco: 790, lucroBruto: 436.8, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
+  { nome: "Honorários de implante (sem pellet)", preco: 5700, lucroBruto: 4994.4, tipos: ["TRATAMENTO"], padrao: /implante|honor/i },
+  { nome: "Pellet testosterona 50mg", preco: 123, lucroBruto: 13.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 100mg", preco: 190, lucroBruto: 21, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 125mg", preco: 224, lucroBruto: 24.8, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 150mg", preco: 280, lucroBruto: 31, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 200mg", preco: 336, lucroBruto: 37.2, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet estradiol 25mg", preco: 213, lucroBruto: 23.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet gestrinona 35mg", preco: 381, lucroBruto: 42.2, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet gestrinona 50mg", preco: 538, lucroBruto: 59.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Aderiu tratamento sem o Programa — Pix", preco: 1500, lucroBruto: 1183.8, tipos: ["TRATAMENTO"], padrao: /aderiu|sem (o )?programa/i },
+  { nome: "Aderiu tratamento sem o Programa — débito/2x", preco: 1650, lucroBruto: 1248.8, tipos: ["TRATAMENTO"], padrao: /aderiu|sem (o )?programa/i },
+  // APP DO CLOSER — comercial
+  { nome: "Sinal de consulta", preco: 500, lucroBruto: 408, tipos: ["SINAL"] },
+  { nome: "Consulta avulsa + bioimpedância — Pix", preco: 2500, lucroBruto: 2065.4, tipos: ["CONSULTA"] },
+  { nome: "Consulta avulsa + bioimpedância — débito/2x", preco: 2750, lucroBruto: 2176.4, tipos: ["CONSULTA"] },
+  { nome: "Mapeamento corporal — Pix", preco: 200, lucroBruto: 167.2, tipos: ["BIOIMPEDANCIA"] },
+  { nome: "Mapeamento corporal — débito/2x", preco: 250, lucroBruto: 203.6, tipos: ["BIOIMPEDANCIA"] },
+];
+
+/**
+ * Quando o produto não é reconhecido, a fração do preço que vira lucro bruto,
+ * por tipo de item — o valor da planilha para o produto de referência do tipo
+ * (Programa 71,9% · consulta 82,6% · sinal 81,6% · mapeamento 83,6%). Nutri, psi,
+ * retorno e "outro" não são do médico executor.
+ */
+export const LUCRO_BRUTO_PADRAO_POR_TIPO: Partial<Record<FinSaleItemType, number>> = {
+  TRATAMENTO: 5030.4 / 6997,
+  DESTRAVAR: 5030.4 / 6997,
+  CONSULTA: 2065.4 / 2500,
+  SINAL: 408 / 500,
+  BIOIMPEDANCIA: 167.2 / 200,
+};
+
+export function produtoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }): ProdutoPrecificado | null {
+  const candidatos = CATALOGO_PRECIFICACAO.filter((produto) => produto.tipos.includes(item.itemType));
+  if (!candidatos.length) return null;
+  const descricao = item.description ?? "";
+  const porPalavra = candidatos.filter((produto) => produto.padrao && produto.padrao.test(descricao));
+  if (porPalavra.length) {
+    // Entre os que batem na descrição (ex.: as quatro tirzepatidas), o preço mais próximo decide.
+    return [...porPalavra].sort((a, b) => Math.abs(a.preco - item.amount) - Math.abs(b.preco - item.amount))[0];
+  }
+  const porPreco = candidatos.filter((produto) => Math.abs(produto.preco - item.amount) < 0.005);
+  if (porPreco.length === 1) return porPreco[0];
+  return null;
+}
+
+/** Coluna P da planilha para um item da comanda (proporcional ao valor lançado). */
+export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }) {
+  const amount = item.amount || 0;
+  if (amount <= 0) return 0;
+  const produto = produtoDoItem(item);
+  if (produto) return round2((produto.lucroBruto / produto.preco) * amount);
+  const fracao = LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
+  return fracao ? round2(fracao * amount) : 0;
+}
+
+/** Itens da comanda que têm parte do médico executor (os mesmos tipos do catálogo/padrão). */
 export function prescritoNaComanda(sale: FinSale) {
-  return round2(sale.items.filter((item) => ITENS_PRESCRITOS.has(item.itemType)).reduce((soma, item) => soma + (item.amount || 0), 0));
+  return round2(
+    sale.items
+      .filter((item) => LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType] !== undefined)
+      .reduce((soma, item) => soma + (item.amount || 0), 0),
+  );
+}
+
+/** Soma da coluna P dos itens da comanda — a base dos 50% do médico. */
+export function lucroBrutoNaComanda(sale: FinSale) {
+  return round2(sale.items.reduce((soma, item) => soma + lucroBrutoDoItem(item), 0));
 }
 
 // ---- Qual categoria da P12 pertence a qual envelope ---------------------------
@@ -223,13 +327,14 @@ export function envelopeDaConta(expense: FinExpense, category?: FinCategory | nu
 }
 
 /**
- * Reparte o dia: impostos = % do líquido; médico executor = % do prescrito;
- * lucro = a cota fixa do dia; operacional = o que sobra (centavo a centavo,
- * para os quatro fecharem o líquido — e negativo quando o dia não paga a régua).
+ * Reparte o dia: impostos = % do líquido; médico executor = % do lucro bruto
+ * dos produtos (coluna S); lucro = a cota fixa do dia; operacional = o que
+ * sobra (centavo a centavo, para os quatro fecharem o líquido — e negativo
+ * quando o dia não paga a régua).
  */
-export function repartir(liquido: number, prescrito: number, regua: ReguaLucro, cotaLucro: number): Envelopes {
+export function repartir(liquido: number, lucroBrutoProdutos: number, regua: ReguaLucro, cotaLucro: number): Envelopes {
   const impostos = round2((liquido * regua.impostos) / 100);
-  const medicoExecutor = round2((prescrito * regua.medicoExecutor) / 100);
+  const medicoExecutor = round2((lucroBrutoProdutos * regua.medicoExecutor) / 100);
   const lucro = round2(cotaLucro);
   const operacional = round2(liquido - impostos - medicoExecutor - lucro);
   return { impostos, lucro, medicoExecutor, operacional };
@@ -258,8 +363,10 @@ export type LinhaDiaLucro = {
   taxas: number;
   /** total − taxas: o que entrou de verdade. */
   liquido: number;
-  /** Itens de tratamento lançados no dia — a base dos 50% do médico executor. */
+  /** Itens do médico lançados no dia (tratamento, consulta, sinal, mapeamento), pelo preço. */
   prescrito: number;
+  /** Coluna P da planilha somada nos itens do dia — a base dos 50% do médico executor. */
+  lucroBrutoProdutos: number;
   /** O que já dá para mexer no dia: PIX/dinheiro/outros do dia (líquidos) + o cartão do dia útil anterior (líquido da taxa). */
   disponivel: number;
   /** Só a parte do cartão dentro de `disponivel`. */
@@ -288,6 +395,7 @@ export type PlanilhaLucro = {
     taxas: number;
     liquido: number;
     prescrito: number;
+    lucroBrutoProdutos: number;
     disponivel: number;
     antecipacao: number;
     reservado: Envelopes;
@@ -412,6 +520,7 @@ export function buildPlanilhaLucro(input: {
       taxas: 0,
       liquido: 0,
       prescrito: 0,
+      lucroBrutoProdutos: 0,
       disponivel: 0,
       cartaoDisponivel: 0,
       antecipacao: 0,
@@ -428,6 +537,7 @@ export function buildPlanilhaLucro(input: {
     for (const sale of sales) {
       if (sale.saleDate !== dia) continue;
       linha.prescrito += prescritoNaComanda(sale);
+      linha.lucroBrutoProdutos += lucroBrutoNaComanda(sale);
       for (const payment of sale.payments) {
         const amount = payment.amount || 0;
         if (payment.method === "PIX") {
@@ -450,6 +560,7 @@ export function buildPlanilhaLucro(input: {
     linha.credito = round2(linha.credito);
     linha.outros = round2(linha.outros);
     linha.prescrito = round2(linha.prescrito);
+    linha.lucroBrutoProdutos = round2(linha.lucroBrutoProdutos);
     linha.taxas = round2(linha.taxas + taxasPix);
     linha.total = round2(linha.pix + linha.dinheiro + linha.debito + linha.credito + linha.outros);
     linha.liquido = round2(linha.total - linha.taxas);
@@ -457,7 +568,7 @@ export function buildPlanilhaLucro(input: {
     linha.cartaoDisponivel = cartaoHoje.liquido;
     linha.antecipacao = cartaoHoje.antecipacao;
     linha.disponivel = round2(linha.pix - taxasPix + linha.dinheiro + linha.outros + cartaoHoje.liquido);
-    linha.reservado = repartir(linha.liquido, linha.prescrito, regua, linha.regua.cotaLucro);
+    linha.reservado = repartir(linha.liquido, linha.lucroBrutoProdutos, regua, linha.regua.cotaLucro);
 
     acumuladoReservado = somaEnvelopes(acumuladoReservado, linha.reservado);
     acumuladoUsado = somaEnvelopes(acumuladoUsado, linha.usado);
@@ -486,6 +597,7 @@ export function buildPlanilhaLucro(input: {
       taxas: soma((linha) => linha.taxas),
       liquido: soma((linha) => linha.liquido),
       prescrito: soma((linha) => linha.prescrito),
+      lucroBrutoProdutos: soma((linha) => linha.lucroBrutoProdutos),
       disponivel: soma((linha) => linha.disponivel),
       antecipacao: soma((linha) => linha.antecipacao),
       reservado: acumuladoReservado,
@@ -506,8 +618,10 @@ export function buildPlanilhaLucro(input: {
 export type MesAvaliado = {
   monthKey: string;
   receita: number;
-  /** Itens de tratamento vendidos no mês — a base do "50% do prescrito". */
+  /** Itens do médico vendidos no mês (tratamento, consulta, sinal, mapeamento), pelo preço. */
   prescrito: number;
+  /** Coluna P da planilha somada no mês — a base dos 50% do médico executor. */
+  lucroBrutoProdutos: number;
   impostos: number;
   medicoExecutor: number;
   operacional: number;
@@ -536,6 +650,7 @@ function avaliaMes(
   const vendasDoMes = sales.filter((sale) => sale.saleDate.slice(0, 7) === monthKey);
   const receita = round2(vendasDoMes.reduce((soma, sale) => soma + saleTotal(sale), 0) + crediarioProfitOfMonth(crediarioProfits, monthKey));
   const prescrito = round2(vendasDoMes.reduce((soma, sale) => soma + prescritoNaComanda(sale), 0));
+  const lucroBrutoProdutos = round2(vendasDoMes.reduce((soma, sale) => soma + lucroBrutoNaComanda(sale), 0));
   let impostos = 0;
   let medicoExecutor = 0;
   let operacional = 0;
@@ -559,6 +674,7 @@ function avaliaMes(
     monthKey,
     receita,
     prescrito,
+    lucroBrutoProdutos,
     impostos: round2(impostos),
     medicoExecutor: round2(medicoExecutor),
     operacional: round2(operacional),
@@ -598,6 +714,7 @@ export function avaliacaoInstantanea(
       monthKey: meses.length ? `${meses[0]}..${meses[meses.length - 1]}` : "",
       receita,
       prescrito: soma((mes) => mes.prescrito),
+      lucroBrutoProdutos: soma((mes) => mes.lucroBrutoProdutos),
       impostos,
       medicoExecutor,
       operacional,

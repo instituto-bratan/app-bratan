@@ -320,7 +320,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       whatIs:
         "A régua 'Vendas − Lucro = Despesas' da mentoria, dia a dia: de tudo que entrou nas comandas do dia, o app já separa impostos, lucro dos sócios e o repasse do médico — e mostra quanto sobrou de verdade para gastar.",
       steps: [
-        "Confira a régua: impostos (% do líquido), lucro dos sócios (R$ por mês ÷ dias úteis) e médico executor (% do que o Dr. prescreveu); o operacional é o que sobra.",
+        "Confira a régua: impostos (% do líquido), lucro dos sócios (R$ por mês ÷ dias úteis) e médico executor (coluna S da precificação: 50% do lucro bruto de cada produto); o operacional é o que sobra.",
         "Todo dia, olhe a linha do dia: quanto entrou, quanto já não é nosso e quanto já está disponível.",
         "Transfira os envelopes para as contas separadas e marque o dia como 'Separado'.",
         "Abra o portal da Rede, veja o 'a receber' e digite na Conferência com a maquininha — o app mostra a diferença.",
