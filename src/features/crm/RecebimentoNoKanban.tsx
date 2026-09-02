@@ -115,6 +115,21 @@ export function RecebimentoNoKanban({
   titulo: string;
 }) {
   const inputArquivo = useRef<HTMLInputElement>(null);
+  // Tocar num produto adiciona a linha; tocar de novo soma mais um (duas doses).
+  function adicionaProduto(nome: string) {
+    const produto = produtoPorNome(nome);
+    if (!produto) return;
+    const indice = itens.findIndex((item) => item.produtoNome === produto.nome);
+    if (indice < 0) {
+      onItensChange([...itens, itemFechadoDoProduto(produto)]);
+      return;
+    }
+    onItensChange(
+      itens.map((item, i) =>
+        i === indice ? { ...item, quantidade: item.quantidade + 1, valorTexto: formataValor(produto.preco * (item.quantidade + 1)) } : item,
+      ),
+    );
+  }
   // Só dinheiro não gera comprovante; qualquer outra forma gera.
   const soDinheiro = divisao.length > 0 && divisao.every((parcela) => parcela.forma === "DINHEIRO");
   /**
@@ -142,13 +157,114 @@ export function RecebimentoNoKanban({
         </span>
       </div>
 
-      {/* O COMPROVANTE VEM PRIMEIRO E SEMPRE VISÍVEL (corrigido em 17/08/2026).
-      Estava escondido atrás de "valor > 0": quem abria a tela não via o botão
-      de anexar e concluía que nada havia mudado. É o que o Lucas mais pediu —
-      então é a primeira coisa da tela, sempre. */}
+      {/* PASSO 1 — O QUE O PACIENTE FECHOU (02/09/2026). Lucas: "precisa estar
+          todas essas opções aqui no Kanban, porque a maioria das comandas do
+          Lançar Dia nasce do registrar fechamento". Antes a lista ficava dentro
+          do passo "do que se trata", que só abria depois de digitar o valor, e
+          num select fechado — ninguém via. Agora é a primeira coisa da tela,
+          sempre visível, com os produtos da tabela de preços como botões
+          agrupados por seção. Tocar num produto adiciona a linha com nome e
+          preço oficiais; a soma preenche o valor vendido e o recebido. */}
       <div className="grid gap-2">
         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
           <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">1</span>
+          O que o paciente fechou (tabela de preços)
+        </p>
+        <div className="grid gap-2 rounded-lg border border-brand-oliva/15 bg-white/60 p-2.5">
+          {secoesDoCatalogo().map((grupo) => (
+            <div key={grupo.secao}>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{grupo.secao}</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {grupo.produtos.map((produto) => {
+                  const escolhido = itens.some((item) => item.produtoNome === produto.nome);
+                  return (
+                    <button
+                      key={produto.nome}
+                      type="button"
+                      onClick={() => adicionaProduto(produto.nome)}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-left text-[11px] font-semibold transition",
+                        escolhido ? "border-brand-musgo bg-brand-musgo text-white" : "border-brand-oliva/30 bg-white/80 text-brand-tinta hover:border-brand-dourado",
+                      )}
+                      title={escolhido ? "Toque de novo para somar mais um" : "Adicionar à comanda"}
+                    >
+                      {produto.nome} <span className={cn("font-normal", escolhido ? "text-white/80" : "text-muted-foreground")}>· {moneyFin(produto.preco)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => onItensChange([...itens, itemFechadoLivre(itemTipo)])}>
+            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> outro item (fora da tabela)
+          </Button>
+        </div>
+        {itens.length ? (
+          <div className="grid gap-1.5">
+            {itens.map((item, index) => {
+              const produto = item.produtoNome ? produtoPorNome(item.produtoNome) : null;
+              const atualiza = (mudanca: Partial<ItemFechado>) => onItensChange(itens.map((it, i) => (i === index ? { ...it, ...mudanca } : it)));
+              return (
+                <div key={index} className="grid items-center gap-1.5 rounded-md border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[1.6fr_0.45fr_0.8fr_auto]">
+                  {produto ? (
+                    <span className="text-sm text-brand-tinta">
+                      {produto.nome} <span className="text-xs text-muted-foreground">· {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}</span>
+                    </span>
+                  ) : (
+                    <div className="grid gap-1 sm:grid-cols-[0.8fr_1.2fr]">
+                      <select
+                        value={item.itemType}
+                        onChange={(event) => atualiza({ itemType: event.target.value as FinSaleItemType })}
+                        className="h-9 rounded-md border border-input bg-white px-2 text-xs"
+                        aria-label="Tipo do item"
+                      >
+                        {tiposDeItem.map((opcao) => (
+                          <option key={opcao} value={opcao}>{saleItemTypeLabels[opcao]}</option>
+                        ))}
+                      </select>
+                      <Input value={item.descricao} onChange={(event) => atualiza({ descricao: event.target.value })} placeholder="Descreva o item (fora da tabela)" className="h-9" />
+                    </div>
+                  )}
+                  <Input
+                    value={String(item.quantidade)}
+                    onChange={(event) => {
+                      const quantidade = Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 1);
+                      atualiza({ quantidade, ...(produto ? { valorTexto: formataValor(produto.preco * quantidade) } : {}) });
+                    }}
+                    inputMode="numeric"
+                    aria-label="Quantidade"
+                    className="h-9 text-center"
+                  />
+                  <Input value={item.valorTexto} onChange={(event) => atualiza({ valorTexto: event.target.value })} placeholder="0,00" inputMode="decimal" aria-label="Valor da linha" className="h-9 text-right" />
+                  <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => onItensChange(itens.filter((_, i) => i !== index))}>
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </div>
+              );
+            })}
+            <p className="text-xs text-muted-foreground">
+              Itens somam <strong className="text-brand-tinta">{moneyFin(totalDosItensFechados(itens, parseFinAmount))}</strong>
+              {valor > 0 && Math.abs(totalDosItensFechados(itens, parseFinAmount) - valor) > 0.01
+                ? ` — entrou ${moneyFin(valor)}: a comanda leva o que entrou, com cada item na mesma proporção; o resto fica como vendido.`
+                : valor > 0
+                  ? " — bate com o valor recebido."
+                  : " — o valor recebido foi preenchido com essa soma; ajuste se entrou menos."}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Toque nos produtos que o paciente fechou — Plano + HCG + vitamina D, por exemplo. Cada um vira um item da comanda com o nome e o
+            preço da tabela, e a soma preenche o valor.
+          </p>
+        )}
+      </div>
+
+      {/* O COMPROVANTE SEMPRE VISÍVEL (corrigido em 17/08/2026). Estava escondido
+      atrás de "valor > 0": quem abria a tela não via o botão de anexar e
+      concluía que nada havia mudado. */}
+      <div className="grid gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
+          <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">2</span>
           Comprovante de pagamento
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -225,10 +341,10 @@ export function RecebimentoNoKanban({
         ) : null}
       </div>
 
-      {/* PASSO 1 — quanto entrou */}
+      {/* PASSO 3 — quanto entrou */}
       <div className="grid gap-2">
         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-          <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">2</span>
+          <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">3</span>
           Quanto entrou
         </p>
         <div>
@@ -329,10 +445,10 @@ export function RecebimentoNoKanban({
 
       {valor > 0 ? (
         <>
-          {/* PASSO 2 — do que se trata e a nota */}
+          {/* PASSO 4 — do que se trata */}
           <div className="grid gap-2">
             <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-              <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">3</span>
+              <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">4</span>
               Do que se trata
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -352,104 +468,32 @@ export function RecebimentoNoKanban({
                 </button>
               ))}
             </div>
-            <div className="grid gap-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label>O que o paciente fechou (produtos da tabela de preços)</Label>
-                <Button type="button" variant="ghost" size="sm" onClick={() => onItensChange([...itens, itemFechadoLivre(itemTipo)])}>
-                  <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> outro item
-                </Button>
-              </div>
-              <select
-                value=""
-                onChange={(event) => {
-                  const produto = produtoPorNome(event.target.value);
-                  if (produto) onItensChange([...itens, itemFechadoDoProduto(produto)]);
-                }}
-                className="h-10 rounded-md border border-brand-dourado/50 bg-white/80 px-3 text-sm"
-                aria-label="Adicionar produto da tabela"
-              >
-                <option value="">Adicionar produto da tabela… (Programa, HCG, testosterona, vitamina D…)</option>
-                {secoesDoCatalogo().map((grupo) => (
-                  <optgroup key={grupo.secao} label={grupo.secao}>
-                    {grupo.produtos.map((produto) => (
-                      <option key={produto.nome} value={produto.nome}>
-                        {produto.nome} · {moneyFin(produto.preco)}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              {itens.map((item, index) => {
-                const produto = item.produtoNome ? produtoPorNome(item.produtoNome) : null;
-                const atualiza = (mudanca: Partial<ItemFechado>) => onItensChange(itens.map((it, i) => (i === index ? { ...it, ...mudanca } : it)));
-                return (
-                  <div key={index} className="grid items-center gap-1.5 rounded-md border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[1.6fr_0.45fr_0.8fr_auto]">
-                    {produto ? (
-                      <span className="text-sm text-brand-tinta">
-                        {produto.nome} <span className="text-xs text-muted-foreground">· {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}</span>
-                      </span>
-                    ) : (
-                      <div className="grid gap-1 sm:grid-cols-[0.8fr_1.2fr]">
-                        <select
-                          value={item.itemType}
-                          onChange={(event) => atualiza({ itemType: event.target.value as FinSaleItemType })}
-                          className="h-9 rounded-md border border-input bg-white px-2 text-xs"
-                          aria-label="Tipo do item"
-                        >
-                          {tiposDeItem.map((opcao) => (
-                            <option key={opcao} value={opcao}>{saleItemTypeLabels[opcao]}</option>
-                          ))}
-                        </select>
-                        <Input value={item.descricao} onChange={(event) => atualiza({ descricao: event.target.value })} placeholder="Descreva o item (fora da tabela)" className="h-9" />
-                      </div>
-                    )}
-                    <Input
-                      value={String(item.quantidade)}
-                      onChange={(event) => {
-                        const quantidade = Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 1);
-                        atualiza({ quantidade, ...(produto ? { valorTexto: formataValor(produto.preco * quantidade) } : {}) });
-                      }}
-                      inputMode="numeric"
-                      aria-label="Quantidade"
-                      className="h-9 text-center"
-                    />
-                    <Input value={item.valorTexto} onChange={(event) => atualiza({ valorTexto: event.target.value })} placeholder="0,00" inputMode="decimal" aria-label="Valor da linha" className="h-9 text-right" />
-                    <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => onItensChange(itens.filter((_, i) => i !== index))}>
-                      <X className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                );
-              })}
-              {itens.length ? (
-                <p className="text-xs text-muted-foreground">
-                  Itens somam <strong className="text-brand-tinta">{moneyFin(totalDosItensFechados(itens, parseFinAmount))}</strong>
-                  {Math.abs(totalDosItensFechados(itens, parseFinAmount) - valor) > 0.01
-                    ? ` — a comanda leva o que entrou (${moneyFin(valor)}), com cada item na mesma proporção; o resto fica como vendido.`
-                    : " — bate com o valor recebido."}
-                </p>
-              ) : (
-                <div>
-                  <p className="text-[11px] text-muted-foreground">Sem produto da tabela, a comanda leva um item só, deste tipo:</p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {tiposDeItem.map((opcao) => (
-                      <button
-                        key={opcao}
-                        type="button"
-                        onClick={() => onItemTipoChange(opcao)}
-                        className={cn(
-                          "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
-                          itemTipo === opcao
-                            ? "border-brand-dourado bg-brand-creme text-brand-tinta"
-                            : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-dourado",
-                        )}
-                      >
-                        {saleItemTypeLabels[opcao]}
-                      </button>
-                    ))}
-                  </div>
+            {itens.length === 0 ? (
+              <div>
+                <p className="text-[11px] text-muted-foreground">Sem produto escolhido no passo 1, a comanda leva um item só, deste tipo:</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {tiposDeItem.map((opcao) => (
+                    <button
+                      key={opcao}
+                      type="button"
+                      onClick={() => onItemTipoChange(opcao)}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                        itemTipo === opcao
+                          ? "border-brand-dourado bg-brand-creme text-brand-tinta"
+                          : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-dourado",
+                      )}
+                    >
+                      {saleItemTypeLabels[opcao]}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                A comanda leva os {itens.length} item(ns) escolhidos no passo 1, com o nome da tabela.
+              </p>
+            )}
           </div>
 
           {/* PARA ONDE VAI — a lista se completando, em vez de um parágrafo */}

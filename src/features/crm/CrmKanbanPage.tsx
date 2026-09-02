@@ -1035,11 +1035,25 @@ export function CrmKanbanPage() {
   // fechou) e o canal liga a esteira certa sozinho. Telefone é a chave única —
   // o PatientPicker busca antes de criar (regra de ouro nº 1).
   // Produto a produto: a soma das linhas é o valor vendido — quem escolhe os
-  // produtos não digita o total de novo (e não erra a soma).
+  // produtos não digita o total de novo (e não erra a soma). O valor RECEBIDO
+  // acompanha a soma enquanto ninguém digitou outro número nele (sinal,
+  // parcial); a partir daí fica como a pessoa deixou.
   function atualizaItensFechados(itens: ItemFechado[]) {
+    const totalAnterior = totalDosItensFechados(fcItens, parseFinAmount);
     setFcItens(itens);
     const total = totalDosItensFechados(itens, parseFinAmount);
-    if (total > 0) setFcSold(formataValor(total));
+    if (total <= 0) return;
+    setFcSold(formataValor(total));
+    if (!fcReceived.trim() || Math.abs(parseFinAmount(fcReceived) - totalAnterior) < 0.005) setFcReceived(formataValor(total));
+  }
+
+  function atualizaItensNovo(itens: ItemFechado[]) {
+    const totalAnterior = totalDosItensFechados(newItens, parseFinAmount);
+    setNewItens(itens);
+    const total = totalDosItensFechados(itens, parseFinAmount);
+    if (total <= 0) return;
+    if (!newValue.trim()) setNewValue(formataValor(total));
+    if (!newRecebido.trim() || Math.abs(parseFinAmount(newRecebido) - totalAnterior) < 0.005) setNewRecebido(formataValor(total));
   }
 
   function handleRegistrarFechamento(event: FormEvent) {
@@ -2377,7 +2391,7 @@ export function CrmKanbanPage() {
                     itemTipo={newItemTipo}
                     onItemTipoChange={setNewItemTipo}
                     itens={newItens}
-                    onItensChange={setNewItens}
+                    onItensChange={atualizaItensNovo}
                     tipo={newTipo}
                     onTipoChange={(tipo) => setNewTipo(tipo as typeof newTipo)}
                     tiposDisponiveis={["SINAL_CONSULTA", "PRIMEIRA_CONSULTA", "RETORNO"]}

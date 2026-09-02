@@ -162,6 +162,22 @@ test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fec
   assert.equal(cat.produtoPorNome("Club Bratan"), null, "o Club a R$ 6.997 saiu da tabela");
 });
 
+test("Kanban: os produtos da tabela são o PASSO 1 do registrar fechamento, visíveis antes de qualquer valor", () => {
+  // Lucas, 02/09: "precisa estar todas essas opções aqui no Kanban… não estou vendo
+  // esses itens". Contrato de fonte: o bloco dos produtos vem antes do comprovante e do
+  // valor, e NÃO está dentro do trecho que só aparece com valor > 0.
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/RecebimentoNoKanban.tsx"), "utf8");
+  const produtos = fonte.indexOf("O que o paciente fechou (tabela de preços)");
+  const comprovante = fonte.indexOf("Comprovante de pagamento");
+  const quantoEntrou = fonte.indexOf("Quanto entrou");
+  const gate = fonte.indexOf("{valor > 0 ? (");
+  assert.ok(produtos > 0 && comprovante > 0 && quantoEntrou > 0 && gate > 0, "os quatro trechos existem");
+  assert.ok(produtos < comprovante && produtos < quantoEntrou, "produtos primeiro");
+  assert.ok(produtos < gate, "fora do trecho que depende do valor");
+  assert.ok(fonte.includes("secoesDoCatalogo().map"), "todas as seções da tabela aparecem como botões");
+  assert.ok(fonte.includes("adicionaProduto("), "tocar no produto adiciona a linha");
+});
+
 test("degraus: o valor do dia é o do degrau vigente, e subir não passa do alvo", () => {
   const config = {
     degraus: [
