@@ -320,15 +320,15 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       whatIs:
         "A régua 'Vendas − Lucro = Despesas' da mentoria, dia a dia: de tudo que entrou nas comandas do dia, o app já separa impostos, lucro dos sócios e o repasse do médico — e mostra quanto sobrou de verdade para gastar.",
       steps: [
-        "Confira os percentuais do degrau atual (impostos, lucro, médico executor); o operacional é o que sobra.",
-        "Todo dia, olhe a linha do dia: quanto entrou, quanto já não é nosso e quanto caiu na conta.",
+        "Confira os percentuais da régua (impostos, lucro, médico executor); o operacional é o que sobra — ~30%, como na aula.",
+        "Todo dia, olhe a linha do dia: quanto entrou, quanto já não é nosso e quanto já está disponível.",
         "Transfira os envelopes para as contas separadas e marque o dia como 'Separado'.",
-        "No começo do mês, veja 'Onde estamos' (últimos 3 meses) e decida se sobe o degrau do lucro.",
+        "No começo do mês, veja 'Onde estamos' (últimos 3 meses) para enxergar a distância entre a régua e a realidade.",
       ],
       tips: [
         "Percentual é sempre sobre 100% do que entrou — nunca sobre o que sobrou.",
-        "O crédito conta no dia do lançamento, mas só cai na conta em D+31: a coluna 'caiu na conta' é o que dá para transferir hoje.",
-        "Não é meta, é decisão: comece pequeno (5% de lucro) e suba um degrau por mês.",
+        "O crédito conta no dia do lançamento e fica disponível no dia útil seguinte; a clínica decide quando resgatar (esperar 31 dias custa menos juros).",
+        "Não é meta, é decisão: quanto menos sobra para gastar, mais vira lucro.",
       ],
     },
   },

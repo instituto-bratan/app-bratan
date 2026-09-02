@@ -85,7 +85,7 @@ test("degraus: o percentual do dia é o do degrau vigente, e subir não passa do
   assert.equal(li.subirDegrau(subiu, "2026-11-01", 2).degraus.length, 3, "subir de novo no mesmo dia substitui, não duplica");
 });
 
-test("planilha do dia: crédito conta no lançamento, mas só cai na conta em D+31", () => {
+test("planilha do dia: crédito conta no lançamento e fica disponível no dia útil seguinte (D+1, líquido da taxa)", () => {
   const vendas = [
     venda("ana", "2026-09-01", [{ method: "PIX", amount: 4000 }, { method: "CARTAO_CREDITO", amount: 6000 }]),
     venda("bia", "2026-09-02", [{ method: "DINHEIRO", amount: 1000 }]),
@@ -96,11 +96,13 @@ test("planilha do dia: crédito conta no lançamento, mas só cai na conta em D+
   const dia1 = p.linhas[0];
   assert.equal(dia1.total, 10000);
   assert.equal(dia1.credito, 6000);
-  assert.equal(dia1.caiuNaConta, 4000, "o crédito não caiu ainda: só o PIX está no banco");
+  assert.equal(dia1.disponivel, 4000, "no dia da venda só o PIX está disponível");
   assert.equal(dia1.reservado.lucro, 2000, "20% dos 10 mil já não é nosso");
   assert.equal(dia1.reservado.operacional, 6000, "fica 60% para gastar");
   assert.equal(dia1.percentuais.operacional, 60);
   const dia2 = p.linhas[1];
+  // Venda à vista em 01/09 (tabela v2: 1,7%) → 6.000 × 0,983 = 5.898 à disposição em 02/09, mais o dinheiro do dia.
+  assert.equal(dia2.disponivel, 1000 + 5898, "o cartão de ontem já dá para mexer hoje, sem a taxa da maquininha");
   assert.equal(dia2.acumulado.reservado.operacional, 6600, "vai se somando dia a dia");
   assert.equal(p.totais.total, 11000);
   assert.equal(p.diasComMovimento, 2);
@@ -164,9 +166,12 @@ test("avaliação instantânea (Passo 1): onde a clínica está, sem maquiar", (
   assert.deepEqual(JSON.parse(JSON.stringify(li.mesesAnteriores("2026-09", 3))), ["2026-06", "2026-07", "2026-08"]);
 });
 
-test("configuração padrão: começa pequeno e mira o lucro da aula", () => {
-  assert.equal(li.defaultLucroConfig.degraus[0].lucro, 5, "a aula: 'recomendo começar com 5'");
-  assert.equal(li.defaultLucroConfig.alvo.lucro, 25);
-  assert.ok(li.operacionalDe(li.defaultLucroConfig.degraus[0]) > 0);
-  assert.equal(li.EXEMPLO_DA_AULA.lucro + li.EXEMPLO_DA_AULA.impostos + li.EXEMPLO_DA_AULA.medicoExecutor, 69.6);
+test("configuração padrão: já no topo — sobra para gastar o mesmo 30,4% do exemplo da aula", () => {
+  const degrau = li.defaultLucroConfig.degraus[0];
+  assert.equal(li.operacionalDe(degrau), li.operacionalDe(li.EXEMPLO_DA_AULA), "Lucas, 02/09: 'pode deixar as porcentagens tops'");
+  assert.equal(li.operacionalDe(degrau), 30.4);
+  assert.equal(degrau.medicoExecutor, 12, "o executor é o repasse real do Dr. Daniel, não os 28% da aula");
+  assert.equal(degrau.impostos, 16.6, "imposto da aula, acima da nossa alíquota de propósito");
+  assert.equal(degrau.lucro, 41, "a diferença do executor vai para o lucro dos sócios");
+  assert.deepEqual(JSON.parse(JSON.stringify(li.defaultLucroConfig.alvo)), JSON.parse(JSON.stringify({ impostos: 16.6, lucro: 41, medicoExecutor: 12 })), "alvo = decisão: nada de degrau baixo");
 });

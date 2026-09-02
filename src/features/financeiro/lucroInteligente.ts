@@ -10,15 +10,20 @@
 //   · Operacional — o que FICA para gastar. Tudo que não é envelope.
 // Os percentuais são SEMPRE sobre 100% do que entrou (não sobre o que sobrou).
 //
-// A aula manda começar onde se está e subir devagar ("regra do 1%, eu recomendo
-// 5"; "não é meta, é decisão"): por isso a configuração guarda DEGRAUS com data
-// — o percentual de cada dia é o do degrau vigente naquele dia — e um ALVO.
+// A aula sugere começar onde se está e subir devagar ("regra do 1%"); a
+// configuração guarda DEGRAUS com data para permitir isso — o percentual de cada
+// dia é o do degrau vigente naquele dia — e um ALVO. Mas a decisão do Lucas
+// (02/09/2026) foi começar NO TOPO: "quanto menos dinheiro sobra na parte de
+// gastar, mais a gente economiza e mais vira lucro". Os degraus continuam
+// existindo para quem quiser recuar ou registrar uma mudança de régua.
 //
 // O Lucas quis a régua DIÁRIA: todo dia o app olha o que entrou (PIX, dinheiro,
 // débito e o crédito lançado na comanda) e marca o que já não é nosso. O crédito
-// conta no dia do lançamento porque é assim que ele quer acompanhar; a coluna
-// "caiu na conta" mostra a parte que de fato já está no banco (o cartão cai em
-// D+31 desde 24/08 — ver recebiveisRede.ts), que é o que dá para transferir.
+// conta no dia do lançamento; a coluna "disponível" mostra o que já dá para
+// mexer: PIX/dinheiro do dia + o cartão do dia anterior. Lucas, 02/09: "o valor
+// do crédito cai no dia seguinte, só que a gente não resgata" — a Rede deixa o
+// dinheiro à disposição em D+1 e cobra menos juros se a clínica esperar os 31
+// dias; a decisão de quando puxar é da clínica, não do banco.
 import {
   expenseEhCapex,
   crediarioProfitOfMonth,
@@ -30,7 +35,7 @@ import {
   type FinReconciliationStatus,
   type FinSale,
 } from "./financeiroData";
-import { agendaRecebiveis } from "./recebiveisRede";
+import { diaUtilSeguinte, taxaDoCartao } from "./recebiveisRede";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
@@ -54,15 +59,20 @@ export type LucroConfig = {
 export const EXEMPLO_DA_AULA: PercentuaisLucro = { impostos: 16.6, lucro: 25, medicoExecutor: 28 };
 
 /**
- * Ponto de partida do Instituto (Passo 3 da aula: começar pequeno).
- *  · impostos 13,33% = a alíquota das notas de consulta/tratamento (bratan-notas-fiscais);
- *  · lucro 5% = "recomendo começar com 5, que precisa ser desafiador";
- *  · médico executor 12% ≈ o repasse real do Dr. Daniel em jul/ago 2026.
- * O alvo leva o lucro aos 25% da aula; o operacional que sobra é derivado.
+ * A régua do Instituto, já no topo (decisão do Lucas, 02/09/2026: "pode deixar
+ * as porcentagens tops").
+ *  · impostos 16,6% = a alíquota da aula (lucro presumido), de propósito acima
+ *    dos 13,33% das nossas notas — sobrar imposto separado nunca é problema;
+ *  · médico executor 12% ≈ o repasse real do Dr. Daniel (a aula usa 28% porque
+ *    lá o dono é o médico que atende; aqui o repasse é contratual, não cabe
+ *    reservar mais do que ele recebe);
+ *  · lucro 41% = o que falta para o operacional ficar nos 30,4% da aula. É a
+ *    conta dos sócios (CEO 80% / Dr. Daniel 20%).
+ * Fica 30,4% para gastar — exatamente o exemplo prático da aula.
  */
 export const defaultLucroConfig: LucroConfig = {
-  degraus: [{ desde: "2026-09-01", impostos: 13.33, lucro: 5, medicoExecutor: 12 }],
-  alvo: { impostos: 13.33, lucro: 25, medicoExecutor: 12 },
+  degraus: [{ desde: "2026-09-01", impostos: 16.6, lucro: 41, medicoExecutor: 12 }],
+  alvo: { impostos: 16.6, lucro: 41, medicoExecutor: 12 },
 };
 
 export function operacionalDe(percentuais: PercentuaisLucro) {
@@ -138,8 +148,8 @@ export type LinhaDiaLucro = {
   outros: number;
   /** Tudo que foi lançado nas comandas do dia. */
   total: number;
-  /** O que de fato entra no banco no dia: PIX/dinheiro/outros do dia + parcelas do cartão previstas para o dia. */
-  caiuNaConta: number;
+  /** O que já dá para mexer no dia: PIX/dinheiro/outros do dia + o cartão do dia útil anterior (líquido da taxa). */
+  disponivel: number;
   percentuais: PercentuaisLucro & { operacional: number };
   /** O total do dia repartido pelos envelopes. */
   reservado: Envelopes;
@@ -157,7 +167,7 @@ export type PlanilhaLucro = {
   linhas: LinhaDiaLucro[];
   totais: {
     total: number;
-    caiuNaConta: number;
+    disponivel: number;
     reservado: Envelopes;
     usado: Envelopes;
     saldo: Envelopes;
@@ -206,11 +216,22 @@ export function buildPlanilhaLucro(input: {
   const marcaPorDia = new Map(marcas.map((marca) => [marca.dia, marca]));
   const fechamentoPorDia = new Map(reconciliations.map((rec) => [rec.day, rec.status]));
 
-  // Parcelas do cartão que caem em cada dia (líquido), pela agenda da Rede.
+  // Cartão à disposição no dia útil seguinte à venda, líquido da taxa da
+  // maquininha (a taxa de antecipação depende de quando a clínica resgatar —
+  // não entra aqui). A agenda D+31 do Extrato continua valendo para a
+  // conciliação; aqui a pergunta é outra: "o que já dá para mexer?".
   const cartaoPorDia = new Map<string, number>();
-  for (const parcela of agendaRecebiveis(sales)) {
-    if (parcela.diaPrevisto.slice(0, 7) !== monthKey) continue;
-    cartaoPorDia.set(parcela.diaPrevisto, round2((cartaoPorDia.get(parcela.diaPrevisto) ?? 0) + parcela.liquido));
+  for (const sale of sales) {
+    for (const payment of sale.payments) {
+      const debito = payment.method === "CARTAO_DEBITO";
+      if (payment.method !== "CARTAO_CREDITO" && !debito) continue;
+      const bruto = payment.amount || 0;
+      if (bruto <= 0) continue;
+      const dia = diaUtilSeguinte(sale.saleDate);
+      if (dia.slice(0, 7) !== monthKey) continue;
+      const liquido = bruto * (1 - taxaDoCartao(Math.max(1, payment.installments || 1), debito, sale.saleDate));
+      cartaoPorDia.set(dia, round2((cartaoPorDia.get(dia) ?? 0) + liquido));
+    }
   }
 
   // Contas pagas no dia, já no envelope certo.
@@ -248,7 +269,7 @@ export function buildPlanilhaLucro(input: {
       credito: 0,
       outros: 0,
       total: 0,
-      caiuNaConta: 0,
+      disponivel: 0,
       percentuais: { ...percentuaisNoDia(config, dia), operacional: 0 },
       reservado: zeroEnvelopes(),
       usado: usadoPorDia.get(dia) ?? zeroEnvelopes(),
@@ -277,7 +298,7 @@ export function buildPlanilhaLucro(input: {
     linha.credito = round2(linha.credito);
     linha.outros = round2(linha.outros);
     linha.total = round2(linha.pix + linha.dinheiro + linha.debito + linha.credito + linha.outros);
-    linha.caiuNaConta = round2(linha.pix + linha.dinheiro + linha.outros + (cartaoPorDia.get(dia) ?? 0));
+    linha.disponivel = round2(linha.pix + linha.dinheiro + linha.outros + (cartaoPorDia.get(dia) ?? 0));
     linha.reservado = repartir(linha.total, linha.percentuais);
 
     acumuladoReservado = somaEnvelopes(acumuladoReservado, linha.reservado);
@@ -302,7 +323,7 @@ export function buildPlanilhaLucro(input: {
     linhas,
     totais: {
       total: totalMes,
-      caiuNaConta: round2(linhas.reduce((soma, linha) => soma + linha.caiuNaConta, 0)),
+      disponivel: round2(linhas.reduce((soma, linha) => soma + linha.disponivel, 0)),
       reservado: acumuladoReservado,
       usado: acumuladoUsado,
       saldo: subtraiEnvelopes(acumuladoReservado, acumuladoUsado),

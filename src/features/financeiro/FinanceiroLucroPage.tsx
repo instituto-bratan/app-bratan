@@ -245,15 +245,16 @@ export function FinanceiroLucroPage() {
                   decide o lucro e se vira com o resto. De cada real que entra, o app já separa{" "}
                   <strong>impostos</strong>, <strong>lucro dos sócios</strong> (o salário da CEO é o lucro) e o{" "}
                   <strong>repasse do médico executor</strong>; o que sobra é o único dinheiro para gastar. Percentual é
-                  sempre sobre 100% do que entrou. Lucro e impostos vão para contas de difícil acesso. Comece pequeno
-                  (5% de lucro) e suba um degrau por mês: &quot;não é meta, é decisão&quot;. A aula mira 25% de lucro e
-                  no máximo 30% de despesa operacional.
+                  sempre sobre 100% do que entrou. Lucro e impostos vão para contas de difícil acesso. A aula deixa no
+                  máximo ~30% para a despesa operacional — e a régua aqui já começa nesse topo (decisão do Lucas,
+                  02/09): quanto menos sobra para gastar, mais a gente economiza e mais vira lucro.
+                  &quot;Não é meta, é decisão.&quot;
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Hoje vale o degrau: impostos {pct(degrauHoje.impostos)} · lucro {pct(degrauHoje.lucro)} · médico executor{" "}
+                Régua de hoje: impostos {pct(degrauHoje.impostos)} · lucro {pct(degrauHoje.lucro)} · médico executor{" "}
                 {pct(degrauHoje.medicoExecutor)} → <strong className="text-brand-musgo">fica {pct(operacionalDe(degrauHoje))} para gastar</strong>.
-                O crédito conta no dia do lançamento; a coluna &quot;caiu na conta&quot; mostra o que já está no banco.
+                O crédito conta no dia do lançamento; a coluna &quot;disponível&quot; mostra o que já dá para mexer (PIX do dia + cartão do dia anterior).
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -342,7 +343,9 @@ export function FinanceiroLucroPage() {
                 </div>
                 <p className="mt-2 text-sm text-brand-tinta">
                   Fica para gastar no alvo: <strong>{pct(operacionalDe(config.alvo))}</strong>
-                  <span className="ml-1 text-xs text-muted-foreground">(a aula: 25% lucro · 16,6% impostos · 28% executor → 30,4%)</span>
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    (a aula: 25% lucro · 16,6% impostos · 28% executor → 30,4%; aqui o executor é o repasse real do Dr. Daniel, e a diferença vai para o lucro)
+                  </span>
                 </p>
               </div>
             </div>
@@ -363,7 +366,7 @@ export function FinanceiroLucroPage() {
             <Landmark className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Entrou no mês</p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(planilha.totais.total)}</p>
-            <p className="text-xs text-muted-foreground">já caiu na conta {moneyFin(planilha.totais.caiuNaConta)} · {planilha.diasComMovimento} dia(s) com entrada</p>
+            <p className="text-xs text-muted-foreground">já disponível {moneyFin(planilha.totais.disponivel)} · {planilha.diasComMovimento} dia(s) com entrada</p>
           </div>
           <div className="rounded-lg border border-brand-dourado/45 bg-brand-creme/40 p-4">
             <PiggyBank className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
@@ -507,7 +510,7 @@ export function FinanceiroLucroPage() {
                     <th className="px-2 py-1.5 text-right">Débito</th>
                     <th className="px-2 py-1.5 text-right">Crédito</th>
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Entrou</th>
-                    <th className="px-2 py-1.5 text-right">Caiu na conta</th>
+                    <th className="px-2 py-1.5 text-right">Disponível</th>
                     <th className="px-2 py-1.5 text-right">Impostos</th>
                     <th className="px-2 py-1.5 text-right">Lucro</th>
                     <th className="px-2 py-1.5 text-right">Médico</th>
@@ -545,7 +548,7 @@ export function FinanceiroLucroPage() {
                         <td className={cellNum}>{linha.debito ? moneyFin(linha.debito) : "—"}</td>
                         <td className={cellNum}>{linha.credito ? moneyFin(linha.credito) : "—"}</td>
                         <td className={cn(cellNum, "font-bold text-brand-musgo")}>{linha.total ? moneyFin(linha.total) : "—"}</td>
-                        <td className={cellNum}>{linha.caiuNaConta ? moneyFin(linha.caiuNaConta) : "—"}</td>
+                        <td className={cellNum}>{linha.disponivel ? moneyFin(linha.disponivel) : "—"}</td>
                         <td className={cellNum}>
                           {linha.reservado.impostos ? moneyFin(linha.reservado.impostos) : "—"}
                           <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.percentuais.impostos)}</span>
@@ -620,7 +623,7 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.debito, 0))}</td>
                     <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.credito, 0))}</td>
                     <td className={cn(cellNum, "text-brand-musgo")}>{moneyFin(planilha.totais.total)}</td>
-                    <td className={cellNum}>{moneyFin(planilha.totais.caiuNaConta)}</td>
+                    <td className={cellNum}>{moneyFin(planilha.totais.disponivel)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.impostos)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.lucro)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.medicoExecutor)}</td>
@@ -637,7 +640,8 @@ export function FinanceiroLucroPage() {
           )}
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
             <strong className="text-brand-musgo">Como ler:</strong> &quot;Entrou&quot; é tudo que foi lançado nas comandas do dia (crédito incluído);
-            &quot;Caiu na conta&quot; é PIX/dinheiro do dia + as parcelas do cartão previstas para cair no dia (D+31, agenda da Rede).
+            &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil anterior, já sem a taxa da maquininha — a Rede deixa o
+            crédito à disposição em D+1 e a clínica decide quando resgatar (esperar os 31 dias custa menos juros).
             Os envelopes são sobre o que entrou. &quot;Gasto no dia&quot; são as contas pagas no dia que pertencem ao operacional (obra,
             impostos, sócios e repasse do médico têm envelope próprio). Marque &quot;Separado&quot; quando as transferências do dia forem feitas.
           </p>
