@@ -474,13 +474,14 @@ test("o botão de anexar comprovante NÃO pode ficar escondido atrás de condiç
     posComprovante < posCondicao,
     "o anexar comprovante vem ANTES da condição de valor — ou seja, sempre visível",
   );
-  // E é o passo 1 da tela.
+  // A ordem dos passos (02/09/2026, Lucas: "precisa estar todas essas opções
+  // aqui no Kanban"): 1 = o que o paciente fechou (produtos da tabela), 2 =
+  // comprovante, 3 = quanto entrou. Os dois primeiros ficam FORA da condição.
   const passo1 = fonte.indexOf('text-white">1</span>');
   const passo2 = fonte.indexOf('text-white">2</span>');
-  assert.ok(passo1 < posCondicao, "o passo 1 está fora da condição");
-  assert.ok(
-    fonte.slice(passo1, passo1 + 400).includes("Comprovante"),
-    "o passo 1 é o comprovante",
-  );
-  assert.ok(fonte.slice(passo2, passo2 + 300).includes("Quanto entrou"), "o passo 2 é o valor");
+  const passo3 = fonte.indexOf('text-white">3</span>');
+  assert.ok(passo1 < posCondicao && passo2 < posCondicao, "os passos 1 e 2 estão fora da condição");
+  assert.ok(fonte.slice(passo1, passo1 + 400).includes("O que o paciente fechou"), "o passo 1 são os produtos da tabela");
+  assert.ok(fonte.slice(passo2, passo2 + 400).includes("Comprovante"), "o passo 2 é o comprovante");
+  assert.ok(fonte.slice(passo3, passo3 + 300).includes("Quanto entrou"), "o passo 3 é o valor");
 });
