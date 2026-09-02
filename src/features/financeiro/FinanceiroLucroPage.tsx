@@ -23,15 +23,16 @@ import {
   buildPlanilhaLucro,
   conferirRecebiveis,
   defaultLucroConfig,
+  diasUteisDoMes,
   mesesAnteriores,
-  operacionalDe,
-  percentuaisNoDia,
+  normalizaConfig,
   registrarConferencia,
+  reguaNoDia,
   selicDaConfig,
   subirDegrau,
   type LucroConfig,
   type MarcaDiaLucro,
-  type PercentuaisLucro,
+  type ReguaLucro,
 } from "./lucroInteligente";
 import { taxaAntecipacaoMensal } from "./recebiveisRede";
 import { useFinanceiro } from "./useFinanceiro";
@@ -39,12 +40,11 @@ import { useFinanceiro } from "./useFinanceiro";
 const configStorageKey = "app-bratan-fin-lucro-config";
 const marcasStorageKey = "app-bratan-fin-lucro-dias";
 
-const envelopeLabels = {
-  impostos: "Impostos",
-  lucro: "Lucro (sócios)",
-  medicoExecutor: "Médico executor",
-  operacional: "Fica para gastar",
-} as const;
+const reguaLabels: Record<keyof ReguaLucro, string> = {
+  impostos: "Impostos (% do líquido)",
+  lucroMensal: "Lucro dos sócios (R$ por mês)",
+  medicoExecutor: "Médico executor (% do prescrito)",
+};
 
 function pct(value: number) {
   return `${value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
@@ -58,9 +58,29 @@ function mesLabel(monthKey: string) {
   return new Date(`${monthKey}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
-function parsePct(value: string) {
-  const parsed = Number(value.replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0;
+function mesLongo(monthKey: string) {
+  return new Date(`${monthKey}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" });
+}
+
+function parseNumero(value: string) {
+  const parsed = Number(value.replace(/\s|R\$/g, "").replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function parseCampo(campo: keyof ReguaLucro, value: string) {
+  const numero = parseNumero(value);
+  if (!Number.isFinite(numero)) return null;
+  if (campo === "lucroMensal") return Math.max(0, Math.round(numero * 100) / 100);
+  return Math.max(0, Math.min(100, numero));
+}
+
+function valorDoCampo(regua: ReguaLucro, campo: keyof ReguaLucro) {
+  if (campo === "lucroMensal") return regua.lucroMensal.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return String(regua[campo]).replace(".", ",");
+}
+
+function descreveRegua(regua: ReguaLucro) {
+  return `impostos ${pct(regua.impostos)} do líquido · lucro ${moneyFin(regua.lucroMensal)}/mês · médico executor ${pct(regua.medicoExecutor)} do prescrito`;
 }
 
 export function FinanceiroLucroPage() {
@@ -74,18 +94,17 @@ export function FinanceiroLucroPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [feedback, setFeedback] = useState("");
 
-  // ---- Percentuais (degraus + alvo): igual à config de Metas — local + Supabase.
-  const [config, setConfig] = useState<LucroConfig>(() => ({
-    ...defaultLucroConfig,
-    ...readLocalValue<Partial<LucroConfig>>(configStorageKey, {}),
-  }));
+  // ---- Régua (degraus + alvo + SELIC + conferências): igual à config de Metas — local + Supabase.
+  const [config, setConfig] = useState<LucroConfig>(() =>
+    normalizaConfig({ ...defaultLucroConfig, ...readLocalValue<Partial<LucroConfig>>(configStorageKey, {}) }),
+  );
   useQuery({
     queryKey: ["fin-lucro-config"],
     queryFn: async () => {
       const remote = await loadRemoteFinLucroConfig();
       if (remote) {
         setConfig((current) => {
-          const merged = { ...current, ...(remote as Partial<LucroConfig>) };
+          const merged = normalizaConfig({ ...current, ...(remote as Partial<LucroConfig>) });
           writeLocalValue(configStorageKey, merged);
           return merged;
         });
@@ -103,7 +122,7 @@ export function FinanceiroLucroPage() {
     if (useRemote) {
       void saveConfigMutation.mutateAsync(next).catch((error) => {
         console.warn("Config do Lucro Inteligente não sincronizou.", error);
-        setFeedback("Os percentuais ficaram só neste aparelho — o Supabase recusou a gravação.");
+        setFeedback("A régua ficou só neste aparelho — o Supabase recusou a gravação.");
       });
     }
   }
@@ -183,27 +202,33 @@ export function FinanceiroLucroPage() {
     [financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.crediarioProfits, mesesAvaliados],
   );
 
-  const degrauHoje = percentuaisNoDia(config, hoje);
+  const reguaHoje = reguaNoDia(config, hoje);
+  const diasUteisHoje = diasUteisDoMes(hoje.slice(0, 7)).length;
+  const cotaHoje = diasUteisHoje ? reguaHoje.lucroMensal / diasUteisHoje : 0;
   const linhaDeHoje = planilha.linhas.find((linha) => linha.dia === hoje) ?? null;
   const degrauMaisRecente = [...config.degraus].sort((a, b) => a.desde.localeCompare(b.desde)).at(-1) ?? config.degraus[0];
   const comprometido = planilha.totais.reservado.impostos + planilha.totais.reservado.lucro + planilha.totais.reservado.medicoExecutor;
   const saldoOperacional = planilha.totais.saldo.operacional;
 
-  function editaDegrau(campo: keyof PercentuaisLucro, valor: string) {
+  function editaDegrau(campo: keyof ReguaLucro, valor: string) {
     if (!canEdit || !degrauMaisRecente) return;
-    const degraus = config.degraus.map((degrau) => (degrau.desde === degrauMaisRecente.desde ? { ...degrau, [campo]: parsePct(valor) } : degrau));
+    const novo = parseCampo(campo, valor);
+    if (novo === null) return;
+    const degraus = config.degraus.map((degrau) => (degrau.desde === degrauMaisRecente.desde ? { ...degrau, [campo]: novo } : degrau));
     persistConfig({ ...config, degraus });
   }
 
-  function editaAlvo(campo: keyof PercentuaisLucro, valor: string) {
+  function editaAlvo(campo: keyof ReguaLucro, valor: string) {
     if (!canEdit) return;
-    persistConfig({ ...config, alvo: { ...config.alvo, [campo]: parsePct(valor) } });
+    const novo = parseCampo(campo, valor);
+    if (novo === null) return;
+    persistConfig({ ...config, alvo: { ...config.alvo, [campo]: novo } });
   }
 
   function editaSelic(valor: string) {
     if (!canEdit) return;
-    const selic = parsePct(valor);
-    if (selic <= 0) return;
+    const selic = parseNumero(valor);
+    if (!Number.isFinite(selic) || selic <= 0) return;
     persistConfig({ ...config, selicAnual: selic });
   }
 
@@ -211,7 +236,7 @@ export function FinanceiroLucroPage() {
 
   function registraConferenciaRede(valor: string) {
     if (!canEdit) return;
-    const numero = Number(valor.replace(/\./g, "").replace(",", "."));
+    const numero = parseNumero(valor);
     if (!Number.isFinite(numero) || numero < 0 || !valor.trim()) return;
     persistConfig(registrarConferencia(config, { dia: hoje, aReceberRede: Math.round(numero * 100) / 100 }));
   }
@@ -220,14 +245,14 @@ export function FinanceiroLucroPage() {
     if (!canEdit || !degrauMaisRecente) return;
     if (config.degraus.some((degrau) => degrau.desde === hoje)) return;
     persistConfig({ ...config, degraus: [...config.degraus, { ...degrauMaisRecente, desde: hoje }] });
-    setFeedback(`Novo degrau criado a partir de ${diaCurto(hoje)} — edite os percentuais dele.`);
+    setFeedback(`Novo degrau criado a partir de ${diaCurto(hoje)} — edite a régua dele.`);
   }
 
   function subirLucro() {
     if (!canEdit) return;
-    const next = subirDegrau(config, hoje, 2);
+    const next = subirDegrau(config, hoje, 2000);
     persistConfig(next);
-    setFeedback(`Lucro subiu para ${pct(percentuaisNoDia(next, hoje).lucro)} a partir de hoje. A aula: "não é meta, é decisão".`);
+    setFeedback(`Lucro dos sócios subiu para ${moneyFin(reguaNoDia(next, hoje).lucroMensal)}/mês a partir de hoje. A aula: "não é meta, é decisão".`);
   }
 
   function toggleSeparado(dia: string, atual: MarcaDiaLucro | null) {
@@ -261,29 +286,30 @@ export function FinanceiroLucroPage() {
               </div>
               <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
                 Lucro Inteligente
-                <InfoTip title="A régua da aula (Dr. Thiago Volpi)">
+                <InfoTip title="A régua da aula (Dr. Thiago Volpi) e a do Instituto">
                   <strong>Vendas − Lucro = Despesas.</strong> Em vez de gastar primeiro e lucrar o que sobra, a clínica
-                  decide o lucro e se vira com o resto. De cada real que entra, o app já separa{" "}
-                  <strong>impostos</strong>, <strong>lucro dos sócios</strong> (o salário da CEO é o lucro) e o{" "}
-                  <strong>repasse do médico executor</strong>; o que sobra é o único dinheiro para gastar. Percentual é
-                  sempre sobre 100% do que entrou. Lucro e impostos vão para contas de difícil acesso. A aula deixa no
-                  máximo ~30% para a despesa operacional — e a régua aqui já começa nesse topo (decisão do Lucas,
-                  02/09): quanto menos sobra para gastar, mais a gente economiza e mais vira lucro.
-                  &quot;Não é meta, é decisão.&quot;
+                  decide o lucro e se vira com o resto. De cada real que entra (já sem as taxas), o app separa{" "}
+                  <strong>impostos</strong> (% do líquido), o <strong>lucro dos sócios</strong> — aqui um valor fixo por
+                  mês, dividido pelos dias úteis (Lucas: &quot;não é em porcentagem, é sempre esse valor&quot;) — e o{" "}
+                  <strong>médico executor</strong>: 50% do que o Dr. Daniel prescreveu no dia; a metade da clínica é que
+                  carrega imposto, lucro e despesas. O que sobra é o único dinheiro para gastar. Lucro e impostos vão para
+                  contas de difícil acesso. &quot;Não é meta, é decisão.&quot; (Exemplo da aula, só para referência: 25%
+                  lucro · 16,6% impostos · 28% executor → sobram 30,4%.)
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Régua de hoje: impostos {pct(degrauHoje.impostos)} · lucro {pct(degrauHoje.lucro)} · médico executor{" "}
-                {pct(degrauHoje.medicoExecutor)} → <strong className="text-brand-musgo">fica {pct(operacionalDe(degrauHoje))} para gastar</strong>.
-                As taxas da maquininha e do PIX saem antes de repartir. O crédito conta no dia do lançamento e fica disponível no dia útil seguinte;
-                puxar antes dos 31 dias custa a antecipação (TAD {pct(taxaAntecipacaoMensal(selicDaConfig(config)) * 100)} ao mês) — a planilha mostra quanto.
+                Régua de hoje: impostos {pct(reguaHoje.impostos)} do líquido · lucro {moneyFin(reguaHoje.lucroMensal)}/mês (
+                <strong className="text-brand-musgo">{moneyFin(cotaHoje)} por dia útil</strong>, {diasUteisHoje} em {mesLongo(hoje.slice(0, 7))}) · médico executor{" "}
+                {pct(reguaHoje.medicoExecutor)} do que ele prescreveu → o que sobra fica para gastar. As taxas da maquininha e do PIX saem antes
+                de repartir. O crédito conta no dia do lançamento e fica disponível no dia útil seguinte; puxar antes dos 31 dias custa a
+                antecipação (TAD {pct(taxaAntecipacaoMensal(selicDaConfig(config)) * 100)} ao mês) — a planilha mostra quanto.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" aria-label="Mês" />
               <Button type="button" variant={showConfig ? "default" : "outline"} onClick={() => setShowConfig((value) => !value)}>
                 <SlidersHorizontal className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                Percentuais
+                Régua
               </Button>
             </div>
           </div>
@@ -307,7 +333,7 @@ export function FinanceiroLucroPage() {
           <section className="rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-brand-musgo">Os degraus da decisão</h2>
+                <h2 className="text-lg font-bold text-brand-musgo">A régua</h2>
                 <p className="text-xs text-muted-foreground">
                   Editando o degrau que vale desde {degrauMaisRecente ? diaCurto(degrauMaisRecente.desde) : "—"}. Dias anteriores continuam com o degrau da época.
                 </p>
@@ -317,9 +343,9 @@ export function FinanceiroLucroPage() {
                   <Button type="button" size="sm" variant="outline" onClick={novoDegrauHoje} disabled={config.degraus.some((d) => d.desde === hoje)}>
                     Novo degrau a partir de hoje
                   </Button>
-                  <Button type="button" size="sm" onClick={subirLucro} disabled={degrauHoje.lucro >= config.alvo.lucro}>
+                  <Button type="button" size="sm" onClick={subirLucro} disabled={reguaHoje.lucroMensal >= config.alvo.lucroMensal}>
                     <TrendingUp className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                    Subir lucro +2 pts
+                    Subir lucro +R$ 2.000/mês
                   </Button>
                 </div>
               ) : null}
@@ -328,12 +354,12 @@ export function FinanceiroLucroPage() {
               <div className="rounded-lg border border-brand-oliva/14 bg-white/70 p-3">
                 <p className="text-sm font-semibold text-brand-musgo">Decisão de hoje</p>
                 <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(["impostos", "lucro", "medicoExecutor"] as const).map((campo) => (
+                  {(["impostos", "lucroMensal", "medicoExecutor"] as const).map((campo) => (
                     <label key={campo} className="text-xs text-muted-foreground">
-                      {envelopeLabels[campo]}
+                      {reguaLabels[campo]}
                       <Input
                         key={`${degrauMaisRecente?.desde}-${campo}-${degrauMaisRecente?.[campo]}`}
-                        defaultValue={String(degrauMaisRecente?.[campo] ?? 0).replace(".", ",")}
+                        defaultValue={degrauMaisRecente ? valorDoCampo(degrauMaisRecente, campo) : ""}
                         onBlur={(event) => editaDegrau(campo, event.target.value)}
                         inputMode="decimal"
                         disabled={!canEdit}
@@ -343,18 +369,19 @@ export function FinanceiroLucroPage() {
                   ))}
                 </div>
                 <p className="mt-2 text-sm text-brand-tinta">
-                  Fica para gastar: <strong>{degrauMaisRecente ? pct(operacionalDe(degrauMaisRecente)) : "—"}</strong>
+                  Cota do lucro por dia útil: <strong>{moneyFin(cotaHoje)}</strong>
+                  <span className="ml-1 text-xs text-muted-foreground">({diasUteisHoje} dias úteis em {mesLongo(hoje.slice(0, 7))}; muda a cada mês)</span>
                 </p>
               </div>
               <div className="rounded-lg border border-brand-oliva/14 bg-white/70 p-3">
                 <p className="text-sm font-semibold text-brand-musgo">Alvo (onde queremos chegar)</p>
                 <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(["impostos", "lucro", "medicoExecutor"] as const).map((campo) => (
+                  {(["impostos", "lucroMensal", "medicoExecutor"] as const).map((campo) => (
                     <label key={campo} className="text-xs text-muted-foreground">
-                      {envelopeLabels[campo]}
+                      {reguaLabels[campo]}
                       <Input
                         key={`alvo-${campo}-${config.alvo[campo]}`}
-                        defaultValue={String(config.alvo[campo]).replace(".", ",")}
+                        defaultValue={valorDoCampo(config.alvo, campo)}
                         onBlur={(event) => editaAlvo(campo, event.target.value)}
                         inputMode="decimal"
                         disabled={!canEdit}
@@ -363,11 +390,9 @@ export function FinanceiroLucroPage() {
                     </label>
                   ))}
                 </div>
-                <p className="mt-2 text-sm text-brand-tinta">
-                  Fica para gastar no alvo: <strong>{pct(operacionalDe(config.alvo))}</strong>
-                  <span className="ml-1 text-xs text-muted-foreground">
-                    (a aula: 25% lucro · 16,6% impostos · 28% executor → 30,4%; aqui o executor é o repasse real do Dr. Daniel, e a diferença vai para o lucro)
-                  </span>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  A planilha de precificação calcula os 50% do médico DEPOIS de imposto/cartão, comissão e custo de sala (Programa de R$ 6.997 →
+                  R$ 2.515 para o médico); aqui é 50% do valor prescrito, como o Lucas descreveu — se a regra for a da planilha, ajuste o percentual.
                 </p>
               </div>
             </div>
@@ -393,7 +418,7 @@ export function FinanceiroLucroPage() {
                 Histórico:{" "}
                 {[...config.degraus]
                   .sort((a, b) => a.desde.localeCompare(b.desde))
-                  .map((degrau) => `${diaCurto(degrau.desde)} → lucro ${pct(degrau.lucro)}`)
+                  .map((degrau) => `${diaCurto(degrau.desde)} → ${descreveRegua(degrau)}`)
                   .join(" · ")}
               </p>
             ) : null}
@@ -415,7 +440,7 @@ export function FinanceiroLucroPage() {
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(comprometido)}</p>
             <p className="text-xs text-muted-foreground">
               impostos {moneyFin(planilha.totais.reservado.impostos)} · lucro {moneyFin(planilha.totais.reservado.lucro)} · médico{" "}
-              {moneyFin(planilha.totais.reservado.medicoExecutor)}
+              {moneyFin(planilha.totais.reservado.medicoExecutor)} (50% de {moneyFin(planilha.totais.prescrito)} prescritos)
             </p>
           </div>
           <div className={cn("rounded-lg border p-4", saldoOperacional < -0.005 ? "border-red-200 bg-red-50/60" : "border-brand-oliva/14 bg-white/55")}>
@@ -423,12 +448,14 @@ export function FinanceiroLucroPage() {
             <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-brand-musgo">
               Cabe gastar no mês
               <InfoTip title="Cabe gastar × contas pagas">
-                &quot;Cabe gastar&quot; é a soma do que ficou para o operacional em cada dia ({pct(operacionalDe(degrauHoje))} do líquido). &quot;Contas pagas&quot; são as
-                contas operacionais que já saíram no mês (sem obra, impostos, sócios e repasse do médico — esses têm envelope próprio). Se as contas
-                passam do que cabe, o número fica vermelho: é a despesa acima da régua que a aula manda enxugar.
+                &quot;Cabe gastar&quot; é a soma do que sobrou para o operacional em cada dia (líquido − impostos − parte do médico − cota do lucro).
+                &quot;Contas pagas&quot; são as contas operacionais que já saíram no mês (sem obra, impostos, sócios, empréstimos e repasse do médico —
+                esses têm envelope próprio). Se as contas passam do que cabe, o número fica vermelho: é a despesa acima da régua que a aula manda enxugar.
               </InfoTip>
             </p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(planilha.totais.reservado.operacional)}</p>
+            <p className={cn("text-2xl font-bold", planilha.totais.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-tinta")}>
+              {moneyFin(planilha.totais.reservado.operacional)}
+            </p>
             <p className="text-xs text-muted-foreground">contas operacionais já pagas: {moneyFin(planilha.totais.usado.operacional)}</p>
             <p className={cn("text-xs font-semibold", saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
               {saldoOperacional < -0.005 ? `já passou do que cabe em ${moneyFin(-saldoOperacional)}` : `ainda cabem ${moneyFin(saldoOperacional)} de contas`}
@@ -457,13 +484,13 @@ export function FinanceiroLucroPage() {
                 &quot;Antes de mudar qualquer coisa, você precisa saber onde está.&quot; Os últimos meses fechados, com a
                 porcentagem exata de cada envelope sobre o que entrou. Impostos = imposto pago (competência); médico
                 executor = repasse do Dr. Daniel; sócios = salário CEO + pró-labore + distribuição; operacional = todas
-                as outras contas fora obra. <strong>Lucro</strong> é o que sobrou depois de impostos, médico e
-                operacional — inclui o que os sócios já levaram. Obra e investimento ficam à parte: a aula manda tratar
-                dívida de reforma como lucro reinvestido.
+                as outras contas fora obra e empréstimos. <strong>Lucro</strong> é o que sobrou depois de impostos, médico e
+                operacional — inclui o que os sócios já levaram. Obra, empréstimos e investimento ficam à parte: a aula
+                manda tratar dívida de reforma como lucro reinvestido.
               </InfoTip>
             </h2>
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
+              <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="text-xs uppercase tracking-wide text-muted-foreground">
                     <th className="px-2 py-1.5 text-left">Envelope</th>
@@ -471,7 +498,7 @@ export function FinanceiroLucroPage() {
                       <th key={mes.monthKey} className="px-2 py-1.5 text-right">{mesLabel(mes.monthKey)}</th>
                     ))}
                     <th className="px-2 py-1.5 text-right">{avaliacao.meses.length > 1 ? "Soma" : ""}</th>
-                    <th className="px-2 py-1.5 text-right text-brand-musgo">Decisão hoje</th>
+                    <th className="px-2 py-1.5 text-right text-brand-musgo">Régua de hoje</th>
                     <th className="px-2 py-1.5 text-right text-brand-musgo">Alvo</th>
                   </tr>
                 </thead>
@@ -484,6 +511,15 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum}>{avaliacao.meses.length > 1 ? moneyFin(avaliacao.consolidado.receita) : ""}</td>
                     <td className={cellNum}>100%</td>
                     <td className={cellNum}>100%</td>
+                  </tr>
+                  <tr className="border-t border-brand-oliva/10 text-muted-foreground">
+                    <td className="px-2 py-1.5">↳ tratamentos prescritos pelo Dr. (base dos 50%)</td>
+                    {avaliacao.meses.map((mes) => (
+                      <td key={mes.monthKey} className={cellNum}>{moneyFin(mes.prescrito)}</td>
+                    ))}
+                    <td className={cellNum}>{avaliacao.meses.length > 1 ? moneyFin(avaliacao.consolidado.prescrito) : ""}</td>
+                    <td className={cellNum} />
+                    <td className={cellNum} />
                   </tr>
                   {(
                     [
@@ -498,6 +534,9 @@ export function FinanceiroLucroPage() {
                       {avaliacao.meses.map((mes) => (
                         <td key={mes.monthKey} className={cn(cellNum, campo === "lucro" && mes.lucro < 0 && "text-red-700")}>
                           {moneyFin(mes[campo])} <span className="text-xs text-muted-foreground">({pct(mes.percentuais[campo])})</span>
+                          {campo === "medicoExecutor" && mes.prescrito > 0 ? (
+                            <span className="block text-[10px] text-muted-foreground">pela régua: {moneyFin((mes.prescrito * reguaHoje.medicoExecutor) / 100)}</span>
+                          ) : null}
                         </td>
                       ))}
                       <td className={cn(cellNum, campo === "lucro" && avaliacao.consolidado.lucro < 0 && "text-red-700")}>
@@ -509,8 +548,18 @@ export function FinanceiroLucroPage() {
                           ""
                         )}
                       </td>
-                      <td className={cn(cellNum, "text-brand-musgo")}>{campo === "operacional" ? pct(operacionalDe(degrauHoje)) : pct(degrauHoje[campo])}</td>
-                      <td className={cn(cellNum, "text-brand-musgo")}>{campo === "operacional" ? pct(operacionalDe(config.alvo)) : pct(config.alvo[campo])}</td>
+                      <td className={cn(cellNum, "text-brand-musgo")}>
+                        {campo === "impostos" ? pct(reguaHoje.impostos) : null}
+                        {campo === "medicoExecutor" ? `${pct(reguaHoje.medicoExecutor)} do prescrito` : null}
+                        {campo === "lucro" ? `${moneyFin(reguaHoje.lucroMensal)}/mês` : null}
+                        {campo === "operacional" ? "o que sobra" : null}
+                      </td>
+                      <td className={cn(cellNum, "text-brand-musgo")}>
+                        {campo === "impostos" ? pct(config.alvo.impostos) : null}
+                        {campo === "medicoExecutor" ? `${pct(config.alvo.medicoExecutor)} do prescrito` : null}
+                        {campo === "lucro" ? `${moneyFin(config.alvo.lucroMensal)}/mês` : null}
+                        {campo === "operacional" ? "o que sobra" : null}
+                      </td>
                     </tr>
                   ))}
                   <tr className="border-t border-brand-oliva/10 text-muted-foreground">
@@ -598,7 +647,7 @@ export function FinanceiroLucroPage() {
           <p className="mt-3 text-xs text-muted-foreground">
             Compromisso RAV do contrato: antecipar ao menos 10% do volume de crédito do mês —{" "}
             <strong className="text-brand-musgo">{moneyFin(conferencia.minimoAntecipar)}</strong> sobre {moneyFin(conferencia.volumeCartaoMes)} até agora em{" "}
-            {new Date(`${hoje.slice(0, 7)}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" })}.
+            {mesLongo(hoje.slice(0, 7))}.
             {(config.conferencias ?? []).length > 1
               ? ` Histórico: ${[...(config.conferencias ?? [])].slice(-5).map((c) => `${diaCurto(c.dia)} ${moneyFin(c.aReceberRede)}`).join(" · ")}.`
               : ""}
@@ -609,7 +658,7 @@ export function FinanceiroLucroPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-bold text-brand-musgo">Planilha do dia a dia · {new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
             <p className="text-xs text-muted-foreground">
-              {planilha.diasSeparados}/{planilha.diasComMovimento} dias com entrada já marcados como separados
+              {planilha.diasSeparados}/{planilha.diasComMovimento} dias com entrada já marcados como separados · cota do lucro {moneyFin(planilha.cotaLucroDiaUtil)} × {planilha.diasUteis} dias úteis
             </p>
           </div>
           {linhasVisiveis.length === 0 ? (
@@ -629,8 +678,8 @@ export function FinanceiroLucroPage() {
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Entrou (líquido)</th>
                     <th className="px-2 py-1.5 text-right">Disponível</th>
                     <th className="px-2 py-1.5 text-right">Impostos</th>
-                    <th className="px-2 py-1.5 text-right">Lucro</th>
-                    <th className="px-2 py-1.5 text-right">Médico</th>
+                    <th className="px-2 py-1.5 text-right">Lucro (cota)</th>
+                    <th className="px-2 py-1.5 text-right">Médico (50% do prescrito)</th>
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Fica p/ gastar</th>
                     <th className="px-2 py-1.5 text-right">Contas pagas (dia)</th>
                     <th className="px-2 py-1.5 text-right">Sobra ou falta (mês)</th>
@@ -640,19 +689,20 @@ export function FinanceiroLucroPage() {
                 </thead>
                 <tbody>
                   {linhasVisiveis.map((linha) => {
-                    const semMovimento = linha.total < 0.005 && linha.usado.operacional < 0.005;
+                    const semMovimento = linha.total < 0.005 && linha.usado.operacional < 0.005 && linha.regua.cotaLucro < 0.005;
                     return (
                       <tr
                         key={linha.dia}
                         className={cn(
                           "border-t border-brand-oliva/10",
-                          linha.fimDeSemana && "bg-brand-papel/50",
+                          !linha.diaUtil && "bg-brand-papel/50",
                           semMovimento && "text-muted-foreground/70",
                           linha.marca?.separado && "bg-emerald-50/50",
                         )}
                       >
                         <td className="sticky left-0 z-10 bg-white/90 px-2 py-1.5 font-semibold text-brand-tinta">
                           {diaCurto(linha.dia)}
+                          {!linha.diaUtil && !linha.fimDeSemana ? <span className="ml-1 text-[10px] font-normal text-muted-foreground">feriado</span> : null}
                           {linha.comprovantesPendentes ? (
                             <span className="ml-1 text-[10px] font-normal text-brand-dourado" title="pagamentos sem comprovante">
                               · {linha.comprovantesPendentes} s/ comprov.
@@ -676,19 +726,15 @@ export function FinanceiroLucroPage() {
                         </td>
                         <td className={cellNum}>
                           {linha.reservado.impostos ? moneyFin(linha.reservado.impostos) : "—"}
-                          <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.percentuais.impostos)}</span>
+                          <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.regua.impostos)}</span>
                         </td>
-                        <td className={cellNum}>
-                          {linha.reservado.lucro ? moneyFin(linha.reservado.lucro) : "—"}
-                          <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.percentuais.lucro)}</span>
-                        </td>
+                        <td className={cellNum}>{linha.reservado.lucro ? moneyFin(linha.reservado.lucro) : "—"}</td>
                         <td className={cellNum}>
                           {linha.reservado.medicoExecutor ? moneyFin(linha.reservado.medicoExecutor) : "—"}
-                          <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.percentuais.medicoExecutor)}</span>
+                          {linha.prescrito ? <span className="block text-[10px] text-muted-foreground">de {moneyFin(linha.prescrito)}</span> : null}
                         </td>
-                        <td className={cn(cellNum, "font-bold text-brand-musgo")}>
-                          {linha.reservado.operacional ? moneyFin(linha.reservado.operacional) : "—"}
-                          <span className="ml-1 text-[10px] font-normal text-muted-foreground">{pct(linha.percentuais.operacional)}</span>
+                        <td className={cn(cellNum, "font-bold", linha.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-musgo")}>
+                          {linha.total || linha.regua.cotaLucro ? moneyFin(linha.reservado.operacional) : "—"}
                         </td>
                         <td className={cellNum}>{linha.usado.operacional ? moneyFin(linha.usado.operacional) : "—"}</td>
                         <td className={cn(cellNum, linha.acumulado.saldo.operacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
@@ -752,8 +798,11 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum}>{moneyFin(planilha.totais.disponivel)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.impostos)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.lucro)}</td>
-                    <td className={cellNum}>{moneyFin(planilha.totais.reservado.medicoExecutor)}</td>
-                    <td className={cn(cellNum, "text-brand-musgo")}>{moneyFin(planilha.totais.reservado.operacional)}</td>
+                    <td className={cellNum}>
+                      {moneyFin(planilha.totais.reservado.medicoExecutor)}
+                      <span className="block text-[10px] font-normal text-muted-foreground">de {moneyFin(planilha.totais.prescrito)}</span>
+                    </td>
+                    <td className={cn(cellNum, planilha.totais.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(planilha.totais.reservado.operacional)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.usado.operacional)}</td>
                     <td className={cn(cellNum, saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
                       {saldoOperacional < -0.005 ? `falta ${moneyFin(-saldoOperacional)}` : `sobra ${moneyFin(saldoOperacional)}`}
@@ -768,12 +817,13 @@ export function FinanceiroLucroPage() {
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
             <strong className="text-brand-musgo">Como ler:</strong> &quot;Bruto&quot; é tudo que foi lançado nas comandas do dia (crédito incluído);
             &quot;Taxas&quot; é a maquininha (débito 0,7% · crédito à vista 1,7% · parcelado 2,39%) mais o PIX (0,6%, teto R$ 150); &quot;Entrou (líquido)&quot;
-            é o que sobrou — e é sobre ele que os envelopes são repartidos. &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil
-            anterior (pulando feriado), já líquido: a Rede deixa o crédito à disposição em D+1 e a clínica decide quando puxar; &quot;puxar hoje&quot;
-            é o custo da antecipação (TAD = SELIC a.m. + 0,9%, pelos dias que faltam até os 31 de cada parcela). Esperar os 31 dias custa zero.
-            &quot;Contas pagas (dia)&quot; são as contas operacionais pagas naquele dia (obra, impostos, sócios, empréstimos e repasse do médico têm
-            envelope próprio). &quot;Sobra ou falta (mês)&quot; compara, do dia 1 até ali, tudo que ficou para gastar com tudo que já foi pago: sobra = ainda
-            cabem contas; falta = as contas já passaram da régua. Marque &quot;Separado&quot; quando as transferências do dia forem feitas.
+            é o que sobrou. &quot;Impostos&quot; é a % do líquido; &quot;Lucro (cota)&quot; é o lucro do mês dividido pelos dias úteis — vale todo dia útil, mesmo
+            sem entrada; &quot;Médico&quot; é a metade dos tratamentos prescritos no dia; &quot;Fica p/ gastar&quot; é o que sobra (negativo quando o dia não
+            paga a régua). &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil anterior (pulando feriado), já líquido: a Rede deixa o crédito
+            à disposição em D+1 e a clínica decide quando puxar; &quot;puxar hoje&quot; é o custo da antecipação (TAD = SELIC a.m. + 0,9%, pelos dias que
+            faltam até os 31 de cada parcela). &quot;Contas pagas (dia)&quot; são as contas operacionais pagas naquele dia (obra, impostos, sócios,
+            empréstimos e repasse do médico têm envelope próprio). &quot;Sobra ou falta (mês)&quot; compara, do dia 1 até ali, tudo que ficou para gastar
+            com tudo que já foi pago. Marque &quot;Separado&quot; quando as transferências do dia forem feitas.
           </p>
         </section>
       </div>

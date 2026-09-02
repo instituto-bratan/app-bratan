@@ -320,7 +320,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       whatIs:
         "A régua 'Vendas − Lucro = Despesas' da mentoria, dia a dia: de tudo que entrou nas comandas do dia, o app já separa impostos, lucro dos sócios e o repasse do médico — e mostra quanto sobrou de verdade para gastar.",
       steps: [
-        "Confira os percentuais da régua (impostos, lucro, médico executor); o operacional é o que sobra — ~30%, como na aula.",
+        "Confira a régua: impostos (% do líquido), lucro dos sócios (R$ por mês ÷ dias úteis) e médico executor (% do que o Dr. prescreveu); o operacional é o que sobra.",
         "Todo dia, olhe a linha do dia: quanto entrou, quanto já não é nosso e quanto já está disponível.",
         "Transfira os envelopes para as contas separadas e marque o dia como 'Separado'.",
         "Abra o portal da Rede, veja o 'a receber' e digite na Conferência com a maquininha — o app mostra a diferença.",
@@ -329,7 +329,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       tips: [
         "As taxas da maquininha e do PIX saem antes: os envelopes são sobre o LÍQUIDO, sempre 100% dele — nunca sobre o que sobrou.",
         "O crédito conta no dia do lançamento e fica disponível no dia útil seguinte (pulando feriado); puxar antes dos 31 dias custa a antecipação (SELIC a.m. + 0,9%), e a planilha mostra quanto.",
-        "Não é meta, é decisão: quanto menos sobra para gastar, mais vira lucro.",
+        "Não é meta, é decisão: a cota do lucro vale todo dia útil, mesmo num dia fraco — o que sobra para gastar é que se ajusta.",
       ],
     },
   },

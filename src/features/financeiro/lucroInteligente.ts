@@ -4,18 +4,25 @@
 // Em vez de gastar primeiro e lucrar o que sobra, a clínica decide o lucro e
 // se vira com o resto. Cada real que entra é repartido em envelopes:
 //   · Impostos  — a alíquota real, separada na hora (senão vira gasto);
-//   · Lucro     — a conta dos sócios (aqui: CEO 80% / Dr. Daniel 20%). Lucas,
-//                 01/09: "o salário do CEO, que é o lucro";
+//   · Lucro     — a conta dos sócios (CEO 80% / Dr. Daniel 20%). Lucas, 01/09:
+//                 "o salário do CEO, que é o lucro";
 //   · Médico executor — o repasse do Dr. Daniel como médico que atende;
 //   · Operacional — o que FICA para gastar. Tudo que não é envelope.
-// Os percentuais são SEMPRE sobre 100% do que entrou (não sobre o que sobrou).
 //
-// A aula sugere começar onde se está e subir devagar ("regra do 1%"); a
-// configuração guarda DEGRAUS com data para permitir isso — o percentual de cada
-// dia é o do degrau vigente naquele dia — e um ALVO. Mas a decisão do Lucas
-// (02/09/2026) foi começar NO TOPO: "quanto menos dinheiro sobra na parte de
-// gastar, mais a gente economiza e mais vira lucro". Os degraus continuam
-// existindo para quem quiser recuar ou registrar uma mudança de régua.
+// A RÉGUA DO INSTITUTO (Lucas, 02/09/2026 — sobrepõe os percentuais da aula):
+//   · impostos: % sobre o líquido do dia (16,6%, a alíquota da aula);
+//   · lucro: NÃO é percentual. "Você vai pegar quarenta mil, que é mais ou menos
+//     o lucro, e vai dividir pelos dias úteis; esse valor vai ser o valor do
+//     lucro, é sempre esse valor" → cota fixa por dia útil, recalculada a cada
+//     mês pelos dias úteis daquele mês;
+//   · médico executor: "50% do que ele prescreveu" — metade dos tratamentos
+//     lançados no dia vai para o Dr. Daniel; a metade da clínica é que carrega
+//     imposto, lucro e operacional. (A planilha de precificação calcula os 50%
+//     depois de tirar imposto/cartão/sala — ponto em aberto com o Lucas.)
+//   · operacional = o que sobra (pode ficar negativo num dia fraco).
+//
+// A aula sugere subir devagar ("regra do 1%"); a configuração guarda DEGRAUS
+// com data para isso — o valor de cada dia é o do degrau vigente naquele dia.
 //
 // O Lucas quis a régua DIÁRIA: todo dia o app olha o que entrou (PIX, dinheiro,
 // débito e o crédito lançado na comanda), tira as TAXAS da maquininha e do PIX
@@ -36,6 +43,7 @@ import {
   type FinReconciliation,
   type FinReconciliationStatus,
   type FinSale,
+  type FinSaleItemType,
 } from "./financeiroData";
 import {
   agendaRecebiveis,
@@ -43,6 +51,7 @@ import {
   custoAntecipacao,
   diasEntre,
   diaUtilSeguinte,
+  ehDiaUtil,
   faturamentoRede,
   PERCENTUAL_MINIMO_ANTECIPACAO_RAV,
   PRAZO_LIQUIDACAO_DIAS,
@@ -57,13 +66,16 @@ import {
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
-export type PercentuaisLucro = {
+export type ReguaLucro = {
+  /** % sobre o líquido do dia. */
   impostos: number;
-  lucro: number;
+  /** R$ por mês para os sócios — vira cota fixa por dia útil do mês. */
+  lucroMensal: number;
+  /** % do que o Dr. Daniel prescreveu no dia (itens de tratamento). */
   medicoExecutor: number;
 };
 
-export type DegrauLucro = PercentuaisLucro & {
+export type DegrauLucro = ReguaLucro & {
   /** Primeiro dia em que este degrau vale (ISO). */
   desde: string;
 };
@@ -76,7 +88,7 @@ export type ConferenciaRecebiveis = {
 
 export type LucroConfig = {
   degraus: DegrauLucro[];
-  alvo: PercentuaisLucro;
+  alvo: ReguaLucro;
   /** SELIC ao ano, em % (ex.: 15). Define a TAD da antecipação: SELIC a.m. + 0,9%. */
   selicAnual?: number;
   /** Histórico das conferências com a maquininha (as últimas ficam). */
@@ -88,47 +100,90 @@ export function selicDaConfig(config: LucroConfig) {
   return Number.isFinite(valor) && valor > 0 ? valor / 100 : SELIC_ANUAL_REFERENCIA;
 }
 
-/** Exemplo prático da aula: a cada R$ 10.000 → 2.500 lucro, 1.660 impostos, 2.800 executor, 3.040 operacional. */
-export const EXEMPLO_DA_AULA: PercentuaisLucro = { impostos: 16.6, lucro: 25, medicoExecutor: 28 };
+/** Exemplo prático da aula, só para o texto de ajuda: 25% lucro · 16,6% impostos · 28% executor → sobram 30,4%. */
+export const EXEMPLO_DA_AULA = { impostos: 16.6, lucro: 25, medicoExecutor: 28, operacional: 30.4 } as const;
 
 /**
- * A régua do Instituto, já no topo (decisão do Lucas, 02/09/2026: "pode deixar
- * as porcentagens tops").
+ * A régua do Instituto (Lucas, 02/09/2026):
  *  · impostos 16,6% = a alíquota da aula (lucro presumido), de propósito acima
  *    dos 13,33% das nossas notas — sobrar imposto separado nunca é problema;
- *  · médico executor 12% ≈ o repasse real do Dr. Daniel (a aula usa 28% porque
- *    lá o dono é o médico que atende; aqui o repasse é contratual, não cabe
- *    reservar mais do que ele recebe);
- *  · lucro 41% = o que falta para o operacional ficar nos 30,4% da aula. É a
- *    conta dos sócios (CEO 80% / Dr. Daniel 20%).
- * Fica 30,4% para gastar — exatamente o exemplo prático da aula.
+ *  · lucro R$ 40.000/mês ("mais ou menos o lucro"), dividido pelos dias úteis;
+ *  · médico executor 50% do prescrito (planilha de precificação: split 50/50).
  */
 export const defaultLucroConfig: LucroConfig = {
-  degraus: [{ desde: "2026-09-01", impostos: 16.6, lucro: 41, medicoExecutor: 12 }],
-  alvo: { impostos: 16.6, lucro: 41, medicoExecutor: 12 },
+  degraus: [{ desde: "2026-09-01", impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 }],
+  alvo: { impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 },
   selicAnual: SELIC_ANUAL_REFERENCIA * 100,
 };
 
-export function operacionalDe(percentuais: PercentuaisLucro) {
-  return round2(100 - percentuais.impostos - percentuais.lucro - percentuais.medicoExecutor);
+/**
+ * Aceita a configuração como foi gravada (inclusive a forma antiga de 01/09,
+ * em que lucro e executor eram percentuais do total) e devolve a forma atual.
+ */
+export function normalizaConfig(raw: unknown): LucroConfig {
+  const bruto = (raw ?? {}) as Partial<LucroConfig> & { degraus?: Array<Partial<DegrauLucro> & { lucro?: number }>; alvo?: Partial<ReguaLucro> & { lucro?: number } };
+  const converte = (item: (Partial<ReguaLucro> & { lucro?: number }) | undefined, padrao: ReguaLucro): ReguaLucro => {
+    if (!item) return padrao;
+    const formaAntiga = item.lucroMensal === undefined && item.lucro !== undefined;
+    return {
+      impostos: Number.isFinite(Number(item.impostos)) ? Number(item.impostos) : padrao.impostos,
+      lucroMensal: Number.isFinite(Number(item.lucroMensal)) ? Number(item.lucroMensal) : padrao.lucroMensal,
+      medicoExecutor: formaAntiga || !Number.isFinite(Number(item.medicoExecutor)) ? padrao.medicoExecutor : Number(item.medicoExecutor),
+    };
+  };
+  const degraus = (bruto.degraus ?? []).map((degrau) => ({ ...converte(degrau, defaultLucroConfig.degraus[0]), desde: degrau.desde ?? defaultLucroConfig.degraus[0].desde }));
+  return {
+    degraus: degraus.length ? degraus : defaultLucroConfig.degraus,
+    alvo: converte(bruto.alvo, defaultLucroConfig.alvo),
+    selicAnual: Number.isFinite(Number(bruto.selicAnual)) && Number(bruto.selicAnual) > 0 ? Number(bruto.selicAnual) : defaultLucroConfig.selicAnual,
+    conferencias: bruto.conferencias ?? [],
+  };
 }
 
 /** O degrau que vale num dia: o último cujo "desde" já chegou (ou o primeiro, antes de todos). */
-export function percentuaisNoDia(config: LucroConfig, dia: string): PercentuaisLucro {
+export function reguaNoDia(config: LucroConfig, dia: string): ReguaLucro {
   const ordenados = [...config.degraus].sort((a, b) => a.desde.localeCompare(b.desde));
-  if (!ordenados.length) return { impostos: 0, lucro: 0, medicoExecutor: 0 };
+  if (!ordenados.length) return { impostos: 0, lucroMensal: 0, medicoExecutor: 0 };
   let vigente = ordenados[0];
   for (const degrau of ordenados) if (degrau.desde <= dia) vigente = degrau;
-  return { impostos: vigente.impostos, lucro: vigente.lucro, medicoExecutor: vigente.medicoExecutor };
+  return { impostos: vigente.impostos, lucroMensal: vigente.lucroMensal, medicoExecutor: vigente.medicoExecutor };
 }
 
-/** Sobe o lucro em `pontos` a partir de `desde`, sem passar do alvo (a aula: 13 → 15 → 17…). */
-export function subirDegrau(config: LucroConfig, desde: string, pontos = 2): LucroConfig {
-  const atual = percentuaisNoDia(config, desde);
-  const lucro = Math.min(round2(atual.lucro + pontos), config.alvo.lucro);
-  const novo: DegrauLucro = { ...atual, lucro, desde };
+/** Dias úteis do mês (segunda a sexta, sem feriado bancário) — a base da cota diária do lucro. */
+export function diasUteisDoMes(monthKey: string): string[] {
+  const [ano, mes] = monthKey.split("-").map(Number);
+  const dias: string[] = [];
+  const ultimo = new Date(ano, mes, 0).getDate();
+  for (let d = 1; d <= ultimo; d += 1) {
+    const iso = `${monthKey}-${String(d).padStart(2, "0")}`;
+    if (ehDiaUtil(iso)) dias.push(iso);
+  }
+  return dias;
+}
+
+/** A cota do lucro no dia: lucro mensal ÷ dias úteis do mês, só nos dias úteis. */
+export function cotaLucroDoDia(regua: ReguaLucro, dia: string) {
+  if (!ehDiaUtil(dia)) return 0;
+  const uteis = diasUteisDoMes(dia.slice(0, 7)).length;
+  return uteis ? round2(regua.lucroMensal / uteis) : 0;
+}
+
+/** Sobe o lucro mensal em `reais` a partir de `desde`, sem passar do alvo. */
+export function subirDegrau(config: LucroConfig, desde: string, reais = 2000): LucroConfig {
+  const atual = reguaNoDia(config, desde);
+  const lucroMensal = Math.min(round2(atual.lucroMensal + reais), config.alvo.lucroMensal);
+  const novo: DegrauLucro = { ...atual, lucroMensal, desde };
   const semMesmoDia = config.degraus.filter((degrau) => degrau.desde !== desde);
   return { ...config, degraus: [...semMesmoDia, novo].sort((a, b) => a.desde.localeCompare(b.desde)) };
+}
+
+// ---- O que conta como "prescrito pelo Dr. Daniel" -------------------------------
+// Tratamento = plano de acompanhamento, medicação, implante. Consulta,
+// bioimpedância, sinal e retorno são da clínica; nutri e psi têm repasse próprio.
+export const ITENS_PRESCRITOS = new Set<FinSaleItemType>(["TRATAMENTO"]);
+
+export function prescritoNaComanda(sale: FinSale) {
+  return round2(sale.items.filter((item) => ITENS_PRESCRITOS.has(item.itemType)).reduce((soma, item) => soma + (item.amount || 0), 0));
 }
 
 // ---- Qual categoria da P12 pertence a qual envelope ---------------------------
@@ -155,7 +210,7 @@ export type Envelopes = Record<EnvelopeKey, number>;
 
 const zeroEnvelopes = (): Envelopes => ({ impostos: 0, lucro: 0, medicoExecutor: 0, operacional: 0 });
 
-/** Em que envelope uma conta paga cai. null = fora do jogo (obra, provisão de impostos). */
+/** Em que envelope uma conta paga cai. null = fora do jogo (obra, provisão de impostos, tarifa da maquininha). */
 export function envelopeDaConta(expense: FinExpense, category?: FinCategory | null): EnvelopeKey | null {
   if (CATEGORIAS_LUCRO_SOCIOS.has(expense.categoryRef)) return "lucro";
   if (CATEGORIAS_DIVIDAS_INVESTIMENTO.has(expense.categoryRef)) return "lucro";
@@ -167,12 +222,16 @@ export function envelopeDaConta(expense: FinExpense, category?: FinCategory | nu
   return "operacional";
 }
 
-export function repartir(total: number, percentuais: PercentuaisLucro): Envelopes {
-  const impostos = round2((total * percentuais.impostos) / 100);
-  const lucro = round2((total * percentuais.lucro) / 100);
-  const medicoExecutor = round2((total * percentuais.medicoExecutor) / 100);
-  // O operacional é o RESTO, centavo a centavo, para os quatro somarem o total.
-  const operacional = round2(total - impostos - lucro - medicoExecutor);
+/**
+ * Reparte o dia: impostos = % do líquido; médico executor = % do prescrito;
+ * lucro = a cota fixa do dia; operacional = o que sobra (centavo a centavo,
+ * para os quatro fecharem o líquido — e negativo quando o dia não paga a régua).
+ */
+export function repartir(liquido: number, prescrito: number, regua: ReguaLucro, cotaLucro: number): Envelopes {
+  const impostos = round2((liquido * regua.impostos) / 100);
+  const medicoExecutor = round2((prescrito * regua.medicoExecutor) / 100);
+  const lucro = round2(cotaLucro);
+  const operacional = round2(liquido - impostos - medicoExecutor - lucro);
   return { impostos, lucro, medicoExecutor, operacional };
 }
 
@@ -187,6 +246,7 @@ export type MarcaDiaLucro = {
 export type LinhaDiaLucro = {
   dia: string;
   fimDeSemana: boolean;
+  diaUtil: boolean;
   pix: number;
   dinheiro: number;
   debito: number;
@@ -196,16 +256,18 @@ export type LinhaDiaLucro = {
   total: number;
   /** Taxas da maquininha (débito/crédito) e do PIX sobre as vendas do dia. */
   taxas: number;
-  /** total − taxas: o que entrou de verdade. É sobre ele que os envelopes são repartidos. */
+  /** total − taxas: o que entrou de verdade. */
   liquido: number;
+  /** Itens de tratamento lançados no dia — a base dos 50% do médico executor. */
+  prescrito: number;
   /** O que já dá para mexer no dia: PIX/dinheiro/outros do dia (líquidos) + o cartão do dia útil anterior (líquido da taxa). */
   disponivel: number;
   /** Só a parte do cartão dentro de `disponivel`. */
   cartaoDisponivel: number;
   /** Quanto custaria puxar HOJE esse cartão em vez de esperar os 31 dias (TAD sobre os dias antecipados). */
   antecipacao: number;
-  percentuais: PercentuaisLucro & { operacional: number };
-  /** O líquido do dia repartido pelos envelopes. */
+  regua: ReguaLucro & { cotaLucro: number };
+  /** O dia repartido pelos envelopes. */
   reservado: Envelopes;
   /** Contas pagas no dia, por envelope. */
   usado: Envelopes;
@@ -218,11 +280,14 @@ export type LinhaDiaLucro = {
 
 export type PlanilhaLucro = {
   monthKey: string;
+  diasUteis: number;
+  cotaLucroDiaUtil: number;
   linhas: LinhaDiaLucro[];
   totais: {
     total: number;
     taxas: number;
     liquido: number;
+    prescrito: number;
     disponivel: number;
     antecipacao: number;
     reservado: Envelopes;
@@ -318,6 +383,9 @@ export function buildPlanilhaLucro(input: {
 
   const ultimoDia = ultimoDiaDoMes(monthKey);
   const limite = hoje.slice(0, 7) === monthKey ? Number(hoje.slice(8, 10)) : hoje.slice(0, 7) > monthKey ? ultimoDia : 0;
+  const diasUteis = diasUteisDoMes(monthKey).length;
+  const reguaDoMes = reguaNoDia(config, `${monthKey}-01`);
+  const cotaLucroDiaUtil = diasUteis ? round2(reguaDoMes.lucroMensal / diasUteis) : 0;
 
   const linhas: LinhaDiaLucro[] = [];
   let acumuladoReservado = zeroEnvelopes();
@@ -330,9 +398,11 @@ export function buildPlanilhaLucro(input: {
     const dia = `${monthKey}-${String(d).padStart(2, "0")}`;
     const [ano, mes] = monthKey.split("-").map(Number);
     const semana = new Date(ano, mes - 1, d).getDay();
+    const regua = reguaNoDia(config, dia);
     const linha: LinhaDiaLucro = {
       dia,
       fimDeSemana: semana === 0 || semana === 6,
+      diaUtil: ehDiaUtil(dia),
       pix: 0,
       dinheiro: 0,
       debito: 0,
@@ -341,10 +411,11 @@ export function buildPlanilhaLucro(input: {
       total: 0,
       taxas: 0,
       liquido: 0,
+      prescrito: 0,
       disponivel: 0,
       cartaoDisponivel: 0,
       antecipacao: 0,
-      percentuais: { ...percentuaisNoDia(config, dia), operacional: 0 },
+      regua: { ...regua, cotaLucro: cotaLucroDoDia(regua, dia) },
       reservado: zeroEnvelopes(),
       usado: usadoPorDia.get(dia) ?? zeroEnvelopes(),
       acumulado: { reservado: zeroEnvelopes(), usado: zeroEnvelopes(), saldo: zeroEnvelopes() },
@@ -352,11 +423,11 @@ export function buildPlanilhaLucro(input: {
       comprovantesPendentes: 0,
       marca: marcaPorDia.get(dia) ?? null,
     };
-    linha.percentuais.operacional = operacionalDe(linha.percentuais);
 
     let taxasPix = 0;
     for (const sale of sales) {
       if (sale.saleDate !== dia) continue;
+      linha.prescrito += prescritoNaComanda(sale);
       for (const payment of sale.payments) {
         const amount = payment.amount || 0;
         if (payment.method === "PIX") {
@@ -378,6 +449,7 @@ export function buildPlanilhaLucro(input: {
     linha.debito = round2(linha.debito);
     linha.credito = round2(linha.credito);
     linha.outros = round2(linha.outros);
+    linha.prescrito = round2(linha.prescrito);
     linha.taxas = round2(linha.taxas + taxasPix);
     linha.total = round2(linha.pix + linha.dinheiro + linha.debito + linha.credito + linha.outros);
     linha.liquido = round2(linha.total - linha.taxas);
@@ -385,7 +457,7 @@ export function buildPlanilhaLucro(input: {
     linha.cartaoDisponivel = cartaoHoje.liquido;
     linha.antecipacao = cartaoHoje.antecipacao;
     linha.disponivel = round2(linha.pix - taxasPix + linha.dinheiro + linha.outros + cartaoHoje.liquido);
-    linha.reservado = repartir(linha.liquido, linha.percentuais);
+    linha.reservado = repartir(linha.liquido, linha.prescrito, regua, linha.regua.cotaLucro);
 
     acumuladoReservado = somaEnvelopes(acumuladoReservado, linha.reservado);
     acumuladoUsado = somaEnvelopes(acumuladoUsado, linha.usado);
@@ -403,16 +475,19 @@ export function buildPlanilhaLucro(input: {
     linhas.push(linha);
   }
 
-  const totalMes = round2(linhas.reduce((soma, linha) => soma + linha.total, 0));
+  const soma = (pick: (linha: LinhaDiaLucro) => number) => round2(linhas.reduce((total, linha) => total + pick(linha), 0));
   return {
     monthKey,
+    diasUteis,
+    cotaLucroDiaUtil,
     linhas,
     totais: {
-      total: totalMes,
-      taxas: round2(linhas.reduce((soma, linha) => soma + linha.taxas, 0)),
-      liquido: round2(linhas.reduce((soma, linha) => soma + linha.liquido, 0)),
-      disponivel: round2(linhas.reduce((soma, linha) => soma + linha.disponivel, 0)),
-      antecipacao: round2(linhas.reduce((soma, linha) => soma + linha.antecipacao, 0)),
+      total: soma((linha) => linha.total),
+      taxas: soma((linha) => linha.taxas),
+      liquido: soma((linha) => linha.liquido),
+      prescrito: soma((linha) => linha.prescrito),
+      disponivel: soma((linha) => linha.disponivel),
+      antecipacao: soma((linha) => linha.antecipacao),
       reservado: acumuladoReservado,
       usado: acumuladoUsado,
       saldo: subtraiEnvelopes(acumuladoReservado, acumuladoUsado),
@@ -431,6 +506,8 @@ export function buildPlanilhaLucro(input: {
 export type MesAvaliado = {
   monthKey: string;
   receita: number;
+  /** Itens de tratamento vendidos no mês — a base do "50% do prescrito". */
+  prescrito: number;
   impostos: number;
   medicoExecutor: number;
   operacional: number;
@@ -440,7 +517,7 @@ export type MesAvaliado = {
   lucro: number;
   /** Obra, parcelas de empréstimo e investimento (sem a distribuição): a aula manda tratar como lucro reinvestido. */
   investimento: number;
-  percentuais: PercentuaisLucro & { operacional: number; sociosPagos: number };
+  percentuais: { impostos: number; lucro: number; medicoExecutor: number; operacional: number; sociosPagos: number };
 };
 
 export type AvaliacaoInstantanea = {
@@ -456,10 +533,9 @@ function avaliaMes(
   crediarioProfits: FinCrediarioProfit[],
   monthKey: string,
 ): MesAvaliado {
-  const receita = round2(
-    sales.filter((sale) => sale.saleDate.slice(0, 7) === monthKey).reduce((soma, sale) => soma + saleTotal(sale), 0) +
-      crediarioProfitOfMonth(crediarioProfits, monthKey),
-  );
+  const vendasDoMes = sales.filter((sale) => sale.saleDate.slice(0, 7) === monthKey);
+  const receita = round2(vendasDoMes.reduce((soma, sale) => soma + saleTotal(sale), 0) + crediarioProfitOfMonth(crediarioProfits, monthKey));
+  const prescrito = round2(vendasDoMes.reduce((soma, sale) => soma + prescritoNaComanda(sale), 0));
   let impostos = 0;
   let medicoExecutor = 0;
   let operacional = 0;
@@ -482,6 +558,7 @@ function avaliaMes(
   return {
     monthKey,
     receita,
+    prescrito,
     impostos: round2(impostos),
     medicoExecutor: round2(medicoExecutor),
     operacional: round2(operacional),
@@ -520,6 +597,7 @@ export function avaliacaoInstantanea(
     consolidado: {
       monthKey: meses.length ? `${meses[0]}..${meses[meses.length - 1]}` : "",
       receita,
+      prescrito: soma((mes) => mes.prescrito),
       impostos,
       medicoExecutor,
       operacional,
