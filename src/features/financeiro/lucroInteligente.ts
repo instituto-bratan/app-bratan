@@ -46,8 +46,8 @@ import {
   type FinReconciliation,
   type FinReconciliationStatus,
   type FinSale,
-  type FinSaleItemType,
 } from "./financeiroData";
+import { itemEhDoMedico, lucroBrutoDoItem } from "./catalogoPrecificacao";
 import {
   agendaRecebiveis,
   ajustaParaDiaUtil,
@@ -180,109 +180,22 @@ export function subirDegrau(config: LucroConfig, desde: string, reais = 2000): L
   return { ...config, degraus: [...semMesmoDia, novo].sort((a, b) => a.desde.localeCompare(b.desde)) };
 }
 
-// ---- A planilha de precificação dentro do motor ---------------------------------
-// "BRATAN — PRECIFICAÇÃO E LUCRO - TAXA HORA SALA (limpa, custos comprovados)",
-// 02/09/2026. Para cada produto da tabela oficial: o preço (coluna F) e o LUCRO
-// BRUTO DO PRODUTO (coluna P = preço − imposto/cartão − comissão − consumíveis −
-// repasse nutri/psi − custo hora-sala). A coluna S, "Margem Líquida Médico", é
-// 50% desse lucro bruto — e é isso que o Dr. Daniel recebe. O item da comanda é
-// reconhecido pela descrição (palavras-chave) e, se não der, pelo preço exato.
-// Quando o valor lançado difere do preço de tabela (desconto, acréscimo do
-// cartão), o lucro bruto acompanha proporcionalmente.
-export type ProdutoPrecificado = {
-  nome: string;
-  preco: number;
-  /** Coluna P da planilha (= 2 × coluna S). */
-  lucroBruto: number;
-  tipos: FinSaleItemType[];
-  padrao?: RegExp;
-};
-
-export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
-  // APP DO DR. DANIEL — itens do plano
-  { nome: "Programa de Acompanhamento · 6 meses", preco: 6997, lucroBruto: 5030.4, tipos: ["TRATAMENTO"], padrao: /programa|acompanhamento|plano/i },
-  { nome: "Club Bratan", preco: 6997, lucroBruto: 5624.4, tipos: ["TRATAMENTO"], padrao: /club|clube/i },
-  { nome: "Testosterona base / cipionato / enantato", preco: 490, lucroBruto: 386.6, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
-  { nome: "Testosterona blend", preco: 590, lucroBruto: 424.4, tipos: ["TRATAMENTO"], padrao: /blend/i },
-  { nome: "Testosterona + HCG", preco: 790, lucroBruto: 493, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
-  { nome: "Undecilato de testosterona", preco: 590, lucroBruto: 479.4, tipos: ["TRATAMENTO"], padrao: /undecilato|nebido/i },
-  { nome: "Nandrolona", preco: 590, lucroBruto: 494.4, tipos: ["TRATAMENTO"], padrao: /nandrolona|deca/i },
-  { nome: "HCG (frasco)", preco: 590, lucroBruto: 334, tipos: ["TRATAMENTO"], padrao: /hcg/i },
-  { nome: "Vitamina D 600.000 UI", preco: 590, lucroBruto: 510.4, tipos: ["TRATAMENTO"], padrao: /vitamina d\b|vit\.? ?d\b|colecalciferol/i },
-  { nome: "Metilcobalamina · B12", preco: 590, lucroBruto: 513.8, tipos: ["TRATAMENTO"], padrao: /b12|cobalamina/i },
-  { nome: "Metilfolato · B9", preco: 590, lucroBruto: 514, tipos: ["TRATAMENTO"], padrao: /\bb9\b|folato/i },
-  { nome: "Piridoxina · B6", preco: 590, lucroBruto: 526.2, tipos: ["TRATAMENTO"], padrao: /\bb6\b|piridoxina/i },
-  { nome: "NADH", preco: 590, lucroBruto: 471.8, tipos: ["TRATAMENTO"], padrao: /nadh/i },
-  { nome: "Coenzima Q10", preco: 590, lucroBruto: 505.4, tipos: ["TRATAMENTO"], padrao: /q10|coenzima/i },
-  { nome: "Ferinject", preco: 1990, lucroBruto: 1305.4, tipos: ["TRATAMENTO"], padrao: /ferinject|carboximaltose/i },
-  { nome: "Tirzepatida · frasco", preco: 3170, lucroBruto: 1775.6, tipos: ["TRATAMENTO"], padrao: /(tirze|mounjaro|zepbound).*frasco|frasco.*(tirze|mounjaro)/i },
-  { nome: "Tirzepatida · até 30 un", preco: 390, lucroBruto: 210.8, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Tirzepatida · 31 a 49 un", preco: 590, lucroBruto: 300.8, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Tirzepatida · acima de 50 un", preco: 790, lucroBruto: 436.8, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Honorários de implante (sem pellet)", preco: 5700, lucroBruto: 4994.4, tipos: ["TRATAMENTO"], padrao: /implante|honor/i },
-  { nome: "Pellet testosterona 50mg", preco: 123, lucroBruto: 13.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 100mg", preco: 190, lucroBruto: 21, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 125mg", preco: 224, lucroBruto: 24.8, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 150mg", preco: 280, lucroBruto: 31, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 200mg", preco: 336, lucroBruto: 37.2, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet estradiol 25mg", preco: 213, lucroBruto: 23.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet gestrinona 35mg", preco: 381, lucroBruto: 42.2, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet gestrinona 50mg", preco: 538, lucroBruto: 59.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Aderiu tratamento sem o Programa — Pix", preco: 1500, lucroBruto: 1183.8, tipos: ["TRATAMENTO"], padrao: /aderiu|sem (o )?programa/i },
-  { nome: "Aderiu tratamento sem o Programa — débito/2x", preco: 1650, lucroBruto: 1248.8, tipos: ["TRATAMENTO"], padrao: /aderiu|sem (o )?programa/i },
-  // APP DO CLOSER — comercial
-  { nome: "Sinal de consulta", preco: 500, lucroBruto: 408, tipos: ["SINAL"] },
-  { nome: "Consulta avulsa + bioimpedância — Pix", preco: 2500, lucroBruto: 2065.4, tipos: ["CONSULTA"] },
-  { nome: "Consulta avulsa + bioimpedância — débito/2x", preco: 2750, lucroBruto: 2176.4, tipos: ["CONSULTA"] },
-  { nome: "Mapeamento corporal — Pix", preco: 200, lucroBruto: 167.2, tipos: ["BIOIMPEDANCIA"] },
-  { nome: "Mapeamento corporal — débito/2x", preco: 250, lucroBruto: 203.6, tipos: ["BIOIMPEDANCIA"] },
-];
-
-/**
- * Quando o produto não é reconhecido, a fração do preço que vira lucro bruto,
- * por tipo de item — o valor da planilha para o produto de referência do tipo
- * (Programa 71,9% · consulta 82,6% · sinal 81,6% · mapeamento 83,6%). Nutri, psi,
- * retorno e "outro" não são do médico executor.
- */
-export const LUCRO_BRUTO_PADRAO_POR_TIPO: Partial<Record<FinSaleItemType, number>> = {
-  TRATAMENTO: 5030.4 / 6997,
-  DESTRAVAR: 5030.4 / 6997,
-  CONSULTA: 2065.4 / 2500,
-  SINAL: 408 / 500,
-  BIOIMPEDANCIA: 167.2 / 200,
-};
-
-export function produtoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }): ProdutoPrecificado | null {
-  const candidatos = CATALOGO_PRECIFICACAO.filter((produto) => produto.tipos.includes(item.itemType));
-  if (!candidatos.length) return null;
-  const descricao = item.description ?? "";
-  const porPalavra = candidatos.filter((produto) => produto.padrao && produto.padrao.test(descricao));
-  if (porPalavra.length) {
-    // Entre os que batem na descrição (ex.: as quatro tirzepatidas), o preço mais próximo decide.
-    return [...porPalavra].sort((a, b) => Math.abs(a.preco - item.amount) - Math.abs(b.preco - item.amount))[0];
-  }
-  const porPreco = candidatos.filter((produto) => Math.abs(produto.preco - item.amount) < 0.005);
-  if (porPreco.length === 1) return porPreco[0];
-  return null;
-}
-
-/** Coluna P da planilha para um item da comanda (proporcional ao valor lançado). */
-export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }) {
-  const amount = item.amount || 0;
-  if (amount <= 0) return 0;
-  const produto = produtoDoItem(item);
-  if (produto) return round2((produto.lucroBruto / produto.preco) * amount);
-  const fracao = LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
-  return fracao ? round2(fracao * amount) : 0;
-}
+// ---- A planilha de precificação -------------------------------------------------
+// O catálogo (preço + coluna P de cada produto, reconhecimento do item) mora em
+// catalogoPrecificacao.ts, porque o Fechamento do Kanban e o Lançar Dia usam o
+// mesmo — é assim que a comanda nasce com o nome oficial e o Lucro Inteligente
+// lê a coluna S sem chute. Reexportado aqui para quem já importava deste módulo.
+export {
+  CATALOGO_PRECIFICACAO,
+  LUCRO_BRUTO_PADRAO_POR_TIPO,
+  lucroBrutoDoItem,
+  produtoDoItem,
+  type ProdutoPrecificado,
+} from "./catalogoPrecificacao";
 
 /** Itens da comanda que têm parte do médico executor (os mesmos tipos do catálogo/padrão). */
 export function prescritoNaComanda(sale: FinSale) {
-  return round2(
-    sale.items
-      .filter((item) => LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType] !== undefined)
-      .reduce((soma, item) => soma + (item.amount || 0), 0),
-  );
+  return round2(sale.items.filter((item) => itemEhDoMedico(item.itemType)).reduce((soma, item) => soma + (item.amount || 0), 0));
 }
 
 /** Soma da coluna P dos itens da comanda — a base dos 50% do médico. */

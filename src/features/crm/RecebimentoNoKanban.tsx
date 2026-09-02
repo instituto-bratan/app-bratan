@@ -15,7 +15,16 @@
 // Um componente só, usado pelo cadastro do paciente E pelo fechamento: assim os
 // dois caminhos têm a mesma cara e a mesma explicação.
 import { useRef } from "react";
-import { AlertTriangle, Check, FileText, Paperclip, X } from "lucide-react";
+import { AlertTriangle, Check, FileText, Paperclip, Plus, X } from "lucide-react";
+import {
+  formataValor,
+  itemFechadoDoProduto,
+  itemFechadoLivre,
+  produtoPorNome,
+  secoesDoCatalogo,
+  totalDosItensFechados,
+  type ItemFechado,
+} from "@/features/financeiro/catalogoPrecificacao";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +59,8 @@ export function RecebimentoNoKanban({
   onDivisaoChange,
   itemTipo,
   onItemTipoChange,
+  itens,
+  onItensChange,
   tipo,
   onTipoChange,
   tiposDisponiveis,
@@ -71,9 +82,17 @@ export function RecebimentoNoKanban({
   /** Como o paciente pagou. Mais de uma linha = pagamento dividido. */
   divisao: ParcelaDoRecebimento[];
   onDivisaoChange: (divisao: ParcelaDoRecebimento[]) => void;
-  /** O que foi vendido (entra no item da comanda). */
+  /** O que foi vendido (entra no item da comanda) — vale quando nenhum produto da tabela foi escolhido. */
   itemTipo: FinSaleItemType;
   onItemTipoChange: (tipo: FinSaleItemType) => void;
+  /**
+   * O QUE O PACIENTE FECHOU, PRODUTO A PRODUTO (02/09/2026, pedido do Lucas):
+   * "Programa + HCG + testosterona + vitamina D". Cada linha vem da tabela de
+   * precificação com nome e preço oficiais; a comanda nasce itemizada assim e o
+   * Lucro Inteligente lê a coluna S de cada item sem adivinhar.
+   */
+  itens: ItemFechado[];
+  onItensChange: (itens: ItemFechado[]) => void;
   tipo: TipoRecebimento;
   onTipoChange: (tipo: TipoRecebimento) => void;
   tiposDisponiveis: TipoRecebimento[];
@@ -333,25 +352,103 @@ export function RecebimentoNoKanban({
                 </button>
               ))}
             </div>
-            <div>
-              <Label>O que foi vendido (entra na comanda)</Label>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {tiposDeItem.map((opcao) => (
-                  <button
-                    key={opcao}
-                    type="button"
-                    onClick={() => onItemTipoChange(opcao)}
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
-                      itemTipo === opcao
-                        ? "border-brand-dourado bg-brand-creme text-brand-tinta"
-                        : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-dourado",
-                    )}
-                  >
-                    {saleItemTypeLabels[opcao]}
-                  </button>
-                ))}
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>O que o paciente fechou (produtos da tabela de preços)</Label>
+                <Button type="button" variant="ghost" size="sm" onClick={() => onItensChange([...itens, itemFechadoLivre(itemTipo)])}>
+                  <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> outro item
+                </Button>
               </div>
+              <select
+                value=""
+                onChange={(event) => {
+                  const produto = produtoPorNome(event.target.value);
+                  if (produto) onItensChange([...itens, itemFechadoDoProduto(produto)]);
+                }}
+                className="h-10 rounded-md border border-brand-dourado/50 bg-white/80 px-3 text-sm"
+                aria-label="Adicionar produto da tabela"
+              >
+                <option value="">Adicionar produto da tabela… (Programa, HCG, testosterona, vitamina D…)</option>
+                {secoesDoCatalogo().map((grupo) => (
+                  <optgroup key={grupo.secao} label={grupo.secao}>
+                    {grupo.produtos.map((produto) => (
+                      <option key={produto.nome} value={produto.nome}>
+                        {produto.nome} · {moneyFin(produto.preco)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {itens.map((item, index) => {
+                const produto = item.produtoNome ? produtoPorNome(item.produtoNome) : null;
+                const atualiza = (mudanca: Partial<ItemFechado>) => onItensChange(itens.map((it, i) => (i === index ? { ...it, ...mudanca } : it)));
+                return (
+                  <div key={index} className="grid items-center gap-1.5 rounded-md border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[1.6fr_0.45fr_0.8fr_auto]">
+                    {produto ? (
+                      <span className="text-sm text-brand-tinta">
+                        {produto.nome} <span className="text-xs text-muted-foreground">· {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}</span>
+                      </span>
+                    ) : (
+                      <div className="grid gap-1 sm:grid-cols-[0.8fr_1.2fr]">
+                        <select
+                          value={item.itemType}
+                          onChange={(event) => atualiza({ itemType: event.target.value as FinSaleItemType })}
+                          className="h-9 rounded-md border border-input bg-white px-2 text-xs"
+                          aria-label="Tipo do item"
+                        >
+                          {tiposDeItem.map((opcao) => (
+                            <option key={opcao} value={opcao}>{saleItemTypeLabels[opcao]}</option>
+                          ))}
+                        </select>
+                        <Input value={item.descricao} onChange={(event) => atualiza({ descricao: event.target.value })} placeholder="Descreva o item (fora da tabela)" className="h-9" />
+                      </div>
+                    )}
+                    <Input
+                      value={String(item.quantidade)}
+                      onChange={(event) => {
+                        const quantidade = Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 1);
+                        atualiza({ quantidade, ...(produto ? { valorTexto: formataValor(produto.preco * quantidade) } : {}) });
+                      }}
+                      inputMode="numeric"
+                      aria-label="Quantidade"
+                      className="h-9 text-center"
+                    />
+                    <Input value={item.valorTexto} onChange={(event) => atualiza({ valorTexto: event.target.value })} placeholder="0,00" inputMode="decimal" aria-label="Valor da linha" className="h-9 text-right" />
+                    <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => onItensChange(itens.filter((_, i) => i !== index))}>
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                );
+              })}
+              {itens.length ? (
+                <p className="text-xs text-muted-foreground">
+                  Itens somam <strong className="text-brand-tinta">{moneyFin(totalDosItensFechados(itens, parseFinAmount))}</strong>
+                  {Math.abs(totalDosItensFechados(itens, parseFinAmount) - valor) > 0.01
+                    ? ` — a comanda leva o que entrou (${moneyFin(valor)}), com cada item na mesma proporção; o resto fica como vendido.`
+                    : " — bate com o valor recebido."}
+                </p>
+              ) : (
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Sem produto da tabela, a comanda leva um item só, deste tipo:</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {tiposDeItem.map((opcao) => (
+                      <button
+                        key={opcao}
+                        type="button"
+                        onClick={() => onItemTipoChange(opcao)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                          itemTipo === opcao
+                            ? "border-brand-dourado bg-brand-creme text-brand-tinta"
+                            : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-dourado",
+                        )}
+                      >
+                        {saleItemTypeLabels[opcao]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

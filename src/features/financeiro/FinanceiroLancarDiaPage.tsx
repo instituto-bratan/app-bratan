@@ -25,6 +25,7 @@ import {
 } from "@/features/crm/contactChannels";
 import { extractPersonName } from "@/features/crm/nameMatch";
 import { quandoNotaLabels, type QuandoNota } from "@/features/crm/recebimentoKanbanData";
+import { produtoPorNome, secoesDoCatalogo } from "./catalogoPrecificacao";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
@@ -524,7 +525,34 @@ export function FinanceiroLancarDiaPage() {
                     </div>
                     <div className="grid gap-2">
                       {items.map((item, index) => (
-                        <div key={index} className="grid gap-2 sm:grid-cols-[1.1fr_0.7fr_1.2fr_auto]">
+                        <div key={index} className="grid gap-2 sm:grid-cols-[1.4fr_1fr_0.7fr_1.1fr_auto]">
+                          {/* PRODUTO DA TABELA (02/09/2026): escolher aqui grava o nome e o
+                              preço oficiais — é o que o Lucro Inteligente lê para a coluna S. */}
+                          <select
+                            value={produtoPorNome(item.description) ? item.description : ""}
+                            onChange={(event) => {
+                              const produto = produtoPorNome(event.target.value);
+                              if (!produto) return;
+                              setItems((current) =>
+                                current.map((it, i) =>
+                                  i === index ? { ...it, itemType: produto.tipos[0], description: produto.nome, amount: amountToDraft(produto.preco) } : it,
+                                ),
+                              );
+                            }}
+                            className="h-11 rounded-md border border-brand-dourado/50 bg-brand-creme/40 px-3 text-sm"
+                            aria-label="Produto da tabela de preços"
+                          >
+                            <option value="">Produto da tabela…</option>
+                            {secoesDoCatalogo().map((grupo) => (
+                              <optgroup key={grupo.secao} label={grupo.secao}>
+                                {grupo.produtos.map((produto) => (
+                                  <option key={produto.nome} value={produto.nome}>
+                                    {produto.nome} · {moneyFin(produto.preco)}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
                           <select
                             value={item.itemType}
                             onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, itemType: event.target.value as FinSaleItemType } : it)))}

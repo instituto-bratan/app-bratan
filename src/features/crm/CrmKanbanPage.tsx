@@ -29,6 +29,7 @@ import {
   type FinSale,
   type FinSaleItemType,
 } from "@/features/financeiro/financeiroData";
+import { formataValor, itensDaComanda, totalDosItensFechados, type ItemFechado } from "@/features/financeiro/catalogoPrecificacao";
 import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFechamentoCard";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { createRemoteFinCashEntry, listRemoteFinCashEntries, listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
@@ -195,7 +196,7 @@ const kanbanTourSteps: TourStep[] = [
     icon: Target,
     title: "Tudo começa no fechamento (Estevão)",
     description:
-      "O botão \"Registrar fechamento\" é a porta de entrada: escolha o paciente, marque o que ele fechou (Programa, Clube, Só Tratamento, avulsa ou não fechou) e a esteira certa liga sozinha.",
+      "O botão \"Registrar fechamento\" é a porta de entrada: escolha o paciente, marque o que ele fechou (Programa, Clube, Só Tratamento, avulsa ou não fechou), escolha os produtos da tabela de preços (Programa + HCG + vitamina D…) e a esteira certa liga sozinha — a comanda já nasce itemizada.",
     hint: "O telefone é a chave única: o app busca antes de criar — nada duplica.",
   },
   {
@@ -496,6 +497,7 @@ export function CrmKanbanPage() {
   const [newRecebido, setNewRecebido] = useState("");
   const [newDivisao, setNewDivisao] = useState<ParcelaDoRecebimento[]>([parcelaVazia("PIX")]);
   const [newItemTipo, setNewItemTipo] = useState<FinSaleItemType>("SINAL");
+  const [newItens, setNewItens] = useState<ItemFechado[]>([]);
   const [newTipo, setNewTipo] = useState<"SINAL_CONSULTA" | "PRIMEIRA_CONSULTA" | "RETORNO">("SINAL_CONSULTA");
   const [newNotaInstrucao, setNewNotaInstrucao] = useState("");
   const [newNotaQuando, setNewNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
@@ -522,6 +524,8 @@ export function CrmKanbanPage() {
   const [fcDivisao, setFcDivisao] = useState<ParcelaDoRecebimento[]>([parcelaVazia("PIX")]);
   const [fcTipo, setFcTipo] = useState<TipoRecebimento>("TRATAMENTO");
   const [fcItemTipo, setFcItemTipo] = useState<FinSaleItemType>("TRATAMENTO");
+  // O que o paciente fechou, produto a produto, da tabela de preços (02/09/2026).
+  const [fcItens, setFcItens] = useState<ItemFechado[]>([]);
   const [fcNotaInstrucao, setFcNotaInstrucao] = useState("");
   const [fcNotaQuando, setFcNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
   const [fcArquivos, setFcArquivos] = useState<File[]>([]);
@@ -769,6 +773,8 @@ export function CrmKanbanPage() {
     /** Uma linha por forma de pagamento (dividido quando tem mais de uma). */
     divisao: ParcelaDoRecebimento[];
     itemTipo: FinSaleItemType;
+    /** Produtos da tabela escolhidos no fechamento; vazio = um item só do tipo `itemTipo`. */
+    itens: ItemFechado[];
     /** Vários (18/08/2026): PIX + cartão, ou quem pagou junto, são N arquivos. */
     arquivos: File[];
     /** Marcou "vou mandar depois": fica AGUARDANDO de propósito. */
@@ -844,15 +850,22 @@ export function CrmKanbanPage() {
       notes: [values.origem, values.observacao].map((item) => item.trim()).filter(Boolean).join(" · "),
       adhesion: values.plano ? "SIM" : "ABERTO",
       createdAt: new Date().toISOString(),
-      items: [
-        {
-          id: createFinId("fitem"),
-          itemType: values.itemTipo,
-          // A comanda leva só o que o BANCO vai conferir — o dinheiro foi pro caixa.
-          amount: valorComanda,
-          description: values.notaInstrucao.trim(),
-        },
-      ],
+      // A comanda leva só o que o BANCO vai conferir — o dinheiro foi pro caixa.
+      // Com produtos da tabela escolhidos, cada um vira um item com o nome
+      // oficial (é o que o Lucro Inteligente lê); sem, um item só do tipo marcado.
+      items: (() => {
+        const itemizados = itensDaComanda(values.itens, valorComanda, parseFinAmount, () => createFinId("fitem"));
+        return itemizados.length
+          ? itemizados
+          : [
+              {
+                id: createFinId("fitem"),
+                itemType: values.itemTipo,
+                amount: valorComanda,
+                description: values.notaInstrucao.trim(),
+              },
+            ];
+      })(),
       // PAGAMENTO DIVIDIDO: uma linha por forma (sem as de dinheiro, que já
       // entraram no caixa do crediário).
       payments: parcelasComanda.map((parcela) => {
@@ -983,6 +996,7 @@ export function CrmKanbanPage() {
         valorRecebido: recebidoAgora,
         divisao: newDivisao,
         itemTipo: newItemTipo,
+        itens: newItens,
         arquivos: newArquivos,
         mandaDepois: newMandaDepois,
         notaInstrucao: newNotaInstrucao,
@@ -1007,6 +1021,7 @@ export function CrmKanbanPage() {
     setNewEmail("");
     setNewRecebido("");
     setNewDivisao([parcelaVazia("PIX")]);
+    setNewItens([]);
     setNewItemTipo("SINAL");
     setNewTipo("SINAL_CONSULTA");
     setNewNotaInstrucao("");
@@ -1019,6 +1034,14 @@ export function CrmKanbanPage() {
   // A jornada COMEÇA aqui: Estevão cadastra o fechamento (paciente + o que
   // fechou) e o canal liga a esteira certa sozinho. Telefone é a chave única —
   // o PatientPicker busca antes de criar (regra de ouro nº 1).
+  // Produto a produto: a soma das linhas é o valor vendido — quem escolhe os
+  // produtos não digita o total de novo (e não erra a soma).
+  function atualizaItensFechados(itens: ItemFechado[]) {
+    setFcItens(itens);
+    const total = totalDosItensFechados(itens, parseFinAmount);
+    if (total > 0) setFcSold(formataValor(total));
+  }
+
   function handleRegistrarFechamento(event: FormEvent) {
     event.preventDefault();
     setFcFeedback("");
@@ -1139,6 +1162,7 @@ export function CrmKanbanPage() {
         valorRecebido: receivedAmount,
         divisao: fcDivisao,
         itemTipo: fcItemTipo,
+        itens: fcItens,
         arquivos: fcArquivos,
         mandaDepois: fcMandaDepois,
         notaInstrucao: fcNotaInstrucao,
@@ -1183,6 +1207,7 @@ export function CrmKanbanPage() {
     setFcDivisao([parcelaVazia("PIX")]);
     setFcTipo("TRATAMENTO");
     setFcItemTipo("TRATAMENTO");
+    setFcItens([]);
     setFcNotaInstrucao("");
     setFcNotaQuando("COM_A_CONSULTA");
     setFcArquivos([]);
@@ -2175,6 +2200,8 @@ export function CrmKanbanPage() {
                       onDivisaoChange={setFcDivisao}
                       itemTipo={fcItemTipo}
                       onItemTipoChange={setFcItemTipo}
+                      itens={fcItens}
+                      onItensChange={atualizaItensFechados}
                       tipo={fcTipo}
                       onTipoChange={setFcTipo}
                       tiposDisponiveis={["TRATAMENTO", "PRIMEIRA_CONSULTA", "RETORNO"]}
@@ -2236,6 +2263,8 @@ export function CrmKanbanPage() {
                         onDivisaoChange={setFcDivisao}
                         itemTipo={fcItemTipo}
                         onItemTipoChange={setFcItemTipo}
+                      itens={fcItens}
+                      onItensChange={atualizaItensFechados}
                         tipo={fcTipo}
                         onTipoChange={setFcTipo}
                         tiposDisponiveis={["PRIMEIRA_CONSULTA", "RETORNO"]}
@@ -2347,6 +2376,8 @@ export function CrmKanbanPage() {
                     onDivisaoChange={setNewDivisao}
                     itemTipo={newItemTipo}
                     onItemTipoChange={setNewItemTipo}
+                    itens={newItens}
+                    onItensChange={setNewItens}
                     tipo={newTipo}
                     onTipoChange={(tipo) => setNewTipo(tipo as typeof newTipo)}
                     tiposDisponiveis={["SINAL_CONSULTA", "PRIMEIRA_CONSULTA", "RETORNO"]}

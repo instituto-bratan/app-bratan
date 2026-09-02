@@ -124,6 +124,40 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
   assert.equal(li.repartir(0, li.lucroBrutoNaComanda(comanda), { impostos: 0, lucroMensal: 0, medicoExecutor: 50 }, 0).medicoExecutor, 3547.9, "coluna S: 1.032,70 + 2.515,20");
 });
 
+test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fecha exatamente no valor recebido", () => {
+  const cat = loadTsModule("src/features/financeiro/catalogoPrecificacao.ts");
+  const parse = (texto) => Number(String(texto).replace(/\./g, "").replace(",", ".")) || 0;
+  let n = 0;
+  const criarId = () => `fitem-${++n}`;
+  const programa = cat.produtoPorNome("Programa de Acompanhamento · 6 meses");
+  const hcg = cat.produtoPorNome("HCG (frasco)");
+  const vitD = cat.produtoPorNome("Vitamina D 600.000 UI");
+  assert.ok(programa && hcg && vitD, "os produtos da tabela existem pelo nome");
+  const escolhidos = [cat.itemFechadoDoProduto(programa), cat.itemFechadoDoProduto(hcg), cat.itemFechadoDoProduto(vitD, 2)];
+  assert.equal(escolhidos[2].valorTexto, "1.180,00", "quantidade 2 × 590 já vem preenchida");
+  assert.equal(cat.totalDosItensFechados(escolhidos, parse), 8767, "6.997 + 590 + 1.180");
+
+  const cheio = cat.itensDaComanda(escolhidos, 8767, parse, criarId);
+  assert.deepEqual(plain(cheio.map((i) => [i.description, i.itemType, i.amount])), [
+    ["Programa de Acompanhamento · 6 meses", "TRATAMENTO", 6997],
+    ["HCG (frasco)", "TRATAMENTO", 590],
+    ["Vitamina D 600.000 UI", "TRATAMENTO", 1180],
+  ], "recebido igual à soma: itens intactos, com o nome exato da tabela");
+
+  const parcial = cat.itensDaComanda(escolhidos, 5000, parse, criarId);
+  assert.equal(plain(parcial.reduce((s, i) => s + i.amount, 0)), 5000, "recebeu menos: a comanda fecha nos 5.000, centavo a centavo");
+  assert.equal(parcial[0].description, "Programa de Acompanhamento · 6 meses", "o nome do produto não muda com a proporção");
+  perto(parcial[0].amount, 6997 * (5000 / 8767), 0.01, "cada item na mesma proporção");
+
+  // É o nome exato que o Lucro Inteligente lê primeiro — mesmo para o Club, que tem o preço do Programa.
+  assert.equal(li.produtoDoItem({ itemType: "TRATAMENTO", amount: 6997, description: "Club Bratan" }).nome, "Club Bratan");
+  assert.equal(li.lucroBrutoDoItem(cheio[0]), 5030.4, "o item gravado pelo Fechamento cai na coluna P do Programa");
+  assert.equal(li.lucroBrutoDoItem(cheio[2]), 1020.8, "2 vitaminas D: 510,40 × 2");
+  assert.equal(cat.itensDaComanda([], 1000, parse, criarId).length, 0, "sem produto escolhido, o fechamento segue com o item único de antes");
+  assert.ok(cat.secoesDoCatalogo().length >= 6, "o seletor agrupa por seção da planilha");
+  assert.equal(cat.secoesDoCatalogo()[0].secao, "Programa e Club");
+});
+
 test("degraus: o valor do dia é o do degrau vigente, e subir não passa do alvo", () => {
   const config = {
     degraus: [
