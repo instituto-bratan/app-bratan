@@ -49,7 +49,7 @@ const channelShort: Record<CrmAdhesionChannel, string> = {
 
 const channelOptions: { value: CrmAdhesionChannel; label: string }[] = [
   { value: "PROGRAMA_ACOMPANHAMENTO", label: "Programa de Acompanhamento" },
-  { value: "CLUBE_BRATAN", label: "Clube Bratan" },
+  { value: "CLUBE_BRATAN", label: "Consulta Black (ex-Clube)" },
   { value: "SOMENTE_TRATAMENTO", label: "Somente Tratamento" },
 ];
 

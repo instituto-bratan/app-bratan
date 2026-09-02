@@ -338,7 +338,7 @@ export type CanalFiltro = "TODOS" | CrmAdhesionChannel | "SEM_CANAL";
 export const canalFiltroLabels: Record<CanalFiltro, string> = {
   TODOS: "Todos os canais",
   PROGRAMA_ACOMPANHAMENTO: "Programa de Acompanhamento",
-  CLUBE_BRATAN: "Clube Bratan",
+  CLUBE_BRATAN: "Consulta Black (ex-Clube)",
   SOMENTE_TRATAMENTO: "Somente Tratamento",
   SEM_CANAL: "Sem canal definido",
 };

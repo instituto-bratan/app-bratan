@@ -164,12 +164,12 @@ function formaParaComprovante(forma: FinPaymentMethod) {
 
 const channelLabels: Record<CrmAdhesionChannel, string> = {
   PROGRAMA_ACOMPANHAMENTO: "Programa de Acompanhamento",
-  CLUBE_BRATAN: "Clube Bratan",
+  CLUBE_BRATAN: "Consulta Black (ex-Clube)",
   SOMENTE_TRATAMENTO: "Somente Tratamento",
 };
 const channelShort: Record<CrmAdhesionChannel, string> = {
   PROGRAMA_ACOMPANHAMENTO: "Programa",
-  CLUBE_BRATAN: "Clube",
+  CLUBE_BRATAN: "Black",
   SOMENTE_TRATAMENTO: "Tratamento",
 };
 
@@ -1145,7 +1145,7 @@ export function CrmKanbanPage() {
             ? "Consulta avulsa registrada — sem jornada (segue o fluxo normal de agenda)."
             : ehContinuacao(fcResultado)
               ? "Tratamento de continuação registrado — o canal do paciente ficou como estava e a enfermeira agenda as doses no D+1."
-              : `Fechamento registrado! A esteira ${fcResultado === "PROGRAMA_ACOMPANHAMENTO" ? "do Programa" : fcResultado === "CLUBE_BRATAN" ? "do Clube" : "de Tratamento"} ligou sozinha — as tarefas do D+1 já nasceram para as pessoas certas.`,
+              : `Fechamento registrado! A esteira ${fcResultado === "PROGRAMA_ACOMPANHAMENTO" ? "do Programa" : fcResultado === "CLUBE_BRATAN" ? "da Consulta Black" : "de Tratamento"} ligou sozinha — as tarefas do D+1 já nasceram para as pessoas certas.`,
       );
       return moved.state;
     });
@@ -2117,7 +2117,7 @@ export function CrmKanbanPage() {
                     {(
                       [
                         ["PROGRAMA_ACOMPANHAMENTO", "Plano de Acompanhamento", "Concierge + Recepção + Enfermeira no D+1"],
-                        ["CLUBE_BRATAN", "Clube Bratan", "Concierge + Recepção no D+1"],
+                        ["CLUBE_BRATAN", "Consulta Black (ex-Clube)", "Concierge + Recepção no D+1"],
                         ["SOMENTE_TRATAMENTO", "Somente Tratamento", "aderiu na consulta, sem plano · Concierge + Enfermeira no D+1"],
                         [
                           "TRATAMENTO_CONTINUACAO",

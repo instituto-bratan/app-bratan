@@ -99,10 +99,12 @@ test("cota do lucro: R$ 40 mil ÷ dias úteis do mês (setembro/2026 tem 21, sem
 
 test("planilha de precificação no motor: o item da comanda vira a coluna P (lucro bruto) e a S é 50% dela", () => {
   const item = (itemType, amount, description = "") => ({ itemType, amount, description });
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses")), 5030.4, "Programa: 6.997 − 932,70 imposto − 69 comissão − 660 nutri − 304 sala");
-  assert.equal(li.produtoDoItem(item("TRATAMENTO", 6997, "Club Bratan")).nome, "Club Bratan", "mesmo preço, descrição decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Club Bratan")), 5624.4);
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "")), 5030.4, "6.997 sem descrição: preço ambíguo (Programa/Club) → padrão do tipo = fração do Programa");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses")), 5030.4, "Plano: 6.997 − 932,70 imposto − 69 comissão − 660 nutri − 304 sala");
+  assert.equal(li.produtoDoItem(item("TRATAMENTO", 6997, "")).nome, "Plano de Acompanhamento · 6 meses", "6.997 é só do Plano (o Club virou Consulta Black a 1.500)");
+  assert.equal(li.produtoDoItem(item("CONSULTA", 1500, "Club Bratan")).nome, "Consulta Black (5% de desconto em tratamentos) — Pix", "quem ainda escreve 'club' cai na Consulta Black");
+  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1500, "Consulta Black")), 1183.8);
+  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1100, "Consulta Diamond")), 841.1, "Diamond: 1.100 − 146,63 NF − 11 comissão − 101,33 sala");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 3900, "Teste genético")), 3346.4, "teste genético ainda sem o custo do kit");
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")).nome, "Tirzepatida · 31 a 49 un", "entre as tirzepatidas, o preço mais próximo decide");
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 300.8);
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1990, "")), 1305.4, "1.990 só pode ser Ferinject: preço decide");
@@ -111,7 +113,8 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
   assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 2500, "")), 2065.4, "consulta avulsa Pix");
   assert.equal(li.lucroBrutoDoItem(item("SINAL", 500, "")), 408);
   assert.equal(li.lucroBrutoDoItem(item("BIOIMPEDANCIA", 200, "")), 167.2, "mapeamento corporal");
-  assert.equal(li.lucroBrutoDoItem(item("NUTRICIONISTA", 600, "Dra. Géssica")), 0, "nutri e psi não são do médico executor");
+  assert.equal(li.lucroBrutoDoItem(item("NUTRICIONISTA", 600, "Dra. Géssica")), 0, "nutri e psi estão no seletor, mas não são do médico executor");
+  assert.equal(li.lucroBrutoDoItem(item("PSICOLOGA", 790, "Dra. Bárbara (psicóloga) — 4 sessões")), 0);
   assert.equal(li.lucroBrutoDoItem(item("RETORNO", 0, "")), 0);
 
   const comanda = venda("ana", "2026-09-01", [{ method: "PIX", amount: 10097 }], [
@@ -129,7 +132,7 @@ test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fec
   const parse = (texto) => Number(String(texto).replace(/\./g, "").replace(",", ".")) || 0;
   let n = 0;
   const criarId = () => `fitem-${++n}`;
-  const programa = cat.produtoPorNome("Programa de Acompanhamento · 6 meses");
+  const programa = cat.produtoPorNome("Plano de Acompanhamento · 6 meses");
   const hcg = cat.produtoPorNome("HCG (frasco)");
   const vitD = cat.produtoPorNome("Vitamina D 600.000 UI");
   assert.ok(programa && hcg && vitD, "os produtos da tabela existem pelo nome");
@@ -139,23 +142,24 @@ test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fec
 
   const cheio = cat.itensDaComanda(escolhidos, 8767, parse, criarId);
   assert.deepEqual(plain(cheio.map((i) => [i.description, i.itemType, i.amount])), [
-    ["Programa de Acompanhamento · 6 meses", "TRATAMENTO", 6997],
+    ["Plano de Acompanhamento · 6 meses", "TRATAMENTO", 6997],
     ["HCG (frasco)", "TRATAMENTO", 590],
     ["Vitamina D 600.000 UI", "TRATAMENTO", 1180],
   ], "recebido igual à soma: itens intactos, com o nome exato da tabela");
 
   const parcial = cat.itensDaComanda(escolhidos, 5000, parse, criarId);
   assert.equal(plain(parcial.reduce((s, i) => s + i.amount, 0)), 5000, "recebeu menos: a comanda fecha nos 5.000, centavo a centavo");
-  assert.equal(parcial[0].description, "Programa de Acompanhamento · 6 meses", "o nome do produto não muda com a proporção");
+  assert.equal(parcial[0].description, "Plano de Acompanhamento · 6 meses", "o nome do produto não muda com a proporção");
   perto(parcial[0].amount, 6997 * (5000 / 8767), 0.01, "cada item na mesma proporção");
 
-  // É o nome exato que o Lucro Inteligente lê primeiro — mesmo para o Club, que tem o preço do Programa.
-  assert.equal(li.produtoDoItem({ itemType: "TRATAMENTO", amount: 6997, description: "Club Bratan" }).nome, "Club Bratan");
-  assert.equal(li.lucroBrutoDoItem(cheio[0]), 5030.4, "o item gravado pelo Fechamento cai na coluna P do Programa");
+  // É o nome exato que o Lucro Inteligente lê primeiro.
+  assert.equal(li.produtoDoItem({ itemType: "CONSULTA", amount: 1500, description: "Consulta Black (5% de desconto em tratamentos) — Pix" }).nome, "Consulta Black (5% de desconto em tratamentos) — Pix");
+  assert.equal(li.lucroBrutoDoItem(cheio[0]), 5030.4, "o item gravado pelo Fechamento cai na coluna P do Plano");
   assert.equal(li.lucroBrutoDoItem(cheio[2]), 1020.8, "2 vitaminas D: 510,40 × 2");
   assert.equal(cat.itensDaComanda([], 1000, parse, criarId).length, 0, "sem produto escolhido, o fechamento segue com o item único de antes");
   assert.ok(cat.secoesDoCatalogo().length >= 6, "o seletor agrupa por seção da planilha");
-  assert.equal(cat.secoesDoCatalogo()[0].secao, "Programa e Club");
+  assert.equal(cat.secoesDoCatalogo()[0].secao, "Plano de Acompanhamento");
+  assert.equal(cat.produtoPorNome("Club Bratan"), null, "o Club a R$ 6.997 saiu da tabela");
 });
 
 test("degraus: o valor do dia é o do degrau vigente, e subir não passa do alvo", () => {

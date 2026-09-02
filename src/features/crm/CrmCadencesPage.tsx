@@ -425,7 +425,7 @@ export function CrmCadencesPage() {
             </div>
             <div className="grid gap-2">
               <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-                <p className="text-sm font-bold text-brand-musgo">2 · Clube Bratan</p>
+                <p className="text-sm font-bold text-brand-musgo">2 · Consulta Black (ex-Clube Bratan)</p>
                 <p className="mt-1 text-xs leading-5 text-brand-tinta">
                   D+1 com <span className="font-semibold text-amber-800">Concierge</span> (boas-vindas) + <span className="font-semibold text-emerald-800">Recepção</span> (agendar a próxima consulta, ~3 meses). Agenda confirmada = Clube ativo. Sem enfermeira nesta esteira.
                 </p>

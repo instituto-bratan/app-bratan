@@ -30,10 +30,9 @@ export type ProdutoPrecificado = {
 
 export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   // APP DO DR. DANIEL — itens do plano
-  { nome: "Programa de Acompanhamento · 6 meses", secao: "Programa e Club", preco: 6997, lucroBruto: 5030.4, tipos: ["TRATAMENTO"], padrao: /programa|acompanhamento|plano/i },
-  { nome: "Club Bratan", secao: "Programa e Club", preco: 6997, lucroBruto: 5624.4, tipos: ["TRATAMENTO"], padrao: /club|clube/i },
-  { nome: "Aderiu tratamento sem o Programa — Pix", secao: "Programa e Club", preco: 1500, lucroBruto: 1183.8, tipos: ["TRATAMENTO"], padrao: /aderiu|sem (o )?programa/i },
-  { nome: "Aderiu tratamento sem o Programa — débito/2x", secao: "Programa e Club", preco: 1650, lucroBruto: 1248.8, tipos: ["TRATAMENTO"], padrao: /aderiu|sem (o )?programa/i },
+  // Só o Plano custa R$ 6.997 (Lucas, 02/09: "o clube virou Consulta Black" — a
+  // R$ 1.500, com 5% de desconto em tratamentos; está na esteira de consultas).
+  { nome: "Plano de Acompanhamento · 6 meses", secao: "Plano de Acompanhamento", preco: 6997, lucroBruto: 5030.4, tipos: ["TRATAMENTO"], padrao: /programa|acompanhamento|plano/i },
   { nome: "Testosterona base / cipionato / enantato", secao: "Hormonais (por dose)", preco: 490, lucroBruto: 386.6, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
   { nome: "Testosterona blend", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 424.4, tipos: ["TRATAMENTO"], padrao: /blend/i },
   { nome: "Testosterona + HCG", secao: "Hormonais (por dose)", preco: 790, lucroBruto: 493, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
@@ -60,12 +59,23 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   { nome: "Pellet estradiol 25mg", secao: "Implante hormonal", preco: 213, lucroBruto: 23.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
   { nome: "Pellet gestrinona 35mg", secao: "Implante hormonal", preco: 381, lucroBruto: 42.2, tipos: ["TRATAMENTO"], padrao: /pellet/i },
   { nome: "Pellet gestrinona 50mg", secao: "Implante hormonal", preco: 538, lucroBruto: 59.6, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  // APP DO CLOSER — comercial
-  { nome: "Sinal de consulta", secao: "Comercial (consulta, sinal, exame)", preco: 500, lucroBruto: 408, tipos: ["SINAL"] },
-  { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial (consulta, sinal, exame)", preco: 2500, lucroBruto: 2065.4, tipos: ["CONSULTA"] },
-  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial (consulta, sinal, exame)", preco: 2750, lucroBruto: 2176.4, tipos: ["CONSULTA"] },
-  { nome: "Mapeamento corporal — Pix", secao: "Comercial (consulta, sinal, exame)", preco: 200, lucroBruto: 167.2, tipos: ["BIOIMPEDANCIA"] },
-  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial (consulta, sinal, exame)", preco: 250, lucroBruto: 203.6, tipos: ["BIOIMPEDANCIA"] },
+  // APP DO CLOSER — esteira de consultas (Lucas, 02/09/2026). Lucro bruto pela
+  // mesma conta da planilha: preço − NF 13,33% (consulta) − comissão 1% quando
+  // é venda do comercial − custo de sala (60 min = R$ 101,33; 20 min = R$ 33,78).
+  { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 408, tipos: ["SINAL"] },
+  { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 2065.4, tipos: ["CONSULTA"] },
+  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 2176.4, tipos: ["CONSULTA"] },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 1183.8, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 1248.8, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 841.1, tipos: ["CONSULTA"], padrao: /diamond/i },
+  { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 167.2, tipos: ["BIOIMPEDANCIA"] },
+  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 203.6, tipos: ["BIOIMPEDANCIA"] },
+  // Teste genético: o kit/laboratório ainda não tem custo comprovado (aba "Custos a
+  // confirmar") — o lucro bruto aqui é SEM o kit e vai cair quando o custo entrar.
+  { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 3346.4, tipos: ["TRATAMENTO"], padrao: /gen[eé]tic/i },
+  // Nutri e psi: preço de tabela para o seletor; não são do médico executor.
+  { nome: "Dra. Géssica (nutricionista) — consulta", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 268.7, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
+  { nome: "Dra. Bárbara (psicóloga) — 4 sessões", secao: "Nutrição e psicologia", preco: 790, lucroBruto: 279.4, tipos: ["PSICOLOGA"], padrao: /b[aá]rbara|psic/i },
 ];
 
 /** As seções na ordem da planilha, cada uma com os seus produtos — para montar o seletor. */
@@ -119,10 +129,10 @@ export function produtoDoItem(item: { itemType: FinSaleItemType; amount: number;
   return null;
 }
 
-/** Coluna P da planilha para um item da comanda (proporcional ao valor lançado). */
+/** Coluna P da planilha para um item da comanda (proporcional ao valor lançado). Zero para o que não é do médico executor. */
 export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }) {
   const amount = item.amount || 0;
-  if (amount <= 0) return 0;
+  if (amount <= 0 || !itemEhDoMedico(item.itemType)) return 0;
   const produto = produtoDoItem(item);
   if (produto) return round2((produto.lucroBruto / produto.preco) * amount);
   const fracao = LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
