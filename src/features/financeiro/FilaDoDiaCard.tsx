@@ -135,7 +135,11 @@ export function FilaDoDiaCard({
                 </div>
               ))
             )}
-            {coluna.itens.length > 12 ? <p className="text-center text-[11px] text-muted-foreground">+{coluna.itens.length - 12} na planilha abaixo</p> : null}
+            {coluna.itens.length > 12 ? (
+              <p className="text-center text-[11px] text-muted-foreground">
+                +{coluna.itens.length - 12} {coluna.chave === "pendencias" ? "na tela Compras" : "na planilha abaixo"}
+              </p>
+            ) : null}
           </div>
         ))}
       </div>

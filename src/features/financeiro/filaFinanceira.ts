@@ -82,11 +82,17 @@ export function buildFilaFinanceira(input: {
   diasSemana?: number;
   /** Vencidas mais velhas que isso ficam fora da fila (são caso da planilha, não do dia). */
   maxVencidosDias?: number;
+  /** Compras mais velhas que isso não entram nas pendências (histórico fica em Compras). */
+  maxCompraDias?: number;
 }): FilaFinanceira {
-  const { expenses, purchases, hoje } = input;
+  const { expenses, hoje } = input;
   const notasAnexadas = input.notasAnexadas ?? new Set<string>();
   const limite = somaDias(hoje, input.diasSemana ?? 7);
   const maisVelha = somaDias(hoje, -(input.maxVencidosDias ?? 90));
+  // Compra de 3 meses atrás sem "chegou" já chegou há muito tempo — ninguém vai
+  // conferir; ela fica no histórico de Compras, não na fila do dia.
+  const compraMaisVelha = somaDias(hoje, -(input.maxCompraDias ?? 60));
+  const purchases = input.purchases.filter((purchase) => purchase.purchaseDate >= compraMaisVelha);
   const porData = (a: ItemFila, b: ItemFila) => a.data.localeCompare(b.data) || b.valor - a.valor;
 
   const abertas = expenses.filter((expense) => !expense.paidAt && expense.dueDate);
