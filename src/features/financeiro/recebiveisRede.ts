@@ -146,6 +146,14 @@ export function diaUtilAnterior(iso: string) {
 
 /** SELIC ao ano de referência (a aula, fev/2026: "o juros hoje tá 15%"). Editável na tela do Lucro Inteligente. */
 export const SELIC_ANUAL_REFERENCIA = 0.15;
+/**
+ * Compromisso do anexo RAV (Q-7594851 e Q-7621480): o estabelecimento se
+ * compromete a antecipar NO MÍNIMO 10% do volume elegível (crédito à vista e
+ * parcelado) com a TAD; se não alcançar, a Rede pode retirar as taxas com
+ * desconto. Ou seja: esperar 31 dias em TUDO não é opção — uma fatia tem que
+ * ser antecipada.
+ */
+export const PERCENTUAL_MINIMO_ANTECIPACAO_RAV = 0.1;
 /** Parte fixa da TAD (tabela 3 do anexo RAV). */
 export const TAXA_FIXA_TAD = 0.009;
 

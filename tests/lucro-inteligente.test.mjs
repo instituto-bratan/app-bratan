@@ -191,6 +191,47 @@ test("envelopeDaConta: CEO é lucro, Dr. Daniel é executor, provisão/obra/tari
   assert.equal(li.envelopeDaConta(conta("h", 1, "cat-tarifa-bancaria-rede", "2026-09-01"), cat("cat-tarifa-bancaria-rede")), null, "a taxa já saiu na coluna Taxas");
 });
 
+test("dívida de investimento (empréstimo) é lucro pagando reforma, não despesa operacional (a aula)", () => {
+  const cats = [...categorias, { id: "cat-giro-pronamp-carro-emprestimo", name: "Empréstimo", groupKey: "CUSTO_FIXO", isCapex: false, sortOrder: 20, active: true }];
+  const cat = (id) => cats.find((c) => c.id === id);
+  assert.equal(li.envelopeDaConta(conta("e", 1, "cat-giro-pronamp-carro-emprestimo", "2026-09-01"), cat("cat-giro-pronamp-carro-emprestimo")), "lucro", "sai do envelope do lucro");
+  const vendas = [venda("ana", "2026-08-10", [{ method: "DINHEIRO", amount: 100000 }])];
+  const contas = [conta("aluguel", 50000, "cat-fixo", "2026-08-10"), conta("pronamp", 7000, "cat-giro-pronamp-carro-emprestimo", "2026-08-10")];
+  const mes = li.avaliacaoInstantanea(vendas, contas, cats, [], ["2026-08"]).meses[0];
+  assert.equal(mes.operacional, 50000, "a parcela do empréstimo não pesa no operacional");
+  assert.equal(mes.investimento, 7000, "fica junto com obra/investimento");
+  assert.equal(mes.lucro, 50000, "o lucro inclui o que foi para a dívida");
+});
+
+test("conferência com a maquininha: o app calcula o a receber e compara com o que a Rede mostra", () => {
+  const vendas = [
+    venda("ana", "2026-09-01", [{ method: "CARTAO_CREDITO", amount: 6000 }]),
+    venda("bia", "2026-09-01", [{ method: "PIX", amount: 1000 }]),
+  ];
+  const semInformar = li.conferirRecebiveis(vendas, "2026-09-02");
+  assert.equal(semInformar.calculado, 5898, "6.000 − 1,7%, liquidação em 02/10");
+  assert.equal(semInformar.parcelas, 1);
+  assert.deepEqual(plain(semInformar.porMes), [{ mes: "2026-10", liquido: 5898, parcelas: 1 }]);
+  assert.equal(semInformar.informado, null);
+  assert.equal(semInformar.bate, null);
+  assert.equal(semInformar.volumeCartaoMes, 6000, "o PIX não é volume elegível");
+  assert.equal(semInformar.minimoAntecipar, 600, "o contrato manda antecipar ao menos 10%");
+
+  let config = { degraus: [], alvo: { impostos: 0, lucro: 0, medicoExecutor: 0 } };
+  config = li.registrarConferencia(config, { dia: "2026-09-02", aReceberRede: 5920 });
+  const bateu = li.conferirRecebiveis(vendas, "2026-09-02", config.conferencias);
+  assert.equal(bateu.informado, 5920);
+  assert.equal(bateu.diferenca, 22);
+  assert.equal(bateu.bate, true, "R$ 22 cabe na folga de R$ 50");
+  config = li.registrarConferencia(config, { dia: "2026-09-02", aReceberRede: 4000 });
+  assert.equal(config.conferencias.length, 1, "uma conferência por dia: a nova substitui");
+  const naoBateu = li.conferirRecebiveis(vendas, "2026-09-02", config.conferencias);
+  assert.equal(naoBateu.diferenca, -1898);
+  assert.equal(naoBateu.bate, false, "a Rede mostra menos: ou antecipou, ou falta lançar");
+  const depois = li.conferirRecebiveis(vendas, "2026-10-05", config.conferencias);
+  assert.equal(depois.calculado, 0, "depois da liquidação não há mais nada a receber");
+});
+
 test("avaliação instantânea (Passo 1): onde a clínica está, sem maquiar", () => {
   const vendas = [venda("ana", "2026-08-10", [{ method: "PIX", amount: 100000 }])];
   const contas = [

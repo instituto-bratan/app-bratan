@@ -323,6 +323,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
         "Confira os percentuais da régua (impostos, lucro, médico executor); o operacional é o que sobra — ~30%, como na aula.",
         "Todo dia, olhe a linha do dia: quanto entrou, quanto já não é nosso e quanto já está disponível.",
         "Transfira os envelopes para as contas separadas e marque o dia como 'Separado'.",
+        "Abra o portal da Rede, veja o 'a receber' e digite na Conferência com a maquininha — o app mostra a diferença.",
         "No começo do mês, veja 'Onde estamos' (últimos 3 meses) para enxergar a distância entre a régua e a realidade.",
       ],
       tips: [

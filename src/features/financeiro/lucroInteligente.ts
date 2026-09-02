@@ -38,11 +38,15 @@ import {
   type FinSale,
 } from "./financeiroData";
 import {
+  agendaRecebiveis,
   ajustaParaDiaUtil,
   custoAntecipacao,
   diasEntre,
   diaUtilSeguinte,
+  faturamentoRede,
+  PERCENTUAL_MINIMO_ANTECIPACAO_RAV,
   PRAZO_LIQUIDACAO_DIAS,
+  saldoRecebiveis,
   SELIC_ANUAL_REFERENCIA,
   somaDias,
   TAXA_EFETIVA_ANTECIPACAO,
@@ -64,11 +68,19 @@ export type DegrauLucro = PercentuaisLucro & {
   desde: string;
 };
 
+/** O que a Rede mostrava como "a receber" num dia — digitado pelo Lucas para bater com a agenda do app. */
+export type ConferenciaRecebiveis = {
+  dia: string;
+  aReceberRede: number;
+};
+
 export type LucroConfig = {
   degraus: DegrauLucro[];
   alvo: PercentuaisLucro;
   /** SELIC ao ano, em % (ex.: 15). Define a TAD da antecipação: SELIC a.m. + 0,9%. */
   selicAnual?: number;
+  /** Histórico das conferências com a maquininha (as últimas ficam). */
+  conferencias?: ConferenciaRecebiveis[];
 };
 
 export function selicDaConfig(config: LucroConfig) {
@@ -129,6 +141,14 @@ export const CATEGORIAS_MEDICO_EXECUTOR = new Set(["cat-medico-prescritor-dr-bra
 export const CATEGORIAS_LUCRO_SOCIOS = new Set(["cat-salario-ceo", "cat-prolabore-socios", "cat-distribuicao-lucro-socios"]);
 /** Taxas das maquininhas: já saem do "entrou" na coluna Taxas — contá-las de novo como gasto seria dobrar. */
 export const CATEGORIAS_TAXAS_MAQUININHA = new Set(["cat-tarifa-bancaria-rede", "cat-tarifa-bancaria-safra"]);
+/**
+ * Parcelas de empréstimo/financiamento (Pronamp, empréstimo da obra, carro):
+ * a aula é explícita — "se você tem dívidas grandes de uma reforma, considera
+ * que isso é lucro; isso está tirando do seu lucro até você conseguir pagar".
+ * Não é despesa operacional: sai do envelope do lucro e, na avaliação, fica
+ * junto com obra/investimento.
+ */
+export const CATEGORIAS_DIVIDAS_INVESTIMENTO = new Set(["cat-giro-pronamp-carro-emprestimo"]);
 
 export type EnvelopeKey = "impostos" | "lucro" | "medicoExecutor" | "operacional";
 export type Envelopes = Record<EnvelopeKey, number>;
@@ -138,6 +158,7 @@ const zeroEnvelopes = (): Envelopes => ({ impostos: 0, lucro: 0, medicoExecutor:
 /** Em que envelope uma conta paga cai. null = fora do jogo (obra, provisão de impostos). */
 export function envelopeDaConta(expense: FinExpense, category?: FinCategory | null): EnvelopeKey | null {
   if (CATEGORIAS_LUCRO_SOCIOS.has(expense.categoryRef)) return "lucro";
+  if (CATEGORIAS_DIVIDAS_INVESTIMENTO.has(expense.categoryRef)) return "lucro";
   if (CATEGORIAS_IMPOSTOS.has(expense.categoryRef)) return "impostos";
   if (CATEGORIAS_PROVISAO_IMPOSTOS.has(expense.categoryRef)) return null;
   if (CATEGORIAS_TAXAS_MAQUININHA.has(expense.categoryRef)) return null;
@@ -417,7 +438,7 @@ export type MesAvaliado = {
   sociosPagos: number;
   /** receita − impostos − executor − operacional: o lucro de verdade (sócios pagos + o que ficou). */
   lucro: number;
-  /** Obra e investimento (capex, sem a distribuição): a aula manda tratar como lucro reinvestido. */
+  /** Obra, parcelas de empréstimo e investimento (sem a distribuição): a aula manda tratar como lucro reinvestido. */
   investimento: number;
   percentuais: PercentuaisLucro & { operacional: number; sociosPagos: number };
 };
@@ -453,7 +474,7 @@ function avaliaMes(
     else if (CATEGORIAS_IMPOSTOS.has(expense.categoryRef)) impostos += amount;
     else if (CATEGORIAS_PROVISAO_IMPOSTOS.has(expense.categoryRef)) continue;
     else if (CATEGORIAS_MEDICO_EXECUTOR.has(expense.categoryRef)) medicoExecutor += amount;
-    else if (expenseEhCapex(expense, category)) investimento += amount;
+    else if (CATEGORIAS_DIVIDAS_INVESTIMENTO.has(expense.categoryRef) || expenseEhCapex(expense, category)) investimento += amount;
     else operacional += amount;
   }
   const lucro = round2(receita - impostos - medicoExecutor - operacional);
@@ -514,6 +535,57 @@ export function avaliacaoInstantanea(
       },
     },
   };
+}
+
+// ---- Conferência com a maquininha ----------------------------------------------
+// Lucas, 02/09/2026: "uma opção de eu colocar o dinheiro que está para
+// recebimentos, para ver se está batendo". O app calcula o que a Rede ainda
+// deve (parcelas com liquidação depois de hoje, líquidas) e o Lucas digita o
+// "a receber" que o portal da Rede mostra. Diferença pequena é bandeira/data;
+// diferença grande é comanda faltando ou antecipação já puxada.
+export type ResultadoConferencia = {
+  hoje: string;
+  /** O que o app espera receber daqui para frente (líquido), pela agenda das comandas. */
+  calculado: number;
+  parcelas: number;
+  porMes: { mes: string; liquido: number; parcelas: number }[];
+  informado: number | null;
+  informadoEm: string | null;
+  /** informado − calculado (positivo = a Rede mostra mais do que o app espera). */
+  diferenca: number | null;
+  /** Dentro da folga: R$ 50 ou 0,5% do calculado, o que for maior. */
+  bate: boolean | null;
+  /** Volume de cartão do mês de `hoje` e o mínimo que o contrato manda antecipar (10%). */
+  volumeCartaoMes: number;
+  minimoAntecipar: number;
+};
+
+export function conferirRecebiveis(sales: FinSale[], hoje: string, conferencias: ConferenciaRecebiveis[] = []): ResultadoConferencia {
+  const saldo = saldoRecebiveis(agendaRecebiveis(sales), hoje);
+  const ultima = [...conferencias].filter((c) => c.dia <= hoje).sort((a, b) => a.dia.localeCompare(b.dia)).pop() ?? null;
+  const informado = ultima ? round2(ultima.aReceberRede) : null;
+  const diferenca = informado === null ? null : round2(informado - saldo.aReceber);
+  const folga = Math.max(50, saldo.aReceber * 0.005);
+  const volume = faturamentoRede(sales, hoje.slice(0, 7)).volume;
+  return {
+    hoje,
+    calculado: saldo.aReceber,
+    parcelas: saldo.parcelas,
+    porMes: saldo.porMes.slice(0, 4),
+    informado,
+    informadoEm: ultima?.dia ?? null,
+    diferenca,
+    bate: diferenca === null ? null : Math.abs(diferenca) <= folga,
+    volumeCartaoMes: volume,
+    minimoAntecipar: round2(volume * PERCENTUAL_MINIMO_ANTECIPACAO_RAV),
+  };
+}
+
+/** Guarda a conferência do dia (uma por dia, as 12 últimas ficam). */
+export function registrarConferencia(config: LucroConfig, conferencia: ConferenciaRecebiveis): LucroConfig {
+  const outras = (config.conferencias ?? []).filter((c) => c.dia !== conferencia.dia);
+  const lista = [...outras, conferencia].sort((a, b) => a.dia.localeCompare(b.dia)).slice(-12);
+  return { ...config, conferencias: lista };
 }
 
 /** Os N meses fechados antes de `monthKey` (a aula olha os últimos três). */

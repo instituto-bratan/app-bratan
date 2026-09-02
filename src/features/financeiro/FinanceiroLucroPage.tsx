@@ -21,10 +21,12 @@ import { moneyFin } from "./financeiroData";
 import {
   avaliacaoInstantanea,
   buildPlanilhaLucro,
+  conferirRecebiveis,
   defaultLucroConfig,
   mesesAnteriores,
   operacionalDe,
   percentuaisNoDia,
+  registrarConferencia,
   selicDaConfig,
   subirDegrau,
   type LucroConfig,
@@ -202,6 +204,15 @@ export function FinanceiroLucroPage() {
     const selic = parsePct(valor);
     if (selic <= 0) return;
     persistConfig({ ...config, selicAnual: selic });
+  }
+
+  const conferencia = useMemo(() => conferirRecebiveis(financeiro.sales, hoje, config.conferencias ?? []), [financeiro.sales, hoje, config.conferencias]);
+
+  function registraConferenciaRede(valor: string) {
+    if (!canEdit) return;
+    const numero = Number(valor.replace(/\./g, "").replace(",", "."));
+    if (!Number.isFinite(numero) || numero < 0 || !valor.trim()) return;
+    persistConfig(registrarConferencia(config, { dia: hoje, aReceberRede: Math.round(numero * 100) / 100 }));
   }
 
   function novoDegrauHoje() {
@@ -509,7 +520,7 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum} />
                   </tr>
                   <tr className="border-t border-brand-oliva/10 text-muted-foreground">
-                    <td className="px-2 py-1.5">Obra / investimento (à parte)</td>
+                    <td className="px-2 py-1.5">Obra, empréstimos e investimento (à parte — a aula: é lucro reinvestido)</td>
                     {avaliacao.meses.map((mes) => (
                       <td key={mes.monthKey} className={cellNum}>{moneyFin(mes.investimento)}</td>
                     ))}
@@ -522,6 +533,74 @@ export function FinanceiroLucroPage() {
             </div>
           </section>
         ) : null}
+
+        <section className="rounded-lg border border-brand-oliva/14 bg-white/60 p-4 backdrop-blur">
+          <h2 className="flex items-center gap-2 text-lg font-bold text-brand-musgo">
+            Conferência com a maquininha
+            <InfoTip title="Bater o a receber">
+              O app soma as parcelas de cartão que ainda vão cair (líquidas, pela agenda de 31 dias das comandas). Abra
+              o portal da Rede, veja o &quot;a receber&quot; de hoje e digite aqui. Diferença pequena é bandeira (Elo/Amex
+              paga mais) ou data; diferença grande é comanda faltando ou antecipação já puxada. O contrato ainda pede
+              que pelo menos <strong>10% do volume de crédito</strong> seja antecipado com a TAD — esperar 31 dias em tudo
+              derruba as taxas com desconto.
+            </InfoTip>
+          </h2>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-brand-oliva/14 bg-white/70 p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">O app espera receber</p>
+              <p className="text-2xl font-bold text-brand-tinta">{moneyFin(conferencia.calculado)}</p>
+              <p className="text-xs text-muted-foreground">
+                {conferencia.parcelas} parcela(s)
+                {conferencia.porMes.length ? ` · ${conferencia.porMes.map((m) => `${mesLabel(m.mes)} ${moneyFin(m.liquido)}`).join(" · ")}` : ""}
+              </p>
+            </div>
+            <div className="rounded-lg border border-brand-oliva/14 bg-white/70 p-3">
+              <label className="text-xs uppercase tracking-wide text-muted-foreground">
+                A Rede mostra hoje (a receber)
+                <Input
+                  key={`conf-${conferencia.informadoEm}-${conferencia.informado}`}
+                  defaultValue={conferencia.informadoEm === hoje && conferencia.informado !== null ? conferencia.informado.toFixed(2).replace(".", ",") : ""}
+                  placeholder="0,00"
+                  onBlur={(event) => registraConferenciaRede(event.target.value)}
+                  inputMode="decimal"
+                  disabled={!canEdit}
+                  className="mt-1 h-10"
+                />
+              </label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {conferencia.informadoEm ? `última conferência em ${diaCurto(conferencia.informadoEm)}` : "ainda sem conferência"}
+              </p>
+            </div>
+            <div
+              className={cn(
+                "rounded-lg border p-3",
+                conferencia.bate === null ? "border-brand-oliva/14 bg-white/70" : conferencia.bate ? "border-emerald-200 bg-emerald-50/60" : "border-red-200 bg-red-50/60",
+              )}
+            >
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Diferença (Rede − app)</p>
+              <p className={cn("text-2xl font-bold", conferencia.bate === false ? "text-red-700" : "text-brand-tinta")}>
+                {conferencia.diferenca === null ? "—" : moneyFin(conferencia.diferenca)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {conferencia.bate === null
+                  ? "digite o valor da Rede para bater"
+                  : conferencia.bate
+                    ? "bateu (folga de R$ 50 ou 0,5%)"
+                    : conferencia.diferenca! < 0
+                      ? "a Rede mostra menos: antecipação já puxada ou comanda a mais no app"
+                      : "a Rede mostra mais: comanda faltando no app ou venda lançada em outro dia"}
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Compromisso RAV do contrato: antecipar ao menos 10% do volume de crédito do mês —{" "}
+            <strong className="text-brand-musgo">{moneyFin(conferencia.minimoAntecipar)}</strong> sobre {moneyFin(conferencia.volumeCartaoMes)} até agora em{" "}
+            {new Date(`${hoje.slice(0, 7)}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" })}.
+            {(config.conferencias ?? []).length > 1
+              ? ` Histórico: ${[...(config.conferencias ?? [])].slice(-5).map((c) => `${diaCurto(c.dia)} ${moneyFin(c.aReceberRede)}`).join(" · ")}.`
+              : ""}
+          </p>
+        </section>
 
         <section className="rounded-lg border border-brand-oliva/14 bg-white/60 p-4 backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2">
