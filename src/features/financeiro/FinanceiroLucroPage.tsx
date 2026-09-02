@@ -25,11 +25,13 @@ import {
   mesesAnteriores,
   operacionalDe,
   percentuaisNoDia,
+  selicDaConfig,
   subirDegrau,
   type LucroConfig,
   type MarcaDiaLucro,
   type PercentuaisLucro,
 } from "./lucroInteligente";
+import { taxaAntecipacaoMensal } from "./recebiveisRede";
 import { useFinanceiro } from "./useFinanceiro";
 
 const configStorageKey = "app-bratan-fin-lucro-config";
@@ -195,6 +197,13 @@ export function FinanceiroLucroPage() {
     persistConfig({ ...config, alvo: { ...config.alvo, [campo]: parsePct(valor) } });
   }
 
+  function editaSelic(valor: string) {
+    if (!canEdit) return;
+    const selic = parsePct(valor);
+    if (selic <= 0) return;
+    persistConfig({ ...config, selicAnual: selic });
+  }
+
   function novoDegrauHoje() {
     if (!canEdit || !degrauMaisRecente) return;
     if (config.degraus.some((degrau) => degrau.desde === hoje)) return;
@@ -254,7 +263,8 @@ export function FinanceiroLucroPage() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 Régua de hoje: impostos {pct(degrauHoje.impostos)} · lucro {pct(degrauHoje.lucro)} · médico executor{" "}
                 {pct(degrauHoje.medicoExecutor)} → <strong className="text-brand-musgo">fica {pct(operacionalDe(degrauHoje))} para gastar</strong>.
-                O crédito conta no dia do lançamento; a coluna &quot;disponível&quot; mostra o que já dá para mexer (PIX do dia + cartão do dia anterior).
+                As taxas da maquininha e do PIX saem antes de repartir. O crédito conta no dia do lançamento e fica disponível no dia útil seguinte;
+                puxar antes dos 31 dias custa a antecipação (TAD {pct(taxaAntecipacaoMensal(selicDaConfig(config)) * 100)} ao mês) — a planilha mostra quanto.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -349,6 +359,23 @@ export function FinanceiroLucroPage() {
                 </p>
               </div>
             </div>
+            <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-brand-oliva/14 bg-white/70 p-3">
+              <label className="text-xs text-muted-foreground">
+                SELIC ao ano (%) — referência da antecipação
+                <Input
+                  key={`selic-${config.selicAnual ?? ""}`}
+                  defaultValue={String(config.selicAnual ?? 15).replace(".", ",")}
+                  onBlur={(event) => editaSelic(event.target.value)}
+                  inputMode="decimal"
+                  disabled={!canEdit}
+                  className="mt-1 h-9 w-32"
+                />
+              </label>
+              <p className="pb-2 text-xs text-muted-foreground">
+                TAD = SELIC a.m. + 0,9% = <strong className="text-brand-musgo">{pct(taxaAntecipacaoMensal(selicDaConfig(config)) * 100)} ao mês</strong>{" "}
+                (anexo RAV do acordo Q-7621480). Custo de puxar = (1 + TAD)^(dias/30) − 1 sobre o valor antecipado.
+              </p>
+            </div>
             {config.degraus.length > 1 ? (
               <p className="mt-3 text-xs text-muted-foreground">
                 Histórico:{" "}
@@ -364,9 +391,11 @@ export function FinanceiroLucroPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
             <Landmark className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Entrou no mês</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(planilha.totais.total)}</p>
-            <p className="text-xs text-muted-foreground">já disponível {moneyFin(planilha.totais.disponivel)} · {planilha.diasComMovimento} dia(s) com entrada</p>
+            <p className="mt-2 text-sm font-semibold text-brand-musgo">Entrou no mês (líquido)</p>
+            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(planilha.totais.liquido)}</p>
+            <p className="text-xs text-muted-foreground">
+              bruto {moneyFin(planilha.totais.total)} · taxas {moneyFin(planilha.totais.taxas)} · {planilha.diasComMovimento} dia(s) com entrada
+            </p>
           </div>
           <div className="rounded-lg border border-brand-dourado/45 bg-brand-creme/40 p-4">
             <PiggyBank className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
@@ -382,7 +411,7 @@ export function FinanceiroLucroPage() {
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Fica para gastar</p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(planilha.totais.reservado.operacional)}</p>
             <p className="text-xs text-muted-foreground">
-              {planilha.totais.total > 0 ? pct((planilha.totais.reservado.operacional / planilha.totais.total) * 100) : "—"} do que entrou · gasto até agora{" "}
+              {planilha.totais.liquido > 0 ? pct((planilha.totais.reservado.operacional / planilha.totais.liquido) * 100) : "—"} do líquido · gasto até agora{" "}
               {moneyFin(planilha.totais.usado.operacional)}
             </p>
           </div>
@@ -398,6 +427,10 @@ export function FinanceiroLucroPage() {
             <p className="text-xs text-muted-foreground">
               {saldoOperacional < -0.005 ? "gastamos mais do que o envelope permitia" : "o que sobra se não gastarmos mais"} ·{" "}
               {planilha.diasPendentes ? `${planilha.diasPendentes} dia(s) sem marcar "separado"` : "todos os dias marcados"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              disponível no mês {moneyFin(planilha.totais.disponivel)}
+              {planilha.totais.antecipacao > 0.005 ? ` · puxar todo o cartão no D+1 custaria ${moneyFin(planilha.totais.antecipacao)}` : ""}
             </p>
           </div>
         </div>
@@ -501,7 +534,7 @@ export function FinanceiroLucroPage() {
             <p className="py-6 text-center text-sm text-muted-foreground">Mês ainda não começou — a planilha nasce dia a dia.</p>
           ) : (
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[1180px] text-xs sm:text-sm">
+              <table className="w-full min-w-[1400px] text-xs sm:text-sm">
                 <thead>
                   <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
                     <th className="sticky left-0 z-10 bg-white/90 px-2 py-1.5 text-left">Dia</th>
@@ -509,7 +542,9 @@ export function FinanceiroLucroPage() {
                     <th className="px-2 py-1.5 text-right">Dinheiro</th>
                     <th className="px-2 py-1.5 text-right">Débito</th>
                     <th className="px-2 py-1.5 text-right">Crédito</th>
-                    <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Entrou</th>
+                    <th className="px-2 py-1.5 text-right">Bruto</th>
+                    <th className="px-2 py-1.5 text-right">Taxas</th>
+                    <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Entrou (líquido)</th>
                     <th className="px-2 py-1.5 text-right">Disponível</th>
                     <th className="px-2 py-1.5 text-right">Impostos</th>
                     <th className="px-2 py-1.5 text-right">Lucro</th>
@@ -547,8 +582,17 @@ export function FinanceiroLucroPage() {
                         <td className={cellNum}>{linha.dinheiro ? moneyFin(linha.dinheiro) : "—"}</td>
                         <td className={cellNum}>{linha.debito ? moneyFin(linha.debito) : "—"}</td>
                         <td className={cellNum}>{linha.credito ? moneyFin(linha.credito) : "—"}</td>
-                        <td className={cn(cellNum, "font-bold text-brand-musgo")}>{linha.total ? moneyFin(linha.total) : "—"}</td>
-                        <td className={cellNum}>{linha.disponivel ? moneyFin(linha.disponivel) : "—"}</td>
+                        <td className={cellNum}>{linha.total ? moneyFin(linha.total) : "—"}</td>
+                        <td className={cn(cellNum, "text-red-700/80")}>{linha.taxas ? `−${moneyFin(linha.taxas)}` : "—"}</td>
+                        <td className={cn(cellNum, "font-bold text-brand-musgo")}>{linha.liquido ? moneyFin(linha.liquido) : "—"}</td>
+                        <td className={cellNum}>
+                          {linha.disponivel ? moneyFin(linha.disponivel) : "—"}
+                          {linha.antecipacao > 0.005 ? (
+                            <span className="block text-[10px] font-normal text-muted-foreground" title="custo de resgatar hoje o cartão de ontem em vez de esperar os 31 dias">
+                              puxar hoje: −{moneyFin(linha.antecipacao)}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className={cellNum}>
                           {linha.reservado.impostos ? moneyFin(linha.reservado.impostos) : "—"}
                           <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.percentuais.impostos)}</span>
@@ -622,7 +666,9 @@ export function FinanceiroLucroPage() {
                     <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.dinheiro, 0))}</td>
                     <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.debito, 0))}</td>
                     <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.credito, 0))}</td>
-                    <td className={cn(cellNum, "text-brand-musgo")}>{moneyFin(planilha.totais.total)}</td>
+                    <td className={cellNum}>{moneyFin(planilha.totais.total)}</td>
+                    <td className={cn(cellNum, "text-red-700/80")}>−{moneyFin(planilha.totais.taxas)}</td>
+                    <td className={cn(cellNum, "text-brand-musgo")}>{moneyFin(planilha.totais.liquido)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.disponivel)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.impostos)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.lucro)}</td>
@@ -639,10 +685,11 @@ export function FinanceiroLucroPage() {
             </div>
           )}
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            <strong className="text-brand-musgo">Como ler:</strong> &quot;Entrou&quot; é tudo que foi lançado nas comandas do dia (crédito incluído);
-            &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil anterior, já sem a taxa da maquininha — a Rede deixa o
-            crédito à disposição em D+1 e a clínica decide quando resgatar (esperar os 31 dias custa menos juros).
-            Os envelopes são sobre o que entrou. &quot;Gasto no dia&quot; são as contas pagas no dia que pertencem ao operacional (obra,
+            <strong className="text-brand-musgo">Como ler:</strong> &quot;Bruto&quot; é tudo que foi lançado nas comandas do dia (crédito incluído);
+            &quot;Taxas&quot; é a maquininha (débito 0,7% · crédito à vista 1,7% · parcelado 2,39%) mais o PIX (0,6%, teto R$ 150); &quot;Entrou (líquido)&quot;
+            é o que sobrou — e é sobre ele que os envelopes são repartidos. &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil
+            anterior (pulando feriado), já líquido: a Rede deixa o crédito à disposição em D+1 e a clínica decide quando puxar; &quot;puxar hoje&quot;
+            é o custo da antecipação (TAD = SELIC a.m. + 0,9%, pelos dias que faltam até os 31 de cada parcela). Esperar os 31 dias custa zero. &quot;Gasto no dia&quot; são as contas pagas no dia que pertencem ao operacional (obra,
             impostos, sócios e repasse do médico têm envelope próprio). Marque &quot;Separado&quot; quando as transferências do dia forem feitas.
           </p>
         </section>

@@ -18,12 +18,14 @@
 // existindo para quem quiser recuar ou registrar uma mudança de régua.
 //
 // O Lucas quis a régua DIÁRIA: todo dia o app olha o que entrou (PIX, dinheiro,
-// débito e o crédito lançado na comanda) e marca o que já não é nosso. O crédito
-// conta no dia do lançamento; a coluna "disponível" mostra o que já dá para
-// mexer: PIX/dinheiro do dia + o cartão do dia anterior. Lucas, 02/09: "o valor
-// do crédito cai no dia seguinte, só que a gente não resgata" — a Rede deixa o
-// dinheiro à disposição em D+1 e cobra menos juros se a clínica esperar os 31
-// dias; a decisão de quando puxar é da clínica, não do banco.
+// débito e o crédito lançado na comanda), tira as TAXAS da maquininha e do PIX
+// ("tem que ter as taxas sim, e arrumar o valor direitinho") e reparte o LÍQUIDO
+// nos envelopes. O crédito conta no dia do lançamento; a coluna "disponível"
+// mostra o que já dá para mexer: PIX/dinheiro do dia + o cartão do dia útil
+// anterior. Lucas, 02/09: "o valor do crédito cai no dia seguinte, só que a
+// gente não resgata" — a Rede deixa o dinheiro à disposição em D+1 e cobra a
+// antecipação (TAD) se a clínica puxar antes dos 31 dias; a decisão é da
+// clínica, e o app mostra quanto custaria puxar hoje.
 import {
   expenseEhCapex,
   crediarioProfitOfMonth,
@@ -35,7 +37,19 @@ import {
   type FinReconciliationStatus,
   type FinSale,
 } from "./financeiroData";
-import { diaUtilSeguinte, taxaDoCartao } from "./recebiveisRede";
+import {
+  ajustaParaDiaUtil,
+  custoAntecipacao,
+  diasEntre,
+  diaUtilSeguinte,
+  PRAZO_LIQUIDACAO_DIAS,
+  SELIC_ANUAL_REFERENCIA,
+  somaDias,
+  TAXA_EFETIVA_ANTECIPACAO,
+  taxaDoCartao,
+  taxaPix,
+  VIGENCIA_ACORDO_REDE,
+} from "./recebiveisRede";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
@@ -53,7 +67,14 @@ export type DegrauLucro = PercentuaisLucro & {
 export type LucroConfig = {
   degraus: DegrauLucro[];
   alvo: PercentuaisLucro;
+  /** SELIC ao ano, em % (ex.: 15). Define a TAD da antecipação: SELIC a.m. + 0,9%. */
+  selicAnual?: number;
 };
+
+export function selicDaConfig(config: LucroConfig) {
+  const valor = Number(config.selicAnual);
+  return Number.isFinite(valor) && valor > 0 ? valor / 100 : SELIC_ANUAL_REFERENCIA;
+}
 
 /** Exemplo prático da aula: a cada R$ 10.000 → 2.500 lucro, 1.660 impostos, 2.800 executor, 3.040 operacional. */
 export const EXEMPLO_DA_AULA: PercentuaisLucro = { impostos: 16.6, lucro: 25, medicoExecutor: 28 };
@@ -73,6 +94,7 @@ export const EXEMPLO_DA_AULA: PercentuaisLucro = { impostos: 16.6, lucro: 25, me
 export const defaultLucroConfig: LucroConfig = {
   degraus: [{ desde: "2026-09-01", impostos: 16.6, lucro: 41, medicoExecutor: 12 }],
   alvo: { impostos: 16.6, lucro: 41, medicoExecutor: 12 },
+  selicAnual: SELIC_ANUAL_REFERENCIA * 100,
 };
 
 export function operacionalDe(percentuais: PercentuaisLucro) {
@@ -105,6 +127,8 @@ export const CATEGORIAS_IMPOSTOS = new Set(["cat-impostos-mensais", "cat-imposto
 export const CATEGORIAS_PROVISAO_IMPOSTOS = new Set(["cat-poup-impostos-mensais", "cat-poup-impostos-trimestrais"]);
 export const CATEGORIAS_MEDICO_EXECUTOR = new Set(["cat-medico-prescritor-dr-bratan"]);
 export const CATEGORIAS_LUCRO_SOCIOS = new Set(["cat-salario-ceo", "cat-prolabore-socios", "cat-distribuicao-lucro-socios"]);
+/** Taxas das maquininhas: já saem do "entrou" na coluna Taxas — contá-las de novo como gasto seria dobrar. */
+export const CATEGORIAS_TAXAS_MAQUININHA = new Set(["cat-tarifa-bancaria-rede", "cat-tarifa-bancaria-safra"]);
 
 export type EnvelopeKey = "impostos" | "lucro" | "medicoExecutor" | "operacional";
 export type Envelopes = Record<EnvelopeKey, number>;
@@ -116,6 +140,7 @@ export function envelopeDaConta(expense: FinExpense, category?: FinCategory | nu
   if (CATEGORIAS_LUCRO_SOCIOS.has(expense.categoryRef)) return "lucro";
   if (CATEGORIAS_IMPOSTOS.has(expense.categoryRef)) return "impostos";
   if (CATEGORIAS_PROVISAO_IMPOSTOS.has(expense.categoryRef)) return null;
+  if (CATEGORIAS_TAXAS_MAQUININHA.has(expense.categoryRef)) return null;
   if (CATEGORIAS_MEDICO_EXECUTOR.has(expense.categoryRef)) return "medicoExecutor";
   if (expenseEhCapex(expense, category)) return null;
   return "operacional";
@@ -146,12 +171,20 @@ export type LinhaDiaLucro = {
   debito: number;
   credito: number;
   outros: number;
-  /** Tudo que foi lançado nas comandas do dia. */
+  /** Tudo que foi lançado nas comandas do dia (bruto). */
   total: number;
-  /** O que já dá para mexer no dia: PIX/dinheiro/outros do dia + o cartão do dia útil anterior (líquido da taxa). */
+  /** Taxas da maquininha (débito/crédito) e do PIX sobre as vendas do dia. */
+  taxas: number;
+  /** total − taxas: o que entrou de verdade. É sobre ele que os envelopes são repartidos. */
+  liquido: number;
+  /** O que já dá para mexer no dia: PIX/dinheiro/outros do dia (líquidos) + o cartão do dia útil anterior (líquido da taxa). */
   disponivel: number;
+  /** Só a parte do cartão dentro de `disponivel`. */
+  cartaoDisponivel: number;
+  /** Quanto custaria puxar HOJE esse cartão em vez de esperar os 31 dias (TAD sobre os dias antecipados). */
+  antecipacao: number;
   percentuais: PercentuaisLucro & { operacional: number };
-  /** O total do dia repartido pelos envelopes. */
+  /** O líquido do dia repartido pelos envelopes. */
   reservado: Envelopes;
   /** Contas pagas no dia, por envelope. */
   usado: Envelopes;
@@ -167,7 +200,10 @@ export type PlanilhaLucro = {
   linhas: LinhaDiaLucro[];
   totais: {
     total: number;
+    taxas: number;
+    liquido: number;
     disponivel: number;
+    antecipacao: number;
     reservado: Envelopes;
     usado: Envelopes;
     saldo: Envelopes;
@@ -217,10 +253,12 @@ export function buildPlanilhaLucro(input: {
   const fechamentoPorDia = new Map(reconciliations.map((rec) => [rec.day, rec.status]));
 
   // Cartão à disposição no dia útil seguinte à venda, líquido da taxa da
-  // maquininha (a taxa de antecipação depende de quando a clínica resgatar —
-  // não entra aqui). A agenda D+31 do Extrato continua valendo para a
-  // conciliação; aqui a pergunta é outra: "o que já dá para mexer?".
-  const cartaoPorDia = new Map<string, number>();
+  // maquininha. Junto vai o custo de puxar NESSE dia em vez de esperar a
+  // liquidação (31 dias por parcela): TAD sobre os dias antecipados de cada
+  // parcela. Antes de 24/08 a antecipação era automática — o líquido já vinha
+  // com o custo efetivo de ~6% e não há decisão a tomar.
+  const selic = selicDaConfig(config);
+  const cartaoPorDia = new Map<string, { liquido: number; antecipacao: number }>();
   for (const sale of sales) {
     for (const payment of sale.payments) {
       const debito = payment.method === "CARTAO_DEBITO";
@@ -229,8 +267,19 @@ export function buildPlanilhaLucro(input: {
       if (bruto <= 0) continue;
       const dia = diaUtilSeguinte(sale.saleDate);
       if (dia.slice(0, 7) !== monthKey) continue;
-      const liquido = bruto * (1 - taxaDoCartao(Math.max(1, payment.installments || 1), debito, sale.saleDate));
-      cartaoPorDia.set(dia, round2((cartaoPorDia.get(dia) ?? 0) + liquido));
+      const antecipadoAutomatico = sale.saleDate < VIGENCIA_ACORDO_REDE;
+      const parcelas = debito || antecipadoAutomatico ? 1 : Math.max(1, payment.installments || 1);
+      const taxa = antecipadoAutomatico ? TAXA_EFETIVA_ANTECIPACAO : taxaDoCartao(parcelas, debito, sale.saleDate);
+      const liquido = bruto * (1 - taxa);
+      let antecipacao = 0;
+      if (!debito && !antecipadoAutomatico) {
+        for (let k = 1; k <= parcelas; k += 1) {
+          const liquidacao = ajustaParaDiaUtil(somaDias(sale.saleDate, PRAZO_LIQUIDACAO_DIAS * k));
+          antecipacao += custoAntecipacao(liquido / parcelas, diasEntre(dia, liquidacao), selic);
+        }
+      }
+      const atual = cartaoPorDia.get(dia) ?? { liquido: 0, antecipacao: 0 };
+      cartaoPorDia.set(dia, { liquido: round2(atual.liquido + liquido), antecipacao: round2(atual.antecipacao + antecipacao) });
     }
   }
 
@@ -269,7 +318,11 @@ export function buildPlanilhaLucro(input: {
       credito: 0,
       outros: 0,
       total: 0,
+      taxas: 0,
+      liquido: 0,
       disponivel: 0,
+      cartaoDisponivel: 0,
+      antecipacao: 0,
       percentuais: { ...percentuaisNoDia(config, dia), operacional: 0 },
       reservado: zeroEnvelopes(),
       usado: usadoPorDia.get(dia) ?? zeroEnvelopes(),
@@ -280,15 +333,22 @@ export function buildPlanilhaLucro(input: {
     };
     linha.percentuais.operacional = operacionalDe(linha.percentuais);
 
+    let taxasPix = 0;
     for (const sale of sales) {
       if (sale.saleDate !== dia) continue;
       for (const payment of sale.payments) {
         const amount = payment.amount || 0;
-        if (payment.method === "PIX") linha.pix += amount;
-        else if (payment.method === "DINHEIRO") linha.dinheiro += amount;
-        else if (payment.method === "CARTAO_DEBITO") linha.debito += amount;
-        else if (payment.method === "CARTAO_CREDITO") linha.credito += amount;
-        else linha.outros += amount;
+        if (payment.method === "PIX") {
+          linha.pix += amount;
+          taxasPix += taxaPix(amount, dia);
+        } else if (payment.method === "DINHEIRO") linha.dinheiro += amount;
+        else if (payment.method === "CARTAO_DEBITO") {
+          linha.debito += amount;
+          linha.taxas += amount * taxaDoCartao(1, true, dia);
+        } else if (payment.method === "CARTAO_CREDITO") {
+          linha.credito += amount;
+          linha.taxas += amount * (dia < VIGENCIA_ACORDO_REDE ? TAXA_EFETIVA_ANTECIPACAO : taxaDoCartao(Math.max(1, payment.installments || 1), false, dia));
+        } else linha.outros += amount;
         if ((payment.comprovanteStatus ?? "PENDENTE") === "PENDENTE") linha.comprovantesPendentes += 1;
       }
     }
@@ -297,9 +357,14 @@ export function buildPlanilhaLucro(input: {
     linha.debito = round2(linha.debito);
     linha.credito = round2(linha.credito);
     linha.outros = round2(linha.outros);
+    linha.taxas = round2(linha.taxas + taxasPix);
     linha.total = round2(linha.pix + linha.dinheiro + linha.debito + linha.credito + linha.outros);
-    linha.disponivel = round2(linha.pix + linha.dinheiro + linha.outros + (cartaoPorDia.get(dia) ?? 0));
-    linha.reservado = repartir(linha.total, linha.percentuais);
+    linha.liquido = round2(linha.total - linha.taxas);
+    const cartaoHoje = cartaoPorDia.get(dia) ?? { liquido: 0, antecipacao: 0 };
+    linha.cartaoDisponivel = cartaoHoje.liquido;
+    linha.antecipacao = cartaoHoje.antecipacao;
+    linha.disponivel = round2(linha.pix - taxasPix + linha.dinheiro + linha.outros + cartaoHoje.liquido);
+    linha.reservado = repartir(linha.liquido, linha.percentuais);
 
     acumuladoReservado = somaEnvelopes(acumuladoReservado, linha.reservado);
     acumuladoUsado = somaEnvelopes(acumuladoUsado, linha.usado);
@@ -323,7 +388,10 @@ export function buildPlanilhaLucro(input: {
     linhas,
     totais: {
       total: totalMes,
+      taxas: round2(linhas.reduce((soma, linha) => soma + linha.taxas, 0)),
+      liquido: round2(linhas.reduce((soma, linha) => soma + linha.liquido, 0)),
       disponivel: round2(linhas.reduce((soma, linha) => soma + linha.disponivel, 0)),
+      antecipacao: round2(linhas.reduce((soma, linha) => soma + linha.antecipacao, 0)),
       reservado: acumuladoReservado,
       usado: acumuladoUsado,
       saldo: subtraiEnvelopes(acumuladoReservado, acumuladoUsado),

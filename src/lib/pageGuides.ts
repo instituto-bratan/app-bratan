@@ -326,8 +326,8 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
         "No começo do mês, veja 'Onde estamos' (últimos 3 meses) para enxergar a distância entre a régua e a realidade.",
       ],
       tips: [
-        "Percentual é sempre sobre 100% do que entrou — nunca sobre o que sobrou.",
-        "O crédito conta no dia do lançamento e fica disponível no dia útil seguinte; a clínica decide quando resgatar (esperar 31 dias custa menos juros).",
+        "As taxas da maquininha e do PIX saem antes: os envelopes são sobre o LÍQUIDO, sempre 100% dele — nunca sobre o que sobrou.",
+        "O crédito conta no dia do lançamento e fica disponível no dia útil seguinte (pulando feriado); puxar antes dos 31 dias custa a antecipação (SELIC a.m. + 0,9%), e a planilha mostra quanto.",
         "Não é meta, é decisão: quanto menos sobra para gastar, mais vira lucro.",
       ],
     },

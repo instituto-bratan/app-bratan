@@ -12,7 +12,7 @@
 
 import { excelSerialDate } from "@/lib/xlsxWriter";
 import { saleTotal, type FinExpense, type FinSale, type FinSavingsMove } from "./financeiroData";
-import { agendaRecebiveis, VIGENCIA_ACORDO_REDE, type Recebivel } from "./recebiveisRede";
+import { agendaRecebiveis, diaUtilAnterior as diaUtilAnteriorRede, diaUtilSeguinte, VIGENCIA_ACORDO_REDE, type Recebivel } from "./recebiveisRede";
 
 export type BankEntry = {
   /** Determinístico (data+valor+descrição): reimportar não duplica. */
@@ -361,24 +361,16 @@ const EH_COFRE_CDB = /resgate|aplica[çc][ãa]o cdb|cdb di/i;
 const EH_RENDIMENTO = /rendimento|rend\.? pago/i;
 
 /**
- * Dia útil anterior (pula sábado e domingo). O cartão passado na sexta cai na
- * segunda, então "a véspera" do adiantamento não é sempre ontem.
+ * Dia útil anterior (pula fim de semana e feriado bancário). O cartão passado
+ * na sexta cai na segunda, então "a véspera" do adiantamento não é sempre ontem.
  */
 export function diaUtilAnterior(iso: string) {
-  const data = new Date(`${iso}T12:00:00`);
-  do {
-    data.setDate(data.getDate() - 1);
-  } while (data.getDay() === 0 || data.getDay() === 6);
-  return data.toISOString().slice(0, 10);
+  return diaUtilAnteriorRede(iso);
 }
 
 /** Dia útil seguinte — quando o cartão de hoje deve cair no banco. */
 export function proximoDiaUtil(iso: string) {
-  const data = new Date(`${iso}T12:00:00`);
-  do {
-    data.setDate(data.getDate() + 1);
-  } while (data.getDay() === 0 || data.getDay() === 6);
-  return data.toISOString().slice(0, 10);
+  return diaUtilSeguinte(iso);
 }
 
 /**
