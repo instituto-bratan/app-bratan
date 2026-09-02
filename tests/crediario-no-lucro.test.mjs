@@ -161,3 +161,21 @@ test("gráfico Faturamento×Custos×Lucro: a barra de faturamento inclui o credi
   assert.equal(Math.round(serie.faturamento[6] * 100) / 100, 134309.10, "barra = comandas + crediário");
   assert.equal(Math.round(serie.lucro[6] * 100) / 100, 134309.10, "sem custo, lucro = faturamento");
 });
+
+// 02/09/2026 (Lucas): "a opção de ir pro lucro não é o que está no crediário
+// atualmente, mas o faturamento mensal". A base do botão passa a ser o que
+// ENTROU em dinheiro no mês, não o saldo acumulado do caixa.
+test("crediário no lucro: a base é o faturamento do mês (entradas), não o saldo do caixa", () => {
+  const entradas = [
+    { entryDate: "2026-07-05", direction: "ENTRADA", amount: 8000 },
+    { entryDate: "2026-07-20", direction: "SAIDA", amount: 3000 },
+    { entryDate: "2026-08-02", direction: "ENTRADA", amount: 5000 },
+    { entryDate: "2026-08-17", direction: "ENTRADA", amount: 8000 },
+    { entryDate: "2026-08-25", direction: "SAIDA", amount: 10000 },
+  ];
+  assert.equal(fin.crediarioFaturamentoDoMes(entradas, "2026-08"), 13000, "agosto: 5.000 + 8.000 que entraram, ignorando o que saiu");
+  assert.equal(fin.crediarioFaturamentoDoMes(entradas, "2026-07"), 8000);
+  assert.equal(fin.crediarioFaturamentoDoMes(entradas, "2026-09"), 0, "mês sem entrada não tem o que somar");
+  const saldo = entradas.reduce((s, e) => s + (e.direction === "ENTRADA" ? e.amount : -e.amount), 0);
+  assert.equal(saldo, 8000, "o caixa hoje tem 8.000 — e mesmo assim agosto faturou 13.000: é isso que vai para o lucro");
+});

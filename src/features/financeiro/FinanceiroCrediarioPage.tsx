@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import {
   createFinId,
   crediarioProfitOfMonth,
-  crediarioProfitSuggestion,
+  crediarioFaturamentoDoMes,
   crediarioProfitTotal,
   moneyFin,
 } from "./financeiroData";
@@ -171,12 +171,14 @@ export function FinanceiroCrediarioPage() {
   });
 
   // ---- Crediário no lucro do mês -------------------------------------------
-  // O caixa é acumulado: o app sugere só o que AINDA NÃO foi para o lucro, para
-  // o mesmo dinheiro nunca contar duas vezes em dois meses.
+  // O que vai para o lucro é o que ENTROU em dinheiro no mês (faturamento do
+  // crediário), um mês por vez — o mesmo dinheiro nunca conta em dois meses.
   const financeiro = useFinanceiro(Number(lucroMes.slice(0, 4)));
   const jaNoLucroDoMes = crediarioProfitOfMonth(financeiro.crediarioProfits, lucroMes);
   const jaNoLucroTotal = crediarioProfitTotal(financeiro.crediarioProfits);
-  const sugestaoLucro = crediarioProfitSuggestion(totals.saldo, financeiro.crediarioProfits, lucroMes);
+  // A base é o FATURAMENTO do mês (o que entrou em dinheiro nele), não o saldo
+  // acumulado do caixa (Lucas, 02/09/2026).
+  const sugestaoLucro = crediarioFaturamentoDoMes(allEntries, lucroMes);
   const mesIncluido = jaNoLucroDoMes > 0;
   const registroDoMes = financeiro.crediarioProfits.find((item) => item.monthRef === lucroMes);
   const suspeitosEmRisco = useMemo(() => suspects.reduce((acc, item) => acc + item.valorEmRisco, 0), [suspects]);
@@ -199,9 +201,9 @@ export function FinanceiroCrediarioPage() {
     if (readOnly) return setLucroFeedback("Você não tem permissão para mexer no lucro.");
     const valor = parseMoneyBR(lucroValor);
     if (!Number.isFinite(valor) || valor <= 0) return setLucroFeedback("Informe o valor — digite como 10.939,30.");
-    if (valor > totals.saldo + 0.01) {
+    if (valor > sugestaoLucro + 0.01) {
       return setLucroFeedback(
-        `O caixa tem ${moneyFin(totals.saldo)}. Não dá para somar ${moneyFin(valor)} no lucro — confira o valor.`,
+        `Em ${mesBR(lucroMes)} entraram ${moneyFin(sugestaoLucro)} em dinheiro. Não dá para somar ${moneyFin(valor)} no lucro — confira o valor ou os lançamentos do mês.`,
       );
     }
     financeiro.setCrediarioNoLucro(lucroMes, valor, lucroNota.trim());
@@ -366,12 +368,13 @@ export function FinanceiroCrediarioPage() {
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
               <Sparkles className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-              Somar este caixa no lucro do mês
-              <InfoTip title="Quando usar">
-                Por padrão o dinheiro do crediário fica FORA do resultado — é caixa físico, separado da P12. Quando você
-                quiser reconhecer esse dinheiro num mês (no fechamento, por exemplo), escolha o mês e aperte o botão: o
-                valor SOMA NO FATURAMENTO do mês, puxa o % da meta e entra no lucro. O dinheiro continua no cofre — muda o
-                resultado, não o saldo.
+              Somar o crediário do mês no lucro
+              <InfoTip title="Quando usar e qual valor">
+                Por padrão o dinheiro do crediário fica FORA do resultado — é caixa físico, separado da P12. No fechamento,
+                escolha o mês e aperte o botão: o valor SOMA NO FATURAMENTO do mês, puxa o % da meta e entra no lucro. A base
+                é o <strong>faturamento do crediário no mês</strong> — tudo que entrou em dinheiro nele (caixa e lembretes) —,
+                e não o saldo do caixa, que é acumulado de vários meses e já descontou o que saiu. O dinheiro continua no
+                cofre — muda o resultado, não o saldo.
               </InfoTip>
             </CardTitle>
           </CardHeader>
@@ -391,8 +394,12 @@ export function FinanceiroCrediarioPage() {
                   className="w-44"
                 />
               </div>
+              <div className="rounded-lg border border-brand-musgo/30 bg-brand-creme/50 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Entrou em dinheiro em {mesBR(lucroMes)}</p>
+                <p className="text-lg font-bold text-brand-tinta">{moneyFin(sugestaoLucro)}</p>
+              </div>
               <div className="rounded-lg border border-brand-oliva/20 bg-brand-papel/70 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Caixa hoje</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Caixa hoje (acumulado)</p>
                 <p className="text-lg font-bold text-brand-tinta">{moneyFin(totals.saldo)}</p>
               </div>
               <div className="rounded-lg border border-brand-oliva/20 bg-brand-papel/70 px-3 py-2">
@@ -446,14 +453,12 @@ export function FinanceiroCrediarioPage() {
                 <p className="text-xs leading-5 text-muted-foreground">
                   {sugestaoLucro > 0 ? (
                     <>
-                      Este mês ainda não tem crediário no lucro. O app sugere{" "}
-                      <strong className="text-brand-tinta">{moneyFin(sugestaoLucro)}</strong>
-                      {jaNoLucroTotal > 0
-                        ? ` — é o caixa de hoje menos os ${moneyFin(jaNoLucroTotal)} que já foram para o lucro em outros meses, para o mesmo dinheiro não contar duas vezes.`
-                        : " — o caixa inteiro, porque nada foi reconhecido ainda."}
+                      Em {mesBR(lucroMes)} entraram <strong className="text-brand-tinta">{moneyFin(sugestaoLucro)}</strong> em dinheiro
+                      (caixa do crediário e recebimentos de lembrete). Esse é o faturamento do crediário do mês — é ele que vai para o
+                      lucro, não o saldo do caixa ({moneyFin(totals.saldo)}), que é acumulado de vários meses.
                     </>
                   ) : (
-                    <>Todo o caixa de hoje já foi reconhecido como lucro em outros meses — não há valor novo para somar.</>
+                    <>Nenhuma entrada de dinheiro registrada em {mesBR(lucroMes)} — não há faturamento do crediário para somar.</>
                   )}
                 </p>
                 {readOnly || sugestaoLucro <= 0 ? null : (

@@ -1371,6 +1371,24 @@ export function crediarioProfitRef(monthKey: string) {
   return `crediario-lucro-${monthKey}`;
 }
 
+/**
+ * FATURAMENTO DO CREDIÁRIO NO MÊS = tudo que ENTROU em dinheiro naquele mês
+ * (caixa manual + recebimentos de lembrete em dinheiro). Lucas, 02/09/2026:
+ * "a opção de ir pro lucro não é o que está no crediário atualmente, mas o
+ * faturamento mensal" — o saldo do caixa é acumulado de vários meses e já
+ * descontou o que saiu; o que vira resultado do mês é o que entrou nele.
+ */
+export function crediarioFaturamentoDoMes(
+  entries: { entryDate: string; direction: "ENTRADA" | "SAIDA"; amount: number }[],
+  monthKey: string,
+) {
+  return round2(
+    entries
+      .filter((entry) => entry.direction === "ENTRADA" && entry.entryDate.startsWith(monthKey))
+      .reduce((sum, entry) => sum + (entry.amount || 0), 0),
+  );
+}
+
 /** Total já reconhecido como lucro (todos os meses). */
 export function crediarioProfitTotal(records: FinCrediarioProfit[]) {
   return round2(records.reduce((sum, record) => sum + (record.amount || 0), 0));
