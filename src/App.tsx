@@ -31,6 +31,7 @@ const FinanceiroRepassesPage = lazyRoute("finRepasses");
 const FinanceiroPdcaPage = lazyRoute("finPdca");
 const FinanceiroPainelPage = lazyRoute("finPainel");
 const FinanceiroExtratoPage = lazyRoute("finExtrato");
+const FinanceiroLucroPage = lazyRoute("finLucro");
 const EstoquePage = lazyRoute("estoque");
 const ConciergeNpsPage = lazyRoute("conciergeNps");
 const CrmTasksPage = lazyRoute("crmTasks");
@@ -102,6 +103,7 @@ export function App() {
               <Route path="/financeiro/gestao" element={<Navigate to="/financeiro/painel" replace />} />
               <Route path="/financeiro/relatorios" element={<Navigate to="/financeiro/painel" replace />} />
               <Route path="/financeiro/extrato" element={<FinanceiroExtratoPage />} />
+              <Route path="/financeiro/lucro" element={<FinanceiroLucroPage />} />
               <Route path="/crm" element={<Navigate to="/crm/minhas-tarefas" replace />} />
               <Route path="/crm/minhas-tarefas" element={<CrmTasksPage />} />
               <Route path="/crm/vendas" element={<CrmKanbanPage />} />

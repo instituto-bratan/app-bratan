@@ -251,6 +251,7 @@ export type ModuleKey =
   | "fin-gestao"
   | "fin-extrato"
   | "fin-canais"
+  | "fin-lucro"
   | "estoque"
   | "concierge-nps";
 
@@ -277,6 +278,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-gestao": "Financeiro · Painel do Mês (Reunião de Líderes)",
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-canais": "Financeiro · Canais de Venda",
+  "fin-lucro": "Financeiro · Lucro Inteligente",
   estoque: "Estoque (Recepção & Enfermagem)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
 };

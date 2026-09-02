@@ -3585,6 +3585,53 @@ export async function saveRemoteFinMetasConfig(config: Record<string, unknown>) 
   await safeWriteRemoteAuditEvent({ action: "financeiro.metas.configurar", entity: "fin_metas_config", metadata: {} });
 }
 
+// ---- Lucro Inteligente (01/09/2026): degraus de percentual + marca diária ----
+export async function loadRemoteFinLucroConfig(): Promise<Record<string, unknown> | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("fin_lucro_config").select("config").eq("id", true).maybeSingle();
+  if (error) throw error;
+  return (data?.config as Record<string, unknown>) ?? null;
+}
+
+export async function saveRemoteFinLucroConfig(config: Record<string, unknown>) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_lucro_config").upsert({ id: true, config }, { onConflict: "id" });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "financeiro.lucro.configurar", entity: "fin_lucro_config", metadata: {} });
+}
+
+export type FinLucroDiaRemote = { dia: string; separado: boolean; observacao: string; updatedAt?: string };
+
+export async function listRemoteFinLucroDias(year: number): Promise<FinLucroDiaRemote[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_lucro_dia")
+    .select("dia, separado, observacao, updated_at")
+    .gte("dia", `${year}-01-01`)
+    .lte("dia", `${year}-12-31`);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    dia: String(row.dia),
+    separado: Boolean(row.separado),
+    observacao: String(row.observacao ?? ""),
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
+  }));
+}
+
+export async function saveRemoteFinLucroDia(marca: FinLucroDiaRemote, updatedBy?: string | null) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_lucro_dia")
+    .upsert({ dia: marca.dia, separado: marca.separado, observacao: marca.observacao, updated_by: updatedBy ?? null }, { onConflict: "dia" });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({
+    action: "financeiro.lucro.marcar_dia",
+    entity: "fin_lucro_dia",
+    entityId: marca.dia,
+    metadata: { separado: marca.separado },
+  });
+}
+
 export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   const client = requireSupabase();
   const { data, error } = await client

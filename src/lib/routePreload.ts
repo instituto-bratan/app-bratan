@@ -36,6 +36,7 @@ const routeLoaders = {
   finPdca: namedPage(() => import("@/features/financeiro/FinanceiroPdcaPage"), "FinanceiroPdcaPage"),
   finPainel: namedPage(() => import("@/features/financeiro/FinanceiroPainelPage"), "FinanceiroPainelPage"),
   finExtrato: namedPage(() => import("@/features/financeiro/FinanceiroExtratoPage"), "FinanceiroExtratoPage"),
+  finLucro: namedPage(() => import("@/features/financeiro/FinanceiroLucroPage"), "FinanceiroLucroPage"),
   estoque: namedPage(() => import("@/features/estoque/EstoquePage"), "EstoquePage"),
   conciergeNps: namedPage(() => import("@/features/concierge/ConciergeNpsPage"), "ConciergeNpsPage"),
   crmTasks: namedPage(() => import("@/features/crm/CrmTasksPage"), "CrmTasksPage"),
@@ -95,6 +96,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/financeiro/pdca") return "finPdca";
   if (pathname === "/financeiro/painel" || pathname === "/financeiro/gestao" || pathname === "/financeiro/relatorios") return "finPainel";
   if (pathname === "/financeiro/extrato") return "finExtrato";
+  if (pathname === "/financeiro/lucro") return "finLucro";
   if (pathname === "/estoque") return "estoque";
   if (pathname === "/concierge/nps") return "conciergeNps";
   if (pathname === "/crm" || pathname === "/crm/minhas-tarefas") return "crmTasks";
