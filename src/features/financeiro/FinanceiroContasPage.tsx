@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Pencil, BellRing, CalendarClock, CheckCircle2, CircleDollarSign, Filter, Layers, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
+import { Pencil, CalendarClock, CheckCircle2, CircleDollarSign, Filter, Layers, Package, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
-import { useQuery } from "@tanstack/react-query";
-import { listRemoteExpenseNotas } from "@/lib/remoteData";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createRemoteFinInboxItem,
+  listRemoteExpenseNotas,
+  listRemoteFinInbox,
+  signedUrlFinInboxFile,
+  updateRemoteFinInboxStatus,
+  type FinInboxItem,
+} from "@/lib/remoteData";
 import { useAuth } from "@/hooks/useAuth";
 import { NotaDaContaCell } from "./NotaDaContaCell";
+import { FilaDoDiaCard } from "./FilaDoDiaCard";
+import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
+import { CaixaEntradaCard } from "./CaixaEntradaCard";
+import { buildFilaFinanceira } from "./filaFinanceira";
+import { lerDocumento, type LeituraDocumento } from "./leitorDocumento";
+import { extrairTextoArquivo } from "./pdfTexto";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +51,7 @@ import {
   upcomingExpenses,
   type FinExpense,
   type FinPaymentMethod,
+  type FinPurchase,
 } from "./financeiroData";
 
 // Aviso de vencimento: contas em aberto que vencem em até 3 dias.
@@ -75,8 +89,23 @@ export function FinanceiroContasPage() {
   const [installment, setInstallment] = useState("");
   const [documentNote, setDocumentNote] = useState("");
   const [recorrente, setRecorrente] = useState(false);
+  // TAMBÉM É COMPRA (02/09/2026): a conta que traz mercadoria vira, no mesmo
+  // lançamento, uma compra ligada (entrega + estoque). Compras deixou de ser um
+  // segundo lugar para digitar — era isso que fazia a medicação não ser anotada.
+  const [ehCompra, setEhCompra] = useState(false);
+  const [deliveryEta, setDeliveryEta] = useState("");
+  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM">("");
+  // De onde esta conta está nascendo: uma compra sem conta ("Virar conta a pagar")
+  // ou um item da caixa de entrada — para ligar/marcar ao salvar.
+  const [compraOrigemId, setCompraOrigemId] = useState<string | null>(null);
+  const [inboxOrigemId, setInboxOrigemId] = useState<string | null>(null);
+  const [linhaDigitavel, setLinhaDigitavel] = useState("");
+  const [arquivoLido, setArquivoLido] = useState<{ file: File; texto: string; leitura: LeituraDocumento } | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas">("todas");
+  const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas" | "compras">("todas");
+  const queryClient = useQueryClient();
+  const inboxQuery = useQuery({ queryKey: ["fin-inbox"], queryFn: listRemoteFinInbox, enabled: usaRemoto, staleTime: 30_000 });
+  const inboxItens: FinInboxItem[] = inboxQuery.data ?? [];
   // Filtro de categoria (31/07, pedido do Lucas): por GRUPO da P12 ou por uma
   // categoria específica. "grupo:CUSTO_FIXO" ou o id da categoria.
   const [categoryFilter, setCategoryFilter] = useState("todas");
@@ -141,6 +170,24 @@ export function FinanceiroContasPage() {
       .some((campo) => String(campo).toLowerCase().includes(termo));
   }
 
+  // Compra ligada a cada conta (a conta "também é compra", ou a compra antiga que virou conta).
+  const compraPorConta = useMemo(
+    () => new Map(financeiro.purchases.filter((purchase) => purchase.expenseRef).map((purchase) => [purchase.expenseRef as string, purchase])),
+    [financeiro.purchases],
+  );
+  const notasAnexadasSet = useMemo(() => new Set(notasDaContas.map((nota) => nota.expenseRef)), [notasDaContas]);
+  // FILA DO DIA: derivada das contas (sem provisões) e das compras.
+  const fila = useMemo(
+    () =>
+      buildFilaFinanceira({
+        expenses: financeiro.expenses.filter((expense) => !expense.categoryRef.startsWith("cat-poup-")),
+        purchases: financeiro.purchases,
+        notasAnexadas: notasAnexadasSet,
+        hoje: now,
+      }),
+    [financeiro.expenses, financeiro.purchases, notasAnexadasSet, now],
+  );
+
   const monthExpenses = useMemo(
     () => financeiro.expenses
       // Mesmo critério da P12: a conta pertence ao mês do VENCIMENTO.
@@ -148,12 +195,13 @@ export function FinanceiroContasPage() {
       .filter((expense) => {
         if (statusFilter === "pendentes") return !expense.paidAt;
         if (statusFilter === "pagas") return Boolean(expense.paidAt);
+        if (statusFilter === "compras") return compraPorConta.has(expense.id);
         return true;
       })
       .filter(passaCategoria)
       .filter(passaBusca),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [financeiro.expenses, month, statusFilter, categoryFilter, buscaConta, categoryById],
+    [financeiro.expenses, month, statusFilter, categoryFilter, buscaConta, categoryById, compraPorConta],
   );
 
   // Totais do que está NA TELA (com filtro) — para o filtro responder "quanto é".
@@ -190,7 +238,7 @@ export function FinanceiroContasPage() {
     () => contasSemNota(semProvisoes(financeiro.expenses, financeiro.categories), month),
     [financeiro.expenses, financeiro.categories, month],
   );
-  const avisos = useMemo(
+  const avisosLegado = useMemo(
     () => upcomingExpenses(semProvisoes(financeiro.expenses, financeiro.categories), now, AVISO_DIAS),
     [financeiro.expenses, financeiro.categories, now],
   );
@@ -255,6 +303,8 @@ export function FinanceiroContasPage() {
       createdAt: editingExpense?.createdAt ?? new Date().toISOString(),
       recorrencia: recorrente ? "MENSAL" : null,
     };
+    // A linha digitável fica na conta: na hora de pagar, é ela que a pessoa precisa.
+    if (!editingExpense && linhaDigitavel) expense.notes = `Linha digitável: ${linhaDigitavel}`;
     if (editingExpense) {
       financeiro.updateExpense(expense);
       // Correção em série: as parcelas SEGUINTES ainda em aberto acompanham o
@@ -282,6 +332,7 @@ export function FinanceiroContasPage() {
       );
     } else {
       financeiro.addExpense(expense);
+      ligarOrigensDaConta(expense, total ?? 1);
       // PARCELADO: a série inteira nasce junto, uma parcela em cada mês, até a
       // última (30/07/2026). Antes só a primeira era lançada e as seguintes
       // simplesmente não apareciam nos próximos meses.
@@ -332,6 +383,162 @@ export function FinanceiroContasPage() {
     setDocumentNote("");
     setRecorrente(false);
     setAplicarNasSeguintes(true);
+    setEhCompra(false);
+    setDeliveryEta("");
+    setEstoqueSetor("");
+    setCompraOrigemId(null);
+    setInboxOrigemId(null);
+    setLinhaDigitavel("");
+    setArquivoLido(null);
+  }
+
+  // O que a conta nova puxa junto: a compra ligada, a compra antiga que virou
+  // conta, o item da caixa de entrada e o arquivo lido no "Lançar rápido".
+  function ligarOrigensDaConta(expense: FinExpense, parcelas: number) {
+    if (ehCompra) {
+      financeiro.addPurchase({
+        id: createFinId("fbuy"),
+        purchaseDate: now,
+        description: expense.description,
+        supplier: expense.supplier,
+        amount: expense.amount,
+        method: expense.method ?? "BOLETO",
+        card: null,
+        installments: parcelas,
+        nfNote: expense.documentNote,
+        deliveryEta: deliveryEta || null,
+        receivedAt: null,
+        expenseRef: expense.id,
+        notes: "",
+        estoqueSetor: estoqueSetor || null,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    if (compraOrigemId) {
+      const compra = financeiro.purchases.find((purchase) => purchase.id === compraOrigemId);
+      if (compra) financeiro.updatePurchase({ ...compra, expenseRef: expense.id });
+    }
+    if (!usaRemoto) return;
+    const marcarLancado = (inboxId: string) =>
+      updateRemoteFinInboxStatus(inboxId, "LANCADO", expense.id)
+        .then(() => queryClient.invalidateQueries({ queryKey: ["fin-inbox"] }))
+        .catch((erro) => console.warn("Caixa de entrada não atualizou.", erro));
+    if (inboxOrigemId) void marcarLancado(inboxOrigemId);
+    if (arquivoLido) {
+      // O boleto/NF lido fica guardado ligado à conta, na caixa de entrada.
+      void createRemoteFinInboxItem({
+        file: arquivoLido.file,
+        origem: "LANCAR_RAPIDO",
+        texto: arquivoLido.texto,
+        leitura: arquivoLido.leitura as unknown as Record<string, unknown>,
+        pessoaId: pessoa?.id ?? null,
+      })
+        .then((item) => marcarLancado(item.id))
+        .catch((erro) => console.warn("Arquivo do lançar rápido não subiu.", erro));
+    }
+  }
+
+  // ---- Fila do dia: ações de um clique --------------------------------------
+  function adiarConta(expense: FinExpense) {
+    const nova = window.prompt(`Novo vencimento de "${expense.description}" (AAAA-MM-DD):`, expense.dueDate);
+    if (!nova || !/^\d{4}-\d{2}-\d{2}$/.test(nova)) return;
+    financeiro.updateExpense({ ...expense, dueDate: nova });
+    setFeedback(`"${expense.description}" adiada para ${nova.split("-").reverse().join("/")}.`);
+  }
+
+  function pagarConta(expense: FinExpense) {
+    financeiro.setExpensePaid(expense.id, now);
+    setFeedback(`"${expense.description}" marcada como paga hoje (${moneyFin(expense.amount)}). Se tiver o comprovante/NF, anexe na coluna "Nota fiscal".`);
+  }
+
+  function compraChegou(purchase: FinPurchase) {
+    financeiro.updatePurchase({ ...purchase, receivedAt: now });
+    setFeedback(`"${purchase.description}" marcada como recebida hoje${purchase.estoqueSetor ? " — a entrada no estoque aparece para o setor" : ""}.`);
+  }
+
+  function anotarNfDaCompra(purchase: FinPurchase) {
+    const nf = window.prompt(`NF de "${purchase.description}" (número ou nome do arquivo):`, purchase.nfNote);
+    if (nf === null) return;
+    financeiro.updatePurchase({ ...purchase, nfNote: nf.trim() });
+  }
+
+  function compraVirarConta(purchase: FinPurchase) {
+    resetForm();
+    setDescription(purchase.description);
+    setAmount(purchase.amount.toFixed(2).replace(".", ","));
+    setDueDate(purchase.deliveryEta || now);
+    setMethod(purchase.method === "CARTAO_CREDITO" || purchase.method === "CARTAO_DEBITO" ? "BOLETO" : purchase.method);
+    setSupplier(purchase.supplier);
+    setDocumentNote(purchase.nfNote);
+    setCompraOrigemId(purchase.id);
+    setFeedback(`Conta preenchida a partir da compra "${purchase.description}" — escolha a categoria e lance; a compra fica ligada a ela.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ---- Lançar rápido / caixa de entrada -------------------------------------
+  function aplicarLeitura(leitura: LeituraDocumento, texto: string, arquivo: File | null) {
+    setEditingExpenseId(null);
+    setCompraOrigemId(null);
+    if (leitura.valor) setAmount(leitura.valor.toFixed(2).replace(".", ","));
+    if (leitura.vencimento) setDueDate(leitura.vencimento);
+    if (leitura.beneficiario) {
+      setSupplier(leitura.beneficiario);
+      if (!description.trim()) setDescription(leitura.beneficiario);
+    }
+    if (leitura.numeroDocumento) setDocumentNote(`NF ${leitura.numeroDocumento}`);
+    else if (arquivo) setDocumentNote(arquivo.name);
+    setMethod(leitura.tipo === "PIX" ? "PIX" : "BOLETO");
+    setLinhaDigitavel(leitura.linhaDigitavel ?? "");
+    setArquivoLido(arquivo ? { file: arquivo, texto, leitura } : null);
+    setFeedback(`Li ${leitura.leituras.length ? leitura.leituras.join("; ") : "o documento"}. Confira, escolha a categoria e lance.`);
+  }
+
+  function aplicarPreset(preset: PresetFornecedor) {
+    if (preset.fornecedor) setSupplier(preset.fornecedor);
+    setCategoryRef(preset.categoryRef);
+    if (!description.trim()) setDescription(preset.descricaoPadrao);
+    setMethod(preset.metodo);
+    setEhCompra(preset.ehCompra);
+    setEstoqueSetor(preset.estoqueSetor ?? "");
+    setFeedback(`Atalho "${preset.rotulo}": categoria, fornecedor${preset.ehCompra ? ", estoque e \"é compra\"" : ""} preenchidos. Falta valor e vencimento.`);
+  }
+
+  async function receberNaCaixa(arquivos: File[]) {
+    if (!usaRemoto) throw new Error("A caixa de entrada precisa de login (modo prévia não guarda arquivos).");
+    for (const file of arquivos) {
+      let texto = "";
+      try {
+        texto = await extrairTextoArquivo(file);
+      } catch (erro) {
+        console.warn(`Não li o texto de ${file.name}.`, erro);
+      }
+      const leitura = lerDocumento(texto, now);
+      await createRemoteFinInboxItem({ file, origem: "UPLOAD", texto, leitura: leitura as unknown as Record<string, unknown>, pessoaId: pessoa?.id ?? null });
+    }
+    await queryClient.invalidateQueries({ queryKey: ["fin-inbox"] });
+    setFeedback(`${arquivos.length} arquivo(s) na caixa de entrada — leia cada um e clique em "Virar conta".`);
+  }
+
+  function inboxVirarConta(item: FinInboxItem) {
+    const leitura = { leituras: [], ...(item.leitura as Partial<LeituraDocumento>) } as LeituraDocumento;
+    aplicarLeitura(leitura, item.texto, null);
+    setInboxOrigemId(item.id);
+    if (!documentNote.trim() && item.fileName) setDocumentNote(item.fileName);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function inboxDescartar(item: FinInboxItem) {
+    if (!window.confirm(`Descartar "${item.fileName || "este item"}" da caixa de entrada?`)) return;
+    void updateRemoteFinInboxStatus(item.id, "DESCARTADO")
+      .then(() => queryClient.invalidateQueries({ queryKey: ["fin-inbox"] }))
+      .catch((erro) => setFeedback(`Não consegui descartar: ${erro instanceof Error ? erro.message : String(erro)}`));
+  }
+
+  function inboxAbrirArquivo(item: FinInboxItem) {
+    if (!item.storagePath) return;
+    void signedUrlFinInboxFile(item.storagePath)
+      .then((url) => window.open(url, "_blank", "noopener"))
+      .catch((erro) => setFeedback(`Não consegui abrir o arquivo: ${erro instanceof Error ? erro.message : String(erro)}`));
   }
 
   function startEditing(expense: FinExpense) {
@@ -412,64 +619,40 @@ export function FinanceiroContasPage() {
           </div>
         </div>
 
-        {avisos.vencidas.length || avisos.chegando.length ? (
-          <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/80 p-4">
-            <p className="flex items-center gap-2 text-sm font-bold text-amber-900">
-              <BellRing className="h-4 w-4" aria-hidden="true" />
-              Contas chegando ({AVISO_DIAS} dias) e vencidas
-            </p>
-            <div className="space-y-1.5">
-              {avisos.vencidas.map((expense) => (
-                <div key={expense.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-sm">
-                  <span className="font-semibold text-red-800">
-                    VENCIDA {expense.dueDate.split("-").reverse().slice(0, 2).join("/")} · {expense.description}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="font-bold tabular-nums text-red-800">{moneyFin(expense.amount)}</span>
-                    {!readOnly ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => financeiro.setExpensePaid(expense.id, now)}>
-                        Marcar paga
-                      </Button>
-                    ) : null}
-                  </span>
-                </div>
-              ))}
-              {/* Notas fiscais que ainda esperam decisão (12/08/2026). Não cobra
-                  arquivo: cobra a DECISÃO — anexar, "vai mandar" ou "não gera". */}
-              {semNotaNoMes.length ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-dourado/40 bg-brand-creme/40 px-3 py-2">
-                  <span className="text-brand-tinta">
-                    <strong>{semNotaNoMes.length} conta(s) deste mês sem nota fiscal definida</strong> — a coluna "Nota fiscal"
-                    resolve em um clique (anexar · vai mandar · não gera nota).
-                  </span>
-                  <span className="font-bold tabular-nums text-brand-musgo">
-                    {moneyFin(semNotaNoMes.reduce((soma, item) => soma + item.amount, 0))}
-                  </span>
-                </div>
-              ) : null}
-              {avisos.chegando.map((expense) => (
-                <div key={expense.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-white/70 px-3 py-1.5 text-sm">
-                  <div className="flex flex-wrap items-center gap-1.5 font-semibold text-amber-900">
-                    <span>
-                      {expense.dueDate === now ? "VENCE HOJE" : `Vence ${expense.dueDate.split("-").reverse().slice(0, 2).join("/")}`} · {expense.description}
-                    </span>
-                    {expense.recorrencia === "MENSAL" ? (
-                      <Badge className="bg-brand-creme text-brand-tinta"><Repeat className="mr-1 h-3 w-3" aria-hidden="true" />Recorrente</Badge>
-                    ) : null}
-                  </div>
-                  <span className="flex items-center gap-2">
-                    <span className="font-bold tabular-nums text-amber-900">{moneyFin(expense.amount)}</span>
-                    {!readOnly ? (
-                      <Button type="button" size="sm" variant="outline" onClick={() => financeiro.setExpensePaid(expense.id, now)}>
-                        Marcar paga
-                      </Button>
-                    ) : null}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+        <FilaDoDiaCard
+          fila={fila}
+          readOnly={readOnly}
+          onPagar={pagarConta}
+          onAdiar={adiarConta}
+          onEditar={startEditing}
+          onChegou={compraChegou}
+          onVirarConta={compraVirarConta}
+          onAnotarNf={anotarNfDaCompra}
+        />
+        {semNotaNoMes.length ? (
+          <p className="rounded-lg border border-brand-dourado/40 bg-brand-creme/40 px-4 py-2 text-xs text-brand-tinta">
+            <strong>{semNotaNoMes.length} conta(s) deste mês sem nota fiscal definida</strong> ({moneyFin(semNotaNoMes.reduce((soma, item) => soma + item.amount, 0))}) — a coluna
+            &quot;Nota fiscal&quot; da planilha resolve em um clique: anexar · vai mandar · não gera nota.
+          </p>
         ) : null}
+        {avisosLegado.vencidas.length > 12 ? (
+          <p className="text-xs text-muted-foreground">Há {avisosLegado.vencidas.length} contas vencidas no total — a Fila mostra as 12 mais antigas de cada coluna; o resto está na planilha.</p>
+        ) : null}
+
+        {readOnly ? null : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <LancarRapidoCard hoje={now} readOnly={readOnly} onLeitura={aplicarLeitura} onPreset={aplicarPreset} />
+            <CaixaEntradaCard
+              itens={inboxItens}
+              readOnly={readOnly}
+              carregando={inboxQuery.isLoading}
+              onReceber={receberNaCaixa}
+              onVirarConta={inboxVirarConta}
+              onDescartar={inboxDescartar}
+              onAbrirArquivo={inboxAbrirArquivo}
+            />
+          </div>
+        )}
 
         {feedback ? (
           <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
@@ -545,6 +728,38 @@ export function FinanceiroContasPage() {
                 <Input value={documentNote} onChange={(event) => setDocumentNote(event.target.value)} placeholder="Nome do arquivo ou nº da nota (opcional)" />
               </div>
               <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6 sm:col-span-2 lg:col-span-4">
+                <input type="checkbox" checked={ehCompra} onChange={(event) => setEhCompra(event.target.checked)} className="mt-1" />
+                <span className="flex-1">
+                  <span className="flex items-center gap-1.5 font-semibold text-brand-tinta">
+                    <Package className="h-4 w-4 text-brand-musgo" aria-hidden="true" /> Também é uma compra (chega mercadoria)
+                  </span>
+                  <span className="text-muted-foreground">
+                    Medicação, pellets, insumos… A compra nasce junto, ligada a esta conta: fica na Fila até chegar e dá entrada no
+                    estoque do setor. Não precisa lançar de novo em Compras.
+                  </span>
+                  {ehCompra ? (
+                    <span className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <span>
+                        <Label>Entrega prevista</Label>
+                        <Input type="date" value={deliveryEta} onChange={(event) => setDeliveryEta(event.target.value)} />
+                      </span>
+                      <span>
+                        <Label>Estoque</Label>
+                        <select
+                          value={estoqueSetor}
+                          onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM")}
+                          className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                        >
+                          <option value="">Não é item de estoque</option>
+                          <option value="ENFERMAGEM">Enfermagem</option>
+                          <option value="RECEPCAO">Recepção</option>
+                        </select>
+                      </span>
+                    </span>
+                  ) : null}
+                </span>
+              </label>
+              <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6 sm:col-span-2 lg:col-span-4">
                 <input
                   type="checkbox"
                   checked={recorrente}
@@ -608,9 +823,9 @@ export function FinanceiroContasPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-lg">Contas de {month.split("-").reverse().join("/")}</CardTitle>
               <div className="flex gap-1.5">
-                {(["todas", "pendentes", "pagas"] as const).map((filter) => (
+                {(["todas", "pendentes", "pagas", "compras"] as const).map((filter) => (
                   <Button key={filter} type="button" size="sm" variant={statusFilter === filter ? "default" : "outline"} onClick={() => setStatusFilter(filter)}>
-                    {filter === "todas" ? "Todas" : filter === "pendentes" ? "A pagar" : "Pagas"}
+                    {filter === "todas" ? "Todas" : filter === "pendentes" ? "A pagar" : filter === "pagas" ? "Pagas" : "Compras"}
                   </Button>
                 ))}
               </div>
@@ -735,6 +950,15 @@ export function FinanceiroContasPage() {
                                 <Badge className="bg-brand-creme text-brand-tinta">
                                   <Layers className="mr-1 h-3 w-3" aria-hidden="true" />
                                   {serie.faltamLancar ? `${serie.lancadas} de ${serie.total} lançadas` : `${serie.abertas} em aberto`}
+                                </Badge>
+                              ) : null}
+                              {compraPorConta.get(expense.id) ? (
+                                <Badge
+                                  className={cn("text-brand-tinta", compraPorConta.get(expense.id)!.receivedAt ? "bg-emerald-100 text-emerald-800" : "bg-brand-creme")}
+                                  title={compraPorConta.get(expense.id)!.estoqueSetor ? `estoque: ${compraPorConta.get(expense.id)!.estoqueSetor}` : undefined}
+                                >
+                                  <Package className="mr-1 h-3 w-3" aria-hidden="true" />
+                                  {compraPorConta.get(expense.id)!.receivedAt ? "compra · chegou" : "compra · a caminho"}
                                 </Badge>
                               ) : null}
                             </div>

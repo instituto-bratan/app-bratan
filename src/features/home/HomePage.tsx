@@ -56,8 +56,9 @@ import {
   formatEstalecas,
   type EstalecaTransaction,
 } from "@/features/estalecas/estalecasData";
-import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemoteFinSales, listRemotePagamentos } from "@/lib/remoteData";
+import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemoteFinPurchases, listRemoteFinSales, listRemotePagamentos } from "@/lib/remoteData";
 import { loadLocalFinExpenses, loadLocalFinSales, moneyFin, pagamentosSemComprovante, upcomingExpenses } from "@/features/financeiro/financeiroData";
+import { buildFilaFinanceira } from "@/features/financeiro/filaFinanceira";
 
 const modules = [
   {
@@ -370,6 +371,12 @@ export function HomePage() {
     enabled: useRemote && canFinanceiroView(cargo),
     staleTime: 60_000,
   });
+  const finPurchasesQuery = useQuery({
+    queryKey: ["home-fin-purchases", new Date().getFullYear()],
+    queryFn: () => listRemoteFinPurchases(new Date().getFullYear()),
+    enabled: useRemote && canFinanceiroView(cargo),
+    staleTime: 60_000,
+  });
   const contasChegando = useMemo(() => {
     if (!canFinanceiroView(cargo)) return null;
     const records = useRemote ? finExpensesQuery.data ?? [] : loadLocalFinExpenses();
@@ -377,6 +384,19 @@ export function HomePage() {
     const semProvisao = records.filter((expense) => !expense.categoryRef.startsWith("cat-poup-"));
     return upcomingExpenses(semProvisao, todayISO(), 3);
   }, [cargo, finExpensesQuery.data, useRemote]);
+  // FILA FINANCEIRA DO DIA (02/09/2026): a mesma frase do Contas a Pagar, aqui na
+  // Home de quem cuida do financeiro — "hoje vencem 3 · 9 vencidas · 2 boletos
+  // sem arquivo · 1 pedido para conferir". É o empurrão contra o "não olhei".
+  const filaFinanceira = useMemo(() => {
+    if (!canFinanceiroView(cargo)) return null;
+    const records = useRemote ? finExpensesQuery.data ?? [] : loadLocalFinExpenses();
+    const purchases = useRemote ? finPurchasesQuery.data ?? [] : [];
+    return buildFilaFinanceira({
+      expenses: records.filter((expense) => !expense.categoryRef.startsWith("cat-poup-")),
+      purchases,
+      hoje: todayISO(),
+    });
+  }, [cargo, finExpensesQuery.data, finPurchasesQuery.data, useRemote]);
 
   // AVISO QUE CHEGA SOZINHO (10/08/2026): comandas com pagamento sem decisão
   // sobre o comprovante. Antes o Lucas descobria isso na conciliação, dias
@@ -565,7 +585,7 @@ export function HomePage() {
               </Link>
             ) : null}
 
-            {contasChegando && (contasChegando.vencidas.length > 0 || contasChegando.chegando.length > 0) ? (
+            {filaFinanceira && (filaFinanceira.vencidas.length || filaFinanceira.vencemHoje.length || filaFinanceira.pendencias.length || filaFinanceira.totais.boletosSemArquivo) ? (
               <Link
                 to="/financeiro/contas"
                 {...warmRouteProps("/financeiro/contas")}
@@ -574,23 +594,26 @@ export function HomePage() {
                 <div className="flex items-start gap-3">
                   <BellRing className="mt-1 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-amber-900">
-                      {contasChegando.vencidas.length > 0
-                        ? `${contasChegando.vencidas.length} conta${contasChegando.vencidas.length > 1 ? "s" : ""} vencida${contasChegando.vencidas.length > 1 ? "s" : ""}`
-                        : ""}
-                      {contasChegando.vencidas.length > 0 && contasChegando.chegando.length > 0 ? " · " : ""}
-                      {contasChegando.chegando.length > 0
-                        ? `${contasChegando.chegando.length} conta${contasChegando.chegando.length > 1 ? "s" : ""} vencendo em até 3 dias`
-                        : ""}
-                    </p>
-                    {[...contasChegando.vencidas, ...contasChegando.chegando].slice(0, 3).map((expense) => (
-                      <p key={expense.id} className="mt-1 truncate text-sm text-amber-900/80">
-                        {expense.dueDate.split("-").reverse().slice(0, 2).join("/")} · {expense.description} · {moneyFin(expense.amount)}
+                    <p className="text-sm font-semibold text-amber-900 first-letter:uppercase">Fila financeira: {filaFinanceira.resumo}.</p>
+                    {[...filaFinanceira.vencidas, ...filaFinanceira.vencemHoje, ...filaFinanceira.pendencias].slice(0, 3).map((item) => (
+                      <p key={item.chave} className="mt-1 truncate text-sm text-amber-900/80">
+                        {item.data.split("-").reverse().slice(0, 2).join("/")} · {item.titulo} · {moneyFin(item.valor)}
                       </p>
                     ))}
-                    <p className="mt-1 text-xs font-semibold uppercase text-amber-700">Toque para abrir Contas a Pagar</p>
+                    <p className="mt-1 text-xs font-semibold uppercase text-amber-700">Toque para abrir a Fila do dia</p>
                   </div>
                 </div>
+              </Link>
+            ) : contasChegando && contasChegando.chegando.length > 0 ? (
+              <Link
+                to="/financeiro/contas"
+                {...warmRouteProps("/financeiro/contas")}
+                className="block rounded-lg border border-brand-oliva/20 bg-white/70 p-4 transition hover:border-brand-musgo/40"
+              >
+                <p className="text-sm font-semibold text-brand-tinta">
+                  Financeiro em dia — {contasChegando.chegando.length} conta{contasChegando.chegando.length > 1 ? "s" : ""} vencendo em até 3 dias.
+                </p>
+                <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">Toque para abrir a Fila do dia</p>
               </Link>
             ) : null}
 

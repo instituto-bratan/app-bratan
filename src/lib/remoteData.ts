@@ -4706,6 +4706,109 @@ export async function listRemoteExpenseNotas(): Promise<FinExpenseNotaRecord[]> 
   }));
 }
 
+// ---- Caixa de entrada do financeiro (02/09/2026) --------------------------------
+export type FinInboxStatus = "NOVO" | "LANCADO" | "DESCARTADO";
+export type FinInboxItem = {
+  id: string;
+  origem: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  storageBucket: string | null;
+  storagePath: string | null;
+  texto: string;
+  leitura: Record<string, unknown>;
+  status: FinInboxStatus;
+  expenseRef: string | null;
+  observacao: string;
+  createdAt: string;
+};
+
+function mapInboxRow(row: Record<string, unknown>): FinInboxItem {
+  return {
+    id: String(row.client_ref),
+    origem: String(row.origem ?? "UPLOAD"),
+    fileName: String(row.file_name ?? ""),
+    mimeType: String(row.mime_type ?? ""),
+    fileSize: Number(row.file_size ?? 0),
+    storageBucket: (row.storage_bucket as string | null) ?? null,
+    storagePath: (row.storage_path as string | null) ?? null,
+    texto: String(row.texto ?? ""),
+    leitura: (row.leitura as Record<string, unknown>) ?? {},
+    status: (row.status as FinInboxStatus) ?? "NOVO",
+    expenseRef: (row.expense_ref as string | null) ?? null,
+    observacao: String(row.observacao ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  };
+}
+
+export async function listRemoteFinInbox(): Promise<FinInboxItem[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("fin_inbox_item")
+    .select("client_ref, origem, file_name, mime_type, file_size, storage_bucket, storage_path, texto, leitura, status, expense_ref, observacao, created_at")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map(mapInboxRow);
+}
+
+/** Sobe o arquivo (quando há) e grava o item lido. Devolve o item como ficou. */
+export async function createRemoteFinInboxItem(values: {
+  file?: File | null;
+  origem: string;
+  texto: string;
+  leitura: Record<string, unknown>;
+  pessoaId: string | null;
+}): Promise<FinInboxItem> {
+  const client = requireSupabase();
+  const id = crypto.randomUUID();
+  let storagePath: string | null = null;
+  if (values.file) {
+    const safeName = publicUrlSafeName(values.file.name) || "documento";
+    storagePath = `${todayISO().slice(0, 7)}/${id}-${safeName}`;
+    const { error: storageError } = await client.storage
+      .from("fin-caixa-entrada")
+      .upload(storagePath, values.file, { cacheControl: "3600", upsert: false });
+    if (storageError) throw storageError;
+  }
+  const row = {
+    client_ref: `inbox-${id}`,
+    origem: values.origem,
+    file_name: values.file?.name ?? "",
+    mime_type: values.file?.type ?? "text/plain",
+    file_size: values.file?.size ?? values.texto.length,
+    storage_bucket: storagePath ? "fin-caixa-entrada" : null,
+    storage_path: storagePath,
+    texto: values.texto.slice(0, 20000),
+    leitura: values.leitura,
+    status: "NOVO",
+    created_by: values.pessoaId,
+  };
+  const { data, error } = await client.from("fin_inbox_item").insert(row).select().single();
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "financeiro.caixa_entrada.receber", entity: "fin_inbox_item", entityId: row.client_ref, metadata: { origem: values.origem } });
+  return mapInboxRow(data as Record<string, unknown>);
+}
+
+export async function updateRemoteFinInboxStatus(id: string, status: FinInboxStatus, expenseRef: string | null = null, observacao = "") {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_inbox_item")
+    .update({ status, expense_ref: expenseRef, observacao })
+    .eq("client_ref", id);
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: `financeiro.caixa_entrada.${status.toLowerCase()}`, entity: "fin_inbox_item", entityId: id, metadata: { expenseRef } });
+}
+
+export async function signedUrlFinInboxFile(storagePath: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("fin-caixa-entrada").createSignedUrl(storagePath, 60 * 10);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 export async function uploadRemoteExpenseNota(values: {
   expenseRef: string;
   expenseDescription: string;
