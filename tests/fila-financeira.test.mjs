@@ -124,3 +124,15 @@ test("leitor: texto por extenso (e-mail/NF) e PIX copia-e-cola", () => {
   assert.equal(leitor.parseValorBR("R$ 1.234,56"), 1234.56);
   assert.equal(leitor.parseValorBR("1234.56"), 1234.56);
 });
+
+test("conta parecida: mesmo valor com vencimento perto, ou mesma descrição no mês — pergunta antes de duplicar", () => {
+  const contas = [
+    { id: "a", description: "ISS", amount: 6283.14, dueDate: "2026-09-09", paidAt: null, supplier: "", method: "BOLETO", categoryRef: "c", documentNote: "", notes: "", installmentNum: null, installmentTotal: null, isCapex: false, createdAt: "", recorrencia: null },
+    { id: "b", description: "Aluguel", amount: 13989.23, dueDate: "2026-09-09", paidAt: null, supplier: "Imobiliária", method: "BOLETO", categoryRef: "c", documentNote: "", notes: "", installmentNum: null, installmentTotal: null, isCapex: false, createdAt: "", recorrencia: null },
+  ];
+  const parecida = fila.contaParecida(contas, { description: "Boleto prefeitura", amount: 6283.14, dueDate: "2026-09-12" });
+  assert.equal(parecida?.id, "a", "mesmo valor, 3 dias de distância");
+  assert.equal(fila.contaParecida(contas, { description: "iss", amount: 6283.14, dueDate: "2026-09-30" })?.id, "a", "mesma descrição no mesmo mês");
+  assert.equal(fila.contaParecida(contas, { description: "Aluguel", amount: 13989.23, dueDate: "2026-10-09" }), null, "mês seguinte da recorrente não é duplicata");
+  assert.equal(fila.contaParecida(contas, { description: "Outra", amount: 13989.23, dueDate: "2026-09-10", supplier: "Stin" }), null, "fornecedor diferente não é a mesma conta");
+});

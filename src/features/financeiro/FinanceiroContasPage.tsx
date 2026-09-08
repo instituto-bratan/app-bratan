@@ -1,6 +1,6 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Pencil, CalendarClock, CheckCircle2, CircleDollarSign, Filter, Layers, Package, PiggyBank, Plus, Repeat, Trash2 } from "lucide-react";
+import { Pencil, CalendarClock, CheckCircle2, CircleDollarSign, Copy, Filter, Layers, ListChecks, Package, PiggyBank, Plus, Repeat, Trash2, Undo2, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,12 @@ import {
 } from "@/lib/remoteData";
 import { useAuth } from "@/hooks/useAuth";
 import { NotaDaContaCell } from "./NotaDaContaCell";
-import { FilaDoDiaCard } from "./FilaDoDiaCard";
+import { FilaDoDiaCard, linhaDigitavelDaConta } from "./FilaDoDiaCard";
 import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
 import { CaixaEntradaCard } from "./CaixaEntradaCard";
-import { buildFilaFinanceira } from "./filaFinanceira";
+import { buildFilaFinanceira, contaParecida } from "./filaFinanceira";
 import { lerDocumento, type LeituraDocumento } from "./leitorDocumento";
+import { diasEntre } from "./recebiveisRede";
 import { extrairTextoArquivo } from "./pdfTexto";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -102,7 +103,15 @@ export function FinanceiroContasPage() {
   const [linhaDigitavel, setLinhaDigitavel] = useState("");
   const [arquivoLido, setArquivoLido] = useState<{ file: File; texto: string; leitura: LeituraDocumento } | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "pagas" | "compras">("todas");
+  // "Desfazer" no aviso: guarda a ação junto com o texto, para só aparecer no aviso certo.
+  const [desfazer, setDesfazer] = useState<{ texto: string; acao: () => void } | null>(null);
+  // Formulário recolhido por padrão (08/09): a tela tinha 9 mil pixels; ele abre
+  // sozinho quando algo o preenche (Lançar rápido, atalho, virar conta, editar).
+  const [formAberto, setFormAberto] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  // Pagamento em lote: o dia em que se paga 6 boletos no banco vira um clique.
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "vencidas" | "pagas" | "compras">("todas");
   const queryClient = useQueryClient();
   const inboxQuery = useQuery({ queryKey: ["fin-inbox"], queryFn: listRemoteFinInbox, enabled: usaRemoto, staleTime: 30_000 });
   const inboxItens: FinInboxItem[] = inboxQuery.data ?? [];
@@ -194,6 +203,7 @@ export function FinanceiroContasPage() {
       .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month)
       .filter((expense) => {
         if (statusFilter === "pendentes") return !expense.paidAt;
+        if (statusFilter === "vencidas") return !expense.paidAt && expense.dueDate < now;
         if (statusFilter === "pagas") return Boolean(expense.paidAt);
         if (statusFilter === "compras") return compraPorConta.has(expense.id);
         return true;
@@ -201,7 +211,7 @@ export function FinanceiroContasPage() {
       .filter(passaCategoria)
       .filter(passaBusca),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [financeiro.expenses, month, statusFilter, categoryFilter, buscaConta, categoryById, compraPorConta],
+    [financeiro.expenses, month, statusFilter, categoryFilter, buscaConta, categoryById, compraPorConta, now],
   );
 
   // Totais do que está NA TELA (com filtro) — para o filtro responder "quanto é".
@@ -224,10 +234,13 @@ export function FinanceiroContasPage() {
 
   const totals = useMemo(() => {
     const all = financeiro.expenses.filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month);
+    const vencidas = all.filter((expense) => !expense.paidAt && expense.dueDate < now);
     return {
       total: all.reduce((sum, expense) => sum + expense.amount, 0),
       pending: all.filter((expense) => !expense.paidAt).reduce((sum, expense) => sum + expense.amount, 0),
-      overdue: all.filter((expense) => !expense.paidAt && expense.dueDate < now).length,
+      pago: all.filter((expense) => expense.paidAt).reduce((sum, expense) => sum + expense.amount, 0),
+      overdue: vencidas.length,
+      overdueValor: vencidas.reduce((sum, expense) => sum + expense.amount, 0),
     };
   }, [financeiro.expenses, month, now]);
 
@@ -286,6 +299,18 @@ export function FinanceiroContasPage() {
     }
     const category = categoryById.get(categoryRef);
     const editingExpense = editingExpenseId ? financeiro.expenses.find((existing) => existing.id === editingExpenseId) : null;
+    if (!editingExpense) {
+      // Conta parecida já lançada? Pergunta antes — é assim que o boleto pago duas vezes começa.
+      const parecida = contaParecida(financeiro.expenses, { description: description.trim(), amount: value, dueDate, supplier: supplier.trim() });
+      if (
+        parecida &&
+        !window.confirm(
+          `Parece a mesma conta de "${parecida.description}" (vence ${parecida.dueDate.split("-").reverse().join("/")}, ${moneyFin(parecida.amount)}${parecida.paidAt ? ", já paga" : ""}). Lançar mesmo assim?`,
+        )
+      ) {
+        return setFeedback(`Não lancei: já existe "${parecida.description}" com esse valor. Se for outra conta, mude a descrição ou confirme.`);
+      }
+    }
     const expense: FinExpense = {
       id: editingExpense?.id ?? createFinId("fexp"),
       description: description.trim(),
@@ -390,6 +415,7 @@ export function FinanceiroContasPage() {
     setInboxOrigemId(null);
     setLinhaDigitavel("");
     setArquivoLido(null);
+    setFormAberto(false);
   }
 
   // O que a conta nova puxa junto: a compra ligada, a compra antiga que virou
@@ -438,17 +464,54 @@ export function FinanceiroContasPage() {
     }
   }
 
+  /** Aviso no topo do formulário, com "Desfazer" quando a ação for reversível. */
+  function avisar(texto: string, acao: (() => void) | null = null) {
+    setFeedback(texto);
+    setDesfazer(acao ? { texto, acao } : null);
+  }
+
+  /** Abre o formulário (recolhido por padrão) e leva a tela até ele. */
+  function abrirFormulario() {
+    setFormAberto(true);
+    window.setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
   // ---- Fila do dia: ações de um clique --------------------------------------
-  function adiarConta(expense: FinExpense) {
-    const nova = window.prompt(`Novo vencimento de "${expense.description}" (AAAA-MM-DD):`, expense.dueDate);
-    if (!nova || !/^\d{4}-\d{2}-\d{2}$/.test(nova)) return;
-    financeiro.updateExpense({ ...expense, dueDate: nova });
-    setFeedback(`"${expense.description}" adiada para ${nova.split("-").reverse().join("/")}.`);
+  function adiarConta(expense: FinExpense, novaData: string) {
+    const anterior = expense.dueDate;
+    financeiro.updateExpense({ ...expense, dueDate: novaData });
+    avisar(`"${expense.description}" adiada de ${anterior.split("-").reverse().join("/")} para ${novaData.split("-").reverse().join("/")}.`, () =>
+      financeiro.updateExpense({ ...expense, dueDate: anterior }),
+    );
   }
 
   function pagarConta(expense: FinExpense) {
     financeiro.setExpensePaid(expense.id, now);
-    setFeedback(`"${expense.description}" marcada como paga hoje (${moneyFin(expense.amount)}). Se tiver o comprovante/NF, anexe na coluna "Nota fiscal".`);
+    avisar(`"${expense.description}" marcada como paga hoje (${moneyFin(expense.amount)}). Se tiver o comprovante/NF, anexe na coluna "Nota fiscal".`, () =>
+      financeiro.setExpensePaid(expense.id, null),
+    );
+  }
+
+  const selecionaveis = monthExpenses.filter((expense) => !expense.paidAt && !isProvisaoExpense(expense, financeiro.categories));
+  const selecionadasVisiveis = selecionaveis.filter((expense) => selecionadas.has(expense.id));
+  function alternarSelecao(id: string) {
+    setSelecionadas((atual) => {
+      const proxima = new Set(atual);
+      if (proxima.has(id)) proxima.delete(id);
+      else proxima.add(id);
+      return proxima;
+    });
+  }
+  function pagarSelecionadas() {
+    if (!selecionadasVisiveis.length) return;
+    const total = selecionadasVisiveis.reduce((soma, expense) => soma + expense.amount, 0);
+    if (!window.confirm(`Marcar ${selecionadasVisiveis.length} conta(s) como pagas hoje (${moneyFin(total)})?`)) return;
+    const ids = selecionadasVisiveis.map((expense) => expense.id);
+    for (const id of ids) financeiro.setExpensePaid(id, now);
+    setSelecionadas(new Set());
+    avisar(`${ids.length} conta(s) marcadas como pagas hoje (${moneyFin(total)}).`, () => {
+      for (const id of ids) financeiro.setExpensePaid(id, null);
+    });
   }
 
   function compraChegou(purchase: FinPurchase) {
@@ -471,8 +534,8 @@ export function FinanceiroContasPage() {
     setSupplier(purchase.supplier);
     setDocumentNote(purchase.nfNote);
     setCompraOrigemId(purchase.id);
-    setFeedback(`Conta preenchida a partir da compra "${purchase.description}" — escolha a categoria e lance; a compra fica ligada a ela.`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    avisar(`Conta preenchida a partir da compra "${purchase.description}" — escolha a categoria e lance; a compra fica ligada a ela.`);
+    abrirFormulario();
   }
 
   // ---- Lançar rápido / caixa de entrada -------------------------------------
@@ -490,7 +553,8 @@ export function FinanceiroContasPage() {
     setMethod(leitura.tipo === "PIX" ? "PIX" : "BOLETO");
     setLinhaDigitavel(leitura.linhaDigitavel ?? "");
     setArquivoLido(arquivo ? { file: arquivo, texto, leitura } : null);
-    setFeedback(`Li ${leitura.leituras.length ? leitura.leituras.join("; ") : "o documento"}. Confira, escolha a categoria e lance.`);
+    avisar(`Li ${leitura.leituras.length ? leitura.leituras.join("; ") : "o documento"}. Confira, escolha a categoria e lance.`);
+    abrirFormulario();
   }
 
   function aplicarPreset(preset: PresetFornecedor) {
@@ -500,7 +564,8 @@ export function FinanceiroContasPage() {
     setMethod(preset.metodo);
     setEhCompra(preset.ehCompra);
     setEstoqueSetor(preset.estoqueSetor ?? "");
-    setFeedback(`Atalho "${preset.rotulo}": categoria, fornecedor${preset.ehCompra ? ", estoque e \"é compra\"" : ""} preenchidos. Falta valor e vencimento.`);
+    avisar(`Atalho "${preset.rotulo}": categoria, fornecedor${preset.ehCompra ? ", estoque e \"é compra\"" : ""} preenchidos. Falta valor e vencimento.`);
+    abrirFormulario();
   }
 
   async function receberNaCaixa(arquivos: File[]) {
@@ -524,7 +589,7 @@ export function FinanceiroContasPage() {
     aplicarLeitura(leitura, item.texto, null);
     setInboxOrigemId(item.id);
     if (!documentNote.trim() && item.fileName) setDocumentNote(item.fileName);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    abrirFormulario();
   }
 
   function inboxDescartar(item: FinInboxItem) {
@@ -552,8 +617,8 @@ export function FinanceiroContasPage() {
     setInstallment(expense.installmentNum && expense.installmentTotal ? `${expense.installmentNum}/${expense.installmentTotal}` : "");
     setDocumentNote(expense.documentNote);
     setRecorrente(expense.recorrencia === "MENSAL");
-    setFeedback(`Editando a conta "${expense.description}" — corrija e salve para aplicar.`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    avisar(`Editando a conta "${expense.description}" — corrija e salve para aplicar.`);
+    abrirFormulario();
   }
 
   return (
@@ -601,21 +666,31 @@ export function FinanceiroContasPage() {
           </div>
         </motion.section>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
+        {/* Quatro números que respondem "como está o mês" — e cada um filtra a planilha ao toque. */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <button type="button" onClick={() => setStatusFilter("todas")} className={cn("rounded-lg border p-4 text-left transition hover:border-brand-musgo/40", statusFilter === "todas" ? "border-brand-musgo/40 bg-white/80" : "border-brand-oliva/14 bg-white/55")}>
             <CircleDollarSign className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Total do mês</p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totals.total)}</p>
-          </div>
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
+            <p className="text-xs text-muted-foreground">pago {moneyFin(totals.pago)}</p>
+          </button>
+          <button type="button" onClick={() => setStatusFilter("pendentes")} className={cn("rounded-lg border p-4 text-left transition hover:border-brand-musgo/40", statusFilter === "pendentes" ? "border-brand-musgo/40 bg-white/80" : "border-brand-oliva/14 bg-white/55")}>
             <CalendarClock className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Ainda a pagar</p>
             <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totals.pending)}</p>
-          </div>
-          <div className={cn("rounded-lg border p-4", totals.overdue ? "border-red-200 bg-red-50" : "border-brand-oliva/14 bg-white/55")}>
+            <p className="text-xs text-muted-foreground">{monthExpenses.filter((expense) => !expense.paidAt).length || totals.pending ? "toque para ver só as abertas" : "tudo pago"}</p>
+          </button>
+          <button type="button" onClick={() => setStatusFilter("vencidas")} className={cn("rounded-lg border p-4 text-left transition", totals.overdue ? "border-red-200 bg-red-50 hover:border-red-300" : "border-brand-oliva/14 bg-white/55 hover:border-brand-musgo/40", statusFilter === "vencidas" && "ring-2 ring-red-300")}>
             <CalendarClock className={cn("h-5 w-5", totals.overdue ? "text-red-700" : "text-brand-musgo")} aria-hidden="true" />
             <p className={cn("mt-2 text-sm font-semibold", totals.overdue ? "text-red-800" : "text-brand-musgo")}>Vencidas sem pagamento</p>
-            <p className={cn("text-2xl font-bold", totals.overdue ? "text-red-800" : "text-brand-tinta")}>{totals.overdue}</p>
+            <p className={cn("text-2xl font-bold", totals.overdue ? "text-red-800" : "text-brand-tinta")}>{moneyFin(totals.overdueValor)}</p>
+            <p className={cn("text-xs", totals.overdue ? "text-red-800/80" : "text-muted-foreground")}>{totals.overdue ? `${totals.overdue} conta(s) · toque para ver` : "nenhuma"}</p>
+          </button>
+          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
+            <ListChecks className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
+            <p className="mt-2 text-sm font-semibold text-brand-musgo">Próximos 7 dias</p>
+            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(fila.semana.reduce((soma, item) => soma + item.valor, 0) + fila.vencemHoje.reduce((soma, item) => soma + item.valor, 0))}</p>
+            <p className="text-xs text-muted-foreground">{fila.vencemHoje.length + fila.semana.length} conta(s), hoje incluído</p>
           </div>
         </div>
 
@@ -655,18 +730,50 @@ export function FinanceiroContasPage() {
         )}
 
         {feedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
+          <div className="flex flex-wrap items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-            {feedback}
+            <span className="flex-1">{feedback}</span>
+            {desfazer && desfazer.texto === feedback ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  desfazer.acao();
+                  setDesfazer(null);
+                  setFeedback("Desfeito.");
+                }}
+              >
+                <Undo2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Desfazer
+              </Button>
+            ) : null}
+            <button type="button" className="text-muted-foreground" aria-label="Fechar aviso" onClick={() => { setFeedback(""); setDesfazer(null); }}>
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
           </div>
         ) : null}
 
-        <Card className={cn(readOnly && "hidden")}>
+        {readOnly ? null : !formAberto ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-3">
+            <Button type="button" variant="outline" onClick={() => abrirFormulario()}>
+              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Nova conta (digitar à mão)
+            </Button>
+            <p className="text-xs text-muted-foreground">Ou cole o boleto no Lançar rápido acima — ele abre o formulário já preenchido.</p>
+          </div>
+        ) : null}
+        <div ref={formRef} className={cn((readOnly || !formAberto) && "hidden")}>
+        <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-              {editingExpenseId ? "Corrigir conta" : "Nova conta"}
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
+                {editingExpenseId ? "Corrigir conta" : "Nova conta"}
+              </CardTitle>
+              <Button type="button" variant="ghost" size="sm" onClick={() => { resetForm(); setFeedback(""); }}>
+                <X className="mr-1 h-4 w-4" aria-hidden="true" /> Fechar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={handleSubmit}>
@@ -817,15 +924,16 @@ export function FinanceiroContasPage() {
             </form>
           </CardContent>
         </Card>
+        </div>
 
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-lg">Contas de {month.split("-").reverse().join("/")}</CardTitle>
               <div className="flex gap-1.5">
-                {(["todas", "pendentes", "pagas", "compras"] as const).map((filter) => (
+                {(["todas", "pendentes", "vencidas", "pagas", "compras"] as const).map((filter) => (
                   <Button key={filter} type="button" size="sm" variant={statusFilter === filter ? "default" : "outline"} onClick={() => setStatusFilter(filter)}>
-                    {filter === "todas" ? "Todas" : filter === "pendentes" ? "A pagar" : filter === "pagas" ? "Pagas" : "Compras"}
+                    {filter === "todas" ? "Todas" : filter === "pendentes" ? "A pagar" : filter === "vencidas" ? "Vencidas" : filter === "pagas" ? "Pagas" : "Compras"}
                   </Button>
                 ))}
               </div>
@@ -910,12 +1018,38 @@ export function FinanceiroContasPage() {
                 </span>
               </div>
             ) : null}
+
+            {/* PAGAMENTO EM LOTE (08/09): marque as contas que pagou no banco e dê baixa em todas de uma vez. */}
+            {!readOnly && selecionadasVisiveis.length ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-brand-musgo/30 bg-brand-creme/50 px-3 py-2 text-sm">
+                <ListChecks className="h-4 w-4 text-brand-musgo" aria-hidden="true" />
+                <span className="font-semibold text-brand-tinta">
+                  {selecionadasVisiveis.length} selecionada(s) · {moneyFin(selecionadasVisiveis.reduce((soma, expense) => soma + expense.amount, 0))}
+                </span>
+                <Button type="button" size="sm" onClick={pagarSelecionadas}>
+                  <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" /> Marcar pagas hoje
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSelecionadas(new Set())}>Limpar</Button>
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent>
             <div className="mobile-scrollbar-none overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="text-xs uppercase text-brand-oliva">
                   <tr>
+                    {readOnly ? null : (
+                      <th className="w-8 px-2 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label="Selecionar todas as contas em aberto da lista"
+                          checked={selecionaveis.length > 0 && selecionaveis.every((expense) => selecionadas.has(expense.id))}
+                          disabled={!selecionaveis.length}
+                          onChange={(event) => setSelecionadas(event.target.checked ? new Set(selecionaveis.map((expense) => expense.id)) : new Set())}
+                          className="h-4 w-4"
+                        />
+                      </th>
+                    )}
                     <th className="px-3 py-2">Vencimento</th>
                     <th className="px-3 py-2">Descrição</th>
                     <th className="px-3 py-2">Categoria P12</th>
@@ -933,8 +1067,24 @@ export function FinanceiroContasPage() {
                       const overdue = !expense.paidAt && expense.dueDate < now;
                       const serie = installmentSummary(financeiro.expenses, expense);
                       return (
-                        <tr key={expense.id} className={cn(overdue && "bg-red-50/60")}>
-                          <td className="px-3 py-2.5 whitespace-nowrap">{expense.dueDate.split("-").reverse().join("/")}</td>
+                        <tr key={expense.id} className={cn(overdue && "bg-red-50/60", selecionadas.has(expense.id) && "bg-brand-creme/50")}>
+                          {readOnly ? null : (
+                            <td className="px-2 py-2.5">
+                              {!expense.paidAt && !isProvisaoExpense(expense, financeiro.categories) ? (
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Selecionar ${expense.description}`}
+                                  checked={selecionadas.has(expense.id)}
+                                  onChange={() => alternarSelecao(expense.id)}
+                                  className="h-4 w-4"
+                                />
+                              ) : null}
+                            </td>
+                          )}
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {expense.dueDate.split("-").reverse().join("/")}
+                            {overdue ? <span className="block text-[11px] font-semibold text-red-700">há {diasEntre(expense.dueDate, now)} dia(s)</span> : null}
+                          </td>
                           <td className="px-3 py-2.5">
                             <div className="flex flex-wrap items-center gap-1.5 font-semibold text-brand-tinta">
                               <span>
@@ -962,8 +1112,19 @@ export function FinanceiroContasPage() {
                                 </Badge>
                               ) : null}
                             </div>
-                            {expense.supplier || expense.documentNote ? (
-                              <p className="text-xs text-muted-foreground">{[expense.supplier, expense.documentNote].filter(Boolean).join(" · ")}</p>
+                            {expense.supplier || expense.documentNote || linhaDigitavelDaConta(expense) ? (
+                              <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                                {[expense.supplier, expense.documentNote].filter(Boolean).join(" · ")}
+                                {linhaDigitavelDaConta(expense) ? (
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 font-semibold text-brand-oliva underline underline-offset-2"
+                                    onClick={() => void navigator.clipboard.writeText(linhaDigitavelDaConta(expense)).then(() => setFeedback(`Linha digitável de "${expense.description}" copiada.`))}
+                                  >
+                                    <Copy className="h-3 w-3" aria-hidden="true" /> copiar código
+                                  </button>
+                                ) : null}
+                              </p>
                             ) : null}
                             {serie ? (
                               <p className="text-xs text-muted-foreground">
@@ -1058,7 +1219,7 @@ export function FinanceiroContasPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                      <td colSpan={readOnly ? 8 : 9} className="px-3 py-8 text-center text-muted-foreground">
                         {filtroAtivo
                           ? `Nenhuma conta ${nomeDoFiltro ? `em ${nomeDoFiltro} ` : ""}neste mês com esse filtro — toque em "Limpar filtros" para ver todas.`
                           : "Nenhuma conta lançada neste mês."}

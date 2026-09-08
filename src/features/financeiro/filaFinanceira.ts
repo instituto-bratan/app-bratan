@@ -182,3 +182,36 @@ export function buildFilaFinanceira(input: {
     resumo: partes.join(" · "),
   };
 }
+
+// ---- Conta parecida (08/09/2026) -------------------------------------------
+// "Ficar confuso com os boletos" vira conta lançada duas vezes. Antes de gravar
+// uma conta nova, o app procura uma parecida: mesmo valor com vencimento até 5
+// dias de distância, ou mesma descrição no mesmo mês com o mesmo valor. Não
+// bloqueia — pergunta.
+function normaliza(texto: string) {
+  return texto.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function contaParecida(
+  expenses: FinExpense[],
+  nova: { description: string; amount: number; dueDate: string; supplier?: string },
+): FinExpense | null {
+  const descricao = normaliza(nova.description);
+  const fornecedor = normaliza(nova.supplier ?? "");
+  const candidatas = expenses.filter((expense) => Math.abs((expense.amount || 0) - nova.amount) < 0.01);
+  const mesmaDescricao = candidatas.find(
+    (expense) => normaliza(expense.description) === descricao && expense.dueDate.slice(0, 7) === nova.dueDate.slice(0, 7),
+  );
+  if (mesmaDescricao) return mesmaDescricao;
+  const perto = candidatas
+    .filter((expense) => Math.abs(diasEntreDatas(expense.dueDate, nova.dueDate)) <= 5)
+    .filter((expense) => !fornecedor || !expense.supplier || normaliza(expense.supplier) === fornecedor)
+    .sort((a, b) => Math.abs(diasEntreDatas(a.dueDate, nova.dueDate)) - Math.abs(diasEntreDatas(b.dueDate, nova.dueDate)));
+  return perto[0] ?? null;
+}
+
+function diasEntreDatas(de: string, ate: string) {
+  const [a1, m1, d1] = de.split("-").map(Number);
+  const [a2, m2, d2] = ate.split("-").map(Number);
+  return Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86_400_000);
+}
