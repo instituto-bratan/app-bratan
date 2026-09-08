@@ -17,6 +17,7 @@ import {
   type QuadroRepescagem,
 } from "./repescagemData";
 import { usePanScroll } from "./usePanScroll";
+import { densityColumns, type KanbanDensity } from "./kanbanDensidade";
 
 export type ResultadoLigacao = "AGENDOU" | "VAI_PENSAR" | "NAO_ATENDEU" | "NAO_QUER";
 export const resultadoLigacaoLabels: Record<ResultadoLigacao, string> = {
@@ -50,7 +51,7 @@ function localISO(valor: string) {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
-const coluna = "flex h-full min-h-0 w-[188px] flex-col rounded-lg border p-1.5";
+const coluna = "flex h-full min-h-0 w-full flex-col rounded-lg border p-2";
 const cabecalho = "mb-1.5 shrink-0 rounded-md px-2 py-1.5";
 const lista = "kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-1.5 overflow-y-auto pr-0.5";
 const vazio = "rounded-md border border-dashed border-brand-oliva/20 bg-white/35 p-2 text-center text-[11px] text-muted-foreground";
@@ -59,6 +60,7 @@ const botaoMini = "flex h-6 items-center gap-1 rounded border px-1.5 text-[11px]
 export function RepescagemBoard({
   quadro,
   filtro,
+  density = "executive",
   readOnly,
   remetente,
   onIniciar,
@@ -68,6 +70,7 @@ export function RepescagemBoard({
 }: {
   quadro: QuadroRepescagem;
   filtro: string;
+  density?: KanbanDensity;
   readOnly: boolean;
   remetente: string;
   onIniciar: (candidato: CandidatoRepescagem) => void;
@@ -87,12 +90,12 @@ export function RepescagemBoard({
     const atrasado = cartao.atrasoDias > 0 && ativo;
     const ligandoAqui = ligando === cartao.enrollmentId;
     return (
-      <div className={cn("rounded-md border bg-white px-2 py-1.5 text-xs shadow-sm", atrasado ? "border-red-300 bg-red-50/60" : "border-brand-oliva/20")}>
+      <div className={cn("rounded-lg border bg-white px-3 py-2 text-sm shadow-sm", atrasado ? "border-red-300 bg-red-50/60" : "border-brand-oliva/20")}>
         <div className="flex items-center gap-1.5">
           <Link to={`/crm/contatos/${cartao.contactId}`} className="min-w-0 flex-1 truncate font-semibold leading-4 text-brand-tinta hover:underline" title={cartao.nome}>{cartao.nome}</Link>
           {cartao.faixa ? <span className="shrink-0 rounded bg-brand-papel px-1 text-[10px] font-bold text-brand-oliva" title={faixaRepescagemLabels[cartao.faixa]}>{faixaRepescagemCurta[cartao.faixa]}</span> : null}
         </div>
-        <p className={cn("mt-0.5 flex items-center gap-1 truncate text-[10px] font-semibold", atrasado ? "text-red-700" : ativo ? "text-brand-oliva" : "text-muted-foreground")} title={`${cartao.iscaEnviadaEm ? `isca ${dataHora(cartao.iscaEnviadaEm)}` : "isca não enviada"}${cartao.ligacoes.map((l) => ` · lig. ${l.n} ${dataHora(l.em)} (${l.resultado})`).join("")}`}>
+        <p className={cn("mt-0.5 flex items-center gap-1 truncate text-[11px] font-semibold", atrasado ? "text-red-700" : ativo ? "text-brand-oliva" : "text-muted-foreground")} title={`${cartao.iscaEnviadaEm ? `isca ${dataHora(cartao.iscaEnviadaEm)}` : "isca não enviada"}${cartao.ligacoes.map((l) => ` · lig. ${l.n} ${dataHora(l.em)} (${l.resultado})`).join("")}`}>
           {atrasado ? <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
           {!ativo
             ? cartao.resultado || (cartao.status === "CANCELED" ? "cancelada" : "encerrada")
@@ -174,7 +177,7 @@ export function RepescagemBoard({
         </span>
       </div>
       <div ref={pan.ref} {...pan.handlers} className="kanban-scroll min-h-0 flex-1 cursor-grab touch-pan-x overflow-x-auto pb-1 active:cursor-grabbing">
-        <div className="grid h-full w-max grid-flow-col items-stretch gap-2">
+        <div className={cn("grid h-full w-max grid-flow-col items-stretch gap-3", densityColumns[density])}>
           <div className={cn(coluna, "border-brand-oliva/20 bg-white/40 backdrop-blur-xl")}>
             <div className={cn(cabecalho, "bg-brand-musgo text-brand-papel")}>
               <p className="flex items-center gap-1.5 text-xs font-semibold"><UserRoundSearch className="h-3.5 w-3.5" aria-hidden="true" /> Para repescar</p>
@@ -182,7 +185,7 @@ export function RepescagemBoard({
             </div>
             <div className={lista}>
               {candidatos.length ? candidatos.slice(0, 80).map((c) => (
-                <div key={c.contact.id} className="rounded-md border border-brand-oliva/20 bg-white px-2 py-1.5 text-xs shadow-sm">
+                <div key={c.contact.id} className="rounded-lg border border-brand-oliva/20 bg-white px-3 py-2 text-sm shadow-sm">
                   <div className="flex items-center gap-1.5">
                     <Link to={`/crm/contatos/${c.contact.id}`} className="min-w-0 flex-1 truncate font-semibold leading-4 text-brand-tinta hover:underline">{c.contact.fullName || c.contact.preferredName}</Link>
                     <span className="shrink-0 rounded bg-brand-papel px-1 text-[10px] font-bold text-brand-oliva">{faixaRepescagemCurta[c.faixa]}</span>

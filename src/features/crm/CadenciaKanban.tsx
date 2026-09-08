@@ -17,6 +17,7 @@ import {
 } from "./crmData";
 import { buildKanbanCadencia, type CartaoCadencia } from "./cadenciaKanbanData";
 import { usePanScroll } from "./usePanScroll";
+import { densityColumns, type KanbanDensity } from "./kanbanDensidade";
 
 const statusPlanilha = Object.keys(cadenceSheetStatusLabels) as CadenceSheetDStatus[];
 const statusGestor = Object.keys(gestorCallStatusLabels) as GestorCallStatus[];
@@ -34,6 +35,7 @@ export function CadenciaKanban({
   cadenceId,
   hoje,
   filtro = "",
+  density = "executive",
   readOnly,
   onConcluirPasso,
   onConcluirLigacao,
@@ -42,6 +44,7 @@ export function CadenciaKanban({
   cadenceId: string;
   hoje: string;
   filtro?: string;
+  density?: KanbanDensity;
   readOnly: boolean;
   onConcluirPasso: (taskId: string, status: CadenceSheetDStatus) => void;
   onConcluirLigacao: (taskId: string, status: GestorCallStatus) => void;
@@ -61,18 +64,18 @@ export function CadenciaKanban({
     return (
       <div
         className={cn(
-          "rounded-md border bg-white px-2 py-1.5 text-xs shadow-sm",
+          "rounded-lg border bg-white px-3 py-2 text-sm shadow-sm",
           encerrado ? "border-brand-oliva/15 opacity-70" : atrasado ? "border-red-300 bg-red-50/60" : cartao.venceHoje ? "border-amber-300 bg-amber-50/60" : "border-brand-oliva/20",
         )}
       >
         <div className="flex items-center gap-1.5">
-          <Link to={`/crm/contatos/${cartao.contactId}`} className="min-w-0 flex-1 truncate font-semibold leading-4 text-brand-tinta hover:underline" title={`${cartao.nome}${cartao.motivo ? ` · ${cartao.motivo}` : ""}`}>
+          <Link to={`/crm/contatos/${cartao.contactId}`} className="min-w-0 flex-1 truncate font-semibold leading-5 text-brand-tinta hover:underline" title={`${cartao.nome}${cartao.motivo ? ` · ${cartao.motivo}` : ""}`}>
             {cartao.nome}
           </Link>
           <span className="shrink-0 rounded bg-brand-papel px-1 text-[10px] font-bold text-brand-oliva" title="passos feitos">{cartao.passosFeitos}/{cartao.totalPassos}</span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-1">
-          <p className={cn("flex min-w-0 items-center gap-1 truncate text-[10px] font-semibold", encerrado ? "text-muted-foreground" : atrasado ? "text-red-700" : cartao.venceHoje ? "text-amber-800" : "text-brand-oliva")}>
+          <p className={cn("flex min-w-0 items-center gap-1 truncate text-[11px] font-semibold", encerrado ? "text-muted-foreground" : atrasado ? "text-red-700" : cartao.venceHoje ? "text-amber-800" : "text-brand-oliva")}>
             {atrasado ? <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
             {encerrado
               ? `${cartao.status === "COMPLETED" ? "concluída" : cartao.status === "PAUSED" ? "resolvida" : cartao.status === "CANCELED" ? "cancelada" : "feita"}${cartao.ultimoResultado ? ` · ${cartao.ultimoResultado}` : ""}`
@@ -147,12 +150,12 @@ export function CadenciaKanban({
         </span>
       </div>
       <div ref={pan.ref} {...pan.handlers} className="kanban-scroll min-h-0 flex-1 cursor-grab touch-pan-x overflow-x-auto pb-1 active:cursor-grabbing">
-        <div className="grid h-full w-max grid-flow-col items-stretch gap-2">
+        <div className={cn("grid h-full w-max grid-flow-col items-stretch gap-3", densityColumns[density])}>
           {kanban.colunas.map((coluna, indice) => {
             const cartoes = coluna.cartoes.filter(bate);
             const atrasados = cartoes.filter((c) => c.atrasoDias > 0).length;
             return (
-              <div key={coluna.stepId} className="flex h-full min-h-0 w-[188px] flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-1.5 backdrop-blur-xl">
+              <div key={coluna.stepId} className="flex h-full min-h-0 w-full flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-1.5 backdrop-blur-xl">
                 <div className="mb-1.5 shrink-0 rounded-md bg-brand-musgo px-2 py-1.5 text-brand-papel">
                   <p className="flex items-center gap-1.5 text-xs font-semibold" title={coluna.nome}>
                     <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-brand-papel/20 text-[10px] font-bold">{indice + 1}</span>
@@ -166,7 +169,7 @@ export function CadenciaKanban({
               </div>
             );
           })}
-          <div className="flex h-full min-h-0 w-[188px] flex-col rounded-lg border border-emerald-200/70 bg-emerald-50/30 p-1.5">
+          <div className="flex h-full min-h-0 w-full flex-col rounded-lg border border-emerald-200/70 bg-emerald-50/30 p-1.5">
             <div className="mb-1.5 shrink-0 rounded-md bg-emerald-700 px-2 py-1.5 text-white">
               <p className="text-xs font-semibold">Encerrados</p>
               <p className="mt-0.5 text-[10px] text-white/80">{kanban.encerrados.length} nos últimos 30 dias</p>

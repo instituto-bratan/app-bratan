@@ -113,6 +113,7 @@ import { CadenciaKanban } from "./CadenciaKanban";
 import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
 import { usePanScroll } from "./usePanScroll";
+import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
 import { buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem } from "./repescagemData";
 
 const objectionOptions: CrmObjectionCategory[] = [
@@ -128,7 +129,6 @@ const objectionOptions: CrmObjectionCategory[] = [
 ];
 
 type KanbanSection = "all" | "captacao" | "negociacao";
-type KanbanDensity = "compact" | "comfortable" | "executive";
 
 const sectionLabels: Record<KanbanSection, string> = {
   all: "Ver tudo",
@@ -192,19 +192,7 @@ const channelShort: Record<CrmAdhesionChannel, string> = {
   SOMENTE_TRATAMENTO: "Tratamento",
 };
 
-const densityLabels: Record<KanbanDensity, string> = {
-  compact: "Compacto",
-  comfortable: "Confortável",
-  executive: "Executivo",
-};
 
-// Larguras (08/09/2026, Lucas: "precisa ficar estreito de largura"): colunas
-// finas para caber mais quadros lado a lado, como um CRM.
-const densityColumns: Record<KanbanDensity, string> = {
-  compact: "auto-cols-[minmax(208px,224px)]",
-  comfortable: "auto-cols-[minmax(248px,264px)]",
-  executive: "auto-cols-[minmax(300px,320px)]",
-};
 
 const temperatureLabels: Record<CrmLeadTemperature, string> = {
   COLD: "Frio",
@@ -489,7 +477,7 @@ export function CrmKanbanPage() {
   const [status, setStatus] = useState("");
   const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
   const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
-  const [density, setDensity] = useState<KanbanDensity>(() => readLocalValue<KanbanDensity>("app-bratan-kanban-density", "comfortable"));
+  const [density, setDensity] = useState<KanbanDensity>(() => readLocalValue<KanbanDensity>(DENSIDADE_STORAGE_KEY, DENSIDADE_PADRAO));
   const [fullscreen, setFullscreen] = useState(false);
   const [selectedDealId, setSelectedDealId] = useState("");
   const [targetStage, setTargetStage] = useState<CrmDealStage>("CONTATADO");
@@ -712,7 +700,7 @@ export function CrmKanbanPage() {
 
   function changeDensity(next: KanbanDensity) {
     setDensity(next);
-    writeLocalValue("app-bratan-kanban-density", next);
+    writeLocalValue(DENSIDADE_STORAGE_KEY, next);
   }
 
 
@@ -1963,10 +1951,17 @@ export function CrmKanbanPage() {
       ) : null}
 
       {board !== "programa" && board !== "comercial" ? (
-        <label className="relative block max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 pl-9" placeholder="Buscar paciente neste quadro" />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative block w-full max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 pl-9" placeholder="Buscar paciente neste quadro" />
+          </label>
+          <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-10 rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm" aria-label="Densidade dos cards">
+            {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
+              <option key={item} value={item}>{densityLabels[item]}</option>
+            ))}
+          </select>
+        </div>
       ) : null}
       <section className={cn("rounded-lg border border-brand-oliva/15 bg-white/45 p-2.5 shadow-sm backdrop-blur-xl", board !== "programa" && board !== "comercial" && "hidden")}>
         <div className="grid gap-2 lg:grid-cols-[1.2fr_0.65fr_0.6fr_0.55fr_auto]">
@@ -2158,6 +2153,7 @@ export function CrmKanbanPage() {
               cadenceId={cadenciaAtiva}
               hoje={todayISO()}
               filtro={query}
+              density={density}
               readOnly={false}
               onConcluirPasso={concluirPassoDaCadencia}
               onConcluirLigacao={concluirLigacaoDoGestor}
@@ -2167,6 +2163,7 @@ export function CrmKanbanPage() {
             <RepescagemBoard
               quadro={quadroRepescagem}
               filtro={query}
+              density={density}
               readOnly={false}
               remetente={(pessoa?.nome ?? "Aline").split(" ")[0]}
               onIniciar={iniciarRepescagemDe}
