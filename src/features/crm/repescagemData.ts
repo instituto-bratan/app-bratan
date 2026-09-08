@@ -12,6 +12,7 @@ import type { FinSale } from "@/features/financeiro/financeiroData";
 import {
   contactDisplayName,
   enrollContactInCadence,
+  findOrCreateCrmContact,
   type CrmCadenceEnrollment,
   type CrmContact,
   type CrmRole,
@@ -124,6 +125,54 @@ export function iniciarRepescagem(
   });
 }
 
+export type RepescagemManual = {
+  /** Contato já existente no CRM (opcional). Sem ele, o app cria/acha pelo nome e telefone. */
+  contactRef?: string;
+  nome: string;
+  telefone: string;
+  faixa: FaixaRepescagem;
+  ultimaVisita: string;
+  observacoes?: string;
+};
+
+/**
+ * ADICIONAR À MÃO (Lucas, 08/09: "como a gente vai adicionar pessoas na
+ * repescagem? Antes de adicionar manualmente, para ter o controle"). A pessoa
+ * pode nem ter comanda no app: entra pelo nome e telefone, com a faixa de tempo
+ * sem vir e a última visita informadas — e segue a mesma régua (isca → ligação).
+ */
+export function adicionarRepescagemManual(state: CrmState, dados: RepescagemManual, actor: { userId: string; role: CrmRole }, hoje: string): { state: CrmState; contactId: string; aviso: string } {
+  let proximo = state;
+  let contactId = dados.contactRef ?? "";
+  let aviso = "";
+  if (!contactId) {
+    const resultado = findOrCreateCrmContact(state, { fullName: dados.nome.trim(), phone: dados.telefone, whatsapp: dados.telefone, sourceChannel: "Repescagem" }, actor.userId);
+    proximo = resultado.state;
+    contactId = resultado.contact.id;
+    aviso = resultado.duplicateWarning ?? "";
+  }
+  const jaAtiva = proximo.cadenceEnrollments.some((e) => e.contactId === contactId && e.cadenceId === CADENCIA_REPESCAGEM && e.status === "ACTIVE");
+  if (jaAtiva) return { state: proximo, contactId, aviso: "Esta pessoa já está numa repescagem em andamento." };
+  const depois = enrollContactInCadence(proximo, {
+    cadenceId: CADENCIA_REPESCAGEM,
+    contactId,
+    dealId: "",
+    triggerSource: motivoRepescagem(dados.faixa, dados.ultimaVisita || hoje),
+    triggerDate: hoje,
+    ownerUserId: actor.userId,
+    ownerRole: actor.role,
+    notes: dados.observacoes?.trim() || undefined,
+  } as Parameters<typeof enrollContactInCadence>[1]);
+  if (depois === proximo) aviso = aviso || "Não entrou: a pessoa já tem outra cadência ativa (1 régua por paciente).";
+  return { state: depois, contactId, aviso };
+}
+
+/** Observação da linha da planilha de repescagem (fica na inscrição). */
+export function atualizarObservacaoRepescagem(state: CrmState, enrollmentId: string, texto: string): CrmState {
+  const now = new Date().toISOString();
+  return { ...state, cadenceEnrollments: state.cadenceEnrollments.map((e) => (e.id === enrollmentId ? { ...e, notes: texto, updatedAt: now } : e)) };
+}
+
 /** O paciente respondeu a isca dizendo o horário: a ligação passa para essa hora. */
 export function marcarHorarioDaLigacao(state: CrmState, taskId: string, dueAtISO: string): CrmState {
   const now = new Date().toISOString();
@@ -152,6 +201,7 @@ export type CartaoRepescagem = {
   iscaEnviadaEm: string | null;
   ligacoes: { n: number; em: string; resultado: string }[];
   resultado: string;
+  observacoes: string;
   status: CrmCadenceEnrollment["status"];
 };
 
@@ -196,6 +246,7 @@ export function cartaoRepescagem(state: CrmState, enrollment: CrmCadenceEnrollme
     iscaEnviadaEm: isca?.status === "DONE" ? (isca.completedAt ?? isca.dueAt) : null,
     ligacoes,
     resultado: ultimaResposta ? resultadoLegivel(ultimaResposta) : enrollment.status === "ACTIVE" ? "" : ligacoes.length ? "sem retorno" : enrollment.canceledReason || "",
+    observacoes: enrollment.notes ?? "",
     status: enrollment.status,
   };
 }

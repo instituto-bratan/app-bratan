@@ -115,7 +115,7 @@ import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
 import { usePanScroll } from "./usePanScroll";
 import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
 import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
-import { buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem } from "./repescagemData";
+import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
 
 const objectionOptions: CrmObjectionCategory[] = [
   "PRICE",
@@ -637,6 +637,18 @@ export function CrmKanbanPage() {
   function iniciarRepescagemDe(candidato: CandidatoRepescagem) {
     persist((current) => iniciarRepescagem(current, candidato, { userId: actorId, role: "CONCIERGE" }, todayISO()));
     setFeedback(`Repescagem de ${contactDisplayName(candidato.contact)} iniciada: mande a isca pelo WhatsApp e marque "Isca enviada".`);
+  }
+  function adicionarRepescagem(dados: RepescagemManual) {
+    let aviso = "";
+    persist((current) => {
+      const r = adicionarRepescagemManual(current, dados, { userId: actorId, role: "CONCIERGE" }, todayISO());
+      aviso = r.aviso;
+      return r.state;
+    });
+    setFeedback(aviso || `${dados.nome} entrou na repescagem: mande a isca pelo WhatsApp e marque "Isca enviada".`);
+  }
+  function observacaoRepescagem(enrollmentId: string, texto: string) {
+    persist((current) => atualizarObservacaoRepescagem(current, enrollmentId, texto));
   }
   function iscaEnviada(taskId: string) {
     persist((current) => completeCrmTask(current, taskId, { result: "SENT", actorId, resultNotes: "Isca enviada — aguardando o melhor horário para ligar" }));
@@ -2203,6 +2215,10 @@ export function CrmKanbanPage() {
               density={density}
               readOnly={false}
               remetente={(pessoa?.nome ?? "Aline").split(" ")[0]}
+              contacts={state.contacts}
+              hoje={todayISO()}
+              onAdicionar={adicionarRepescagem}
+              onObservacao={observacaoRepescagem}
               onIniciar={iniciarRepescagemDe}
               onIscaEnviada={iscaEnviada}
               onMarcarHorario={marcarHorario}

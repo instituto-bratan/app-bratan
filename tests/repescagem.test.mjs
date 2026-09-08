@@ -103,3 +103,20 @@ test("marcar o horário que o paciente pediu move a ligação para essa hora", (
     assert.ok(true, "a ligação nasce depois pelo motor sequencial — nada a marcar ainda");
   }
 });
+
+test("adicionar à mão: pessoa sem comanda entra pelo nome e telefone, com faixa e última visita; observação fica na linha", () => {
+  let state = base();
+  const r = rep.adicionarRepescagemManual(state, { nome: "Zélia Nova", telefone: "11 98888-7777", faixa: "M6", ultimaVisita: "2026-03-01", observacoes: "pediu para ligar à tarde" }, { userId: "aline", role: "CONCIERGE" }, HOJE);
+  state = r.state;
+  assert.equal(r.aviso, "", "sem aviso");
+  assert.ok(state.contacts.some((c) => c.id === r.contactId && c.fullName === "Zélia Nova"), "contato criado");
+  const quadro = rep.buildQuadroRepescagem(state, vendas, HOJE);
+  assert.equal(quadro.isca.length, 1);
+  assert.equal(quadro.isca[0].faixa, "M6");
+  assert.equal(quadro.isca[0].ultimaVisita, "2026-03-01");
+  assert.equal(quadro.isca[0].observacoes, "pediu para ligar à tarde");
+  state = rep.atualizarObservacaoRepescagem(state, quadro.isca[0].enrollmentId, "ligar depois das 18h");
+  assert.equal(rep.buildQuadroRepescagem(state, vendas, HOJE).isca[0].observacoes, "ligar depois das 18h");
+  const denovo = rep.adicionarRepescagemManual(state, { contactRef: r.contactId, nome: "Zélia Nova", telefone: "", faixa: "M6", ultimaVisita: "2026-03-01" }, { userId: "aline", role: "CONCIERGE" }, HOJE);
+  assert.match(denovo.aviso, /já está numa repescagem/);
+});
