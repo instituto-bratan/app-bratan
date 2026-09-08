@@ -1,10 +1,12 @@
-// ABA REPESCAGENS (08/09/2026; compactada: "igual um Kanban de fato") — quem
-// deixou de vir, por quanto tempo, e a repescagem por ligação com a isca antes.
-// Colunas de 232px, cartões de duas linhas, rolagem lateral por arrasto/setas.
+// ABA REPESCAGENS — mesma proporção do Plano de Acompanhamento (08/09/2026).
+// Quem deixou de vir, por quanto tempo, e a repescagem por ligação com a isca
+// antes. Colunas pela densidade do Plano e cartões como o ProgramCard: nome
+// grande, faixa de situação (Isca · Ligação 1 · Ligação 2) e botões.
 // Embaixo, o REGISTRO: nome, tempo sem vir, data e hora da isca e das ligações.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, MessageCircle, PhoneCall, PhoneOff, UserRoundSearch } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, PhoneCall, PhoneOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
 import {
@@ -16,8 +18,8 @@ import {
   type FaixaRepescagem,
   type QuadroRepescagem,
 } from "./repescagemData";
-import { usePanScroll } from "./usePanScroll";
 import { densityColumns, type KanbanDensity } from "./kanbanDensidade";
+import { usePanScroll } from "./usePanScroll";
 
 export type ResultadoLigacao = "AGENDOU" | "VAI_PENSAR" | "NAO_ATENDEU" | "NAO_QUER";
 export const resultadoLigacaoLabels: Record<ResultadoLigacao, string> = {
@@ -36,7 +38,7 @@ function dataHora(iso: string | null) {
   return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
 }
 function diaCurto(iso: string) {
-  return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : "—";
+  return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—";
 }
 function whatsapp(telefone: string, texto?: string) {
   const digitos = telefone.replace(/\D/g, "");
@@ -51,11 +53,44 @@ function localISO(valor: string) {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
-const coluna = "flex h-full min-h-0 w-full flex-col rounded-lg border p-2";
-const cabecalho = "mb-1.5 shrink-0 rounded-md px-2 py-1.5";
-const lista = "kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-1.5 overflow-y-auto pr-0.5";
-const vazio = "rounded-md border border-dashed border-brand-oliva/20 bg-white/35 p-2 text-center text-[11px] text-muted-foreground";
-const botaoMini = "flex h-6 items-center gap-1 rounded border px-1.5 text-[11px] font-semibold";
+const lista = "kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5";
+const vazio = "rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground";
+
+type Etapa = { rotulo: string; estado: "feito" | "vez" | "falta" };
+
+function Chips({ etapas }: { etapas: Etapa[] }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {etapas.map((e) => (
+        <span
+          key={e.rotulo}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+            e.estado === "feito" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : e.estado === "vez" ? "border-brand-musgo bg-brand-musgo text-white" : "border-dashed border-slate-300 bg-white text-slate-500",
+          )}
+        >
+          <span className={cn("h-1.5 w-1.5 rounded-full", e.estado === "feito" ? "bg-emerald-500" : e.estado === "vez" ? "bg-white" : "bg-slate-300")} aria-hidden="true" />
+          {e.rotulo} {e.estado === "feito" ? "✓" : e.estado === "vez" ? "●" : "⏳"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Coluna({ titulo, sub, tom, tomTitulo, icone, children }: { titulo: string; sub: string; tom: string; tomTitulo: string; icone?: ReactNode; children: ReactNode }) {
+  return (
+    <section className={cn("flex h-full min-h-0 w-full flex-col rounded-lg border p-2 backdrop-blur-xl", tom)}>
+      <div className={cn("mb-2 shrink-0 rounded-md px-3 py-2", tomTitulo)}>
+        <p className="flex items-center gap-1.5 text-sm font-semibold">
+          {icone}
+          {titulo}
+        </p>
+        <p className="mt-1 text-[11px] opacity-80">{sub}</p>
+      </div>
+      <div className={lista}>{children}</div>
+    </section>
+  );
+}
 
 export function RepescagemBoard({
   quadro,
@@ -84,80 +119,154 @@ export function RepescagemBoard({
   const busca = filtro.trim().toLowerCase();
   const bate = (nome: string) => !busca || nome.toLowerCase().includes(busca);
   const candidatos = quadro.candidatos.filter((c) => (faixaFiltro === "TODAS" || c.faixa === faixaFiltro) && bate(c.contact.fullName || c.contact.preferredName));
+  const pad = density === "compact" ? "p-3" : "p-4";
+  const nomeCls = cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg");
 
   function Cartao({ cartao }: { cartao: CartaoRepescagem }) {
     const ativo = cartao.status === "ACTIVE";
     const atrasado = cartao.atrasoDias > 0 && ativo;
     const ligandoAqui = ligando === cartao.enrollmentId;
+    const etapas: Etapa[] = [
+      { rotulo: "Isca", estado: cartao.iscaEnviadaEm ? "feito" : cartao.etapa === "ISCA" ? "vez" : "falta" },
+      { rotulo: "Ligação 1", estado: cartao.ligacoes.length >= 1 ? "feito" : cartao.etapa === "LIGAR" && cartao.ligacaoN <= 1 ? "vez" : "falta" },
+      { rotulo: "Ligação 2", estado: cartao.ligacoes.length >= 2 ? "feito" : cartao.etapa === "LIGAR" && cartao.ligacaoN === 2 ? "vez" : "falta" },
+    ];
+    const situacao = !ativo
+      ? cartao.resultado || (cartao.status === "CANCELED" ? "Cancelada" : "Encerrada")
+      : cartao.etapa === "ISCA"
+        ? atrasado
+          ? `Isca atrasada há ${cartao.atrasoDias} dia(s)`
+          : "Enviar a isca no WhatsApp"
+        : cartao.tarefaVence
+          ? atrasado
+            ? `Ligação atrasada há ${cartao.atrasoDias} dia(s)`
+            : `Ligar em ${dataHora(cartao.tarefaVence)}`
+          : "A ligação nasce sozinha em instantes";
+    const emLigacao = ativo && cartao.etapa === "LIGAR";
     return (
-      <div className={cn("rounded-lg border bg-white px-3 py-2 text-sm shadow-sm", atrasado ? "border-red-300 bg-red-50/60" : "border-brand-oliva/20")}>
-        <div className="flex items-center gap-1.5">
-          <Link to={`/crm/contatos/${cartao.contactId}`} className="min-w-0 flex-1 truncate font-semibold leading-4 text-brand-tinta hover:underline" title={cartao.nome}>{cartao.nome}</Link>
-          {cartao.faixa ? <span className="shrink-0 rounded bg-brand-papel px-1 text-[10px] font-bold text-brand-oliva" title={faixaRepescagemLabels[cartao.faixa]}>{faixaRepescagemCurta[cartao.faixa]}</span> : null}
+      <article className={cn("rounded-lg border bg-white/75 shadow-sm backdrop-blur-xl", pad, atrasado ? "border-red-300" : "border-brand-oliva/14")}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className={nomeCls}>{cartao.nome}</p>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {cartao.faixa ? faixaRepescagemLabels[cartao.faixa] : "tempo sem vir não registrado"}
+              {cartao.ultimaVisita ? ` · última visita ${diaCurto(cartao.ultimaVisita)}` : ""}
+            </p>
+          </div>
+          {cartao.faixa ? <span className="shrink-0 rounded-full bg-brand-papel px-2 py-0.5 text-[11px] font-bold text-brand-oliva">{faixaRepescagemCurta[cartao.faixa]}</span> : null}
         </div>
-        <p className={cn("mt-0.5 flex items-center gap-1 truncate text-[11px] font-semibold", atrasado ? "text-red-700" : ativo ? "text-brand-oliva" : "text-muted-foreground")} title={`${cartao.iscaEnviadaEm ? `isca ${dataHora(cartao.iscaEnviadaEm)}` : "isca não enviada"}${cartao.ligacoes.map((l) => ` · lig. ${l.n} ${dataHora(l.em)} (${l.resultado})`).join("")}`}>
-          {atrasado ? <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
-          {!ativo
-            ? cartao.resultado || (cartao.status === "CANCELED" ? "cancelada" : "encerrada")
-            : cartao.etapa === "ISCA"
-              ? atrasado ? `isca atrasada há ${cartao.atrasoDias}d` : "enviar a isca"
-              : cartao.tarefaVence
-                ? atrasado ? `ligar · atrasada há ${cartao.atrasoDias}d` : `ligar ${dataHora(cartao.tarefaVence)}`
-                : "ligação a nascer"}
-        </p>
-        {!readOnly && ativo && cartao.etapa === "ISCA" && cartao.tarefaId ? (
-          <div className="mt-1 flex items-center gap-1">
-            {cartao.telefone ? (
-              <a href={whatsapp(cartao.telefone, textoDaIsca(primeiroNome(cartao.nome), remetente))} target="_blank" rel="noreferrer" className={cn(botaoMini, "border-emerald-300 bg-emerald-50 text-emerald-800")} title="Abrir a isca no WhatsApp">
-                <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> Isca
-              </a>
-            ) : null}
-            <button type="button" onClick={() => onIscaEnviada(cartao.tarefaId!)} className={cn(botaoMini, "border-brand-musgo/40 bg-white text-brand-musgo hover:bg-brand-creme/60")} title="Marcar a isca como enviada (grava data e hora)">
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Enviada
-            </button>
-          </div>
+        <div className={cn("mt-3 rounded-md border px-2.5 py-2", atrasado ? "border-red-200 bg-red-50/70" : "border-brand-oliva/15 bg-brand-papel/60")}>
+          <p className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide", atrasado ? "text-red-700" : "text-brand-oliva")}>
+            {atrasado ? <AlertTriangle className="h-3 w-3" aria-hidden="true" /> : null}
+            {situacao}
+          </p>
+          <Chips etapas={etapas} />
+          <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+            {cartao.iscaEnviadaEm ? `isca ${dataHora(cartao.iscaEnviadaEm)}` : "isca ainda não enviada"}
+            {cartao.ligacoes.map((l) => ` · ligação ${l.n} ${dataHora(l.em)} (${l.resultado})`).join("")}
+          </p>
+        </div>
+
+        {!readOnly && emLigacao && cartao.tarefaId ? (
+          <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <CalendarClock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="shrink-0">Horário que o paciente pediu</span>
+            <input
+              type="datetime-local"
+              defaultValue=""
+              onBlur={(event) => {
+                const iso = localISO(event.target.value);
+                if (iso) onMarcarHorario(cartao.tarefaId!, iso);
+              }}
+              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-white px-1.5 text-xs"
+              aria-label="Horário que o paciente pediu para a ligação"
+            />
+          </label>
         ) : null}
-        {!readOnly && ativo && cartao.etapa === "LIGAR" && cartao.tarefaId ? (
-          <div className="mt-1 grid gap-1">
-            <div className="flex items-center gap-1">
-              <input
-                type="datetime-local"
-                defaultValue=""
-                onBlur={(event) => {
-                  const iso = localISO(event.target.value);
-                  if (iso) onMarcarHorario(cartao.tarefaId!, iso);
+
+        <div className="mt-3 flex gap-2">
+          <Button asChild variant="outline" size="sm" className="flex-1">
+            <Link to={`/crm/contatos/${cartao.contactId}`}>Perfil</Link>
+          </Button>
+          {cartao.telefone && ativo && cartao.etapa === "ISCA" ? (
+            <Button asChild variant="outline" size="sm" className="flex-1">
+              <a href={whatsapp(cartao.telefone, textoDaIsca(primeiroNome(cartao.nome), remetente))} target="_blank" rel="noreferrer">Isca no WhatsApp</a>
+            </Button>
+          ) : cartao.telefone && emLigacao ? (
+            <Button asChild variant="outline" size="sm" className="flex-1">
+              <a href={`tel:${cartao.telefone.replace(/\D/g, "")}`}>{cartao.telefone}</a>
+            </Button>
+          ) : cartao.telefone ? (
+            <Button asChild variant="outline" size="sm" className="flex-1">
+              <a href={whatsapp(cartao.telefone)} target="_blank" rel="noreferrer">WhatsApp</a>
+            </Button>
+          ) : null}
+          {!readOnly && ativo && cartao.etapa === "ISCA" && cartao.tarefaId ? (
+            <Button type="button" size="sm" className="flex-1" onClick={() => onIscaEnviada(cartao.tarefaId!)}>
+              Isca enviada
+            </Button>
+          ) : null}
+          {!readOnly && emLigacao && cartao.tarefaId ? (
+            <Button type="button" size="sm" variant={ligandoAqui ? "default" : "outline"} className="flex-1" onClick={() => setLigando(ligandoAqui ? null : cartao.enrollmentId)}>
+              Liguei
+            </Button>
+          ) : null}
+        </div>
+        {ligandoAqui && cartao.tarefaId ? (
+          <div className="mt-2 grid gap-1 rounded-md border border-brand-oliva/20 bg-brand-creme/40 p-2">
+            <p className="text-[11px] font-semibold text-brand-tinta">Como foi a ligação?</p>
+            {(Object.keys(resultadoLigacaoLabels) as ResultadoLigacao[]).map((resultado) => (
+              <button
+                key={resultado}
+                type="button"
+                onClick={() => {
+                  onLiguei(cartao.tarefaId!, resultado);
+                  setLigando(null);
                 }}
-                className="h-6 min-w-0 flex-1 rounded border border-input bg-white px-1 text-[10px]"
-                aria-label="Horário que o paciente pediu para a ligação"
-                title="Horário que o paciente pediu"
-              />
-              {cartao.telefone ? (
-                <a href={`tel:${cartao.telefone.replace(/\D/g, "")}`} className={cn(botaoMini, "border-brand-oliva/30 bg-white text-brand-tinta")} title={cartao.telefone}>
-                  <PhoneCall className="h-3.5 w-3.5" aria-hidden="true" />
-                </a>
-              ) : null}
-              <button type="button" onClick={() => setLigando(ligandoAqui ? null : cartao.enrollmentId)} className={cn(botaoMini, ligandoAqui ? "border-brand-musgo bg-brand-musgo text-white" : "border-brand-musgo/40 bg-white text-brand-musgo hover:bg-brand-creme/60")} title="Registrar a ligação">
-                <PhoneCall className="h-3.5 w-3.5" aria-hidden="true" /> Liguei
+                className="rounded-md border border-brand-oliva/25 bg-white px-2 py-1.5 text-left text-xs hover:border-brand-musgo"
+              >
+                {resultado === "NAO_ATENDEU" ? <PhoneOff className="mr-1 inline h-3 w-3" aria-hidden="true" /> : <PhoneCall className="mr-1 inline h-3 w-3" aria-hidden="true" />}
+                {resultadoLigacaoLabels[resultado]}
               </button>
-            </div>
-            {ligandoAqui ? (
-              <div className="grid gap-1 rounded border border-brand-oliva/20 bg-brand-creme/40 p-1">
-                {(Object.keys(resultadoLigacaoLabels) as ResultadoLigacao[]).map((resultado) => (
-                  <button key={resultado} type="button" onClick={() => { onLiguei(cartao.tarefaId!, resultado); setLigando(null); }} className="rounded border border-brand-oliva/25 bg-white px-1.5 py-1 text-left text-[11px] hover:border-brand-musgo">
-                    {resultado === "NAO_ATENDEU" ? <PhoneOff className="mr-1 inline h-3 w-3" aria-hidden="true" /> : <PhoneCall className="mr-1 inline h-3 w-3" aria-hidden="true" />}
-                    {resultadoLigacaoLabels[resultado]}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            ))}
           </div>
         ) : null}
-      </div>
+      </article>
+    );
+  }
+
+  function Candidato({ c }: { c: CandidatoRepescagem }) {
+    return (
+      <article className={cn("rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl", pad)}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className={nomeCls}>{c.contact.fullName || c.contact.preferredName}</p>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {faixaRepescagemLabels[c.faixa]} · última visita {diaCurto(c.ultimaVisita)}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-brand-papel px-2 py-0.5 text-[11px] font-bold text-brand-oliva">{c.diasSemVir} dias</span>
+        </div>
+        <div className="mt-3 rounded-md border border-brand-oliva/15 bg-brand-papel/60 px-2.5 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-brand-oliva">Ninguém cuidando · pronto para repescar</p>
+          <Chips etapas={[{ rotulo: "Isca", estado: "falta" }, { rotulo: "Ligação 1", estado: "falta" }, { rotulo: "Ligação 2", estado: "falta" }]} />
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button asChild variant="outline" size="sm" className="flex-1">
+            <Link to={`/crm/contatos/${c.contact.id}`}>Perfil</Link>
+          </Button>
+          {readOnly ? null : (
+            <Button type="button" size="sm" className="flex-1" onClick={() => onIniciar(c)}>
+              Iniciar repescagem
+            </Button>
+          )}
+        </div>
+      </article>
     );
   }
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col gap-1.5">
+    <section className="flex h-full min-h-0 w-full flex-col gap-2">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs">
         <h2 className="flex items-center gap-1.5 text-sm font-bold text-brand-musgo">
           Repescagens
@@ -167,7 +276,12 @@ export function RepescagemBoard({
           </InfoTip>
         </h2>
         {(["TODAS", ...faixas] as const).map((faixa) => (
-          <button key={faixa} type="button" onClick={() => setFaixaFiltro(faixa)} className={cn("rounded-full border px-2 py-0.5 text-[11px] font-semibold", faixaFiltro === faixa ? "border-brand-musgo bg-brand-musgo text-white" : "border-brand-oliva/30 bg-white text-brand-tinta")}>
+          <button
+            key={faixa}
+            type="button"
+            onClick={() => setFaixaFiltro(faixa)}
+            className={cn("rounded-full border px-2 py-0.5 text-[11px] font-semibold", faixaFiltro === faixa ? "border-brand-musgo bg-brand-musgo text-white" : "border-brand-oliva/30 bg-white text-brand-tinta")}
+          >
             {faixa === "TODAS" ? `Todas ${quadro.candidatos.length}` : `${faixaRepescagemCurta[faixa]} ${quadro.porFaixa[faixa]}`}
           </button>
         ))}
@@ -178,107 +292,58 @@ export function RepescagemBoard({
       </div>
       <div ref={pan.ref} {...pan.handlers} className="kanban-scroll min-h-0 flex-1 cursor-grab touch-pan-x overflow-x-auto pb-1 active:cursor-grabbing">
         <div className={cn("grid h-full w-max grid-flow-col items-stretch gap-3", densityColumns[density])}>
-          <div className={cn(coluna, "border-brand-oliva/20 bg-white/40 backdrop-blur-xl")}>
-            <div className={cn(cabecalho, "bg-brand-musgo text-brand-papel")}>
-              <p className="flex items-center gap-1.5 text-xs font-semibold"><UserRoundSearch className="h-3.5 w-3.5" aria-hidden="true" /> Para repescar</p>
-              <p className="mt-0.5 text-[10px] text-brand-papel/75">{candidatos.length} · mais tempo sumido primeiro</p>
-            </div>
-            <div className={lista}>
-              {candidatos.length ? candidatos.slice(0, 80).map((c) => (
-                <div key={c.contact.id} className="rounded-lg border border-brand-oliva/20 bg-white px-3 py-2 text-sm shadow-sm">
-                  <div className="flex items-center gap-1.5">
-                    <Link to={`/crm/contatos/${c.contact.id}`} className="min-w-0 flex-1 truncate font-semibold leading-4 text-brand-tinta hover:underline">{c.contact.fullName || c.contact.preferredName}</Link>
-                    <span className="shrink-0 rounded bg-brand-papel px-1 text-[10px] font-bold text-brand-oliva">{faixaRepescagemCurta[c.faixa]}</span>
-                  </div>
-                  <div className="mt-0.5 flex items-center justify-between gap-1">
-                    <p className="truncate text-[10px] text-muted-foreground">última {diaCurto(c.ultimaVisita)} · {c.diasSemVir}d</p>
-                    {readOnly ? null : (
-                      <button type="button" onClick={() => onIniciar(c)} className={cn(botaoMini, "border-brand-musgo/40 bg-white text-brand-musgo hover:bg-brand-creme/60")} title="Iniciar repescagem (isca → ligação)">
-                        Iniciar
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )) : <p className={vazio}>{busca ? "Ninguém com esse nome." : "Ninguém nesta faixa."}</p>}
-            </div>
-          </div>
-
-          <div className={cn(coluna, "border-emerald-200/70 bg-emerald-50/30 backdrop-blur-xl")}>
-            <div className={cn(cabecalho, "bg-emerald-700 text-white")}>
-              <p className="flex items-center gap-1.5 text-xs font-semibold"><MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> Isca a enviar</p>
-              <p className="mt-0.5 text-[10px] text-white/80">{quadro.isca.length} · pergunta o melhor horário</p>
-            </div>
-            <div className={lista}>
-              {quadro.isca.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.isca.length ? <p className={vazio}>Nenhuma isca pendente</p> : null}
-            </div>
-          </div>
-
-          <div className={cn(coluna, "border-amber-300/60 bg-amber-50/40 backdrop-blur-xl")}>
-            <div className={cn(cabecalho, "bg-amber-600 text-white")}>
-              <p className="flex items-center gap-1.5 text-xs font-semibold"><PhoneCall className="h-3.5 w-3.5" aria-hidden="true" /> Ligar</p>
-              <p className="mt-0.5 text-[10px] text-white/80">{quadro.ligar.length} · marque o horário que o paciente pediu</p>
-            </div>
-            <div className={lista}>
-              {quadro.ligar.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.ligar.length ? <p className={vazio}>Ninguém aguardando ligação</p> : null}
-            </div>
-          </div>
-
-          <div className={cn(coluna, "border-brand-dourado/50 bg-brand-creme/30 backdrop-blur-xl")}>
-            <div className={cn(cabecalho, "bg-brand-dourado text-white")}>
-              <p className="flex items-center gap-1.5 text-xs font-semibold"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Repescados</p>
-              <p className="mt-0.5 text-[10px] text-white/85">{quadro.repescados.length} · responderam (90 dias)</p>
-            </div>
-            <div className={lista}>
-              {quadro.repescados.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.repescados.length ? <p className={vazio}>Nenhum ainda</p> : null}
-            </div>
-          </div>
-
-          <div className={cn(coluna, "border-brand-oliva/20 bg-white/30 backdrop-blur-xl")}>
-            <div className={cn(cabecalho, "bg-brand-tinta/80 text-white")}>
-              <p className="flex items-center gap-1.5 text-xs font-semibold"><PhoneOff className="h-3.5 w-3.5" aria-hidden="true" /> Sem retorno</p>
-              <p className="mt-0.5 text-[10px] text-white/80">{quadro.semRetorno.length} · duas ligações sem atender</p>
-            </div>
-            <div className={lista}>
-              {quadro.semRetorno.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.semRetorno.length ? <p className={vazio}>Ninguém</p> : null}
-            </div>
-          </div>
+          <Coluna titulo="Para repescar" sub={`${candidatos.length} paciente(s) · mais tempo sumido primeiro`} tom="border-brand-oliva/14 bg-white/40" tomTitulo="bg-brand-musgo text-brand-papel">
+            {candidatos.length ? candidatos.slice(0, 60).map((c) => <Candidato key={c.contact.id} c={c} />) : <p className={vazio}>{busca ? "Ninguém com esse nome." : "Ninguém nesta faixa."}</p>}
+          </Coluna>
+          <Coluna titulo="Isca a enviar" sub={`${quadro.isca.length} · mensagem que pergunta o melhor horário`} tom="border-emerald-200/70 bg-emerald-50/30" tomTitulo="bg-emerald-700 text-white">
+            {quadro.isca.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
+            {!quadro.isca.length ? <p className={vazio}>Nenhuma isca pendente</p> : null}
+          </Coluna>
+          <Coluna titulo="Ligar" sub={`${quadro.ligar.length} · a repescagem é a ligação`} tom="border-amber-300/60 bg-amber-50/40" tomTitulo="bg-amber-600 text-white" icone={<PhoneCall className="h-4 w-4" aria-hidden="true" />}>
+            {quadro.ligar.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
+            {!quadro.ligar.length ? <p className={vazio}>Ninguém aguardando ligação</p> : null}
+          </Coluna>
+          <Coluna titulo="Repescados" sub={`${quadro.repescados.length} · atenderam e responderam (90 dias)`} tom="border-brand-dourado/50 bg-brand-creme/30" tomTitulo="bg-brand-dourado text-white">
+            {quadro.repescados.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
+            {!quadro.repescados.length ? <p className={vazio}>Nenhum repescado ainda</p> : null}
+          </Coluna>
+          <Coluna titulo="Sem retorno" sub={`${quadro.semRetorno.length} · duas ligações sem atender (90 dias)`} tom="border-brand-oliva/20 bg-white/30" tomTitulo="bg-brand-tinta/80 text-white" icone={<PhoneOff className="h-4 w-4" aria-hidden="true" />}>
+            {quadro.semRetorno.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
+            {!quadro.semRetorno.length ? <p className={vazio}>Ninguém sem retorno</p> : null}
+          </Coluna>
         </div>
       </div>
 
-      <details className="shrink-0 rounded-lg border border-brand-oliva/15 bg-white/60 p-2 backdrop-blur" open={quadro.registro.length > 0 && quadro.registro.length <= 8}>
-        <summary className="flex cursor-pointer items-center gap-2 text-xs font-bold text-brand-musgo">
+      <details className="shrink-0 rounded-lg border border-brand-oliva/15 bg-white/60 p-3 backdrop-blur" open={quadro.registro.length > 0 && quadro.registro.length <= 8}>
+        <summary className="flex cursor-pointer items-center gap-2 text-sm font-bold text-brand-musgo">
           <CalendarClock className="h-4 w-4" aria-hidden="true" /> Registro de repescagens ({quadro.registro.length} nos últimos 90 dias)
         </summary>
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-[11px]">
+          <table className="w-full min-w-[820px] text-left text-xs">
             <thead className="uppercase text-brand-oliva">
               <tr>
-                <th className="px-2 py-1">Paciente</th>
-                <th className="px-2 py-1">Tempo sem vir</th>
-                <th className="px-2 py-1">Última visita</th>
-                <th className="px-2 py-1">Início</th>
-                <th className="px-2 py-1">Isca enviada</th>
-                <th className="px-2 py-1">Ligações (data · hora · resultado)</th>
-                <th className="px-2 py-1">Situação</th>
+                <th className="px-2 py-1.5">Paciente</th>
+                <th className="px-2 py-1.5">Tempo sem vir</th>
+                <th className="px-2 py-1.5">Última visita</th>
+                <th className="px-2 py-1.5">Início</th>
+                <th className="px-2 py-1.5">Isca enviada</th>
+                <th className="px-2 py-1.5">Ligações (data · hora · resultado)</th>
+                <th className="px-2 py-1.5">Situação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-oliva/10">
               {quadro.registro.filter((c) => bate(c.nome)).map((c) => (
                 <tr key={c.enrollmentId}>
-                  <td className="px-2 py-1 font-semibold text-brand-tinta"><Link to={`/crm/contatos/${c.contactId}`} className="hover:underline">{c.nome}</Link></td>
-                  <td className="px-2 py-1">{c.faixa ? faixaRepescagemLabels[c.faixa] : "—"}</td>
-                  <td className="px-2 py-1 tabular-nums">{c.ultimaVisita ? diaCurto(c.ultimaVisita) : "—"}</td>
-                  <td className="px-2 py-1 tabular-nums">{dataHora(c.iniciadaEm)}</td>
-                  <td className="px-2 py-1 tabular-nums">{dataHora(c.iscaEnviadaEm)}</td>
-                  <td className="px-2 py-1">{c.ligacoes.length ? c.ligacoes.map((l) => `${l.n}ª ${dataHora(l.em)} · ${l.resultado}`).join(" | ") : "—"}</td>
-                  <td className="px-2 py-1">{c.etapa === "ISCA" ? "isca pendente" : c.etapa === "LIGAR" ? `ligação ${c.ligacaoN || 1} pendente` : c.etapa === "REPESCADO" ? `repescado · ${c.resultado}` : c.resultado || "sem retorno"}</td>
+                  <td className="px-2 py-1.5 font-semibold text-brand-tinta"><Link to={`/crm/contatos/${c.contactId}`} className="hover:underline">{c.nome}</Link></td>
+                  <td className="px-2 py-1.5">{c.faixa ? faixaRepescagemLabels[c.faixa] : "—"}</td>
+                  <td className="px-2 py-1.5 tabular-nums">{c.ultimaVisita ? diaCurto(c.ultimaVisita) : "—"}</td>
+                  <td className="px-2 py-1.5 tabular-nums">{dataHora(c.iniciadaEm)}</td>
+                  <td className="px-2 py-1.5 tabular-nums">{dataHora(c.iscaEnviadaEm)}</td>
+                  <td className="px-2 py-1.5">{c.ligacoes.length ? c.ligacoes.map((l) => `${l.n}ª ${dataHora(l.em)} · ${l.resultado}`).join(" | ") : "—"}</td>
+                  <td className="px-2 py-1.5">{c.etapa === "ISCA" ? "isca pendente" : c.etapa === "LIGAR" ? `ligação ${c.ligacaoN || 1} pendente` : c.etapa === "REPESCADO" ? `repescado · ${c.resultado}` : c.resultado || "sem retorno"}</td>
                 </tr>
               ))}
-              {!quadro.registro.length ? <tr><td colSpan={7} className="px-2 py-3 text-center text-muted-foreground">Nenhuma repescagem iniciada ainda.</td></tr> : null}
+              {!quadro.registro.length ? <tr><td colSpan={7} className="px-2 py-4 text-center text-muted-foreground">Nenhuma repescagem iniciada ainda. Comece pela coluna &quot;Para repescar&quot;.</td></tr> : null}
             </tbody>
           </table>
         </div>
