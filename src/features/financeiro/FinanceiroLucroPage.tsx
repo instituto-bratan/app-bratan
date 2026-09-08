@@ -14,14 +14,13 @@ import {
   listRemoteFinLucroDias,
   loadRemoteFinLucroConfig,
   saveRemoteFinLucroConfig,
-  saveRemoteFinLucroDia, saveRemoteFinLucroPublico,
+  saveRemoteFinLucroDia,
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import { moneyFin } from "./financeiroData";
 import {
   avaliacaoInstantanea,
   linhaEmDestaque,
-  resumoPublicoDoMes,
   buildPlanilhaLucro,
   conferirRecebiveis,
   defaultLucroConfig,
@@ -275,21 +274,7 @@ export function FinanceiroLucroPage() {
   // ---- DESTAQUE DO DIA (08/09): o que o Dr. Daniel recebe e o lucro dos sócios,
   // em números grandes — e o retrato público que a Home mostra para todo mundo.
   const destaque = useMemo(() => linhaEmDestaque(planilha, hoje), [planilha, hoje]);
-  const resumoPublico = useMemo(() => resumoPublicoDoMes(planilha, hoje, reguaHoje.lucroMensal), [planilha, hoje, reguaHoje.lucroMensal]);
-  const ultimoPublicadoRef = useRef("");
-  useEffect(() => {
-    if (!useRemote || !canEdit || month !== hoje.slice(0, 7)) return;
-    const assinatura = JSON.stringify(resumoPublico);
-    if (assinatura === ultimoPublicadoRef.current) return;
-    const timer = window.setTimeout(() => {
-      saveRemoteFinLucroPublico(resumoPublico, session?.user?.id ?? null)
-        .then(() => {
-          ultimoPublicadoRef.current = assinatura;
-        })
-        .catch((error) => console.warn("Resumo público do Lucro não publicou.", error));
-    }, 1500);
-    return () => window.clearTimeout(timer);
-  }, [resumoPublico, useRemote, canEdit, month, hoje, session?.user?.id]);
+  // O retrato público (Home e balão) é publicado pelo PublicadorDoResumo, no layout — em qualquer tela.
   const progressoLucro = reguaHoje.lucroMensal > 0 ? Math.min(100, Math.round((planilha.totais.reservado.lucro / reguaHoje.lucroMensal) * 100)) : 0;
 
   return (
@@ -473,16 +458,19 @@ export function FinanceiroLucroPage() {
           <div className="rounded-xl border-2 border-brand-musgo/50 bg-gradient-to-br from-brand-musgo to-brand-musgo/85 p-5 text-white shadow-calm">
             <div className="flex items-center justify-between">
               <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-white/90">
-                <Trophy className="h-5 w-5" aria-hidden="true" /> Lucro dos sócios
+                <Trophy className="h-5 w-5" aria-hidden="true" /> Separar para os sócios
               </p>
               <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">{destaque ? (destaque.dia === hoje ? "hoje" : diaCurto(destaque.dia)) : "—"}</span>
             </div>
             <p className="mt-2 text-4xl font-extrabold tabular-nums leading-none sm:text-5xl">{destaque ? moneyFin(destaque.reservado.lucro) : "—"}</p>
-            <p className="mt-2 text-sm text-white/85">cota fixa por dia útil · {moneyFin(reguaHoje.lucroMensal)} ÷ {planilha.diasUteis} dias úteis</p>
+            <p className="mt-2 text-sm text-white/85">
+              É o lucro de {moneyFin(reguaHoje.lucroMensal)} do mês dividido pelos {planilha.diasUteis} dias úteis. Todo dia útil separa esse valor,
+              tenha entrado muito ou pouco.
+            </p>
             <div className="mt-3 border-t border-white/20 pt-2">
               <div className="flex items-center justify-between text-sm font-semibold">
-                <span>No mês: {moneyFin(planilha.totais.reservado.lucro)}</span>
-                <span>{progressoLucro}% de {moneyFin(reguaHoje.lucroMensal)}</span>
+                <span>Já separado no mês: {moneyFin(planilha.totais.reservado.lucro)}</span>
+                <span>{progressoLucro}% dos {moneyFin(reguaHoje.lucroMensal)}</span>
               </div>
               <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/20">
                 <div className="h-full rounded-full bg-brand-dourado transition-all" style={{ width: `${progressoLucro}%` }} />

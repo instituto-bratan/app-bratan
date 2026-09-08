@@ -3646,6 +3646,11 @@ export type FinLucroPublicoRemote = {
   lucroMeta: number;
   medicoHoje: number;
   medicoMes: number;
+  metaDia: number;
+  feitoHoje: number;
+  feitoMes: number;
+  metaMes: number;
+  diaComDoutor: boolean;
   atualizadoEm: string;
 };
 
@@ -3668,6 +3673,11 @@ export async function loadRemoteFinLucroPublico(monthKey: string): Promise<FinLu
     lucroMeta: num("lucro_meta"),
     medicoHoje: num("medico_hoje"),
     medicoMes: num("medico_mes"),
+    metaDia: num("meta_dia"),
+    feitoHoje: num("feito_hoje"),
+    feitoMes: num("feito_mes"),
+    metaMes: num("meta_mes"),
+    diaComDoutor: Boolean(row.dia_com_doutor),
     atualizadoEm: String(row.atualizado_em ?? ""),
   };
 }
@@ -3687,6 +3697,11 @@ export async function saveRemoteFinLucroPublico(resumo: Omit<FinLucroPublicoRemo
       lucro_meta: resumo.lucroMeta,
       medico_hoje: resumo.medicoHoje,
       medico_mes: resumo.medicoMes,
+      meta_dia: resumo.metaDia,
+      feito_hoje: resumo.feitoHoje,
+      feito_mes: resumo.feitoMes,
+      meta_mes: resumo.metaMes,
+      dia_com_doutor: resumo.diaComDoutor,
       atualizado_em: new Date().toISOString(),
       atualizado_por: atualizadoPor ?? null,
     },

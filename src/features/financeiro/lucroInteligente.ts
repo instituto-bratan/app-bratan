@@ -66,6 +66,7 @@ import {
   taxaPix,
   VIGENCIA_ACORDO_REDE,
 } from "./recebiveisRede";
+import type { MetasBoard } from "./metasData";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
@@ -723,7 +724,27 @@ export type ResumoPublicoLucro = {
   lucroMeta: number;
   medicoHoje: number;
   medicoMes: number;
+  /** Meta de faturamento do dia (Metas do Mês) e quanto já entrou hoje/no mês. */
+  metaDia: number;
+  feitoHoje: number;
+  feitoMes: number;
+  metaMes: number;
+  diaComDoutor: boolean;
 };
+
+export type MetaDoDiaPublica = Pick<ResumoPublicoLucro, "metaDia" | "feitoHoje" | "feitoMes" | "metaMes" | "diaComDoutor">;
+
+/** A meta do dia que o balão mostra: o dia de hoje no quadro de metas (ou o último dia útil até hoje). */
+export function metaDoDiaPublica(board: MetasBoard, hoje: string): MetaDoDiaPublica {
+  const dia = board.days.find((d) => d.date === hoje) ?? [...board.days].reverse().find((d) => d.date <= hoje) ?? null;
+  return {
+    metaDia: dia?.dailyGoal ?? 0,
+    feitoHoje: dia && dia.date === hoje ? dia.revenue : 0,
+    feitoMes: board.accumulatedRevenue,
+    metaMes: board.goals.target,
+    diaComDoutor: dia?.withDoctor ?? false,
+  };
+}
 
 export function linhaEmDestaque(planilha: PlanilhaLucro, hoje: string): LinhaDiaLucro | null {
   const deHoje = planilha.linhas.find((linha) => linha.dia === hoje);
@@ -731,9 +752,14 @@ export function linhaEmDestaque(planilha: PlanilhaLucro, hoje: string): LinhaDia
   return [...planilha.linhas].reverse().find((linha) => linha.dia <= hoje && (linha.total > 0.005 || linha.regua.cotaLucro > 0.005)) ?? null;
 }
 
-export function resumoPublicoDoMes(planilha: PlanilhaLucro, hoje: string, lucroMeta: number): ResumoPublicoLucro {
+export function resumoPublicoDoMes(planilha: PlanilhaLucro, hoje: string, lucroMeta: number, metas?: MetaDoDiaPublica): ResumoPublicoLucro {
   const linha = linhaEmDestaque(planilha, hoje);
   return {
+    metaDia: metas?.metaDia ?? 0,
+    feitoHoje: metas?.feitoHoje ?? 0,
+    feitoMes: metas?.feitoMes ?? 0,
+    metaMes: metas?.metaMes ?? 0,
+    diaComDoutor: metas?.diaComDoutor ?? false,
     monthKey: planilha.monthKey,
     diaRef: linha?.dia ?? hoje,
     entrouLiquido: planilha.totais.liquido,

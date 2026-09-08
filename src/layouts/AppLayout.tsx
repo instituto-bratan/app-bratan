@@ -44,6 +44,8 @@ import DockMorph from "@/components/ui/dock-morph";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { PageGuideButton } from "@/components/ui/page-guide";
 import { useAuth } from "@/hooks/useAuth";
+import { BalaoDoDia } from "@/components/BalaoDoDia";
+import { PublicadorDoResumo } from "@/features/financeiro/PublicadorDoResumo";
 import { useAvatar } from "@/features/perfil/avatarStore";
 import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey } from "@/lib/access";
 import type { Pessoa } from "@/types/database";
@@ -599,6 +601,11 @@ export function AppLayout() {
         </main>
         <PageGuideButton pathname={location.pathname} />
       </div>
+
+      {/* BALÃO DO DIA (08/09/2026): meta do dia + cabe gastar, em todas as telas, arrastável.
+          O Publicador recalcula e grava o retrato enquanto alguém do financeiro estiver logado. */}
+      <PublicadorDoResumo />
+      <BalaoDoDia />
 
       <FlowLauncher pessoa={pessoa} open={flowLauncherOpen} onClose={() => setFlowLauncherOpen(false)} />
       <MobileNav pessoa={pessoa} menuOpen={flowLauncherOpen} onOpenMenu={() => setFlowLauncherOpen(true)} />

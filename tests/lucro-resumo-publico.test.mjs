@@ -72,5 +72,26 @@ test("resumo público: só números do envelope, com o que o Dr. Daniel e os só
   assert.equal(r.cabeGastar, 840);
   assert.equal(r.contasPagas, 500);
   assert.equal(r.sobra, 340, "cabe − pagas");
-  assert.deepEqual(Object.keys(r).sort(), ["cabeGastar", "contasPagas", "diaRef", "entrouLiquido", "lucroHoje", "lucroMes", "lucroMeta", "medicoHoje", "medicoMes", "monthKey", "sobra"], "nada de paciente ou comanda");
+  assert.deepEqual(Object.keys(r).sort(), ["cabeGastar", "contasPagas", "diaComDoutor", "diaRef", "entrouLiquido", "feitoHoje", "feitoMes", "lucroHoje", "lucroMes", "lucroMeta", "medicoHoje", "medicoMes", "metaDia", "metaMes", "monthKey", "sobra"], "nada de paciente ou comanda");
+});
+
+test("meta do dia pública: hoje no quadro de metas; feito hoje só se o dia é hoje", () => {
+  const board = {
+    days: [
+      { date: "2026-09-07", withDoctor: false, dailyGoal: 10000, revenue: 4000 },
+      { date: "2026-09-08", withDoctor: true, dailyGoal: 27000, revenue: 12500 },
+      { date: "2026-09-09", withDoctor: false, dailyGoal: 10000, revenue: 0 },
+    ],
+    accumulatedRevenue: 16500,
+    goals: { min: 300000, target: 350000, super: 400000, patients: 40 },
+  };
+  const hoje = lucro.metaDoDiaPublica(board, "2026-09-08");
+  // objeto nasce em outro realm (vm): compara pelo JSON
+  assert.deepEqual(JSON.parse(JSON.stringify(hoje)), { metaDia: 27000, feitoHoje: 12500, feitoMes: 16500, metaMes: 350000, diaComDoutor: true });
+  const domingo = lucro.metaDoDiaPublica(board, "2026-09-13");
+  assert.equal(domingo.metaDia, 10000, "fim de semana: último dia útil até hoje");
+  assert.equal(domingo.feitoHoje, 0);
+  const r = lucro.resumoPublicoDoMes(planilha, "2026-09-08", 40000, hoje);
+  assert.equal(r.metaDia, 27000);
+  assert.equal(r.feitoHoje, 12500);
 });
