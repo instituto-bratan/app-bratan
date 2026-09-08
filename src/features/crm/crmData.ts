@@ -927,6 +927,21 @@ const cadences: CrmCadence[] = [
     createdAt: baseNow,
     updatedAt: baseNow,
   },
+  {
+    // REPESCAGEM (08/09/2026, Lucas): quem deixou de vir (1 mês, 3 meses, 6
+    // meses, 1 ano) recebe uma ISCA no WhatsApp — só para saber o melhor
+    // horário — e a repescagem de verdade é a LIGAÇÃO. Se não atender, uma
+    // segunda ligação dois dias depois. Aba "Repescagens" do Kanban.
+    id: "cad-repescagem",
+    name: "Repescagem (isca + ligação)",
+    description:
+      "Paciente que deixou de vir: isca no WhatsApp perguntando o melhor horário para ligar; a repescagem é a ligação (e uma 2ª tentativa se não atender). Registra faixa de tempo sem vir, data e hora de cada toque.",
+    cadenceType: "RESCUE_60_DAYS",
+    defaultOwnerRole: "CONCIERGE",
+    active: true,
+    createdAt: baseNow,
+    updatedAt: baseNow,
+  },
 ];
 
 const cadenceSteps: CrmCadenceStep[] = [
@@ -992,6 +1007,10 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-exams-7", "cad-return-cycle", 2, "1 semana antes — confirma a coleta", -7, "tpl-exames-1-semana", "CONCIERGE"],
   ["step-confirm-3", "cad-return-cycle", 3, "3 dias antes — pede o resultado", -3, "tpl-confirmacao-3", "CONCIERGE"],
   ["step-reminder-1", "cad-return-cycle", 4, "1 dia antes — confirma a consulta", -1, "tpl-lembrete-1", "CONCIERGE"],
+  // Repescagem: isca hoje, ligação amanhã, 2ª ligação dois dias depois.
+  ["step-repesc-isca", "cad-repescagem", 1, "Isca no WhatsApp — melhor horário para ligar?", 0, "tpl-repescagem-isca", "CONCIERGE"],
+  ["step-repesc-lig1", "cad-repescagem", 2, "Ligação de repescagem", 1, "tpl-repescagem-ligacao", "CONCIERGE"],
+  ["step-repesc-lig2", "cad-repescagem", 3, "2ª ligação (não atendeu)", 3, "tpl-repescagem-ligacao", "CONCIERGE"],
 ].map(([id, cadenceId, stepOrder, name, offsetValue, messageTemplateId, assignedToRole]) => ({
   id: id as string,
   cadenceId: cadenceId as string,
@@ -1003,7 +1022,7 @@ const cadenceSteps: CrmCadenceStep[] = [
   // extinto) — janela "ANY" materializa a tarefa às 10h.
   preferredTimeWindow: (String(cadenceId) === "cad-post-application" ? "ANY" : id === "step-concierge-d1" ? "MORNING" : "ANY") as CrmTimeWindow,
   // Ligações do gestor e a ligação do D5 da assinatura são CALL; o resto é WhatsApp.
-  taskType: (String(id).startsWith("step-g5l-") && id !== "step-g5l-encerramento" ? "CALL" : "WHATSAPP") as CrmTaskType,
+  taskType: ((String(id).startsWith("step-g5l-") && id !== "step-g5l-encerramento") || String(id).startsWith("step-repesc-lig") ? "CALL" : "WHATSAPP") as CrmTaskType,
   assignedToRole: assignedToRole as CrmRole,
   messageTemplateId: messageTemplateId as string,
   required: true,
@@ -1040,6 +1059,8 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-exames-1-semana", "1 semana antes", "Agendamento", "CONCIERGE", "RETURN_CYCLE", "{{primeiro_nome}}, falta uma semana para sua consulta. Você conseguiu coletar os exames? Guarde o resultado que vou te pedir alguns dias antes."],
   ["tpl-confirmacao-3", "3 dias antes", "Agendamento", "CONCIERGE", "RETURN_CYCLE", "{{primeiro_nome}}, sua consulta é em três dias. Pode me enviar o resultado dos exames? O Dr. Daniel avalia tudo antes de te receber."],
   ["tpl-lembrete-1", "1 dia antes", "Agendamento", "CONCIERGE", "RETURN_CYCLE", "{{primeiro_nome}}, passando só para lembrar da sua consulta amanhã, {{data_consulta}} às {{hora_consulta}}. Esperamos você no Instituto Bratan."],
+  ["tpl-repescagem-isca", "Repescagem — isca (melhor horário para ligar)", "Recuperação", "CONCIERGE", "RESCUE_60_DAYS", "Oi, {{primeiro_nome}}! Aqui é a {{responsavel}}, do Instituto Bratan 🌿 Faz um tempinho que não te vemos por aqui e lembrei de você. Queria te ligar rapidinho para saber como você está e te contar as novidades — qual o melhor horário para eu te ligar: de manhã, à tarde ou no fim do dia?"],
+  ["tpl-repescagem-ligacao", "Repescagem — roteiro da ligação", "Recuperação", "CONCIERGE", "RESCUE_60_DAYS", "Roteiro: 1) como você está desde a última visita; 2) o que mudou na rotina/saúde; 3) novidades do Instituto que fazem sentido para o caso; 4) convite para retorno com o Dr. Daniel — oferecer 2 horários."],
 ].map(([id, name, category, roleOwner, cadenceType, body]) => ({
   id: id as string,
   name: name as string,

@@ -163,3 +163,25 @@ export function resumoDasCadencias(state: CrmState, hoje: string): ResumoCadenci
     })
     .sort((a, b) => b.ativos - a.ativos || b.atrasados - a.atrasados || a.cadence.name.localeCompare(b.cadence.name));
 }
+
+/** Nome curto para caber numa aba (o nome completo fica no title). */
+export function rotuloCurtoDaCadencia(cadence: CrmCadence): string {
+  const porId: Record<string, string> = {
+    "cad-cold-lead": "Lead frio D1·D5·D7·D60",
+    "cad-not-closed": "Não fechou D1–D5",
+    "cad-concierge-d1": "Concierge D+1",
+    "cad-pos-consulta-d1": "Pós-consulta D+1",
+    "cad-nursing-14": "Enfermagem 14 dias",
+    "cad-post-application": "Pós-aplicação",
+    "cad-rescue-60d": "Resgate 60 dias",
+    "cad-rescue-6m": "Resgate 6 meses",
+    "cad-rescue-1y": "Resgate 1 ano",
+    "cad-anniversary-1y": "Aniversário 1 ano",
+    "cad-pos-fechamento-d2d5": "Pós-fechamento D2–D5",
+    "cad-gestor-5lig": "Gestor · 5 ligações",
+    "cad-gestor-3131": "3·1·3·1 do Gestor",
+    "cad-return-cycle": "3·1·3·1 da consulta",
+    "cad-repescagem": "Repescagem",
+  };
+  return porId[cadence.id] ?? cadence.name.replace(/\s*[—-]\s*.*$/, "").slice(0, 26);
+}

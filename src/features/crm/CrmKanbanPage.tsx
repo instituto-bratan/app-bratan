@@ -17,8 +17,7 @@ import { Upload,
   Target,
   UserPlus,
   X,
-  Trash2,
-} from "lucide-react";
+  Trash2, MoreHorizontal, PhoneCall } from "lucide-react";
 import {
   createFinId,
   moneyFin,
@@ -111,7 +110,9 @@ import {
 } from "./contactChannels";
 import { useCrmState } from "./useCrmState";
 import { CadenciaKanban } from "./CadenciaKanban";
-import { resumoDasCadencias } from "./cadenciaKanbanData";
+import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
+import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
+import { buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem } from "./repescagemData";
 
 const objectionOptions: CrmObjectionCategory[] = [
   "PRICE",
@@ -147,7 +148,7 @@ const stageSections: Record<KanbanSection, CrmDealStage[]> = {
 // — um kanban da cadência 3·1·3·1, outro da D1–D5 e assim vai"). Os dois quadros
 // fixos continuam; cada cadência com passos vira um quadro "cadencia:<id>".
 type KanbanBoardFixo = "comercial" | "programa";
-type KanbanBoard = KanbanBoardFixo | `cadencia:${string}`;
+type KanbanBoard = KanbanBoardFixo | "repescagem" | `cadencia:${string}`;
 const boardLabels: Record<KanbanBoardFixo, string> = { programa: "Plano de Acompanhamento", comercial: "Em aberto (antes do fechamento)" };
 function cadenceSheetStatusLabelSafe(status: CadenceSheetDStatus) {
   return { SEM_RESPOSTA: "sem resposta", SATISFEITO: "respondeu · satisfeito", INSATISFEITO_CONCIERGE: "insatisfeito → Concierge", AGENDADO_RESOLVIDO: "agendado · resolvido" }[status];
@@ -624,6 +625,48 @@ export function CrmKanbanPage() {
     persist((current) => completeCrmTask(current, taskId, { ...completion, actorId: pessoa?.id ?? "preview" }));
     setFeedback(`Toque registrado: ${cadenceSheetStatusLabelSafe(status)}. O cartão anda sozinho para o próximo passo.`);
   }
+  // ---- Repescagens (08/09): isca no WhatsApp → ligação. Tudo pela cadência cad-repescagem.
+  const quadroRepescagem = useMemo(() => buildQuadroRepescagem(state, financeiro.sales, todayISO()), [state, financeiro.sales]);
+  const actorId = pessoa?.id ?? "preview";
+  function iniciarRepescagemDe(candidato: CandidatoRepescagem) {
+    persist((current) => iniciarRepescagem(current, candidato, { userId: actorId, role: "CONCIERGE" }, todayISO()));
+    setFeedback(`Repescagem de ${contactDisplayName(candidato.contact)} iniciada: mande a isca pelo WhatsApp e marque "Isca enviada".`);
+  }
+  function iscaEnviada(taskId: string) {
+    persist((current) => completeCrmTask(current, taskId, { result: "SENT", actorId, resultNotes: "Isca enviada — aguardando o melhor horário para ligar" }));
+    setFeedback("Isca registrada com data e hora. Quando o paciente responder o horário, marque em \"Ligar em\" no cartão.");
+  }
+  function marcarHorario(taskId: string, dueAtISO: string) {
+    persist((current) => marcarHorarioDaLigacao(current, taskId, dueAtISO));
+    setFeedback("Horário da ligação marcado.");
+  }
+  function liguei(taskId: string, resultado: ResultadoLigacao) {
+    const mapa: Record<ResultadoLigacao, { result: "SCHEDULED" | "RESPONDED" | "NO_RESPONSE"; resultNotes: string }> = {
+      AGENDOU: { result: "SCHEDULED", resultNotes: "Atendeu · agendou retorno" },
+      VAI_PENSAR: { result: "RESPONDED", resultNotes: "Atendeu · vai pensar" },
+      NAO_QUER: { result: "RESPONDED", resultNotes: "Atendeu · não quer agora" },
+      NAO_ATENDEU: { result: "NO_RESPONSE", resultNotes: "Não atendeu" },
+    };
+    persist((current) => completeCrmTask(current, taskId, { ...mapa[resultado], actorId }));
+    setFeedback(`Ligação registrada: ${mapa[resultado].resultNotes}.`);
+  }
+
+  // ENQUADRAMENTO (08/09): o quadro ocupa o resto da tela e as colunas rolam por
+  // dentro — a página não cresce com 9 mil pixels de coluna.
+  const [boardTop, setBoardTop] = useState(0);
+  useEffect(() => {
+    function mede() {
+      if (boardRef.current) setBoardTop(Math.round(boardRef.current.getBoundingClientRect().top + window.scrollY));
+    }
+    mede();
+    const timer = window.setTimeout(mede, 300);
+    window.addEventListener("resize", mede);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", mede);
+    };
+  }, [board, fullscreen, tourSeen, feedback]);
+
   function concluirLigacaoDoGestor(taskId: string, status: GestorCallStatus) {
     const completion = gestorCallCompletion(status);
     persist((current) => completeCrmTask(current, taskId, { ...completion, actorId: pessoa?.id ?? "preview" }));
@@ -1488,75 +1531,23 @@ export function CrmKanbanPage() {
           hoje={todayISO()}
         />
       ) : null}
+      {/* CABEÇALHO (redesenho 08/09/2026): uma linha de título + ações; abaixo,
+          UMA linha de abas com rolagem (Quadros · Repescagens · Cadências). */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Badge variant="gold">CRM Bratan</Badge>
           <h1 className={cn("text-brand-musgo", fullscreen ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl")}>Kanban</h1>
-          {/* Dois quadros ligados: a venda acontece no Comercial; ao fechar, o
-              paciente PASSA para o Programa (a régua de cuidado de 6-9 meses). */}
-          <div className="flex flex-wrap items-center gap-1 rounded-full border border-brand-oliva/25 bg-white/60 p-0.5" role="tablist" aria-label="Quadro">
-            {(Object.keys(boardLabels) as KanbanBoardFixo[]).map((item) => (
-              <button
-                key={item}
-                type="button"
-                role="tab"
-                aria-selected={board === item}
-                onClick={() => changeBoard(item)}
-                className={cn(
-                  "rounded-full px-4 py-1.5 text-sm font-semibold transition",
-                  board === item ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-oliva hover:text-brand-musgo",
-                )}
-              >
-                {boardLabels[item]}
-                <span className="ml-1.5 text-xs font-normal opacity-75">
-                  {item === "comercial" ? comercialDeals.length : programDeals.length}
-                </span>
-              </button>
-            ))}
-            {cadenciasComGente.map((item) => {
-              const chave: KanbanBoard = `cadencia:${item.cadence.id}`;
-              return (
-                <button
-                  key={chave}
-                  type="button"
-                  role="tab"
-                  aria-selected={board === chave}
-                  onClick={() => changeBoard(chave)}
-                  title={item.cadence.description}
-                  className={cn(
-                    "rounded-full px-3 py-1.5 text-sm font-semibold transition",
-                    board === chave ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-oliva hover:text-brand-musgo",
-                  )}
-                >
-                  {item.cadence.name}
-                  <span className="ml-1.5 text-xs font-normal opacity-75">{item.ativos}</span>
-                  {item.atrasados ? <span className={cn("ml-1 rounded-full px-1.5 text-[10px] font-bold", board === chave ? "bg-white/20" : "bg-red-100 text-red-700")}>{item.atrasados}</span> : null}
-                </button>
-              );
-            })}
-            {cadenciasVazias.length ? (
-              <select
-                value=""
-                onChange={(event) => event.target.value && changeBoard(`cadencia:${event.target.value}`)}
-                className="h-8 rounded-full border-0 bg-transparent px-2 text-sm font-semibold text-brand-oliva"
-                aria-label="Outras cadências (sem ninguém na régua agora)"
-              >
-                <option value="">Outras cadências…</option>
-                {cadenciasVazias.map((item) => (
-                  <option key={item.cadence.id} value={item.cadence.id}>{item.cadence.name} (0)</option>
-                ))}
-              </select>
-            ) : null}
-          </div>
-          <InfoTip title={board === "comercial" ? "Em aberto (antes do fechamento)" : board === "programa" ? "Plano de Acompanhamento" : "Quadro da cadência"}>
+          <InfoTip title={board === "comercial" ? "Em aberto (antes do fechamento)" : board === "programa" ? "Plano de Acompanhamento" : board === "repescagem" ? "Repescagens" : "Quadro da cadência"}>
             {board === "comercial"
               ? "Lista de quem ainda NÃO tem fechamento registrado. O CRM começa quando o Estevão registra o fechamento — aí o paciente entra na Jornada e as tarefas nascem sozinhas."
               : board === "programa"
                 ? "A jornada pós-fechamento. O card avança SOZINHO quando as tarefas da fase são concluídas (no D+1, todas as pessoas da esteira marcam \"mensagem enviada\"). Ninguém arrasta card; a coordenação corrige pela ficha."
-                : "Uma aba por cadência: as colunas são os passos (D1, D5, D7… ou as ligações do Gestor) e cada paciente fica no passo que está esperando. Vermelho é atrasado, amarelo é hoje. \"Fiz o toque\" registra o resultado e o cartão anda sozinho. As cadências sem ninguém na régua ficam em \"Outras cadências…\"."}
+                : board === "repescagem"
+                  ? "Quem deixou de vir (1 mês, 3 meses, 6 meses, 1 ano — pela última comanda). A repescagem é por LIGAÇÃO: antes vai a isca no WhatsApp, só para saber o melhor horário. Cada toque registra data e hora no Registro, embaixo do quadro."
+                  : "Uma aba por cadência: as colunas são os passos (D1, D5, D7… ou as ligações do Gestor) e cada paciente fica no passo que está esperando. Vermelho é atrasado, amarelo é hoje. \"Fiz o toque\" registra o resultado e o cartão anda sozinho."}
           </InfoTip>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={() => { setFcFeedback(""); setFechamentoOpen(true); }}>
             <Plus className="h-4 w-4" aria-hidden="true" />
             Registrar fechamento
@@ -1565,35 +1556,110 @@ export function CrmKanbanPage() {
             <UserPlus className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Novo lead
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => { setImportFeedback(""); setImportOpen(true); }}>
-            <Upload className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Importar do Feegow
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => { setTourOpen(true); markTourSeen(); }}>
-            <GraduationCap className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Como usar
-          </Button>
-          {fullscreen ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => setFullscreen(false)}>
-              <Minimize2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Sair (Esc)
-            </Button>
-          ) : (
-            <>
-              <Button type="button" variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => setFullscreen(true)}>
-                <Maximize2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                Tela cheia
-              </Button>
-              <Button asChild variant="outline" size="sm" className="hidden md:inline-flex">
-                <Link to={crmModuleRoutes.tasks}>
-                  Minhas tarefas <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
-                </Link>
-              </Button>
-            </>
-          )}
+          <details className="relative">
+            <summary className="flex h-9 cursor-pointer list-none items-center rounded-md border border-input bg-white/70 px-2.5 text-sm font-medium text-brand-tinta hover:bg-white" aria-label="Mais ações">
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            </summary>
+            <div className="absolute right-0 z-30 mt-1 grid w-56 gap-0.5 rounded-lg border border-brand-oliva/20 bg-brand-papel p-1.5 shadow-xl">
+              <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => { setImportFeedback(""); setImportOpen(true); }}>
+                <Upload className="h-4 w-4" aria-hidden="true" /> Importar do Feegow
+              </button>
+              <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => { setTourOpen(true); markTourSeen(); }}>
+                <GraduationCap className="h-4 w-4" aria-hidden="true" /> Como usar
+              </button>
+              {fullscreen ? (
+                <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => setFullscreen(false)}>
+                  <Minimize2 className="h-4 w-4" aria-hidden="true" /> Sair da tela cheia (Esc)
+                </button>
+              ) : (
+                <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => setFullscreen(true)}>
+                  <Maximize2 className="h-4 w-4" aria-hidden="true" /> Tela cheia
+                </button>
+              )}
+              <Link to={crmModuleRoutes.tasks} className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm hover:bg-white">
+                <ArrowRight className="h-4 w-4" aria-hidden="true" /> Minhas tarefas
+              </Link>
+            </div>
+          </details>
         </div>
       </div>
 
+      <div className="mobile-scrollbar-none -mx-1 overflow-x-auto px-1" role="tablist" aria-label="Quadro">
+        <div className="flex w-max items-center gap-1.5 pb-1">
+          {(Object.keys(boardLabels) as KanbanBoardFixo[]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={board === item}
+              onClick={() => changeBoard(item)}
+              className={cn(
+                "flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold transition",
+                board === item ? "border-brand-musgo bg-brand-musgo text-brand-papel shadow-sm" : "border-brand-oliva/25 bg-white/70 text-brand-oliva hover:border-brand-musgo/50 hover:text-brand-musgo",
+              )}
+            >
+              {boardLabels[item]}
+              <span className={cn("rounded-full px-1.5 text-[11px] font-bold", board === item ? "bg-white/20" : "bg-brand-papel text-brand-tinta")}>
+                {item === "comercial" ? comercialDeals.length : programDeals.length}
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={board === "repescagem"}
+            onClick={() => changeBoard("repescagem")}
+            className={cn(
+              "flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold transition",
+              board === "repescagem" ? "border-amber-600 bg-amber-600 text-white shadow-sm" : "border-amber-300 bg-amber-50 text-amber-900 hover:border-amber-500",
+            )}
+          >
+            <PhoneCall className="h-3.5 w-3.5" aria-hidden="true" />
+            Repescagens
+            <span className={cn("rounded-full px-1.5 text-[11px] font-bold", board === "repescagem" ? "bg-white/20" : "bg-white text-amber-900")}>
+              {quadroRepescagem.isca.length + quadroRepescagem.ligar.length}
+            </span>
+            {quadroRepescagem.candidatos.length ? <span className="text-[11px] font-normal opacity-80">· {quadroRepescagem.candidatos.length} para repescar</span> : null}
+          </button>
+          <span className="mx-1 h-6 w-px bg-brand-oliva/25" aria-hidden="true" />
+          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Cadências</span>
+          {cadenciasComGente.map((item) => {
+            const chave: KanbanBoard = `cadencia:${item.cadence.id}`;
+            const ativa = board === chave;
+            return (
+              <button
+                key={chave}
+                type="button"
+                role="tab"
+                aria-selected={ativa}
+                onClick={() => changeBoard(chave)}
+                title={item.cadence.name}
+                className={cn(
+                  "flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-sm font-semibold transition",
+                  ativa ? "border-brand-musgo bg-brand-musgo text-brand-papel shadow-sm" : "border-brand-oliva/25 bg-white/70 text-brand-oliva hover:border-brand-musgo/50 hover:text-brand-musgo",
+                )}
+              >
+                {rotuloCurtoDaCadencia(item.cadence)}
+                <span className={cn("rounded-full px-1.5 text-[11px] font-bold", ativa ? "bg-white/20" : "bg-brand-papel text-brand-tinta")}>{item.ativos}</span>
+                {item.atrasados ? <span className={cn("rounded-full px-1.5 text-[11px] font-bold", ativa ? "bg-red-200 text-red-900" : "bg-red-100 text-red-700")} title="toques atrasados">{item.atrasados}</span> : null}
+              </button>
+            );
+          })}
+          {cadenciasVazias.length ? (
+            <select
+              value=""
+              onChange={(event) => event.target.value && changeBoard(`cadencia:${event.target.value}`)}
+              className="h-9 rounded-full border border-dashed border-brand-oliva/30 bg-white/50 px-3 text-sm font-semibold text-brand-oliva"
+              aria-label="Outras cadências (sem ninguém na régua agora)"
+            >
+              <option value="">Outras cadências…</option>
+              {cadenciasVazias.map((item) => (
+                <option key={item.cadence.id} value={item.cadence.id}>{rotuloCurtoDaCadencia(item.cadence)} (0)</option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+      </div>
       {!tourSeen && !fullscreen ? (
         <motion.div
           initial={{ opacity: 0, y: -6 }}
@@ -1884,7 +1950,13 @@ export function CrmKanbanPage() {
         </div>
       ) : null}
 
-      <section className="rounded-lg border border-brand-oliva/15 bg-white/45 p-2.5 shadow-sm backdrop-blur-xl">
+      {board !== "programa" && board !== "comercial" ? (
+        <label className="relative block max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 pl-9" placeholder="Buscar paciente neste quadro" />
+        </label>
+      ) : null}
+      <section className={cn("rounded-lg border border-brand-oliva/15 bg-white/45 p-2.5 shadow-sm backdrop-blur-xl", board !== "programa" && board !== "comercial" && "hidden")}>
         <div className="grid gap-2 lg:grid-cols-[1.2fr_0.65fr_0.6fr_0.55fr_auto]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1939,22 +2011,24 @@ export function CrmKanbanPage() {
 
       <div
         ref={boardRef}
-        onPointerDown={onBoardPointerDown}
-        onPointerMove={onBoardPointerMove}
-        onPointerUp={onBoardPointerUp}
-        onPointerCancel={onBoardPointerUp}
+        onPointerDown={board === "programa" || board === "comercial" ? onBoardPointerDown : undefined}
+        onPointerMove={board === "programa" || board === "comercial" ? onBoardPointerMove : undefined}
+        onPointerUp={board === "programa" || board === "comercial" ? onBoardPointerUp : undefined}
+        onPointerCancel={board === "programa" || board === "comercial" ? onBoardPointerUp : undefined}
+        style={fullscreen ? undefined : { height: `calc(100dvh - ${boardTop + 12}px)`, minHeight: 440 }}
         className={cn(
-          "kanban-scroll cursor-grab touch-pan-x overflow-x-auto pb-3 active:cursor-grabbing",
-          fullscreen ? "min-h-0 flex-1" : "lg:min-h-0 lg:flex-1",
+          "kanban-scroll touch-pan-x overflow-x-auto pb-2",
+          board === "programa" || board === "comercial" ? "cursor-grab active:cursor-grabbing" : "",
+          fullscreen ? "min-h-0 flex-1" : "min-h-0",
         )}
       >
         <div
           className={cn(
             board === "comercial"
               ? "w-full min-w-0 max-w-5xl"
-              : cadenciaAtiva
-                ? "w-full min-w-0"
-                : cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen ? "h-full items-stretch" : "lg:h-full lg:items-stretch"),
+              : cadenciaAtiva || board === "repescagem"
+                ? "h-full w-full min-w-0"
+                : cn("grid h-full w-max grid-flow-col items-stretch gap-3", densityColumns[density]),
           )}
         >
           {board === "comercial"
@@ -2023,7 +2097,7 @@ export function CrmKanbanPage() {
                     key={phase}
                     className={cn(
                       "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
-                      fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none",
+                      "h-full min-h-0",
                     )}
                   >
                     <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
@@ -2071,9 +2145,22 @@ export function CrmKanbanPage() {
               state={state}
               cadenceId={cadenciaAtiva}
               hoje={todayISO()}
+              filtro={query}
               readOnly={false}
               onConcluirPasso={concluirPassoDaCadencia}
               onConcluirLigacao={concluirLigacaoDoGestor}
+            />
+          ) : null}
+          {board === "repescagem" ? (
+            <RepescagemBoard
+              quadro={quadroRepescagem}
+              filtro={query}
+              readOnly={false}
+              remetente={(pessoa?.nome ?? "Aline").split(" ")[0]}
+              onIniciar={iniciarRepescagemDe}
+              onIscaEnviada={iscaEnviada}
+              onMarcarHorario={marcarHorario}
+              onLiguei={liguei}
             />
           ) : null}
           {board === "programa"
@@ -2108,7 +2195,7 @@ export function CrmKanbanPage() {
                 };
                 return (
                   <>
-                    <section className={cn("flex flex-col rounded-lg border border-amber-300/60 bg-amber-50/40 p-2 backdrop-blur-xl", fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none")}>
+                    <section className={cn("flex flex-col rounded-lg border border-amber-300/60 bg-amber-50/40 p-2 backdrop-blur-xl", "h-full min-h-0")}>
                       <div className="mb-2 shrink-0 rounded-md bg-amber-600 px-3 py-2 text-white">
                         <p className="text-sm font-semibold">Recuperação / Resgate</p>
                         <p className="mt-1 text-[11px] text-white/80">{recoveryDeals.length} pacientes · Concierge D1–D5 → Estevão</p>
@@ -2128,7 +2215,7 @@ export function CrmKanbanPage() {
                         )}
                       </div>
                     </section>
-                    <section className={cn("flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl", fullscreen ? "h-full" : "max-h-[68vh] lg:h-full lg:max-h-none")}>
+                    <section className={cn("flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl", "h-full min-h-0")}>
                       <div className="mb-2 shrink-0 rounded-md bg-brand-oliva px-3 py-2 text-brand-papel">
                         <p className="text-sm font-semibold">Encerrado</p>
                         <p className="mt-1 text-[11px] text-brand-papel/75">{closedDeals.length} na base · resgates de 60d/6m/1a seguem sozinhos</p>

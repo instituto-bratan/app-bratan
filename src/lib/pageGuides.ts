@@ -464,6 +464,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
         "No cartão aberto, o bloco 'Cadastro do lead' corrige nome, apelido, telefone e e-mail — vale para as tarefas, as cadências e a planilha.",
       ],
       tips: [
+        "Aba Repescagens: quem deixou de vir (1 mês, 3 meses, 6 meses, 1 ano). Toque em Iniciar, mande a isca pelo WhatsApp (só para saber o melhor horário), marque o horário que o paciente pediu e registre a ligação — o Registro embaixo guarda nome, tempo sem vir, data e hora de cada toque.",
         "Cada cadência tem a própria aba no topo do Kanban (Não fechou D1–D5, 3·1·3·1, Lead frio, resgates…): as colunas são os passos e o paciente fica no passo que está esperando. Vermelho é atrasado, amarelo é hoje; \"Fiz o toque\" registra o resultado e o cartão anda sozinho.",
         "Negociação só nasce aqui — não tente criar em outra tela.",
         "Se o app barrar o arraste, é porque falta cumprir algo da etapa atual.",
