@@ -8,26 +8,37 @@ import ts from "typescript";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function loadFinanceiroModule() {
-  const absolutePath = path.resolve(repoRoot, "src/features/financeiro/financeiroData.ts");
-  const source = fs.readFileSync(absolutePath, "utf8");
-  const output = ts.transpileModule(source, {
+// Carregador genérico: financeiroData passou a importar módulos irmãos
+// (naturezaItem → catalogoPrecificacao), então qualquer import relativo é
+// transpilado e carregado também.
+const moduleCache = new Map();
+function loadTsModule(filePath) {
+  const absolutePath = path.resolve(repoRoot, filePath);
+  if (moduleCache.has(absolutePath)) return moduleCache.get(absolutePath).exports;
+  const output = ts.transpileModule(fs.readFileSync(absolutePath, "utf8"), {
     compilerOptions: { esModuleInterop: true, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
     fileName: absolutePath,
   }).outputText;
   const module = { exports: {} };
+  moduleCache.set(absolutePath, module);
   const localRequire = (request) => {
     if (request === "@/lib/localStore") {
       return { readLocalValue: (_key, fallback) => fallback, writeLocalValue: () => undefined, todayISO: () => "2026-07-15" };
     }
+    if (request === "@/lib/remoteData") return {};
+    if (request.startsWith("@/")) { const r = request.replace("@/", "src/"); return loadTsModule(path.extname(r) ? r : `${r}.ts`); }
+    if (request.startsWith(".")) { const r = path.resolve(path.dirname(absolutePath), request); return loadTsModule(path.relative(repoRoot, path.extname(r) ? r : `${r}.ts`)); }
     throw new Error(`import inesperado: ${request}`);
   };
   vm.runInNewContext(
     output,
-    { module, exports: module.exports, require: localRequire, console, Date, JSON, Object, String, Number, Math, Map, Set, Array, Intl, crypto: globalThis.crypto },
+    { module, exports: module.exports, require: localRequire, console, Date, JSON, Object, String, Number, Math, Map, Set, Array, Intl, RegExp, Promise, crypto: globalThis.crypto },
     { filename: absolutePath },
   );
   return module.exports;
+}
+function loadFinanceiroModule() {
+  return loadTsModule("src/features/financeiro/financeiroData.ts");
 }
 
 const fin = loadFinanceiroModule();
