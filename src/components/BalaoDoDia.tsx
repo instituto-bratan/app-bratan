@@ -17,6 +17,7 @@ import { moneyFin } from "@/features/financeiro/financeiroData";
 const POSICAO_KEY = "bratan.balao-do-dia.posicao";
 const RECOLHIDO_KEY = "bratan.balao-do-dia.recolhido";
 const OCULTO_KEY = "bratan.balao-do-dia.oculto-em";
+const FORCADO_KEY = "bratan.balao-do-dia.forcado";
 /** Quem não vê o balão por padrão (pedido dele mesmo: "menos pra mim"). */
 const EMAILS_SEM_BALAO = new Set(["lucas.daniel@institutobratan.com.br"]);
 
@@ -47,7 +48,16 @@ export function BalaoDoDia() {
   const { pessoa, session, isPreview } = useAuth();
   const hoje = todayISO();
   const usaRemoto = Boolean(pessoa && session && !isPreview);
-  const semBalao = Boolean(pessoa?.email && EMAILS_SEM_BALAO.has(pessoa.email.toLowerCase()));
+  // "?balao=1" na URL força o balão (para o Lucas conferir como a equipe vê); "?balao=0" volta ao padrão.
+  const [forcado, setForcado] = useState(() => lerJson<boolean>(FORCADO_KEY, false));
+  useEffect(() => {
+    const parametro = new URLSearchParams(window.location.search).get("balao");
+    if (parametro === "1" || parametro === "0") {
+      gravarJson(FORCADO_KEY, parametro === "1");
+      setForcado(parametro === "1");
+    }
+  }, []);
+  const semBalao = !forcado && Boolean(pessoa?.email && EMAILS_SEM_BALAO.has(pessoa.email.toLowerCase()));
   const [ocultoEm, setOcultoEm] = useState(() => lerJson<string>(OCULTO_KEY, ""));
   const [recolhido, setRecolhido] = useState(() => lerJson<boolean>(RECOLHIDO_KEY, false));
   const [posicao, setPosicao] = useState<Posicao | null>(() => lerJson<Posicao | null>(POSICAO_KEY, null));
