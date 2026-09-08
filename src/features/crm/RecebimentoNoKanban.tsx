@@ -19,6 +19,7 @@ import { AlertTriangle, Check, FileText, Paperclip, Plus, X } from "lucide-react
 import {
   formataValor,
   itemFechadoDoProduto,
+  itemComQuantidade,
   itemFechadoLivre,
   produtoPorNome,
   secoesDoCatalogo,
@@ -124,11 +125,8 @@ export function RecebimentoNoKanban({
       onItensChange([...itens, itemFechadoDoProduto(produto)]);
       return;
     }
-    onItensChange(
-      itens.map((item, i) =>
-        i === indice ? { ...item, quantidade: item.quantidade + 1, valorTexto: formataValor(produto.preco * (item.quantidade + 1)) } : item,
-      ),
-    );
+    // Mais um da mesma coisa — mantendo o preço que a pessoa já tiver ajustado.
+    onItensChange(itens.map((item, i) => (i === indice ? itemComQuantidade(item, item.quantidade + 1, parseFinAmount) : item)));
   }
   // Só dinheiro não gera comprovante; qualquer outra forma gera.
   const soDinheiro = divisao.length > 0 && divisao.every((parcela) => parcela.forma === "DINHEIRO");
@@ -208,7 +206,13 @@ export function RecebimentoNoKanban({
                 <div key={index} className="grid items-center gap-1.5 rounded-md border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[1.6fr_0.45fr_0.8fr_auto]">
                   {produto ? (
                     <span className="text-sm text-brand-tinta">
-                      {produto.nome} <span className="text-xs text-muted-foreground">· {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}</span>
+                      {produto.nome}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        · {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}
+                        {Math.abs(parseFinAmount(item.valorTexto) - produto.preco * item.quantidade) > 0.005 && parseFinAmount(item.valorTexto) > 0 ? (
+                          <strong className="text-brand-musgo"> · cobrado {moneyFin(parseFinAmount(item.valorTexto))}</strong>
+                        ) : null}
+                      </span>
                     </span>
                   ) : (
                     <div className="grid gap-1 sm:grid-cols-[0.8fr_1.2fr]">
@@ -225,17 +229,31 @@ export function RecebimentoNoKanban({
                       <Input value={item.descricao} onChange={(event) => atualiza({ descricao: event.target.value })} placeholder="Descreva o item (fora da tabela)" className="h-9" />
                     </div>
                   )}
-                  <Input
-                    value={String(item.quantidade)}
-                    onChange={(event) => {
-                      const quantidade = Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 1);
-                      atualiza({ quantidade, ...(produto ? { valorTexto: formataValor(produto.preco * quantidade) } : {}) });
-                    }}
-                    inputMode="numeric"
-                    aria-label="Quantidade"
-                    className="h-9 text-center"
-                  />
-                  <Input value={item.valorTexto} onChange={(event) => atualiza({ valorTexto: event.target.value })} placeholder="0,00" inputMode="decimal" aria-label="Valor da linha" className="h-9 text-right" />
+                  <label className="grid gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Qtd
+                    <Input
+                      value={String(item.quantidade)}
+                      onChange={(event) => {
+                        const quantidade = Math.max(1, Number(event.target.value.replace(/\D/g, "")) || 1);
+                        // Preserva o preço unitário digitado (sinal de R$ 200 continua R$ 200 × qtd).
+                        atualiza(itemComQuantidade(item, quantidade, parseFinAmount));
+                      }}
+                      inputMode="numeric"
+                      aria-label="Quantidade"
+                      className="h-9 text-center normal-case"
+                    />
+                  </label>
+                  <label className="grid gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Valor cobrado
+                    <Input
+                      value={item.valorTexto}
+                      onChange={(event) => atualiza({ valorTexto: event.target.value })}
+                      placeholder={produto ? formataValor(produto.preco * item.quantidade) : "0,00"}
+                      inputMode="decimal"
+                      aria-label="Valor cobrado na linha"
+                      className="h-9 text-right normal-case"
+                    />
+                  </label>
                   <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => onItensChange(itens.filter((_, i) => i !== index))}>
                     <X className="h-4 w-4" aria-hidden="true" />
                   </Button>
@@ -249,6 +267,10 @@ export function RecebimentoNoKanban({
                 : valor > 0
                   ? " — bate com o valor recebido."
                   : " — o valor recebido foi preenchido com essa soma; ajuste se entrou menos."}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              O preço da tabela é só a sugestão: se cobrou diferente (sinal de R$ 200, desconto, acréscimo do cartão), digite o
+              valor cobrado na linha — o nome do produto continua o mesmo.
             </p>
           </div>
         ) : (

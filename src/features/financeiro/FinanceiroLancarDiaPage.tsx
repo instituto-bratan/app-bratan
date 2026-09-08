@@ -518,7 +518,9 @@ export function FinanceiroLancarDiaPage() {
 
                   <div>
                     <div className="mb-2 flex items-center justify-between">
-                      <Label>Itens (o que foi feito)</Label>
+                      <Label>
+                        Itens (o que foi feito) <span className="font-normal text-muted-foreground">· o produto da tabela sugere o preço; o valor é livre</span>
+                      </Label>
                       <Button type="button" variant="ghost" size="sm" onClick={() => setItems((current) => [...current, { itemType: "TRATAMENTO", amount: "", description: "" }])}>
                         <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Item
                       </Button>

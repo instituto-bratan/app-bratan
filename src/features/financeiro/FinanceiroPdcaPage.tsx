@@ -129,8 +129,9 @@ export function FinanceiroPdcaPage() {
                 <InfoTip title="Como o app classifica cada paciente">
                   Adesão aqui é <strong>plano de acompanhamento — R$ 6.997</strong>: tratamento abaixo disso não conta
                   como adesão nem entra no ticket (regra da CEO, 31/08). Quem <strong>só pagou o sinal</strong> ainda
-                  nem passou pela consulta e fica FORA da conta; comanda só de tratamento pequeno sem consulta é
-                  recorrente comprando medicação — também fora. Passou pela consulta e não fechou o plano, é
+                  nem passou pela consulta e fica FORA da conta. <strong>Medicação avulsa</strong> (tirzepatida, doses,
+                  vitaminas, pellets) nunca é adesão nem entra no ticket, mesmo que a comanda passe de R$ 6.997; comanda
+                  sem consulta e sem plano é recorrente comprando — também fora. Passou pela consulta e não fechou o plano, é
                   não-adesão; se voltar e fechar o plano depois, o app reclassifica sozinho. Meta: 70% a 80%.
                 </InfoTip>
               </h1>
@@ -193,7 +194,7 @@ export function FinanceiroPdcaPage() {
             <TrendingUp className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
             <p className="mt-2 text-sm font-semibold text-brand-musgo">Ticket médio do plano</p>
             <p className="text-2xl font-bold text-brand-tinta">{pdca.ticketPlano ? moneyFin(pdca.ticketPlano) : "—"}</p>
-            <p className="text-xs text-muted-foreground">só tratamentos ≥ R$ 6.997 · total do mês {moneyFin(totalTratamentos)}</p>
+            <p className="text-xs text-muted-foreground">só plano/tratamento ≥ R$ 6.997 · sem sinal nem medicação avulsa · total do mês {moneyFin(totalTratamentos)}</p>
           </div>
         </div>
 

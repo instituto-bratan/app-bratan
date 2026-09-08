@@ -172,6 +172,20 @@ export function itemFechadoLivre(itemType: FinSaleItemType = "TRATAMENTO"): Item
   return { produtoNome: null, itemType, descricao: "", quantidade: 1, valorTexto: "" };
 }
 
+/**
+ * Muda a quantidade PRESERVANDO o preço unitário que a pessoa digitou (Lucas,
+ * 08/09: "o sinal está travado em 500, mas às vezes é 200"). O preço da tabela
+ * é só o ponto de partida: se a linha já foi ajustada, R$ 200 × 2 = R$ 400 — não
+ * volta para R$ 1.000. Sem valor digitado, segue a tabela.
+ */
+export function itemComQuantidade(item: ItemFechado, quantidade: number, parse: (texto: string) => number): ItemFechado {
+  const qtd = Math.max(1, Math.floor(quantidade) || 1);
+  const atual = parse(item.valorTexto) || 0;
+  const produto = item.produtoNome ? produtoPorNome(item.produtoNome) : null;
+  const unitario = atual > 0 ? atual / Math.max(1, item.quantidade) : produto?.preco ?? 0;
+  return { ...item, quantidade: qtd, valorTexto: unitario > 0 ? formataValor(unitario * qtd) : item.valorTexto };
+}
+
 export function formataValor(valor: number) {
   return round2(valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

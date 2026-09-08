@@ -775,11 +775,9 @@ export function Inteligencia360DashboardPage() {
     {
       label: `Ticket médio geral ${periodRange.label}`,
       value: money360(ticketDerived.geral),
-      detail: `Fonte: comandas (Lançar Dia) · ${ticketDerived.count} comanda(s)${
-        ticketDerived.ignoradasSoSinal
-          ? ` · ${ticketDerived.ignoradasSoSinal} só de sinal fora da conta`
-          : " · sinal não conta"
-      }`,
+      detail: `Fonte: comandas (Lançar Dia) · ${ticketDerived.count} comanda(s) com venda${
+        ticketDerived.ignoradasSoSinal ? ` · ${ticketDerived.ignoradasSoSinal} só de sinal fora` : ""
+      }${ticketDerived.ignoradasMedicacaoAvulsa ? ` · ${ticketDerived.ignoradasMedicacaoAvulsa} só medicação avulsa fora` : ""} · só plano, tratamento e consulta`,
       href: "/financeiro/lancar-dia",
       icon: TrendingUp,
       periodic: true,
@@ -787,7 +785,7 @@ export function Inteligencia360DashboardPage() {
     {
       label: "Ticket novos",
       value: money360(ticketDerived.novos),
-      detail: "Fonte: comandas — 1ª comanda do paciente (sem sinal)",
+      detail: "Fonte: comandas — 1ª comanda do paciente (só plano, tratamento e consulta)",
       href: "/financeiro/lancar-dia",
       icon: UsersRound,
       periodic: true,
@@ -795,7 +793,7 @@ export function Inteligencia360DashboardPage() {
     {
       label: "Ticket recorrentes",
       value: money360(ticketDerived.recorrentes),
-      detail: "Fonte: comandas — paciente que já comprou (sem sinal)",
+      detail: "Fonte: comandas — paciente que já comprou (só plano, tratamento e consulta)",
       href: "/financeiro/lancar-dia",
       icon: RefreshCw,
       periodic: true,

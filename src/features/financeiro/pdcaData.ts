@@ -15,9 +15,16 @@
 // 3. O TICKET MÉDIO DO PDCA é só de quem fechou o plano ("a mesma coisa no
 //    ticket médio").
 //
+// 4. MEDICAÇÃO AVULSA NÃO É TRATAMENTO (Lucas, 08/09): tirzepatida, doses,
+//    vitaminas e pellets não entram na régua — 3 frascos de R$ 9.510 não são
+//    plano, e o frasco que vai junto da consulta não vira "tratamento abaixo do
+//    plano". Quem decide é a natureza do item (naturezaItem.ts). O sinal
+//    também nunca soma na coluna da consulta.
+//
 // Regra antiga (13/07) que continua: sem meio termo — aderiu ou não aderiu; e
 // quem volta e fecha depois é reclassificado sozinho como "aderiu depois".
-import { consultaLikeTypes, type FinSale } from "./financeiroData";
+import type { FinSale } from "./financeiroData";
+import { naturezaDoItem } from "./naturezaItem";
 import type { FinPdcaMark } from "@/lib/remoteData";
 
 export type PdcaStatus = "ADERIU" | "ADERIU_DEPOIS" | "NAO_ADERIU";
@@ -48,8 +55,19 @@ const cents = (valor: number) => Math.round(valor * 100) / 100;
 /** O preço do plano de acompanhamento — a régua da adesão. */
 export const PLANO_VALOR_MINIMO = 6997;
 
+/** Plano + tratamento fechado. Medicação avulsa fica de fora (não é decisão de adesão). */
 function valorTratamento(sale: FinSale) {
-  return sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((soma, item) => soma + (item.amount || 0), 0);
+  return sale.items
+    .filter((item) => {
+      const natureza = naturezaDoItem(item);
+      return natureza === "PLANO" || natureza === "TRATAMENTO";
+    })
+    .reduce((soma, item) => soma + (item.amount || 0), 0);
+}
+
+/** A consulta em si — sem sinal, sem exame solto. */
+function valorConsulta(sale: FinSale) {
+  return sale.items.filter((item) => naturezaDoItem(item) === "CONSULTA").reduce((soma, item) => soma + (item.amount || 0), 0);
 }
 
 /** Fechou o PLANO nesta comanda? Régua = valor: tratamento ≥ R$ 6.997. */
@@ -87,19 +105,16 @@ export function buildPdca(sales: FinSale[], month: string, marks: Map<string, Fi
 
   const rows = doMes
     .filter((sale) => !comandaEhSoSinal(sale) || comandaAderiuAoPlano(sale))
-    // Comanda SÓ de tratamento pequeno (sem consulta): recorrente comprando
-    // medicação/dose — não há decisão de adesão ali, fica fora do PDCA.
+    // Comanda sem consulta e sem plano (tratamento pequeno, medicação avulsa,
+    // exame solto): recorrente comprando — não há decisão de adesão ali, fica
+    // fora do PDCA.
     .filter((sale) => {
       if (comandaAderiuAoPlano(sale)) return true;
-      const temConsulta = sale.items.some(
-        (item) => consultaLikeTypes.includes(item.itemType) && item.itemType !== "SINAL" && (item.amount || 0) > 0,
-      );
-      const soTratamentoPequeno = !temConsulta && valorTratamento(sale) > 0;
-      return !soTratamentoPequeno;
+      return valorConsulta(sale) > 0;
     })
     .map((sale) => {
-      const consulta = sale.items.filter((item) => consultaLikeTypes.includes(item.itemType)).reduce((sum, item) => sum + item.amount, 0);
-      const tratamento = sale.items.filter((item) => item.itemType === "TRATAMENTO").reduce((sum, item) => sum + item.amount, 0);
+      const consulta = valorConsulta(sale);
+      const tratamento = valorTratamento(sale);
       const mark = marks.get(sale.id);
 
       let status: PdcaStatus = "NAO_ADERIU";

@@ -1,4 +1,5 @@
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
+import { itemContaComoVenda } from "./naturezaItem";
 
 export type FinCategoryGroup = "CUSTO_FIXO" | "MAO_DE_OBRA" | "CUSTO_VARIAVEL" | "POUPANCA";
 export type FinSaleItemType =
@@ -431,22 +432,22 @@ export function saleTotal(sale: FinSale) {
 }
 
 /**
- * TICKET MÉDIO — o SINAL não conta (04/08/2026, regra do Lucas: "o ticket médio
- * está contando com os sinais de consulta, e não é pra contar").
+ * TICKET MÉDIO — só VENDA entra: plano, tratamento e consulta.
  *
- * O sinal é adiantamento de um tratamento que será lançado por inteiro depois:
- * contá-lo dobra a receita na média e, pior, uma comanda só de sinal (R$ 429 em
- * média em julho) entra na conta como se fosse uma venda e afunda o indicador.
- * O FATURAMENTO continua somando o sinal — dinheiro que entrou é dinheiro que
- * entrou. Só o TICKET ignora.
+ * 04/08/2026 (Lucas): "o ticket médio está contando com os sinais de consulta,
+ * e não é pra contar" — o sinal é adiantamento do que será lançado inteiro depois.
+ * 08/09/2026 (Lucas): "não entrem sinal nem medicamentos separados tipo a
+ * tirzepatida — deixe apenas tratamento, plano e consulta". O frasco avulso é
+ * venda de recorrente comprando remédio, não uma decisão de compra; ele
+ * puxava a média para baixo (frasco de 3.170) ou para cima (3 frascos de 9.510).
+ * Quem decide é a NATUREZA do item (naturezaItem.ts), não o tipo.
+ * O FATURAMENTO continua somando tudo — dinheiro que entrou é dinheiro que
+ * entrou. Só o TICKET (e o PDCA) filtram.
  */
 export const TICKET_IGNORED_ITEM_TYPES: FinSaleItemType[] = ["SINAL"];
 
 export function saleTotalForTicket(sale: FinSale) {
-  return sale.items.reduce(
-    (sum, item) => (TICKET_IGNORED_ITEM_TYPES.includes(item.itemType) ? sum : sum + (item.amount || 0)),
-    0,
-  );
+  return sale.items.reduce((sum, item) => (itemContaComoVenda(item) ? sum + (item.amount || 0) : sum), 0);
 }
 
 export type TicketMedio = {
@@ -457,6 +458,8 @@ export type TicketMedio = {
   count: number;
   /** Comandas do período que foram ignoradas por serem apenas sinal. */
   ignoradasSoSinal: number;
+  /** Comandas ignoradas por não terem venda: só medicação avulsa, exame solto, nutri/psi ou "outro". */
+  ignoradasMedicacaoAvulsa: number;
 };
 
 /**
@@ -479,12 +482,18 @@ export function buildTicketMedio(sales: FinSale[], start: string, end: string): 
   let recSum = 0;
   let recN = 0;
   let ignoradas = 0;
+  let ignoradasMedicacao = 0;
   for (const sale of sales) {
     if (sale.saleDate < start || sale.saleDate > end) continue;
     const total = saleTotalForTicket(sale);
     if (total <= 0) {
-      // Sobrou zero depois de tirar o sinal: é comanda só de sinal.
-      if (saleTotal(sale) > 0) ignoradas += 1;
+      // Sobrou zero depois de tirar o que não é venda: comanda só de sinal, ou
+      // só de medicação avulsa / exame / outro profissional.
+      if (saleTotal(sale) > 0) {
+        const comValor = sale.items.filter((item) => (item.amount || 0) > 0);
+        if (comValor.every((item) => item.itemType === "SINAL")) ignoradas += 1;
+        else ignoradasMedicacao += 1;
+      }
       continue;
     }
     geralSum += total;
@@ -506,6 +515,7 @@ export function buildTicketMedio(sales: FinSale[], start: string, end: string): 
     recorrentes: recN ? cents(recSum / recN) : 0,
     count: geralN,
     ignoradasSoSinal: ignoradas,
+    ignoradasMedicacaoAvulsa: ignoradasMedicacao,
   };
 }
 
