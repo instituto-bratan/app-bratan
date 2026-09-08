@@ -113,6 +113,7 @@ import { CadenciaKanban } from "./CadenciaKanban";
 import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
 import { usePanScroll } from "./usePanScroll";
+import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
 import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
 import { buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem } from "./repescagemData";
 
@@ -369,6 +370,10 @@ function ProgramCard({
   const gate = programGateStatus(state, deal.id);
   const missingRoles = new Set(gate.missing.map((item) => item.role));
   const nextLabel = spec.next ? programPhaseLabels[spec.next] : null;
+  const hojeISO = todayISO();
+  const dias = diasNaFase(deal, hojeISO);
+  const vencida = faseVencida(deal, hojeISO);
+  const prazo = PRAZO_DA_FASE_DIAS[phase];
 
   return (
     <article
@@ -388,7 +393,17 @@ function ProgramCard({
           <p className={cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg")}>{contactName}</p>
           <p className="mt-1 truncate text-xs text-muted-foreground">{deal.title}</p>
         </div>
-        {deal.adhesionChannel ? <Badge variant="gold">{channelShort[deal.adhesionChannel]}</Badge> : null}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {deal.adhesionChannel ? <Badge variant="gold">{channelShort[deal.adhesionChannel]}</Badge> : null}
+          {prazo !== null ? (
+            <span
+              className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", vencida ? "bg-red-100 text-red-700" : "bg-brand-papel text-brand-oliva")}
+              title={vencida ? `Prazo da fase: ${prazo} dia(s). Ninguém marcou o gate — a coordenação pode avançar.` : `Prazo da fase: ${prazo} dia(s)`}
+            >
+              {vencida ? `parado há ${dias} dias` : dias === 0 ? "entrou hoje" : `há ${dias} dia${dias > 1 ? "s" : ""}`}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* Faixa do GATE: cada setor exigido nesta fase, com ✓ ou ⏳ */}
@@ -2093,8 +2108,11 @@ export function CrmKanbanPage() {
                 );
               })()
             : programPhases.map((phase, phaseIndex) => {
-                const phaseDeals = programDeals.filter((deal) => deal.programPhase === phase);
+                const hojeISO = todayISO();
+                const phaseDeals = ordenaPorTempoNaFase(programDeals.filter((deal) => deal.programPhase === phase), hojeISO);
                 const nextPhase = programPhases[phaseIndex + 1];
+                const vencidos = phaseDeals.filter((deal) => faseVencida(deal, hojeISO));
+                const prazoFase = PRAZO_DA_FASE_DIAS[phase];
 
                 return (
                   // REGRA DE OURO nº 4: concluir a tarefa É o que move o card.
@@ -2118,10 +2136,27 @@ export function CrmKanbanPage() {
                         </InfoTip>
                       </p>
                       <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
-                        <span>{phaseDeals.length} pacientes</span>
-                        {nextPhase ? <span>→ {programPhaseLabels[nextPhase]}</span> : <span>fim da trilha</span>}
+                        <span>
+                          {phaseDeals.length} pacientes
+                          {vencidos.length ? <span className="ml-1 rounded-full bg-red-200/90 px-1.5 font-bold text-red-900">{vencidos.length} parados</span> : null}
+                        </span>
+                        {nextPhase ? <span>→ {programPhaseLabels[nextPhase]}{prazoFase !== null ? ` · prazo ${prazoFase}d` : ""}</span> : <span>fim da trilha</span>}
                       </div>
                     </div>
+                    {vencidos.length && canOverridePhase && prazoFase !== null ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm(`Avançar ${vencidos.length} paciente(s) parados em "${programPhaseLabels[phase]}" há mais de ${prazoFase} dia(s) para "Em acompanhamento"? O gate desta fase fica registrado como pulado pela coordenação.`)) return;
+                          persist((current) => vencidos.reduce((acc, deal) => setProgramPhase(acc, deal.id, "CADENCIA_PROGRAMA", pessoa?.id ?? "coordenacao"), current));
+                          setFeedback(`${vencidos.length} paciente(s) de "${programPhaseLabels[phase]}" avançados para Em acompanhamento.`);
+                        }}
+                        className="mb-2 flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100"
+                        title="Só a coordenação vê este botão"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /> Avançar {vencidos.length} parado(s) → Em acompanhamento
+                      </button>
+                    ) : null}
                     <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
                       {phaseDeals.length ? (
                         phaseDeals.map((deal) => (
