@@ -2107,7 +2107,9 @@ export function CrmKanbanPage() {
                   </section>
                 );
               })()
-            : programPhases.map((phase, phaseIndex) => {
+            : board !== "programa"
+              ? null
+              : programPhases.map((phase, phaseIndex) => {
                 const hojeISO = todayISO();
                 const phaseDeals = ordenaPorTempoNaFase(programDeals.filter((deal) => deal.programPhase === phase), hojeISO);
                 const nextPhase = programPhases[phaseIndex + 1];
