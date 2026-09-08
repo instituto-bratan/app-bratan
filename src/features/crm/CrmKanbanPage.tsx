@@ -57,7 +57,10 @@ import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
   applyContactChannels,
+  cadenceSheetCompletion,
   canalAtualDoPaciente,
+  completeCrmTask,
+  gestorCallCompletion,
   canUserAccessContact,
   contactDisplayName,
   createDealForContact,
@@ -80,6 +83,7 @@ import {
   setProgramPhase,
   taskEffectiveStatus,
   updateContactChannels,
+  type CadenceSheetDStatus,
   type CrmAdhesionChannel,
   type CrmContact,
   type CrmDeal,
@@ -92,6 +96,7 @@ import {
   type CrmRole,
   type CrmState,
   type CrmTask,
+  type GestorCallStatus,
 } from "./crmData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
@@ -105,6 +110,8 @@ import {
   type ContactChannelsDraft,
 } from "./contactChannels";
 import { useCrmState } from "./useCrmState";
+import { CadenciaKanban } from "./CadenciaKanban";
+import { resumoDasCadencias } from "./cadenciaKanbanData";
 
 const objectionOptions: CrmObjectionCategory[] = [
   "PRICE",
@@ -136,8 +143,18 @@ const stageSections: Record<KanbanSection, CrmDealStage[]> = {
 // O CRM começa no FECHAMENTO (decisão do Lucas, 22/07): o quadro principal é a
 // JORNADA do paciente; o que era funil comercial virou uma lista simples de
 // "Em aberto" (leads/consultas ainda sem fechamento registrado).
-type KanbanBoard = "comercial" | "programa";
-const boardLabels: Record<KanbanBoard, string> = { programa: "Jornada do paciente", comercial: "Em aberto (antes do fechamento)" };
+// UMA ABA POR CADÊNCIA (08/09/2026, Lucas: "não apenas do plano de acompanhamento
+// — um kanban da cadência 3·1·3·1, outro da D1–D5 e assim vai"). Os dois quadros
+// fixos continuam; cada cadência com passos vira um quadro "cadencia:<id>".
+type KanbanBoardFixo = "comercial" | "programa";
+type KanbanBoard = KanbanBoardFixo | `cadencia:${string}`;
+const boardLabels: Record<KanbanBoardFixo, string> = { programa: "Plano de Acompanhamento", comercial: "Em aberto (antes do fechamento)" };
+function cadenceSheetStatusLabelSafe(status: CadenceSheetDStatus) {
+  return { SEM_RESPOSTA: "sem resposta", SATISFEITO: "respondeu · satisfeito", INSATISFEITO_CONCIERGE: "insatisfeito → Concierge", AGENDADO_RESOLVIDO: "agendado · resolvido" }[status];
+}
+function cadenciaDoBoard(board: KanbanBoard): string | null {
+  return board.startsWith("cadencia:") ? board.slice("cadencia:".length) : null;
+}
 
 // Cores por papel — a mesma linguagem visual da Régua de Relacionamento.
 const roleTones: Partial<Record<CrmRole, { chip: string; dot: string }>> = {
@@ -597,6 +614,21 @@ export function CrmKanbanPage() {
   const comercialDeals = useMemo(() => visibleDeals.filter((deal) => !deal.programPhase), [visibleDeals]);
   const programDeals = useMemo(() => visibleDeals.filter((deal) => deal.programPhase), [visibleDeals]);
   const canOverridePhase = isCoordenacao(pessoa?.cargo);
+  // Abas de cadência: quem tem gente ativa vira aba; as vazias ficam num seletor.
+  const cadenciasResumo = useMemo(() => resumoDasCadencias(state, todayISO()), [state]);
+  const cadenciaAtiva = cadenciaDoBoard(board);
+  const cadenciasComGente = cadenciasResumo.filter((item) => item.ativos > 0 || `cadencia:${item.cadence.id}` === board);
+  const cadenciasVazias = cadenciasResumo.filter((item) => !cadenciasComGente.includes(item));
+  function concluirPassoDaCadencia(taskId: string, status: CadenceSheetDStatus) {
+    const completion = cadenceSheetCompletion(status);
+    persist((current) => completeCrmTask(current, taskId, { ...completion, actorId: pessoa?.id ?? "preview" }));
+    setFeedback(`Toque registrado: ${cadenceSheetStatusLabelSafe(status)}. O cartão anda sozinho para o próximo passo.`);
+  }
+  function concluirLigacaoDoGestor(taskId: string, status: GestorCallStatus) {
+    const completion = gestorCallCompletion(status);
+    persist((current) => completeCrmTask(current, taskId, { ...completion, actorId: pessoa?.id ?? "preview" }));
+    setFeedback("Ligação registrada na trilha do Gestor.");
+  }
   const [dragOverPhase, setDragOverPhase] = useState<CrmProgramPhase | null>(null);
 
   function changeBoard(next: KanbanBoard) {
@@ -1462,8 +1494,8 @@ export function CrmKanbanPage() {
           <h1 className={cn("text-brand-musgo", fullscreen ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl")}>Kanban</h1>
           {/* Dois quadros ligados: a venda acontece no Comercial; ao fechar, o
               paciente PASSA para o Programa (a régua de cuidado de 6-9 meses). */}
-          <div className="flex rounded-full border border-brand-oliva/25 bg-white/60 p-0.5" role="tablist" aria-label="Quadro">
-            {(Object.keys(boardLabels) as KanbanBoard[]).map((item) => (
+          <div className="flex flex-wrap items-center gap-1 rounded-full border border-brand-oliva/25 bg-white/60 p-0.5" role="tablist" aria-label="Quadro">
+            {(Object.keys(boardLabels) as KanbanBoardFixo[]).map((item) => (
               <button
                 key={item}
                 type="button"
@@ -1481,11 +1513,47 @@ export function CrmKanbanPage() {
                 </span>
               </button>
             ))}
+            {cadenciasComGente.map((item) => {
+              const chave: KanbanBoard = `cadencia:${item.cadence.id}`;
+              return (
+                <button
+                  key={chave}
+                  type="button"
+                  role="tab"
+                  aria-selected={board === chave}
+                  onClick={() => changeBoard(chave)}
+                  title={item.cadence.description}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-sm font-semibold transition",
+                    board === chave ? "bg-brand-musgo text-brand-papel shadow-sm" : "text-brand-oliva hover:text-brand-musgo",
+                  )}
+                >
+                  {item.cadence.name}
+                  <span className="ml-1.5 text-xs font-normal opacity-75">{item.ativos}</span>
+                  {item.atrasados ? <span className={cn("ml-1 rounded-full px-1.5 text-[10px] font-bold", board === chave ? "bg-white/20" : "bg-red-100 text-red-700")}>{item.atrasados}</span> : null}
+                </button>
+              );
+            })}
+            {cadenciasVazias.length ? (
+              <select
+                value=""
+                onChange={(event) => event.target.value && changeBoard(`cadencia:${event.target.value}`)}
+                className="h-8 rounded-full border-0 bg-transparent px-2 text-sm font-semibold text-brand-oliva"
+                aria-label="Outras cadências (sem ninguém na régua agora)"
+              >
+                <option value="">Outras cadências…</option>
+                {cadenciasVazias.map((item) => (
+                  <option key={item.cadence.id} value={item.cadence.id}>{item.cadence.name} (0)</option>
+                ))}
+              </select>
+            ) : null}
           </div>
-          <InfoTip title={board === "comercial" ? "Em aberto (antes do fechamento)" : "Jornada do paciente"}>
+          <InfoTip title={board === "comercial" ? "Em aberto (antes do fechamento)" : board === "programa" ? "Plano de Acompanhamento" : "Quadro da cadência"}>
             {board === "comercial"
               ? "Lista de quem ainda NÃO tem fechamento registrado. O CRM começa quando o Estevão registra o fechamento — aí o paciente entra na Jornada e as tarefas nascem sozinhas."
-              : "A jornada pós-fechamento. O card avança SOZINHO quando as tarefas da fase são concluídas (no D+1, todas as pessoas da esteira marcam \"mensagem enviada\"). Ninguém arrasta card; a coordenação corrige pela ficha."}
+              : board === "programa"
+                ? "A jornada pós-fechamento. O card avança SOZINHO quando as tarefas da fase são concluídas (no D+1, todas as pessoas da esteira marcam \"mensagem enviada\"). Ninguém arrasta card; a coordenação corrige pela ficha."
+                : "Uma aba por cadência: as colunas são os passos (D1, D5, D7… ou as ligações do Gestor) e cada paciente fica no passo que está esperando. Vermelho é atrasado, amarelo é hoje. \"Fiz o toque\" registra o resultado e o cartão anda sozinho. As cadências sem ninguém na régua ficam em \"Outras cadências…\"."}
           </InfoTip>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1884,7 +1952,9 @@ export function CrmKanbanPage() {
           className={cn(
             board === "comercial"
               ? "w-full min-w-0 max-w-5xl"
-              : cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen ? "h-full items-stretch" : "lg:h-full lg:items-stretch"),
+              : cadenciaAtiva
+                ? "w-full min-w-0"
+                : cn("grid w-max grid-flow-col items-start gap-3", densityColumns[density], fullscreen ? "h-full items-stretch" : "lg:h-full lg:items-stretch"),
           )}
         >
           {board === "comercial"
@@ -1996,6 +2066,16 @@ export function CrmKanbanPage() {
                   </section>
                 );
               })}
+          {cadenciaAtiva ? (
+            <CadenciaKanban
+              state={state}
+              cadenceId={cadenciaAtiva}
+              hoje={todayISO()}
+              readOnly={false}
+              onConcluirPasso={concluirPassoDaCadencia}
+              onConcluirLigacao={concluirLigacaoDoGestor}
+            />
+          ) : null}
           {board === "programa"
             ? (() => {
                 // Colunas de exceção da jornada (prompt do Lucas): quem caiu da

@@ -464,6 +464,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
         "No cartão aberto, o bloco 'Cadastro do lead' corrige nome, apelido, telefone e e-mail — vale para as tarefas, as cadências e a planilha.",
       ],
       tips: [
+        "Cada cadência tem a própria aba no topo do Kanban (Não fechou D1–D5, 3·1·3·1, Lead frio, resgates…): as colunas são os passos e o paciente fica no passo que está esperando. Vermelho é atrasado, amarelo é hoje; \"Fiz o toque\" registra o resultado e o cartão anda sozinho.",
         "Negociação só nasce aqui — não tente criar em outra tela.",
         "Se o app barrar o arraste, é porque falta cumprir algo da etapa atual.",
         "Cartão parado muitos dias na mesma coluna merece um contato de resgate.",
