@@ -50,7 +50,7 @@ function localISO(valor: string) {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
-const coluna = "flex h-full min-h-0 w-[232px] flex-col rounded-lg border p-1.5";
+const coluna = "flex h-full min-h-0 w-[188px] flex-col rounded-lg border p-1.5";
 const cabecalho = "mb-1.5 shrink-0 rounded-md px-2 py-1.5";
 const lista = "kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-1.5 overflow-y-auto pr-0.5";
 const vazio = "rounded-md border border-dashed border-brand-oliva/20 bg-white/35 p-2 text-center text-[11px] text-muted-foreground";

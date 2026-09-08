@@ -198,10 +198,12 @@ const densityLabels: Record<KanbanDensity, string> = {
   executive: "Executivo",
 };
 
+// Larguras (08/09/2026, Lucas: "precisa ficar estreito de largura"): colunas
+// finas para caber mais quadros lado a lado, como um CRM.
 const densityColumns: Record<KanbanDensity, string> = {
-  compact: "auto-cols-[minmax(300px,320px)]",
-  comfortable: "auto-cols-[minmax(360px,390px)]",
-  executive: "auto-cols-[minmax(420px,460px)]",
+  compact: "auto-cols-[minmax(208px,224px)]",
+  comfortable: "auto-cols-[minmax(248px,264px)]",
+  executive: "auto-cols-[minmax(300px,320px)]",
 };
 
 const temperatureLabels: Record<CrmLeadTemperature, string> = {

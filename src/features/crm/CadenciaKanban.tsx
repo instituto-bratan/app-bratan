@@ -152,7 +152,7 @@ export function CadenciaKanban({
             const cartoes = coluna.cartoes.filter(bate);
             const atrasados = cartoes.filter((c) => c.atrasoDias > 0).length;
             return (
-              <div key={coluna.stepId} className="flex h-full min-h-0 w-[232px] flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-1.5 backdrop-blur-xl">
+              <div key={coluna.stepId} className="flex h-full min-h-0 w-[188px] flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-1.5 backdrop-blur-xl">
                 <div className="mb-1.5 shrink-0 rounded-md bg-brand-musgo px-2 py-1.5 text-brand-papel">
                   <p className="flex items-center gap-1.5 text-xs font-semibold" title={coluna.nome}>
                     <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-brand-papel/20 text-[10px] font-bold">{indice + 1}</span>
@@ -166,7 +166,7 @@ export function CadenciaKanban({
               </div>
             );
           })}
-          <div className="flex h-full min-h-0 w-[232px] flex-col rounded-lg border border-emerald-200/70 bg-emerald-50/30 p-1.5">
+          <div className="flex h-full min-h-0 w-[188px] flex-col rounded-lg border border-emerald-200/70 bg-emerald-50/30 p-1.5">
             <div className="mb-1.5 shrink-0 rounded-md bg-emerald-700 px-2 py-1.5 text-white">
               <p className="text-xs font-semibold">Encerrados</p>
               <p className="mt-0.5 text-[10px] text-white/80">{kanban.encerrados.length} nos últimos 30 dias</p>
