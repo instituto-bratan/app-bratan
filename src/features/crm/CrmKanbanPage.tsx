@@ -17,7 +17,7 @@ import { Upload,
   Target,
   UserPlus,
   X,
-  Trash2, MoreHorizontal, PhoneCall } from "lucide-react";
+  Trash2, MoreHorizontal, PhoneCall, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   createFinId,
   moneyFin,
@@ -112,6 +112,7 @@ import { useCrmState } from "./useCrmState";
 import { CadenciaKanban } from "./CadenciaKanban";
 import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
+import { usePanScroll } from "./usePanScroll";
 import { buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem } from "./repescagemData";
 
 const objectionOptions: CrmObjectionCategory[] = [
@@ -654,6 +655,7 @@ export function CrmKanbanPage() {
   // ENQUADRAMENTO (08/09): o quadro ocupa o resto da tela e as colunas rolam por
   // dentro — a página não cresce com 9 mil pixels de coluna.
   const [boardTop, setBoardTop] = useState(0);
+  const abasPan = usePanScroll<HTMLDivElement>();
   useEffect(() => {
     function mede() {
       if (boardRef.current) setBoardTop(Math.round(boardRef.current.getBoundingClientRect().top + window.scrollY));
@@ -1584,8 +1586,12 @@ export function CrmKanbanPage() {
         </div>
       </div>
 
-      <div className="mobile-scrollbar-none -mx-1 overflow-x-auto px-1" role="tablist" aria-label="Quadro">
-        <div className="flex w-max items-center gap-1.5 pb-1">
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={() => abasPan.rolar(-1)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Abas anteriores">
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <div ref={abasPan.ref} {...abasPan.handlers} className="kanban-scroll min-w-0 flex-1 cursor-grab overflow-x-auto pb-1 active:cursor-grabbing" role="tablist" aria-label="Quadro" title="Arraste para o lado para ver mais abas">
+        <div className="flex w-max items-center gap-1.5">
           {(Object.keys(boardLabels) as KanbanBoardFixo[]).map((item) => (
             <button
               key={item}
@@ -1659,6 +1665,10 @@ export function CrmKanbanPage() {
             </select>
           ) : null}
         </div>
+        </div>
+        <button type="button" onClick={() => abasPan.rolar(1)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Próximas abas">
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </button>
       </div>
       {!tourSeen && !fullscreen ? (
         <motion.div

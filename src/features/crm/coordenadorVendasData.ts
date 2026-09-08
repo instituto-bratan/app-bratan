@@ -133,13 +133,42 @@ export type LinhaPrescricao = { profissional: string; prescritos: number; fechad
 export type LinhaAgendamento = { colaborador: string; meta: number; realizados: number; acao: string };
 export type PlanoDeAcao = { plan: string; do: string; check: string; act: string };
 
+/** Linha digitada à mão no Registro (como na planilha), sem virar lead no CRM. */
+export type LinhaManual = {
+  id: string;
+  data: string;
+  nome: string;
+  origem: OrigemContato;
+  agendou: boolean;
+  compareceu: boolean;
+  fechou: boolean;
+  observacoes: string;
+};
+
+export function linhaManualComoRegistro(linha: LinhaManual): LinhaRegistro {
+  return {
+    dealId: `manual:${linha.id}`,
+    contactId: "",
+    data: linha.data,
+    nome: linha.nome || "(sem nome)",
+    origem: linha.origem,
+    canal: "digitado",
+    agendou: linha.agendou,
+    compareceu: linha.compareceu,
+    fechou: linha.fechou,
+    observacoes: linha.observacoes,
+  };
+}
+
 export type CoordenadorMes = {
+  registroManual: LinhaManual[];
   prescricoes: LinhaPrescricao[];
   agendamentos: LinhaAgendamento[];
   planoDeAcao: PlanoDeAcao;
 };
 
 export const coordenadorMesVazio: CoordenadorMes = {
+  registroManual: [],
   prescricoes: [{ profissional: "Dr. Daniel", prescritos: 0, fechados: 0, observacoes: "" }],
   agendamentos: [],
   planoDeAcao: { plan: "", do: "", check: "", act: "" },
@@ -148,7 +177,20 @@ export const coordenadorMesVazio: CoordenadorMes = {
 export function normalizaCoordenadorMes(raw: unknown): CoordenadorMes {
   const r = (raw ?? {}) as Partial<CoordenadorMes>;
   const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const origem = (v: unknown): OrigemContato => (origens.includes(v as OrigemContato) ? (v as OrigemContato) : "REDES_OUTROS");
   return {
+    registroManual: Array.isArray(r.registroManual)
+      ? r.registroManual.map((l, i) => ({
+          id: String(l?.id ?? `man-${i}`),
+          data: String(l?.data ?? ""),
+          nome: String(l?.nome ?? ""),
+          origem: origem(l?.origem),
+          agendou: Boolean(l?.agendou),
+          compareceu: Boolean(l?.compareceu),
+          fechou: Boolean(l?.fechou),
+          observacoes: String(l?.observacoes ?? ""),
+        }))
+      : [],
     prescricoes: Array.isArray(r.prescricoes)
       ? r.prescricoes.map((p) => ({ profissional: String(p?.profissional ?? ""), prescritos: num(p?.prescritos), fechados: num(p?.fechados), observacoes: String(p?.observacoes ?? "") }))
       : coordenadorMesVazio.prescricoes,

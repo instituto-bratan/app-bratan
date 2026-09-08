@@ -87,3 +87,16 @@ test("abas de PDCA: normalização aceita o que vier do banco", () => {
   assert.equal(m.planoDeAcao.plan, "x");
   assert.equal(m.planoDeAcao.act, "");
 });
+
+test("linha digitada à mão entra no funil junto com as do CRM", () => {
+  const manual = coord.linhaManualComoRegistro({ id: "m1", data: "2026-09-05", nome: "Cleber (prédio)", origem: "INDICACAO", agendou: true, compareceu: false, fechou: false, observacoes: "veio pelo porteiro" });
+  assert.equal(manual.dealId, "manual:m1");
+  const funil = coord.funilDeContatos([...coord.registroDeContatos(state, vendas, "2026-09"), manual]);
+  const total = funil.find((f) => f.origem === "TOTAL");
+  assert.deepEqual(j([total.mensagens, total.agendaram]), [5, 4]);
+  const ind = funil.find((f) => f.origem === "INDICACAO");
+  assert.deepEqual(j([ind.mensagens, ind.agendaram]), [2, 1]);
+  const norm = coord.normalizaCoordenadorMes({ registroManual: [{ id: "x", data: "2026-09-01", nome: "A", origem: "ERRADA", agendou: "sim" }] });
+  assert.equal(norm.registroManual[0].origem, "REDES_OUTROS", "origem desconhecida cai em redes/outros");
+  assert.equal(norm.registroManual[0].agendou, true);
+});
