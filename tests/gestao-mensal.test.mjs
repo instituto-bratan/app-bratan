@@ -113,7 +113,10 @@ test("indicadores do mês saem dos lançamentos (nada digitado)", () => {
   assert.equal(g.obra, 9000, "obra fica separada, fora do lucro");
   assert.equal(g.lucroLiquido, -18500, "21.000 − 39.500");
   assert.equal(g.comandas, 3);
-  assert.equal(g.ticketMedio, 7000);
+  // Regra de 08/09 (Lucas): o ticket só conta VENDA — plano, tratamento e consulta.
+  // A comanda da Carla (mapeamento + nutricionista) não é venda e fica fora:
+  // (8.500 + 12.000) / 2. O faturamento acima continua com ela.
+  assert.equal(g.ticketMedio, 10250);
 });
 
 test("faturamento do indicador = soma dos itens das comandas do mês (fecha com a P12)", () => {
