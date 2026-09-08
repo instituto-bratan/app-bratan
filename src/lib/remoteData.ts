@@ -3632,6 +3632,69 @@ export async function saveRemoteFinLucroDia(marca: FinLucroDiaRemote, updatedBy?
   });
 }
 
+// ---- Lucro Inteligente · resumo público (08/09/2026) ----------------------------
+// Qualquer pessoa logada lê; só o financeiro grava (a tela do Lucro publica).
+export type FinLucroPublicoRemote = {
+  monthKey: string;
+  diaRef: string;
+  entrouLiquido: number;
+  cabeGastar: number;
+  contasPagas: number;
+  sobra: number;
+  lucroHoje: number;
+  lucroMes: number;
+  lucroMeta: number;
+  medicoHoje: number;
+  medicoMes: number;
+  atualizadoEm: string;
+};
+
+export async function loadRemoteFinLucroPublico(monthKey: string): Promise<FinLucroPublicoRemote | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("fin_lucro_publico").select("*").eq("month_key", monthKey).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  const num = (chave: string) => Number(row[chave] ?? 0) || 0;
+  return {
+    monthKey: String(row.month_key),
+    diaRef: String(row.dia_ref),
+    entrouLiquido: num("entrou_liquido"),
+    cabeGastar: num("cabe_gastar"),
+    contasPagas: num("contas_pagas"),
+    sobra: num("sobra"),
+    lucroHoje: num("lucro_hoje"),
+    lucroMes: num("lucro_mes"),
+    lucroMeta: num("lucro_meta"),
+    medicoHoje: num("medico_hoje"),
+    medicoMes: num("medico_mes"),
+    atualizadoEm: String(row.atualizado_em ?? ""),
+  };
+}
+
+export async function saveRemoteFinLucroPublico(resumo: Omit<FinLucroPublicoRemote, "atualizadoEm">, atualizadoPor?: string | null) {
+  const client = requireSupabase();
+  const { error } = await client.from("fin_lucro_publico").upsert(
+    {
+      month_key: resumo.monthKey,
+      dia_ref: resumo.diaRef,
+      entrou_liquido: resumo.entrouLiquido,
+      cabe_gastar: resumo.cabeGastar,
+      contas_pagas: resumo.contasPagas,
+      sobra: resumo.sobra,
+      lucro_hoje: resumo.lucroHoje,
+      lucro_mes: resumo.lucroMes,
+      lucro_meta: resumo.lucroMeta,
+      medico_hoje: resumo.medicoHoje,
+      medico_mes: resumo.medicoMes,
+      atualizado_em: new Date().toISOString(),
+      atualizado_por: atualizadoPor ?? null,
+    },
+    { onConflict: "month_key" },
+  );
+  if (error) throw error;
+}
+
 export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   const client = requireSupabase();
   const { data, error } = await client

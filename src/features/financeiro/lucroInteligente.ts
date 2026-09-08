@@ -706,3 +706,44 @@ export function mesesAnteriores(monthKey: string, quantidade = 3): string[] {
   }
   return lista;
 }
+
+// ---- Resumo público do mês (08/09/2026) ---------------------------------------
+// O que a Home mostra para TODO MUNDO: só os números do envelope, sem comanda e
+// sem paciente. "Hoje" é o dia de hoje quando o mês é o atual; num mês fechado,
+// o último dia com entrada ou cota.
+export type ResumoPublicoLucro = {
+  monthKey: string;
+  diaRef: string;
+  entrouLiquido: number;
+  cabeGastar: number;
+  contasPagas: number;
+  sobra: number;
+  lucroHoje: number;
+  lucroMes: number;
+  lucroMeta: number;
+  medicoHoje: number;
+  medicoMes: number;
+};
+
+export function linhaEmDestaque(planilha: PlanilhaLucro, hoje: string): LinhaDiaLucro | null {
+  const deHoje = planilha.linhas.find((linha) => linha.dia === hoje);
+  if (deHoje) return deHoje;
+  return [...planilha.linhas].reverse().find((linha) => linha.dia <= hoje && (linha.total > 0.005 || linha.regua.cotaLucro > 0.005)) ?? null;
+}
+
+export function resumoPublicoDoMes(planilha: PlanilhaLucro, hoje: string, lucroMeta: number): ResumoPublicoLucro {
+  const linha = linhaEmDestaque(planilha, hoje);
+  return {
+    monthKey: planilha.monthKey,
+    diaRef: linha?.dia ?? hoje,
+    entrouLiquido: planilha.totais.liquido,
+    cabeGastar: planilha.totais.reservado.operacional,
+    contasPagas: planilha.totais.usado.operacional,
+    sobra: round2(planilha.totais.reservado.operacional - planilha.totais.usado.operacional),
+    lucroHoje: linha?.reservado.lucro ?? 0,
+    lucroMes: planilha.totais.reservado.lucro,
+    lucroMeta: round2(lucroMeta),
+    medicoHoje: linha?.reservado.medicoExecutor ?? 0,
+    medicoMes: planilha.totais.reservado.medicoExecutor,
+  };
+}

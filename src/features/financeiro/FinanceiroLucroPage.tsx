@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { CheckCircle2, Landmark, PiggyBank, Scale, ShieldAlert, SlidersHorizontal, TrendingUp, Wallet } from "lucide-react";
+import { CheckCircle2, Landmark, PiggyBank, Scale, ShieldAlert, SlidersHorizontal, TrendingUp, Wallet, Stethoscope, Trophy } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,14 @@ import {
   listRemoteFinLucroDias,
   loadRemoteFinLucroConfig,
   saveRemoteFinLucroConfig,
-  saveRemoteFinLucroDia,
+  saveRemoteFinLucroDia, saveRemoteFinLucroPublico,
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import { moneyFin } from "./financeiroData";
 import {
   avaliacaoInstantanea,
+  linhaEmDestaque,
+  resumoPublicoDoMes,
   buildPlanilhaLucro,
   conferirRecebiveis,
   defaultLucroConfig,
@@ -270,6 +272,26 @@ export function FinanceiroLucroPage() {
   const linhasVisiveis = planilha.linhas;
   const cellNum = "px-2 py-1.5 text-right tabular-nums whitespace-nowrap";
 
+  // ---- DESTAQUE DO DIA (08/09): o que o Dr. Daniel recebe e o lucro dos sócios,
+  // em números grandes — e o retrato público que a Home mostra para todo mundo.
+  const destaque = useMemo(() => linhaEmDestaque(planilha, hoje), [planilha, hoje]);
+  const resumoPublico = useMemo(() => resumoPublicoDoMes(planilha, hoje, reguaHoje.lucroMensal), [planilha, hoje, reguaHoje.lucroMensal]);
+  const ultimoPublicadoRef = useRef("");
+  useEffect(() => {
+    if (!useRemote || !canEdit || month !== hoje.slice(0, 7)) return;
+    const assinatura = JSON.stringify(resumoPublico);
+    if (assinatura === ultimoPublicadoRef.current) return;
+    const timer = window.setTimeout(() => {
+      saveRemoteFinLucroPublico(resumoPublico, session?.user?.id ?? null)
+        .then(() => {
+          ultimoPublicadoRef.current = assinatura;
+        })
+        .catch((error) => console.warn("Resumo público do Lucro não publicou.", error));
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [resumoPublico, useRemote, canEdit, month, hoje, session?.user?.id]);
+  const progressoLucro = reguaHoje.lucroMensal > 0 ? Math.min(100, Math.round((planilha.totais.reservado.lucro / reguaHoje.lucroMensal) * 100)) : 0;
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Lucro Inteligente" module="fin-lucro">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
@@ -427,6 +449,63 @@ export function FinanceiroLucroPage() {
             ) : null}
           </section>
         ) : null}
+
+        {/* O DIA EM NÚMEROS GRANDES (08/09/2026, Lucas: "tem que ficar bem exposto o que o
+            Dr. Daniel vai receber em cada dia e o lucro também"). */}
+        <section className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-xl border-2 border-brand-dourado/60 bg-gradient-to-br from-brand-creme/80 to-white p-5 shadow-calm">
+            <div className="flex items-center justify-between">
+              <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-brand-dourado">
+                <Stethoscope className="h-5 w-5" aria-hidden="true" /> Dr. Daniel recebe
+              </p>
+              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-brand-tinta">
+                {destaque ? (destaque.dia === hoje ? "hoje" : diaCurto(destaque.dia)) : "—"}
+              </span>
+            </div>
+            <p className="mt-2 text-4xl font-extrabold tabular-nums leading-none text-brand-tinta sm:text-5xl">{destaque ? moneyFin(destaque.reservado.medicoExecutor) : "—"}</p>
+            <p className="mt-2 text-sm text-brand-tinta">
+              {pct(reguaHoje.medicoExecutor)} do lucro bruto dos produtos do dia{destaque?.lucroBrutoProdutos ? ` (${moneyFin(destaque.lucroBrutoProdutos)})` : ""}
+            </p>
+            <p className="mt-3 border-t border-brand-dourado/30 pt-2 text-sm font-semibold text-brand-musgo">
+              No mês: {moneyFin(planilha.totais.reservado.medicoExecutor)}
+            </p>
+          </div>
+          <div className="rounded-xl border-2 border-brand-musgo/50 bg-gradient-to-br from-brand-musgo to-brand-musgo/85 p-5 text-white shadow-calm">
+            <div className="flex items-center justify-between">
+              <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-white/90">
+                <Trophy className="h-5 w-5" aria-hidden="true" /> Lucro dos sócios
+              </p>
+              <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">{destaque ? (destaque.dia === hoje ? "hoje" : diaCurto(destaque.dia)) : "—"}</span>
+            </div>
+            <p className="mt-2 text-4xl font-extrabold tabular-nums leading-none sm:text-5xl">{destaque ? moneyFin(destaque.reservado.lucro) : "—"}</p>
+            <p className="mt-2 text-sm text-white/85">cota fixa por dia útil · {moneyFin(reguaHoje.lucroMensal)} ÷ {planilha.diasUteis} dias úteis</p>
+            <div className="mt-3 border-t border-white/20 pt-2">
+              <div className="flex items-center justify-between text-sm font-semibold">
+                <span>No mês: {moneyFin(planilha.totais.reservado.lucro)}</span>
+                <span>{progressoLucro}% de {moneyFin(reguaHoje.lucroMensal)}</span>
+              </div>
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/20">
+                <div className="h-full rounded-full bg-brand-dourado transition-all" style={{ width: `${progressoLucro}%` }} />
+              </div>
+            </div>
+          </div>
+          <div className={cn("rounded-xl border-2 p-5 shadow-calm", saldoOperacional < -0.005 ? "border-red-300 bg-red-50" : "border-emerald-300 bg-emerald-50/70")}>
+            <div className="flex items-center justify-between">
+              <p className={cn("flex items-center gap-2 text-sm font-bold uppercase tracking-wide", saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-800")}>
+                <Wallet className="h-5 w-5" aria-hidden="true" /> Fica para gastar
+              </p>
+              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-brand-tinta">{destaque ? (destaque.dia === hoje ? "hoje" : diaCurto(destaque.dia)) : "—"}</span>
+            </div>
+            <p className={cn("mt-2 text-4xl font-extrabold tabular-nums leading-none sm:text-5xl", destaque && destaque.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-tinta")}>
+              {destaque ? moneyFin(destaque.reservado.operacional) : "—"}
+            </p>
+            <p className="mt-2 text-sm text-brand-tinta">o que sobrou do dia depois de impostos, médico e lucro</p>
+            <p className={cn("mt-3 border-t pt-2 text-sm font-semibold", saldoOperacional < -0.005 ? "border-red-200 text-red-700" : "border-emerald-200 text-emerald-800")}>
+              No mês: cabe {moneyFin(planilha.totais.reservado.operacional)} · pagas {moneyFin(planilha.totais.usado.operacional)} →{" "}
+              {saldoOperacional < -0.005 ? `faltam ${moneyFin(-saldoOperacional)}` : `sobram ${moneyFin(saldoOperacional)}`}
+            </p>
+          </div>
+        </section>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
@@ -687,8 +766,8 @@ export function FinanceiroLucroPage() {
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Entrou (líquido)</th>
                     <th className="px-2 py-1.5 text-right">Disponível</th>
                     <th className="px-2 py-1.5 text-right">Impostos</th>
-                    <th className="px-2 py-1.5 text-right">Lucro (cota)</th>
-                    <th className="px-2 py-1.5 text-right">Médico (col. S)</th>
+                    <th className="bg-brand-musgo/10 px-2 py-1.5 text-right font-bold text-brand-musgo">Lucro sócios</th>
+                    <th className="bg-brand-creme/70 px-2 py-1.5 text-right font-bold text-brand-dourado">Dr. Daniel (col. S)</th>
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Fica p/ gastar</th>
                     <th className="px-2 py-1.5 text-right">Contas pagas (dia)</th>
                     <th className="px-2 py-1.5 text-right">Sobra ou falta (mês)</th>
@@ -737,8 +816,8 @@ export function FinanceiroLucroPage() {
                           {linha.reservado.impostos ? moneyFin(linha.reservado.impostos) : "—"}
                           <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.regua.impostos)}</span>
                         </td>
-                        <td className={cellNum}>{linha.reservado.lucro ? moneyFin(linha.reservado.lucro) : "—"}</td>
-                        <td className={cellNum}>
+                        <td className={cn(cellNum, "bg-brand-musgo/10 font-bold text-brand-musgo")}>{linha.reservado.lucro ? moneyFin(linha.reservado.lucro) : "—"}</td>
+                        <td className={cn(cellNum, "bg-brand-creme/70 font-bold text-brand-tinta")}>
                           {linha.reservado.medicoExecutor ? moneyFin(linha.reservado.medicoExecutor) : "—"}
                           {linha.lucroBrutoProdutos ? (
                             <span className="block text-[10px] text-muted-foreground" title="lucro bruto dos produtos do dia (coluna P) · itens do médico pelo preço">
@@ -810,8 +889,8 @@ export function FinanceiroLucroPage() {
                     <td className={cn(cellNum, "text-brand-musgo")}>{moneyFin(planilha.totais.liquido)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.disponivel)}</td>
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.impostos)}</td>
-                    <td className={cellNum}>{moneyFin(planilha.totais.reservado.lucro)}</td>
-                    <td className={cellNum}>
+                    <td className={cn(cellNum, "bg-brand-musgo/10 text-brand-musgo")}>{moneyFin(planilha.totais.reservado.lucro)}</td>
+                    <td className={cn(cellNum, "bg-brand-creme/70")}>
                       {moneyFin(planilha.totais.reservado.medicoExecutor)}
                       <span className="block text-[10px] font-normal text-muted-foreground">col. P {moneyFin(planilha.totais.lucroBrutoProdutos)}</span>
                     </td>

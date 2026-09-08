@@ -21,6 +21,7 @@ import {
   TrendingUp,
   UsersRound,
   Utensils,
+  Wallet,
 } from "lucide-react";
 import { Hero } from "@/components/ui/animated-hero";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +57,7 @@ import {
   formatEstalecas,
   type EstalecaTransaction,
 } from "@/features/estalecas/estalecasData";
-import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemoteFinPurchases, listRemoteFinSales, listRemotePagamentos } from "@/lib/remoteData";
+import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemoteFinPurchases, listRemoteFinSales, listRemotePagamentos, loadRemoteFinLucroPublico } from "@/lib/remoteData";
 import { loadLocalFinExpenses, loadLocalFinSales, moneyFin, pagamentosSemComprovante, upcomingExpenses } from "@/features/financeiro/financeiroData";
 import { buildFilaFinanceira } from "@/features/financeiro/filaFinanceira";
 
@@ -371,6 +372,16 @@ export function HomePage() {
     enabled: useRemote && canFinanceiroView(cargo),
     staleTime: 60_000,
   });
+  // CABE GASTAR NO MÊS — para todo mundo (08/09/2026, Lucas). Lê o retrato
+  // publicado pela tela do Lucro Inteligente (só números do envelope, sem
+  // comanda nem paciente), por isso não depende do cargo.
+  const lucroPublicoQuery = useQuery({
+    queryKey: ["fin-lucro-publico", todayISO().slice(0, 7)],
+    queryFn: () => loadRemoteFinLucroPublico(todayISO().slice(0, 7)),
+    enabled: useRemote,
+    staleTime: 60_000,
+  });
+  const lucroPublico = lucroPublicoQuery.data ?? null;
   const finPurchasesQuery = useQuery({
     queryKey: ["home-fin-purchases", new Date().getFullYear()],
     queryFn: () => listRemoteFinPurchases(new Date().getFullYear()),
@@ -522,6 +533,17 @@ export function HomePage() {
             label="Mural"
             value={`${avisos.length}`}
             detail={avisos[0] ? `Último aviso às ${formatShortTime(avisos[0].publicadoEm)}` : "Sem avisos ativos"}
+          />
+          <StatCard
+            icon={Wallet}
+            label="Cabe gastar no mês"
+            value={lucroPublico ? money(lucroPublico.sobra) : "—"}
+            detail={
+              lucroPublico
+                ? `${lucroPublico.sobra < -0.005 ? "já passou do que cabe" : "ainda cabe de contas"} · cabe ${money(lucroPublico.cabeGastar)} · pagas ${money(lucroPublico.contasPagas)} · ${lucroPublico.atualizadoEm ? `às ${formatShortTime(lucroPublico.atualizadoEm)}` : ""}`
+                : "O financeiro ainda não publicou o mês no Lucro Inteligente."
+            }
+            tone={lucroPublico && lucroPublico.sobra >= -0.005 ? "gold" : "default"}
           />
           {comprovantes ? (
             <StatCard
