@@ -496,6 +496,25 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/crm/coordenador",
+    guide: {
+      title: "Gestão do Coordenador de Vendas",
+      whatIs:
+        "É a planilha de gestão do coordenador dentro do app: Registro de Contatos e Funil (que se soma sozinho a partir do CRM), PDCA de Prescrições, PDCA de Agendamentos e o Plano de Ação do mês.",
+      steps: [
+        "Escolha o mês de referência no topo.",
+        "O Funil já vem pronto: mensagens recebidas, agendaram, compareceram e fecharam por origem — cada linha do Registro é um lead ou negociação criada no mês no Kanban.",
+        "Para incluir alguém no Registro, cadastre o lead no Kanban (Novo lead) ou registre o fechamento — a linha aparece aqui na hora, com origem e etapas derivadas.",
+        "Preencha o PDCA de Prescrições (por profissional) e o de Agendamentos (por colaborador): as porcentagens calculam sozinhas e tudo fica guardado por mês.",
+        "Escreva o Plano de Ação (Plan · Do · Check · Act) para levar à reunião.",
+      ],
+      tips: [
+        "Origem: quem tem indicador é Indicação; quem já tinha comanda antes do contato é Fidelizado; o resto é Redes sociais / páginas / outros.",
+        "Agendou = card em Consulta agendada ou além; Compareceu = Consulta realizada ou além; Fechou = fechou completo/parcial ou entrou no Plano.",
+      ],
+    },
+  },
+  {
     pattern: "/crm/planilha",
     guide: {
       title: "Planilha de Cadências",

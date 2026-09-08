@@ -3632,6 +3632,22 @@ export async function saveRemoteFinLucroDia(marca: FinLucroDiaRemote, updatedBy?
   });
 }
 
+// ---- Coordenador de Vendas · PDCA e Plano de Ação por mês (08/09/2026) ---------
+export async function loadRemoteCrmCoordenadorMes(monthKey: string): Promise<Record<string, unknown> | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("crm_coordenador_mes").select("dados").eq("month_key", monthKey).maybeSingle();
+  if (error) throw error;
+  return (data?.dados as Record<string, unknown>) ?? null;
+}
+
+export async function saveRemoteCrmCoordenadorMes(monthKey: string, dados: Record<string, unknown>, updatedBy?: string | null) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("crm_coordenador_mes")
+    .upsert({ month_key: monthKey, dados, updated_by: updatedBy ?? null, updated_at: new Date().toISOString() }, { onConflict: "month_key" });
+  if (error) throw error;
+}
+
 // ---- Lucro Inteligente · resumo público (08/09/2026) ----------------------------
 // Qualquer pessoa logada lê; só o financeiro grava (a tela do Lucro publica).
 export type FinLucroPublicoRemote = {

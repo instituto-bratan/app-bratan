@@ -110,6 +110,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Kanban Comercial", shortLabel: "Kanban", href: "/crm/vendas", icon: Target, allowed: canCrmBratan, module: "crm" },
       { label: "Cadências", href: "/crm/cadencias", icon: MessageCircle, allowed: canCrmBratan, module: "crm" },
       { label: "Planilha de Cadências", shortLabel: "Planilha", href: "/crm/planilha", icon: ClipboardList, allowed: canCrmBratan, module: "crm" },
+      { label: "Gestão de Vendas (coordenador)", shortLabel: "Gestão de Vendas", href: "/crm/coordenador", icon: ClipboardList, allowed: canCrmBratan, module: "crm" },
       { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento, module: "acompanhamento" },
       { label: "Indicações", href: "/crm/indicacoes", icon: Gift, allowed: canCrmBratan, module: "crm" },
       { label: "NPS da Concierge", shortLabel: "NPS", href: "/concierge/nps", icon: HeartPulse, allowed: (cargo) => canAdministracao(cargo) || cargo === "secretaria_executiva", module: "concierge-nps" },
