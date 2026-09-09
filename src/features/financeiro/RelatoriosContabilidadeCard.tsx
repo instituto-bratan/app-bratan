@@ -27,18 +27,11 @@ import {
   type FinSale,
   type FinSavingsMove,
 } from "./financeiroData";
+import { salvarArquivo } from "@/lib/salvarArquivo";
 
-/** Baixa um arquivo gerado na hora, sem servidor. */
+/** Baixa um arquivo gerado na hora, sem servidor (pede a pasta quando o navegador permite). */
 export function baixarArquivo(nome: string, conteudo: string, tipo = "text/csv;charset=utf-8") {
-  const blob = new Blob([conteudo], { type: tipo });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = nome;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  return salvarArquivo(nome, new Blob([conteudo], { type: tipo }));
 }
 
 export function RelatoriosContabilidadeCard({

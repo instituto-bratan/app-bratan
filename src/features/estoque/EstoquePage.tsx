@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, canSeeModule, isCoordenacao } from "@/lib/access";
+import { salvarArquivo } from "@/lib/salvarArquivo";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import type { FinPurchase } from "@/features/financeiro/financeiroData";
@@ -365,12 +366,7 @@ export function EstoquePage() {
     const inicio = `${hoje.slice(0, 7)}-01`;
     const csv = csvMovimentos(estoque.items, estoque.moves, setor, inicio, hoje);
     const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `estoque-${setor.toLowerCase()}-${hoje.slice(0, 7)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    void salvarArquivo(`estoque-${setor.toLowerCase()}-${hoje.slice(0, 7)}.csv`, blob);
   }
 
   return (
