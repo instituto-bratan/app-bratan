@@ -70,8 +70,39 @@ export function FinanceiroPoupancaPage() {
 
   const balance = useMemo(() => savingsBalance(financeiro.savingsMoves), [financeiro.savingsMoves]);
   const debt = useMemo(() => operationalDebtToCofre(financeiro.savingsMoves), [financeiro.savingsMoves]);
-  // Mês da planilha do cofre (independente do mês das provisões).
+  // MÊS DA TELA (09/09/2026, Lucas: "não dá para puxar agosto na poupança").
+  // A lista de Movimentos mostrava só os últimos 60, sem filtro; agora um único
+  // seletor de mês (lista de meses que TÊM movimento, sem digitar) filtra a
+  // lista e alimenta as planilhas. "TODOS" mostra o histórico inteiro.
   const [mesDaPlanilha, setMesDaPlanilha] = useState(now.slice(0, 7));
+  const mesesComMovimento = useMemo(() => {
+    const set = new Set<string>([now.slice(0, 7)]);
+    for (const move of financeiro.savingsMoves) set.add(move.moveDate.slice(0, 7));
+    return [...set].sort().reverse();
+  }, [financeiro.savingsMoves, now]);
+  const mesDaLista = mesDaPlanilha === "TODOS" ? "" : mesDaPlanilha;
+  const movimentosDoMes = useMemo(
+    () => (mesDaLista ? financeiro.savingsMoves.filter((move) => move.moveDate.slice(0, 7) === mesDaLista) : financeiro.savingsMoves),
+    [financeiro.savingsMoves, mesDaLista],
+  );
+  const entrouNoMes = movimentosDoMes.filter((move) => move.direction === "ENTRADA").reduce((sum, move) => sum + move.amount, 0);
+  const saiuNoMes = movimentosDoMes.filter((move) => move.direction === "SAIDA").reduce((sum, move) => sum + move.amount, 0);
+  const rotuloMes = (m: string) => m.split("-").reverse().join("/");
+  const seletorDeMes = (permitirTodos: boolean, aria: string) => (
+    <select
+      value={mesDaPlanilha === "TODOS" && !permitirTodos ? "" : mesDaPlanilha}
+      onChange={(event) => setMesDaPlanilha(event.target.value || now.slice(0, 7))}
+      className="h-9 rounded-md border border-brand-oliva/25 bg-white/80 px-2 text-sm font-semibold text-brand-tinta"
+      aria-label={aria}
+    >
+      {permitirTodos ? <option value="TODOS">Todos os meses</option> : mesDaPlanilha === "TODOS" ? <option value="">Escolha o mês</option> : null}
+      {mesesComMovimento.map((m) => (
+        <option key={m} value={m}>
+          {rotuloMes(m)}
+        </option>
+      ))}
+    </select>
+  );
   // Dois cofres separados (03/08/2026, pedido do Lucas p/ fechamento): OBRA
   // (CDB — uso na obra, empréstimo e devolução) × PROVISÕES (13º, férias,
   // impostos, urgências, aportes e rendimentos).
@@ -195,21 +226,7 @@ export function FinanceiroPoupancaPage() {
                   saiu de poupança, que no caso é da obra") e a única forma de
                   chegar nela era descer o Painel do Mês até o fim. */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {/* Enquanto se digita num campo de mês o navegador devolve "" até o
-                    valor ficar completo; repor o mês atual no onChange apagava o que
-                    a pessoa digitava (09/09/2026, Lucas: "não dá para trocar o mês").
-                    O fallback só entra ao sair do campo vazio. Mesma correção em
-                    Compras, Metas, Crediário e NPS. */}
-                <Input
-                  type="month"
-                  value={mesDaPlanilha}
-                  onChange={(event) => setMesDaPlanilha(event.target.value)}
-                  onBlur={() => {
-                    if (!mesDaPlanilha) setMesDaPlanilha(now.slice(0, 7));
-                  }}
-                  className="h-9 w-40"
-                  aria-label="Mês da planilha do cofre"
-                />
+                {seletorDeMes(false, "Mês da planilha do cofre")}
                 <BaixarPlanilhaButton
                   chave="poupanca"
                   rotulo="Baixar entradas e saídas"
@@ -220,13 +237,13 @@ export function FinanceiroPoupancaPage() {
                     savingsMoves: financeiro.savingsMoves,
                     crediarioProfits: financeiro.crediarioProfits,
                     purchases: financeiro.purchases,
-                    monthKey: mesDaPlanilha,
+                    monthKey: mesDaLista || now.slice(0, 7),
                   }}
                 />
                 <ExportarPlanilhaBotoes
                   rotulo="Entrada × obra"
-                  arquivo={`ENTRADA-INSTITUTO-BRATAN-POUPANCA-${mesDaPlanilha}`}
-                  abas={[abaEntradaPoupanca(financeiro.savingsMoves, mesDaPlanilha)]}
+                  arquivo={`ENTRADA-INSTITUTO-BRATAN-POUPANCA-${mesDaLista || now.slice(0, 7)}`}
+                  abas={[abaEntradaPoupanca(financeiro.savingsMoves, mesDaLista || now.slice(0, 7))]}
                 />
               </div>
             </div>
@@ -436,11 +453,21 @@ export function FinanceiroPoupancaPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Movimentos</CardTitle>
+            <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+              Movimentos
+              {seletorDeMes(true, "Mês dos movimentos")}
+              {movimentosDoMes.length ? (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {movimentosDoMes.length} movimento(s) · entrou {moneyFin(entrouNoMes)} · saiu {moneyFin(saiuNoMes)} ·{" "}
+                  {entrouNoMes - saiuNoMes >= 0 ? "guardou" : "usou"} {moneyFin(Math.abs(entrouNoMes - saiuNoMes))}
+                  {mesDaLista ? ` em ${rotuloMes(mesDaLista)}` : " no total"}
+                </span>
+              ) : null}
+            </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
-            {financeiro.savingsMoves.length ? (
-              financeiro.savingsMoves.slice(0, 60).map((move) => (
+            {movimentosDoMes.length ? (
+              movimentosDoMes.slice(0, mesDaLista ? undefined : 200).map((move) => (
                 <div key={move.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
                   <div className="flex min-w-0 items-center gap-2.5">
                     {move.direction === "ENTRADA" ? (
@@ -472,7 +499,9 @@ export function FinanceiroPoupancaPage() {
               ))
             ) : (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                Sem movimentos ainda. Dica: comece com um "Saldo inicial" com o valor atual do cofre.
+                {financeiro.savingsMoves.length
+                  ? `Sem movimentos em ${rotuloMes(mesDaLista)}. Escolha outro mês ou "Todos os meses".`
+                  : 'Sem movimentos ainda. Dica: comece com um "Saldo inicial" com o valor atual do cofre.'}
               </p>
             )}
           </CardContent>
