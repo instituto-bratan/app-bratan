@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { BrainCircuit, Eye, EyeOff, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
@@ -23,6 +23,7 @@ import { FechamentoContabilCard } from "./FechamentoContabilCard";
 import { ProvaDoDinheiroCard } from "./ProvaDoDinheiroCard";
 import { useFinanceiro } from "./useFinanceiro";
 import { abaP12 } from "./exportContabilidade";
+import { abaContasAPagar } from "./contabilidadeXlsx";
 import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
 
 const metasStorageKey = "app-bratan-fin-metas-config-v1";
@@ -57,10 +58,30 @@ export function FinanceiroP12Page() {
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
-  // Mandar a P12 (09/09/2026, Lucas): Excel ou PDF do que está na tela — mesmo
-  // ano, mesmo mês filtrado, mesma opção "só categorias com valor".
-  const abaDaTela = useMemo(() => abaP12(matrix, { meses: visibleMonths, soComValor: hideEmpty }), [matrix, visibleMonths, hideEmpty]);
-  const arquivoP12 = monthFilter === null ? `P12-${year}` : `P12-${year}-${String(monthFilter + 1).padStart(2, "0")}`;
+  // Mandar a P12 (09/09/2026, Lucas: "mas é por mês também"): seletor próprio
+  // ao lado do botão — "Ano inteiro" (12 colunas) ou um mês. Por mês saem DUAS
+  // abas: a P12 daquele mês (categoria · mês · anual) e os lançamentos do mês
+  // (a mesma planilha de contas a pagar da contabilidade), para o contador ver
+  // de onde veio cada número. Acompanha o filtro da tela, mas pode ser trocado.
+  const [mesExport, setMesExport] = useState<number | "ANO">(monthFilter ?? "ANO");
+  useEffect(() => setMesExport(monthFilter ?? "ANO"), [monthFilter]);
+  const abasExport = useMemo(() => {
+    if (mesExport === "ANO") return [abaP12(matrix, { meses: null, soComValor: hideEmpty })];
+    const monthKey = `${year}-${String(mesExport + 1).padStart(2, "0")}`;
+    return [
+      abaP12(matrix, { meses: [mesExport], soComValor: hideEmpty }),
+      abaContasAPagar({
+        sales: financeiro.sales,
+        expenses: financeiro.expenses,
+        categories: financeiro.categories,
+        savingsMoves: financeiro.savingsMoves,
+        crediarioProfits: financeiro.crediarioProfits,
+        purchases: financeiro.purchases,
+        monthKey,
+      }),
+    ];
+  }, [matrix, mesExport, hideEmpty, year, financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.savingsMoves, financeiro.crediarioProfits, financeiro.purchases]);
+  const arquivoP12 = mesExport === "ANO" ? `P12-${year}` : `P12-${year}-${String(mesExport + 1).padStart(2, "0")}-${p12MonthLabels[mesExport]}`;
 
   // Resumo do mês: usa o mês filtrado ou, no "Ano inteiro", o mês atual.
   // Metas vêm da mesma config do controle de Metas (salva localmente).
@@ -139,7 +160,23 @@ export function FinanceiroP12Page() {
               <Button type="button" variant="outline" size="sm" onClick={() => setYear((value) => value - 1)}>{year - 1}</Button>
               <Badge variant="outline" className="px-3 py-1.5 text-sm">{year}</Badge>
               <Button type="button" variant="outline" size="sm" onClick={() => setYear((value) => value + 1)}>{year + 1}</Button>
-              <ExportarPlanilhaBotoes rotulo="Mandar" arquivo={arquivoP12} abas={[abaDaTela]} className="ml-2" />
+              <span className="ml-2 inline-flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">Mandar</span>
+                <select
+                  value={mesExport === "ANO" ? "ANO" : String(mesExport)}
+                  onChange={(event) => setMesExport(event.target.value === "ANO" ? "ANO" : Number(event.target.value))}
+                  className="h-8 rounded-md border border-brand-oliva/25 bg-white/80 px-2 text-xs font-semibold text-brand-tinta"
+                  aria-label="Período da P12 para mandar"
+                >
+                  <option value="ANO">Ano inteiro {year}</option>
+                  {p12MonthLabels.map((label, index) => (
+                    <option key={label} value={index}>
+                      {label}/{year}
+                    </option>
+                  ))}
+                </select>
+                <ExportarPlanilhaBotoes arquivo={arquivoP12} abas={abasExport} />
+              </span>
             </div>
           </div>
         </motion.section>
