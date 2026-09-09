@@ -162,8 +162,13 @@ test("P12 para mandar: faturamento, grupos com categorias, total operacional, ob
   assert.equal(aba.totalRow[0], "LUCRO OPERACIONAL DO MÊS");
   assert.equal(aba.totalRow[13], 290230.17);
   const umMes = exp.abaP12(matrix, { meses: [7], soComValor: false });
-  assert.deepEqual(j(umMes.columns.map((c) => c.header)), ["CATEGORIA", "AGO", "ANUAL"]);
+  assert.deepEqual(j(umMes.columns.map((c) => c.header)), ["CATEGORIA", "AGO/2026"], "por mês NÃO tem coluna anual (Lucas, 09/09)");
+  assert.equal(umMes.rows.length, umMes.rows.filter((l) => l.length === 2).length, "todas as linhas só com categoria + mês");
+  assert.equal(umMes.totalRow.length, 2);
+  assert.equal(umMes.totalRow[1], 210230.17, "lucro do mês");
   assert.ok(umMes.rows.some((l) => l[0].trim() === "Categoria vazia"), "com soComValor=false a vazia aparece");
+  const mesSemAluguel = exp.abaP12({ ...matrix, groups: [{ ...matrix.groups[0], rows: [matrix.groups[0].rows[0], { category: cat("c9", "Só em agosto", "FIXAS"), months: meses({ 7: 10 }), yearTotal: 10 }] }] }, { meses: [8], soComValor: true });
+  assert.ok(!mesSemAluguel.rows.some((l) => l[0].trim() === "Só em agosto"), "no mês, categoria sem valor no mês fica de fora mesmo tendo valor no ano");
   assert.match(umMes.title, /AGO\/2026/);
   const html = imp.htmlDasPlanilhas("P12", [aba]);
   assert.ok(html.includes('class="larga"'), "14 colunas → fonte menor no PDF");

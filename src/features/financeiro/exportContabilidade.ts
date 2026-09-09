@@ -269,18 +269,23 @@ const ouVazio = (valor: number) => (Math.abs(valor) > 0.005 ? cents(valor) : nul
 export function abaP12(matrix: P12Matrix, opcoes: OpcoesP12 = {}): XlsxSheet {
   const meses = opcoes.meses && opcoes.meses.length ? opcoes.meses : Array.from({ length: 12 }, (_, i) => i);
   const soComValor = opcoes.soComValor ?? true;
+  // Mandar por mês (Lucas, 09/09): a planilha do mês mostra SÓ o mês — sem a
+  // coluna anual. A anual só aparece quando saem os 12 meses.
+  const anoInteiro = meses.length === 12;
+  const somaMeses = (porMes: (mes: number) => number) => meses.reduce((total, mes) => total + porMes(mes), 0);
   const linha = (rotulo: string, porMes: (mes: number) => number, ano: number): (string | number | null)[] => [
     rotulo,
     ...meses.map((mes) => ouVazio(porMes(mes))),
-    ouVazio(ano),
+    ...(anoInteiro ? [ouVazio(ano)] : []),
   ];
   const rows: XlsxSheet["rows"] = [];
   rows.push(linha("FATURAMENTO BRUTO", (m) => matrix.revenueMonths[m].total, matrix.revenueYear));
   rows.push(linha("Rendimento financeiro (juros)", (m) => matrix.financialIncomeMonths[m], matrix.financialIncomeYear));
   if (matrix.crediarioYear > 0.005) rows.push(linha("Crediário somado ao faturamento", (m) => matrix.crediarioMonths[m], matrix.crediarioYear));
   for (const group of matrix.groups) {
-    const categorias = group.rows.filter((row) => !soComValor || Math.abs(row.yearTotal) > 0.005);
-    if (soComValor && categorias.length === 0 && Math.abs(group.yearTotal) < 0.005) continue;
+    // "Só categorias com valor" olha o período mostrado: no mês, esconde quem não teve valor no mês.
+    const categorias = group.rows.filter((row) => !soComValor || Math.abs(somaMeses((m) => row.months[m].total)) > 0.005);
+    if (soComValor && categorias.length === 0 && Math.abs(somaMeses((m) => group.months[m].total)) < 0.005) continue;
     rows.push(linha(group.label.toUpperCase(), (m) => group.months[m].total, group.yearTotal));
     for (const row of categorias) rows.push(linha(`   ${row.category.name}`, (m) => row.months[m].total, row.yearTotal));
   }
@@ -297,8 +302,8 @@ export function abaP12(matrix: P12Matrix, opcoes: OpcoesP12 = {}): XlsxSheet {
     subtitle: `Lucro operacional = faturamento + juros${matrix.crediarioYear > 0.005 ? " + crediário reconhecido" : ""} − despesas operacionais (obra e aportes ficam fora). Competência pelo vencimento.${soComValor ? " Só categorias com valor." : ""}`,
     columns: [
       { header: "CATEGORIA", width: 46 },
-      ...meses.map((m) => ({ header: p12MonthLabels[m].toUpperCase(), width: 14, kind: "dinheiro" as const })),
-      { header: "ANUAL", width: 16, kind: "dinheiro" as const },
+      ...meses.map((m) => ({ header: anoInteiro ? p12MonthLabels[m].toUpperCase() : `${p12MonthLabels[m].toUpperCase()}/${matrix.year}`, width: anoInteiro ? 14 : 18, kind: "dinheiro" as const })),
+      ...(anoInteiro ? [{ header: "ANUAL", width: 16, kind: "dinheiro" as const }] : []),
     ],
     rows,
     totalRow: linha("LUCRO OPERACIONAL DO MÊS", (m) => matrix.profitMonths[m], matrix.profitYear),
