@@ -22,6 +22,8 @@ import { ResumoMesCard } from "./ResumoMesCard";
 import { FechamentoContabilCard } from "./FechamentoContabilCard";
 import { ProvaDoDinheiroCard } from "./ProvaDoDinheiroCard";
 import { useFinanceiro } from "./useFinanceiro";
+import { abaP12 } from "./exportContabilidade";
+import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
 
 const metasStorageKey = "app-bratan-fin-metas-config-v1";
 
@@ -55,6 +57,10 @@ export function FinanceiroP12Page() {
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
+  // Mandar a P12 (09/09/2026, Lucas): Excel ou PDF do que está na tela — mesmo
+  // ano, mesmo mês filtrado, mesma opção "só categorias com valor".
+  const abaDaTela = useMemo(() => abaP12(matrix, { meses: visibleMonths, soComValor: hideEmpty }), [matrix, visibleMonths, hideEmpty]);
+  const arquivoP12 = monthFilter === null ? `P12-${year}` : `P12-${year}-${String(monthFilter + 1).padStart(2, "0")}`;
 
   // Resumo do mês: usa o mês filtrado ou, no "Ano inteiro", o mês atual.
   // Metas vêm da mesma config do controle de Metas (salva localmente).
@@ -129,10 +135,11 @@ export function FinanceiroP12Page() {
                 Nada aqui é digitado: se um número parecer errado, corrija o lançamento de origem.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => setYear((value) => value - 1)}>{year - 1}</Button>
               <Badge variant="outline" className="px-3 py-1.5 text-sm">{year}</Badge>
               <Button type="button" variant="outline" size="sm" onClick={() => setYear((value) => value + 1)}>{year + 1}</Button>
+              <ExportarPlanilhaBotoes rotulo="Mandar" arquivo={arquivoP12} abas={[abaDaTela]} className="ml-2" />
             </div>
           </div>
         </motion.section>

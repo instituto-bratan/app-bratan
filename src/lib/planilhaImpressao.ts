@@ -32,7 +32,7 @@ function tabelaHtml(aba: XlsxSheet) {
   return `<section>
   ${aba.title ? `<h1>${escape(aba.title)}</h1>` : ""}
   ${aba.subtitle ? `<p class="sub">${escape(aba.subtitle)}</p>` : ""}
-  <table><thead><tr>${cabecalho}</tr></thead><tbody>${corpo}</tbody>${total ? `<tfoot>${total}</tfoot>` : ""}</table>
+  <table${aba.columns.length > 9 ? ' class="larga"' : ""}><thead><tr>${cabecalho}</tr></thead><tbody>${corpo}</tbody>${total ? `<tfoot>${total}</tfoot>` : ""}</table>
 </section>`;
 }
 
@@ -52,6 +52,8 @@ export function htmlDasPlanilhas(titulo: string, abas: XlsxSheet[]) {
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tbody tr:nth-child(even) td { background: #f4f6ef; }
   tfoot td { font-weight: 700; background: #e6ebd9; }
+  table.larga { font-size: 9px; }
+  table.larga th, table.larga td { padding: 3px 4px; }
   td.vazio { text-align: center; color: #7a8570; padding: 14px; }
   .barra { position: fixed; top: 8px; right: 12px; display: flex; gap: 8px; }
   .barra button { font: 600 12px inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid #3b4a2f; background: #3b4a2f; color: #fff; cursor: pointer; }

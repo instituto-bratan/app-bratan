@@ -25,10 +25,12 @@ import {
   invoiceTaxes,
   monthKeyLabel,
   saleItemTypeLabels,
+  p12MonthLabels,
   type FinInvoice,
   type FinInvoiceTaxClass,
   type FinSale,
   type FinSavingsMove,
+  type P12Matrix,
 } from "./financeiroData";
 import { naturezaDoItem } from "./naturezaItem";
 import { PLANO_VALOR_MINIMO, valorTratamento, type PdcaResumo, type PdcaStatus } from "./pdcaData";
@@ -251,3 +253,54 @@ export function abaEntradaPoupanca(savingsMoves: FinSavingsMove[], monthKey: str
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// 4. P12 — a matriz do ano (categoria × mês), igual à tela, para mandar.
+// ---------------------------------------------------------------------------
+export type OpcoesP12 = {
+  /** Índices dos meses (0–11) a mostrar; null = os 12. */
+  meses?: number[] | null;
+  /** Esconde categoria sem valor no ano (o mesmo botão "Só categorias com valor"). */
+  soComValor?: boolean;
+};
+
+const ouVazio = (valor: number) => (Math.abs(valor) > 0.005 ? cents(valor) : null);
+
+export function abaP12(matrix: P12Matrix, opcoes: OpcoesP12 = {}): XlsxSheet {
+  const meses = opcoes.meses && opcoes.meses.length ? opcoes.meses : Array.from({ length: 12 }, (_, i) => i);
+  const soComValor = opcoes.soComValor ?? true;
+  const linha = (rotulo: string, porMes: (mes: number) => number, ano: number): (string | number | null)[] => [
+    rotulo,
+    ...meses.map((mes) => ouVazio(porMes(mes))),
+    ouVazio(ano),
+  ];
+  const rows: XlsxSheet["rows"] = [];
+  rows.push(linha("FATURAMENTO BRUTO", (m) => matrix.revenueMonths[m].total, matrix.revenueYear));
+  rows.push(linha("Rendimento financeiro (juros)", (m) => matrix.financialIncomeMonths[m], matrix.financialIncomeYear));
+  if (matrix.crediarioYear > 0.005) rows.push(linha("Crediário somado ao faturamento", (m) => matrix.crediarioMonths[m], matrix.crediarioYear));
+  for (const group of matrix.groups) {
+    const categorias = group.rows.filter((row) => !soComValor || Math.abs(row.yearTotal) > 0.005);
+    if (soComValor && categorias.length === 0 && Math.abs(group.yearTotal) < 0.005) continue;
+    rows.push(linha(group.label.toUpperCase(), (m) => group.months[m].total, group.yearTotal));
+    for (const row of categorias) rows.push(linha(`   ${row.category.name}`, (m) => row.months[m].total, row.yearTotal));
+  }
+  rows.push(linha("TOTAL DESPESAS OPERACIONAIS", (m) => matrix.totalExpensesMonths[m], matrix.totalExpensesYear));
+  if (matrix.capexYear > 0.005) rows.push(linha("Obra / investimento (pago pelo cofre — fora do lucro)", (m) => matrix.capexMonths[m], matrix.capexYear));
+  const aportesAno = matrix.savingsInYear - matrix.financialIncomeYear;
+  if (aportesAno > 0.005) {
+    rows.push(linha("Aportes / entradas no cofre (tesouraria — fora do lucro)", (m) => matrix.savingsInMonths[m] - matrix.financialIncomeMonths[m], aportesAno));
+  }
+  const periodo = meses.length === 12 ? String(matrix.year) : `${meses.map((m) => p12MonthLabels[m]).join(", ")}/${matrix.year}`;
+  return {
+    name: `P12 ${matrix.year}`.slice(0, 31),
+    title: `P12 — INSTITUTO BRATAN · ${periodo.toUpperCase()}`,
+    subtitle: `Lucro operacional = faturamento + juros${matrix.crediarioYear > 0.005 ? " + crediário reconhecido" : ""} − despesas operacionais (obra e aportes ficam fora). Competência pelo vencimento.${soComValor ? " Só categorias com valor." : ""}`,
+    columns: [
+      { header: "CATEGORIA", width: 46 },
+      ...meses.map((m) => ({ header: p12MonthLabels[m].toUpperCase(), width: 14, kind: "dinheiro" as const })),
+      { header: "ANUAL", width: 16, kind: "dinheiro" as const },
+    ],
+    rows,
+    totalRow: linha("LUCRO OPERACIONAL DO MÊS", (m) => matrix.profitMonths[m], matrix.profitYear),
+  };
+}

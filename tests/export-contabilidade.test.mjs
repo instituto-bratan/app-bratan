@@ -131,3 +131,40 @@ test("PDF em formato de planilha: mesmos números, moeda e data em pt-BR, linha 
   const vazia = imp.htmlDasPlanilhas("x", [exp.abaControleImpostos([], "CONSULTA", MES)]);
   assert.ok(vazia.includes("Sem lançamentos no período."));
 });
+
+test("P12 para mandar: faturamento, grupos com categorias, total operacional, obra fora e lucro na linha final — igual à tela", () => {
+  const meses = (valores) => Array.from({ length: 12 }, (_, i) => ({ total: valores[i] || 0, count: valores[i] ? 1 : 0 }));
+  const nums = (valores) => Array.from({ length: 12 }, (_, i) => valores[i] || 0);
+  const cat = (id, name, groupKey, isCapex = false) => ({ id, name, groupKey, sortOrder: 1, isCapex, active: true });
+  const matrix = {
+    year: 2026,
+    revenueMonths: meses({ 7: 300000, 8: 120000 }), revenueYear: 420000,
+    savingsInMonths: nums({ 7: 5230.17 }), savingsInYear: 5230.17,
+    financialIncomeMonths: nums({ 7: 230.17 }), financialIncomeYear: 230.17,
+    groups: [
+      { groupKey: "FIXAS", label: "Despesas fixas", months: meses({ 7: 90000, 8: 40000 }), yearTotal: 130000, rows: [
+        { category: cat("c1", "Aluguel", "FIXAS"), months: meses({ 7: 50000, 8: 25000 }), yearTotal: 75000 },
+        { category: cat("c2", "Energia", "FIXAS"), months: meses({ 7: 40000, 8: 15000 }), yearTotal: 55000 },
+        { category: cat("c3", "Categoria vazia", "FIXAS"), months: meses({}), yearTotal: 0 },
+      ] },
+    ],
+    totalExpensesMonths: nums({ 7: 90000, 8: 40000 }), totalExpensesYear: 130000,
+    capexRows: [], capexMonths: nums({ 7: 54005.45 }), capexYear: 54005.45,
+    crediarioMonths: nums({}), crediarioYear: 0,
+    profitMonths: nums({ 7: 210230.17, 8: 80000 }), profitYear: 290230.17,
+  };
+  const aba = exp.abaP12(matrix, { meses: null, soComValor: true });
+  assert.equal(aba.columns.length, 14, "categoria + 12 meses + anual");
+  assert.deepEqual(j(aba.rows.map((l) => l[0].trim())), ["FATURAMENTO BRUTO", "Rendimento financeiro (juros)", "DESPESAS FIXAS", "Aluguel", "Energia", "TOTAL DESPESAS OPERACIONAIS", "Obra / investimento (pago pelo cofre — fora do lucro)", "Aportes / entradas no cofre (tesouraria — fora do lucro)"], "categoria vazia escondida; sem crediário");
+  assert.equal(aba.rows[0][8], 300000, "agosto na coluna certa (índice 7 → coluna 8)");
+  assert.equal(aba.rows[0][13], 420000);
+  assert.equal(aba.rows[7][8], 5000, "aportes = entradas no cofre − juros");
+  assert.equal(aba.totalRow[0], "LUCRO OPERACIONAL DO MÊS");
+  assert.equal(aba.totalRow[13], 290230.17);
+  const umMes = exp.abaP12(matrix, { meses: [7], soComValor: false });
+  assert.deepEqual(j(umMes.columns.map((c) => c.header)), ["CATEGORIA", "AGO", "ANUAL"]);
+  assert.ok(umMes.rows.some((l) => l[0].trim() === "Categoria vazia"), "com soComValor=false a vazia aparece");
+  assert.match(umMes.title, /AGO\/2026/);
+  const html = imp.htmlDasPlanilhas("P12", [aba]);
+  assert.ok(html.includes('class="larga"'), "14 colunas → fonte menor no PDF");
+});
