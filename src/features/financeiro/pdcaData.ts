@@ -56,7 +56,7 @@ const cents = (valor: number) => Math.round(valor * 100) / 100;
 export const PLANO_VALOR_MINIMO = 6997;
 
 /** Plano + tratamento fechado. Medicação avulsa fica de fora (não é decisão de adesão). */
-function valorTratamento(sale: FinSale) {
+export function valorTratamento(sale: FinSale) {
   return sale.items
     .filter((item) => {
       const natureza = naturezaDoItem(item);
@@ -66,7 +66,7 @@ function valorTratamento(sale: FinSale) {
 }
 
 /** A consulta em si — sem sinal, sem exame solto. */
-function valorConsulta(sale: FinSale) {
+export function valorConsulta(sale: FinSale) {
   return sale.items.filter((item) => naturezaDoItem(item) === "CONSULTA").reduce((soma, item) => soma + (item.amount || 0), 0);
 }
 

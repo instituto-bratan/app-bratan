@@ -35,6 +35,8 @@ import {
   type PendingInvoiceSale,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
+import { abaControleImpostos } from "./exportContabilidade";
+import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
 
 const typeBadgeVariant: Record<FinInvoiceType, "gold" | "muted" | "outline"> = {
   CONSULTA: "gold",
@@ -699,6 +701,27 @@ export function FinanceiroImpostosPage() {
         </Card>
 
         {/* O livro do mês — as duas "abas" da planilha, derivadas e sem fórmula quebrada. */}
+        {/* Exportação para a contabilidade (09/09): um documento por classe, no formato CONTROLE DE IMPOSTOS. */}
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-3 py-4">
+            <div className="min-w-48 flex-1">
+              <p className="text-sm font-semibold text-brand-musgo">Controle de impostos para a contabilidade</p>
+              <p className="text-xs text-muted-foreground">
+                Dois documentos separados, no formato da planilha antiga (emissão · comanda · nº · valor · ISS · PIS · COFINS · IRPJ · CSLL · total).
+              </p>
+            </div>
+            <ExportarPlanilhaBotoes
+              rotulo="Consulta"
+              arquivo={`CONTROLE-DE-IMPOSTOS-CONSULTA-${month}`}
+              abas={[abaControleImpostos(financeiro.invoices, "CONSULTA", month)]}
+            />
+            <ExportarPlanilhaBotoes
+              rotulo="Tratamento"
+              arquivo={`CONTROLE-DE-IMPOSTOS-TRATAMENTO-${month}`}
+              abas={[abaControleImpostos(financeiro.invoices, "PROCEDIMENTO", month)]}
+            />
+          </CardContent>
+        </Card>
         <LivroClasse
           title={`Notas de ${invoiceTaxClassLabels.CONSULTA} · ${month.split("-").reverse().join("/")}`}
           invoices={consultaInvoices}

@@ -11,6 +11,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { buildPdca, type PdcaStatus } from "./pdcaData";
+import { abasPdcaContabilidade } from "./exportContabilidade";
+import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
 import {
   deleteRemoteFinPdcaMark,
   listRemoteFinPdcaMarks,
@@ -99,6 +101,11 @@ export function FinanceiroPdcaPage() {
   const rows = pdca.rows;
 
   const totalTratamentos = rows.reduce((sum, row) => sum + row.tratamento, 0);
+  // Exportação para a contabilidade (09/09): só tratamentos, no formato da planilha antiga.
+  const abasContabilidade = useMemo(
+    () => abasPdcaContabilidade({ pdca, sales: financeiro.sales, monthKey: month }),
+    [pdca, financeiro.sales, month],
+  );
   const aderiram = rows.filter((row) => row.status === "ADERIU" || row.status === "ADERIU_DEPOIS");
   const naoAderiram = rows.filter((row) => row.status === "NAO_ADERIU");
   const decididos = rows.length;
@@ -139,7 +146,10 @@ export function FinanceiroPdcaPage() {
                 Consulta de hoje pode ser adesão de amanhã — o funil respeita o tempo de decisão do paciente.
               </p>
             </div>
-            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" aria-label="Mês" />
+            <div className="flex flex-col items-start gap-2 lg:items-end">
+              <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" aria-label="Mês" />
+              <ExportarPlanilhaBotoes rotulo="Contabilidade" arquivo={`PDCA-DR-DANIEL-${month}`} abas={abasContabilidade} />
+            </div>
           </div>
         </motion.section>
 

@@ -30,6 +30,8 @@ import {
 } from "./financeiroData";
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
+import { abaEntradaPoupanca } from "./exportContabilidade";
+import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
 
 // Tipos oferecidos no formulário (na ordem de uso mais comum).
 const KIND_OPTIONS: { value: FinSavingsKind; hint: string }[] = [
@@ -212,6 +214,11 @@ export function FinanceiroPoupancaPage() {
                     purchases: financeiro.purchases,
                     monthKey: mesDaPlanilha,
                   }}
+                />
+                <ExportarPlanilhaBotoes
+                  rotulo="Entrada × obra"
+                  arquivo={`ENTRADA-INSTITUTO-BRATAN-POUPANCA-${mesDaPlanilha}`}
+                  abas={[abaEntradaPoupanca(financeiro.savingsMoves, mesDaPlanilha)]}
                 />
               </div>
             </div>
