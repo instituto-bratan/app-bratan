@@ -308,7 +308,10 @@ export function ConciergeNpsPage() {
               </p>
             </div>
             <span className="flex items-center gap-2">
-              <Input type="month" value={monthKey} onChange={(event) => setMonthKey(event.target.value || hoje.slice(0, 7))} className="w-40" aria-label="Mês" />
+              <Input type="month" value={monthKey} onChange={(event) => setMonthKey(event.target.value)}
+                                                   onBlur={() => {
+                                                     if (!monthKey) setMonthKey(hoje.slice(0, 7));
+                                                   }} className="w-40" aria-label="Mês" />
               <Button type="button" variant="outline" onClick={imprimir}>
                 <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir (dia 5)
               </Button>

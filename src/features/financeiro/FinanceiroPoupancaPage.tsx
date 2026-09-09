@@ -195,10 +195,18 @@ export function FinanceiroPoupancaPage() {
                   saiu de poupança, que no caso é da obra") e a única forma de
                   chegar nela era descer o Painel do Mês até o fim. */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                {/* Enquanto se digita num campo de mês o navegador devolve "" até o
+                    valor ficar completo; repor o mês atual no onChange apagava o que
+                    a pessoa digitava (09/09/2026, Lucas: "não dá para trocar o mês").
+                    O fallback só entra ao sair do campo vazio. Mesma correção em
+                    Compras, Metas, Crediário e NPS. */}
                 <Input
                   type="month"
                   value={mesDaPlanilha}
-                  onChange={(event) => setMesDaPlanilha(event.target.value || now.slice(0, 7))}
+                  onChange={(event) => setMesDaPlanilha(event.target.value)}
+                  onBlur={() => {
+                    if (!mesDaPlanilha) setMesDaPlanilha(now.slice(0, 7));
+                  }}
                   className="h-9 w-40"
                   aria-label="Mês da planilha do cofre"
                 />

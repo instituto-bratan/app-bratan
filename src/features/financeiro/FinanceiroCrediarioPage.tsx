@@ -325,7 +325,10 @@ export function FinanceiroCrediarioPage() {
             <Input
               type="month"
               value={monthKey}
-              onChange={(event) => setMonthKey(event.target.value || todayISO().slice(0, 7))}
+              onChange={(event) => setMonthKey(event.target.value)}
+              onBlur={() => {
+                if (!monthKey) setMonthKey(todayISO().slice(0, 7));
+              }}
               className="w-44"
               aria-label="Mês do caixa"
             />
