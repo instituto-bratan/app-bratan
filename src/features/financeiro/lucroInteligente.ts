@@ -18,8 +18,9 @@
 //   · médico executor: a coluna S da planilha de precificação, "Margem Líquida
 //     Médico" (Lucas, 02/09: "50% de quê? está na coluna S") = 50% do LUCRO
 //     BRUTO DO PRODUTO — preço − imposto/cartão − comissão comercial −
-//     consumíveis − repasse nutri/psi − custo hora-sala. Programa de R$ 6.997 →
-//     lucro bruto 5.030,40 → R$ 2.515,20 para o médico (36% do preço). O
+//     consumíveis − repasse nutri/psi − custo hora-sala. Plano de R$ 6.997 →
+//     lucro bruto 4.890,39 (planilha OFICIAL de 02/09, comissão 3%) → R$ 2.445,20
+//     para o médico (35% do preço). O
 //     catálogo abaixo guarda o lucro bruto de cada produto da tabela oficial;
 //     o item da comanda é reconhecido pela descrição e pelo preço.
 //   · operacional = o que sobra (pode ficar negativo num dia fraco).
