@@ -110,7 +110,7 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")).nome, "Tirzepatida · 31 a 49 un", "entre as tirzepatidas, o preço mais próximo decide");
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 300.77);
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1990, "")), 1265.6, "1.990 só pode ser Ferinject: preço decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 825.04, "valor fora da tabela: 1.000 ÷ 590 ≈ 2 doses × coluna P 412,52 (o item vale o que está na tabela)");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 664.72, "valor fora da tabela = planilha com F = 1.000: 1.000 × (1 − 7,93% − 3%) − 2 doses × custo fixo 113,00 (consumível + poltrona)");
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 800, "Soro especial")), 559.14, "produto desconhecido: fração do Plano (69,9%)");
   assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 2500, "")), 1990.42, "consulta avulsa Pix");
   assert.equal(li.lucroBrutoDoItem(item("SINAL", 500, "")), 393.02);
@@ -150,7 +150,8 @@ test("explicação item a item (10/09): a parte do Dr. Daniel abre comanda por c
   assert.equal(plano.precoTabela, 6997);
   assert.equal(plano.lucroBrutoTabela, 4890.39);
   assert.equal(plano.quantidade, 1, "4.846 num Plano de 6.997 = 1 Plano");
-  assert.equal(plano.lucroBruto, 4890.39, "o item vale o que está na tabela: coluna P cheia, mesmo com 4.846 pagos hoje");
+  assert.equal(plano.lucroBruto, 3090.65, "planilha com F = 4.846: 4.846 × (1 − 13,33% − 3%) − 964 fixos (660 nutri + 304 sala)");
+  assert.equal(plano.custoFixo, 964, "custo fixo do Plano = 6.997 × 0,8367 − 4.890,39");
   assert.equal(plano.parteMedico, Math.round(plano.lucroBruto * 50) / 100);
   const nutri = exp.comandas[1].itens[3];
   assert.equal(nutri.reconhecido, "não é do médico");
@@ -203,7 +204,7 @@ test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fec
   // É o nome exato que o Lucro Inteligente lê primeiro.
   assert.equal(li.produtoDoItem({ itemType: "CONSULTA", amount: 1500, description: "Consulta Black (5% de desconto em tratamentos) — Pix" }).nome, "Consulta Black (5% de desconto em tratamentos) — Pix");
   assert.equal(li.lucroBrutoDoItem(cheio[0]), 4890.39, "o item gravado pelo Fechamento cai na coluna P do Plano");
-  assert.equal(li.lucroBrutoDoItem(cheio[2]), 997.36, "2 vitaminas D: 498,68 × 2");
+  assert.equal(li.lucroBrutoDoItem(cheio[2]), 997.37, "2 vitaminas D pelo preço cheio: 1.180 × 0,8907 − 2 × 26,83 fixos (= 2 × 498,68, a menos de 1 centavo de arredondamento)");
   assert.equal(cat.itensDaComanda([], 1000, parse, criarId).length, 0, "sem produto escolhido, o fechamento segue com o item único de antes");
   assert.ok(cat.secoesDoCatalogo().length >= 6, "o seletor agrupa por seção da planilha");
   assert.equal(cat.secoesDoCatalogo()[0].secao, "Plano de Acompanhamento");

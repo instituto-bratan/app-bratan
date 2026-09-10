@@ -38,7 +38,7 @@
 // antecipação (TAD) se a clínica puxar antes dos 31 dias; a decisão é da
 // clínica, e o app mostra quanto custaria puxar hoje.
 import { createFinId, expenseEhCapex, crediarioProfitOfMonth, saleTotal, type FinCategory, type FinCrediarioProfit, type FinExpense, type FinReconciliation, type FinReconciliationStatus, type FinSale, type FinSaleItem, type FinSaleItemType } from "./financeiroData";
-import { itemEhDoMedico, lucroBrutoDoItem, produtoDoItem, quantidadeDoItem } from "./catalogoPrecificacao";
+import { custoFixoDoProduto, itemEhDoMedico, lucroBrutoDoItem, produtoDoItem, quantidadeDoItem } from "./catalogoPrecificacao";
 import {
   agendaRecebiveis,
   ajustaParaDiaUtil,
@@ -210,7 +210,11 @@ export type ItemExplicado = {
   lucroBrutoTabela: number | null;
   /** Quantas unidades da tabela o item representa (cobrado ÷ preço, arredondado, mínimo 1). */
   quantidade: number | null;
-  /** Coluna P do item = lucro bruto da tabela × quantidade. O valor pago no dia não altera. */
+  /** Imposto/cartão + comissão, como fração do valor (colunas G e H da planilha). */
+  taxaVariavel: number | null;
+  /** Consumíveis + repasse + sala por unidade (colunas K, L e O), que não acompanham o preço. */
+  custoFixo: number | null;
+  /** Coluna P com o valor pago no lugar do preço: cobrado × (1 − taxa) − custo fixo × quantidade. */
   lucroBruto: number;
   /** A parte do médico = lucroBruto × percentual da régua. */
   parteMedico: number;
@@ -229,13 +233,13 @@ export function explicarItemDoMedico(item: FinSaleItem, percentual: number): Ite
   const cobrado = round2(item.amount || 0);
   const base = { descricao: (item.description || "").trim() || saleItemTypeLabelFallback(item.itemType), itemType: item.itemType, cobrado };
   if (!itemEhDoMedico(item.itemType) || cobrado <= 0) {
-    return { ...base, reconhecido: "não é do médico", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, lucroBruto: 0, parteMedico: 0 };
+    return { ...base, reconhecido: "não é do médico", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, taxaVariavel: null, custoFixo: null, lucroBruto: 0, parteMedico: 0 };
   }
   const produto = produtoDoItem(item);
   const lucroBruto = lucroBrutoDoItem(item);
   const parteMedico = round2((lucroBruto * percentual) / 100);
   if (!produto) {
-    return { ...base, reconhecido: "padrão do tipo", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, lucroBruto, parteMedico };
+    return { ...base, reconhecido: "padrão do tipo", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, taxaVariavel: null, custoFixo: null, lucroBruto, parteMedico };
   }
   const descricao = (item.description || "").trim();
   const reconhecido: ItemExplicado["reconhecido"] =
@@ -247,6 +251,8 @@ export function explicarItemDoMedico(item: FinSaleItem, percentual: number): Ite
     precoTabela: produto.preco,
     lucroBrutoTabela: produto.lucroBruto,
     quantidade: quantidadeDoItem(cobrado, produto.preco),
+    taxaVariavel: Math.round((produto.imposto + produto.comissao) * 10000) / 10000,
+    custoFixo: custoFixoDoProduto(produto),
     lucroBruto,
     parteMedico,
   };

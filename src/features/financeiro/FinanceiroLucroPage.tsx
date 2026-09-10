@@ -561,9 +561,9 @@ export function FinanceiroLucroPage() {
             <p className="mt-2 text-sm text-brand-tinta">
               Cada item da comanda é procurado na tabela de preços (pelo nome exato que o Fechamento grava; se não, por palavra-chave ou
               pelo preço). A tabela traz o <strong>lucro bruto do produto</strong> (coluna P: preço − nota fiscal − comissão − custo da
-              sala − material). <strong>O item vale o que está na tabela</strong>: o Plano é R$ 6.997 e o lucro bruto dele é o da coluna P,
-              mesmo que o paciente tenha pago só uma parte hoje. O Dr. Daniel recebe {pct(explicacao.percentual)} desse lucro bruto (coluna S).
-              Itens de nutri, psicóloga e "outro" não entram.
+              sala − material). Se o paciente pagou um valor diferente da tabela, <strong>o valor pago entra no lugar do preço</strong> (coluna F)
+              e a planilha recalcula: imposto e comissão acompanham o valor pago; consumíveis, repasse e sala ficam fixos. O Dr. Daniel recebe{" "}
+              {pct(explicacao.percentual)} desse lucro bruto (coluna S). Itens de nutri, psicóloga e "outro" não entram.
             </p>
             {explicacao.comandas.length ? (
               <div className="mt-3 overflow-x-auto">
@@ -598,9 +598,9 @@ export function FinanceiroLucroPage() {
                           <td className="px-2 py-1.5 text-right tabular-nums">{item.quantidade ?? "—"}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">
                             {item.lucroBruto > 0 ? moneyFin(item.lucroBruto) : "—"}
-                            {item.lucroBrutoTabela != null && item.quantidade != null && item.quantidade > 1 ? (
+                            {item.taxaVariavel != null && item.custoFixo != null && item.precoTabela != null && item.quantidade != null && Math.abs(item.cobrado - item.precoTabela * item.quantidade) > 0.005 ? (
                               <span className="block text-[11px] text-muted-foreground">
-                                {moneyFin(item.lucroBrutoTabela)} × {item.quantidade}
+                                {moneyFin(item.cobrado)} − {Math.round(item.taxaVariavel * 10000) / 100}% (imposto + comissão) − {moneyFin(item.custoFixo * item.quantidade)} fixos
                               </span>
                             ) : null}
                           </td>
