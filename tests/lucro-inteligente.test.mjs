@@ -110,7 +110,7 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")).nome, "Tirzepatida · 31 a 49 un", "entre as tirzepatidas, o preço mais próximo decide");
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 300.77);
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1990, "")), 1265.6, "1.990 só pode ser Ferinject: preço decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 699.19, "valor fora da tabela: lucro bruto proporcional (424,40 × 1.000/590)");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 825.04, "valor fora da tabela: 1.000 ÷ 590 ≈ 2 doses × coluna P 412,52 (o item vale o que está na tabela)");
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 800, "Soro especial")), 559.14, "produto desconhecido: fração do Plano (69,9%)");
   assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 2500, "")), 1990.42, "consulta avulsa Pix");
   assert.equal(li.lucroBrutoDoItem(item("SINAL", 500, "")), 393.02);
@@ -149,9 +149,8 @@ test("explicação item a item (10/09): a parte do Dr. Daniel abre comanda por c
   assert.equal(plano.reconhecido, "nome exato");
   assert.equal(plano.precoTabela, 6997);
   assert.equal(plano.lucroBrutoTabela, 4890.39);
-  perto(plano.proporcao, 4846 / 6997, 0.0001, "cobrado ÷ tabela");
-  perto(plano.lucroBruto, 4890.39 * (4846 / 6997), 0.01, "coluna P na proporção do que foi cobrado");
-  assert.equal(plano.lucroBrutoCustoFixo, 2739.39, "alternativa: 4.846 − custo da tabela (6.997 − 4.890,39)");
+  assert.equal(plano.quantidade, 1, "4.846 num Plano de 6.997 = 1 Plano");
+  assert.equal(plano.lucroBruto, 4890.39, "o item vale o que está na tabela: coluna P cheia, mesmo com 4.846 pagos hoje");
   assert.equal(plano.parteMedico, Math.round(plano.lucroBruto * 50) / 100);
   const nutri = exp.comandas[1].itens[3];
   assert.equal(nutri.reconhecido, "não é do médico");
@@ -161,7 +160,7 @@ test("explicação item a item (10/09): a parte do Dr. Daniel abre comanda por c
   const linha = planilha.linhas.find((l) => l.dia === "2026-09-10");
   assert.equal(exp.lucroBruto, linha.lucroBrutoProdutos, "a soma dos itens explicados é o lucro bruto do dia");
   assert.equal(exp.parteMedico, linha.reservado.medicoExecutor, "e a parte do médico é a mesma do cartão 'Dr. Daniel recebe'");
-  assert.ok(exp.parteMedicoCustoFixo < exp.parteMedico, "com custo fixo o valor é menor (é a conta que o Lucas suspeita)");
+  assert.equal(exp.comandas[1].itens[2].quantidade, 3, "1.055,46 em pellets de 336 = 3 pellets");
 });
 
 test("valor fora da grade (10/09): ratearValores fecha os itens exatamente no que o paciente pagou", () => {

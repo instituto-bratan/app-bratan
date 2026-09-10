@@ -142,11 +142,30 @@ export function produtoDoItem(item: { itemType: FinSaleItemType; amount: number;
 }
 
 /** Coluna P da planilha para um item da comanda (proporcional ao valor lançado). Zero para o que não é do médico executor. */
+/**
+ * Quantas unidades do produto o item representa. A comanda só guarda o valor da
+ * linha; o Kanban rateia esse valor quando o paciente paga menos (parcial,
+ * desconto), então "cobrado ÷ preço" arredondado é a melhor leitura: 4.846 num
+ * Plano de 6.997 = 1 Plano; 1.055 em pellets de 336 = 3 pellets. Nunca menos de 1.
+ */
+export function quantidadeDoItem(amount: number, preco: number) {
+  if (preco <= 0 || amount <= 0) return 1;
+  return Math.max(1, Math.round(amount / preco));
+}
+
+/**
+ * O ITEM VALE O QUE ESTÁ NA TABELA (Lucas, 10/09/2026, apresentando: "o plano de
+ * acompanhamento é 6.997; os 50% do Dr. Daniel são todos os itens da coluna S").
+ * Produto reconhecido → coluna P da planilha × quantidade, sem proporção pelo que
+ * foi pago no dia (parcial e desconto não mudam o que o médico recebe pelo
+ * produto). Só o item SEM produto na tabela usa a fração padrão do tipo sobre o
+ * valor cobrado.
+ */
 export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }) {
   const amount = item.amount || 0;
   if (amount <= 0 || !itemEhDoMedico(item.itemType)) return 0;
   const produto = produtoDoItem(item);
-  if (produto) return round2((produto.lucroBruto / produto.preco) * amount);
+  if (produto) return round2(produto.lucroBruto * quantidadeDoItem(amount, produto.preco));
   const fracao = LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
   return fracao ? round2(fracao * amount) : 0;
 }

@@ -38,7 +38,7 @@
 // antecipação (TAD) se a clínica puxar antes dos 31 dias; a decisão é da
 // clínica, e o app mostra quanto custaria puxar hoje.
 import { createFinId, expenseEhCapex, crediarioProfitOfMonth, saleTotal, type FinCategory, type FinCrediarioProfit, type FinExpense, type FinReconciliation, type FinReconciliationStatus, type FinSale, type FinSaleItem, type FinSaleItemType } from "./financeiroData";
-import { itemEhDoMedico, lucroBrutoDoItem, produtoDoItem } from "./catalogoPrecificacao";
+import { itemEhDoMedico, lucroBrutoDoItem, produtoDoItem, quantidadeDoItem } from "./catalogoPrecificacao";
 import {
   agendaRecebiveis,
   ajustaParaDiaUtil,
@@ -208,12 +208,10 @@ export type ItemExplicado = {
   produto: string | null;
   precoTabela: number | null;
   lucroBrutoTabela: number | null;
-  /** cobrado ÷ preço da tabela (1 = preço cheio; 0,69 = 31% de desconto ou parcial). */
-  proporcao: number | null;
-  /** Coluna P do item = lucro bruto da tabela × proporção (regra em uso). */
+  /** Quantas unidades da tabela o item representa (cobrado ÷ preço, arredondado, mínimo 1). */
+  quantidade: number | null;
+  /** Coluna P do item = lucro bruto da tabela × quantidade. O valor pago no dia não altera. */
   lucroBruto: number;
-  /** Alternativa para conferência: cobrado − custo da tabela (preço − col. P), custo fixo. */
-  lucroBrutoCustoFixo: number | null;
   /** A parte do médico = lucroBruto × percentual da régua. */
   parteMedico: number;
 };
@@ -224,36 +222,32 @@ export type ExplicacaoMedicoDia = {
   comandas: ComandaExplicada[];
   cobrado: number;
   lucroBruto: number;
-  lucroBrutoCustoFixo: number;
   parteMedico: number;
-  parteMedicoCustoFixo: number;
 };
 
 export function explicarItemDoMedico(item: FinSaleItem, percentual: number): ItemExplicado {
   const cobrado = round2(item.amount || 0);
   const base = { descricao: (item.description || "").trim() || saleItemTypeLabelFallback(item.itemType), itemType: item.itemType, cobrado };
   if (!itemEhDoMedico(item.itemType) || cobrado <= 0) {
-    return { ...base, reconhecido: "não é do médico", produto: null, precoTabela: null, lucroBrutoTabela: null, proporcao: null, lucroBruto: 0, lucroBrutoCustoFixo: null, parteMedico: 0 };
+    return { ...base, reconhecido: "não é do médico", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, lucroBruto: 0, parteMedico: 0 };
   }
   const produto = produtoDoItem(item);
   const lucroBruto = lucroBrutoDoItem(item);
   const parteMedico = round2((lucroBruto * percentual) / 100);
   if (!produto) {
-    return { ...base, reconhecido: "padrão do tipo", produto: null, precoTabela: null, lucroBrutoTabela: null, proporcao: null, lucroBruto, lucroBrutoCustoFixo: null, parteMedico };
+    return { ...base, reconhecido: "padrão do tipo", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, lucroBruto, parteMedico };
   }
   const descricao = (item.description || "").trim();
   const reconhecido: ItemExplicado["reconhecido"] =
     descricao && produto.nome === descricao ? "nome exato" : produto.padrao && produto.padrao.test(descricao) ? "palavra-chave" : "preço da tabela";
-  const custoTabela = round2(produto.preco - produto.lucroBruto);
   return {
     ...base,
     reconhecido,
     produto: produto.nome,
     precoTabela: produto.preco,
     lucroBrutoTabela: produto.lucroBruto,
-    proporcao: produto.preco > 0 ? Math.round((cobrado / produto.preco) * 10000) / 10000 : null,
+    quantidade: quantidadeDoItem(cobrado, produto.preco),
     lucroBruto,
-    lucroBrutoCustoFixo: round2(cobrado - custoTabela),
     parteMedico,
   };
 }
@@ -278,20 +272,15 @@ export function explicarMedicoDoDia(sales: FinSale[], dia: string, regua: ReguaL
       };
     });
   const lucroBruto = round2(comandas.reduce((soma, comanda) => soma + comanda.lucroBruto, 0));
-  const lucroBrutoCustoFixo = round2(
-    comandas.reduce((soma, comanda) => soma + comanda.itens.reduce((s, item) => s + (item.lucroBrutoCustoFixo ?? item.lucroBruto), 0), 0),
-  );
   return {
     dia,
     percentual: regua.medicoExecutor,
     comandas,
     cobrado: round2(comandas.reduce((soma, comanda) => soma + comanda.cobrado, 0)),
     lucroBruto,
-    lucroBrutoCustoFixo,
     // O total do dia é a soma da coluna P × percentual (é assim que a planilha
     // reparte); somar as partes arredondadas pode diferir em 1 centavo.
     parteMedico: round2((lucroBruto * regua.medicoExecutor) / 100),
-    parteMedicoCustoFixo: round2((lucroBrutoCustoFixo * regua.medicoExecutor) / 100),
   };
 }
 

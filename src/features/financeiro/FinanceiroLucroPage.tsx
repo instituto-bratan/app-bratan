@@ -561,9 +561,9 @@ export function FinanceiroLucroPage() {
             <p className="mt-2 text-sm text-brand-tinta">
               Cada item da comanda é procurado na tabela de preços (pelo nome exato que o Fechamento grava; se não, por palavra-chave ou
               pelo preço). A tabela traz o <strong>lucro bruto do produto</strong> (coluna P: preço − nota fiscal − comissão − custo da
-              sala − material). Se o paciente pagou menos que a tabela, o lucro bruto é reduzido <strong>na mesma proporção</strong>{" "}
-              (cobrado ÷ preço). O Dr. Daniel recebe {pct(explicacao.percentual)} desse lucro bruto (coluna S). Itens de nutri, psicóloga e
-              "outro" não entram.
+              sala − material). <strong>O item vale o que está na tabela</strong>: o Plano é R$ 6.997 e o lucro bruto dele é o da coluna P,
+              mesmo que o paciente tenha pago só uma parte hoje. O Dr. Daniel recebe {pct(explicacao.percentual)} desse lucro bruto (coluna S).
+              Itens de nutri, psicóloga e "outro" não entram.
             </p>
             {explicacao.comandas.length ? (
               <div className="mt-3 overflow-x-auto">
@@ -574,7 +574,7 @@ export function FinanceiroLucroPage() {
                       <th className="px-2 py-1.5 text-right">Cobrado</th>
                       <th className="px-2 py-1.5">Produto da tabela (como reconheci)</th>
                       <th className="px-2 py-1.5 text-right">Tabela: preço → lucro bruto</th>
-                      <th className="px-2 py-1.5 text-right">Proporção</th>
+                      <th className="px-2 py-1.5 text-right">Qtd.</th>
                       <th className="px-2 py-1.5 text-right">Lucro bruto do item</th>
                       <th className="px-2 py-1.5 text-right">{pct(explicacao.percentual)} Dr. Daniel</th>
                     </tr>
@@ -595,12 +595,12 @@ export function FinanceiroLucroPage() {
                           <td className="px-2 py-1.5 text-right text-xs tabular-nums">
                             {item.precoTabela != null && item.lucroBrutoTabela != null ? `${moneyFin(item.precoTabela)} → ${moneyFin(item.lucroBrutoTabela)}` : "—"}
                           </td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{item.proporcao != null ? `${Math.round(item.proporcao * 1000) / 10}%` : "—"}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{item.quantidade ?? "—"}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">
                             {item.lucroBruto > 0 ? moneyFin(item.lucroBruto) : "—"}
-                            {item.lucroBrutoTabela != null && item.proporcao != null && Math.abs(item.proporcao - 1) > 0.0005 ? (
+                            {item.lucroBrutoTabela != null && item.quantidade != null && item.quantidade > 1 ? (
                               <span className="block text-[11px] text-muted-foreground">
-                                {moneyFin(item.lucroBrutoTabela)} × {Math.round(item.proporcao * 1000) / 10}%
+                                {moneyFin(item.lucroBrutoTabela)} × {item.quantidade}
                               </span>
                             ) : null}
                           </td>
@@ -628,13 +628,8 @@ export function FinanceiroLucroPage() {
               <div className="mt-3 rounded-md border border-brand-oliva/20 bg-brand-creme/30 p-3 text-sm text-brand-tinta">
                 <p className="font-semibold">Para conferir com a sua conta</p>
                 <p className="mt-1">
-                  Regra em uso (desconto reduz o lucro bruto na proporção): lucro bruto {moneyFin(explicacao.lucroBruto)} → Dr. Daniel{" "}
-                  <strong>{moneyFin(explicacao.parteMedico)}</strong>.
-                </p>
-                <p className="mt-1">
-                  Se a conta for com <strong>custo fixo</strong> (cobrado − custo da tabela, onde custo = preço − lucro bruto; o desconto sai
-                  todo do lucro): lucro bruto {moneyFin(explicacao.lucroBrutoCustoFixo)} → Dr. Daniel{" "}
-                  <strong>{moneyFin(explicacao.parteMedicoCustoFixo)}</strong>. Quando o paciente paga o preço cheio, as duas dão o mesmo.
+                  Coluna P dos itens do dia {moneyFin(explicacao.lucroBruto)} → coluna S (Dr. Daniel) <strong>{moneyFin(explicacao.parteMedico)}</strong>.
+                  Planilha OFICIAL de 02/09/2026.
                 </p>
                 {/* A RÉGUA DA AULA (Dr. Thiago Volpi, 42:35): "passar para você como médico executor algo entre 20 e 30%
                     do que você fatura… da receita que você tem"; no Espaço dele são 28%. Aqui a parte do médico sai da
