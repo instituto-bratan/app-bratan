@@ -258,6 +258,28 @@ export async function createRemoteColaboradorAccess(values: {
   return data as { authId: string; colaboradorId: string };
 }
 
+// SENHA DO GESTOR (10/09/2026). O hash mora no banco e NÃO é legível: quem
+// confere é a função SECURITY DEFINER. A tela só recebe true/false.
+export async function senhaGestorDefinida() {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("senha_gestor_definida");
+  if (error) throw error;
+  return data === true;
+}
+
+export async function conferirSenhaGestor(senha: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("conferir_senha_gestor", { _senha: senha });
+  if (error) throw error;
+  return data === true;
+}
+
+export async function definirSenhaGestor(senha: string) {
+  const client = requireSupabase();
+  const { error } = await client.rpc("definir_senha_gestor", { _senha: senha });
+  if (error) throw error;
+}
+
 export async function deactivateRemoteColaborador(id: string) {
   const client = requireSupabase();
   const { error } = await client.rpc("deactivate_colaborador", {

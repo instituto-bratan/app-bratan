@@ -62,7 +62,12 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   // APP DO CLOSER — esteira de consultas (Lucas, 02/09/2026). Lucro bruto pela
   // mesma conta da planilha: preço − NF 13,33% (consulta) − comissão 1% quando
   // é venda do comercial − custo de sala (60 min = R$ 101,33; 20 min = R$ 33,78).
+  // SINAL DE R$ 200 (10/09/2026, áudio da CEO): "se eu coloco sinal de 500, eu
+  // não consigo lançar um comprovante de 200... preciso ficar justificando esses
+  // 200 reais". Os dois valores praticados viram opção própria; o lucro bruto
+  // segue a mesma fração da planilha (81,6% do preço).
   { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 408, tipos: ["SINAL"] },
+  { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 163.2, tipos: ["SINAL"] },
   { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 2065.4, tipos: ["CONSULTA"] },
   { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 2176.4, tipos: ["CONSULTA"] },
   { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 1183.8, tipos: ["CONSULTA"], padrao: /black|club|clube/i },

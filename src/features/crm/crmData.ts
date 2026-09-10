@@ -2631,6 +2631,13 @@ export const programPhaseHints: Record<CrmProgramPhase, string> = {
   ENCERRAMENTO: "Mês 6/9: decisão — renovar, manter (mais leve) ou dar alta.",
 };
 
+/** Nome de cada canal de adesão, na fala da clínica (fonte única: tela e motor). */
+export const adhesionChannelLabels: Record<CrmAdhesionChannel, string> = {
+  PROGRAMA_ACOMPANHAMENTO: "Programa de Acompanhamento",
+  CLUBE_BRATAN: "Consulta Black (ex-Clube)",
+  SOMENTE_TRATAMENTO: "Somente Tratamento",
+};
+
 export const programOutcomeLabels: Record<CrmProgramOutcome, string> = {
   RENOVACAO: "Renovação",
   MANUTENCAO: "Manutenção",
@@ -2816,6 +2823,136 @@ function materializeProgramPhase(state: CrmState, deal: CrmDeal, phase: CrmProgr
 }
 
 // Coloca um deal no início da jornada PROGRAMA (chamado no fechamento).
+/**
+ * CORRIGIR O CANAL DO FECHAMENTO (10/09/2026, áudio da CEO: "ele entrou
+ * novamente como programa e ele não é programa, ele é uma consulta black... ele
+ * vai entrar na cadência errada e também vai entrar naquele grupo de programas,
+ * o que não é").
+ *
+ * O canal escolhido no fechamento define QUAL esteira liga: as tarefas-gate de
+ * cada fase são filtradas pelo canal (gatesForPhase). Errar o canal punha o
+ * paciente na régua errada — e o único jeito de arrumar era apagar tudo e
+ * refazer o fechamento, o que ela apontou no mesmo áudio.
+ *
+ * Aqui o canal é trocado NO LUGAR: a fase e o que já foi feito continuam, as
+ * tarefas-gate que não pertencem ao canal novo são canceladas, as que faltam
+ * nascem e os textos que mudam por canal (overrides) são reescritos nas
+ * pendentes. `novoCanal = null` é "consulta avulsa": tira a jornada e cancela
+ * os gates pendentes, sem apagar a comanda nem o histórico.
+ */
+export function corrigirCanalDaJornada(
+  state: CrmState,
+  dealId: string,
+  novoCanal: CrmAdhesionChannel | null,
+  actorId: string,
+  reference = new Date(),
+): { state: CrmState; ok: boolean; message: string } {
+  const deal = state.deals.find((item) => item.id === dealId);
+  if (!deal) return { state, ok: false, message: "Não encontrei esse fechamento." };
+  const now = new Date().toISOString();
+  const canalAntigo = deal.adhesionChannel ?? null;
+
+  // Sem jornada (consulta avulsa): tira da esteira e cancela o que está pendente.
+  if (!novoCanal) {
+    if (!deal.programPhase && !canalAntigo) return { state, ok: false, message: "Este fechamento já está sem jornada." };
+    const semJornada: CrmDeal = { ...deal, programPhase: null, programPhaseEnteredAt: undefined, adhesionChannel: null, updatedAt: now };
+    return {
+      ok: true,
+      message: "Fechamento corrigido para consulta avulsa: saiu da esteira e as tarefas pendentes da régua foram canceladas.",
+      state: {
+        ...state,
+        deals: state.deals.map((item) => (item.id === dealId ? semJornada : item)),
+        tasks: state.tasks.map((task) =>
+          task.dealId === dealId && task.isGate && task.status === "PENDING"
+            ? { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: "Fechamento corrigido para consulta avulsa (sem jornada).", updatedAt: now }
+            : task,
+        ),
+        timelineEvents: [
+          createTimelineEvent({
+            contactId: deal.contactId,
+            eventType: "PROGRAM_STARTED",
+            eventTitle: "Fechamento corrigido: consulta avulsa",
+            eventDescription: `Canal anterior: ${canalAntigo ? adhesionChannelLabels[canalAntigo] : "nenhum"}. Corrigido por ${actorId}.`,
+            sourceModule: "JORNADA",
+            sourceId: dealId,
+            createdBy: actorId,
+          }),
+          ...state.timelineEvents,
+        ],
+      },
+    };
+  }
+
+  if (canalAntigo === novoCanal && deal.programPhase) {
+    return { state, ok: false, message: `Este fechamento já está como ${adhesionChannelLabels[novoCanal]}.` };
+  }
+
+  // Não estava em jornada nenhuma: o motor normal abre a esteira certa.
+  if (!deal.programPhase) {
+    return {
+      ok: true,
+      state: startProgramJourney(state, dealId, novoCanal, actorId, reference),
+      message: `Fechamento corrigido para ${adhesionChannelLabels[novoCanal]}: a esteira certa ligou do começo.`,
+    };
+  }
+
+  const faseAtual = deal.programPhase;
+  const corrigido: CrmDeal = { ...deal, adhesionChannel: novoCanal, updatedAt: now };
+  let next: CrmState = { ...state, deals: state.deals.map((item) => (item.id === dealId ? corrigido : item)) };
+
+  // Tudo que o canal NOVO espera, em todas as fases (id determinístico).
+  const esperadas = new Map<string, ProgramGateSpec>();
+  for (const phase of Object.keys(programPhaseSpecs) as CrmProgramPhase[]) {
+    for (const gate of gatesForPhase(phase, novoCanal)) esperadas.set(programGateTaskIdFor(dealId, phase, gate.key), gate);
+  }
+
+  let canceladas = 0;
+  let reescritas = 0;
+  next = {
+    ...next,
+    tasks: next.tasks.map((task) => {
+      if (task.dealId !== dealId || !task.isGate) return task;
+      const esperada = esperadas.get(task.id);
+      if (!esperada) {
+        if (task.status !== "PENDING") return task;
+        canceladas += 1;
+        return { ...task, status: "CANCELED" as CrmTaskStatus, resultNotes: `Canal corrigido para ${adhesionChannelLabels[novoCanal]} — esta tarefa não é da esteira nova.`, updatedAt: now };
+      }
+      if (task.status !== "PENDING") return task;
+      if (task.title === esperada.title && task.description === esperada.description) return task;
+      reescritas += 1;
+      return { ...task, title: esperada.title, description: esperada.description, updatedAt: now };
+    }),
+  };
+
+  // O que falta na fase atual nasce agora (materialize é idempotente).
+  const antes = next.tasks.length;
+  next = materializeProgramPhase(next, corrigido, faseAtual, reference);
+  const criadas = next.tasks.length - antes;
+
+  next = {
+    ...next,
+    timelineEvents: [
+      createTimelineEvent({
+        contactId: deal.contactId,
+        eventType: "PROGRAM_STARTED",
+        eventTitle: `Canal corrigido: ${adhesionChannelLabels[novoCanal]}`,
+        eventDescription: `Era ${canalAntigo ? adhesionChannelLabels[canalAntigo] : "sem canal"}. Fase mantida em ${programPhaseLabels[faseAtual]}. ${canceladas} tarefa(s) cancelada(s), ${criadas} criada(s), ${reescritas} reescrita(s). Corrigido por ${actorId}.`,
+        sourceModule: "JORNADA",
+        sourceId: dealId,
+        createdBy: actorId,
+      }),
+      ...next.timelineEvents,
+    ],
+  };
+
+  return {
+    state: next,
+    ok: true,
+    message: `Canal corrigido para ${adhesionChannelLabels[novoCanal]}. A régua se ajustou: ${canceladas} tarefa(s) cancelada(s), ${criadas} nova(s)${reescritas ? `, ${reescritas} com texto novo` : ""} — a fase e o que já foi feito ficaram como estavam.`,
+  };
+}
+
 export function startProgramJourney(state: CrmState, dealId: string, channel: CrmAdhesionChannel | null, actorId: string, reference = new Date()): CrmState {
   const deal = state.deals.find((item) => item.id === dealId);
   if (!deal || deal.programPhase) return state;

@@ -74,6 +74,8 @@ import {
   moveDealStage,
   objectionCategoryLabels,
   programGateStatus,
+  adhesionChannelLabels,
+  corrigirCanalDaJornada,
   programOutcomeLabels,
   programPhaseHints,
   programPhaseLabels,
@@ -114,6 +116,7 @@ import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData"
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
 import { usePanScroll } from "./usePanScroll";
 import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
+import { SenhaDeGestor } from "@/components/SenhaDeGestor";
 import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
 import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
 
@@ -182,11 +185,9 @@ function formaParaComprovante(forma: FinPaymentMethod) {
   return "outro" as const;
 }
 
-const channelLabels: Record<CrmAdhesionChannel, string> = {
-  PROGRAMA_ACOMPANHAMENTO: "Programa de Acompanhamento",
-  CLUBE_BRATAN: "Consulta Black (ex-Clube)",
-  SOMENTE_TRATAMENTO: "Somente Tratamento",
-};
+// Rótulo dos canais: vem do motor (adhesionChannelLabels), para tela e régua
+// nunca discordarem do nome do canal.
+const channelLabels = adhesionChannelLabels;
 const channelShort: Record<CrmAdhesionChannel, string> = {
   PROGRAMA_ACOMPANHAMENTO: "Programa",
   CLUBE_BRATAN: "Black",
@@ -509,6 +510,9 @@ export function CrmKanbanPage() {
   // Feedback DENTRO do drawer: o banner da página fica atrás do painel e o
   // usuário não via a validação — parecia que o botão "não estava indo".
   const [drawerFeedback, setDrawerFeedback] = useState("");
+  // CORRIGIR O CANAL DO FECHAMENTO (10/09/2026): o pedido fica aqui esperando a
+  // senha do gestor; só depois de conferida a régua é reescrita.
+  const [pedidoCanal, setPedidoCanal] = useState<{ dealId: string; canal: CrmAdhesionChannel | null } | null>(null);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
@@ -619,7 +623,12 @@ export function CrmKanbanPage() {
 
   // Divisão dos quadros: quem entrou na jornada do Programa sai do Comercial.
   const comercialDeals = useMemo(() => visibleDeals.filter((deal) => !deal.programPhase), [visibleDeals]);
-  const programDeals = useMemo(() => visibleDeals.filter((deal) => deal.programPhase), [visibleDeals]);
+  // JORNADA ENCERRADA NÃO FICA NA COLUNA ATIVA (10/09/2026, vídeo da CEO: o
+  // mesmo paciente aparecia DUAS VEZES em "Boas-vindas"). Quando o paciente
+  // fecha de novo, o motor encerra a jornada anterior como Renovação — mas ela
+  // guardava a fase antiga e continuava no quadro, ao lado da nova. Com desfecho
+  // registrado, o cartão sai do quadro (o histórico segue no perfil).
+  const programDeals = useMemo(() => visibleDeals.filter((deal) => deal.programPhase && !deal.programOutcome), [visibleDeals]);
   const canOverridePhase = isCoordenacao(pessoa?.cargo);
   // Abas de cadência: quem tem gente ativa vira aba; as vazias ficam num seletor.
   const cadenciasResumo = useMemo(() => resumoDasCadencias(state, todayISO()), [state]);
@@ -1825,6 +1834,44 @@ export function CrmKanbanPage() {
                         </button>
                       ))}
                     </div>
+                    {/* CANAL ERRADO NO FECHAMENTO (10/09/2026, áudio da CEO: "ele
+                        entrou novamente como programa e ele não é programa, ele é
+                        uma consulta black"). Trocar o canal aqui reescreve a régua
+                        sem apagar o fechamento — e pede a senha do gestor. */}
+                    <div className="mt-3 border-t border-brand-oliva/15 pt-2">
+                      <p className="text-[11px] font-bold uppercase text-brand-oliva">
+                        Corrigir o canal do fechamento (pede a senha do gestor)
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        O canal define quais tarefas nascem. Trocando aqui, a fase e o que já foi feito ficam — as tarefas
+                        da esteira errada são canceladas e as da certa nascem.
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(Object.keys(adhesionChannelLabels) as CrmAdhesionChannel[]).map((canal) => (
+                          <button
+                            key={canal}
+                            type="button"
+                            disabled={selectedDeal.adhesionChannel === canal}
+                            onClick={() => setPedidoCanal({ dealId: selectedDeal.id, canal })}
+                            className={cn(
+                              "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                              selectedDeal.adhesionChannel === canal
+                                ? "border-brand-musgo bg-brand-musgo text-brand-papel"
+                                : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-brand-creme/50",
+                            )}
+                          >
+                            {channelLabels[canal]}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setPedidoCanal({ dealId: selectedDeal.id, canal: null })}
+                          className="rounded-full border border-red-300 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50"
+                        >
+                          Consulta avulsa (sai da esteira)
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -2715,6 +2762,27 @@ export function CrmKanbanPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {/* A senha do gestor entra ANTES de reescrever a régua de um fechamento. */}
+      {pedidoCanal ? (
+        <SenhaDeGestor
+          acao={
+            pedidoCanal.canal
+              ? `trocar o canal do fechamento para ${channelLabels[pedidoCanal.canal]}`
+              : "tirar este paciente da esteira (consulta avulsa)"
+          }
+          onCancelar={() => setPedidoCanal(null)}
+          onConfirmado={() => {
+            const pedido = pedidoCanal;
+            setPedidoCanal(null);
+            persist((current) => {
+              const resultado = corrigirCanalDaJornada(current, pedido.dealId, pedido.canal, pessoa?.id ?? "gestao");
+              setFeedback(resultado.message);
+              return resultado.ok ? resultado.state : current;
+            });
+          }}
+        />
       ) : null}
 </div>
   );

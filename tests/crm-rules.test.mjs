@@ -493,6 +493,9 @@ test("3·1·3·1 conta para trás da data da consulta e é do agendamento", () =
   // passo era de 15 dias e passou a 21. E a régua saiu da RECEPÇÃO: a reunião
   // tirou a Isabela do fluxo e concentrou no setor de agendamento (CONCIERGE).
   const state = cloneState();
+  const dia = (base, dias) => { const d = new Date(`${base}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + dias); return d.toISOString().slice(0, 10); };
+  const hoje = new Date().toISOString().slice(0, 10);
+  const consulta = dia(hoje, 60); // 60 dias à frente: os quatro passos (−21, −7, −3, −1) ficam no futuro
   assert.equal(crm.cadenceNeedsEventDate(state, "cad-return-cycle"), true);
   assert.equal(crm.cadenceNeedsEventDate(state, "cad-cold-lead"), false);
 
@@ -502,8 +505,10 @@ test("3·1·3·1 conta para trás da data da consulta e é do agendamento", () =
     dealId: "",
     triggerSource: "teste",
     // Consulta bem à frente: assim os quatro passos ainda estão no futuro. (Um
-    // passo cuja data já passou não nasce atrasado — regra do motor.)
-    triggerDate: "2026-09-30",
+    // passo cuja data já passou não nasce atrasado — regra do motor.) A data é
+    // RELATIVA a hoje: com data fixa o teste quebrava sozinho quando o calendário
+    // passava dela (aconteceu em 10/09/2026 com o antigo "2026-09-30").
+    triggerDate: consulta,
     ownerUserId: "concierge",
     ownerRole: "CONCIERGE",
   });
@@ -511,10 +516,10 @@ test("3·1·3·1 conta para trás da data da consulta e é do agendamento", () =
     (task) => task.contactId === "crm-contact-lead-quente" && task.cadenceId === "cad-return-cycle",
   );
   const datas = doPaciente.map((task) => task.dueAt.slice(0, 10)).sort();
-  // O motor materializa a próxima ancorada: 3 semanas antes de 30/09 = 09/09.
-  // Antes da reunião esse primeiro passo era de 15 dias (15/09).
-  assert.ok(datas.includes("2026-09-09"), `3 semanas antes de 30/09 é 09/09 (veio ${datas.join(", ")})`);
-  assert.ok(!datas.includes("2026-09-15"), "não é mais 15 dias antes");
+  // O motor materializa a próxima ancorada: 3 semanas antes da consulta.
+  // Antes da reunião esse primeiro passo era de 15 dias.
+  assert.ok(datas.includes(dia(consulta, -21)), `3 semanas antes de ${consulta} é ${dia(consulta, -21)} (veio ${datas.join(", ")})`);
+  assert.ok(!datas.includes(dia(consulta, -15)), "não é mais 15 dias antes");
   for (const tarefa of doPaciente) {
     assert.equal(tarefa.assignedToRole, "CONCIERGE", "a régua é do setor de agendamento");
   }
