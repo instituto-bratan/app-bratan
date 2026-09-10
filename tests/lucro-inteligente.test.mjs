@@ -383,3 +383,50 @@ test("configuração padrão: a régua do Lucas (02/09) — 16,6% · R$ 40 mil/m
   assert.equal(li.selicDaConfig({ degraus: [], alvo: degrau, selicAnual: 12.5 }), 0.125);
   assert.equal(li.EXEMPLO_DA_AULA.operacional, 30.4, "o exemplo da aula fica só como referência de texto");
 });
+
+// ---- TRANSFERÊNCIAS (10/09/2026, Lucas): provisionado × transferido × falta ------
+test("repasses: provisionado é o acumulado da régua até hoje; transferido são as contas pagas na categoria; falta é a diferença — e dívida do envelope do lucro conta", () => {
+  // 2 dias úteis (01 e 02/09), venda de um Programa em cada: coluna S 2.515,20/dia; cota 21.000/21 = 1.000/dia
+  const vendas = [venda("a", "2026-09-01", [{ method: "PIX", amount: 6997 }], [{ itemType: "TRATAMENTO", amount: 6997, description: "Programa de acompanhamento 6 meses" }]),
+                  venda("b", "2026-09-02", [{ method: "PIX", amount: 6997 }], [{ itemType: "TRATAMENTO", amount: 6997, description: "Programa de acompanhamento 6 meses" }])];
+  const contas = [
+    conta("t1", 2000, "cat-medico-prescritor-dr-bratan", "2026-09-01"),
+    conta("t2", 800, "cat-distribuicao-lucro-socios", "2026-09-02"),
+    conta("t3", 500, "cat-giro-pronamp-carro-emprestimo", "2026-09-02"),
+    conta("fora", 999, "cat-medico-prescritor-dr-bratan", "2026-08-30"), // mês anterior: não entra
+  ];
+  const p = li.buildPlanilhaLucro({ sales: vendas, expenses: contas, categories: categorias, reconciliations: [], marcas: [], config: regua(10, 21000, 50), monthKey: "2026-09", hoje: "2026-09-02" });
+  const r = li.resumoDosRepasses(p, contas);
+  assert.equal(r.medicoExecutor.ateDia, "2026-09-02");
+  assert.equal(r.medicoExecutor.provisionado, 5030.4, "2 × 2.515,20 (coluna S do Programa)");
+  assert.equal(r.medicoExecutor.transferido, 2000);
+  assert.equal(r.medicoExecutor.falta, 3030.4);
+  assert.deepEqual(JSON.parse(JSON.stringify(r.medicoExecutor.transferencias.map((t) => [t.dia, t.valor]))), [["2026-09-01", 2000]]);
+  assert.equal(r.socios.provisionado, 2000, "2 dias úteis × cota 1.000");
+  assert.equal(r.socios.transferido, 800);
+  assert.equal(r.socios.dividasPagas, 500, "empréstimo pago com o envelope do lucro (decisão 01/09)");
+  assert.equal(r.socios.falta, 700, "2.000 − 800 − 500");
+  assert.match(li.fraseDoRepasse(r.medicoExecutor, (v) => `R$${v}`), /Provisionado até 02\/09: R\$5030\.4 · já transferido para o Dr\. Daniel: R\$2000 → falta transferir R\$3030\.4/);
+  // transferiu a mais: a frase avisa em vez de esconder
+  const demais = { ...r.socios, transferido: 2600, dividasPagas: 0, falta: -600 };
+  assert.match(li.fraseDoRepasse(demais, (v) => `${v}`), /saiu 600 A MAIS/);
+});
+
+test("registrar transferência cria a conta PAGA na categoria certa (mesmo dinheiro em Contas a Pagar, P12 e Lucro), sem nota fiscal", () => {
+  const medico = li.novaTransferencia({ para: "medicoExecutor", dia: "2026-09-10", valor: 3030.4, comprovante: "PIX 8841" });
+  assert.equal(medico.categoryRef, "cat-medico-prescritor-dr-bratan");
+  assert.equal(medico.paidAt, "2026-09-10");
+  assert.equal(medico.dueDate, "2026-09-10");
+  assert.equal(medico.amount, 3030.4);
+  assert.equal(medico.method, "TRANSFERENCIA");
+  assert.equal(medico.documentNote, "PIX 8841");
+  assert.equal(medico.notaStatus, "SEM_NOTA", "sócio/médico não emite nota de fornecedor");
+  assert.match(medico.description, /Transferência ao médico executor — 10\/09\/2026/);
+  const socios = li.novaTransferencia({ para: "socios", dia: "2026-09-10", valor: 700 });
+  assert.equal(socios.categoryRef, "cat-distribuicao-lucro-socios");
+  assert.equal(li.envelopeDaConta(socios), "lucro", "cai no envelope do lucro");
+  assert.equal(li.envelopeDaConta(medico), "medicoExecutor");
+  // e a planilha do dia seguinte já abate
+  const p = li.buildPlanilhaLucro({ sales: [], expenses: [medico], categories: categorias, reconciliations: [], marcas: [], config: regua(10, 21000, 50), monthKey: "2026-09", hoje: "2026-09-10" });
+  assert.equal(li.resumoDosRepasses(p, [medico]).medicoExecutor.transferido, 3030.4);
+});

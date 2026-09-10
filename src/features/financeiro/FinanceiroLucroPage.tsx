@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { CheckCircle2, Landmark, PiggyBank, Scale, ShieldAlert, SlidersHorizontal, TrendingUp, Wallet, Stethoscope, Trophy } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, Landmark, PiggyBank, Scale, ShieldAlert, SlidersHorizontal, TrendingUp, Wallet, Stethoscope, Trophy } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ import {
   type ReguaLucro,
 } from "./lucroInteligente";
 import { taxaAntecipacaoMensal } from "./recebiveisRede";
+import { beneficiarioLabels, fraseDoRepasse, novaTransferencia, resumoDosRepasses, type Beneficiario } from "./lucroInteligente";
 import { useFinanceiro } from "./useFinanceiro";
 
 const configStorageKey = "app-bratan-fin-lucro-config";
@@ -277,6 +278,30 @@ export function FinanceiroLucroPage() {
   // O retrato público (Home e balão) é publicado pelo PublicadorDoResumo, no layout — em qualquer tela.
   const progressoLucro = reguaHoje.lucroMensal > 0 ? Math.min(100, Math.round((planilha.totais.reservado.lucro / reguaHoje.lucroMensal) * 100)) : 0;
 
+  // ---- TRANSFERÊNCIAS (10/09, Lucas): provisionado × transferido × falta, e o
+  // registro do repasse — que vira conta paga na categoria certa (Contas a Pagar
+  // e P12 contam o mesmo dinheiro).
+  const repasses = useMemo(() => resumoDosRepasses(planilha, financeiro.expenses), [planilha, financeiro.expenses]);
+  const [formRepasse, setFormRepasse] = useState<{ para: Beneficiario; dia: string; valor: string; comprovante: string } | null>(null);
+  function registrarTransferencia() {
+    if (!canEdit || !formRepasse) return;
+    const valor = parseNumero(formRepasse.valor);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      setFeedback("Informe o valor transferido.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(formRepasse.dia)) {
+      setFeedback("Informe a data da transferência.");
+      return;
+    }
+    const conta = novaTransferencia({ para: formRepasse.para, dia: formRepasse.dia, valor, comprovante: formRepasse.comprovante });
+    financeiro.addExpense(conta);
+    setFeedback(`Transferência de ${moneyFin(valor)} ${formRepasse.para === "medicoExecutor" ? "ao Dr. Daniel" : "aos sócios"} registrada em ${diaCurto(formRepasse.dia)}. Ela já aparece em Contas a Pagar (paga) e na P12.`);
+    setFormRepasse(null);
+  }
+  // ---- PLANILHA SIMPLES POR PADRÃO (10/09, Lucas: "está muita informação").
+  const [detalhado, setDetalhado] = useState(false);
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Lucro Inteligente" module="fin-lucro">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
@@ -492,6 +517,108 @@ export function FinanceiroLucroPage() {
               No mês: cabe {moneyFin(planilha.totais.reservado.operacional)} · pagas {moneyFin(planilha.totais.usado.operacional)} →{" "}
               {saldoOperacional < -0.005 ? `faltam ${moneyFin(-saldoOperacional)}` : `sobram ${moneyFin(saldoOperacional)}`}
             </p>
+          </div>
+        </section>
+
+        {/* TRANSFERÊNCIAS — o que já saiu e o que falta (10/09/2026, Lucas: "foi
+            provisionado tantos mil para o médico executor, porém só foi
+            transferido tantos mil, falta isso para bater com o dia de hoje"). */}
+        <section className="rounded-lg border border-brand-oliva/14 bg-white/60 p-4 backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-brand-musgo">
+              <ArrowRightLeft className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
+              Transferências — o que já saiu e o que falta
+              <InfoTip title="Como este bloco é calculado">
+                <strong>Provisionado</strong> é o que a régua separou do dia 1 até hoje (o médico pela coluna S de cada
+                produto vendido; os sócios pela cota fixa de cada dia útil). <strong>Transferido</strong> são as contas
+                PAGAS nas categorias do repasse do Dr. Daniel e da distribuição de lucro/pró-labore/salário CEO.{" "}
+                <strong>Falta</strong> é a diferença. Registrar aqui cria a conta paga na categoria certa — Contas a Pagar e
+                P12 mostram o mesmo número. Para anexar o comprovante em arquivo, use a célula de nota da conta em Contas a Pagar.
+              </InfoTip>
+            </h2>
+            <p className="text-xs text-muted-foreground">atualiza sozinho: a régua provisiona todo dia útil e cada transferência registrada abate</p>
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {(["medicoExecutor", "socios"] as Beneficiario[]).map((para) => {
+              const r = repasses[para];
+              const pctTransferido = r.provisionado > 0.005 ? Math.min(100, Math.round((r.transferido / r.provisionado) * 100)) : 0;
+              const emDia = Math.abs(r.falta) <= 0.005;
+              const aMais = r.falta < -0.005;
+              return (
+                <div
+                  key={para}
+                  className={cn(
+                    "rounded-xl border-2 p-4",
+                    para === "medicoExecutor" ? "border-brand-dourado/50 bg-brand-creme/30" : "border-brand-musgo/40 bg-brand-musgo/5",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-brand-musgo">
+                      {para === "medicoExecutor" ? <Stethoscope className="h-4 w-4" aria-hidden="true" /> : <Trophy className="h-4 w-4" aria-hidden="true" />}
+                      {beneficiarioLabels[para]}
+                    </p>
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-brand-tinta">até {diaCurto(r.ateDia)}</span>
+                  </div>
+                  <p className={cn("mt-2 text-3xl font-extrabold tabular-nums leading-none sm:text-4xl", aMais ? "text-red-700" : emDia ? "text-emerald-700" : "text-brand-tinta")}>
+                    {emDia ? "Em dia" : aMais ? `${moneyFin(-r.falta)} a mais` : moneyFin(r.falta)}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-brand-musgo">
+                    {emDia ? "transferido bate com o provisionado" : aMais ? "saiu mais do que a régua separou até hoje" : "falta transferir para bater com hoje"}
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-lg bg-white/70 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-brand-oliva">Provisionado até hoje</p>
+                      <p className="text-lg font-bold tabular-nums text-brand-tinta">{moneyFin(r.provisionado)}</p>
+                    </div>
+                    <div className="rounded-lg bg-white/70 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-brand-oliva">Já transferido</p>
+                      <p className="text-lg font-bold tabular-nums text-brand-tinta">{moneyFin(r.transferido)}</p>
+                      {r.dividasPagas > 0.005 ? <p className="text-[11px] text-muted-foreground">+ dívidas pagas com o envelope: {moneyFin(r.dividasPagas)}</p> : null}
+                    </div>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/80">
+                    <div className={cn("h-full rounded-full transition-all", aMais ? "bg-red-400" : "bg-brand-dourado")} style={{ width: `${pctTransferido}%` }} />
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{pctTransferido}% do provisionado já transferido</p>
+
+                  {r.transferencias.length ? (
+                    <ul className="mt-3 divide-y divide-brand-oliva/10 rounded-lg border border-brand-oliva/14 bg-white/70 text-sm">
+                      {r.transferencias.slice(0, 6).map((t) => (
+                        <li key={t.id} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                          <span className="truncate text-brand-tinta">
+                            {diaCurto(t.dia)} · {t.descricao}
+                            {t.comprovante ? <span className="ml-1 text-[11px] text-muted-foreground">· comprov. {t.comprovante}</span> : null}
+                          </span>
+                          <span className="font-semibold tabular-nums text-brand-musgo">{moneyFin(t.valor)}</span>
+                        </li>
+                      ))}
+                      {r.transferencias.length > 6 ? <li className="px-3 py-1.5 text-[11px] text-muted-foreground">+ {r.transferencias.length - 6} transferência(s) — veja todas em Contas a Pagar</li> : null}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-xs text-muted-foreground">Nenhuma transferência registrada neste mês.</p>
+                  )}
+
+                  {canEdit ? (
+                    formRepasse?.para === para ? (
+                      <div className="mt-3 grid gap-2 rounded-lg border border-brand-oliva/20 bg-white/80 p-3 sm:grid-cols-[1fr_1fr_1.4fr_auto]">
+                        <Input type="date" value={formRepasse.dia} onChange={(e) => setFormRepasse({ ...formRepasse, dia: e.target.value })} aria-label="Data da transferência" />
+                        <Input value={formRepasse.valor} onChange={(e) => setFormRepasse({ ...formRepasse, valor: e.target.value })} placeholder="Valor (R$)" inputMode="decimal" aria-label="Valor transferido" />
+                        <Input value={formRepasse.comprovante} onChange={(e) => setFormRepasse({ ...formRepasse, comprovante: e.target.value })} placeholder="Comprovante (nº/ref., opcional)" aria-label="Comprovante" />
+                        <div className="flex gap-1.5">
+                          <Button type="button" size="sm" onClick={registrarTransferencia}>Salvar</Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setFormRepasse(null)}>Cancelar</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => setFormRepasse({ para, dia: hoje, valor: r.falta > 0.005 ? r.falta.toFixed(2).replace(".", ",") : "", comprovante: "" })}>
+                        <ArrowRightLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                        Registrar transferência {para === "medicoExecutor" ? "ao Dr. Daniel" : "aos sócios"}
+                      </Button>
+                    )
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -730,36 +857,65 @@ export function FinanceiroLucroPage() {
           </p>
         </section>
 
+        {/* PLANILHA DO DIA A DIA — SIMPLES POR PADRÃO (10/09/2026, Lucas: "está
+            muito confusa... muita informação"). Sete colunas contam a história:
+            quanto entrou, o que a régua separou (impostos, sócios, Dr. Daniel),
+            o que sobrou e se já foi separado. O resto (PIX/dinheiro/cartão,
+            taxas, disponível, contas pagas, fechamento) abre em "Ver detalhes". */}
         <section className="rounded-lg border border-brand-oliva/14 bg-white/60 p-4 backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-bold text-brand-musgo">Planilha do dia a dia · {new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
-            <p className="text-xs text-muted-foreground">
-              {planilha.diasSeparados}/{planilha.diasComMovimento} dias com entrada já marcados como separados · cota do lucro {moneyFin(planilha.cotaLucroDiaUtil)} × {planilha.diasUteis} dias úteis
-            </p>
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-bold text-brand-musgo">
+                Planilha do dia a dia · {new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+                <InfoTip title="Como ler a planilha">
+                  <strong>Entrou</strong> é o que ficou das comandas do dia depois das taxas da maquininha e do PIX.{" "}
+                  <strong>Impostos</strong> é a % do líquido. <strong>Sócios</strong> é o lucro do mês dividido pelos dias úteis — vale todo dia útil,
+                  mesmo sem entrada. <strong>Dr. Daniel</strong> é a coluna S da precificação: 50% do lucro bruto de cada produto vendido no dia.{" "}
+                  <strong>Fica para gastar</strong> é o que sobra (vermelho quando o dia não paga a régua). Marque <strong>Separado</strong> quando as
+                  transferências do dia forem feitas. Em &quot;Ver detalhes&quot;: PIX, dinheiro, débito, crédito, bruto, taxas (débito 0,7% · crédito à
+                  vista 1,7% · parcelado 2,39% · PIX 0,6% teto R$ 150), disponível (PIX/dinheiro do dia + cartão do dia útil anterior, e o custo de
+                  puxar hoje), contas operacionais pagas no dia, sobra ou falta acumulada e o fechamento do caixa.
+                </InfoTip>
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {planilha.diasSeparados}/{planilha.diasComMovimento} dias com entrada já marcados como separados · cota dos sócios {moneyFin(planilha.cotaLucroDiaUtil)} por dia útil
+              </p>
+            </div>
+            <Button type="button" variant={detalhado ? "default" : "outline"} size="sm" onClick={() => setDetalhado((v) => !v)}>
+              {detalhado ? "Ver resumo" : "Ver detalhes"}
+            </Button>
           </div>
           {linhasVisiveis.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Mês ainda não começou — a planilha nasce dia a dia.</p>
           ) : (
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[1400px] text-xs sm:text-sm">
+              <table className={cn("w-full text-xs sm:text-sm", detalhado ? "min-w-[1400px]" : "min-w-[720px]")}>
                 <thead>
                   <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
                     <th className="sticky left-0 z-10 bg-white/90 px-2 py-1.5 text-left">Dia</th>
-                    <th className="px-2 py-1.5 text-right">PIX</th>
-                    <th className="px-2 py-1.5 text-right">Dinheiro</th>
-                    <th className="px-2 py-1.5 text-right">Débito</th>
-                    <th className="px-2 py-1.5 text-right">Crédito</th>
-                    <th className="px-2 py-1.5 text-right">Bruto</th>
-                    <th className="px-2 py-1.5 text-right">Taxas</th>
-                    <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Entrou (líquido)</th>
-                    <th className="px-2 py-1.5 text-right">Disponível</th>
+                    {detalhado ? (
+                      <>
+                        <th className="px-2 py-1.5 text-right">PIX</th>
+                        <th className="px-2 py-1.5 text-right">Dinheiro</th>
+                        <th className="px-2 py-1.5 text-right">Débito</th>
+                        <th className="px-2 py-1.5 text-right">Crédito</th>
+                        <th className="px-2 py-1.5 text-right">Bruto</th>
+                        <th className="px-2 py-1.5 text-right">Taxas</th>
+                      </>
+                    ) : null}
+                    <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Entrou</th>
+                    {detalhado ? <th className="px-2 py-1.5 text-right">Disponível</th> : null}
                     <th className="px-2 py-1.5 text-right">Impostos</th>
-                    <th className="bg-brand-musgo/10 px-2 py-1.5 text-right font-bold text-brand-musgo">Lucro sócios</th>
-                    <th className="bg-brand-creme/70 px-2 py-1.5 text-right font-bold text-brand-dourado">Dr. Daniel (col. S)</th>
+                    <th className="bg-brand-musgo/10 px-2 py-1.5 text-right font-bold text-brand-musgo">Sócios</th>
+                    <th className="bg-brand-creme/70 px-2 py-1.5 text-right font-bold text-brand-dourado">Dr. Daniel</th>
                     <th className="px-2 py-1.5 text-right font-bold text-brand-musgo">Fica p/ gastar</th>
-                    <th className="px-2 py-1.5 text-right">Contas pagas (dia)</th>
-                    <th className="px-2 py-1.5 text-right">Sobra ou falta (mês)</th>
-                    <th className="px-2 py-1.5 text-center">Fechamento</th>
+                    {detalhado ? (
+                      <>
+                        <th className="px-2 py-1.5 text-right">Contas pagas</th>
+                        <th className="px-2 py-1.5 text-right">Sobra ou falta (mês)</th>
+                        <th className="px-2 py-1.5 text-center">Fechamento</th>
+                      </>
+                    ) : null}
                     <th className="px-2 py-1.5 text-center">Separado?</th>
                   </tr>
                 </thead>
@@ -785,30 +941,33 @@ export function FinanceiroLucroPage() {
                             </span>
                           ) : null}
                         </td>
-                        <td className={cellNum}>{linha.pix ? moneyFin(linha.pix) : "—"}</td>
-                        <td className={cellNum}>{linha.dinheiro ? moneyFin(linha.dinheiro) : "—"}</td>
-                        <td className={cellNum}>{linha.debito ? moneyFin(linha.debito) : "—"}</td>
-                        <td className={cellNum}>{linha.credito ? moneyFin(linha.credito) : "—"}</td>
-                        <td className={cellNum}>{linha.total ? moneyFin(linha.total) : "—"}</td>
-                        <td className={cn(cellNum, "text-red-700/80")}>{linha.taxas ? `−${moneyFin(linha.taxas)}` : "—"}</td>
+                        {detalhado ? (
+                          <>
+                            <td className={cellNum}>{linha.pix ? moneyFin(linha.pix) : "—"}</td>
+                            <td className={cellNum}>{linha.dinheiro ? moneyFin(linha.dinheiro) : "—"}</td>
+                            <td className={cellNum}>{linha.debito ? moneyFin(linha.debito) : "—"}</td>
+                            <td className={cellNum}>{linha.credito ? moneyFin(linha.credito) : "—"}</td>
+                            <td className={cellNum}>{linha.total ? moneyFin(linha.total) : "—"}</td>
+                            <td className={cn(cellNum, "text-red-700/80")}>{linha.taxas ? `−${moneyFin(linha.taxas)}` : "—"}</td>
+                          </>
+                        ) : null}
                         <td className={cn(cellNum, "font-bold text-brand-musgo")}>{linha.liquido ? moneyFin(linha.liquido) : "—"}</td>
-                        <td className={cellNum}>
-                          {linha.disponivel ? moneyFin(linha.disponivel) : "—"}
-                          {linha.antecipacao > 0.005 ? (
-                            <span className="block text-[10px] font-normal text-muted-foreground" title="custo de resgatar hoje o cartão de ontem em vez de esperar os 31 dias">
-                              puxar hoje: −{moneyFin(linha.antecipacao)}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className={cellNum}>
-                          {linha.reservado.impostos ? moneyFin(linha.reservado.impostos) : "—"}
-                          <span className="ml-1 text-[10px] text-muted-foreground">{pct(linha.regua.impostos)}</span>
-                        </td>
+                        {detalhado ? (
+                          <td className={cellNum}>
+                            {linha.disponivel ? moneyFin(linha.disponivel) : "—"}
+                            {linha.antecipacao > 0.005 ? (
+                              <span className="block text-[10px] font-normal text-muted-foreground" title="custo de resgatar hoje o cartão de ontem em vez de esperar os 31 dias">
+                                puxar hoje: −{moneyFin(linha.antecipacao)}
+                              </span>
+                            ) : null}
+                          </td>
+                        ) : null}
+                        <td className={cellNum}>{linha.reservado.impostos ? moneyFin(linha.reservado.impostos) : "—"}</td>
                         <td className={cn(cellNum, "bg-brand-musgo/10 font-bold text-brand-musgo")}>{linha.reservado.lucro ? moneyFin(linha.reservado.lucro) : "—"}</td>
                         <td className={cn(cellNum, "bg-brand-creme/70 font-bold text-brand-tinta")}>
                           {linha.reservado.medicoExecutor ? moneyFin(linha.reservado.medicoExecutor) : "—"}
-                          {linha.lucroBrutoProdutos ? (
-                            <span className="block text-[10px] text-muted-foreground" title="lucro bruto dos produtos do dia (coluna P) · itens do médico pelo preço">
+                          {detalhado && linha.lucroBrutoProdutos ? (
+                            <span className="block text-[10px] font-normal text-muted-foreground" title="lucro bruto dos produtos do dia (coluna P) · itens do médico pelo preço">
                               col. P {moneyFin(linha.lucroBrutoProdutos)} · itens {moneyFin(linha.prescrito)}
                             </span>
                           ) : null}
@@ -816,21 +975,25 @@ export function FinanceiroLucroPage() {
                         <td className={cn(cellNum, "font-bold", linha.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-musgo")}>
                           {linha.total || linha.regua.cotaLucro ? moneyFin(linha.reservado.operacional) : "—"}
                         </td>
-                        <td className={cellNum}>{linha.usado.operacional ? moneyFin(linha.usado.operacional) : "—"}</td>
-                        <td className={cn(cellNum, linha.acumulado.saldo.operacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
-                          {linha.acumulado.saldo.operacional < -0.005 ? `falta ${moneyFin(-linha.acumulado.saldo.operacional)}` : `sobra ${moneyFin(linha.acumulado.saldo.operacional)}`}
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          {linha.fechamento === "CONFERIDO" ? (
-                            <Badge className="bg-emerald-100 text-emerald-800">conferido</Badge>
-                          ) : linha.fechamento === "DIVERGENTE" ? (
-                            <Badge className="bg-red-100 text-red-700">divergente</Badge>
-                          ) : linha.total ? (
-                            <span className="text-[11px] text-muted-foreground">sem fechamento</span>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
+                        {detalhado ? (
+                          <>
+                            <td className={cellNum}>{linha.usado.operacional ? moneyFin(linha.usado.operacional) : "—"}</td>
+                            <td className={cn(cellNum, linha.acumulado.saldo.operacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
+                              {linha.acumulado.saldo.operacional < -0.005 ? `falta ${moneyFin(-linha.acumulado.saldo.operacional)}` : `sobra ${moneyFin(linha.acumulado.saldo.operacional)}`}
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              {linha.fechamento === "CONFERIDO" ? (
+                                <Badge className="bg-emerald-100 text-emerald-800">conferido</Badge>
+                              ) : linha.fechamento === "DIVERGENTE" ? (
+                                <Badge className="bg-red-100 text-red-700">divergente</Badge>
+                              ) : linha.total ? (
+                                <span className="text-[11px] text-muted-foreground">sem fechamento</span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          </>
+                        ) : null}
                         <td className="px-2 py-1.5 text-center">
                           {linha.total || linha.marca ? (
                             <div className="flex items-center justify-center gap-1">
@@ -868,44 +1031,40 @@ export function FinanceiroLucroPage() {
                 <tfoot>
                   <tr className="border-t-2 border-brand-musgo/40 bg-brand-creme/50 font-semibold text-brand-tinta">
                     <td className="sticky left-0 z-10 bg-brand-creme px-2 py-2">Total do mês</td>
-                    <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.pix, 0))}</td>
-                    <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.dinheiro, 0))}</td>
-                    <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.debito, 0))}</td>
-                    <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.credito, 0))}</td>
-                    <td className={cellNum}>{moneyFin(planilha.totais.total)}</td>
-                    <td className={cn(cellNum, "text-red-700/80")}>−{moneyFin(planilha.totais.taxas)}</td>
+                    {detalhado ? (
+                      <>
+                        <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.pix, 0))}</td>
+                        <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.dinheiro, 0))}</td>
+                        <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.debito, 0))}</td>
+                        <td className={cellNum}>{moneyFin(linhasVisiveis.reduce((s, l) => s + l.credito, 0))}</td>
+                        <td className={cellNum}>{moneyFin(planilha.totais.total)}</td>
+                        <td className={cn(cellNum, "text-red-700/80")}>−{moneyFin(planilha.totais.taxas)}</td>
+                      </>
+                    ) : null}
                     <td className={cn(cellNum, "text-brand-musgo")}>{moneyFin(planilha.totais.liquido)}</td>
-                    <td className={cellNum}>{moneyFin(planilha.totais.disponivel)}</td>
+                    {detalhado ? <td className={cellNum}>{moneyFin(planilha.totais.disponivel)}</td> : null}
                     <td className={cellNum}>{moneyFin(planilha.totais.reservado.impostos)}</td>
                     <td className={cn(cellNum, "bg-brand-musgo/10 text-brand-musgo")}>{moneyFin(planilha.totais.reservado.lucro)}</td>
                     <td className={cn(cellNum, "bg-brand-creme/70")}>
                       {moneyFin(planilha.totais.reservado.medicoExecutor)}
-                      <span className="block text-[10px] font-normal text-muted-foreground">col. P {moneyFin(planilha.totais.lucroBrutoProdutos)}</span>
+                      {detalhado ? <span className="block text-[10px] font-normal text-muted-foreground">col. P {moneyFin(planilha.totais.lucroBrutoProdutos)}</span> : null}
                     </td>
                     <td className={cn(cellNum, planilha.totais.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(planilha.totais.reservado.operacional)}</td>
-                    <td className={cellNum}>{moneyFin(planilha.totais.usado.operacional)}</td>
-                    <td className={cn(cellNum, saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
-                      {saldoOperacional < -0.005 ? `falta ${moneyFin(-saldoOperacional)}` : `sobra ${moneyFin(saldoOperacional)}`}
-                    </td>
-                    <td className={cellNum} />
+                    {detalhado ? (
+                      <>
+                        <td className={cellNum}>{moneyFin(planilha.totais.usado.operacional)}</td>
+                        <td className={cn(cellNum, saldoOperacional < -0.005 ? "text-red-700" : "text-emerald-700")}>
+                          {saldoOperacional < -0.005 ? `falta ${moneyFin(-saldoOperacional)}` : `sobra ${moneyFin(saldoOperacional)}`}
+                        </td>
+                        <td className={cellNum} />
+                      </>
+                    ) : null}
                     <td className={cellNum} />
                   </tr>
                 </tfoot>
               </table>
             </div>
           )}
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            <strong className="text-brand-musgo">Como ler:</strong> &quot;Bruto&quot; é tudo que foi lançado nas comandas do dia (crédito incluído);
-            &quot;Taxas&quot; é a maquininha (débito 0,7% · crédito à vista 1,7% · parcelado 2,39%) mais o PIX (0,6%, teto R$ 150); &quot;Entrou (líquido)&quot;
-            é o que sobrou. &quot;Impostos&quot; é a % do líquido; &quot;Lucro (cota)&quot; é o lucro do mês dividido pelos dias úteis — vale todo dia útil, mesmo
-            sem entrada; &quot;Médico&quot; é a coluna S da planilha de precificação: 50% do lucro bruto de cada produto do dia (col. P = preço − imposto/cartão −
-            comissão − consumíveis − repasse nutri − custo de sala), produto reconhecido pela descrição e preço do item; &quot;Fica p/ gastar&quot; é o que sobra (negativo quando o dia não
-            paga a régua). &quot;Disponível&quot; é PIX/dinheiro do dia + o cartão do dia útil anterior (pulando feriado), já líquido: a Rede deixa o crédito
-            à disposição em D+1 e a clínica decide quando puxar; &quot;puxar hoje&quot; é o custo da antecipação (TAD = SELIC a.m. + 0,9%, pelos dias que
-            faltam até os 31 de cada parcela). &quot;Contas pagas (dia)&quot; são as contas operacionais pagas naquele dia (obra, impostos, sócios,
-            empréstimos e repasse do médico têm envelope próprio). &quot;Sobra ou falta (mês)&quot; compara, do dia 1 até ali, tudo que ficou para gastar
-            com tudo que já foi pago. Marque &quot;Separado&quot; quando as transferências do dia forem feitas.
-          </p>
         </section>
       </div>
     </AccessGate>

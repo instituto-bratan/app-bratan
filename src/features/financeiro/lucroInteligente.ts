@@ -37,6 +37,7 @@
 // antecipação (TAD) se a clínica puxar antes dos 31 dias; a decisão é da
 // clínica, e o app mostra quanto custaria puxar hoje.
 import {
+  createFinId,
   expenseEhCapex,
   crediarioProfitOfMonth,
   saleTotal,
@@ -771,5 +772,131 @@ export function resumoPublicoDoMes(planilha: PlanilhaLucro, hoje: string, lucroM
     lucroMeta: round2(lucroMeta),
     medicoHoje: linha?.reservado.medicoExecutor ?? 0,
     medicoMes: planilha.totais.reservado.medicoExecutor,
+  };
+}
+
+
+// ---- TRANSFERÊNCIAS AOS SÓCIOS E AO MÉDICO (10/09/2026, Lucas) -------------------
+// "Deixar claro quanto já foi transferido ao médico executor e aos sócios, e
+// quanto falta para bater com o dia de hoje... foi provisionado tantos mil,
+// porém só foi transferido tantos mil, falta isso." O provisionado é o acumulado
+// da planilha até hoje (a régua separa todo dia útil); o transferido são as
+// contas PAGAS nas categorias do médico (repasse Dr. Bratan) e dos sócios
+// (distribuição de lucro, pró-labore, salário CEO). Registrar uma transferência
+// aqui = lançar uma conta paga nessa categoria — por isso Contas a Pagar, P12 e
+// esta tela contam o mesmo dinheiro.
+export type Beneficiario = "medicoExecutor" | "socios";
+
+export type Transferencia = {
+  id: string;
+  dia: string;
+  valor: number;
+  descricao: string;
+  comprovante: string;
+  categoriaRef: string;
+};
+
+export type ResumoRepasse = {
+  para: Beneficiario;
+  /** Até que dia a régua provisionou (hoje, ou o último dia de um mês fechado). */
+  ateDia: string;
+  provisionado: number;
+  transferido: number;
+  /** Só no envelope dos sócios: dívidas/empréstimos pagos com o envelope do lucro (decisão de 01/09). */
+  dividasPagas: number;
+  /** provisionado − transferido − dívidas. Negativo = saiu mais do que a régua separou. */
+  falta: number;
+  transferencias: Transferencia[];
+};
+
+export const CATEGORIA_TRANSFERENCIA: Record<Beneficiario, string> = {
+  medicoExecutor: "cat-medico-prescritor-dr-bratan",
+  socios: "cat-distribuicao-lucro-socios",
+};
+
+export const beneficiarioLabels: Record<Beneficiario, string> = {
+  medicoExecutor: "Dr. Daniel (médico executor)",
+  socios: "Sócios (lucro)",
+};
+
+function transferenciasDoMes(expenses: FinExpense[], monthKey: string, categorias: Set<string>): Transferencia[] {
+  return expenses
+    .filter((expense) => (expense.paidAt || "").slice(0, 7) === monthKey && categorias.has(expense.categoryRef))
+    .map((expense) => ({
+      id: expense.id,
+      dia: (expense.paidAt || "").slice(0, 10),
+      valor: round2(expense.amount || 0),
+      descricao: expense.description,
+      comprovante: expense.documentNote || "",
+      categoriaRef: expense.categoryRef,
+    }))
+    .sort((a, b) => b.dia.localeCompare(a.dia) || b.id.localeCompare(a.id));
+}
+
+export function resumoDosRepasses(planilha: PlanilhaLucro, expenses: FinExpense[]): Record<Beneficiario, ResumoRepasse> {
+  const ultima = planilha.linhas.at(-1);
+  const ateDia = ultima?.dia ?? `${planilha.monthKey}-01`;
+  const medico = transferenciasDoMes(expenses, planilha.monthKey, CATEGORIAS_MEDICO_EXECUTOR);
+  const socios = transferenciasDoMes(expenses, planilha.monthKey, CATEGORIAS_LUCRO_SOCIOS);
+  const dividas = transferenciasDoMes(expenses, planilha.monthKey, CATEGORIAS_DIVIDAS_INVESTIMENTO);
+  const soma = (lista: Transferencia[]) => round2(lista.reduce((total, item) => total + item.valor, 0));
+  const provMedico = planilha.totais.reservado.medicoExecutor;
+  const provSocios = planilha.totais.reservado.lucro;
+  const transfMedico = soma(medico);
+  const transfSocios = soma(socios);
+  const dividasPagas = soma(dividas);
+  return {
+    medicoExecutor: {
+      para: "medicoExecutor",
+      ateDia,
+      provisionado: provMedico,
+      transferido: transfMedico,
+      dividasPagas: 0,
+      falta: round2(provMedico - transfMedico),
+      transferencias: medico,
+    },
+    socios: {
+      para: "socios",
+      ateDia,
+      provisionado: provSocios,
+      transferido: transfSocios,
+      dividasPagas,
+      falta: round2(provSocios - transfSocios - dividasPagas),
+      transferencias: socios,
+    },
+  };
+}
+
+/** Frase única, na fala do Lucas: "provisionado X · transferido Y · falta Z para bater com hoje". */
+export function fraseDoRepasse(resumo: ResumoRepasse, formata: (valor: number) => string) {
+  const quem = resumo.para === "medicoExecutor" ? "para o Dr. Daniel" : "para os sócios";
+  const base = `Provisionado até ${resumo.ateDia.slice(8, 10)}/${resumo.ateDia.slice(5, 7)}: ${formata(resumo.provisionado)} · já transferido ${quem}: ${formata(resumo.transferido)}`;
+  const dividas = resumo.dividasPagas > 0.005 ? ` · dívidas pagas com este envelope: ${formata(resumo.dividasPagas)}` : "";
+  if (resumo.falta > 0.005) return `${base}${dividas} → falta transferir ${formata(resumo.falta)} para bater com hoje.`;
+  if (resumo.falta < -0.005) return `${base}${dividas} → saiu ${formata(-resumo.falta)} A MAIS do que a régua separou até hoje.`;
+  return `${base}${dividas} → em dia: transferido bate com o provisionado.`;
+}
+
+/** Monta a conta paga que registra a transferência (mesmo dinheiro em Contas a Pagar, P12 e aqui). */
+export function novaTransferencia(input: { para: Beneficiario; dia: string; valor: number; comprovante?: string; observacao?: string }): FinExpense {
+  const quem = input.para === "medicoExecutor" ? "Dr. Daniel Bratan" : "Sócios";
+  const [ano, mes, dia] = input.dia.split("-");
+  return {
+    id: createFinId("fexp"),
+    description: `Transferência ${input.para === "medicoExecutor" ? "ao médico executor" : "de lucro aos sócios"} — ${dia}/${mes}/${ano}`,
+    categoryRef: CATEGORIA_TRANSFERENCIA[input.para],
+    amount: round2(input.valor),
+    dueDate: input.dia,
+    paidAt: input.dia,
+    method: "TRANSFERENCIA",
+    supplier: quem,
+    installmentNum: null,
+    installmentTotal: null,
+    documentNote: (input.comprovante || "").trim(),
+    isCapex: false,
+    notes: [`Registrada no Lucro Inteligente (envelope ${input.para === "medicoExecutor" ? "do médico executor" : "do lucro"}).`, (input.observacao || "").trim()].filter(Boolean).join(" "),
+    createdAt: new Date().toISOString(),
+    // Transferência a sócio/médico não tem nota fiscal de fornecedor.
+    notaStatus: "SEM_NOTA",
   };
 }
