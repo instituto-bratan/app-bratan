@@ -203,7 +203,7 @@ export function RecebimentoNoKanban({
               const produto = item.produtoNome ? produtoPorNome(item.produtoNome) : null;
               const atualiza = (mudanca: Partial<ItemFechado>) => onItensChange(itens.map((it, i) => (i === index ? { ...it, ...mudanca } : it)));
               return (
-                <div key={index} className="grid items-center gap-1.5 rounded-md border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[1.6fr_0.45fr_0.8fr_auto]">
+                <div key={index} className="grid items-center gap-1.5 rounded-md border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,0.45fr)_minmax(0,0.8fr)_auto]">
                   {produto ? (
                     <span className="text-sm text-brand-tinta">
                       {produto.nome}{" "}
@@ -215,11 +215,11 @@ export function RecebimentoNoKanban({
                       </span>
                     </span>
                   ) : (
-                    <div className="grid gap-1 sm:grid-cols-[0.8fr_1.2fr]">
+                    <div className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
                       <select
                         value={item.itemType}
                         onChange={(event) => atualiza({ itemType: event.target.value as FinSaleItemType })}
-                        className="h-9 rounded-md border border-input bg-white px-2 text-xs"
+                        className="h-9 w-full min-w-0 rounded-md border border-input bg-white px-2 text-xs"
                         aria-label="Tipo do item"
                       >
                         {tiposDeItem.map((opcao) => (
@@ -384,13 +384,13 @@ export function RecebimentoNoKanban({
           <div className="grid gap-2">
             <p className="text-xs font-semibold text-brand-tinta">Como ele pagou</p>
             {divisao.map((parcela, indice) => (
-              <div key={indice} className="grid gap-2 sm:grid-cols-[1.2fr_0.8fr_0.6fr_auto]">
+              <div key={indice} className="grid gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.6fr)_auto]">
                 <select
                   value={parcela.forma}
                   onChange={(event) =>
                     onDivisaoChange(divisao.map((item, i) => (i === indice ? { ...item, forma: event.target.value as FinPaymentMethod } : item)))
                   }
-                  className="h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
+                  className="h-11 w-full min-w-0 rounded-md border border-input bg-white/80 px-3 text-sm"
                   aria-label="Forma de pagamento"
                 >
                   {salePaymentMethods.map((method) => (

@@ -200,6 +200,31 @@ export function totalDosItensFechados(itens: ItemFechado[], parse: (texto: strin
 }
 
 /**
+ * Reparte `alvo` entre `valores` na mesma proporção, com os centavos de
+ * arredondamento no último. Serve para o fechamento do Kanban E para o botão
+ * "Ajustar itens ao que foi pago" do Lançar Dia (10/09/2026: "o paciente às
+ * vezes paga um valor que não está na grade, e o app recusava"). Valores zero
+ * ou negativos ficam zero; se a soma é zero, nada muda.
+ */
+export function ratearValores(valores: number[], alvo: number): number[] {
+  const base = valores.map((valor) => (valor > 0 ? round2(valor) : 0));
+  const total = round2(base.reduce((soma, valor) => soma + valor, 0));
+  if (total <= 0 || alvo <= 0) return base;
+  if (Math.abs(total - alvo) < 0.005) return base;
+  const fator = alvo / total;
+  const resultado = base.map((valor) => round2(valor * fator));
+  const somaAjustada = round2(resultado.reduce((soma, valor) => soma + valor, 0));
+  const diferenca = round2(alvo - somaAjustada);
+  if (Math.abs(diferenca) >= 0.005) {
+    // O último item COM valor absorve os centavos (um item zerado não pode virar 0,01).
+    let ultimo = resultado.length - 1;
+    while (ultimo > 0 && resultado[ultimo] <= 0) ultimo -= 1;
+    resultado[ultimo] = round2(resultado[ultimo] + diferenca);
+  }
+  return resultado;
+}
+
+/**
  * Transforma o que foi escolhido nos itens da comanda, fechando EXATAMENTE em
  * `valorComanda` (o que o banco vai conferir). Se a soma das linhas difere —
  * parcial, parte em dinheiro que foi para o caixa, desconto na hora — cada item
@@ -217,16 +242,11 @@ export function itensDaComanda(
     .map((item) => ({ ...item, valor: round2(parse(item.valorTexto) || 0) }))
     .filter((item) => item.valor > 0);
   if (!validos.length || valorComanda <= 0) return [];
-  const total = round2(validos.reduce((soma, item) => soma + item.valor, 0));
-  const fator = Math.abs(total - valorComanda) < 0.005 ? 1 : valorComanda / total;
-  const resultado: FinSaleItem[] = validos.map((item) => ({
+  const valores = ratearValores(validos.map((item) => item.valor), valorComanda);
+  return validos.map((item, index) => ({
     id: criarId(),
     itemType: item.itemType,
-    amount: round2(item.valor * fator),
+    amount: valores[index],
     description: item.descricao.trim() || item.produtoNome || "",
   }));
-  const somaAjustada = round2(resultado.reduce((soma, item) => soma + item.amount, 0));
-  const diferenca = round2(valorComanda - somaAjustada);
-  if (Math.abs(diferenca) >= 0.005) resultado[resultado.length - 1].amount = round2(resultado[resultado.length - 1].amount + diferenca);
-  return resultado;
 }

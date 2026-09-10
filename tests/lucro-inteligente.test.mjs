@@ -129,6 +129,18 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
   assert.equal(li.repartir(0, li.lucroBrutoNaComanda(comanda), { impostos: 0, lucroMensal: 0, medicoExecutor: 50 }, 0).medicoExecutor, 3547.9, "coluna S: 1.032,70 + 2.515,20");
 });
 
+test("valor fora da grade (10/09): ratearValores fecha os itens exatamente no que o paciente pagou", () => {
+  const cat = loadTsModule("src/features/financeiro/catalogoPrecificacao.ts");
+  // Programa 6.997 + HCG 590; paciente pagou 7.000 (não está na tabela) → mesma proporção, centavos no último.
+  const ajustado = plain(cat.ratearValores([6997, 590], 7000));
+  assert.equal(Math.round((ajustado[0] + ajustado[1]) * 100) / 100, 7000, "a soma bate no centavo");
+  assert.ok(Math.abs(ajustado[0] - 6997 * (7000 / 7587)) < 0.01, "cada item na mesma proporção");
+  assert.deepEqual(plain(cat.ratearValores([2500, 0, 500], 1500)), [1250, 0, 250], "item zerado continua zerado e não recebe os centavos");
+  assert.deepEqual(plain(cat.ratearValores([100, 200], 300)), [100, 200], "já fecha: nada muda");
+  assert.deepEqual(plain(cat.ratearValores([0, 0], 300)), [0, 0], "sem itens com valor, não inventa valor");
+  assert.deepEqual(plain(cat.ratearValores([1, 1, 1], 1)), [0.33, 0.33, 0.34], "centavos de arredondamento caem no último item");
+});
+
 test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fecha exatamente no valor recebido", () => {
   const cat = loadTsModule("src/features/financeiro/catalogoPrecificacao.ts");
   const parse = (texto) => Number(String(texto).replace(/\./g, "").replace(",", ".")) || 0;

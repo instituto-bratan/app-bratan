@@ -25,7 +25,7 @@ import {
 } from "@/features/crm/contactChannels";
 import { extractPersonName } from "@/features/crm/nameMatch";
 import { quandoNotaLabels, type QuandoNota } from "@/features/crm/recebimentoKanbanData";
-import { produtoPorNome, secoesDoCatalogo } from "./catalogoPrecificacao";
+import { produtoPorNome, ratearValores, secoesDoCatalogo } from "./catalogoPrecificacao";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
@@ -207,6 +207,36 @@ export function FinanceiroLancarDiaPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  /**
+   * O PACIENTE PAGOU UM VALOR FORA DA GRADE (10/09/2026). O preço da tabela é
+   * só sugestão; o que o banco confere é o pagamento. Quando itens e pagamentos
+   * não fecham, em vez de recusar, o app oferece o acerto em um toque: os itens
+   * são rateados na mesma proporção para bater com o que entrou (mesma regra do
+   * fechamento do Kanban), e o nome do produto fica — é ele que o Lucro
+   * Inteligente lê.
+   */
+  function ajustarItensAoPago() {
+    if (paymentsTotal <= 0) return;
+    const valores = ratearValores(items.map((item) => parseAmount(item.amount)), paymentsTotal);
+    setItems((current) => current.map((item, index) => (valores[index] > 0 ? { ...item, amount: amountToDraft(valores[index]) } : item)));
+    setFeedback(`Itens ajustados para ${moneyFin(paymentsTotal)}, o valor que o paciente pagou. Confira e salve.`);
+  }
+
+  /** O contrário: a pessoa lançou os itens certos e o pagamento veio incompleto ou errado. */
+  function ajustarPagamentoAosItens() {
+    if (itemsTotal <= 0) return;
+    const comValor = payments.filter((payment) => parseAmount(payment.amount) > 0);
+    const alvo = comValor.length <= 1 ? [itemsTotal] : ratearValores(payments.map((payment) => parseAmount(payment.amount)), itemsTotal);
+    setPayments((current) => {
+      if (comValor.length <= 1) {
+        const indice = Math.max(0, current.findIndex((payment) => parseAmount(payment.amount) > 0));
+        return current.map((payment, index) => (index === indice ? { ...payment, amount: amountToDraft(itemsTotal) } : payment));
+      }
+      return current.map((payment, index) => (alvo[index] > 0 ? { ...payment, amount: amountToDraft(alvo[index]) } : payment));
+    });
+    setFeedback(`Pagamento ajustado para ${moneyFin(itemsTotal)}, a soma dos itens. Confira e salve.`);
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
@@ -235,7 +265,10 @@ export function FinanceiroLancarDiaPage() {
     if (problemaContato) return setFeedback(problemaContato);
     if (!validItems.length) return setFeedback("Adicione pelo menos um item com valor.");
     if (!validPayments.length) return setFeedback("Informe como foi pago.");
-    if (!totalsMatch) return setFeedback("Os pagamentos não fecham com os itens. Ajuste antes de salvar.");
+    if (!totalsMatch)
+      return setFeedback(
+        `Itens ${moneyFin(itemsTotal)} e pagamentos ${moneyFin(paymentsTotal)} não fecham. Se o paciente pagou ${moneyFin(paymentsTotal)} mesmo (valor fora da tabela, desconto, sinal), use "Itens = valor pago" ao lado do botão de salvar; se o erro está no pagamento, use "Pagamento = itens".`,
+      );
 
     const editingSale = editingSaleId ? financeiro.sales.find((existing) => existing.id === editingSaleId) : null;
     const sale: FinSale = {
@@ -527,7 +560,7 @@ export function FinanceiroLancarDiaPage() {
                     </div>
                     <div className="grid gap-2">
                       {items.map((item, index) => (
-                        <div key={index} className="grid gap-2 sm:grid-cols-[1.4fr_1fr_0.7fr_1.1fr_auto]">
+                        <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1.1fr)_auto]">
                           {/* PRODUTO DA TABELA (02/09/2026): escolher aqui grava o nome e o
                               preço oficiais — é o que o Lucro Inteligente lê para a coluna S. */}
                           <select
@@ -541,7 +574,7 @@ export function FinanceiroLancarDiaPage() {
                                 ),
                               );
                             }}
-                            className="h-11 rounded-md border border-brand-dourado/50 bg-brand-creme/40 px-3 text-sm"
+                            className="h-11 w-full min-w-0 rounded-md border border-brand-dourado/50 bg-brand-creme/40 px-3 text-sm"
                             aria-label="Produto da tabela de preços"
                           >
                             <option value="">Produto da tabela…</option>
@@ -558,7 +591,7 @@ export function FinanceiroLancarDiaPage() {
                           <select
                             value={item.itemType}
                             onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, itemType: event.target.value as FinSaleItemType } : it)))}
-                            className="h-11 rounded-md border border-input bg-white/72 px-3 text-sm"
+                            className="h-11 w-full min-w-0 rounded-md border border-input bg-white/72 px-3 text-sm"
                             aria-label="Tipo do item"
                           >
                             {saleItemTypes.map((type) => (
@@ -577,7 +610,7 @@ export function FinanceiroLancarDiaPage() {
                             onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, description: event.target.value } : it)))}
                             placeholder="Detalhe (ex.: restante, sinal 13/07...)"
                           />
-                          <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => setItems((current) => current.filter((_, i) => i !== index))}>
+                          <Button type="button" variant="ghost" size="icon" className="shrink-0 justify-self-end" aria-label="Remover item" onClick={() => setItems((current) => current.filter((_, i) => i !== index))}>
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                           </Button>
                         </div>
@@ -596,11 +629,11 @@ export function FinanceiroLancarDiaPage() {
                       {payments.map((payment, index) => {
                         const isCard = payment.method === "CARTAO_CREDITO" || payment.method === "CARTAO_DEBITO";
                         return (
-                          <div key={index} className="grid gap-2 sm:grid-cols-[1.1fr_0.7fr_0.55fr_0.7fr_auto]">
+                          <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.55fr)_minmax(0,0.7fr)_auto]">
                             <select
                               value={payment.method}
                               onChange={(event) => setPayments((current) => current.map((p, i) => (i === index ? { ...p, method: event.target.value as FinPaymentMethod } : p)))}
-                              className="h-11 rounded-md border border-input bg-white/72 px-3 text-sm"
+                              className="h-11 w-full min-w-0 rounded-md border border-input bg-white/72 px-3 text-sm"
                               aria-label="Forma de pagamento"
                             >
                               {salePaymentMethods.map((method) => (
@@ -625,7 +658,7 @@ export function FinanceiroLancarDiaPage() {
                             <select
                               value={payment.cardMachine}
                               onChange={(event) => setPayments((current) => current.map((p, i) => (i === index ? { ...p, cardMachine: event.target.value as FinCardMachine } : p)))}
-                              className="h-11 rounded-md border border-input bg-white/72 px-3 text-sm disabled:opacity-50"
+                              className="h-11 w-full min-w-0 rounded-md border border-input bg-white/72 px-3 text-sm disabled:opacity-50"
                               disabled={!isCard}
                               aria-label="Maquininha"
                             >
@@ -633,7 +666,7 @@ export function FinanceiroLancarDiaPage() {
                                 <option key={machine} value={machine}>{cardMachineLabels[machine]}</option>
                               ))}
                             </select>
-                            <Button type="button" variant="ghost" size="icon" aria-label="Remover pagamento" onClick={() => setPayments((current) => current.filter((_, i) => i !== index))}>
+                            <Button type="button" variant="ghost" size="icon" className="shrink-0 justify-self-end" aria-label="Remover pagamento" onClick={() => setPayments((current) => current.filter((_, i) => i !== index))}>
                               <Trash2 className="h-4 w-4" aria-hidden="true" />
                             </Button>
                             {/* COMPROVANTE (10/08/2026): resolvido aqui, em um toque, na
@@ -756,6 +789,17 @@ export function FinanceiroLancarDiaPage() {
                       Itens {moneyFin(itemsTotal)} · Pagamentos {moneyFin(paymentsTotal)}
                       {totalsMatch ? " ✓" : " — não fecham"}
                     </span>
+                    {/* VALOR FORA DA GRADE (10/09/2026): o app não recusa mais — acerta em um toque. */}
+                    {!totalsMatch && itemsTotal > 0 && paymentsTotal > 0 ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Button type="button" variant="outline" size="sm" onClick={ajustarItensAoPago} title="Rateia os itens na mesma proporção para bater com o que o paciente pagou">
+                          Itens = valor pago ({moneyFin(paymentsTotal)})
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={ajustarPagamentoAosItens} title="Corrige o pagamento para a soma dos itens">
+                          Pagamento = itens ({moneyFin(itemsTotal)})
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 </form>
               </CardContent>
