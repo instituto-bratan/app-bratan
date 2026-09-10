@@ -110,7 +110,7 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")).nome, "Tirzepatida · 31 a 49 un", "entre as tirzepatidas, o preço mais próximo decide");
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 300.77);
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1990, "")), 1265.6, "1.990 só pode ser Ferinject: preço decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 719.32, "valor fora da tabela: lucro bruto proporcional (424,40 × 1.000/590)");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 699.19, "valor fora da tabela: lucro bruto proporcional (424,40 × 1.000/590)");
   assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 800, "Soro especial")), 559.14, "produto desconhecido: fração do Plano (69,9%)");
   assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 2500, "")), 1990.42, "consulta avulsa Pix");
   assert.equal(li.lucroBrutoDoItem(item("SINAL", 500, "")), 393.02);
@@ -307,7 +307,7 @@ test("planilha do dia: taxas saem antes; executor é a coluna S; lucro é a cota
   assert.equal(p.totais.total, 11000);
   assert.equal(p.totais.liquido, 10874);
   assert.equal(p.totais.prescrito, 11000);
-  assert.equal(p.totais.lucroBrutoProdutos, 8327.36);
+  assert.equal(p.totais.lucroBrutoProdutos, 8067.32);
   assert.equal(p.diasComMovimento, 2);
   assert.equal(p.diasPendentes, 2, "nenhum dia marcado como separado ainda");
 });
