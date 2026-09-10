@@ -636,6 +636,18 @@ export function FinanceiroLucroPage() {
                   todo do lucro): lucro bruto {moneyFin(explicacao.lucroBrutoCustoFixo)} → Dr. Daniel{" "}
                   <strong>{moneyFin(explicacao.parteMedicoCustoFixo)}</strong>. Quando o paciente paga o preço cheio, as duas dão o mesmo.
                 </p>
+                {/* A RÉGUA DA AULA (Dr. Thiago Volpi, 42:35): "passar para você como médico executor algo entre 20 e 30%
+                    do que você fatura… da receita que você tem"; no Espaço dele são 28%. Aqui a parte do médico sai da
+                    coluna S da planilha, então o % da receita é consequência — e é o que dá para comparar com a aula. */}
+                {planilha.totais.liquido > 0.005 ? (
+                  <p className="mt-2 border-t border-brand-oliva/15 pt-2">
+                    <strong>Comparado com a aula:</strong> no mês, a parte do Dr. Daniel ({moneyFin(planilha.totais.reservado.medicoExecutor)}) está em{" "}
+                    <strong>{Math.round((planilha.totais.reservado.medicoExecutor / planilha.totais.liquido) * 1000) / 10}%</strong> do que entrou líquido
+                    ({moneyFin(planilha.totais.liquido)}). O Dr. Volpi manda passar ao médico executor entre 20% e 30% da receita (no Espaço dele, 28%),
+                    sempre em percentual, nunca em valor fixo. O salário fixo do Dr. Daniel (RT) fica fora desta conta desde 10/09, como conta fixa do
+                    Contas a Pagar.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </section>
