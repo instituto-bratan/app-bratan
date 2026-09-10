@@ -211,8 +211,17 @@ export function lucroBrutoNaComanda(sale: FinSale) {
 // como gasto de envelope nenhum.
 export const CATEGORIAS_IMPOSTOS = new Set(["cat-impostos-mensais", "cat-impostos-trimestrais", "cat-impostos-parcelas-anteriores"]);
 export const CATEGORIAS_PROVISAO_IMPOSTOS = new Set(["cat-poup-impostos-mensais", "cat-poup-impostos-trimestrais"]);
-export const CATEGORIAS_MEDICO_EXECUTOR = new Set(["cat-medico-prescritor-dr-bratan"]);
-export const CATEGORIAS_LUCRO_SOCIOS = new Set(["cat-salario-ceo", "cat-prolabore-socios", "cat-distribuicao-lucro-socios"]);
+// LUCRO INTELIGENTE É "A MAIS" (Lucas, 10/09/2026): "salário e pró-labore não
+// contam como lucro — ficam no Contas a Pagar como conta fixa. O lucro é o que
+// entra no dia. O Dr. Daniel é a mesma coisa." Então o salário fixo do médico
+// (cat-medico-prescritor-dr-bratan), o salário da CEO e o pró-labore são custo
+// OPERACIONAL como qualquer conta fixa. O que abate os envelopes do lucro e do
+// executor são SÓ as transferências registradas no Lucro Inteligente (categorias
+// próprias) — e a distribuição de lucro, que é a mesma coisa com nome antigo.
+export const CATEGORIA_LUCRO_INTELIGENTE_MEDICO = "cat-lucro-inteligente-medico";
+export const CATEGORIA_LUCRO_INTELIGENTE_SOCIOS = "cat-lucro-inteligente-socios";
+export const CATEGORIAS_MEDICO_EXECUTOR = new Set([CATEGORIA_LUCRO_INTELIGENTE_MEDICO]);
+export const CATEGORIAS_LUCRO_SOCIOS = new Set([CATEGORIA_LUCRO_INTELIGENTE_SOCIOS, "cat-distribuicao-lucro-socios"]);
 /** Taxas das maquininhas: já saem do "entrou" na coluna Taxas — contá-las de novo como gasto seria dobrar. */
 export const CATEGORIAS_TAXAS_MAQUININHA = new Set(["cat-tarifa-bancaria-rede", "cat-tarifa-bancaria-safra"]);
 /**
@@ -810,8 +819,8 @@ export type ResumoRepasse = {
 };
 
 export const CATEGORIA_TRANSFERENCIA: Record<Beneficiario, string> = {
-  medicoExecutor: "cat-medico-prescritor-dr-bratan",
-  socios: "cat-distribuicao-lucro-socios",
+  medicoExecutor: CATEGORIA_LUCRO_INTELIGENTE_MEDICO,
+  socios: CATEGORIA_LUCRO_INTELIGENTE_SOCIOS,
 };
 
 export const beneficiarioLabels: Record<Beneficiario, string> = {

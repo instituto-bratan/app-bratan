@@ -530,8 +530,9 @@ export function FinanceiroLucroPage() {
               Transferências — o que já saiu e o que falta
               <InfoTip title="Como este bloco é calculado">
                 <strong>Provisionado</strong> é o que a régua separou do dia 1 até hoje (o médico pela coluna S de cada
-                produto vendido; os sócios pela cota fixa de cada dia útil). <strong>Transferido</strong> são as contas
-                PAGAS nas categorias do repasse do Dr. Daniel e da distribuição de lucro/pró-labore/salário CEO.{" "}
+                produto vendido; os sócios pela cota fixa de cada dia útil). <strong>Transferido</strong> são só as transferências
+                registradas aqui (categorias próprias do Lucro Inteligente) e a distribuição de lucro. O salário fixo do Dr. Daniel, o
+                salário da CEO e o pró-labore são contas fixas do Contas a Pagar e NÃO entram: o Lucro Inteligente é o que vai a mais.{" "}
                 <strong>Falta</strong> é a diferença. Registrar aqui cria a conta paga na categoria certa — Contas a Pagar e
                 P12 mostram o mesmo número. Para anexar o comprovante em arquivo, use a célula de nota da conta em Contas a Pagar.
               </InfoTip>
@@ -680,8 +681,9 @@ export function FinanceiroLucroPage() {
               <InfoTip title="Avaliação instantânea">
                 &quot;Antes de mudar qualquer coisa, você precisa saber onde está.&quot; Os últimos meses fechados, com a
                 porcentagem exata de cada envelope sobre o que entrou. Impostos = imposto pago (competência); médico
-                executor = repasse do Dr. Daniel; sócios = salário CEO + pró-labore + distribuição; operacional = todas
-                as outras contas fora obra e empréstimos. <strong>Lucro</strong> é o que sobrou depois de impostos, médico e
+                executor = só as transferências do Lucro Inteligente ao Dr. Daniel; sócios = transferências do Lucro Inteligente + distribuição
+                de lucro; operacional = todas as outras contas fora obra e empréstimos — inclusive o salário fixo do médico, o salário da CEO e o
+                pró-labore, que são conta fixa e não lucro (Lucas, 10/09). <strong>Lucro</strong> é o que sobrou depois de impostos, médico e
                 operacional — inclui o que os sócios já levaram. Obra, empréstimos e investimento ficam à parte: a aula
                 manda tratar dívida de reforma como lucro reinvestido.
               </InfoTip>

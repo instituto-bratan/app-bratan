@@ -985,6 +985,9 @@ export const seedFinCategories: FinCategory[] = ([
   ["cat-prolabore-socios", "MAO_DE_OBRA", "Prolabore Sócios", 2, false],
   ["cat-salario-ceo", "MAO_DE_OBRA", "Salário CEO", 3, false],
   ["cat-medico-prescritor-dr-bratan", "MAO_DE_OBRA", "Médico e prescritor Instituto - Dr Bratan", 4, false],
+  // LUCRO INTELIGENTE (10/09/2026): as transferências "a mais" do dia — separadas
+  // do salário fixo do médico e do pró-labore/salário CEO, que continuam acima.
+  ["cat-lucro-inteligente-medico", "MAO_DE_OBRA", "Lucro Inteligente — médico executor (transferência)", 15, false],
   ["cat-horas-extras-13-ferias-bonificacoes", "MAO_DE_OBRA", "Horas extras / 13º / férias / bonificações", 5, false],
   ["cat-contratacao-rescisao-fgts", "MAO_DE_OBRA", "Contratação / Rescisão / FGTS rescisão", 6, false],
   ["cat-gestor", "MAO_DE_OBRA", "Gestor", 7, false],
@@ -1031,6 +1034,7 @@ export const seedFinCategories: FinCategory[] = ([
   ["cat-poup-urgencias", "POUPANCA", "Urgências", 8, false],
   ["cat-poup-urgencias-proximo-mes", "POUPANCA", "Urgências para o próximo mês", 9, false],
   ["cat-poup-inicio-ano-2027", "POUPANCA", "Início ano 2027 (custos)", 10, false],
+  ["cat-lucro-inteligente-socios", "POUPANCA", "Lucro Inteligente — sócios (transferência)", 11, false],
 ] as [string, FinCategoryGroup, string, number, boolean][]).map(([id, groupKey, name, sortOrder, isCapex]) => ({
   id,
   groupKey,
@@ -2182,7 +2186,7 @@ export function expenseEhCapex(expense: FinExpense, category?: FinCategory | nul
 }
 
 /** Categorias que são capex mas NÃO são obra (saem do lucro por outro motivo). */
-export const CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA = new Set(["cat-distribuicao-lucro-socios"]);
+export const CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA = new Set(["cat-distribuicao-lucro-socios", "cat-lucro-inteligente-socios"]);
 
 export type GestaoMensal = {
   monthKey: string;

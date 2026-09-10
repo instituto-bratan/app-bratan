@@ -85,7 +85,9 @@ test("expenseEhCapex olha o lançamento E a categoria", () => {
 
 test("a régua da distribuição fica num lugar só, nomeada", () => {
   assert.ok(fin.CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has("cat-distribuicao-lucro-socios"));
-  assert.equal(fin.CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.size, 1);
+  // 10/09/2026: a transferência de lucro aos sócios feita pelo Lucro Inteligente é a mesma coisa com nome novo.
+  assert.ok(fin.CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has("cat-lucro-inteligente-socios"));
+  assert.equal(fin.CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.size, 2, "só distribuição de lucro — nada de salário/pró-labore aqui");
 });
 
 // 01/09/2026 (Lucas): "na P12, nos custos do mês, no contas a pagar, tire tudo

@@ -53,6 +53,8 @@ const categorias = [
   { id: "cat-compras-variaveis-obras-2026", name: "Obra", groupKey: "CUSTO_VARIAVEL", isCapex: true, sortOrder: 6, active: true },
   { id: "cat-fatura-cartao-credito", name: "Fatura cartão", groupKey: "CUSTO_VARIAVEL", isCapex: false, sortOrder: 7, active: true },
   { id: "cat-distribuicao-lucro-socios", name: "Distribuição", groupKey: "CUSTO_VARIAVEL", isCapex: true, sortOrder: 8, active: true },
+  { id: "cat-lucro-inteligente-medico", name: "LI médico", groupKey: "MAO_DE_OBRA", isCapex: false, sortOrder: 15, active: true },
+  { id: "cat-lucro-inteligente-socios", name: "LI sócios", groupKey: "POUPANCA", isCapex: false, sortOrder: 11, active: true },
   { id: "cat-tarifa-bancaria-rede", name: "Tarifa Rede", groupKey: "CUSTO_VARIAVEL", isCapex: false, sortOrder: 9, active: true },
   { id: "cat-giro-pronamp-carro-emprestimo", name: "Empréstimo", groupKey: "CUSTO_FIXO", isCapex: false, sortOrder: 20, active: true },
 ];
@@ -284,6 +286,8 @@ test("planilha do dia: contas pagas caem no envelope certo; obra, provisão e ta
     conta("aluguel", 3000, "cat-fixo", "2026-09-01"),
     conta("ceo", 1500, "cat-salario-ceo", "2026-09-01"),
     conta("dr", 800, "cat-medico-prescritor-dr-bratan", "2026-09-01"),
+    conta("li-socios", 1500, "cat-lucro-inteligente-socios", "2026-09-01"),
+    conta("li-medico", 600, "cat-lucro-inteligente-medico", "2026-09-01"),
     conta("das", 700, "cat-impostos-mensais", "2026-09-01"),
     conta("provisao", 999, "cat-poup-impostos-mensais", "2026-09-01"),
     conta("obra", 5000, "cat-compras-variaveis-obras-2026", "2026-09-01"),
@@ -294,19 +298,24 @@ test("planilha do dia: contas pagas caem no envelope certo; obra, provisão e ta
   const p = li.buildPlanilhaLucro({ sales: vendas, expenses: contas, categories: categorias, reconciliations: [{ id: "r", day: "2026-09-01", status: "CONFERIDO" }], marcas: [{ dia: "2026-09-01", separado: true, observacao: "" }], config: regua(10, 21000, 50), monthKey: "2026-09", hoje: "2026-09-01" });
   const dia = p.linhas[0];
   assert.equal(dia.taxas, 0, "dinheiro não tem taxa");
-  assert.deepEqual(plain(dia.usado), { impostos: 700, lucro: 1900, medicoExecutor: 800, operacional: 3000 }, "empréstimo sai do lucro; obra, VISA-OBRA, provisão e tarifa da Rede não entram em envelope nenhum");
+  // Lucas (10/09): salário CEO e salário fixo do médico são conta FIXA (operacional); só a transferência do
+  // Lucro Inteligente (e a distribuição) abate o envelope. Empréstimo continua saindo do lucro (aula).
+  assert.deepEqual(plain(dia.usado), { impostos: 700, lucro: 1900, medicoExecutor: 600, operacional: 5300 }, "1.500 LI sócios + 400 empréstimo = 1.900 no lucro; 600 LI médico; aluguel 3.000 + CEO 1.500 + médico fixo 800 = 5.300 operacional; obra, VISA-OBRA, provisão e Rede fora");
   assert.equal(dia.reservado.medicoExecutor, 4130.8, "consulta de 10.000: coluna P 82,6% → coluna S 50%");
   assert.equal(dia.reservado.operacional, 3869.2, "10.000 − 1.000 de imposto − 4.130,80 do médico − 1.000 de cota");
-  assert.equal(dia.acumulado.saldo.operacional, 869.2, "3.869,20 reservados − 3.000 gastos");
-  assert.equal(dia.acumulado.saldo.lucro, -900, "1.000 de cota − 1.900 pagos (CEO + parcela do empréstimo)");
+  assert.equal(dia.acumulado.saldo.operacional, -1430.8, "3.869,20 reservados − 5.300 gastos (agora com CEO e médico fixo)");
+  assert.equal(dia.acumulado.saldo.lucro, -900, "1.000 de cota − 1.900 pagos (transferência LI + parcela do empréstimo)");
   assert.equal(dia.fechamento, "CONFERIDO");
   assert.equal(p.diasSeparados, 1);
   assert.equal(p.diasPendentes, 0);
 });
 
-test("envelopeDaConta: CEO é lucro, Dr. Daniel é executor, empréstimo é lucro, provisão/obra/tarifa ficam fora", () => {
-  assert.equal(li.envelopeDaConta(conta("a", 1, "cat-salario-ceo", "2026-09-01"), cat("cat-salario-ceo")), "lucro");
-  assert.equal(li.envelopeDaConta(conta("b", 1, "cat-medico-prescritor-dr-bratan", "2026-09-01"), cat("cat-medico-prescritor-dr-bratan")), "medicoExecutor");
+test("envelopeDaConta: salário CEO/pró-labore/médico fixo são conta FIXA (operacional); só a transferência do Lucro Inteligente abate lucro/executor; empréstimo é lucro; provisão/obra/tarifa ficam fora", () => {
+  assert.equal(li.envelopeDaConta(conta("a", 1, "cat-salario-ceo", "2026-09-01"), cat("cat-salario-ceo")), "operacional", "Lucas 10/09: salário não é lucro");
+  assert.equal(li.envelopeDaConta(conta("a2", 1, "cat-prolabore-socios", "2026-09-01"), cat("cat-prolabore-socios")), "operacional", "pró-labore é conta fixa");
+  assert.equal(li.envelopeDaConta(conta("b", 1, "cat-medico-prescritor-dr-bratan", "2026-09-01"), cat("cat-medico-prescritor-dr-bratan")), "operacional", "salário fixo do médico é conta fixa");
+  assert.equal(li.envelopeDaConta(conta("b2", 1, "cat-lucro-inteligente-medico", "2026-09-01"), cat("cat-lucro-inteligente-medico")), "medicoExecutor");
+  assert.equal(li.envelopeDaConta(conta("b3", 1, "cat-lucro-inteligente-socios", "2026-09-01"), cat("cat-lucro-inteligente-socios")), "lucro");
   assert.equal(li.envelopeDaConta(conta("c", 1, "cat-impostos-mensais", "2026-09-01"), cat("cat-impostos-mensais")), "impostos");
   assert.equal(li.envelopeDaConta(conta("d", 1, "cat-poup-impostos-mensais", "2026-09-01"), cat("cat-poup-impostos-mensais")), null);
   assert.equal(li.envelopeDaConta(conta("e", 1, "cat-compras-variaveis-obras-2026", "2026-09-01"), cat("cat-compras-variaveis-obras-2026")), null);
@@ -320,8 +329,10 @@ test("avaliação instantânea (Passo 1): onde a clínica está, sem maquiar, co
   const vendas = [venda("ana", "2026-08-10", [{ method: "PIX", amount: 100000 }], [{ itemType: "CONSULTA", amount: 30000 }, { itemType: "TRATAMENTO", amount: 70000 }])];
   const contas = [
     conta("aluguel", 50000, "cat-fixo", "2026-08-10"),
-    conta("ceo", 15000, "cat-salario-ceo", "2026-08-10"),
-    conta("dr", 12000, "cat-medico-prescritor-dr-bratan", "2026-08-10"),
+    conta("ceo", 15000, "cat-salario-ceo", "2026-08-10"), // salário fixo: conta operacional (Lucas, 10/09)
+    conta("dr", 12000, "cat-medico-prescritor-dr-bratan", "2026-08-10"), // salário fixo do médico: idem
+    conta("li-dr", 12000, "cat-lucro-inteligente-medico", "2026-08-10"), // transferência do Lucro Inteligente
+    conta("li-socios", 15000, "cat-lucro-inteligente-socios", "2026-08-10"),
     conta("das", 13000, "cat-impostos-mensais", "2026-08-10"),
     conta("provisao", 14000, "cat-poup-impostos-mensais", "2026-08-10"),
     conta("obra", 30000, "cat-compras-variaveis-obras-2026", "2026-08-10"),
@@ -333,12 +344,12 @@ test("avaliação instantânea (Passo 1): onde a clínica está, sem maquiar, co
   assert.equal(mes.prescrito, 100000, "consulta e tratamento são itens do médico");
   perto(mes.lucroBrutoProdutos, 75110.37, 0.02, "coluna P do mês: 30 mil × 82,6% + 70 mil × 71,9% → pela régua o executor levaria ~37,6 mil");
   assert.equal(mes.impostos, 13000);
-  assert.equal(mes.medicoExecutor, 12000, "o que foi pago de fato ao Dr.");
-  assert.equal(mes.operacional, 50000, "provisão de impostos e empréstimo não são despesa operacional");
-  assert.equal(mes.sociosPagos, 15000);
-  assert.equal(mes.lucro, 25000, "receita − impostos − executor − operacional (inclui o que a CEO já levou e a parcela do empréstimo)");
+  assert.equal(mes.medicoExecutor, 12000, "só a transferência do Lucro Inteligente ao Dr. — o salário fixo dele é conta operacional");
+  assert.equal(mes.operacional, 77000, "aluguel 50 mil + salário CEO 15 mil + salário fixo do médico 12 mil; provisão e empréstimo não");
+  assert.equal(mes.sociosPagos, 15000, "só a transferência do Lucro Inteligente aos sócios");
+  assert.equal(mes.lucro, -2000, "receita − impostos − executor − operacional: negativo, sem maquiar");
   assert.equal(mes.investimento, 37000, "obra + empréstimo, à parte");
-  assert.deepEqual(plain(mes.percentuais), { impostos: 13, lucro: 25, medicoExecutor: 12, operacional: 50, sociosPagos: 15 });
+  assert.deepEqual(plain(mes.percentuais), { impostos: 13, lucro: -2, medicoExecutor: 12, operacional: 77, sociosPagos: 15 });
   assert.equal(a.consolidado.receita, 100000);
   assert.equal(a.consolidado.prescrito, 100000);
   assert.deepEqual(plain(li.mesesAnteriores("2026-09", 3)), ["2026-06", "2026-07", "2026-08"]);
@@ -390,10 +401,12 @@ test("repasses: provisionado é o acumulado da régua até hoje; transferido sã
   const vendas = [venda("a", "2026-09-01", [{ method: "PIX", amount: 6997 }], [{ itemType: "TRATAMENTO", amount: 6997, description: "Programa de acompanhamento 6 meses" }]),
                   venda("b", "2026-09-02", [{ method: "PIX", amount: 6997 }], [{ itemType: "TRATAMENTO", amount: 6997, description: "Programa de acompanhamento 6 meses" }])];
   const contas = [
-    conta("t1", 2000, "cat-medico-prescritor-dr-bratan", "2026-09-01"),
-    conta("t2", 800, "cat-distribuicao-lucro-socios", "2026-09-02"),
+    conta("t1", 2000, "cat-lucro-inteligente-medico", "2026-09-01"),
+    conta("t2", 800, "cat-lucro-inteligente-socios", "2026-09-02"),
     conta("t3", 500, "cat-giro-pronamp-carro-emprestimo", "2026-09-02"),
-    conta("fora", 999, "cat-medico-prescritor-dr-bratan", "2026-08-30"), // mês anterior: não entra
+    conta("fora", 999, "cat-lucro-inteligente-medico", "2026-08-30"), // mês anterior: não entra
+    conta("fixo-dr", 12000, "cat-medico-prescritor-dr-bratan", "2026-09-01"), // salário fixo: NÃO é transferência do LI
+    conta("fixo-ceo", 15000, "cat-salario-ceo", "2026-09-01"),
   ];
   const p = li.buildPlanilhaLucro({ sales: vendas, expenses: contas, categories: categorias, reconciliations: [], marcas: [], config: regua(10, 21000, 50), monthKey: "2026-09", hoje: "2026-09-02" });
   const r = li.resumoDosRepasses(p, contas);
@@ -414,7 +427,7 @@ test("repasses: provisionado é o acumulado da régua até hoje; transferido sã
 
 test("registrar transferência cria a conta PAGA na categoria certa (mesmo dinheiro em Contas a Pagar, P12 e Lucro), sem nota fiscal", () => {
   const medico = li.novaTransferencia({ para: "medicoExecutor", dia: "2026-09-10", valor: 3030.4, comprovante: "PIX 8841" });
-  assert.equal(medico.categoryRef, "cat-medico-prescritor-dr-bratan");
+  assert.equal(medico.categoryRef, "cat-lucro-inteligente-medico", "categoria própria — não mistura com o salário fixo do Dr. Daniel");
   assert.equal(medico.paidAt, "2026-09-10");
   assert.equal(medico.dueDate, "2026-09-10");
   assert.equal(medico.amount, 3030.4);
@@ -423,7 +436,7 @@ test("registrar transferência cria a conta PAGA na categoria certa (mesmo dinhe
   assert.equal(medico.notaStatus, "SEM_NOTA", "sócio/médico não emite nota de fornecedor");
   assert.match(medico.description, /Transferência ao médico executor — 10\/09\/2026/);
   const socios = li.novaTransferencia({ para: "socios", dia: "2026-09-10", valor: 700 });
-  assert.equal(socios.categoryRef, "cat-distribuicao-lucro-socios");
+  assert.equal(socios.categoryRef, "cat-lucro-inteligente-socios", "categoria própria — não mistura com pró-labore/salário CEO");
   assert.equal(li.envelopeDaConta(socios), "lucro", "cai no envelope do lucro");
   assert.equal(li.envelopeDaConta(medico), "medicoExecutor");
   // e a planilha do dia seguinte já abate
