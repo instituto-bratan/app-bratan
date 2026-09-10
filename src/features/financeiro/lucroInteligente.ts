@@ -212,7 +212,7 @@ export type ItemExplicado = {
   quantidade: number | null;
   /** Imposto/cartão + comissão, como fração do valor (colunas G e H da planilha). */
   taxaVariavel: number | null;
-  /** Consumíveis + repasse + sala por unidade (colunas K, L e O), que não acompanham o preço. */
+  /** Consumíveis + sala por unidade (colunas K e O) × quantidade + repasse da linha (L): o que não acompanha o preço. */
   custoFixo: number | null;
   /** Coluna P com o valor pago no lugar do preço: cobrado × (1 − taxa) − custo fixo × quantidade. */
   lucroBruto: number;
@@ -252,7 +252,7 @@ export function explicarItemDoMedico(item: FinSaleItem, percentual: number): Ite
     lucroBrutoTabela: produto.lucroBruto,
     quantidade: quantidadeDoItem(cobrado, produto.preco),
     taxaVariavel: Math.round((produto.imposto + produto.comissao) * 10000) / 10000,
-    custoFixo: custoFixoDoProduto(produto),
+    custoFixo: round2(custoFixoDoProduto(produto) * quantidadeDoItem(cobrado, produto.preco) + (produto.repasse ?? 0)),
     lucroBruto,
     parteMedico,
   };

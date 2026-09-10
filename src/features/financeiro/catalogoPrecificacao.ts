@@ -35,6 +35,10 @@ export type ProdutoPrecificado = {
   imposto: number;
   /** Coluna H: comissão comercial (3%; 1% nas tirzepatidas até 49 un). */
   comissao: number;
+  /** Coluna L: repasse nutri/psi da linha — na planilha é um valor da LINHA, não multiplica pela quantidade. */
+  repasse?: number;
+  /** Colunas K + O por unidade (consumível × sessões + minutos de sala × R$/min), tirado direto da planilha, sem arredondar. */
+  custoFixo: number;
   tipos: FinSaleItemType[];
   padrao?: RegExp;
 };
@@ -43,33 +47,33 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   // APP DO DR. DANIEL — itens do plano
   // Só o Plano custa R$ 6.997 (Lucas, 02/09: "o clube virou Consulta Black" — a
   // R$ 1.500, com 5% de desconto em tratamentos; está na esteira de consultas).
-  { nome: "Plano de Acompanhamento · 6 meses", secao: "Plano de Acompanhamento", preco: 6997, lucroBruto: 4890.39, imposto: 0.1333, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /programa|acompanhamento|plano/i },
-  { nome: "Testosterona base / cipionato / enantato", secao: "Hormonais (por dose)", preco: 490, lucroBruto: 376.78, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
-  { nome: "Testosterona blend", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 412.52, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /blend/i },
-  { nome: "Testosterona + HCG", secao: "Hormonais (por dose)", preco: 790, lucroBruto: 477.11, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
-  { nome: "Undecilato de testosterona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 467.68, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /undecilato|nebido/i },
-  { nome: "Nandrolona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 482.68, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /nandrolona|deca/i },
-  { nome: "HCG (frasco)", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 324.18, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /hcg/i },
-  { nome: "Vitamina D 600.000 UI", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 498.68, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /vitamina d\b|vit\.? ?d\b|colecalciferol/i },
-  { nome: "Metilcobalamina · B12", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 502.08, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /b12|cobalamina/i },
-  { nome: "Metilfolato · B9", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 502.28, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /\bb9\b|folato/i },
-  { nome: "Piridoxina · B6", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 514.38, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /\bb6\b|piridoxina/i },
-  { nome: "NADH", secao: "Vitalidade e performance", preco: 590, lucroBruto: 459.98, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /nadh/i },
-  { nome: "Coenzima Q10", secao: "Vitalidade e performance", preco: 590, lucroBruto: 493.68, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /q10|coenzima/i },
-  { nome: "Ferinject", secao: "Vitalidade e performance", preco: 1990, lucroBruto: 1265.6, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /ferinject|carboximaltose/i },
-  { nome: "Tirzepatida · frasco", secao: "Composição corporal e peso", preco: 3170, lucroBruto: 1775.59, imposto: 0.0793, comissao: 0.01, tipos: ["TRATAMENTO"], padrao: /(tirze|mounjaro|zepbound).*frasco|frasco.*(tirze|mounjaro)/i },
-  { nome: "Tirzepatida · até 30 un", secao: "Composição corporal e peso", preco: 390, lucroBruto: 210.72, imposto: 0.0793, comissao: 0.01, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Tirzepatida · 31 a 49 un", secao: "Composição corporal e peso", preco: 590, lucroBruto: 300.77, imposto: 0.0793, comissao: 0.01, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Tirzepatida · acima de 50 un", secao: "Composição corporal e peso", preco: 790, lucroBruto: 421.07, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Honorários de implante (sem pellet)", secao: "Implante hormonal", preco: 5700, lucroBruto: 4880.46, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /implante|honor/i },
-  { nome: "Pellet testosterona 50mg", secao: "Implante hormonal", preco: 123, lucroBruto: 11.16, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 100mg", secao: "Implante hormonal", preco: 190, lucroBruto: 17.23, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 125mg", secao: "Implante hormonal", preco: 224, lucroBruto: 20.32, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 150mg", secao: "Implante hormonal", preco: 280, lucroBruto: 25.4, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 200mg", secao: "Implante hormonal", preco: 336, lucroBruto: 30.48, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet estradiol 25mg", secao: "Implante hormonal", preco: 213, lucroBruto: 19.32, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet gestrinona 35mg", secao: "Implante hormonal", preco: 381, lucroBruto: 34.56, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet gestrinona 50mg", secao: "Implante hormonal", preco: 538, lucroBruto: 48.8, imposto: 0.0793, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Plano de Acompanhamento · 6 meses", secao: "Plano de Acompanhamento", preco: 6997, lucroBruto: 4890.39, imposto: 0.1333, comissao: 0.03, repasse: 660, custoFixo: 304.0006, tipos: ["TRATAMENTO"], padrao: /programa|acompanhamento|plano/i },
+  { nome: "Testosterona base / cipionato / enantato", secao: "Hormonais (por dose)", preco: 490, lucroBruto: 376.78, imposto: 0.0793, comissao: 0.03, custoFixo: 59.6633, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
+  { nome: "Testosterona blend", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 412.52, imposto: 0.0793, comissao: 0.03, custoFixo: 112.9933, tipos: ["TRATAMENTO"], padrao: /blend/i },
+  { nome: "Testosterona + HCG", secao: "Hormonais (por dose)", preco: 790, lucroBruto: 477.11, imposto: 0.0793, comissao: 0.03, custoFixo: 226.5445, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
+  { nome: "Undecilato de testosterona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 467.68, imposto: 0.0793, comissao: 0.03, custoFixo: 57.8333, tipos: ["TRATAMENTO"], padrao: /undecilato|nebido/i },
+  { nome: "Nandrolona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 482.68, imposto: 0.0793, comissao: 0.03, custoFixo: 42.8333, tipos: ["TRATAMENTO"], padrao: /nandrolona|deca/i },
+  { nome: "HCG (frasco)", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 324.18, imposto: 0.0793, comissao: 0.03, custoFixo: 201.3333, tipos: ["TRATAMENTO"], padrao: /hcg/i },
+  { nome: "Vitamina D 600.000 UI", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 498.68, imposto: 0.0793, comissao: 0.03, custoFixo: 26.8333, tipos: ["TRATAMENTO"], padrao: /vitamina d\b|vit\.? ?d\b|colecalciferol/i },
+  { nome: "Metilcobalamina · B12", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 502.08, imposto: 0.0793, comissao: 0.03, custoFixo: 23.4333, tipos: ["TRATAMENTO"], padrao: /b12|cobalamina/i },
+  { nome: "Metilfolato · B9", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 502.28, imposto: 0.0793, comissao: 0.03, custoFixo: 23.2333, tipos: ["TRATAMENTO"], padrao: /\bb9\b|folato/i },
+  { nome: "Piridoxina · B6", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 514.38, imposto: 0.0793, comissao: 0.03, custoFixo: 11.1333, tipos: ["TRATAMENTO"], padrao: /\bb6\b|piridoxina/i },
+  { nome: "NADH", secao: "Vitalidade e performance", preco: 590, lucroBruto: 459.98, imposto: 0.0793, comissao: 0.03, custoFixo: 65.5333, tipos: ["TRATAMENTO"], padrao: /nadh/i },
+  { nome: "Coenzima Q10", secao: "Vitalidade e performance", preco: 590, lucroBruto: 493.68, imposto: 0.0793, comissao: 0.03, custoFixo: 31.8333, tipos: ["TRATAMENTO"], padrao: /q10|coenzima/i },
+  { nome: "Ferinject", secao: "Vitalidade e performance", preco: 1990, lucroBruto: 1265.6, imposto: 0.0793, comissao: 0.03, custoFixo: 506.8889, tipos: ["TRATAMENTO"], padrao: /ferinject|carboximaltose/i },
+  { nome: "Tirzepatida · frasco", secao: "Composição corporal e peso", preco: 3170, lucroBruto: 1775.59, imposto: 0.0793, comissao: 0.01, custoFixo: 1111.3333, tipos: ["TRATAMENTO"], padrao: /(tirze|mounjaro|zepbound).*frasco|frasco.*(tirze|mounjaro)/i },
+  { nome: "Tirzepatida · até 30 un", secao: "Composição corporal e peso", preco: 390, lucroBruto: 210.72, imposto: 0.0793, comissao: 0.01, custoFixo: 144.4533, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
+  { nome: "Tirzepatida · 31 a 49 un", secao: "Composição corporal e peso", preco: 590, lucroBruto: 300.77, imposto: 0.0793, comissao: 0.01, custoFixo: 236.5433, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
+  { nome: "Tirzepatida · acima de 50 un", secao: "Composição corporal e peso", preco: 790, lucroBruto: 421.07, imposto: 0.0793, comissao: 0.03, custoFixo: 282.5833, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
+  { nome: "Honorários de implante (sem pellet)", secao: "Implante hormonal", preco: 5700, lucroBruto: 4880.46, imposto: 0.0793, comissao: 0.03, custoFixo: 196.5335, tipos: ["TRATAMENTO"], padrao: /implante|honor/i },
+  { nome: "Pellet testosterona 50mg", secao: "Implante hormonal", preco: 123, lucroBruto: 11.16, imposto: 0.0793, comissao: 0.03, custoFixo: 98.4, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 100mg", secao: "Implante hormonal", preco: 190, lucroBruto: 17.23, imposto: 0.0793, comissao: 0.03, custoFixo: 152.0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 125mg", secao: "Implante hormonal", preco: 224, lucroBruto: 20.32, imposto: 0.0793, comissao: 0.03, custoFixo: 179.2, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 150mg", secao: "Implante hormonal", preco: 280, lucroBruto: 25.4, imposto: 0.0793, comissao: 0.03, custoFixo: 224.0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 200mg", secao: "Implante hormonal", preco: 336, lucroBruto: 30.48, imposto: 0.0793, comissao: 0.03, custoFixo: 268.8, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet estradiol 25mg", secao: "Implante hormonal", preco: 213, lucroBruto: 19.32, imposto: 0.0793, comissao: 0.03, custoFixo: 170.4, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet gestrinona 35mg", secao: "Implante hormonal", preco: 381, lucroBruto: 34.56, imposto: 0.0793, comissao: 0.03, custoFixo: 304.8, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet gestrinona 50mg", secao: "Implante hormonal", preco: 538, lucroBruto: 48.8, imposto: 0.0793, comissao: 0.03, custoFixo: 430.4, tipos: ["TRATAMENTO"], padrao: /pellet/i },
   // APP DO CLOSER — esteira de consultas (Lucas, 02/09/2026). Lucro bruto pela
   // mesma conta da planilha: preço − NF 13,33% (consulta) − comissão 1% quando
   // é venda do comercial − custo de sala (60 min = R$ 101,33; 20 min = R$ 33,78).
@@ -77,21 +81,21 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   // não consigo lançar um comprovante de 200... preciso ficar justificando esses
   // 200 reais". Os dois valores praticados viram opção própria; o lucro bruto
   // segue a mesma FÓRMULA da planilha: 200 − NF 13,33% − comissão 3% − 15 min de sala = 142,01.
-  { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 393.02, imposto: 0.1333, comissao: 0.03, tipos: ["SINAL"] },
-  { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 142.01, imposto: 0.1333, comissao: 0.03, tipos: ["SINAL"] },
-  { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 1990.42, imposto: 0.1333, comissao: 0.03, tipos: ["CONSULTA"] },
-  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 2093.99, imposto: 0.1717, comissao: 0.03, tipos: ["CONSULTA"] },
-  { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 1153.72, imposto: 0.1333, comissao: 0.03, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
-  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 1215.86, imposto: 0.1717, comissao: 0.03, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
-  { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 819.04, imposto: 0.1333, comissao: 0.03, tipos: ["CONSULTA"], padrao: /diamond/i },
-  { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 161.25, imposto: 0.0793, comissao: 0.03, tipos: ["BIOIMPEDANCIA"] },
-  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 196.19, imposto: 0.1177, comissao: 0.03, tipos: ["BIOIMPEDANCIA"] },
+  { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 393.02, imposto: 0.1333, comissao: 0.03, custoFixo: 25.3334, tipos: ["SINAL"] },
+  { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 142.01, imposto: 0.1333, comissao: 0.03, custoFixo: 25.3334, tipos: ["SINAL"] },
+  { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 1990.42, imposto: 0.1333, comissao: 0.03, custoFixo: 101.3335, tipos: ["CONSULTA"] },
+  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 2093.99, imposto: 0.1717, comissao: 0.03, custoFixo: 101.3335, tipos: ["CONSULTA"] },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 1153.72, imposto: 0.1333, comissao: 0.03, custoFixo: 101.3335, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 1215.86, imposto: 0.1717, comissao: 0.03, custoFixo: 101.3335, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 819.04, imposto: 0.1333, comissao: 0.03, custoFixo: 101.3335, tipos: ["CONSULTA"], padrao: /diamond/i },
+  { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 161.25, imposto: 0.0793, comissao: 0.03, custoFixo: 16.8889, tipos: ["BIOIMPEDANCIA"] },
+  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 196.19, imposto: 0.1177, comissao: 0.03, custoFixo: 16.8889, tipos: ["BIOIMPEDANCIA"] },
   // Teste genético: o kit/laboratório ainda não tem custo comprovado (aba "Custos a
   // confirmar") — o lucro bruto aqui é SEM o kit e vai cair quando o custo entrar.
-  { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 3229.35, imposto: 0.1333, comissao: 0.03, tipos: ["TRATAMENTO"], padrao: /gen[eé]tic/i },
+  { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 3229.35, imposto: 0.1333, comissao: 0.03, custoFixo: 33.7778, tipos: ["TRATAMENTO"], padrao: /gen[eé]tic/i },
   // Nutri e psi: preço de tabela para o seletor; não são do médico executor.
-  { nome: "Dra. Géssica (nutricionista) — consulta", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 250.69, imposto: 0.1333, comissao: 0.03, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
-  { nome: "Dra. Bárbara (psicóloga) — 4 sessões", secao: "Nutrição e psicologia", preco: 790, lucroBruto: 255.66, imposto: 0.1333, comissao: 0.03, tipos: ["PSICOLOGA"], padrao: /b[aá]rbara|psic/i },
+  { nome: "Dra. Géssica (nutricionista) — consulta", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 250.69, imposto: 0.1333, comissao: 0.03, repasse: 150, custoFixo: 101.3335, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
+  { nome: "Dra. Bárbara (psicóloga) — 4 sessões", secao: "Nutrição e psicologia", preco: 790, lucroBruto: 255.66, imposto: 0.1333, comissao: 0.03, custoFixo: 405.3342, tipos: ["PSICOLOGA"], padrao: /b[aá]rbara|psic/i },
 ];
 
 /** As seções na ordem da planilha, cada uma com os seus produtos — para montar o seletor. */
@@ -158,21 +162,23 @@ export function quantidadeDoItem(amount: number, preco: number) {
 }
 
 /**
- * Custos que NÃO acompanham o preço (colunas K consumíveis + L repasse + O sala),
- * por unidade: preço × (1 − imposto − comissão) − coluna P.
+ * Custos POR UNIDADE que não acompanham o preço (colunas K consumíveis + O sala):
+ * preço × (1 − imposto − comissão) − repasse − coluna P. Sem arredondar aqui — a
+ * planilha só arredonda no fim, e arredondar antes desencontrava 1–2 centavos
+ * quando há mais de uma unidade.
  */
 export function custoFixoDoProduto(produto: ProdutoPrecificado) {
-  return round2(produto.preco * (1 - produto.imposto - produto.comissao) - produto.lucroBruto);
+  return produto.custoFixo;
 }
 
 /**
  * A PLANILHA COM O VALOR PAGO NO LUGAR DO PREÇO (Lucas, 10/09/2026: "se o paciente
  * pagou 4.846 no Plano de 6.997, você coloca 4.846 no lugar do 6.997 e o valor já
- * sai na coluna S"). É exatamente a fórmula da aba Precificação com F = cobrado:
- * imposto/cartão (G) e comissão (H) são % do valor, então acompanham o que foi
- * pago; consumíveis (K), repasse nutri/psi (L) e custo de sala (O) são fixos por
- * unidade e continuam inteiros. Preço cheio → coluna P da tabela, exatamente.
- * Item sem produto na tabela usa a fração padrão do tipo sobre o valor cobrado.
+ * sai na coluna S"). É a fórmula da aba Precificação com F = cobrado e B = quantidade:
+ * imposto/cartão (G) e comissão (H) são % de F; consumíveis (K) e sala (O) são
+ * por unidade (× B); o repasse nutri/psi (L) é um valor da linha. Preço cheio com
+ * B = 1 reproduz a coluna P da tabela exatamente. Item sem produto na tabela usa
+ * a fração padrão do tipo sobre o valor cobrado.
  */
 export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }) {
   const amount = item.amount || 0;
@@ -180,7 +186,7 @@ export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: numb
   const produto = produtoDoItem(item);
   if (produto) {
     const quantidade = quantidadeDoItem(amount, produto.preco);
-    return round2(amount * (1 - produto.imposto - produto.comissao) - custoFixoDoProduto(produto) * quantidade);
+    return round2(amount * (1 - produto.imposto - produto.comissao) - custoFixoDoProduto(produto) * quantidade - (produto.repasse ?? 0));
   }
   const fracao = LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
   return fracao ? round2(fracao * amount) : 0;

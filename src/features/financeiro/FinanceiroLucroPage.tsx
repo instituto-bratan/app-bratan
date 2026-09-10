@@ -600,7 +600,7 @@ export function FinanceiroLucroPage() {
                             {item.lucroBruto > 0 ? moneyFin(item.lucroBruto) : "—"}
                             {item.taxaVariavel != null && item.custoFixo != null && item.precoTabela != null && item.quantidade != null && Math.abs(item.cobrado - item.precoTabela * item.quantidade) > 0.005 ? (
                               <span className="block text-[11px] text-muted-foreground">
-                                {moneyFin(item.cobrado)} − {Math.round(item.taxaVariavel * 10000) / 100}% (imposto + comissão) − {moneyFin(item.custoFixo * item.quantidade)} fixos
+                                {moneyFin(item.cobrado)} − {Math.round(item.taxaVariavel * 10000) / 100}% (imposto + comissão) − {moneyFin(item.custoFixo)} fixos
                               </span>
                             ) : null}
                           </td>
