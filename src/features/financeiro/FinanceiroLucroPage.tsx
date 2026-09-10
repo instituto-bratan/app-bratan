@@ -31,6 +31,7 @@ import {
   reguaNoDia,
   selicDaConfig,
   subirDegrau,
+  explicarMedicoDoDia,
   type LucroConfig,
   type MarcaDiaLucro,
   type ReguaLucro,
@@ -301,6 +302,16 @@ export function FinanceiroLucroPage() {
   }
   // ---- PLANILHA SIMPLES POR PADRÃO (10/09, Lucas: "está muita informação").
   const [detalhado, setDetalhado] = useState(false);
+  // A CONTA DO MÉDICO ABERTA (10/09/2026, Lucas: "pras minhas contas está um pouco
+  // menos… preciso que você disserte como chegou nesses valores").
+  const [mostrarConta, setMostrarConta] = useState(false);
+  const [diaDaConta, setDiaDaConta] = useState<string | null>(null);
+  const diaExplicado = diaDaConta ?? destaque?.dia ?? hoje;
+  const explicacao = useMemo(() => {
+    const linhaDoDia = planilha.linhas.find((linha) => linha.dia === diaExplicado);
+    return explicarMedicoDoDia(financeiro.sales, diaExplicado, linhaDoDia?.regua ?? reguaHoje);
+  }, [financeiro.sales, diaExplicado, planilha.linhas, reguaHoje]);
+  const diasComVenda = useMemo(() => planilha.linhas.filter((linha) => linha.total > 0.005).map((linha) => linha.dia), [planilha.linhas]);
 
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Lucro Inteligente" module="fin-lucro">
@@ -476,9 +487,12 @@ export function FinanceiroLucroPage() {
             <p className="mt-2 text-sm text-brand-tinta">
               {pct(reguaHoje.medicoExecutor)} do lucro bruto dos produtos do dia{destaque?.lucroBrutoProdutos ? ` (${moneyFin(destaque.lucroBrutoProdutos)})` : ""}
             </p>
-            <p className="mt-3 border-t border-brand-dourado/30 pt-2 text-sm font-semibold text-brand-musgo">
-              No mês: {moneyFin(planilha.totais.reservado.medicoExecutor)}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-brand-dourado/30 pt-2">
+              <p className="text-sm font-semibold text-brand-musgo">No mês: {moneyFin(planilha.totais.reservado.medicoExecutor)}</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => setMostrarConta((atual) => !atual)} aria-expanded={mostrarConta}>
+                {mostrarConta ? "Fechar a conta" : "Como cheguei neste valor"}
+              </Button>
+            </div>
           </div>
           <div className="rounded-xl border-2 border-brand-musgo/50 bg-gradient-to-br from-brand-musgo to-brand-musgo/85 p-5 text-white shadow-calm">
             <div className="flex items-center justify-between">
@@ -519,6 +533,113 @@ export function FinanceiroLucroPage() {
             </p>
           </div>
         </section>
+
+        {mostrarConta ? (
+          <section className="rounded-lg border border-brand-dourado/50 bg-white/70 p-4 backdrop-blur" aria-label="Como a parte do Dr. Daniel foi calculada">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-lg font-bold text-brand-musgo">
+                <Stethoscope className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
+                A conta do Dr. Daniel, item por item
+              </h2>
+              <label className="flex items-center gap-2 text-xs font-semibold text-brand-oliva">
+                Dia
+                <select
+                  value={diaExplicado}
+                  onChange={(event) => setDiaDaConta(event.target.value)}
+                  className="h-9 rounded-md border border-input bg-white/80 px-2 text-sm"
+                  aria-label="Dia da conta"
+                >
+                  {(diasComVenda.includes(diaExplicado) ? diasComVenda : [...diasComVenda, diaExplicado].sort()).map((dia) => (
+                    <option key={dia} value={dia}>
+                      {diaCurto(dia)}
+                      {dia === hoje ? " (hoje)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="mt-2 text-sm text-brand-tinta">
+              Cada item da comanda é procurado na tabela de preços (pelo nome exato que o Fechamento grava; se não, por palavra-chave ou
+              pelo preço). A tabela traz o <strong>lucro bruto do produto</strong> (coluna P: preço − nota fiscal − comissão − custo da
+              sala − material). Se o paciente pagou menos que a tabela, o lucro bruto é reduzido <strong>na mesma proporção</strong>{" "}
+              (cobrado ÷ preço). O Dr. Daniel recebe {pct(explicacao.percentual)} desse lucro bruto (coluna S). Itens de nutri, psicóloga e
+              "outro" não entram.
+            </p>
+            {explicacao.comandas.length ? (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[880px] text-left text-sm">
+                  <thead className="text-[11px] uppercase tracking-wide text-brand-oliva">
+                    <tr className="border-b border-brand-oliva/20">
+                      <th className="px-2 py-1.5">Paciente · item lançado</th>
+                      <th className="px-2 py-1.5 text-right">Cobrado</th>
+                      <th className="px-2 py-1.5">Produto da tabela (como reconheci)</th>
+                      <th className="px-2 py-1.5 text-right">Tabela: preço → lucro bruto</th>
+                      <th className="px-2 py-1.5 text-right">Proporção</th>
+                      <th className="px-2 py-1.5 text-right">Lucro bruto do item</th>
+                      <th className="px-2 py-1.5 text-right">{pct(explicacao.percentual)} Dr. Daniel</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {explicacao.comandas.map((comanda) =>
+                      comanda.itens.map((item, indice) => (
+                        <tr key={`${comanda.saleId}-${indice}`} className={cn("border-b border-brand-oliva/10 align-top", item.parteMedico <= 0 && "text-muted-foreground")}>
+                          <td className="px-2 py-1.5">
+                            {indice === 0 ? <span className="block font-semibold text-brand-tinta">{comanda.paciente}</span> : null}
+                            <span className="text-xs">{item.descricao}</span>
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{moneyFin(item.cobrado)}</td>
+                          <td className="px-2 py-1.5 text-xs">
+                            {item.produto ?? (item.reconhecido === "não é do médico" ? "— não entra na parte do médico" : "— sem produto na tabela: usa a fração padrão do tipo")}
+                            {item.produto ? <span className="block text-[11px] text-muted-foreground">reconhecido por {item.reconhecido}</span> : null}
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-xs tabular-nums">
+                            {item.precoTabela != null && item.lucroBrutoTabela != null ? `${moneyFin(item.precoTabela)} → ${moneyFin(item.lucroBrutoTabela)}` : "—"}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{item.proporcao != null ? `${Math.round(item.proporcao * 1000) / 10}%` : "—"}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {item.lucroBruto > 0 ? moneyFin(item.lucroBruto) : "—"}
+                            {item.lucroBrutoTabela != null && item.proporcao != null && Math.abs(item.proporcao - 1) > 0.0005 ? (
+                              <span className="block text-[11px] text-muted-foreground">
+                                {moneyFin(item.lucroBrutoTabela)} × {Math.round(item.proporcao * 1000) / 10}%
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-brand-tinta">{item.parteMedico > 0 ? moneyFin(item.parteMedico) : "—"}</td>
+                        </tr>
+                      )),
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-brand-creme/60 font-bold text-brand-tinta">
+                      <td className="px-2 py-2" colSpan={2}>
+                        Total do dia · cobrado {moneyFin(explicacao.cobrado)}
+                      </td>
+                      <td className="px-2 py-2" colSpan={3}></td>
+                      <td className="px-2 py-2 text-right tabular-nums">{moneyFin(explicacao.lucroBruto)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{moneyFin(explicacao.parteMedico)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">Nenhuma comanda lançada neste dia.</p>
+            )}
+            {explicacao.comandas.length ? (
+              <div className="mt-3 rounded-md border border-brand-oliva/20 bg-brand-creme/30 p-3 text-sm text-brand-tinta">
+                <p className="font-semibold">Para conferir com a sua conta</p>
+                <p className="mt-1">
+                  Regra em uso (desconto reduz o lucro bruto na proporção): lucro bruto {moneyFin(explicacao.lucroBruto)} → Dr. Daniel{" "}
+                  <strong>{moneyFin(explicacao.parteMedico)}</strong>.
+                </p>
+                <p className="mt-1">
+                  Se a conta for com <strong>custo fixo</strong> (cobrado − custo da tabela, onde custo = preço − lucro bruto; o desconto sai
+                  todo do lucro): lucro bruto {moneyFin(explicacao.lucroBrutoCustoFixo)} → Dr. Daniel{" "}
+                  <strong>{moneyFin(explicacao.parteMedicoCustoFixo)}</strong>. Quando o paciente paga o preço cheio, as duas dão o mesmo.
+                </p>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {/* TRANSFERÊNCIAS — o que já saiu e o que falta (10/09/2026, Lucas: "foi
             provisionado tantos mil para o médico executor, porém só foi

@@ -129,6 +129,41 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
   assert.equal(li.repartir(0, li.lucroBrutoNaComanda(comanda), { impostos: 0, lucroMensal: 0, medicoExecutor: 50 }, 0).medicoExecutor, 3547.9, "coluna S: 1.032,70 + 2.515,20");
 });
 
+test("explicação item a item (10/09): a parte do Dr. Daniel abre comanda por comanda e bate com a planilha", () => {
+  const reguaDia = { impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 };
+  // As duas comandas reais de 10/09/2026 (Ricardo rateado pelo Kanban: 6.628 pagos por 9.206 de tabela).
+  const vendas = [
+    venda("daniele", "2026-09-10", [{ method: "CARTAO_CREDITO", amount: 4846, installments: 6 }], [
+      { itemType: "TRATAMENTO", amount: 4846, description: "Plano de Acompanhamento · 6 meses" },
+    ]),
+    venda("ricardo", "2026-09-10", [{ method: "PIX", amount: 3233 }, { method: "CARTAO_CREDITO", amount: 3395 }], [
+      { itemType: "TRATAMENTO", amount: 3581, description: "Honorários de implante (sem pellet)" },
+      { itemType: "TRATAMENTO", amount: 1991.54, description: "Tirzepatida · frasco" },
+      { itemType: "TRATAMENTO", amount: 1055.46, description: "Pellet testosterona 200mg" },
+      { itemType: "NUTRICIONISTA", amount: 0, description: "" },
+    ]),
+  ];
+  const exp = li.explicarMedicoDoDia(vendas, "2026-09-10", reguaDia);
+  assert.equal(exp.comandas.length, 2);
+  const plano = exp.comandas[0].itens[0];
+  assert.equal(plano.reconhecido, "nome exato");
+  assert.equal(plano.precoTabela, 6997);
+  assert.equal(plano.lucroBrutoTabela, 5030.4);
+  perto(plano.proporcao, 4846 / 6997, 0.0001, "cobrado ÷ tabela");
+  perto(plano.lucroBruto, 5030.4 * (4846 / 6997), 0.01, "coluna P na proporção do que foi cobrado");
+  assert.equal(plano.lucroBrutoCustoFixo, 2879.4, "alternativa: 4.846 − custo da tabela (6.997 − 5.030,40)");
+  assert.equal(plano.parteMedico, Math.round(plano.lucroBruto * 50) / 100);
+  const nutri = exp.comandas[1].itens[3];
+  assert.equal(nutri.reconhecido, "não é do médico");
+  assert.equal(nutri.parteMedico, 0);
+  // Fecha com o que a planilha do dia reparte para o médico.
+  const planilha = li.buildPlanilhaLucro({ monthKey: "2026-09", sales: vendas, expenses: [], categories: [], reconciliations: [], marcas: [], config: regua(16.6, 40000, 50), hoje: "2026-09-10" });
+  const linha = planilha.linhas.find((l) => l.dia === "2026-09-10");
+  assert.equal(exp.lucroBruto, linha.lucroBrutoProdutos, "a soma dos itens explicados é o lucro bruto do dia");
+  assert.equal(exp.parteMedico, linha.reservado.medicoExecutor, "e a parte do médico é a mesma do cartão 'Dr. Daniel recebe'");
+  assert.ok(exp.parteMedicoCustoFixo < exp.parteMedico, "com custo fixo o valor é menor (é a conta que o Lucas suspeita)");
+});
+
 test("valor fora da grade (10/09): ratearValores fecha os itens exatamente no que o paciente pagou", () => {
   const cat = loadTsModule("src/features/financeiro/catalogoPrecificacao.ts");
   // Programa 6.997 + HCG 590; paciente pagou 7.000 (não está na tabela) → mesma proporção, centavos no último.
