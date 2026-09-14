@@ -34,7 +34,7 @@ export type ProdutoPrecificado = {
   preco: number;
   /** Coluna P da planilha (= 2 × coluna S). */
   lucroBruto: number;
-  /** Coluna G da planilha, como fração do preço: NF (13,33% consulta · 7,93% procedimento) + cartão 3,84% nas linhas em cartão. */
+  /** Coluna G da planilha, como fração do preço: NF (13,33% consulta · 7,93% procedimento) + cartão 2,39% nas linhas em cartão (parcelado 2x a 21x do acordo Rede Q-7621480). */
   imposto: number;
   /** Coluna H: comissão comercial (10%; 1% nas tirzepatidas até 49 un). */
   comissao: number;
@@ -87,12 +87,12 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 357.84, imposto: 0.1333, comissao: 0.1, custoFixo: 25.511804, tipos: ["SINAL"] },
   { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 127.83, imposto: 0.1333, comissao: 0.1, custoFixo: 25.511804, tipos: ["SINAL"] },
   { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 1814.7, imposto: 0.1333, comissao: 0.1, custoFixo: 102.047215, tipos: ["CONSULTA"] },
-  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 1900.78, imposto: 0.1717, comissao: 0.1, custoFixo: 102.047215, tipos: ["CONSULTA"] },
+  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 1940.65, imposto: 0.1572, comissao: 0.1, custoFixo: 102.047215, tipos: ["CONSULTA"] },
   { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 1048.0, imposto: 0.1333, comissao: 0.1, custoFixo: 102.047215, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
-  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 1099.65, imposto: 0.1717, comissao: 0.1, custoFixo: 102.047215, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 1123.57, imposto: 0.1572, comissao: 0.1, custoFixo: 102.047215, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
   { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 741.32, imposto: 0.1333, comissao: 0.1, custoFixo: 102.047215, tipos: ["CONSULTA"], padrao: /diamond/i },
   { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 147.13, imposto: 0.0793, comissao: 0.1, custoFixo: 17.007869, tipos: ["BIOIMPEDANCIA"] },
-  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 178.57, imposto: 0.1177, comissao: 0.1, custoFixo: 17.007869, tipos: ["BIOIMPEDANCIA"] },
+  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 182.19, imposto: 0.1032, comissao: 0.1, custoFixo: 17.007869, tipos: ["BIOIMPEDANCIA"] },
   // Teste genético: o kit/laboratório ainda não tem custo comprovado (aba "Custos a
   // confirmar") — o lucro bruto aqui é SEM o kit e vai cair quando o custo entrar.
   { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 2956.11, imposto: 0.1333, comissao: 0.1, custoFixo: 34.015738, tipos: ["TRATAMENTO"], padrao: /gen[eé]tic/i },
