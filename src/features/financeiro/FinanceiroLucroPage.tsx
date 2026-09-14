@@ -39,9 +39,18 @@ import {
 import { taxaAntecipacaoMensal } from "./recebiveisRede";
 import { beneficiarioLabels, fraseDoRepasse, novaTransferencia, resumoDosRepasses, type Beneficiario } from "./lucroInteligente";
 import { useFinanceiro } from "./useFinanceiro";
+import { buildMetasBoard, defaultMetasConfig, type MetasConfig } from "./metasData";
+import { parseFinAmount } from "./financeiroData";
+import { buildCaixaProjetado } from "./caixaProjetado";
+import { EnvelopesVisuais, transferenciasPrevistas } from "./EnvelopesVisuais";
+import { CaixaProjetadoCard } from "./CaixaProjetadoCard";
 
 const configStorageKey = "app-bratan-fin-lucro-config";
 const marcasStorageKey = "app-bratan-fin-lucro-dias";
+/** Mesma chave da P12 e das Metas — a configuração é uma só. */
+const metasStorageKey = "app-bratan-fin-metas-config-v1";
+/** Piso do caixa projetado (por aparelho; vira configuração quando a proposta 7.3 for aprovada). */
+const pisoCaixaStorageKey = "app-bratan-fin-caixa-piso-v1";
 
 const reguaLabels: Record<keyof ReguaLucro, string> = {
   impostos: "Impostos (% do líquido)",
@@ -312,6 +321,38 @@ export function FinanceiroLucroPage() {
     return explicarMedicoDoDia(financeiro.sales, diaExplicado, linhaDoDia?.regua ?? reguaHoje);
   }, [financeiro.sales, diaExplicado, planilha.linhas, reguaHoje]);
   const diasComVenda = useMemo(() => planilha.linhas.filter((linha) => linha.total > 0.005).map((linha) => linha.dia), [planilha.linhas]);
+
+  // ---- OS ENVELOPES EM UM OLHAR + CAIXA PROJETADO (14/09/2026, aprovados pelo Lucas).
+  const metasConfig = useMemo<MetasConfig>(() => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }), []);
+  const metasBoard = useMemo(() => buildMetasBoard(financeiro.sales, metasConfig, month), [financeiro.sales, metasConfig, month]);
+  // O saldo do Itaú é digitado na Prova do dinheiro (P12) e reaproveitado aqui.
+  const saldoItau = useMemo(() => {
+    try {
+      const bruto = window.localStorage.getItem("app-bratan-fin-saldo-itau-v1");
+      if (!bruto) return null;
+      const valor = parseFinAmount(String((JSON.parse(bruto) as { texto?: string }).texto ?? ""));
+      return valor > 0 ? valor : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const [comAntecipacao, setComAntecipacao] = useState(false);
+  const [pisoCaixa, setPisoCaixa] = useState<number>(() => readLocalValue<number>(pisoCaixaStorageKey, 0));
+  const caixa = useMemo(
+    () =>
+      buildCaixaProjetado({
+        sales: financeiro.sales,
+        expenses: financeiro.expenses,
+        hoje,
+        semanas: 6,
+        saldoInicial: saldoItau,
+        piso: pisoCaixa,
+        comAntecipacao,
+        selicAnual: selicDaConfig(config),
+        transferenciasPrevistas: transferenciasPrevistas(hoje, repasses),
+      }),
+    [financeiro.sales, financeiro.expenses, hoje, saldoItau, pisoCaixa, comAntecipacao, config, repasses],
+  );
 
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Lucro Inteligente" module="fin-lucro">
@@ -648,6 +689,10 @@ export function FinanceiroLucroPage() {
           </section>
         ) : null}
 
+        {/* OS ENVELOPES EM UM OLHAR (14/09/2026): a planilha desenhada — barra por dia,
+            uma frase por envelope, agenda das transferências (10 e 25). */}
+        <EnvelopesVisuais planilha={planilha} board={metasBoard} repasses={repasses} reguaHoje={reguaHoje} hoje={hoje} />
+
         {/* TRANSFERÊNCIAS — o que já saiu e o que falta (10/09/2026, Lucas: "foi
             provisionado tantos mil para o médico executor, porém só foi
             transferido tantos mil, falta isso para bater com o dia de hoje"). */}
@@ -750,6 +795,19 @@ export function FinanceiroLucroPage() {
             })}
           </div>
         </section>
+
+        {/* CAIXA PROJETADO (14/09/2026): as próximas 6 semanas, com pontos de aperto e o custo de antecipar. */}
+        {month === hoje.slice(0, 7) ? (
+          <CaixaProjetadoCard
+            caixa={caixa}
+            canEdit={canEdit}
+            onToggleAntecipacao={() => setComAntecipacao((atual) => !atual)}
+            onPiso={(valor) => {
+              setPisoCaixa(valor);
+              writeLocalValue(pisoCaixaStorageKey, valor);
+            }}
+          />
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">

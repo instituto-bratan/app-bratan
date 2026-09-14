@@ -14,16 +14,17 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     guide: {
       title: "Início",
       whatIs:
-        "É a porta de entrada do app: daqui você abre todas as áreas que o seu cargo libera. Pense nele como o balcão central do Instituto.",
+        "É a Fila do dia: uma lista só com tudo que depende de você hoje — contas, compras, comprovantes, notas, toques do CRM, lembretes, estoque, NPS, checklist e fechamento — ordenada por urgência. Embaixo vêm os sinais do mês e os atalhos para as áreas que o seu cargo libera.",
       steps: [
-        "Olhe os atalhos na tela: cada cartão leva para uma área (Tarefas, Financeiro, CRM, etc.).",
-        "Toque no cartão da área que você precisa usar agora.",
-        "Se não encontrar uma área, é porque o seu cargo não tem acesso a ela — fale com a coordenação se precisar.",
-        "Para voltar ao Início a qualquer momento, use o menu ou o botão de voltar do app.",
+        "Comece pelo bloco Atrasado, depois Hoje. O botão de cada item leva para a tela onde a ação acontece; feita a ação, o item sai sozinho.",
+        "Silenciar esconde um item até amanhã ou por 7 dias só neste aparelho — use para o que já está tratado por fora.",
+        "Olhe os Sinais do mês (cabe gastar, meta do dia, ocupação de sala) antes de decidir gastos ou agenda.",
+        "Os atalhos ficam no fim da tela; o menu lateral e o ⌘K também chegam a todas as áreas.",
       ],
       tips: [
-        "Comece o dia abrindo o Checklist do dia e o Mural de avisos.",
-        "O que aparece aqui muda conforme o seu cargo — cada pessoa vê só o que usa.",
+        "No computador: setas andam pela fila, 1 abre o item, 2 silencia até amanhã, 3 silencia por 7 dias.",
+        "Cada pessoa vê só o que o seu cargo cuida — a fila da enfermagem não é a fila do financeiro.",
+        "Com o app instalado, a contagem de atrasados + hoje aparece no ícone.",
       ],
     },
   },

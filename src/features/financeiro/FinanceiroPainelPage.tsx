@@ -61,6 +61,7 @@ import {
   buildPonteLucro,
   buildProvaDoDinheiro,
   buildTicketMedio,
+  expenseEhCapex,
   moneyFin,
   monthKeyLabel,
   parseFinAmount,
@@ -69,6 +70,8 @@ import {
 } from "./financeiroData";
 import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, metasForMonth, type MetasConfig } from "./metasData";
 import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMes";
+import { buildOcupacaoMes, formatHoras, heatDaOcupacao } from "./ocupacaoSala";
+import { PonteWaterfall } from "./PonteWaterfall";
 import { buildPontosDaReuniao, type PontoDaReuniao } from "./pontosDaReuniao";
 import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
 import { useFinanceiro } from "./useFinanceiro";
@@ -156,6 +159,23 @@ export function FinanceiroPainelPage() {
       ? buildProvaDoDinheiro(financeiro.expenses, financeiro.crediarioProfits, saldoSalvoItau, hoje).livreNoBanco
       : null;
   const ponte = useMemo(() => buildPonteLucro(atual, fechamento, lucroRealCaixa), [atual, fechamento, lucroRealCaixa]);
+  // Os lançamentos por trás de cada degrau da ponte (para a cascata clicável):
+  // 1 = saídas do cofre da obra, 2 = saídas do cofre das provisões, 4 = obra paga (CAPEX).
+  const detalhesPonte = useMemo(() => {
+    const doMes = (data: string) => data.slice(0, 7) === monthKey;
+    const categoriaPorId = new Map(financeiro.categories.map((categoria) => [categoria.id, categoria]));
+    const cofreObra = financeiro.savingsMoves
+      .filter((move) => doMes(move.moveDate) && (move.kind === "USO_OBRA" || move.kind === "DEVOLUCAO"))
+      .map((move) => ({ dia: move.moveDate, label: move.reason || (move.kind === "DEVOLUCAO" ? "Devolução ao cofre" : "Uso na obra"), valor: move.kind === "DEVOLUCAO" ? -(move.amount || 0) : move.amount || 0 }));
+    const cofreProvisoes = financeiro.savingsMoves
+      .filter((move) => doMes(move.moveDate) && move.direction === "SAIDA" && move.kind !== "USO_OBRA" && move.kind !== "DEVOLUCAO" && move.kind !== "RENDIMENTO")
+      .map((move) => ({ dia: move.moveDate, label: move.reason || "Saída do cofre", valor: move.amount || 0 }));
+    const obra = financeiro.expenses
+      .filter((expense) => doMes(expense.dueDate || expense.paidAt || "") && expenseEhCapex(expense, categoriaPorId.get(expense.categoryRef)))
+      .map((expense) => ({ dia: expense.dueDate, label: `${expense.description}${expense.supplier ? ` · ${expense.supplier}` : ""}`, valor: expense.amount || 0 }))
+      .sort((a, b) => b.valor - a.valor);
+    return { 1: cofreObra, 2: cofreProvisoes, 4: obra } as Record<number, { dia?: string; label: string; valor: number }[]>;
+  }, [financeiro.savingsMoves, financeiro.expenses, financeiro.categories, monthKey]);
 
   const metasConfig = useMemo<MetasConfig>(
     () => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }),
@@ -201,6 +221,16 @@ export function FinanceiroPainelPage() {
     () => buildTicketMedio(financeiro.sales, `${monthKey}-01`, `${monthKey}-31`),
     [financeiro.sales, monthKey],
   );
+  // OCUPAÇÃO DE SALA (14/09/2026): horas vendidas × horas disponíveis. Num mês
+  // em andamento, os dois lados param em hoje; o mês anterior é lido até o
+  // mesmo dia para a comparação ser justa (regra do Painel: nunca mês parcial
+  // contra mês fechado).
+  const ocupacao = useMemo(() => buildOcupacaoMes({ sales: financeiro.sales, monthKey, hoje }), [financeiro.sales, monthKey, hoje]);
+  const ocupacaoAnterior = useMemo(() => {
+    const mesmoDia = ocupacao.parcial ? `${mesAnterior}-${ocupacao.ateDia.slice(8, 10)}` : undefined;
+    return buildOcupacaoMes({ sales: financeiro.sales, monthKey: mesAnterior, hoje: mesmoDia ?? `${monthKey}-01` });
+  }, [financeiro.sales, mesAnterior, monthKey, ocupacao.parcial, ocupacao.ateDia]);
+  const heatOcupacao = useMemo(() => heatDaOcupacao(ocupacao), [ocupacao]);
 
   // ---- explicações e PDCA (o que é escrito por gente) ----------------------
   const registroSalvo = financeiro.gestaoMensal.find((item) => item.monthRef === monthKey);
@@ -298,6 +328,13 @@ export function FinanceiroPainelPage() {
       antes: 0,
       agora: 0,
       tom: "NEUTRO" as const,
+    },
+    {
+      rotulo: ocupacao.parcial ? `Ocupação de sala (até ${ocupacao.ateDia.slice(8, 10)}/${ocupacao.ateDia.slice(5, 7)})` : "Ocupação de sala",
+      valor: `${ocupacao.percentual.toLocaleString("pt-BR")}%`,
+      antes: ocupacaoAnterior.percentual,
+      agora: ocupacao.percentual,
+      tom: ocupacao.percentual >= ocupacao.meta.minima ? ("BOM" as const) : ocupacao.percentual >= 40 ? ("ATENCAO" as const) : ("RUIM" as const),
     },
   ];
 
@@ -517,6 +554,8 @@ export function FinanceiroPainelPage() {
             A pergunta que sempre aparece: "então quanto a gente ganhou?". Os três números estão certos — medem coisas
             diferentes.
           </p>
+          {/* A CASCATA (14/09/2026): o mesmo caminho em barras, clicável. */}
+          <PonteWaterfall passos={ponte} detalhes={detalhesPonte} apresentando={apresentando} />
           {ponte.map((passo) => (
             <div
               key={passo.label}
@@ -621,6 +660,78 @@ export function FinanceiroPainelPage() {
           <div>
             <p className="mb-2 text-sm font-semibold text-brand-tinta">Força por dia da semana</p>
             <RankBars points={semana} color={chartColors.entrada} emptyMessage="Sem comandas neste mês." />
+          </div>
+        </div>
+      ),
+    },
+    {
+      chave: "ocupacao",
+      titulo: "8. Ocupação das salas — o número mais alavancável",
+      corpo: (
+        <div className="grid gap-4">
+          <div
+            className={cn(
+              "rounded-xl border-2 p-4",
+              ocupacao.percentual >= ocupacao.meta.minima ? "border-emerald-300 bg-emerald-50/70" : ocupacao.percentual >= 40 ? "border-amber-300 bg-amber-50/70" : "border-red-300 bg-red-50/60",
+            )}
+          >
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
+                  Horas de sala vendidas ÷ horas disponíveis{ocupacao.parcial ? ` · até ${ocupacao.ateDia.slice(8, 10)}/${ocupacao.ateDia.slice(5, 7)}` : ""}
+                </p>
+                <p className={cn("font-bold tabular-nums text-brand-tinta", apresentando ? "text-6xl" : "text-5xl")}>
+                  {ocupacao.percentual.toLocaleString("pt-BR")}%
+                </p>
+              </div>
+              <div className="text-right text-sm text-brand-tinta">
+                <p>
+                  <strong className="tabular-nums">{formatHoras(ocupacao.horasVendidas)}</strong> vendidas de{" "}
+                  <strong className="tabular-nums">{formatHoras(ocupacao.horasDisponiveis)}</strong>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {ocupacao.grade.salas} salas × {ocupacao.grade.horasPorDiaPorSala} h × {ocupacao.diasUteis} dia{ocupacao.diasUteis > 1 ? "s" : ""} úteis
+                </p>
+              </div>
+            </div>
+            {/* A régua: 0 a 100%, com a faixa saudável (75–85%) marcada. */}
+            <div className="relative mt-3 h-4 overflow-hidden rounded-full bg-white/70">
+              <div
+                className="absolute inset-y-0 bg-emerald-200/80"
+                style={{ left: `${ocupacao.meta.minima}%`, width: `${ocupacao.meta.maxima - ocupacao.meta.minima}%` }}
+                title={`faixa saudável: ${ocupacao.meta.minima} a ${ocupacao.meta.maxima}%`}
+              />
+              <div
+                className={cn("absolute inset-y-0 left-0 rounded-full", ocupacao.percentual >= ocupacao.meta.minima ? "bg-emerald-600" : ocupacao.percentual >= 40 ? "bg-amber-500" : "bg-red-500")}
+                style={{ width: `${Math.min(100, Math.max(1, ocupacao.percentual))}%` }}
+              />
+            </div>
+            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+              <span>0%</span>
+              <span>faixa saudável {ocupacao.meta.minima}–{ocupacao.meta.maxima}%</span>
+              <span>100%</span>
+            </div>
+            <p className={cn("mt-3 leading-snug text-brand-tinta", apresentando ? "text-base" : "text-sm")}>{ocupacao.frase}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              As horas vendidas já absorvem {moneyFin(ocupacao.custoFixoAbsorvido)} do custo fixo ao custo-hora da planilha (R$ 102,05). Horas disponíveis
+              seguem a grade da planilha de precificação; quando a agenda estiver espelhada no app, passam a vir dela.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <p className="mb-2 text-sm font-semibold text-brand-tinta">Horas vendidas dia a dia (cor = % das {ocupacao.grade.salas * ocupacao.grade.horasPorDiaPorSala} h do dia)</p>
+              <CalendarHeatGrid heat={heatOcupacao} formatValue={formatHoras} />
+            </div>
+            <div className="grid gap-4">
+              <div>
+                <p className="mb-2 text-sm font-semibold text-brand-tinta">O que ocupa a sala</p>
+                <RankBars points={ocupacao.porProduto.slice(0, 8).map((p) => ({ label: p.produto, value: p.horas }))} formatValue={formatHoras} emptyMessage="Nenhuma comanda com item de sala neste mês." />
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-semibold text-brand-tinta">Horas vendidas por dia da semana</p>
+                <RankBars points={ocupacao.porDiaDaSemana} formatValue={formatHoras} color={chartColors.entrada} emptyMessage="Sem comandas neste mês." />
+              </div>
+            </div>
           </div>
         </div>
       ),

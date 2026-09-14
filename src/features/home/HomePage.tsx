@@ -1,209 +1,110 @@
-import { useMemo } from "react";
+// A HOME É A FILA DO DIA (aprovado pelo Lucas em 14/09/2026, proposta 4.1).
+//
+// Antes: um painel de atalhos com um hero animado e cartões de resumo; a fila
+// financeira aparecia só para quem cuida do financeiro. Agora: ao abrir o app,
+// cada pessoa vê UMA lista do que precisa de ação — já filtrada pelo cargo e
+// pelos acessos por pessoa — depois os sinais do mês (cabe gastar, meta do dia,
+// ocupação de sala) e, por fim, os atalhos, que viraram a segunda tela.
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bell,
-  BellRing,
   BrainCircuit,
   CalendarClock,
   CheckSquare,
   CircleDollarSign,
-  Clock,
-  Coins,
   ClipboardList,
+  Coins,
+  DoorOpen,
   FileText,
+  Goal,
   History,
   MessageCircle,
   ReceiptText,
   ShieldCheck,
   Target,
-  TrendingUp,
   UsersRound,
   Utensils,
   Wallet,
 } from "lucide-react";
-import { Hero } from "@/components/ui/animated-hero";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { GetStartedButton } from "@/components/ui/get-started-button";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { Spotlight } from "@/components/ui/spotlight";
+import { InfoTip } from "@/components/ui/info-tip";
 import { useAuth } from "@/hooks/useAuth";
-import { canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLembretesPagamento, cargoGroup, cargoLabels } from "@/lib/access";
-import { formatLongDate, formatShortTime, readLocalValue, todayISO } from "@/lib/localStore";
+import {
+  canAdministracao,
+  canBaseModules,
+  canComprovantes,
+  canCrmBratan,
+  canFinanceiroFull,
+  canFinanceiroView,
+  canInteligencia360,
+  canLancarDia,
+  canLembretesPagamento,
+  canSeeModule,
+  cargoGroup,
+  cargoLabels,
+} from "@/lib/access";
+import { formatLongDate, formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
-import { lunchSummary, statusLabel } from "@/features/almoco/almocoData";
 import { checklistStorageKey, checklistSummary, createChecklistRun, filterChecklistItemsByCargo } from "@/features/checklist/checklistData";
-import {
-  comprovantesStorageKey,
-  comprovantesSummary,
-  money,
-  type ComprovanteRecord,
-} from "@/features/comprovantes/comprovantesData";
 import { activeAvisos, initialAvisos, muralStorageKey } from "@/features/mural/muralData";
+import { pagamentosStorageKey, pagamentosSummary, type PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
-  formatDate,
-  money as pagamentoMoney,
-  pagamentosStorageKey,
-  pagamentosSummary,
-  type PagamentoLembrete,
-} from "@/features/pagamentos/pagamentosData";
-import {
-  buildEstalecasSnapshot,
-  estalecasTransactionsStorageKey,
-  formatEstalecas,
-  type EstalecaTransaction,
-} from "@/features/estalecas/estalecasData";
-import { listRemoteAvisos, listRemoteChecklistItems, listRemoteComprovantes, listRemoteEstalecaTransactions, listRemoteFinExpenses, listRemoteFinPurchases, listRemoteFinSales, listRemotePagamentos, loadRemoteFinLucroPublico } from "@/lib/remoteData";
-import { loadLocalFinExpenses, loadLocalFinSales, moneyFin, pagamentosSemComprovante, upcomingExpenses } from "@/features/financeiro/financeiroData";
+  listRemoteAvisos,
+  listRemoteChecklistItems,
+  listRemoteFinExpenses,
+  listRemoteFinInvoices,
+  listRemoteFinPurchases,
+  listRemoteFinReconciliations,
+  listRemoteFinSales,
+  listRemoteNpsContatos,
+  listRemotePagamentos,
+  loadRemoteFinLucroPublico,
+} from "@/lib/remoteData";
+import { loadLocalFinExpenses, loadLocalFinSales, moneyFin, pagamentosSemComprovante, salesPendingInvoice } from "@/features/financeiro/financeiroData";
 import { buildFilaFinanceira } from "@/features/financeiro/filaFinanceira";
+import { buildOcupacaoMes, formatHoras } from "@/features/financeiro/ocupacaoSala";
+import { canUserAccessTask, cargoToCrmRole, contactDisplayName, isCrmManagement } from "@/features/crm/crmData";
+import { useCrmState } from "@/features/crm/useCrmState";
+import { useEstoque } from "@/features/estoque/useEstoque";
+import { posicaoDoSetor, setorLabels, type EstoqueSetor } from "@/features/estoque/estoqueData";
+import { filaDeContatos } from "@/features/concierge/npsData";
+import { buildFilaDoDia, fechamentoPendente, limparSilenciados, type TarefaCrmDaFila } from "./filaDoDia";
+import { FilaDoDiaHome } from "./FilaDoDiaHome";
 
+// ---- Atalhos (a segunda tela) ------------------------------------------------
 const modules = [
-  {
-    title: "Tarefas do dia",
-    href: "/tarefas",
-    icon: CheckSquare,
-    label: "Checklist",
-    description: "Marque o fechamento diário, acompanhe progresso e preserve a execução do dia.",
-    action: "Abrir checklist",
-    allowed: canBaseModules,
-  },
-  {
-    title: "Almoço",
-    href: "/almoco",
-    icon: Utensils,
-    label: "Cobertura",
-    description: "Veja quem está em pausa, quem ainda sai e quem já voltou.",
-    action: "Ver cobertura",
-    allowed: canBaseModules,
-  },
-  {
-    title: "Mural de avisos",
-    href: "/mural",
-    icon: Bell,
-    label: "Comunicados",
-    description: "Coordenação publica. Equipe lê. Comunicação clara, em um só lugar.",
-    action: "Abrir mural",
-    allowed: canBaseModules,
-  },
-  {
-    title: "Suas Estalecas",
-    href: "/estalecas",
-    icon: Coins,
-    label: "Carteira Bratan",
-    description: "Ganhe Estalecas mantendo sua disciplina e participando das ações Bratan.",
-    action: "Ver minha carteira",
-    allowed: canBaseModules,
-  },
-  {
-    title: "POPs & Fluxos",
-    href: "/pops-fluxos",
-    icon: FileText,
-    label: "18 fluxos",
-    description: "Fluxogramas reais por setor, com contexto operacional e tarefas extraídas.",
-    action: "Abrir biblioteca",
-    allowed: canBaseModules,
-  },
-  {
-    title: "Comprovantes",
-    href: "/comprovantes",
-    icon: ReceiptText,
-    label: "Recepção + Coordenação",
-    description: "Anexe arquivos, filtre por período e preserve histórico imutável.",
-    action: "Anexar",
-    allowed: canComprovantes,
-  },
-  {
-    title: "Minhas tarefas CRM",
-    href: "/crm/minhas-tarefas",
-    icon: ClipboardList,
-    label: "CRM",
-    description: "Veja os próximos contatos, pendências comerciais e relacionamento do dia.",
-    action: "Abrir CRM",
-    allowed: canCrmBratan,
-  },
-  {
-    title: "Kanban Comercial",
-    href: "/crm/vendas",
-    icon: Target,
-    label: "CRM",
-    description: "Acompanhe prescrições, negociações, objeções e oportunidades por etapa.",
-    action: "Ver vendas",
-    allowed: canCrmBratan,
-  },
-  {
-    title: "Cadências",
-    href: "/crm/cadencias",
-    icon: MessageCircle,
-    label: "CRM",
-    description: "Mensagens e toques organizados por função, sem duplicar acompanhamento.",
-    action: "Ver cadências",
-    allowed: canCrmBratan,
-  },
-  {
-    title: "Lembretes de pagamento",
-    href: "/lembretes-pagamento",
-    icon: CalendarClock,
-    label: "Coordenação",
-    description: "Acompanhe saldos prometidos, datas combinadas e retornos vencidos.",
-    action: "Ver lembretes",
-    allowed: canLembretesPagamento,
-  },
-  {
-    title: "Inteligência 360",
-    href: "/inteligencia-360",
-    icon: BrainCircuit,
-    label: "Torre de controle",
-    description: "Consolida ticket, comercial, jornada, réguas, recebíveis, NPS e ações com dono.",
-    action: "Abrir 360",
-    allowed: canInteligencia360,
-  },
-  {
-    title: "Colaboradores",
-    href: "/administracao/colaboradores",
-    icon: UsersRound,
-    label: "Administração",
-    description: "Gerencie perfis e cargos que controlam os acessos.",
-    action: "Gerir equipe",
-    allowed: canAdministracao,
-  },
-  {
-    title: "Gestão Estalecas",
-    href: "/administracao/estalecas",
-    icon: CircleDollarSign,
-    label: "Administração",
-    description: "Configure regras, cashback, check-ins, prêmios e vencedor mensal.",
-    action: "Gerir Estalecas",
-    allowed: canAdministracao,
-  },
-  {
-    title: "Segurança",
-    href: "/administracao/seguranca",
-    icon: ShieldCheck,
-    label: "Administração",
-    description: "Revise acessos, desligamentos, e-mails e eventos sensíveis.",
-    action: "Ver segurança",
-    allowed: canAdministracao,
-  },
-  {
-    title: "Auditoria",
-    href: "/administracao/auditoria",
-    icon: History,
-    label: "Administração",
-    description: "Veja ações sensíveis registradas no app e acompanhe o uso pela coordenação.",
-    action: "Ver registros",
-    allowed: canAdministracao,
-  },
+  { title: "Tarefas do dia", href: "/tarefas", icon: CheckSquare, action: "Abrir checklist", allowed: canBaseModules },
+  { title: "Almoço", href: "/almoco", icon: Utensils, action: "Ver cobertura", allowed: canBaseModules },
+  { title: "Mural de avisos", href: "/mural", icon: Bell, action: "Abrir mural", allowed: canBaseModules },
+  { title: "Suas Estalecas", href: "/estalecas", icon: Coins, action: "Minha carteira", allowed: canBaseModules },
+  { title: "POPs & Fluxos", href: "/pops-fluxos", icon: FileText, action: "Biblioteca", allowed: canBaseModules },
+  { title: "Comprovantes", href: "/comprovantes", icon: ReceiptText, action: "Anexar", allowed: canComprovantes },
+  { title: "Minhas tarefas CRM", href: "/crm/minhas-tarefas", icon: ClipboardList, action: "Meus toques", allowed: canCrmBratan },
+  { title: "Kanban Comercial", href: "/crm/vendas", icon: Target, action: "Ver vendas", allowed: canCrmBratan },
+  { title: "Cadências", href: "/crm/cadencias", icon: MessageCircle, action: "Ver cadências", allowed: canCrmBratan },
+  { title: "Lançar Dia", href: "/financeiro/lancar-dia", icon: CircleDollarSign, action: "Comanda", allowed: canLancarDia },
+  { title: "Contas a Pagar", href: "/financeiro/contas", icon: ReceiptText, action: "Fila financeira", allowed: canFinanceiroView },
+  { title: "Lucro Inteligente", href: "/financeiro/lucro", icon: Wallet, action: "Envelopes", allowed: canLembretesPagamento },
+  { title: "Painel do Mês", href: "/financeiro/painel", icon: Goal, action: "Reunião", allowed: canFinanceiroView },
+  { title: "Lembretes de pagamento", href: "/lembretes-pagamento", icon: CalendarClock, action: "Ver lembretes", allowed: canLembretesPagamento },
+  { title: "Inteligência 360", href: "/inteligencia-360", icon: BrainCircuit, action: "Abrir 360", allowed: canInteligencia360 },
+  { title: "Colaboradores", href: "/administracao/colaboradores", icon: UsersRound, action: "Gerir equipe", allowed: canAdministracao },
+  { title: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, action: "Ver segurança", allowed: canAdministracao },
+  { title: "Auditoria", href: "/administracao/auditoria", icon: History, action: "Ver registros", allowed: canAdministracao },
 ];
 
-type HomeModule = (typeof modules)[number];
-
-function isHomeModule(module: HomeModule | undefined): module is HomeModule {
-  return Boolean(module);
-}
+const grupos = [
+  { title: "Dia a dia", hrefs: ["/tarefas", "/almoco", "/mural", "/estalecas", "/pops-fluxos", "/comprovantes"] },
+  { title: "Comercial", hrefs: ["/crm/minhas-tarefas", "/crm/vendas", "/crm/cadencias"] },
+  { title: "Financeiro", hrefs: ["/financeiro/lancar-dia", "/financeiro/contas", "/financeiro/lucro", "/financeiro/painel", "/lembretes-pagamento"] },
+  { title: "Coordenação", hrefs: ["/inteligencia-360", "/administracao/colaboradores", "/administracao/seguranca", "/administracao/auditoria"] },
+];
 
 function warmRouteProps(href: string) {
   return {
@@ -213,38 +114,28 @@ function warmRouteProps(href: string) {
   };
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-  tone = "default",
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  detail: string;
-  tone?: "default" | "gold";
-}) {
-  return (
-    <Card
-      className={cn(
-        "border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur",
-        tone === "gold" && "border-brand-dourado/45 bg-brand-creme/45",
-      )}
-    >
-      <CardContent className="p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-            <Icon className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <Badge variant={tone === "gold" ? "gold" : "muted"}>{label}</Badge>
+function Sinal({ icon: Icon, rotulo, valor, frase, tom = "default", href }: { icon: React.ComponentType<{ className?: string }>; rotulo: string; valor: string; frase: string; tom?: "default" | "gold" | "alerta"; href?: string }) {
+  const corpo = (
+    <CardContent className="p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
+          <Icon className="h-4.5 w-4.5" aria-hidden="true" />
         </div>
-        <p className="text-3xl font-bold text-brand-tinta">{value}</p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
-      </CardContent>
-    </Card>
+        <Badge variant={tom === "gold" ? "gold" : "muted"}>{rotulo}</Badge>
+      </div>
+      <p className={cn("text-2xl font-bold tabular-nums", tom === "alerta" ? "text-red-700" : "text-brand-tinta")}>{valor}</p>
+      <p className="mt-1 text-sm leading-5 text-muted-foreground">{frase}</p>
+    </CardContent>
   );
+  const classes = cn("border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur", tom === "gold" && "border-brand-dourado/45 bg-brand-creme/45", tom === "alerta" && "border-red-200 bg-red-50/60", href && "transition hover:border-brand-musgo/40");
+  if (href) {
+    return (
+      <Link to={href} {...warmRouteProps(href)} className="block">
+        <Card className={classes}>{corpo}</Card>
+      </Link>
+    );
+  }
+  return <Card className={classes}>{corpo}</Card>;
 }
 
 export function HomePage() {
@@ -254,546 +145,269 @@ export function HomePage() {
   const cargo = pessoa?.cargo;
   const useRemote = Boolean(pessoa && session && !isPreview);
   const now = useMemo(() => new Date(), []);
-  const allowedModules = modules.filter((module) => module.allowed(cargo));
-  const flowSections = useMemo(() => {
-    const moduleMap = new Map(allowedModules.map((module) => [module.href, module]));
-    const groups = [
-      {
-        title: "Dia a dia",
-        label: "Rotina",
-        icon: CheckSquare,
-        detail: "Tarefas, almoço e avisos no mesmo fluxo.",
-        hrefs: ["/tarefas", "/almoco", "/mural"],
-      },
-      {
-        title: "Documentos",
-        label: "Operação",
-        icon: FileText,
-        detail: "POP, fluxogramas e comprovantes do dia.",
-        hrefs: ["/pops-fluxos", "/comprovantes"],
-      },
-      {
-        title: "Reconhecimento",
-        label: "Estalecas",
-        icon: Coins,
-        detail: "Carteira, check-ins, cashback e prêmios.",
-        hrefs: ["/estalecas", "/administracao/estalecas"],
-      },
-      {
-        title: "Comercial",
-        label: "CRM",
-        icon: Target,
-        detail: "Tarefas, vendas e cadências conectadas.",
-        hrefs: ["/crm/minhas-tarefas", "/crm/vendas", "/crm/cadencias"],
-      },
-      {
-        title: "Coordenação",
-        label: "Gestão",
-        icon: UsersRound,
-        detail: "Equipe, lembretes, segurança e auditoria agrupados.",
-        hrefs: ["/inteligencia-360", "/lembretes-pagamento", "/administracao/colaboradores", "/administracao/seguranca", "/administracao/auditoria"],
-      },
-    ];
+  const hoje = todayISO();
+  const mesAtual = hoje.slice(0, 7);
+  const ano = Number(hoje.slice(0, 4));
 
-    return groups
-      .map((group) => ({
-        ...group,
-        items: group.hrefs.map((href) => moduleMap.get(href)).filter(isHomeModule),
-      }))
-      .filter((group) => group.items.length > 0);
-  }, [allowedModules]);
-  const pagamentosQuery = useQuery({
-    queryKey: ["pagamentos-lembretes"],
-    queryFn: listRemotePagamentos,
-    enabled: useRemote && canLembretesPagamento(cargo),
-  });
-  const estalecasQuery = useQuery({
-    queryKey: ["estalecas-transactions", pessoa?.id],
-    queryFn: listRemoteEstalecaTransactions,
-    enabled: useRemote && Boolean(pessoa),
-  });
+  const veFinanceiro = canFinanceiroView(cargo);
+  const financeiroCompleto = canFinanceiroFull(cargo);
+  const veEstoque = canSeeModule(pessoa, "estoque");
+  const veNps = canSeeModule(pessoa, "concierge-nps");
+  const veCrm = canCrmBratan(cargo) && canSeeModule(pessoa, "crm");
 
-  const checklistQuery = useQuery({
-    queryKey: ["checklist-items", "home"],
-    queryFn: () => listRemoteChecklistItems(),
-    enabled: useRemote,
-  });
+  // ---- dados do dia (cada consulta só liga para quem pode ver) ----------------------------
+  const checklistQuery = useQuery({ queryKey: ["checklist-items", "home"], queryFn: () => listRemoteChecklistItems(), enabled: useRemote });
   const checklist = useMemo(() => {
-    // Mesma fonte da tela Tarefas: logado usa o banco; prévia usa o local.
-    const items = useRemote && checklistQuery.data
-      ? checklistQuery.data.items
-      : readLocalValue(checklistStorageKey(), createChecklistRun());
+    const items = useRemote && checklistQuery.data ? checklistQuery.data.items : readLocalValue(checklistStorageKey(), createChecklistRun());
     return checklistSummary(filterChecklistItemsByCargo(items, cargo));
   }, [cargo, checklistQuery.data, useRemote]);
 
-  const lunch = useMemo(() => lunchSummary(now), [now]);
+  const avisosQuery = useQuery({ queryKey: ["avisos", "home"], queryFn: listRemoteAvisos, enabled: useRemote });
+  const avisos = useMemo(() => activeAvisos(useRemote && avisosQuery.data ? avisosQuery.data : readLocalValue(muralStorageKey, initialAvisos)), [avisosQuery.data, useRemote]);
 
-  const avisosQuery = useQuery({
-    queryKey: ["avisos", "home"],
-    queryFn: listRemoteAvisos,
-    enabled: useRemote,
-  });
-  const avisos = useMemo(() => {
-    const records = useRemote && avisosQuery.data ? avisosQuery.data : readLocalValue(muralStorageKey, initialAvisos);
-    return activeAvisos(records);
-  }, [avisosQuery.data, useRemote]);
-
-  const comprovantesQuery = useQuery({
-    queryKey: ["comprovantes", "home"],
-    queryFn: () => listRemoteComprovantes(cargo ?? "recepcionista"),
-    enabled: useRemote && canComprovantes(cargo),
-  });
-  const comprovantes = useMemo(() => {
-    if (!canComprovantes(cargo)) return null;
-    const records = useRemote && comprovantesQuery.data
-      ? comprovantesQuery.data
-      : readLocalValue<ComprovanteRecord[]>(comprovantesStorageKey, []);
-    return comprovantesSummary(records);
-  }, [cargo, comprovantesQuery.data, useRemote]);
-
+  const pagamentosQuery = useQuery({ queryKey: ["pagamentos-lembretes"], queryFn: listRemotePagamentos, enabled: useRemote && canLembretesPagamento(cargo) });
   const pagamentos = useMemo(() => {
     if (!canLembretesPagamento(cargo)) return null;
-    const records = useRemote
-      ? pagamentosQuery.data ?? []
-      : readLocalValue<PagamentoLembrete[]>(pagamentosStorageKey, []);
-    return pagamentosSummary(records);
+    return pagamentosSummary(useRemote ? pagamentosQuery.data ?? [] : readLocalValue<PagamentoLembrete[]>(pagamentosStorageKey, []));
   }, [cargo, pagamentosQuery.data, useRemote]);
 
-  // Contas a pagar chegando (3 dias) + vencidas — só para quem vê o financeiro.
-  const finExpensesQuery = useQuery({
-    queryKey: ["fin-expenses", new Date().getFullYear()],
-    queryFn: () => listRemoteFinExpenses(new Date().getFullYear()),
-    enabled: useRemote && canFinanceiroView(cargo),
-    staleTime: 60_000,
-  });
-  const finSalesQuery = useQuery({
-    queryKey: ["home-fin-sales"],
-    queryFn: () => listRemoteFinSales(new Date().getFullYear()),
-    enabled: useRemote && canFinanceiroView(cargo),
-    staleTime: 60_000,
-  });
-  // CABE GASTAR NO MÊS — para todo mundo (08/09/2026, Lucas). Lê o retrato
-  // publicado pela tela do Lucro Inteligente (só números do envelope, sem
-  // comanda nem paciente), por isso não depende do cargo.
-  const lucroPublicoQuery = useQuery({
-    queryKey: ["fin-lucro-publico", todayISO().slice(0, 7)],
-    queryFn: () => loadRemoteFinLucroPublico(todayISO().slice(0, 7)),
-    enabled: useRemote,
-    staleTime: 60_000,
-  });
+  const finExpensesQuery = useQuery({ queryKey: ["fin-expenses", ano], queryFn: () => listRemoteFinExpenses(ano), enabled: useRemote && veFinanceiro, staleTime: 60_000 });
+  const finSalesQuery = useQuery({ queryKey: ["home-fin-sales"], queryFn: () => listRemoteFinSales(ano), enabled: useRemote && (veFinanceiro || canLancarDia(cargo)), staleTime: 60_000 });
+  const finPurchasesQuery = useQuery({ queryKey: ["home-fin-purchases", ano], queryFn: () => listRemoteFinPurchases(ano), enabled: useRemote && veFinanceiro, staleTime: 60_000 });
+  const finInvoicesQuery = useQuery({ queryKey: ["home-fin-invoices", ano], queryFn: () => listRemoteFinInvoices(ano), enabled: useRemote && financeiroCompleto, staleTime: 60_000 });
+  const finRecQuery = useQuery({ queryKey: ["home-fin-reconciliations", ano], queryFn: () => listRemoteFinReconciliations(ano), enabled: useRemote && financeiroCompleto, staleTime: 60_000 });
+  const lucroPublicoQuery = useQuery({ queryKey: ["fin-lucro-publico", mesAtual], queryFn: () => loadRemoteFinLucroPublico(mesAtual), enabled: useRemote, staleTime: 60_000 });
   const lucroPublico = lucroPublicoQuery.data ?? null;
-  const finPurchasesQuery = useQuery({
-    queryKey: ["home-fin-purchases", new Date().getFullYear()],
-    queryFn: () => listRemoteFinPurchases(new Date().getFullYear()),
-    enabled: useRemote && canFinanceiroView(cargo),
-    staleTime: 60_000,
-  });
-  const contasChegando = useMemo(() => {
-    if (!canFinanceiroView(cargo)) return null;
-    const records = useRemote ? finExpensesQuery.data ?? [] : loadLocalFinExpenses();
-    // Provisão é reserva, não conta a cobrar (10/08/2026).
-    const semProvisao = records.filter((expense) => !expense.categoryRef.startsWith("cat-poup-"));
-    return upcomingExpenses(semProvisao, todayISO(), 3);
-  }, [cargo, finExpensesQuery.data, useRemote]);
-  // FILA FINANCEIRA DO DIA (02/09/2026): a mesma frase do Contas a Pagar, aqui na
-  // Home de quem cuida do financeiro — "hoje vencem 3 · 9 vencidas · 2 boletos
-  // sem arquivo · 1 pedido para conferir". É o empurrão contra o "não olhei".
+
+  const sales = useMemo(() => (useRemote ? finSalesQuery.data ?? [] : loadLocalFinSales()), [finSalesQuery.data, useRemote]);
+  const expenses = useMemo(() => (useRemote ? finExpensesQuery.data ?? [] : loadLocalFinExpenses()), [finExpensesQuery.data, useRemote]);
+
   const filaFinanceira = useMemo(() => {
-    if (!canFinanceiroView(cargo)) return null;
-    const records = useRemote ? finExpensesQuery.data ?? [] : loadLocalFinExpenses();
-    const purchases = useRemote ? finPurchasesQuery.data ?? [] : [];
+    if (!veFinanceiro) return null;
     return buildFilaFinanceira({
-      expenses: records.filter((expense) => !expense.categoryRef.startsWith("cat-poup-")),
-      purchases,
-      hoje: todayISO(),
+      // Provisão é reserva, não conta a cobrar (10/08/2026).
+      expenses: expenses.filter((expense) => !expense.categoryRef.startsWith("cat-poup-")),
+      purchases: useRemote ? finPurchasesQuery.data ?? [] : [],
+      hoje,
     });
-  }, [cargo, finExpensesQuery.data, finPurchasesQuery.data, useRemote]);
+  }, [veFinanceiro, expenses, finPurchasesQuery.data, useRemote, hoje]);
 
-  // AVISO QUE CHEGA SOZINHO (10/08/2026): comandas com pagamento sem decisão
-  // sobre o comprovante. Antes o Lucas descobria isso na conciliação, dias
-  // depois; agora aparece na Home de quem pode resolver.
   const comprovantesPendentes = useMemo(() => {
-    if (!canFinanceiroView(cargo)) return null;
-    const vendas = useRemote ? finSalesQuery.data ?? [] : loadLocalFinSales();
-    const inicioDoMes = `${todayISO().slice(0, 7)}-01`;
-    const pendentes = pagamentosSemComprovante(vendas, inicioDoMes, todayISO());
-    return pendentes.length ? pendentes : null;
-  }, [cargo, finSalesQuery.data, useRemote]);
+    if (!veFinanceiro && !canLancarDia(cargo)) return null;
+    const pendentes = pagamentosSemComprovante(sales, `${mesAtual}-01`, hoje);
+    return pendentes.length ? { quantidade: pendentes.length, valor: pendentes.reduce((soma, p) => soma + (p.payment.amount || 0), 0) } : null;
+  }, [veFinanceiro, cargo, sales, mesAtual, hoje]);
 
-  const estalecas = useMemo(() => {
-    if (!pessoa) return null;
-    const records = useRemote
-      ? estalecasQuery.data ?? []
-      : readLocalValue<EstalecaTransaction[]>(estalecasTransactionsStorageKey, []);
-    return buildEstalecasSnapshot({ userId: pessoa.id, transactions: records, checkins: [], rewards: [] });
-  }, [estalecasQuery.data, pessoa, useRemote]);
+  const comandasSemNota = useMemo(() => {
+    if (!financeiroCompleto) return null;
+    const pendentes = salesPendingInvoice(sales, finInvoicesQuery.data ?? [], mesAtual);
+    return pendentes.length ? { quantidade: pendentes.length, valor: pendentes.reduce((soma, p) => soma + p.remaining, 0) } : null;
+  }, [financeiroCompleto, sales, finInvoicesQuery.data, mesAtual]);
 
-  const nextLunchLabel = lunch.currentLunch[0]
-    ? `${lunch.currentLunch[0].rotulo} está em pausa`
-    : lunch.nextSlot
-      ? `${lunch.nextSlot.rotulo} ${statusLabel(lunch.nextSlot.status, lunch.nextSlot).toLowerCase()}`
-      : "Todos os turnos voltaram";
+  const fechamento = useMemo(() => (financeiroCompleto ? fechamentoPendente(sales, finRecQuery.data ?? [], hoje) : null), [financeiroCompleto, sales, finRecQuery.data, hoje]);
 
-  const nextPriority = pagamentos?.vencidos[0]
-    ? `${pagamentos.vencidos[0].pacienteNome} tem lembrete vencido`
-    : checklist.nextItem
-    ? checklist.nextItem.descricao
-    : avisos[0]?.corpo ?? "Rotina do dia em ordem";
+  // ---- CRM: as tarefas da pessoa (mesma regra de Minhas tarefas) ---------------------------
+  const crm = useCrmState();
+  const crmTasks = useMemo<TarefaCrmDaFila[]>(() => {
+    if (!veCrm || !pessoa) return [];
+    const role = cargoToCrmRole(cargo);
+    const gestao = isCrmManagement(cargo);
+    const contatos = new Map(crm.state.contacts.map((contact) => [contact.id, contact]));
+    return crm.state.tasks
+      .filter((task) => canUserAccessTask(pessoa, task))
+      .filter((task) => (gestao ? (role && task.assignedToRole === role) || task.assignedToUserId === pessoa.id : true))
+      .map((task) => ({ id: task.id, title: task.title, dueAt: task.dueAt, status: task.status, contato: contactDisplayName(contatos.get(task.contactId)), taskType: task.taskType }));
+  }, [veCrm, pessoa, cargo, crm.state.contacts, crm.state.tasks]);
+
+  // ---- Estoque: só os setores que a pessoa cuida ------------------------------------------
+  const estoque = useEstoque();
+  const estoqueFila = useMemo(() => {
+    if (!veEstoque) return [];
+    const setores: EstoqueSetor[] = cargo === "recepcionista" ? ["RECEPCAO"] : cargo === "enfermeira" || cargo === "nutricionista" ? ["ENFERMAGEM"] : ["RECEPCAO", "ENFERMAGEM"];
+    return setores.map((setor) => {
+      const posicao = posicaoDoSetor(estoque.items, estoque.moves, setor).filter((linha) => linha.status !== "OK");
+      return { setor, rotulo: setorLabels[setor].split(" (")[0], itens: posicao.length, zerados: posicao.filter((linha) => linha.status === "ZERADO").length };
+    });
+  }, [veEstoque, cargo, estoque.items, estoque.moves]);
+
+  // ---- NPS da concierge: quem passou e não recebeu o contato -------------------------------
+  const npsQuery = useQuery({ queryKey: ["nps-contatos", "home"], queryFn: listRemoteNpsContatos, enabled: useRemote && veNps, staleTime: 60_000 });
+  const npsFila = useMemo(() => {
+    if (!veNps) return null;
+    const fila = filaDeContatos(crm.state.contacts, sales, npsQuery.data ?? [], hoje);
+    return fila.length ? { quantidade: fila.length, maisAntigoDias: Math.max(...fila.map((item) => item.diasDesde)) } : null;
+  }, [veNps, crm.state.contacts, sales, npsQuery.data, hoje]);
+
+  // ---- silenciados (por pessoa, neste aparelho) ------------------------------------------
+  const silenciadosKey = `app-bratan-fila-silenciada:${pessoa?.id ?? "anon"}`;
+  const [silenciados, setSilenciados] = useState<Record<string, string>>(() => limparSilenciados(readLocalValue<Record<string, string>>(silenciadosKey, {}), hoje));
+  useEffect(() => {
+    setSilenciados(limparSilenciados(readLocalValue<Record<string, string>>(silenciadosKey, {}), hoje));
+  }, [silenciadosKey, hoje]);
+  function silenciar(chave: string, ateISO: string) {
+    setSilenciados((atual) => {
+      const proximo = { ...atual, [chave]: ateISO };
+      writeLocalValue(silenciadosKey, proximo);
+      return proximo;
+    });
+  }
+
+  const fila = useMemo(
+    () =>
+      buildFilaDoDia({
+        hoje,
+        financeira: filaFinanceira,
+        comprovantesPendentes,
+        comandasSemNota,
+        crmTasks,
+        lembretes: pagamentos
+          ? {
+              vencidos: pagamentos.vencidos.map((l) => ({ id: l.id, nome: l.pacienteNome, valor: l.valorPendente, data: l.dataPrevista })),
+              hoje: pagamentos.hoje.map((l) => ({ id: l.id, nome: l.pacienteNome, valor: l.valorPendente, data: l.dataPrevista })),
+            }
+          : null,
+        estoque: estoqueFila,
+        npsFila,
+        checklist: { pendentes: checklist.pendingCount, proxima: checklist.nextItem?.descricao ?? null },
+        fechamentoPendente: fechamento,
+        avisosImportantes: avisos.filter((aviso) => aviso.prioridade === "importante").map((aviso) => ({ id: aviso.id, corpo: aviso.corpo, publicadoEm: aviso.publicadoEm })),
+        silenciados,
+      }),
+    [hoje, filaFinanceira, comprovantesPendentes, comandasSemNota, crmTasks, pagamentos, estoqueFila, npsFila, checklist, fechamento, avisos, silenciados],
+  );
+  const carregando = useRemote && (finExpensesQuery.isLoading || finSalesQuery.isLoading || checklistQuery.isLoading || (veCrm && crm.isSyncing && crm.state.tasks.length === 0));
+
+  // ---- Sinais do mês -------------------------------------------------------------------
+  const ocupacao = useMemo(() => (veFinanceiro ? buildOcupacaoMes({ sales, monthKey: mesAtual, hoje }) : null), [veFinanceiro, sales, mesAtual, hoje]);
+
+  const atalhos = useMemo(() => {
+    const permitidos = new Map(modules.filter((module) => module.allowed(cargo)).map((module) => [module.href, module]));
+    return grupos.map((grupo) => ({ ...grupo, items: grupo.hrefs.map((href) => permitidos.get(href)).filter((item): item is (typeof modules)[number] => Boolean(item)) })).filter((grupo) => grupo.items.length);
+  }, [cargo]);
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
-      <motion.section
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.34, ease: [0.4, 0, 0.2, 1] }}
-        className="ios-glass relative overflow-hidden rounded-lg border px-4 py-5 shadow-ios sm:px-7 sm:py-8 lg:px-10"
-      >
-        <Spotlight className="-top-32 left-0 md:-top-16 md:left-44" fill="#C6A862" fillOpacity={0.1} />
-        <div className="mb-5 flex flex-wrap gap-2">
-          <Badge variant="gold">Painel do dia</Badge>
-          <Badge variant="outline">{formatLongDate(now)}</Badge>
-          <Badge variant="outline">Confiável</Badge>
-          <Badge variant="outline">Nobre</Badge>
-          <Badge variant="outline">Ético</Badge>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }} className="flex flex-wrap items-end justify-between gap-3 px-1">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">{formatLongDate(now)}</p>
+          <h1 className="mt-1 text-3xl leading-tight text-brand-musgo sm:text-4xl">Bom trabalho, {firstName}.</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {cargo ? `${cargoLabels[cargo]} · ${cargoGroup(cargo)}` : "Acesso ainda não configurado."} · a fila abaixo é só o que depende de você.
+          </p>
         </div>
-
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-end">
-          <Hero
-            eyebrow={`Bom trabalho, ${firstName}`}
-            titleLead="Operação"
-            rotatingWords={["em foco.", "sem ruído.", "no ritmo.", "sob controle."]}
-            description="Seu resumo do dia: tarefas, almoço, avisos e comprovantes em uma visão única, filtrada pelo seu cargo."
-            primaryAction={{
-              label: "Abrir tarefas",
-              onClick: () => {
-                prefetchRoute("/tarefas");
-                navigate("/tarefas");
-              },
-            }}
-            secondaryAction={{
-              label: canComprovantes(cargo) ? "Anexar comprovante" : "Ver POPs",
-              onClick: () => {
-                const href = canComprovantes(cargo) ? "/comprovantes" : "/pops-fluxos";
-                prefetchRoute(href);
-                navigate(href);
-              },
-            }}
-          />
-
-          <Card className="border-brand-dourado/45 bg-brand-creme/45 shadow-none">
-            <CardContent className="p-5">
-              <p className="text-xs font-semibold uppercase text-brand-oliva">Perfil ativo</p>
-              <p className="mt-1 text-lg font-semibold text-brand-tinta">
-                {cargo ? cargoLabels[cargo] : "Sem cargo definido"}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{cargo ? cargoGroup(cargo) : "Acesso ainda não configurado."}</p>
-              <div className="mt-5 rounded-lg border border-brand-oliva/20 bg-white/62 p-4">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">Próxima prioridade</p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-brand-tinta">{nextPriority}</p>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" {...warmRouteProps("/tarefas")} onClick={() => navigate("/tarefas")}>
+            <CheckSquare className="mr-1.5 h-4 w-4" aria-hidden="true" /> Checklist {checklist.progress}%
+          </Button>
+          {canLancarDia(cargo) ? (
+            <Button type="button" size="sm" {...warmRouteProps("/financeiro/lancar-dia")} onClick={() => navigate("/financeiro/lancar-dia")}>
+              <CircleDollarSign className="mr-1.5 h-4 w-4" aria-hidden="true" /> Lançar comanda
+            </Button>
+          ) : null}
         </div>
       </motion.section>
 
+      <FilaDoDiaHome fila={fila} carregando={carregando} onSilenciar={silenciar} />
+
       <section>
-        <div className="mb-4 flex items-end justify-between gap-3">
+        <div className="mb-3 flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl text-brand-musgo">Resumo operacional</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Sinais principais para decidir o próximo passo.</p>
+            <h2 className="flex items-center gap-2 text-2xl text-brand-musgo">
+              Sinais do mês
+              <InfoTip title="De onde vêm">
+                &quot;Cabe gastar&quot; e a meta do dia vêm do retrato público do Lucro Inteligente (só números, sem paciente). A
+                ocupação de sala é horas vendidas ÷ horas disponíveis até hoje (7 salas × 9 h nos dias úteis), o número mais alavancável
+                da clínica; a faixa saudável é 75 a 85%.
+              </InfoTip>
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">Os números que mudam a decisão de hoje, cada um com a sua frase.</p>
           </div>
           <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
             <Link to="/mural" {...warmRouteProps("/mural")}>Ver avisos</Link>
           </Button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            icon={CheckSquare}
-            label="Checklist"
-            value={`${checklist.progress}%`}
-            detail={`${checklist.doneCount}/${checklist.total} tarefas concluídas`}
-            tone={checklist.progress === 100 ? "gold" : "default"}
-          />
-          <StatCard
-            icon={Coins}
-            label="Estalecas"
-            value={estalecas ? formatEstalecas(estalecas.balance) : "0"}
-            detail="Saldo interno da Carteira Bratan."
-            tone={estalecas && estalecas.balance > 0 ? "gold" : "default"}
-          />
-          <StatCard
-            icon={Utensils}
-            label="Almoço"
-            value={`${lunch.currentLunch.length}`}
-            detail={nextLunchLabel}
-            tone={lunch.currentLunch.length ? "gold" : "default"}
-          />
-          <StatCard
-            icon={Bell}
-            label="Mural"
-            value={`${avisos.length}`}
-            detail={avisos[0] ? `Último aviso às ${formatShortTime(avisos[0].publicadoEm)}` : "Sem avisos ativos"}
-          />
-          <StatCard
+          <Sinal
             icon={Wallet}
-            label="Cabe gastar no mês"
-            value={lucroPublico ? money(lucroPublico.sobra) : "—"}
-            detail={
+            rotulo="Cabe gastar no mês"
+            valor={lucroPublico ? moneyFin(lucroPublico.sobra) : "—"}
+            frase={
               lucroPublico
-                ? `${lucroPublico.sobra < -0.005 ? "já passou do que cabe" : "ainda cabe de contas"} · cabe ${money(lucroPublico.cabeGastar)} · pagas ${money(lucroPublico.contasPagas)} · ${lucroPublico.atualizadoEm ? `às ${formatShortTime(lucroPublico.atualizadoEm)}` : ""}`
+                ? `${lucroPublico.sobra < -0.005 ? "já passou do que cabe" : "ainda cabe de contas"} · cabe ${moneyFin(lucroPublico.cabeGastar)} · pagas ${moneyFin(lucroPublico.contasPagas)}${lucroPublico.atualizadoEm ? ` · às ${formatShortTime(lucroPublico.atualizadoEm)}` : ""}`
                 : "O financeiro ainda não publicou o mês no Lucro Inteligente."
             }
-            tone={lucroPublico && lucroPublico.sobra >= -0.005 ? "gold" : "default"}
+            tom={lucroPublico ? (lucroPublico.sobra >= -0.005 ? "gold" : "alerta") : "default"}
+            href={canLembretesPagamento(cargo) ? "/financeiro/lucro" : undefined}
           />
-          {comprovantes ? (
-            <StatCard
-              icon={ReceiptText}
-              label="Comprovantes"
-              value={`${comprovantes.todayRecords.length}`}
-              detail={`${money(comprovantes.totalHoje)} hoje · ${comprovantes.pendingSharePoint} pendentes SharePoint`}
-              tone={comprovantes.todayRecords.length ? "gold" : "default"}
+          <Sinal
+            icon={Goal}
+            rotulo="Meta do dia"
+            valor={lucroPublico && lucroPublico.metaDia ? moneyFin(lucroPublico.metaDia) : "—"}
+            frase={
+              lucroPublico && lucroPublico.metaDia
+                ? `${lucroPublico.diaComDoutor ? "dia com Dr. Daniel" : "dia sem Dr. Daniel"} · feito hoje ${moneyFin(lucroPublico.feitoHoje)} · mês ${moneyFin(lucroPublico.feitoMes)} de ${moneyFin(lucroPublico.metaMes)}`
+                : "Sem meta publicada para hoje."
+            }
+            tom={lucroPublico && lucroPublico.metaDia && lucroPublico.feitoHoje >= lucroPublico.metaDia ? "gold" : "default"}
+            href={veFinanceiro ? "/financeiro/metas" : undefined}
+          />
+          {ocupacao ? (
+            <Sinal
+              icon={DoorOpen}
+              rotulo={`Ocupação de sala · até ${hoje.slice(8, 10)}/${hoje.slice(5, 7)}`}
+              valor={`${ocupacao.percentual.toLocaleString("pt-BR")}%`}
+              frase={`${formatHoras(ocupacao.horasVendidas)} vendidas de ${formatHoras(ocupacao.horasDisponiveis)} disponíveis · faixa saudável ${ocupacao.meta.minima} a ${ocupacao.meta.maxima}%${ocupacao.horasParaMeta > 0 ? ` · faltam ${formatHoras(ocupacao.horasParaMeta)} para ${ocupacao.meta.minima}%` : ""}`}
+              tom={ocupacao.percentual >= ocupacao.meta.minima ? "gold" : ocupacao.percentual < 40 ? "alerta" : "default"}
+              href="/financeiro/painel"
             />
           ) : (
-            <StatCard
-              icon={ShieldCheck}
-              label="Acesso"
-              value="Base"
-              detail="Comprovantes ficam ocultos para este cargo."
-            />
+            <Sinal icon={CheckSquare} rotulo="Checklist" valor={`${checklist.progress}%`} frase={`${checklist.doneCount}/${checklist.total} tarefas concluídas`} tom={checklist.progress === 100 ? "gold" : "default"} href="/tarefas" />
           )}
-          {pagamentos ? (
-            <StatCard
-              icon={CalendarClock}
-              label="Lembretes"
-              value={`${pagamentos.vencidos.length}`}
-              detail={`${pagamentoMoney(pagamentos.totalAberto)} em aberto · ${pagamentos.hoje.length} hoje`}
-              tone={pagamentos.vencidos.length || pagamentos.hoje.length ? "gold" : "default"}
-            />
-          ) : null}
+          <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center justify-between text-base">
+                Avisos recentes
+                <Badge variant="muted">{avisos.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {avisos.slice(0, 2).map((aviso) => (
+                <div key={aviso.id} className="rounded-md border border-brand-oliva/16 bg-white/65 p-2.5">
+                  <div className="mb-1 flex items-center gap-2">
+                    <Badge variant={aviso.prioridade === "importante" ? "gold" : "muted"}>{aviso.prioridade === "importante" ? "Importante" : "Informativo"}</Badge>
+                    <span className="text-[11px] font-semibold uppercase text-brand-oliva">{formatShortTime(aviso.publicadoEm)}</span>
+                  </div>
+                  <p className="line-clamp-2 text-sm leading-5 text-brand-tinta">{aviso.corpo}</p>
+                </div>
+              ))}
+              {!avisos.length ? <p className="text-sm text-muted-foreground">Sem avisos ativos.</p> : null}
+            </CardContent>
+          </Card>
         </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-lg">Fila de atenção</CardTitle>
-              <Badge variant="muted">Agora</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {comprovantesPendentes ? (
-              <Link
-                to="/financeiro/lancar-dia"
-                {...warmRouteProps("/financeiro/lancar-dia")}
-                className="block rounded-lg border border-amber-300 bg-amber-50/80 p-4 transition hover:border-amber-400"
-              >
-                <div className="flex items-start gap-3">
-                  <BellRing className="mt-1 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-amber-900">
-                      {comprovantesPendentes.length} pagamento{comprovantesPendentes.length > 1 ? "s" : ""} sem definir o comprovante
-                    </p>
-                    <p className="mt-0.5 text-xs text-amber-900/80">
-                      Um toque na comanda resolve: tenho o comprovante · vai mandar depois · não se aplica.
-                    </p>
-                    {comprovantesPendentes.slice(0, 3).map(({ sale, payment }: { sale: { id: string; saleDate: string; patientName: string }; payment: { id: string; amount: number } }) => (
-                      <p key={payment.id} className="mt-1 truncate text-sm text-amber-900/80">
-                        {sale.saleDate.split("-").reverse().slice(0, 2).join("/")} · {sale.patientName} · {moneyFin(payment.amount)}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              </Link>
-            ) : null}
-
-            {filaFinanceira && (filaFinanceira.vencidas.length || filaFinanceira.vencemHoje.length || filaFinanceira.pendencias.length || filaFinanceira.totais.boletosSemArquivo) ? (
-              <Link
-                to="/financeiro/contas"
-                {...warmRouteProps("/financeiro/contas")}
-                className="block rounded-lg border border-amber-300 bg-amber-50/80 p-4 transition hover:border-amber-400"
-              >
-                <div className="flex items-start gap-3">
-                  <BellRing className="mt-1 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-amber-900 first-letter:uppercase">Fila financeira: {filaFinanceira.resumo}.</p>
-                    {[...filaFinanceira.vencidas, ...filaFinanceira.vencemHoje, ...filaFinanceira.pendencias].slice(0, 3).map((item) => (
-                      <p key={item.chave} className="mt-1 truncate text-sm text-amber-900/80">
-                        {item.data.split("-").reverse().slice(0, 2).join("/")} · {item.titulo} · {moneyFin(item.valor)}
-                      </p>
-                    ))}
-                    <p className="mt-1 text-xs font-semibold uppercase text-amber-700">Toque para abrir a Fila do dia</p>
-                  </div>
-                </div>
-              </Link>
-            ) : contasChegando && contasChegando.chegando.length > 0 ? (
-              <Link
-                to="/financeiro/contas"
-                {...warmRouteProps("/financeiro/contas")}
-                className="block rounded-lg border border-brand-oliva/20 bg-white/70 p-4 transition hover:border-brand-musgo/40"
-              >
-                <p className="text-sm font-semibold text-brand-tinta">
-                  Financeiro em dia — {contasChegando.chegando.length} conta{contasChegando.chegando.length > 1 ? "s" : ""} vencendo em até 3 dias.
-                </p>
-                <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">Toque para abrir a Fila do dia</p>
-              </Link>
-            ) : null}
-
-            <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4">
-              <div className="flex items-start gap-3">
-                <CheckSquare className="mt-1 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-                <div>
-                  <p className="text-sm font-semibold text-brand-tinta">
-                    {checklist.nextItem ? checklist.nextItem.descricao : "Checklist completo"}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {checklist.nextItem ? `${checklist.pendingCount} tarefas pendentes` : "Tudo certo para encerrar o dia."}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4">
-              <div className="flex items-start gap-3">
-                <Clock className="mt-1 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-                <div>
-                  <p className="text-sm font-semibold text-brand-tinta">{nextLunchLabel}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · status calculado automaticamente
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {comprovantes?.lastRecord ? (
-              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4">
-                <div className="flex items-start gap-3">
-                  <ReceiptText className="mt-1 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-                  <div>
-                    <p className="text-sm font-semibold text-brand-tinta">{comprovantes.lastRecord.arquivoNome}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Último comprovante · {formatShortTime(comprovantes.lastRecord.anexadoEm)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {pagamentos?.proximoLembrete ? (
-              <div className="rounded-lg border border-brand-dourado/30 bg-brand-creme/35 p-4">
-                <div className="flex items-start gap-3">
-                  <CalendarClock className="mt-1 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-                  <div>
-                    <p className="text-sm font-semibold text-brand-tinta">
-                      {pagamentos.proximoLembrete.pacienteNome} · {pagamentoMoney(pagamentos.proximoLembrete.valorPendente)}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Lembrete de pagamento para {formatDate(pagamentos.proximoLembrete.dataPrevista)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-lg">Avisos recentes</CardTitle>
-              <Button asChild variant="ghost" size="sm">
-                <Link to="/mural" {...warmRouteProps("/mural")}>Abrir</Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {avisos.slice(0, 3).map((aviso) => (
-              <div key={aviso.id} className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Badge variant={aviso.prioridade === "importante" ? "gold" : "muted"}>
-                    {aviso.prioridade === "importante" ? "Importante" : "Informativo"}
-                  </Badge>
-                  <span className="text-xs font-semibold uppercase text-brand-oliva">{formatShortTime(aviso.publicadoEm)}</span>
-                </div>
-                <p className="line-clamp-2 text-sm leading-6 text-brand-tinta">{aviso.corpo}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       </section>
 
       <section>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl text-brand-musgo">Fluxos rápidos</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Rotina, documentos, reconhecimento e coordenação.</p>
-          </div>
-          <LiquidButton
-            type="button"
-            size="lg"
-            {...warmRouteProps("/tarefas")}
-            onClick={() => {
-              prefetchRoute("/tarefas");
-              navigate("/tarefas");
-            }}
-          >
-            Continuar rotina
-            <TrendingUp className="h-4 w-4" aria-hidden="true" />
-          </LiquidButton>
+        <div className="mb-3">
+          <h2 className="text-2xl text-brand-musgo">Atalhos</h2>
+          <p className="mt-1 text-sm text-muted-foreground">As áreas que o seu cargo libera. O menu e o ⌘K também chegam a todas.</p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {flowSections.map((flow, index) => (
-            <motion.div
-              key={flow.title}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.28, delay: 0.035 * index, ease: [0.4, 0, 0.2, 1] }}
-            >
-              <Card className="flow-card h-full border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm">
-                <CardHeader>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-musgo text-brand-papel">
-                        <flow.icon className="h-5 w-5" aria-hidden="true" />
-                      </div>
-                      <div>
-                        <Badge variant="muted" className="w-fit">
-                          {flow.label}
-                        </Badge>
-                        <CardTitle className="mt-2">{flow.title}</CardTitle>
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm leading-6 text-muted-foreground">{flow.detail}</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {flow.items.map((module, moduleIndex) =>
-                      index === 0 && moduleIndex === 0 ? (
-                        <GetStartedButton
-                          key={module.href}
-                          size="sm"
-                          className="h-10 w-full"
-                          label={module.action}
-                          {...warmRouteProps(module.href)}
-                          onClick={() => {
-                            prefetchRoute(module.href);
-                            navigate(module.href);
-                          }}
-                        />
-                      ) : (
-                        <Button key={module.href} asChild variant={moduleIndex === 0 ? "default" : "outline"} className="justify-start gap-2">
-                          <Link to={module.href} {...warmRouteProps(module.href)}>
-                            <module.icon className="h-4 w-4" aria-hidden="true" />
-                            {module.action}
-                          </Link>
-                        </Button>
-                      ),
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {atalhos.map((grupo) => (
+            <Card key={grupo.title} className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
+              <CardContent className="p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-oliva">{grupo.title}</p>
+                <div className="flex flex-wrap gap-2">
+                  {grupo.items.map((module) => (
+                    <Button key={module.href} asChild variant="outline" size="sm" className="justify-start gap-1.5">
+                      <Link to={module.href} {...warmRouteProps(module.href)}>
+                        <module.icon className="h-4 w-4" aria-hidden="true" />
+                        {module.title}
+                      </Link>
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </section>
