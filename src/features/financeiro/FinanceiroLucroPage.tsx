@@ -336,7 +336,7 @@ export function FinanceiroLucroPage() {
                   mês, dividido pelos dias úteis (Lucas: &quot;não é em porcentagem, é sempre esse valor&quot;) — e o{" "}
                   <strong>médico executor</strong>: a coluna S da planilha de precificação, &quot;Margem Líquida Médico&quot; = 50% do
                   lucro bruto de cada produto (preço − imposto/cartão − comissão − consumíveis − repasse nutri − custo de sala;
-                  Plano de R$ 6.997 → R$ 2.445,20). O que sobra é o único dinheiro para gastar. Lucro e impostos vão para
+                  Plano de R$ 6.997 → R$ 2.199,23). O que sobra é o único dinheiro para gastar. Lucro e impostos vão para
                   contas de difícil acesso. &quot;Não é meta, é decisão.&quot; (Exemplo da aula, só para referência: 25%
                   lucro · 16,6% impostos · 28% executor → sobram 30,4%.)
                 </InfoTip>
@@ -435,9 +435,9 @@ export function FinanceiroLucroPage() {
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  O médico recebe a coluna S da planilha de precificação: 50% do lucro bruto do produto (preço − imposto/cartão − comissão 3% −
+                  O médico recebe a coluna S da planilha de precificação: 50% do lucro bruto do produto (preço − imposto/cartão − comissão 10% −
                   consumíveis − repasse nutri − custo de sala). O app reconhece o produto pela descrição e pelo preço do item da comanda
-                  (Plano 6.997 → 2.445,20 · consulta 2.500 → 995,21 · dose 590 → 162 a 257; planilha OFICIAL de 02/09); item sem
+                  (Plano 6.997 → 2.199,23 · consulta 2.500 → 907,35 · dose 590 → 141 a 237; planilha OFICIAL de 14/09); item sem
                   produto reconhecido usa a fração do produto de referência do tipo.
                 </p>
               </div>

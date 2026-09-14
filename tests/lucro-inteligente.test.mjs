@@ -78,11 +78,11 @@ const regua = (impostos, lucroMensal, medicoExecutor) => ({
 
 test("régua do Instituto: impostos % do líquido, lucro cota fixa, executor 50% do lucro bruto do produto (coluna S), operacional é o resto", () => {
   const r = { impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 };
-  const env = li.repartir(10000, 4890.39, r, 1904.76);
+  const env = li.repartir(10000, 4398.46, r, 1904.76);
   assert.equal(env.impostos, 1660, "16,6% dos 10 mil líquidos");
-  assert.equal(env.medicoExecutor, 2445.2, "coluna S: 50% do lucro bruto do Plano (4.890,39) = 2.445,20");
+  assert.equal(env.medicoExecutor, 2199.23, "coluna S: 50% do lucro bruto do Plano (4.398,46) = 2.199,23");
   assert.equal(env.lucro, 1904.76, "a cota do dia, não um percentual");
-  assert.equal(env.operacional, 3990.04, "o que sobra para a clínica gastar");
+  assert.equal(env.operacional, 4236.01, "o que sobra para a clínica gastar");
   assert.equal(round(env.impostos + env.medicoExecutor + env.lucro + env.operacional), 10000, "os quatro fecham o líquido");
   const fraco = li.repartir(1000, 0, r, 1904.76);
   assert.equal(fraco.operacional, -1070.76, "dia fraco não paga a cota: operacional fica negativo, sem esconder");
@@ -101,20 +101,20 @@ test("cota do lucro: R$ 40 mil ÷ dias úteis do mês (setembro/2026 tem 21, sem
 
 test("planilha de precificação no motor: o item da comanda vira a coluna P (lucro bruto) e a S é 50% dela", () => {
   const item = (itemType, amount, description = "") => ({ itemType, amount, description });
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses")), 4890.39, "Plano (planilha OFICIAL): 6.997 − 932,70 imposto − 209,91 comissão 3% − 660 nutri − 304 sala");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses")), 4398.46, "Plano (planilha OFICIAL de 14/09): 6.997 − 932,70 imposto − 699,70 comissão 10% − 660 nutri − 306,14 sala");
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 6997, "")).nome, "Plano de Acompanhamento · 6 meses", "6.997 é só do Plano (o Club virou Consulta Black a 1.500)");
   assert.equal(li.produtoDoItem(item("CONSULTA", 1500, "Club Bratan")).nome, "Consulta Black (5% de desconto em tratamentos) — Pix", "quem ainda escreve 'club' cai na Consulta Black");
-  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1500, "Consulta Black")), 1153.72);
-  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1100, "Consulta Diamond")), 819.04, "Diamond (OFICIAL): 1.100 − 146,63 NF − 33 comissão (3%) − 101,33 sala");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 3900, "Teste genético")), 3229.35, "teste genético ainda sem o custo do kit (OFICIAL, comissão 3%)");
+  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1500, "Consulta Black")), 1048);
+  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1100, "Consulta Diamond")), 741.32, "Diamond (OFICIAL): 1.100 − 146,63 NF − 110 comissão (10%) − 102,05 sala");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 3900, "Teste genético")), 2956.11, "teste genético ainda sem o custo do kit (OFICIAL, comissão 10%)");
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")).nome, "Tirzepatida · 31 a 49 un", "entre as tirzepatidas, o preço mais próximo decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 300.77);
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1990, "")), 1265.6, "1.990 só pode ser Ferinject: preço decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 664.71, "valor fora da tabela = planilha com F = 1.000 e B = 2: 1.000 × (1 − 7,93% − 3%) − 2 × (106,66 consumível + 6,33 poltrona)");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 800, "Soro especial")), 559.14, "produto desconhecido: fração do Plano (69,9%)");
-  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 2500, "")), 1990.42, "consulta avulsa Pix");
-  assert.equal(li.lucroBrutoDoItem(item("SINAL", 500, "")), 393.02);
-  assert.equal(li.lucroBrutoDoItem(item("BIOIMPEDANCIA", 200, "")), 161.25, "mapeamento corporal");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 300.73, "tirzepatida até 49 un continua com comissão de 1%");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1990, "")), 1126.19, "1.990 só pode ser Ferinject: preço decide");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 594.62, "valor fora da tabela = planilha com F = 1.000 e B = 2: 1.000 × (1 − 7,93% − 10%) − 2 × (106,66 consumível + 6,38 poltrona)");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 800, "Soro especial")), 502.9, "produto desconhecido: fração do Plano (62,9%)");
+  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 2500, "")), 1814.7, "consulta avulsa Pix");
+  assert.equal(li.lucroBrutoDoItem(item("SINAL", 500, "")), 357.84);
+  assert.equal(li.lucroBrutoDoItem(item("BIOIMPEDANCIA", 200, "")), 147.13, "mapeamento corporal");
   assert.equal(li.lucroBrutoDoItem(item("NUTRICIONISTA", 600, "Dra. Géssica")), 0, "nutri e psi estão no seletor, mas não são do médico executor");
   assert.equal(li.lucroBrutoDoItem(item("PSICOLOGA", 790, "Dra. Bárbara (psicóloga) — 4 sessões")), 0);
   assert.equal(li.lucroBrutoDoItem(item("RETORNO", 0, "")), 0);
@@ -125,8 +125,8 @@ test("planilha de precificação no motor: o item da comanda vira a coluna P (lu
     { itemType: "NUTRICIONISTA", amount: 600 },
   ]);
   assert.equal(li.prescritoNaComanda(comanda), 9497, "consulta e programa são do médico; nutri não");
-  assert.equal(li.lucroBrutoNaComanda(comanda), 6880.81, "coluna P somada (1.990,42 + 4.890,39)");
-  assert.equal(li.repartir(0, li.lucroBrutoNaComanda(comanda), { impostos: 0, lucroMensal: 0, medicoExecutor: 50 }, 0).medicoExecutor, 3440.41, "coluna S: 50% de 6.880,81");
+  assert.equal(li.lucroBrutoNaComanda(comanda), 6213.16, "coluna P somada (1.814,70 + 4.398,46)");
+  assert.equal(li.repartir(0, li.lucroBrutoNaComanda(comanda), { impostos: 0, lucroMensal: 0, medicoExecutor: 50 }, 0).medicoExecutor, 3106.58, "coluna S: 50% de 6.213,16");
 });
 
 test("explicação item a item (10/09): a parte do Dr. Daniel abre comanda por comanda e bate com a planilha", () => {
@@ -148,10 +148,10 @@ test("explicação item a item (10/09): a parte do Dr. Daniel abre comanda por c
   const plano = exp.comandas[0].itens[0];
   assert.equal(plano.reconhecido, "nome exato");
   assert.equal(plano.precoTabela, 6997);
-  assert.equal(plano.lucroBrutoTabela, 4890.39);
+  assert.equal(plano.lucroBrutoTabela, 4398.46);
   assert.equal(plano.quantidade, 1, "4.846 num Plano de 6.997 = 1 Plano");
-  assert.equal(plano.lucroBruto, 3090.65, "planilha com F = 4.846: 4.846 × (1 − 13,33% − 3%) − 964 fixos (660 nutri + 304 sala)");
-  assert.equal(plano.custoFixo, 964, "fixos do Plano = 304 de sala (por unidade) + 660 de repasse nutri (da linha)");
+  assert.equal(plano.lucroBruto, 2749.29, "planilha com F = 4.846: 4.846 × (1 − 13,33% − 10%) − 966,14 fixos (660 nutri + 306,14 sala)");
+  assert.equal(plano.custoFixo, 966.14, "fixos do Plano = 306,14 de sala (por unidade) + 660 de repasse nutri (da linha)");
   assert.equal(plano.parteMedico, Math.round(plano.lucroBruto * 50) / 100);
   const nutri = exp.comandas[1].itens[3];
   assert.equal(nutri.reconhecido, "não é do médico");
@@ -203,8 +203,8 @@ test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fec
 
   // É o nome exato que o Lucro Inteligente lê primeiro.
   assert.equal(li.produtoDoItem({ itemType: "CONSULTA", amount: 1500, description: "Consulta Black (5% de desconto em tratamentos) — Pix" }).nome, "Consulta Black (5% de desconto em tratamentos) — Pix");
-  assert.equal(li.lucroBrutoDoItem(cheio[0]), 4890.39, "o item gravado pelo Fechamento cai na coluna P do Plano");
-  assert.equal(li.lucroBrutoDoItem(cheio[2]), 997.36, "2 vitaminas D pelo preço cheio = 2 × 498,68, igual à planilha com B = 2");
+  assert.equal(li.lucroBrutoDoItem(cheio[0]), 4398.46, "o item gravado pelo Fechamento cai na coluna P do Plano");
+  assert.equal(li.lucroBrutoDoItem(cheio[2]), 914.67, "2 vitaminas D pelo preço cheio = 2 × 457,34, igual à planilha com B = 2");
   assert.equal(cat.itensDaComanda([], 1000, parse, criarId).length, 0, "sem produto escolhido, o fechamento segue com o item único de antes");
   assert.ok(cat.secoesDoCatalogo().length >= 6, "o seletor agrupa por seção da planilha");
   assert.equal(cat.secoesDoCatalogo()[0].secao, "Plano de Acompanhamento");
@@ -290,24 +290,24 @@ test("planilha do dia: taxas saem antes; executor é a coluna S; lucro é a cota
   assert.equal(dia1.taxas, 126, "PIX 0,6% de 4.000 = 24 + crédito à vista 1,7% de 6.000 = 102");
   assert.equal(dia1.liquido, 9874, "é isso que entrou de verdade");
   assert.equal(dia1.prescrito, 10000, "consulta e tratamento são do médico");
-  assert.equal(dia1.lucroBrutoProdutos, 7281.28, "coluna P: consulta 3.003 × 79,6% + tratamento 6.997 × 69,9%");
+  assert.equal(dia1.lucroBrutoProdutos, 6578.28, "coluna P: consulta 3.003 × 72,6% + Plano de 6.997 pela linha da planilha");
   assert.equal(dia1.disponivel, 3976, "no dia da venda só o PIX (líquido) está disponível");
   assert.equal(dia1.reservado.impostos, 987.4, "10% do líquido");
-  assert.equal(dia1.reservado.medicoExecutor, 3640.64, "coluna S: 50% do lucro bruto dos produtos");
+  assert.equal(dia1.reservado.medicoExecutor, 3289.14, "coluna S: 50% do lucro bruto dos produtos");
   assert.equal(dia1.reservado.lucro, 1000, "a cota do dia útil");
-  assert.equal(dia1.reservado.operacional, 4245.96, "9.874 − 987,40 − 3.640,64 − 1.000");
+  assert.equal(dia1.reservado.operacional, 4597.46, "9.874 − 987,40 − 3.289,14 − 1.000");
   const dia2 = p.linhas[1];
   assert.equal(dia2.cartaoDisponivel, 5898, "6.000 − 1,7% à disposição no dia útil seguinte");
   assert.equal(dia2.disponivel, 1000 + 5898, "dinheiro do dia + cartão de ontem");
   perto(dia2.antecipacao, 122.18, 0.05, "custo de resgatar hoje (30 dias × 2,07%)");
-  assert.equal(dia2.reservado.medicoExecutor, 393.02, "sinal de 1.000 também tem coluna S (78,6% × 50%)");
+  assert.equal(dia2.reservado.medicoExecutor, 357.84, "sinal de 1.000 também tem coluna S (71,6% × 50%)");
   assert.equal(dia2.reservado.lucro, 1000, "a cota vale mesmo num dia fraco");
-  assert.equal(dia2.reservado.operacional, -493.02, "1.000 − 100 de imposto − 393,02 do médico − 1.000 de cota");
-  assert.equal(dia2.acumulado.reservado.operacional, 3752.94, "9.874 − 987,40 de imposto − 3.640,64 do médico − 1.493,02 de cota");
+  assert.equal(dia2.reservado.operacional, -457.84, "1.000 − 100 de imposto − 357,84 do médico − 1.000 de cota");
+  assert.equal(dia2.acumulado.reservado.operacional, 4139.62, "9.874 − 987,40 de imposto − 3.289,14 do médico − 1.457,84 de cota");
   assert.equal(p.totais.total, 11000);
   assert.equal(p.totais.liquido, 10874);
   assert.equal(p.totais.prescrito, 11000);
-  assert.equal(p.totais.lucroBrutoProdutos, 8067.32);
+  assert.equal(p.totais.lucroBrutoProdutos, 7293.96);
   assert.equal(p.diasComMovimento, 2);
   assert.equal(p.diasPendentes, 2, "nenhum dia marcado como separado ainda");
 });
@@ -348,9 +348,9 @@ test("planilha do dia: contas pagas caem no envelope certo; obra, provisão e ta
   // Lucas (10/09): salário CEO e salário fixo do médico são conta FIXA (operacional); só a transferência do
   // Lucro Inteligente (e a distribuição) abate o envelope. Empréstimo continua saindo do lucro (aula).
   assert.deepEqual(plain(dia.usado), { impostos: 700, lucro: 1900, medicoExecutor: 600, operacional: 5300 }, "1.500 LI sócios + 400 empréstimo = 1.900 no lucro; 600 LI médico; aluguel 3.000 + CEO 1.500 + médico fixo 800 = 5.300 operacional; obra, VISA-OBRA, provisão e Rede fora");
-  assert.equal(dia.reservado.medicoExecutor, 3980.84, "consulta de 10.000: coluna P 79,6% → coluna S 50%");
-  assert.equal(dia.reservado.operacional, 4019.16, "10.000 − 1.000 de imposto − 3.980,84 do médico − 1.000 de cota");
-  assert.equal(dia.acumulado.saldo.operacional, -1280.84, "4.019,16 reservados − 5.300 gastos (agora com CEO e médico fixo)");
+  assert.equal(dia.reservado.medicoExecutor, 3629.4, "consulta de 10.000: coluna P 72,6% → coluna S 50%");
+  assert.equal(dia.reservado.operacional, 4370.6, "10.000 − 1.000 de imposto − 3.629,40 do médico − 1.000 de cota");
+  assert.equal(dia.acumulado.saldo.operacional, -929.4, "4.370,60 reservados − 5.300 gastos (agora com CEO e médico fixo)");
   assert.equal(dia.acumulado.saldo.lucro, -900, "1.000 de cota − 1.900 pagos (transferência LI + parcela do empréstimo)");
   assert.equal(dia.fechamento, "CONFERIDO");
   assert.equal(p.diasSeparados, 1);
@@ -389,7 +389,7 @@ test("avaliação instantânea (Passo 1): onde a clínica está, sem maquiar, co
   const mes = a.meses[0];
   assert.equal(mes.receita, 100000);
   assert.equal(mes.prescrito, 100000, "consulta e tratamento são itens do médico");
-  perto(mes.lucroBrutoProdutos, 72809.91, 0.02, "coluna P do mês: 30 mil × 79,6% + 70 mil × 69,9% → pela régua o executor levaria ~36,4 mil");
+  perto(mes.lucroBrutoProdutos, 65779.86, 0.02, "coluna P do mês: 30 mil × 72,6% + 70 mil × 62,9% → pela régua o executor levaria ~32,9 mil");
   assert.equal(mes.impostos, 13000);
   assert.equal(mes.medicoExecutor, 12000, "só a transferência do Lucro Inteligente ao Dr. — o salário fixo dele é conta operacional");
   assert.equal(mes.operacional, 77000, "aluguel 50 mil + salário CEO 15 mil + salário fixo do médico 12 mil; provisão e empréstimo não");
@@ -458,15 +458,15 @@ test("repasses: provisionado é o acumulado da régua até hoje; transferido sã
   const p = li.buildPlanilhaLucro({ sales: vendas, expenses: contas, categories: categorias, reconciliations: [], marcas: [], config: regua(10, 21000, 50), monthKey: "2026-09", hoje: "2026-09-02" });
   const r = li.resumoDosRepasses(p, contas);
   assert.equal(r.medicoExecutor.ateDia, "2026-09-02");
-  assert.equal(r.medicoExecutor.provisionado, 4890.4, "2 × 2.445,20 (coluna S do Plano)");
+  assert.equal(r.medicoExecutor.provisionado, 4398.46, "2 × 2.199,23 (coluna S do Plano)");
   assert.equal(r.medicoExecutor.transferido, 2000);
-  assert.equal(r.medicoExecutor.falta, 2890.4);
+  assert.equal(r.medicoExecutor.falta, 2398.46);
   assert.deepEqual(JSON.parse(JSON.stringify(r.medicoExecutor.transferencias.map((t) => [t.dia, t.valor]))), [["2026-09-01", 2000]]);
   assert.equal(r.socios.provisionado, 2000, "2 dias úteis × cota 1.000");
   assert.equal(r.socios.transferido, 800);
   assert.equal(r.socios.dividasPagas, 500, "empréstimo pago com o envelope do lucro (decisão 01/09)");
   assert.equal(r.socios.falta, 700, "2.000 − 800 − 500");
-  assert.match(li.fraseDoRepasse(r.medicoExecutor, (v) => `R$${v}`), /Provisionado até 02\/09: R\$4890\.4 · já transferido para o Dr\. Daniel: R\$2000 → falta transferir R\$2890\.4/);
+  assert.match(li.fraseDoRepasse(r.medicoExecutor, (v) => `R$${v}`), /Provisionado até 02\/09: R\$4398\.46 · já transferido para o Dr\. Daniel: R\$2000 → falta transferir R\$2398\.46/);
   // transferiu a mais: a frase avisa em vez de esconder
   const demais = { ...r.socios, transferido: 2600, dividasPagas: 0, falta: -600 };
   assert.match(li.fraseDoRepasse(demais, (v) => `${v}`), /saiu 600 A MAIS/);
