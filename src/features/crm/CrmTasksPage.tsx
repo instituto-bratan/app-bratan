@@ -52,6 +52,8 @@ import {
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { useCrmState } from "./useCrmState";
 import { toast } from "@/components/ui/avisos";
+import { integracaoLigada } from "@/lib/integracoes";
+import { invocarIntegracao } from "@/lib/remoteData";
 
 type TaskTab = "hoje" | "atrasadas" | "proximos" | "concluidas" | "todas";
 
@@ -230,6 +232,26 @@ export function CrmTasksPage() {
 
   // "Enviei" conclui a tarefa num toque (result SENT não pausa a régua → o
   // próximo toque nasce sozinho). Fim do "mandei mas reaparece".
+  // WHATSAPP OFICIAL (15/09/2026, proposta 3.1): com a integração ligada, a mensagem sai
+  // pelo número do Instituto (Meta Cloud API) e a tarefa é concluída no mesmo toque.
+  const whatsappOficial = integracaoLigada("whatsapp");
+  const [enviandoOficial, setEnviandoOficial] = useState("");
+  async function enviarPeloOficial(task: CrmTask) {
+    const contact = contactsById.get(task.contactId);
+    const telefone = contact ? (contact.whatsapp || contact.phone || "").replace(/\D/g, "") : "";
+    const texto = messageForTask(task);
+    if (!telefone) return toast("Este contato não tem WhatsApp cadastrado.", { tom: "atencao" });
+    if (!texto.trim()) return toast("A tarefa não tem mensagem pronta; use o botão WhatsApp e escreva você.", { tom: "atencao" });
+    setEnviandoOficial(task.id);
+    try {
+      const r = await invocarIntegracao<{ ok: boolean; error?: string }>("whatsapp-enviar", { telefone, texto, contactRef: task.contactId, taskRef: task.id, enviadoPor: pessoa?.id ?? null });
+      if (!r.ok) return toast(r.error ?? "A Meta não aceitou a mensagem.", { tom: "erro", duracaoMs: 7000 });
+      confirmSent(task);
+    } finally {
+      setEnviandoOficial("");
+    }
+  }
+
   function confirmSent(task: CrmTask) {
     // DESFAZER (14/09/2026, proposta 4.6): guarda o estado anterior e oferece 6 s para voltar.
     const antes = state;
@@ -543,6 +565,12 @@ export function CrmTasksPage() {
                             WhatsApp
                           </Button>
                         </div>
+                        {whatsappOficial && task.taskType === "WHATSAPP" ? (
+                          <Button type="button" size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" disabled={enviandoOficial === task.id} onClick={() => void enviarPeloOficial(task)} title="Sai pelo número oficial do Instituto e já conclui a tarefa">
+                            <MessageCircle className="mr-2 h-4 w-4" />
+                            {enviandoOficial === task.id ? "Enviando…" : "Enviar pelo número oficial"}
+                          </Button>
+                        ) : null}
                         <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => confirmSent(task)}>
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Enviei ✓

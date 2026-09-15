@@ -81,6 +81,7 @@ import { posicaoDoSetor, setorLabels, type EstoqueSetor } from "@/features/estoq
 import { filaDeContatos } from "@/features/concierge/npsData";
 import { buildFilaDoDia, fechamentoPendente, limparSilenciados, type TarefaCrmDaFila } from "./filaDoDia";
 import { FilaDoDiaHome } from "./FilaDoDiaHome";
+import { AvisosNoCelularCard } from "./AvisosNoCelularCard";
 
 // ---- Atalhos (a segunda tela) ------------------------------------------------
 const modules = [
@@ -345,6 +346,7 @@ export function HomePage() {
       </motion.section>
 
       <FilaDoDiaHome fila={fila} carregando={carregando} onSilenciar={silenciar} onResolver={(item) => void resolverAchado(item)} onAtualizarAchados={useRemote && isCoordenacao(cargo) ? atualizarAchados : undefined} />
+      {useRemote && pessoa ? <AvisosNoCelularCard pessoaId={pessoa.id} /> : null}
 
       <section>
         <div className="mb-3 flex items-end justify-between gap-3">

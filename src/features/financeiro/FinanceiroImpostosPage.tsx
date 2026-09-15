@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2, ChevronDown, FileText, Landmark, Plus, ReceiptText, Sparkles, Trash2, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { EmitirNfseFocus } from "./EmitirNfseFocus";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -255,6 +256,17 @@ function EmissaoCard({
             <span className="text-xs text-muted-foreground">
               imposto {moneyFin(parseFinAmount(line.amountText) > 0 ? invoiceTaxes(line.invoiceType, parseFinAmount(line.amountText)).total : 0)}
             </span>
+            <EmitirNfseFocus
+              saleRef={sale.id}
+              tipo={invoiceTaxClass(line.invoiceType) === "CONSULTA" ? "CONSULTA" : "TRATAMENTO"}
+              valor={parseFinAmount(line.amountText)}
+              pacienteNome={sale.patientName}
+              solicitadoPor={null}
+              onNumero={(numero) => {
+                setNumbersDirty(true);
+                setLines((current) => current.map((candidate, position) => (position === index ? { ...candidate, numberText: numero } : candidate)));
+              }}
+            />
             {lines.length > 1 ? (
               <Button
                 type="button"

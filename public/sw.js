@@ -79,3 +79,42 @@ self.addEventListener("fetch", (event) => {
     })(),
   );
 });
+
+
+// ---- Avisos no celular (15/09/2026, Web Push) -------------------------------------
+self.addEventListener("push", (event) => {
+  let dados = { title: "APP BRATAN", body: "Você tem novidades na Fila do dia.", url: "/" };
+  try {
+    if (event.data) dados = { ...dados, ...event.data.json() };
+  } catch {
+    /* corpo fora do padrão: usa o texto padrão */
+  }
+  event.waitUntil(
+    (async () => {
+      await self.registration.showNotification(dados.title, { body: dados.body, icon: "/pwa-192x192.png", badge: "/pwa-192x192.png", data: { url: dados.url || "/" }, tag: "fila-do-dia", renotify: true });
+      try {
+        if (typeof dados.badge === "number" && "setAppBadge" in navigator) await navigator.setAppBadge(dados.badge);
+      } catch {
+        /* sem Badging API */
+      }
+    })(),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    (async () => {
+      const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const janela of janelas) {
+        if ("focus" in janela) {
+          await janela.focus();
+          if ("navigate" in janela) await janela.navigate(url).catch(() => undefined);
+          return;
+        }
+      }
+      await self.clients.openWindow(url);
+    })(),
+  );
+});

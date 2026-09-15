@@ -38,6 +38,7 @@ import {
   X,
   Goal,
   ShoppingCart,
+  Plug,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,9 +50,10 @@ import { BalaoDoDia } from "@/components/BalaoDoDia";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Avisos } from "@/components/ui/avisos";
 import { useConfigNegocio } from "@/lib/useConfigNegocio";
+import { useIntegracoes } from "@/lib/useIntegracoes";
 import { PublicadorDoResumo } from "@/features/financeiro/PublicadorDoResumo";
 import { useAvatar } from "@/features/perfil/avatarStore";
-import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey,
+import { isCoordenacao, canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey,
   canFinanceiroFull,
 } from "@/lib/access";
 import type { Pessoa } from "@/types/database";
@@ -213,6 +215,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Auditoria", href: "/administracao/auditoria", icon: History, allowed: canAdministracao },
       { label: "O que a IA fez", shortLabel: "IA", href: "/administracao/ia", icon: BrainCircuit, allowed: (cargo) => canAdministracao(cargo) || canFinanceiroFull(cargo) },
       { label: "Configurações do negócio", shortLabel: "Config", href: "/administracao/configuracoes", icon: SlidersHorizontal, allowed: canManageAcessos },
+      { label: "Integrações", href: "/administracao/integracoes", icon: Plug, allowed: (cargo) => isCoordenacao(cargo) },
     ],
   },
 ];
@@ -457,6 +460,7 @@ function FlowLauncher({
       { palavras: ["nps", "pesquisa", "satisfacao"], rotulo: "NPS da Concierge", href: "/concierge/nps" },
       { palavras: ["configuracao", "limite", "regra", "vigencia"], rotulo: "Configurações do negócio", href: "/administracao/configuracoes" },
       { palavras: ["ia", "inteligencia artificial", "governanca"], rotulo: "Governança de IA", href: "/administracao/ia" },
+      { palavras: ["integracao", "whatsapp oficial", "nota fiscal", "nfse", "push", "feegow", "supersign"], rotulo: "Integrações", href: "/administracao/integracoes" },
       { palavras: ["fila", "hoje", "home", "inicio"], rotulo: "Fila do dia (Home)", href: "/" },
     ];
     for (const comando of comandos) {
@@ -612,6 +616,8 @@ export function AppLayout() {
   const { pessoa, isPreview, signOut } = useAuth();
   // CONFIGURAÇÕES COM VIGÊNCIA (14/09/2026): carrega uma vez e enche o cache dos motores.
   useConfigNegocio();
+  // INTEGRAÇÕES (15/09/2026): o que está ligado (WhatsApp oficial, NFS-e, contrato, agendas, push).
+  useIntegracoes();
   const location = useLocation();
   const [flowLauncherOpen, setFlowLauncherOpen] = useState(false);
   const avatar = useAvatar(pessoa?.id);

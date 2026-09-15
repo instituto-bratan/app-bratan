@@ -74,7 +74,7 @@ import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMe
 import { buildOcupacaoMes, formatHoras, heatDaOcupacao } from "./ocupacaoSala";
 import { buildSemanaEmNumeros } from "./semanaEmNumeros";
 import { useCrmState } from "@/features/crm/useCrmState";
-import { listRemoteColaboradores, listRemoteNpsRespostas } from "@/lib/remoteData";
+import { listRemoteAgendaEspelho, listRemoteColaboradores, listRemoteNpsRespostas } from "@/lib/remoteData";
 import { PonteWaterfall } from "./PonteWaterfall";
 import { buildPontosDaReuniao, type PontoDaReuniao } from "./pontosDaReuniao";
 import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
@@ -306,6 +306,12 @@ export function FinanceiroPainelPage() {
       }),
     [hoje, financeiro.sales, financeiro.expenses, crm.state.tasks, npsQuery.data, equipeQuery.data],
   );
+
+  // AGENDA ESPELHADA (15/09/2026, lote C): quando Feegow/Outlook estiverem ligados, a
+  // ocupação passa a ter a agenda real ao lado das comandas.
+  const agendaQuery = useQuery({ queryKey: ["agenda-espelho", monthKey], queryFn: () => listRemoteAgendaEspelho(`${monthKey}-01`, `${monthKey}-31`).catch(() => []), staleTime: 300_000 });
+  const agendaEspelho = agendaQuery.data ?? [];
+  const agendaMinutos = agendaEspelho.filter((a) => a.status !== "cancelado" && a.status !== "desmarcado").reduce((s, a) => s + (a.minutos ?? 0), 0);
 
   // ---- os blocos, na ordem da reunião --------------------------------------
   const kpis = [
@@ -739,6 +745,12 @@ export function FinanceiroPainelPage() {
               As horas vendidas já absorvem {moneyFin(ocupacao.custoFixoAbsorvido)} do custo fixo ao custo-hora da planilha (R$ 102,05). Horas disponíveis
               seguem a grade da planilha de precificação; quando a agenda estiver espelhada no app, passam a vir dela.
             </p>
+            {agendaEspelho.length ? (
+              <p className="mt-1 text-xs text-brand-tinta">
+                Agenda espelhada ({agendaEspelho[0].origem}): {agendaEspelho.length} agendamento{agendaEspelho.length > 1 ? "s" : ""} no mês, {formatHoras(agendaMinutos / 60)} de agenda marcada —
+                compare com as horas vendidas para ver falta e sobra de sala.
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <div>

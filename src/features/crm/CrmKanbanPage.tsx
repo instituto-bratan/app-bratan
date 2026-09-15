@@ -115,6 +115,8 @@ import { CadenciaKanban } from "./CadenciaKanban";
 import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
 import { buildResumoSla, formatMinutos, slaDoNegocio } from "./slaLead";
 import { PRAZO_SNCR, marcarReceitaSncr } from "./crmData";
+import { integracaoLigada } from "@/lib/integracoes";
+import { invocarIntegracao } from "@/lib/remoteData";
 import { configAtual } from "@/lib/configNegocio";
 import { toast } from "@/components/ui/avisos";
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
@@ -1818,6 +1820,26 @@ export function CrmKanbanPage() {
                 ) : null}
                 {selectedDeal.programOutcome ? (
                   <Badge className="mt-2 bg-emerald-100 text-emerald-800">Desfecho: {programOutcomeLabels[selectedDeal.programOutcome]}</Badge>
+                ) : null}
+                {selectedDeal.adhesionChannel && integracaoLigada("supersign") ? (
+                  <div className="mt-3 rounded-md border border-brand-dourado/40 bg-brand-creme/40 p-2.5">
+                    <p className="text-[11px] font-bold uppercase text-brand-oliva">Contrato de adesão (SuperSign)</p>
+                    <p className="mt-1 text-sm text-brand-tinta">Manda o contrato-modelo para assinatura pelo WhatsApp/e-mail do paciente.</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={() => {
+                        void invocarIntegracao<{ ok: boolean; error?: string; url?: string | null }>("supersign-enviar", { dealRef: selectedDeal.id, contactRef: selectedDeal.contactId, nome: contactDisplayName(selectedContact), solicitadoPor: pessoa?.id ?? null }).then((r) => {
+                          if (r.ok) toast(`Contrato enviado para ${contactDisplayName(selectedContact)}.${r.url ? " O link de assinatura ficou registrado." : ""}`, { tom: "ok" });
+                          else toast(r.error ?? "O SuperSign não aceitou o envio.", { tom: "erro", duracaoMs: 7000 });
+                        });
+                      }}
+                    >
+                      Enviar contrato para assinatura
+                    </Button>
+                  </div>
                 ) : null}
                 {selectedDeal.adhesionChannel ? (
                   <div className={cn("mt-3 rounded-md border p-2.5", selectedDeal.receitaSncrEm ? "border-emerald-200 bg-emerald-50/60" : todayISO() >= PRAZO_SNCR ? "border-red-300 bg-red-50/70" : "border-amber-200 bg-amber-50/60")}>
