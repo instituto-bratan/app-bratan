@@ -1,3 +1,4 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Próximo APP BRATAN</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -112,6 +113,24 @@ tr:last-child td{border-bottom:0}
 td.num,th.num{text-align:right;white-space:nowrap}
 td b{font-weight:600}
 
+/* STATUS DE EXECUÇÃO (atualização de 15/09/2026) */
+.status{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:.64rem;letter-spacing:.07em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.status.feito{color:var(--pronto);background:var(--pronto-bg)}
+.status.desligado{color:var(--contrato);background:var(--contrato-bg)}
+.status.parcial{color:var(--beta);background:var(--beta-bg)}
+.status.aberto{color:var(--muted);background:transparent;border-color:var(--linha-forte)}
+.proposta[data-status="feito"]{border-color:color-mix(in oklab,var(--pronto) 40%,var(--linha))}
+.proposta[data-status="aberto"]{background:var(--card-2);box-shadow:none}
+.topo .selos{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.nota-status{font-size:.85rem;color:var(--tinta-2);margin:0;padding:9px 11px;border-radius:10px;background:var(--card-2);border-left:3px solid var(--linha-forte)}
+.proposta[data-status="feito"] .nota-status{border-left-color:var(--pronto)}
+.proposta[data-status="desligado"] .nota-status{border-left-color:var(--contrato)}
+.proposta[data-status="parcial"] .nota-status{border-left-color:var(--beta)}
+.placar{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin:0 0 16px}
+.placar div{background:var(--card);border:1px solid var(--linha);border-radius:12px;padding:14px 16px;display:grid;gap:3px}
+.placar b{font-family:var(--serif);font-weight:400;font-size:2.3rem;line-height:1;color:var(--musgo-forte)}
+.placar span{font-size:.86rem;color:var(--tinta-2);line-height:1.35}
+
 /* SELOS E CHIPS */
 .selo{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
 .selo::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
@@ -211,6 +230,9 @@ footer{padding-top:32px;color:var(--muted);font-size:.84rem}
       <div class="hero-stat"><b>7</b><span>estudos: agentes, dinheiro, paciente, experiência, previsão, compliance, fundações</span></div>
       <div class="hero-stat"><b>15</b><span>decisões que só você, o Dr. Daniel e a CEO podem tomar</span></div>
       <div class="hero-stat"><b>3</b><span>prazos legais que já correm: 30/09, 01/10 e dezembro/2026</span></div>
+    </div>
+    <div class="legenda-selos" style="border-top:1px solid rgba(255,255,255,.14);padding-top:18px;margin-bottom:-6px">
+      <span><b style="color:var(--dourado)">Atualizado em 15/09/2026:</b> depois do &ldquo;implemente tudo&rdquo;, 26 propostas estão no ar, 5 esperam só uma chave ou contrato, 4 saíram pela metade e 17 não começaram. Cada cartão diz em que pé está.</span>
     </div>
     <div class="legenda-selos">
       <span>Maturidade:</span>
@@ -327,8 +349,15 @@ footer{padding-top:32px;color:var(--muted);font-size:.84rem}
     <h2>52 propostas, organizadas por onde elas mexem na operação</h2>
     <p class="lede">Cada cartão diz o que muda para quem usa, como se faz, de que depende e quanto pesa. Impacto e esforço vão de 1 a 5 (quadradinhos). Use os filtros para ver só o que está pronto, ou só uma onda. O botão “Quero esta” marca a proposta para o resumo de decisões no fim.</p>
   </div>
+  <div class="placar" id="placar"></div>
+  <p class="small" style="margin:-4px 0 14px">Cada cartão mostra em que pé está: <b>No ar</b> funcionando no app · <b>Pronto, desligado</b> com o código publicado esperando uma chave ou contrato · <b>Pela metade</b> · <b>Não começado</b>. A maturidade original (pronto, beta, contrato, explorar) continua ao lado.</p>
   <div class="chips" role="group" aria-label="Filtros" id="filtros">
-    <span class="small" style="margin-right:4px">Maturidade:</span>
+    <span class="small" style="margin-right:4px">Situação:</span>
+    <button class="chip" type="button" data-f="status" data-v="feito" aria-pressed="false">No ar</button>
+    <button class="chip" type="button" data-f="status" data-v="desligado" aria-pressed="false">Pronto, desligado</button>
+    <button class="chip" type="button" data-f="status" data-v="parcial" aria-pressed="false">Pela metade</button>
+    <button class="chip" type="button" data-f="status" data-v="aberto" aria-pressed="false">Não começado</button>
+    <span class="small" style="margin-left:10px;margin-right:4px">Maturidade:</span>
     <button class="chip" type="button" data-f="selo" data-v="pronto" aria-pressed="false">Pronto</button>
     <button class="chip" type="button" data-f="selo" data-v="beta" aria-pressed="false">Beta</button>
     <button class="chip" type="button" data-f="selo" data-v="contrato" aria-pressed="false">Contrato</button>
@@ -805,14 +834,73 @@ ESTUDOS.push({
   let quero = new Set(store.get("bratan-proposta-quero", []));
   let decis = store.get("bratan-proposta-decisoes", {});
 
+  // ---- STATUS DE EXECUÇÃO (atualizado em 15/09/2026, depois de "implemente tudo")
+  const STATUS = {
+   "1.1":{s:"feito",n:"No ar. Lê boleto, nota e comprovante com o Claude Sonnet 5 e confere os dígitos verificadores antes de propor a conta."},
+   "1.2":{s:"feito",n:"No ar. A rotina roda às 6h e grava os achados; a Fila do dia mostra cada um para o cargo que cuida."},
+   "1.3":{s:"feito",n:"Publicado em beta (servidor mcp-360). Toda escrita devolve prévia e só grava com confirmação. Falta você conectar o Claude ao endereço."},
+   "1.4":{s:"feito",n:"No ar no Painel do Mês, respondendo só com os números da tela."},
+   "1.5":{s:"feito",n:"No ar. Escreve com o Opus 5 sobre os agregados e cita a fonte de cada número."},
+   "1.6":{s:"feito",n:"No ar em Administração, na tela O que a IA fez, com inventário e custo por chamada."},
+   "1.7":{s:"feito",n:"No ar. O limite e a lista de aprovadores ficam nas Configurações do negócio."},
+   "1.8":{s:"aberto",n:"Não começado. Depende do WhatsApp oficial e do servidor MCP em uso."},
+   "1.9":{s:"aberto",n:"Não começado. Era a última alternativa, só se as APIs do Itaú e da Rede falharem."},
+   "2.1":{s:"aberto",n:"Não começado. Depende do gerente do Itaú liberar a API."},
+   "2.2":{s:"aberto",n:"Não começado. Depende da autorização no portal da Rede."},
+   "2.3":{s:"aberto",n:"Não começado. Depende de 2.1 ou de uma conta em provedor de pagamento."},
+   "2.4":{s:"aberto",n:"Não começado. Depende do WhatsApp oficial e da mudança do fluxo do grupo."},
+   "2.5":{s:"parcial",n:"A leitura do documento já funciona na Caixa de entrada. Falta a captura sozinha, por e-mail e pela manifestação do destinatário."},
+   "2.6":{s:"desligado",n:"Código publicado e botão pronto no plano de notas. Falta contratar a Focus NFe e o certificado A1."},
+   "2.7":{s:"aberto",n:"Não começado. Depende de conta em banco com API de pagamento."},
+   "2.8":{s:"aberto",n:"Não começado. Depende da escolha do parceiro de crediário."},
+   "2.9":{s:"desligado",n:"Código publicado e botão no card do paciente. Falta a chave do SuperSign e o PDF do contrato num link fixo."},
+   "2.10":{s:"feito",n:"No ar na tela do Lucro Inteligente, comparando o RAV da Rede com as alternativas."},
+   "3.1":{s:"desligado",n:"Código publicado, envio e recebimento. Falta o aplicativo na Meta e pelo menos um template aprovado."},
+   "3.2":{s:"desligado",n:"A lista de espera já funciona. A confirmação depende do WhatsApp oficial e da agenda espelhada."},
+   "3.3":{s:"feito",n:"No ar. D3, D7 e D30 no onboarding e D150, D165 e D180 na renovação, dentro da régua da enfermagem, com semáforo por paciente."},
+   "3.4":{s:"parcial",n:"Os consentimentos já são coletados na ficha e contados no cofre. Falta o NPS por Flows e o QR de check-in."},
+   "3.5":{s:"aberto",n:"Não começado. Fluxo clínico, exige decisão de regime de dados."},
+   "3.6":{s:"aberto",n:"Não começado."},
+   "3.7":{s:"aberto",n:"Não começado."},
+   "3.8":{s:"aberto",n:"Não começado. Fluxo clínico, exige decisão de regime de dados."},
+   "3.9":{s:"feito",n:"No ar. Selo por negócio no quadro comercial e meta configurável."},
+   "3.10":{s:"aberto",n:"Não começado. Criei as configurações de valor e modo do voucher, mas nenhum motor lê elas ainda: a regra continua a de hoje."},
+   "4.1":{s:"feito",n:"No ar desde 14/09. É a porta de entrada de todos os cargos."},
+   "4.2":{s:"feito",n:"No ar. Entende um valor digitado e os verbos do dia a dia."},
+   "4.3":{s:"feito",n:"No ar. Fotografa o código de barras e preenche a conta."},
+   "4.4":{s:"feito",n:"No ar na tela do Lucro Inteligente."},
+   "4.5":{s:"aberto",n:"Não começado."},
+   "4.6":{s:"parcial",n:"O desfazer entrou ao concluir um toque. Faltam as transições e o modo otimista."},
+   "4.7":{s:"aberto",n:"Não começado."},
+   "4.8":{s:"feito",n:"Os 31 alertas do navegador viraram diálogos do app e a contagem vai para o ícone. O resumo das 7h depende do aviso no celular ser ligado."},
+   "4.9":{s:"aberto",n:"Não começado."},
+   "5.1":{s:"feito",n:"No ar como KPI do Painel e sinal na Home."},
+   "5.2":{s:"feito",n:"No ar como bloco 9 do Painel, com o ritmo do time."},
+   "5.3":{s:"feito",n:"No ar. Ligam pelas Configurações do negócio; zerados ficam escondidos."},
+   "5.4":{s:"feito",n:"No ar. Dois motores puros com testes, alimentando o semáforo e a fila."},
+   "6.1":{s:"feito",n:"No ar em Administração, com DPO, RIPD, consentimentos, incidentes e impressão."},
+   "6.2":{s:"feito",n:"No ar. Toda chamada de IA grava o evento e o consentimento de IA está no cofre."},
+   "6.3":{s:"parcial",n:"O app registra a data da receita por plano e avisa do prazo. A emissão em si depende de plataforma integrada ao SNCR."},
+   "6.4":{s:"feito",n:"No ar. Opt-in na ficha do paciente e aviso nas tarefas de resgate."},
+   "6.5":{s:"feito",n:"No ar, escrito na tela de governança de IA."},
+   "7.1":{s:"feito",n:"No ar. O pdf.js passou a ser servido pelo próprio app e a limpeza foi feita."},
+   "7.2":{s:"feito",n:"No ar desde 15/09. Cada publicação roda typecheck, os 672 testes e o build."},
+   "7.3":{s:"feito",n:"No ar. Configurações com vigência, com histórico de quem mudou e desde quando."},
+   "7.4":{s:"aberto",n:"Não começado. Os arquivos grandes continuam grandes."},
+   "7.5":{s:"desligado",n:"Código publicado para Feegow e Outlook. Falta o token do Feegow ou a permissão de calendário no Outlook."}
+  };
+  const STATUS_ROTULO = {feito:"No ar", desligado:"Pronto, desligado", parcial:"Pela metade", aberto:"Não começado"};
+
   // ---- estudos e propostas
   function squares(n, cls){ let s = ""; for(let i=1;i<=5;i++) s += '<i class="'+(i<=n?"on":"")+'"></i>'; return '<span class="ie '+cls+'" title="'+(cls==="esf"?"Esforço":"Impacto")+' '+n+' de 5">'+(cls==="esf"?"Esforço":"Impacto")+' '+s+'</span>'; }
   function cardHTML(p){
-    return '<article class="proposta" id="p-'+p.id.replace(".","-")+'" data-selo="'+p.selo+'" data-onda="'+p.onda+'" data-estudo="'+p.estudo+'">'
-      +'<div class="topo"><span class="id">'+p.estudo+' · '+p.id+'</span><span class="selo '+p.selo+'">'+SELO[p.selo]+'</span></div>'
+    const st = STATUS[p.id] || {s:"aberto", n:""};
+    return '<article class="proposta" id="p-'+p.id.replace(".","-")+'" data-selo="'+p.selo+'" data-onda="'+p.onda+'" data-estudo="'+p.estudo+'" data-status="'+st.s+'">'
+      +'<div class="topo"><span class="id">'+p.estudo+' · '+p.id+'</span><span class="selos"><span class="status '+st.s+'">'+STATUS_ROTULO[st.s]+'</span><span class="selo '+p.selo+'">'+SELO[p.selo]+'</span></span></div>'
       +'<h4>'+p.t+'</h4>'
       +'<p class="oque">'+p.oque+'</p>'
       +'<p class="como">'+p.como+'</p>'
+      +(st.n ? '<p class="nota-status">'+st.n+'</p>' : '')
       +'<p class="dep"><b>Depende de:</b> '+p.dep+(p.custo && p.custo!=="—" ? ' · <b>Custo:</b> '+p.custo : '')+'</p>'
       +'<div class="meta">'+squares(p.imp,"imp")+squares(p.esf,"esf")+'<span class="onda-tag">'+ONDA[p.onda]+'</span>'
       +'<button class="quero" type="button" data-id="'+p.id+'" aria-pressed="'+(quero.has(p.id)?"true":"false")+'">'+(quero.has(p.id)?"★ Marcada":"☆ Quero esta")+'</button></div>'
@@ -825,6 +913,13 @@ ESTUDOS.push({
       +'<details><summary class="small" style="cursor:pointer">O que a pesquisa mostrou</summary><p class="contexto small" style="margin-top:8px">'+e.contexto+'</p></details></div>'
       +'<div class="propostas">'+e.propostas.map(p => cardHTML(Object.assign({estudo:e.id}, p))).join("")+'</div>'
       +'</section>').join("");
+    const cont = {feito:0, desligado:0, parcial:0, aberto:0};
+    TODAS.forEach(p => { cont[(STATUS[p.id]||{s:"aberto"}).s]++; });
+    $("#placar").innerHTML =
+       '<div><b>'+cont.feito+'</b><span>no ar, funcionando</span></div>'
+      +'<div><b>'+cont.desligado+'</b><span>prontas e desligadas, esperando chave ou contrato</span></div>'
+      +'<div><b>'+cont.parcial+'</b><span>feitas pela metade</span></div>'
+      +'<div><b>'+cont.aberto+'</b><span>não começadas</span></div>';
     root.addEventListener("click", ev => {
       const b = ev.target.closest(".quero"); if(!b) return;
       const id = b.dataset.id;
@@ -837,20 +932,21 @@ ESTUDOS.push({
   }
 
   // ---- filtros
-  const filtro = {selo:new Set(), onda:new Set()};
+  const filtro = {selo:new Set(), onda:new Set(), status:new Set()};
   function aplicarFiltros(){
     let vis = 0;
     $$(".proposta").forEach(c => {
       const okSelo = filtro.selo.size===0 || filtro.selo.has(c.dataset.selo);
       const okOnda = filtro.onda.size===0 || filtro.onda.has(c.dataset.onda);
-      const show = okSelo && okOnda; c.hidden = !show; if(show) vis++;
+      const okStatus = filtro.status.size===0 || filtro.status.has(c.dataset.status);
+      const show = okSelo && okOnda && okStatus; c.hidden = !show; if(show) vis++;
     });
     $$(".estudo").forEach(s => { s.style.display = $$(".proposta:not([hidden])", s).length ? "" : "none"; });
     $("#contagem").textContent = vis===TODAS.length ? "Mostrando todas as "+TODAS.length+" propostas." : "Mostrando "+vis+" de "+TODAS.length+" propostas.";
   }
   $("#filtros").addEventListener("click", ev => {
     const b = ev.target.closest(".chip"); if(!b) return;
-    if(b.id==="limpar-filtros"){ filtro.selo.clear(); filtro.onda.clear(); $$("#filtros .chip[data-f]").forEach(x=>x.setAttribute("aria-pressed","false")); aplicarFiltros(); return; }
+    if(b.id==="limpar-filtros"){ filtro.selo.clear(); filtro.onda.clear(); filtro.status.clear(); $$("#filtros .chip[data-f]").forEach(x=>x.setAttribute("aria-pressed","false")); aplicarFiltros(); return; }
     const f = b.dataset.f, v = b.dataset.v; if(!f) return;
     if(filtro[f].has(v)) filtro[f].delete(v); else filtro[f].add(v);
     b.setAttribute("aria-pressed", filtro[f].has(v) ? "true":"false");
@@ -961,3 +1057,5 @@ ESTUDOS.push({
   renderEstudos(); aplicarFiltros(); renderMatriz(); renderDecisoes(); resumo(); navAtual();
 })();
 </script>
+
+</body></html>
