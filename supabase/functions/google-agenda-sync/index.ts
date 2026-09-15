@@ -120,7 +120,7 @@ Deno.serve(async (request) => {
   const hoje = agoraBrasiliaISO();
   const somaDias = (dia: string, n: number) => new Date(new Date(`${dia}T12:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
   const deISO = entrada.de ?? somaDias(hoje, -Number(integracao.config.diasParaTras ?? 2));
-  const ateISO = entrada.ate ?? somaDias(hoje, Number(integracao.config.diasParaFrente ?? 45));
+  const ateISO = entrada.ate ?? somaDias(hoje, Number(integracao.config.diasParaFrente ?? 120));
   const de = new Date(`${deISO}T00:00:00-03:00`);
   const ate = new Date(`${ateISO}T23:59:59-03:00`);
   const fontes = (Deno.env.get("GOOGLE_AGENDA_ICS") ?? "").split(";").map((s) => s.trim()).filter(Boolean).map((s) => {
@@ -131,12 +131,15 @@ Deno.serve(async (request) => {
   let gravados = 0;
   const erros: string[] = [];
   const linhas: Record<string, unknown>[] = [];
+  const cargaEm = new Date().toISOString();
+  const lidosPorRotulo = new Map<string, number>();
   for (const fonte of fontes) {
     try {
       const r = await fetch(fonte.url, { headers: { "User-Agent": "app-bratan/agenda-espelho" } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const ics = await r.text();
       const eventos = parseICS(ics, de, ate);
+      lidosPorRotulo.set(fonte.rotulo, (lidosPorRotulo.get(fonte.rotulo) ?? 0) + eventos.length);
       for (const ev of eventos) {
         const cancelado = /CANCELLED/i.test(ev.status);
         const profissional = fonte.rotulo || rotulos[ev.local] || (ev.descricao.match(/Profissional:\s*([^\n]+)/i)?.[1] ?? "") || null;
@@ -152,7 +155,7 @@ Deno.serve(async (request) => {
           paciente: ev.resumo.slice(0, 200) || null,
           tipo: (ev.descricao.match(/Procedimento[s]?:\s*([^\n]+)/i)?.[1] ?? "").slice(0, 120) || null,
           status: cancelado ? "cancelado" : "agendado",
-          sincronizado_em: new Date().toISOString(),
+          sincronizado_em: cargaEm,
         });
       }
     } catch (erro) {
@@ -167,6 +170,27 @@ Deno.serve(async (request) => {
     }
     gravados += count ?? 0;
   }
-  await registrarEvento(client, { chave: "google_agenda", direcao: "ENTRADA", status: erros.length ? "ERRO" : "OK", resumo: `${gravados} evento(s) de ${deISO} a ${ateISO} em ${fontes.length} calendário(s)${erros.length ? ` · erros: ${erros.join(" | ")}` : ""}` });
-  return json({ ok: erros.length === 0, gravados, de: deISO, ate: ateISO, calendarios: fontes.length, erros });
+  // O que sumiu do calendário foi desmarcado no iClinic: vira "cancelado" para não virar
+  // consulta fantasma no portal. Trava de segurança: se o calendário veio vazio ou perdeu
+  // mais de 40% dos eventos de uma vez, não mexe (provável leitura incompleta do Google).
+  const cancelados: string[] = [];
+  if (!erros.length) {
+    for (const [rotulo, lidos] of lidosPorRotulo) {
+      if (!rotulo || !lidos) continue;
+      const { data: sobraram } = await client.from("agenda_espelho")
+        .select("id").eq("origem", "iclinic").eq("profissional", rotulo).neq("status", "cancelado")
+        .gte("dia", deISO).lte("dia", ateISO).lt("sincronizado_em", cargaEm);
+      const fora = (sobraram ?? []).map((l: { id: string }) => l.id);
+      if (!fora.length) continue;
+      if (fora.length > (lidos + fora.length) * 0.4) {
+        erros.push(`${rotulo}: ${fora.length} sumiram de uma vez — não cancelei, confira o calendário`);
+        continue;
+      }
+      const { error } = await client.from("agenda_espelho").update({ status: "cancelado", sincronizado_em: cargaEm }).in("id", fora);
+      if (error) erros.push(`cancelamento ${rotulo}: ${error.message}`);
+      else cancelados.push(`${rotulo}: ${fora.length}`);
+    }
+  }
+  await registrarEvento(client, { chave: "google_agenda", direcao: "ENTRADA", status: erros.length ? "ERRO" : "OK", resumo: `${gravados} evento(s) de ${deISO} a ${ateISO} em ${fontes.length} calendário(s)${cancelados.length ? ` · desmarcados: ${cancelados.join(", ")}` : ""}${erros.length ? ` · erros: ${erros.join(" | ")}` : ""}` });
+  return json({ ok: erros.length === 0, gravados, cancelados, de: deISO, ate: ateISO, calendarios: fontes.length, erros });
 });
