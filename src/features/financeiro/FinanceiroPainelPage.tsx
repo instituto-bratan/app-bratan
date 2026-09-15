@@ -743,7 +743,7 @@ export function FinanceiroPainelPage() {
             </div>
             <p className={cn("mt-3 leading-snug text-brand-tinta", apresentando ? "text-base" : "text-sm")}>{ocupacao.frase}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              As horas vendidas já absorvem {moneyFin(ocupacao.custoFixoAbsorvido)} do custo fixo ao custo-hora da planilha (R$ 102,05). Horas disponíveis
+              As horas vendidas já absorvem {moneyFin(ocupacao.custoFixoAbsorvido)} do custo fixo ao custo-hora da planilha (R$ 113,78). Horas disponíveis
               seguem a grade da planilha de precificação; quando a agenda estiver espelhada no app, passam a vir dela.
             </p>
             {agendaEspelho.length ? (

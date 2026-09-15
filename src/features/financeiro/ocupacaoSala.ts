@@ -2,7 +2,7 @@
 // 14/09/2026, proposta 5.1 do estudo de evolução).
 //
 // O estudo de 11/09 mostrou o problema: a planilha de precificação espalha
-// R$ 141.437,44 de custo fixo por mês sobre 1.386 horas de sala (7 salas × 9 h ×
+// R$ 157.697,18 de custo fixo por mês sobre 1.386 horas de sala (7 salas × 9 h ×
 // 22 dias), mas em agosto foram VENDIDAS cerca de 69 horas — 5% de ocupação.
 // Cada produto absorve 5% do fixo e o "lucro bruto" que o 50/50 divide não pagou
 // a estrutura. O benchmark de clínica saudável é 75 a 85%. Cada ponto de
@@ -29,12 +29,12 @@ import { configAtual } from "@/lib/configNegocio";
 const round1 = (value: number) => Math.round((value || 0) * 10) / 10;
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
-/** A grade da planilha "Custo hora-sala" (14/09/2026): 7 salas, 9 horas produtivas por dia. */
+/** A grade da planilha "Custo hora-sala" (15/09/2026): 7 salas produtivas de 9, 9 horas por dia. */
 export const GRADE_PADRAO = { salas: 7, horasPorDiaPorSala: 9 } as const;
-/** R$ 102,05 por hora de sala produtiva (planilha OFICIAL de 14/09/2026). */
-export const CUSTO_HORA_SALA = 102.05;
-/** Despesas fixas mensais da aba Custo hora-sala (14/09/2026). */
-export const DESPESAS_FIXAS_MES = 141437.44;
+/** R$ 113,78 por hora de sala produtiva (planilha OFICIAL de 15/09/2026). */
+export const CUSTO_HORA_SALA = 113.778629;
+/** Despesas fixas mensais da aba Custo hora-sala (15/09/2026). */
+export const DESPESAS_FIXAS_MES = 157697.18;
 /** Benchmark de clínica saudável (estudo de 14/09: Conclínica, Contourline). */
 export const META_OCUPACAO = { minima: 75, maxima: 85 } as const;
 

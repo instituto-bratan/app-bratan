@@ -15,12 +15,12 @@
 //     o lucro, e vai dividir pelos dias úteis; esse valor vai ser o valor do
 //     lucro, é sempre esse valor" → cota fixa por dia útil, recalculada a cada
 //     mês pelos dias úteis daquele mês;
-//   · médico executor: a coluna S da planilha de precificação, "Margem Líquida
+//   · médico executor: a coluna do médico na planilha de precificação, "Valor
 //     Médico" (Lucas, 02/09: "50% de quê? está na coluna S") = 50% do LUCRO
 //     BRUTO DO PRODUTO — preço − imposto/cartão − comissão comercial −
 //     consumíveis − repasse nutri/psi − custo hora-sala. Plano de R$ 6.997 →
-//     lucro bruto 4.398,46 (planilha OFICIAL de 14/09, comissão 10%) → R$ 2.199,23
-//     para o médico (31,4% do preço). O
+//     lucro bruto 3.476,74 (planilha OFICIAL de 15/09: NF de consulta a 26% e
+//     hora de sala a R$ 113,78) → R$ 1.738,37 para o médico (24,8% do preço). O
 //     catálogo abaixo guarda o lucro bruto de cada produto da tabela oficial;
 //     o item da comanda é reconhecido pela descrição e pelo preço.
 //   · operacional = o que sobra (pode ficar negativo num dia fraco).
@@ -108,8 +108,9 @@ export const EXEMPLO_DA_AULA = { impostos: 16.6, lucro: 25, medicoExecutor: 28, 
 
 /**
  * A régua do Instituto (Lucas, 02/09/2026):
- *  · impostos 16,6% = a alíquota da aula (lucro presumido), de propósito acima
- *    dos 13,33% das nossas notas — sobrar imposto separado nunca é problema;
+ *  · impostos 16,6% = a alíquota da aula (lucro presumido). ATENÇÃO: a planilha
+ *    de 15/09 passou a NF de consulta para 26% e a de procedimento para 11,48%;
+ *    se essas são as alíquotas reais, este envelope está separando de menos;
  *  · lucro R$ 40.000/mês ("mais ou menos o lucro"), dividido pelos dias úteis;
  *  · médico executor 50% do lucro bruto do produto (coluna S da planilha).
  */

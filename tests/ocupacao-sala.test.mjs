@@ -98,8 +98,8 @@ test("mês fechado: setembro/2026 tem 21 dias úteis (07/09 é feriado) → 1.32
   assert.equal(o.porProduto[0].horas, 3);
   assert.equal(o.porDiaDaSemana[1].label, "Terça");
   assert.equal(o.porDiaDaSemana[1].value, 4.5, "01/09 e 08/09 são terças");
-  assert.equal(o.valorDoPonto, 1350.12, "1% de 1.323 h × R$ 102,05");
-  assert.equal(o.custoFixoAbsorvido, 459.23);
+  assert.equal(o.valorDoPonto, 1505.29, "1% de 1.323 h × R$ 113,78");
+  assert.equal(o.custoFixoAbsorvido, 512.0);
   assert.equal(o.horasParaMeta, 987.8);
   assert.match(o.frase, /4,5 h das 1\.323 h disponíveis em setembro/);
   assert.match(o.frase, /0,3% de ocupação/);
