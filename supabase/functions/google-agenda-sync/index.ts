@@ -191,6 +191,7 @@ Deno.serve(async (request) => {
       else cancelados.push(`${rotulo}: ${fora.length}`);
     }
   }
-  await registrarEvento(client, { chave: "google_agenda", direcao: "ENTRADA", status: erros.length ? "ERRO" : "OK", resumo: `${gravados} evento(s) de ${deISO} a ${ateISO} em ${fontes.length} calendário(s)${cancelados.length ? ` · desmarcados: ${cancelados.join(", ")}` : ""}${erros.length ? ` · erros: ${erros.join(" | ")}` : ""}` });
-  return json({ ok: erros.length === 0, gravados, cancelados, de: deISO, ate: ateISO, calendarios: fontes.length, erros });
+  await registrarEvento(client, { chave: "google_agenda", direcao: "ENTRADA", status: erros.length ? "ERRO" : "OK", resumo: `${gravados} evento(s) de ${deISO} a ${ateISO} em ${fontes.length} calendário(s) (${[...lidosPorRotulo].map(([r, n]) => `${r || "sem rótulo"} ${n}`).join(", ")})${cancelados.length ? ` · desmarcados: ${cancelados.join(", ")}` : ""}${erros.length ? ` · erros: ${erros.join(" | ")}` : ""}` });
+  const lidos = Object.fromEntries([...lidosPorRotulo].map(([rotulo, n]) => [rotulo || "sem rótulo", n]));
+  return json({ ok: erros.length === 0, gravados, lidos, cancelados, de: deISO, ate: ateISO, calendarios: fontes.length, erros });
 });
