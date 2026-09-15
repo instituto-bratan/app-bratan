@@ -40,6 +40,7 @@ import {
 } from "./crmData";
 import { useCrmState } from "./useCrmState";
 import { ConsentimentosDoContato } from "./ConsentimentosDoContato";
+import { PortalDoPacienteCard } from "@/features/portal/PortalDoPacienteCard";
 import { contactChannelsIssue, formatPhoneBR } from "./contactChannels";
 
 // Contratos saiu do app (decisão do Lucas, 22/07): não existe fluxo de
@@ -378,6 +379,18 @@ export function CrmContactProfilePage() {
                 <InfoItem label="Último toque" value={lastTouch ? formatCrmDateTime(lastTouch.sentAt) : "Sem toque"} />
               </div>
               {useRemoteConsent ? <ConsentimentosDoContato contactRef={contact.id} pessoaId={pessoa?.id ?? null} podeEditar={Boolean(pessoa)} /> : null}
+              {useRemoteConsent ? (
+                <div className="mt-4">
+                  <PortalDoPacienteCard
+                    contactRef={contact.id}
+                    nomePaciente={contact.preferredName || contact.fullName}
+                    telefone={contact.whatsapp || contact.phone}
+                    temPlanoAtivo={state.deals.some((deal) => deal.contactId === contact.id && deal.programPhase && !deal.programOutcome && (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL"))}
+                    pessoaId={pessoa?.id ?? null}
+                    cargo={pessoa?.cargo}
+                  />
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

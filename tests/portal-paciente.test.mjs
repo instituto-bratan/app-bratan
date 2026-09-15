@@ -1,0 +1,88 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { loadTs } from "./helpers/load-ts.mjs";
+
+const mod = await loadTs("src/features/portal/portalPaciente.ts");
+const hoje = "2026-09-15";
+
+test("frase de dias em português, sem número solto", () => {
+  assert.equal(mod.fraseDeDias(0), "é hoje");
+  assert.equal(mod.fraseDeDias(1), "é amanhã");
+  assert.equal(mod.fraseDeDias(5), "daqui a 5 dias");
+  assert.equal(mod.fraseDeDias(20), "daqui a 3 semanas");
+  assert.equal(mod.fraseDeDias(75), "daqui a 2 meses e meio");
+  assert.equal(mod.fraseDeDias(62), "daqui a 2 meses");
+  assert.equal(mod.fraseDeDias(85), "daqui a 3 meses");
+  assert.equal(mod.fraseDeDias(-1), "foi ontem");
+});
+
+test("próxima consulta: a real (recepção/agenda) vence a prevista; sem real, usa o próximo marco do médico", () => {
+  const marcos = [
+    { key: "MEDICO-1", type: "MEDICO", n: 1, total: 3, label: "1ª consulta (mês 2)", expectedDate: "2026-09-01", done: true, overdue: false },
+    { key: "MEDICO-2", type: "MEDICO", n: 2, total: 3, label: "2ª consulta (mês 4)", expectedDate: "2026-11-01", done: false, overdue: false },
+  ];
+  const real = mod.proximaConsulta([{ id: "c1", em: "2026-09-26T14:00:00-03:00", profissional: "Dr. Daniel", tipo: "Consulta", local: "Instituto Bratan", status: "AGENDADA", origem: "MANUAL" }], marcos, hoje);
+  assert.equal(real.origem, "MANUAL");
+  assert.equal(real.dias, 11);
+  assert.equal(real.quando, "daqui a 11 dias");
+  assert.equal(real.titulo, "sábado, 26 de setembro");
+  assert.equal(real.hora, "14h");
+  assert.equal(real.podeResponder, true, "dentro de 14 dias e ainda não confirmada");
+  const prevista = mod.proximaConsulta([], marcos, hoje);
+  assert.equal(prevista.origem, "PREVISTA");
+  assert.equal(prevista.em, "2026-11-01");
+  assert.equal(prevista.podeResponder, false);
+  const cancelada = mod.proximaConsulta([{ id: "c2", em: "2026-09-20T10:00:00-03:00", profissional: "Dr. Daniel", tipo: "Consulta", local: "", status: "CANCELADA", origem: "MANUAL" }], [], hoje);
+  assert.equal(cancelada, null, "cancelada não conta e sem marco não há previsão");
+});
+
+test("evolução: delta entre a primeira e a última medição, com frase de contexto", () => {
+  const m = (dia, pesoKg, gorduraPct = null, massaMagraKg = null) => ({ id: dia, dia, pesoKg, gorduraPct, massaMagraKg, cinturaCm: null, origem: "ENFERMAGEM" });
+  const r = mod.resumoEvolucao([m("2026-07-01", 92.4, 34.1, 55.2), m("2026-08-01", 90.1, 33.0, 55.4), m("2026-09-01", 88.0, 31.5, 55.6)], hoje);
+  assert.equal(r.deltaPeso, -4.4);
+  assert.equal(r.deltaGordura, -2.6);
+  assert.equal(r.deltaMassaMagra, 0.4);
+  assert.equal(r.semanas, 9);
+  assert.match(r.frase, /perdeu 4,4 kg, mantendo a massa magra/);
+  assert.equal(r.pontos.length, 3);
+  const inicio = mod.resumoEvolucao([m("2026-09-05", 92.0), m("2026-09-12", 92.2)], hoje);
+  assert.match(inicio.frase, /primeiro mês é de adaptação/);
+  assert.equal(mod.resumoEvolucao([], hoje), null);
+});
+
+test("financeiro: contratado, pago, em aberto e a frase", () => {
+  const comandas = [{ id: "s1", dia: "2026-08-10", itens: [{ descricao: "Plano 6 meses", tipo: "PLANO", valor: 8990 }], pagamentos: [{ metodo: "PIX", valor: 3000, parcelas: 1 }], total: 8990 }];
+  const r = mod.resumoFinanceiro(comandas, [{ id: "p1", valor: 2995, prevista: "2026-09-25", observacao: "" }, { id: "p2", valor: 2995, prevista: "2026-10-25", observacao: "" }], hoje);
+  assert.equal(r.contratado, 8990);
+  assert.equal(r.pago, 3000);
+  assert.equal(r.emAberto, 5990);
+  assert.equal(r.proximaParcela.id, "p1");
+  assert.match(r.frase, /R\$\s3\.000 já pagos · falta R\$\s5\.990 em 2 parcelas · a próxima vence em 25\/09/);
+  assert.match(mod.resumoFinanceiro(comandas, [], hoje).frase, /Tudo em dia/);
+});
+
+test("trilha: agrupa por mês, marca o mês atual e escreve o próximo passo", () => {
+  const marcos = [];
+  for (let n = 1; n <= 6; n++) {
+    marcos.push({ key: `CHECK-${n}`, type: "CHECK", n, total: 6, label: `Checkpoint Performance ${n}/6`, expectedDate: `2026-${String(6 + n).padStart(2, "0")}-01`.replace("2026-13", "2027-01"), done: n <= 2, overdue: false });
+    marcos.push({ key: `BIO-${n}`, type: "BIO", n, total: 6, label: `Bioimpedância ${n}/6`, expectedDate: `2026-${String(6 + n).padStart(2, "0")}-01`.replace("2026-13", "2027-01"), done: n <= 2, overdue: false });
+  }
+  marcos.push({ key: "MEDICO-1", type: "MEDICO", n: 1, total: 3, label: "1ª consulta (mês 2)", expectedDate: "2026-08-01", done: true, overdue: false });
+  const t = mod.trilhaDoPlano(marcos, "2026-06-01", hoje);
+  assert.equal(t.mesAtual, 4);
+  assert.equal(t.passos[0].estado, "feito");
+  assert.equal(t.passos[3].estado, "agora");
+  assert.equal(t.passos[5].estado, "futuro");
+  assert.equal(t.passos[1].marcos.length, 3, "mês 2 tem check, bio e consulta do médico");
+  assert.equal(t.feitos, 5);
+  assert.match(t.frase, /mês 4 de 6/);
+  assert.match(t.frase, /com enfermagem/);
+});
+
+test("nome do plano e link do portal", () => {
+  assert.equal(mod.nomeDoPlano("CLUBE_BRATAN"), "Clube Bratan");
+  assert.equal(mod.nomeDoPlano(null), "Plano de acompanhamento");
+  assert.equal(mod.primeiroNome("Maria da Silva"), "Maria");
+  assert.equal(mod.montarLinkPortal("https://app-bratan.vercel.app/", "abc"), "https://app-bratan.vercel.app/meu/entrar?t=abc");
+  assert.equal(mod.saudacao("Maria", 9), "Bom dia, Maria.");
+});

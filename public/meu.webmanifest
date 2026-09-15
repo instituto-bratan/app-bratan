@@ -1,0 +1,20 @@
+{
+  "name": "Meu Bratan",
+  "short_name": "Meu Bratan",
+  "description": "Seu espaço no Instituto Bratan: próxima consulta, evolução, plano e pesagem da semana.",
+  "id": "/meu",
+  "start_url": "/meu",
+  "scope": "/meu/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#F6F1E4",
+  "theme_color": "#3E4632",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["health", "medical"],
+  "icons": [
+    { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-maskable-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -52,6 +52,7 @@ const GovernancaIaPage = lazyRoute("governancaIa");
 const ConfiguracoesNegocioPage = lazyRoute("configuracoesNegocio");
 const IntegracoesPage = lazyRoute("integracoes");
 const ComplianceCofrePage = lazyRoute("compliance");
+const PortalPacienteApp = lazyRoute("portal");
 const MarketingPage = lazyRoute("marketing");
 const Inteligencia360DashboardPage = lazyRoute("inteligencia360");
 const Inteligencia360ModulePage = lazyRoute("inteligencia360Module");
@@ -75,6 +76,8 @@ export function App() {
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          {/* PORTAL DO PACIENTE (15/09/2026): fora do login da equipe; entra por link mágico. */}
+          <Route path="/meu/*" element={<PortalPacienteApp />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route index element={<HomePage />} />
