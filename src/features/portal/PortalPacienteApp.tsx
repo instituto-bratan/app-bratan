@@ -41,18 +41,38 @@ function partesDaData(iso: string) {
   return { dia: d.getDate(), semana: DIAS[d.getDay()], mes: MESES[d.getMonth()] };
 }
 
-/** Marca o navegador como "Meu Bratan" enquanto o portal está aberto (manifesto, cor, título). */
+/** As duas cores de fundo do portal, nesta ordem: clara e escura. */
+const FUNDO = { claro: "#F2F2F7", escuro: "#102019" } as const;
+
+/** Marca o navegador como "Meu Bratan" enquanto o portal está aberto (manifesto, cor, título).
+ *  No iPhone a barra do Safari e a área que aparece ao "puxar" a página usam estas cores:
+ *  sem acompanhar o tema do aparelho, a moldura fica clara com a página escura. */
 function useIdentidadeDoPortal() {
   useEffect(() => {
     const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
     const tema = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    const antes = { manifest: manifest?.href ?? "", tema: tema?.content ?? "", titulo: document.title };
+    const raiz = document.documentElement;
+    const barra = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]');
+    const antes = { manifest: manifest?.href ?? "", tema: tema?.content ?? "", titulo: document.title, fundo: raiz.style.backgroundColor, barra: barra?.content ?? "" };
+    const escuro = window.matchMedia("(prefers-color-scheme: dark)");
+    const pintar = () => {
+      const cor = escuro.matches ? FUNDO.escuro : FUNDO.claro;
+      if (tema) tema.content = cor;
+      raiz.style.backgroundColor = cor;
+      // instalado na tela de início do iPhone: as horas e a bateria são brancas com
+      // "black-translucent" e pretas com "default" — no fundo claro só a segunda dá para ler.
+      if (barra) barra.content = escuro.matches ? "black-translucent" : "default";
+    };
     if (manifest) manifest.href = "/meu.webmanifest";
-    if (tema) tema.content = "#F2F2F7";
     document.title = "Meu Bratan";
+    pintar();
+    escuro.addEventListener("change", pintar);
     return () => {
+      escuro.removeEventListener("change", pintar);
       if (manifest) manifest.href = antes.manifest;
       if (tema) tema.content = antes.tema;
+      if (barra) barra.content = antes.barra || "black-translucent";
+      raiz.style.backgroundColor = antes.fundo;
       document.title = antes.titulo;
     };
   }, []);
