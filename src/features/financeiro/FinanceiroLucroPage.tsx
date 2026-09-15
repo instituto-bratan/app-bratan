@@ -46,6 +46,7 @@ import { AntecipacaoComparador } from "./AntecipacaoComparadorCard";
 import { EnvelopesVisuais, transferenciasPrevistas } from "./EnvelopesVisuais";
 import { CaixaProjetadoCard } from "./CaixaProjetadoCard";
 import { configAtual } from "@/lib/configNegocio";
+import { perguntar } from "@/components/ui/avisos";
 
 const configStorageKey = "app-bratan-fin-lucro-config";
 const marcasStorageKey = "app-bratan-fin-lucro-dias";
@@ -274,9 +275,9 @@ export function FinanceiroLucroPage() {
     persistMarca({ dia, separado: !atual?.separado, observacao: atual?.observacao ?? "" });
   }
 
-  function editaObservacao(dia: string, atual: MarcaDiaLucro | null) {
+  async function editaObservacao(dia: string, atual: MarcaDiaLucro | null) {
     if (!canEdit) return;
-    const texto = window.prompt(`Observação do dia ${diaCurto(dia)} (ex.: transferi 5.000 p/ conta lucro, impostos ficam p/ dia 10):`, atual?.observacao ?? "");
+    const texto = await perguntar(`Observação do dia ${diaCurto(dia)}`, { valorInicial: atual?.observacao ?? "", placeholder: "ex.: transferi 5.000 p/ conta lucro, impostos ficam p/ dia 10", multilinha: true, confirmar: "Salvar" });
     if (texto === null) return;
     persistMarca({ dia, separado: atual?.separado ?? false, observacao: texto.trim() });
   }

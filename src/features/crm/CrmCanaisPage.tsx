@@ -46,6 +46,7 @@ import {
   emptyContactChannels,
   type ContactChannelsDraft,
 } from "./contactChannels";
+import { confirmar } from "@/components/ui/avisos";
 
 const statusTones: Record<ReferralRewardStatus, string> = {
   AGUARDANDO: "border-slate-300 bg-slate-50 text-slate-700",
@@ -174,8 +175,8 @@ export function CrmCanaisPage() {
     setFormError("");
   }
 
-  function handleMarkPaid(referredContactId: string, referredName: string) {
-    if (!window.confirm(`Confirmar a entrega do voucher de ${moneyCrm(REFERRAL_REWARD_VALUE)} pela indicação de ${referredName}?`)) return;
+  async function handleMarkPaid(referredContactId: string, referredName: string) {
+    if (!(await confirmar(`Confirmar a entrega do voucher de ${moneyCrm(REFERRAL_REWARD_VALUE)}?`, { corpo: `Pela indicação de ${referredName}. Fica registrado quem confirmou.`, confirmar: "Entregue" }))) return;
     persist((current) => markReferralRewardPaid(current, referredContactId, pessoa?.id ?? "coordenacao"));
     setFeedback(`Voucher da indicação de ${referredName} marcado como pago.`);
   }

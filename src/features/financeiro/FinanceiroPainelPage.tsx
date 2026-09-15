@@ -73,6 +73,7 @@ import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, metasForMonth,
 import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMes";
 import { buildOcupacaoMes, formatHoras, heatDaOcupacao } from "./ocupacaoSala";
 import { buildSemanaEmNumeros } from "./semanaEmNumeros";
+import { NarrativaDoMesCard, PerguntarAo360Card } from "./PainelIaCards";
 import { useCrmState } from "@/features/crm/useCrmState";
 import { listRemoteAgendaEspelho, listRemoteColaboradores, listRemoteNpsRespostas } from "@/lib/remoteData";
 import { PonteWaterfall } from "./PonteWaterfall";
@@ -810,6 +811,20 @@ export function FinanceiroPainelPage() {
 
   const blocoAtual = blocos[Math.min(bloco, blocos.length - 1)];
 
+  // Só agregados (sem paciente) para o resumo narrado e o "Perguntar ao 360".
+  const agregadosParaIa: Record<string, unknown> = {
+    mes: monthKey,
+    hoje,
+    momentoDoMes: { fase: momento.faseLabel, emAndamento: momento.emAndamento, dia: momento.dia, percorrido: Math.round(momento.percorrido * 100) },
+    kpis: kpis.map((k) => ({ rotulo: k.rotulo, valor: k.valor, mesAnterior: k.antes, tom: k.tom })),
+    metas: degraus.map((d) => ({ rotulo: d.rotulo, valor: d.valor, atingido: d.atingido })),
+    projecao,
+    pontosDaReuniao: pontos.map((p) => ({ titulo: p.titulo, numero: p.numero, leitura: p.leitura, tom: p.tom, grupo: p.grupo })),
+    ponteDosTresLucros: ponte,
+    ocupacaoDeSala: { percentual: ocupacao.percentual, horasVendidas: ocupacao.horasVendidas, horasDisponiveis: ocupacao.horasDisponiveis, parcial: ocupacao.parcial, frase: ocupacao.frase },
+    semanaEm8Numeros: { frase: semanaNumeros.frase, numeros: semanaNumeros.numeros.map((n) => ({ rotulo: n.rotulo, valor: n.valor, frase: n.frase })), ritmoDoTime: semanaNumeros.ritmo },
+  };
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Painel do Mês" module="fin-gestao">
       <div className={cn("mx-auto flex w-full flex-col gap-5", apresentando ? "max-w-6xl" : "max-w-6xl")}>
@@ -893,6 +908,13 @@ export function FinanceiroPainelPage() {
           ) : null}
         </motion.section>
 
+        {/* ---- IA sobre os agregados (15/09/2026): resumo narrado + perguntar ao 360 ---- */}
+        {financeiro.syncMode !== "local" ? (
+          <div className="grid gap-4">
+            <NarrativaDoMesCard monthKey={monthKey} agregados={agregadosParaIa} podeGerar={!readOnly} apresentando={apresentando} />
+            {!apresentando ? <PerguntarAo360Card contexto={agregadosParaIa} tela="painel" /> : null}
+          </div>
+        ) : null}
         {/* ---- MODO APRESENTAÇÃO: um bloco por vez -------------------------- */}
         {apresentando ? (
           <>

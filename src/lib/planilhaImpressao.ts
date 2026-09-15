@@ -69,7 +69,8 @@ ${abas.map(tabelaHtml).join("\n")}
 export function imprimirPlanilhas(titulo: string, abas: XlsxSheet[]) {
   const janela = window.open("", "_blank", "noopener,width=1200,height=800");
   if (!janela) {
-    window.alert("O navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente de novo.");
+    // Sem importar React aqui (este módulo roda nos testes em Node): o aviso vai por evento e o <Avisos/> mostra.
+    window.dispatchEvent(new CustomEvent("app-bratan:aviso", { detail: { texto: "O navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente de novo.", tom: "atencao" } }));
     return;
   }
   janela.document.open();

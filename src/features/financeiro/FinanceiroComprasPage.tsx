@@ -27,6 +27,7 @@ import {
 } from "./financeiroData";
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
+import { confirmar } from "@/components/ui/avisos";
 
 const purchaseMethods: FinPaymentMethod[] = ["CARTAO_CREDITO", "BOLETO", "PIX", "CARTAO_DEBITO", "DINHEIRO", "TRANSFERENCIA"];
 
@@ -126,11 +127,11 @@ export function FinanceiroComprasPage() {
     financeiro.updatePurchase({ ...purchase, receivedAt: purchase.receivedAt ? null : todayISO() });
   }
 
-  function removePurchase(purchase: FinPurchase) {
+  async function removePurchase(purchase: FinPurchase) {
     // Compras antigas podem ter uma conta a pagar vinculada (modelo antigo) —
     // ao excluir, remove o vínculo para não deixar lançamento órfão.
     const withExpense = purchase.expenseRef ? " A conta a pagar antiga vinculada também será excluída." : "";
-    if (!window.confirm(`Excluir a compra "${purchase.description}" (${moneyFin(purchase.amount)})?${withExpense}`)) return;
+    if (!(await confirmar(`Excluir a compra "${purchase.description}" (${moneyFin(purchase.amount)})?`, { corpo: withExpense.trim() || undefined, destrutivo: true, confirmar: "Excluir" }))) return;
     if (purchase.expenseRef) financeiro.removeExpense(purchase.expenseRef);
     financeiro.removePurchase(purchase.id);
   }

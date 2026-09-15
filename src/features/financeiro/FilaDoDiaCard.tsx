@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { moneyFin, monthLastDay, type FinExpense, type FinPurchase } from "./financeiroData";
 import { diaUtilSeguinte, diasEntre } from "./recebiveisRede";
 import type { FilaFinanceira, ItemFila } from "./filaFinanceira";
+import { perguntar } from "@/components/ui/avisos";
 
 const alertaLabel: Record<NonNullable<ItemFila["alerta"]>, string> = {
   SEM_ARQUIVO: "sem boleto anexado",
@@ -82,7 +83,7 @@ export function FilaDoDiaCard({
       setCopiado(expense.id);
       window.setTimeout(() => setCopiado((atual) => (atual === expense.id ? null : atual)), 2500);
     } catch {
-      window.prompt("Copie a linha digitável:", codigo);
+      void perguntar("Copie a linha digitável:", { valorInicial: codigo, confirmar: "Fechar" });
     }
   }
 

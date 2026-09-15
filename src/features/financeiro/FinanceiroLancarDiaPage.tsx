@@ -58,6 +58,7 @@ import {
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { ConferenciaFechamentoCard } from "./ConferenciaFechamentoCard";
 import { useFinanceiro } from "./useFinanceiro";
+import { confirmar } from "@/components/ui/avisos";
 
 type DraftItem = { itemType: FinSaleItemType; amount: string; description: string };
 type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine
@@ -847,8 +848,8 @@ export function FinanceiroLancarDiaPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={`Excluir lançamento de ${sale.patientName}`}
-                          onClick={() => {
-                            if (!window.confirm(`Excluir a comanda de ${sale.patientName} (${moneyFin(saleTotal(sale))})? Os totais e a P12 se ajustam sozinhos.`)) return;
+                          onClick={async () => {
+                            if (!(await confirmar(`Excluir a comanda de ${sale.patientName} (${moneyFin(saleTotal(sale))})?`, { corpo: "Os totais e a P12 se ajustam sozinhos.", destrutivo: true, confirmar: "Excluir" }))) return;
                             if (editingSaleId === sale.id) resetForm();
                             financeiro.removeSale(sale.id);
                           }}

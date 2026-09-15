@@ -58,6 +58,7 @@ import {
   type EstoqueSetor,
 } from "./estoqueData";
 import { useEstoque } from "./useEstoque";
+import { perguntar } from "@/components/ui/avisos";
 
 const diaBR = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 const novoId = (prefixo: string) => `${prefixo}-${crypto.randomUUID()}`;
@@ -490,8 +491,8 @@ export function EstoquePage() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        const resposta = window.prompt(`Entrada de quantas ${bipItem.unidade} de ${bipItem.nome}?`, "1");
+                      onClick={async () => {
+                        const resposta = await perguntar(`Entrada de quantas ${bipItem.unidade} de ${bipItem.nome}?`, { valorInicial: "1", confirmar: "Dar entrada" });
                         const quantidade = Number((resposta ?? "").replace(",", "."));
                         if (quantidade > 0) void bipEntrada(bipItem, quantidade);
                       }}

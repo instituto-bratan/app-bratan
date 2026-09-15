@@ -59,6 +59,7 @@ import {
   type NpsMes,
   type NpsResultado,
 } from "./npsData";
+import { confirmar } from "@/components/ui/avisos";
 
 const contatosKey = "app-bratan-concierge-nps-contatos";
 const mesKey = (monthKey: string) => `app-bratan-concierge-nps-mes-${monthKey}`;
@@ -547,8 +548,8 @@ export function ConciergeNpsPage() {
                       <button
                         type="button"
                         className="ml-auto text-xs text-rose-600 hover:underline"
-                        onClick={() => {
-                          if (!window.confirm(`Apagar o contato com ${contato.pacienteNome}?`)) return;
+                        onClick={async () => {
+                          if (!(await confirmar(`Apagar o contato com ${contato.pacienteNome}?`, { destrutivo: true, confirmar: "Apagar" }))) return;
                           if (useRemote) void apagarContato.mutateAsync(contato.id);
                           else {
                             setLocalContatos((prev) => {

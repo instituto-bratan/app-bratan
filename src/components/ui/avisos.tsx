@@ -85,6 +85,14 @@ export function perguntar(titulo: string, opcoes: { corpo?: ReactNode; rotulo?: 
 }
 
 /** Aviso simples que só precisa ser lido (o antigo alert), sem bloquear. */
+// Módulos sem React (ex.: planilhaImpressao.ts) avisam por evento do window.
+if (typeof window !== "undefined") {
+  window.addEventListener("app-bratan:aviso", (event) => {
+    const detail = (event as CustomEvent<{ texto?: string; tom?: Tom }>).detail ?? {};
+    if (detail.texto) toast(detail.texto, { tom: detail.tom ?? "info", duracaoMs: 7000 });
+  });
+}
+
 export function avisar(texto: string, tom: Tom = "info") {
   toast(texto, { tom, duracaoMs: 6000 });
 }

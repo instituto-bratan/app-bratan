@@ -21,7 +21,10 @@ import {
   programPhaseLabels,
   type CrmAdhesionChannel,
   type CrmProgramPhase,
+  criarTarefaDeResgatePorRisco,
 } from "@/features/crm/crmData";
+import { useAuth } from "@/hooks/useAuth";
+import { ListaEsperaCard } from "./ListaEsperaCard";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
   buildPerformanceReportTable,
@@ -93,6 +96,7 @@ function MilestoneChip({ milestone, onToggle }: { milestone: ProgramMilestone; o
 
 export function ProgramaAcompanhamentoPage() {
   const { state, persist, syncMode, isSyncing, syncError } = useCrmState();
+  const { pessoa } = useAuth();
   const hoje = todayISO();
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState<CrmProgramPhase | "TODAS">("TODAS");
@@ -118,6 +122,7 @@ export function ProgramaAcompanhamentoPage() {
   }, [board, search, phaseFilter, canalFiltro]);
 
   const porCanal = useMemo(() => contagemPorCanal(board), [board]);
+  const vermelhos = board.filter((card) => card.risco.nivel === "VERMELHO").length;
   const pendencias = useMemo(() => conferenciaAcompanhamento(state, hoje), [state, hoje]);
   const pendenciasAltas = pendencias.filter((item) => item.gravidade === "ALTA").length;
 
@@ -208,6 +213,10 @@ export function ProgramaAcompanhamentoPage() {
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-2 text-center">
                 <p className="text-[11px] font-semibold uppercase text-emerald-700">Em dia</p>
                 <p className="text-xl font-bold text-emerald-700">{totals.emDia}</p>
+              </div>
+              <div className={cn("rounded-xl border px-4 py-2 text-center", vermelhos ? "border-red-200 bg-red-50/70" : "border-brand-oliva/20 bg-white/60")} title="Semáforo de adesão: não respondeu, sem retorno, muito tempo sem vir">
+                <p className={cn("text-[11px] font-semibold uppercase", vermelhos ? "text-red-700" : "text-brand-oliva")}>Semáforo vermelho</p>
+                <p className={cn("text-xl font-bold", vermelhos ? "text-red-700" : "text-brand-musgo")}>{vermelhos}</p>
               </div>
               <div className={cn("rounded-xl border px-4 py-2 text-center", totals.atrasados ? "border-red-200 bg-red-50/70" : "border-brand-oliva/20 bg-white/60")}>
                 <p className={cn("text-[11px] font-semibold uppercase", totals.atrasados ? "text-red-700" : "text-brand-oliva")}>Com atraso</p>
@@ -365,7 +374,7 @@ export function ProgramaAcompanhamentoPage() {
         {filtered.length ? (
           <div className="grid gap-4">
             {filtered.map((card) => (
-              <PatientCard key={card.dealId} card={card} onToggle={(key) => toggle(card.dealId, key)} />
+              <PatientCard key={card.dealId} card={card} onToggle={(key) => toggle(card.dealId, key)} onResgate={(c) => { void persist((current) => criarTarefaDeResgatePorRisco(current, c.dealId, c.risco.motivos, pessoa?.id ?? "coordenacao", hoje)); setCopyFeedback(`Tarefa de resgate criada para ${c.patientName} (enfermagem liga hoje).`); }} />
             ))}
           </div>
         ) : (
@@ -378,6 +387,7 @@ export function ProgramaAcompanhamentoPage() {
           </Card>
         )}
 
+        <ListaEsperaCard pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
         {/* Não fecharam na semana — a lista que vai para a Assistente de Performance */}
         <Card>
           <CardHeader className="pb-3">
@@ -565,7 +575,9 @@ function EnrollPanel({
   );
 }
 
-function PatientCard({ card, onToggle }: { card: ProgramPatientCard; onToggle: (key: string) => void }) {
+const tomRisco = { VERDE: "bg-emerald-100 text-emerald-800", AMARELO: "bg-amber-100 text-amber-900", VERMELHO: "bg-red-100 text-red-800" } as const;
+
+function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; onToggle: (key: string) => void; onResgate?: (card: ProgramPatientCard) => void }) {
   const [open, setOpen] = useState(false);
   const next = card.nextMilestone;
 
@@ -579,7 +591,20 @@ function PatientCard({ card, onToggle }: { card: ProgramPatientCard; onToggle: (
               {card.channel ? <Badge variant="gold">{channelShort[card.channel]}</Badge> : null}
               <Badge variant="muted">{card.phaseLabel}</Badge>
               {card.overdueCount > 0 ? <Badge className="bg-red-100 text-red-800">{card.overdueCount} atrasado(s)</Badge> : null}
+              <Badge className={tomRisco[card.risco.nivel]} title={card.risco.frase}>
+                semáforo {card.risco.nivel.toLowerCase()}
+              </Badge>
             </CardTitle>
+            {card.risco.nivel !== "VERDE" ? (
+              <p className={cn("mt-1 text-xs", card.risco.nivel === "VERMELHO" ? "text-red-800" : "text-amber-900")}>
+                {card.risco.frase}
+                {card.risco.nivel === "VERMELHO" && onResgate ? (
+                  <button type="button" className="ml-2 font-semibold underline underline-offset-2" onClick={() => onResgate(card)}>
+                    criar tarefa de resgate (ligar hoje)
+                  </button>
+                ) : null}
+              </p>
+            ) : null}
             <p className="mt-1 text-xs text-muted-foreground">Mês {card.monthOfProgram}/6 · adesão {formatBR(card.startedAt)}</p>
           </div>
           <div className="grid grid-cols-3 gap-2">

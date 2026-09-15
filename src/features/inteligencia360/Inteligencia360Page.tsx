@@ -116,6 +116,7 @@ import {
   generateActionRecommendations,
   generateWeeklyKickoffBrief,
 } from "./intelligenceEngine";
+import { confirmar } from "@/components/ui/avisos";
 
 type ModuleSlug =
   | "ticket-medio"
@@ -1202,8 +1203,8 @@ function DataTable({
                         size="sm"
                         variant="ghost"
                         className="h-8 gap-1 px-2 text-xs text-destructive hover:bg-destructive/10"
-                        onClick={() => {
-                          if (window.confirm(`Remover esta ${deleteLabel}? Esta ação não pode ser desfeita.`)) {
+                        onClick={async () => {
+                          if (await confirmar(`Remover esta ${deleteLabel}?`, { corpo: "Esta ação não pode ser desfeita.", destrutivo: true, confirmar: "Remover" })) {
                             onDeleteRow?.(rowIndex);
                           }
                         }}

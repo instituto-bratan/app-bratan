@@ -40,6 +40,7 @@ import {
   type MarketingWeek,
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
+import { confirmar } from "@/components/ui/avisos";
 
 const marketingStorageKey = "app-bratan-marketing-briefings";
 
@@ -367,9 +368,9 @@ export function MarketingPage() {
     });
   }
 
-  function removePiece(piece: MarketingPiece) {
+  async function removePiece(piece: MarketingPiece) {
     if (!selected || !plan) return;
-    if (!window.confirm(`Excluir a peça "${piece.title}" do plano?`)) return;
+    if (!(await confirmar(`Excluir a peça "${piece.title}" do plano?`, { destrutivo: true, confirmar: "Excluir" }))) return;
     void savePlan(selected, { ...plan, pieces: (plan.pieces ?? []).filter((item) => item.id !== piece.id) });
   }
 
@@ -392,7 +393,7 @@ export function MarketingPage() {
   }
 
   async function removeBriefing(briefing: MarketingBriefing) {
-    if (!window.confirm(`Excluir o briefing de ${monthLabelFromRef(briefing.monthRef)} e o plano junto?`)) return;
+    if (!(await confirmar(`Excluir o briefing de ${monthLabelFromRef(briefing.monthRef)}?`, { corpo: "O plano do mês vai junto.", destrutivo: true, confirmar: "Excluir" }))) return;
     if (useRemote) {
       try {
         await deleteRemoteMarketingBriefing(briefing.id, briefing.sourcePath);

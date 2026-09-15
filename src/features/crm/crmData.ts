@@ -1012,6 +1012,19 @@ const cadenceSteps: CrmCadenceStep[] = [
   ["step-exams-7", "cad-return-cycle", 2, "1 semana antes — confirma a coleta", -7, "tpl-exames-1-semana", "CONCIERGE"],
   ["step-confirm-3", "cad-return-cycle", 3, "3 dias antes — pede o resultado", -3, "tpl-confirmacao-3", "CONCIERGE"],
   ["step-reminder-1", "cad-return-cycle", 4, "1 dia antes — confirma a consulta", -1, "tpl-lembrete-1", "CONCIERGE"],
+  // ONBOARDING 0–30 E RENOVAÇÃO D150–180 (14/09/2026, proposta 3.3 do estudo).
+  // Entram na MESMA régua da enfermagem (cad-nursing-14) como passos sequenciais,
+  // porque a regra de ouro é 1 cadência ativa por paciente: D3 efeitos da
+  // titulação · D7 treino de aplicação · D30 curva de peso esperada (o D14 é o
+  // próprio toque quinzenal) · D150 Relatório de Resultados · D165 oferta de
+  // Ciclo 2 ou Manutenção · D180 decisão. Cada passo só nasce quando o anterior
+  // é resolvido, nunca atrasado.
+  ["step-onb-d3", "cad-nursing-14", 1, "Onboarding D3 — como estão os primeiros efeitos?", 3, "tpl-onb-d3", "ENFERMAGEM"],
+  ["step-onb-d7", "cad-nursing-14", 2, "Onboarding D7 — treino de aplicação e dúvidas", 7, "tpl-onb-d7", "ENFERMAGEM"],
+  ["step-onb-d30", "cad-nursing-14", 3, "Onboarding D30 — curva de peso do 1º mês", 30, "tpl-onb-d30", "ENFERMAGEM"],
+  ["step-renov-d150", "cad-nursing-14", 4, "Renovação D150 — Relatório de Resultados", 150, "tpl-renov-d150", "ENFERMAGEM"],
+  ["step-renov-d165", "cad-nursing-14", 5, "Renovação D165 — oferta Ciclo 2 ou Manutenção", 165, "tpl-renov-d165", "CONCIERGE"],
+  ["step-renov-d180", "cad-nursing-14", 6, "Renovação D180 — decisão: renovar, manter ou alta", 180, "tpl-renov-d180", "CONCIERGE"],
   // Repescagem: isca hoje, ligação amanhã, 2ª ligação dois dias depois.
   ["step-repesc-isca", "cad-repescagem", 1, "Isca no WhatsApp — melhor horário para ligar?", 0, "tpl-repescagem-isca", "CONCIERGE"],
   ["step-repesc-lig1", "cad-repescagem", 2, "Ligação de repescagem", 1, "tpl-repescagem-ligacao", "CONCIERGE"],
@@ -1021,7 +1034,7 @@ const cadenceSteps: CrmCadenceStep[] = [
   cadenceId: cadenceId as string,
   stepOrder: stepOrder as number,
   name: name as string,
-  offsetType: (cadenceId === "cad-return-cycle" ? "BEFORE_EVENT_DATE" : cadenceId === "cad-nursing-14" ? "RECURRING_EVERY_X_DAYS" : "DAYS_AFTER_TRIGGER") as CrmOffsetType,
+  offsetType: (cadenceId === "cad-return-cycle" ? "BEFORE_EVENT_DATE" : id === "step-nurse-14" ? "RECURRING_EVERY_X_DAYS" : "DAYS_AFTER_TRIGGER") as CrmOffsetType,
   offsetValue: offsetValue as number,
   // POP v3 (2.5): Enfermagem tem bloco fixo 10h00–10h30 (o horário da tarde foi
   // extinto) — janela "ANY" materializa a tarefa às 10h.
@@ -1041,6 +1054,12 @@ const messageTemplates: CrmMessageTemplate[] = [
   ["tpl-lead-d5", "Lead D5", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, passando com outro olhar: o que mais tem pesado hoje, energia, composição corporal, sono ou rotina? Posso te orientar o melhor próximo passo."],
   ["tpl-lead-d7", "Lead D7", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, se fizer sentido, posso te enviar um conteúdo curto do Dr. Daniel explicando como avaliamos longevidade e performance aqui no Instituto."],
   ["tpl-lead-d60", "Lead D60", "SDR", "SDR_LEADS", "COLD_LEAD", "{{primeiro_nome}}, retomando com cuidado. Ainda faz sentido conversarmos sobre seu plano de saúde e performance neste momento?"],
+  ["tpl-onb-d3", "Onboarding D3", "Enfermagem", "ENFERMAGEM", "NURSING_14_DAYS", "Oi, {{primeiro_nome}}! Aqui é a enfermagem do Instituto Bratan. Já se passaram 3 dias da sua primeira dose: como você está se sentindo? Náusea leve, sono diferente ou menos fome são esperados nesta fase de titulação. Me conta como foi para eu acompanhar de perto."],
+  ["tpl-onb-d7", "Onboarding D7", "Enfermagem", "ENFERMAGEM", "NURSING_14_DAYS", "{{primeiro_nome}}, uma semana de tratamento! Quero conferir com você o passo a passo da aplicação (local, horário, conservação) e tirar qualquer dúvida. Se preferir, gravo um vídeo curto mostrando de novo. Como está sendo?"],
+  ["tpl-onb-d30", "Onboarding D30", "Enfermagem", "ENFERMAGEM", "NURSING_14_DAYS", "{{primeiro_nome}}, fechamos o primeiro mês! Me manda a pesagem desta semana? No 1º mês a curva esperada é suave — o corpo está se adaptando; o resultado forte vem nos meses 2 e 3. Já conferi sua próxima bioimpedância na agenda."],
+  ["tpl-renov-d150", "Renovação D150 — Relatório de Resultados", "Enfermagem", "ENFERMAGEM", "NURSING_14_DAYS", "{{primeiro_nome}}, estamos no 5º mês do seu plano e preparei o seu Relatório de Resultados (peso, composição corporal, exames e metas). Posso te enviar e marcar 15 minutos para revisarmos juntos?"],
+  ["tpl-renov-d165", "Renovação D165 — Ciclo 2 ou Manutenção", "Aline", "CONCIERGE", "NURSING_14_DAYS", "{{primeiro_nome}}, aqui é a Aline. Depois do Relatório de Resultados, o Dr. Daniel indicou dois caminhos para a sua continuidade: o Ciclo 2 (mesma intensidade) ou a Manutenção (mais leve). Quer que eu te explique as diferenças e os valores?"],
+  ["tpl-renov-d180", "Renovação D180 — decisão", "Aline", "CONCIERGE", "NURSING_14_DAYS", "{{primeiro_nome}}, seu plano de 6 meses termina nesta semana. Para não haver intervalo no cuidado, preciso da sua decisão até sexta: renovar, manutenção ou alta com orientações. O que fica melhor para você?"],
   ["tpl-resgate-60", "Resgate 60 dias", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Sentimos sua falta no ciclo de retorno! Posso te ajudar a reagendar num horário que encaixe na sua rotina?"],
   ["tpl-resgate-6m", "Resgate 6 meses", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. O Dr. Daniel gravou um conteúdo novo que lembrei de você. Como está sua saúde nesses últimos meses? Adoraria te ver por aqui de novo."],
   ["tpl-resgate-1a", "Resgate 1 ano", "Aline", "CONCIERGE", "RESCUE_60_DAYS", "{{primeiro_nome}}, aqui é a Aline, do Instituto Bratan. Faz quase um ano que não nos falamos e você não saiu do meu radar. Como está sua saúde hoje? Adoraria retomar seu acompanhamento com a gente."],
@@ -4734,4 +4753,43 @@ export function marcarReceitaSncr(state: CrmState, dealId: string, dataISO: stri
 /** Planos fechados (com canal de adesão) ainda sem receita no SNCR. */
 export function planosSemReceitaSncr(state: CrmState) {
   return state.deals.filter((deal) => deal.adhesionChannel && !deal.receitaSncrEm && deal.status !== "LOST" && !deal.programOutcome);
+}
+
+
+// ---------------------------------------------------------------------------
+// SEMÁFORO DE ADESÃO (14/09/2026, propostas 3.3 e 5.4): quando o motor
+// riscoAdesao.ts pinta o paciente de vermelho, a coordenação/enfermagem cria a
+// tarefa de resgate com um toque. Id determinístico por dia → não duplica.
+export function criarTarefaDeResgatePorRisco(state: CrmState, dealId: string, motivos: string[], actorId: string, hoje = todayISO()): CrmState {
+  const deal = state.deals.find((item) => item.id === dealId);
+  if (!deal) return state;
+  const id = `task-risco-${dealId}-${hoje}`;
+  if (state.tasks.some((task) => task.id === id)) return state;
+  const aberta = state.tasks.some((task) => task.contactId === deal.contactId && task.id.startsWith("task-risco-") && !["DONE", "CANCELED", "SKIPPED"].includes(task.status));
+  if (aberta) return state;
+  const task = createTask({
+    id,
+    contactId: deal.contactId,
+    dealId,
+    cadenceId: "",
+    cadenceStepId: "",
+    title: "Resgate por risco de abandono — ligar hoje",
+    description: `Semáforo vermelho: ${motivos.join("; ")}. Ligue (não só mensagem), entenda o que travou e registre o resultado.`,
+    taskType: "CALL",
+    assignedToUserId: "enfermagem",
+    assignedToRole: "ENFERMAGEM",
+    dueAt: atLocalTime(hoje, 11),
+    priority: "HIGH",
+    visibilityScope: "ROLE",
+    generatedBy: "INTELLIGENCE_ENGINE",
+    createdBy: actorId,
+  });
+  return {
+    ...state,
+    tasks: [task, ...state.tasks],
+    timelineEvents: [
+      createTimelineEvent({ contactId: deal.contactId, eventType: "NEXT_TASK_CREATED", eventTitle: "Resgate por risco de abandono criado", eventDescription: motivos.join("; "), sourceModule: "JORNADA", sourceId: dealId, createdBy: actorId }),
+      ...state.timelineEvents,
+    ],
+  };
 }

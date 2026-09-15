@@ -56,6 +56,7 @@ import {
   type OrdenacaoComprovante,
   type PeriodoFiltro,
 } from "./comprovantesData";
+import { confirmar, toast } from "@/components/ui/avisos";
 
 function createId() {
   return `comprovante-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -296,10 +297,8 @@ export function ComprovantesPage() {
     void attach(event.dataTransfer.files);
   }
 
-  function createEstorno(record: ComprovanteRecord) {
-    const confirmed = window.confirm(
-      `Criar um registro de estorno para "${record.arquivoNome}"? O comprovante original será mantido sem alterações.`,
-    );
+  async function createEstorno(record: ComprovanteRecord) {
+    const confirmed = await confirmar(`Criar um registro de estorno para "${record.arquivoNome}"?`, { corpo: "O comprovante original é mantido sem alterações.", confirmar: "Criar estorno" });
 
     if (!confirmed) return;
 
@@ -346,8 +345,8 @@ export function ComprovantesPage() {
     return Boolean(record.anexadoPorId) && record.anexadoPorId === pessoa.id;
   }
 
-  function softDelete(record: ComprovanteRecord) {
-    const confirmed = window.confirm(`Ocultar "${record.arquivoNome}" da lista? O registro não será apagado fisicamente.`);
+  async function softDelete(record: ComprovanteRecord) {
+    const confirmed = await confirmar(`Ocultar "${record.arquivoNome}" da lista?`, { corpo: "O registro não é apagado; só sai da lista.", confirmar: "Ocultar" });
 
     if (!confirmed) return;
 
@@ -361,14 +360,12 @@ export function ComprovantesPage() {
     persist(records.map((item) => (item.id === record.id ? { ...item, deletedAt: new Date().toISOString() } : item)));
   }
 
-  function hardDelete(record: ComprovanteRecord) {
+  async function hardDelete(record: ComprovanteRecord) {
     const sharepointNote =
       record.sharePoint.status === "pendente"
         ? " Ele ainda não subiu para o SharePoint e será removido da fila."
         : " A cópia que já subiu para o SharePoint permanece lá.";
-    const confirmed = window.confirm(
-      `EXCLUIR DE VEZ "${record.arquivoNome}"? O arquivo e o registro serão apagados do app — sem volta.${sharepointNote}`,
-    );
+    const confirmed = await confirmar(`Excluir de vez "${record.arquivoNome}"?`, { corpo: `O arquivo e o registro são apagados do app — sem volta.${sharepointNote}`, destrutivo: true, confirmar: "Excluir de vez" });
     if (!confirmed) return;
 
     if (useRemote) {
@@ -740,7 +737,7 @@ export function ComprovantesPage() {
                             onClick={() => {
                               void getRemoteComprovanteUrl(record.storagePath as string)
                                 .then((url) => window.open(url, "_blank", "noopener"))
-                                .catch(() => window.alert("Não consegui abrir o arquivo agora. Tente de novo."));
+                                .catch(() => toast("Não consegui abrir o arquivo agora. Tente de novo.", { tom: "erro" }));
                             }}
                           >
                             Ver comprovante

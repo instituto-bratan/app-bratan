@@ -51,6 +51,7 @@ const AuditoriaPage = lazyRoute("auditoria");
 const GovernancaIaPage = lazyRoute("governancaIa");
 const ConfiguracoesNegocioPage = lazyRoute("configuracoesNegocio");
 const IntegracoesPage = lazyRoute("integracoes");
+const ComplianceCofrePage = lazyRoute("compliance");
 const MarketingPage = lazyRoute("marketing");
 const Inteligencia360DashboardPage = lazyRoute("inteligencia360");
 const Inteligencia360ModulePage = lazyRoute("inteligencia360Module");
@@ -131,6 +132,7 @@ export function App() {
               <Route path="/administracao/ia" element={<GovernancaIaPage />} />
               <Route path="/administracao/configuracoes" element={<ConfiguracoesNegocioPage />} />
               <Route path="/administracao/integracoes" element={<IntegracoesPage />} />
+              <Route path="/administracao/compliance" element={<ComplianceCofrePage />} />
               <Route path="/marketing" element={<MarketingPage />} />
               <Route
                 path="/inteligencia-360"

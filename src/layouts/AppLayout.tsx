@@ -216,6 +216,7 @@ const flowGroups: FlowGroup[] = [
       { label: "O que a IA fez", shortLabel: "IA", href: "/administracao/ia", icon: BrainCircuit, allowed: (cargo) => canAdministracao(cargo) || canFinanceiroFull(cargo) },
       { label: "Configurações do negócio", shortLabel: "Config", href: "/administracao/configuracoes", icon: SlidersHorizontal, allowed: canManageAcessos },
       { label: "Integrações", href: "/administracao/integracoes", icon: Plug, allowed: (cargo) => isCoordenacao(cargo) },
+      { label: "Cofre de compliance", shortLabel: "Compliance", href: "/administracao/compliance", icon: ShieldCheck, allowed: (cargo) => isCoordenacao(cargo) },
     ],
   },
 ];
@@ -461,6 +462,7 @@ function FlowLauncher({
       { palavras: ["configuracao", "limite", "regra", "vigencia"], rotulo: "Configurações do negócio", href: "/administracao/configuracoes" },
       { palavras: ["ia", "inteligencia artificial", "governanca"], rotulo: "Governança de IA", href: "/administracao/ia" },
       { palavras: ["integracao", "whatsapp oficial", "nota fiscal", "nfse", "push", "feegow", "supersign"], rotulo: "Integrações", href: "/administracao/integracoes" },
+      { palavras: ["lgpd", "compliance", "dpo", "consentimento", "incidente", "ripd"], rotulo: "Cofre de compliance", href: "/administracao/compliance" },
       { palavras: ["fila", "hoje", "home", "inicio"], rotulo: "Fila do dia (Home)", href: "/" },
     ];
     for (const comando of comandos) {

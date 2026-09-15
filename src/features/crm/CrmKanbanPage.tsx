@@ -116,9 +116,10 @@ import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData"
 import { buildResumoSla, formatMinutos, slaDoNegocio } from "./slaLead";
 import { PRAZO_SNCR, marcarReceitaSncr } from "./crmData";
 import { integracaoLigada } from "@/lib/integracoes";
+import { riscoDoPaciente } from "./riscoAdesao";
 import { invocarIntegracao } from "@/lib/remoteData";
 import { configAtual } from "@/lib/configNegocio";
-import { toast } from "@/components/ui/avisos";
+import { confirmar, toast } from "@/components/ui/avisos";
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
 import { usePanScroll } from "./usePanScroll";
 import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
@@ -381,6 +382,8 @@ function ProgramCard({
   const dias = diasNaFase(deal, hojeISO);
   const vencida = faseVencida(deal, hojeISO);
   const prazo = PRAZO_DA_FASE_DIAS[phase];
+  // SEMÁFORO DE ADESÃO (14/09/2026): só a partir do acompanhamento; visitas ficam para a tela do plano.
+  const risco = phase === "CADENCIA_PROGRAMA" || phase === "ENCERRAMENTO" ? riscoDoPaciente(state, deal, undefined, hojeISO) : null;
 
   return (
     <article
@@ -402,6 +405,11 @@ function ProgramCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           {deal.adhesionChannel ? <Badge variant="gold">{channelShort[deal.adhesionChannel]}</Badge> : null}
+          {risco && risco.nivel !== "VERDE" ? (
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", risco.nivel === "VERMELHO" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900")} title={risco.frase}>
+              semáforo {risco.nivel.toLowerCase()}
+            </span>
+          ) : null}
           {prazo !== null ? (
             <span
               className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", vencida ? "bg-red-100 text-red-700" : "bg-brand-papel text-brand-oliva")}
@@ -1539,9 +1547,7 @@ export function CrmKanbanPage() {
     if (!selectedDeal) return;
     const contact = contactsById.get(selectedDeal.contactId);
     const name = contactDisplayName(contact);
-    const ok = window.confirm(
-      `Excluir ${name} de vez?\n\nIsso apaga o lead, as negociações, as tarefas, as cadências e o histórico dele — em todos os aparelhos. Não tem como desfazer.`,
-    );
+    const ok = await confirmar(`Excluir ${name} de vez?`, { corpo: "Isso apaga o lead, as negociações, as tarefas, as cadências e o histórico dele — em todos os aparelhos. Não tem como desfazer.", destrutivo: true, confirmar: "Excluir de vez" });
     if (!ok) return;
     setSelectedDealId("");
     const success = await deleteLead(selectedDeal.contactId);
@@ -2295,8 +2301,8 @@ export function CrmKanbanPage() {
                     {vencidos.length && canOverridePhase && prazoFase !== null ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!window.confirm(`Avançar ${vencidos.length} paciente(s) parados em "${programPhaseLabels[phase]}" há mais de ${prazoFase} dia(s) para "Em acompanhamento"? O gate desta fase fica registrado como pulado pela coordenação.`)) return;
+                        onClick={async () => {
+                          if (!(await confirmar("Avançar os parados?", { corpo: `Avançar ${vencidos.length} paciente(s) parados em "${programPhaseLabels[phase]}" há mais de ${prazoFase} dia(s) para "Em acompanhamento"? O gate desta fase fica registrado como pulado pela coordenação.`, confirmar: "Avançar" }))) return;
                           persist((current) => vencidos.reduce((acc, deal) => setProgramPhase(acc, deal.id, "CADENCIA_PROGRAMA", pessoa?.id ?? "coordenacao"), current));
                           setFeedback(`${vencidos.length} paciente(s) de "${programPhaseLabels[phase]}" avançados para Em acompanhamento.`);
                         }}

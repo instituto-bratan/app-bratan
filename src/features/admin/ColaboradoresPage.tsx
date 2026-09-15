@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { Cargo, Colaborador } from "@/types/database";
 import { colaboradoresStorageKey } from "./colaboradoresData";
+import { confirmar } from "@/components/ui/avisos";
 
 type ColaboradorForm = {
   id: string | null;
@@ -170,7 +171,7 @@ export function ColaboradoresPage() {
     setInitialPassword(createSecurePassword());
   }
 
-  function fillGeneratedAccessPassword() {
+  async function fillGeneratedAccessPassword() {
     setAccessPassword(createSecurePassword());
   }
 
@@ -310,7 +311,7 @@ export function ColaboradoresPage() {
       return;
     }
 
-    const confirmed = window.confirm(`Desligar ${colaborador.nome}? O histórico será preservado e o acesso ao app será bloqueado.`);
+    const confirmed = await confirmar(`Desligar ${colaborador.nome}?`, { corpo: "O histórico é preservado e o acesso ao app fica bloqueado.", destrutivo: true, confirmar: "Desligar" });
     if (!confirmed) return;
 
     if (useRemote) {

@@ -18,6 +18,7 @@ import {
   type CrmState,
 } from "@/features/crm/crmData";
 import { personNameTokens, personNamesMatch } from "@/features/crm/nameMatch";
+import { riscoDeAbandono, type Risco } from "@/features/crm/riscoAdesao";
 
 export type ProgramMilestoneType = "CHECK" | "BIO" | "MEDICO";
 
@@ -56,6 +57,8 @@ export type ProgramPatientCard = {
   medicoDone: number;
   nextMilestone: ProgramMilestone | null;
   overdueCount: number;
+  /** SEMÁFORO DE ADESÃO (14/09/2026, proposta 3.3): derivado de toques, visitas e retorno. */
+  risco: Risco;
 };
 
 export const milestoneTypeLabels: Record<ProgramMilestoneType, string> = {
@@ -131,7 +134,7 @@ export function buildMilestones(deal: CrmDeal, todayISO: string): ProgramMilesto
 }
 
 // Todos os pacientes em acompanhamento (deals na jornada PROGRAMA, não encerrados).
-export function buildProgramaBoard(state: CrmState, todayISO: string): ProgramPatientCard[] {
+export function buildProgramaBoard(state: CrmState, todayISO: string, visitasPorContato?: Map<string, string[]>): ProgramPatientCard[] {
   const contactById = new Map(state.contacts.map((contact) => [contact.id, contact]));
   return state.deals
     // Só entra quem REALMENTE aderiu: fechou o plano (status ganho). Antes bastava
@@ -168,6 +171,14 @@ export function buildProgramaBoard(state: CrmState, todayISO: string): ProgramPa
         medicoDone,
         nextMilestone: pending[0] ?? null,
         overdueCount: milestones.filter((m) => m.overdue).length,
+        risco: riscoDeAbandono({
+          deal,
+          tasks: state.tasks,
+          visitas: visitasPorContato ? visitasPorContato.get(deal.contactId) ?? [] : undefined,
+          // Retorno "agendado" = próximo marco do médico ainda no futuro (a agenda oficial fica no Feegow/iClinic).
+          proximoRetorno: pending.find((m) => m.type === "MEDICO" && !m.overdue)?.expectedDate ?? null,
+          hoje: todayISO,
+        }),
       };
     })
     .sort((a, b) => b.overdueCount - a.overdueCount || a.patientName.localeCompare(b.patientName));

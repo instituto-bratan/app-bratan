@@ -49,9 +49,25 @@ Deno.serve(async (request) => {
         statusAtualizados += count ?? 0;
       }
       for (const msg of (value.messages as { id: string; from: string; type: string; text?: { body: string }; timestamp?: string }[] | undefined) ?? []) {
-        const corpo = msg.type === "text" ? msg.text?.body ?? "" : `[${msg.type}]`;
+        const botao = (msg as { button?: { text?: string; payload?: string }; interactive?: { button_reply?: { title?: string; id?: string } } });
+        const corpo = msg.type === "text" ? msg.text?.body ?? "" : msg.type === "button" ? botao.button?.text ?? botao.button?.payload ?? "[button]" : msg.type === "interactive" ? botao.interactive?.button_reply?.title ?? "[interactive]" : `[${msg.type}]`;
         const { error } = await client.from("mensagem_whatsapp").insert({ direcao: "ENTRADA", telefone: msg.from, corpo: corpo.slice(0, 4000), status: "RECEBIDA", provider_id: msg.id });
         if (!error) recebidas += 1;
+        // CONFIRMAÇÃO EM DOIS TOQUES (15/09/2026): "1"/"confirmo"/"sim" confirma; "2"/"remarcar" pede remarcação.
+        const t = corpo.trim().toLowerCase();
+        const confirma = /^(1|sim|confirmo|confirmar|confirmado|ok)\b/.test(t);
+        const remarca = /^(2|remarcar|reagendar|não posso|nao posso|cancelar)\b/.test(t);
+        if (confirma || remarca) {
+          const { data: ultima } = await client.from("mensagem_whatsapp").select("task_ref").eq("telefone", msg.from).eq("direcao", "SAIDA").like("task_ref", "agenda:%").order("criado_em", { ascending: false }).limit(1).maybeSingle();
+          const agendaId = ultima?.task_ref?.replace("agenda:", "");
+          if (agendaId) {
+            await client.from("agenda_espelho").update({ confirmacao_status: confirma ? "CONFIRMADA" : "REMARCAR", respondido_em: new Date().toISOString() }).eq("id", agendaId);
+            if (remarca) {
+              const { data: ag } = await client.from("agenda_espelho").select("paciente, inicio, profissional").eq("id", agendaId).maybeSingle();
+              await client.from("achado_diario").upsert({ chave: `remarcar:${agendaId}`, tipo: "REMARCAR", dia: new Date().toISOString().slice(0, 10), titulo: `${ag?.paciente ?? "Paciente"} pediu para remarcar`, detalhe: `Consulta de ${ag?.inicio ? new Date(ag.inicio).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "?"} com ${ag?.profissional ?? "—"} — horário libera para a lista de espera`, href: "/acompanhamento", urgencia: 1, cargos: ["recepcionista", "secretaria_executiva", "gestor"], quantidade: 1, atualizado_em: new Date().toISOString() }, { onConflict: "chave" });
+            }
+          }
+        }
       }
     }
   }

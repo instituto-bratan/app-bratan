@@ -82,6 +82,7 @@ import { filaDeContatos } from "@/features/concierge/npsData";
 import { buildFilaDoDia, fechamentoPendente, limparSilenciados, type TarefaCrmDaFila } from "./filaDoDia";
 import { FilaDoDiaHome } from "./FilaDoDiaHome";
 import { AvisosNoCelularCard } from "./AvisosNoCelularCard";
+import { buildProgramaBoard } from "@/features/programa/programaData";
 
 // ---- Atalhos (a segunda tela) ------------------------------------------------
 const modules = [
@@ -254,6 +255,20 @@ export function HomePage() {
       .filter((a) => (a.cargos.length ? a.cargos.includes(cargoAtual) : isCoordenacao(cargo)))
       .map((a) => ({ id: a.id, chave: a.chave, tipo: a.tipo, dia: a.dia, titulo: a.titulo, detalhe: a.detalhe, valor: a.valor, href: a.href, urgencia: a.urgencia, quantidade: a.quantidade }));
   }, [achadosQuery.data, cargo]);
+  // SEMÁFORO VERMELHO (14/09/2026, proposta 3.3): quem cuida do plano vê quantos pacientes pedem ligação hoje.
+  const vermelhos = useMemo(() => {
+    if (!(cargo === "enfermeira" || isCoordenacao(cargo))) return [] as { id: string; nome: string; frase: string }[];
+    return buildProgramaBoard(crm.state, hoje)
+      .filter((card) => card.risco.nivel === "VERMELHO")
+      .map((card) => ({ id: card.dealId, nome: card.patientName, frase: card.risco.frase }));
+  }, [crm.state, cargo, hoje]);
+  const achadosComRisco = useMemo(
+    () =>
+      vermelhos.length
+        ? [...achados, { id: "", chave: "risco:vermelho", tipo: "RISCO", dia: hoje, titulo: `${vermelhos.length} paciente${vermelhos.length > 1 ? "s" : ""} do plano em semáforo vermelho`, detalhe: vermelhos.slice(0, 3).map((v) => v.nome).join(", ") + (vermelhos.length > 3 ? "…" : "") + " — ligar hoje", valor: null, href: "/acompanhamento", urgencia: 1 as const, quantidade: vermelhos.length }]
+        : achados,
+    [achados, vermelhos, hoje],
+  );
   const queryClientHome = useQueryClient();
   async function resolverAchado(item: { achadoId?: string; titulo: string }) {
     if (!item.achadoId) return;
@@ -308,10 +323,10 @@ export function HomePage() {
         checklist: { pendentes: checklist.pendingCount, proxima: checklist.nextItem?.descricao ?? null },
         fechamentoPendente: fechamento,
         avisosImportantes: avisos.filter((aviso) => aviso.prioridade === "importante").map((aviso) => ({ id: aviso.id, corpo: aviso.corpo, publicadoEm: aviso.publicadoEm })),
-        achados,
+        achados: achadosComRisco,
         silenciados,
       }),
-    [hoje, filaFinanceira, comprovantesPendentes, comandasSemNota, crmTasks, pagamentos, estoqueFila, npsFila, checklist, fechamento, avisos, achados, silenciados],
+    [hoje, filaFinanceira, comprovantesPendentes, comandasSemNota, crmTasks, pagamentos, estoqueFila, npsFila, checklist, fechamento, avisos, achadosComRisco, silenciados],
   );
   const carregando = useRemote && (finExpensesQuery.isLoading || finSalesQuery.isLoading || checklistQuery.isLoading || (veCrm && crm.isSyncing && crm.state.tasks.length === 0));
 

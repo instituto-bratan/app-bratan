@@ -59,6 +59,7 @@ import {
   type PagamentoFiltro,
   type PagamentoLembrete,
 } from "./pagamentosData";
+import { confirmar } from "@/components/ui/avisos";
 
 type FormState = {
   pacienteNome: string;
@@ -507,8 +508,8 @@ export function PagamentosPage() {
     setEditTarget(null);
   }
 
-  function hide(record: PagamentoLembrete) {
-    const confirmed = window.confirm(`Ocultar o lembrete de ${record.pacienteNome}? O histórico não será apagado fisicamente no Supabase.`);
+  async function hide(record: PagamentoLembrete) {
+    const confirmed = await confirmar(`Ocultar o lembrete de ${record.pacienteNome}?`, { corpo: "O histórico não é apagado; o lembrete só sai da lista.", confirmar: "Ocultar" });
     if (!confirmed) return;
 
     if (useRemote) {

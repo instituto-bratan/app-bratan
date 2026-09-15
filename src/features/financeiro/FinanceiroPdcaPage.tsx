@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { consultaLikeTypes, moneyFin, type FinSale } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
+import { perguntar } from "@/components/ui/avisos";
 
 const pdcaMarksStorageKey = "app-bratan-fin-pdca-marks";
 
@@ -91,8 +92,9 @@ export function FinanceiroPdcaPage() {
     for (const mark of pendingRef.current.values()) void syncMarkRemote(mark);
   }
 
-  function markNaoAderiu(sale: FinSale) {
-    const objection = window.prompt(`Qual foi a objeção de ${sale.patientName}? (preço, tempo, medo, vai pensar...)`) ?? "";
+  async function markNaoAderiu(sale: FinSale) {
+    const objection = await perguntar(`Qual foi a objeção de ${sale.patientName}?`, { placeholder: "preço, tempo, medo, vai pensar…", confirmar: "Registrar" });
+    if (objection === null) return;
     persistMark({ saleRef: sale.id, status: "NAO_ADERIU", objection: objection.trim() });
   }
 

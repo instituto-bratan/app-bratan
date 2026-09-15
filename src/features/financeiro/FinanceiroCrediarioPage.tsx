@@ -38,6 +38,7 @@ import {
   moneyFin,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
+import { confirmar } from "@/components/ui/avisos";
 
 const cashStorageKey = "app-bratan-fin-crediario";
 
@@ -213,20 +214,20 @@ export function FinanceiroCrediarioPage() {
     );
   }
 
-  function removerLucro() {
+  async function removerLucro() {
     if (readOnly) return setLucroFeedback("Você não tem permissão para mexer no lucro.");
-    if (!window.confirm(`Tirar ${moneyFin(jaNoLucroDoMes)} do lucro de ${mesBR(lucroMes)}?`)) return;
+    if (!(await confirmar(`Tirar ${moneyFin(jaNoLucroDoMes)} do lucro de ${mesBR(lucroMes)}?`, { confirmar: "Tirar do lucro" }))) return;
     financeiro.removeCrediarioNoLucro(lucroMes);
     setLucroEditando(false);
     setLucroFeedback(`Removido do lucro de ${mesBR(lucroMes)}. O caixa do crediário voltou a ficar fora do resultado.`);
   }
 
-  function tirarDoCofre(item: CofreItem) {
+  async function tirarDoCofre(item: CofreItem) {
     setEstornoFeedback("");
     if (readOnly) return setEstornoFeedback("Você não tem permissão para mexer nos lançamentos do caixa.");
     const dia = dataBR(item.data);
     if (item.kind === "MANUAL") {
-      if (!window.confirm(`Excluir a entrada "${item.quem}" de ${moneyFin(item.valor)} (${dia}) do caixa?`)) return;
+      if (!(await confirmar(`Excluir a entrada "${item.quem}" de ${moneyFin(item.valor)} (${dia}) do caixa?`, { destrutivo: true, confirmar: "Excluir" }))) return;
       if (useRemote) {
         deleteRemoteFinCashEntry(item.id)
           .then(() => {
@@ -242,10 +243,11 @@ export function FinanceiroCrediarioPage() {
     }
     if (!useRemote) return setEstornoFeedback("O estorno só funciona conectado ao sistema (fora do modo demonstração).");
     if (
-      !window.confirm(
-        `Estornar ${moneyFin(item.valor)} de ${item.quem} (recebido em ${dia})?\n\n` +
-          "O valor volta a ficar em aberto no lembrete e sai do caixa do crediário. Fica registrado quem estornou.",
-      )
+      !(await confirmar(`Estornar ${moneyFin(item.valor)} de ${item.quem} (recebido em ${dia})?`, {
+        corpo: "O valor volta a ficar em aberto no lembrete e sai do caixa do crediário. Fica registrado quem estornou.",
+        destrutivo: true,
+        confirmar: "Estornar",
+      }))
     )
       return;
     estornoMutation.mutate({ id: item.id, motivo: "Conferência do cofre — lançamento duplicado" });
@@ -284,9 +286,9 @@ export function FinanceiroCrediarioPage() {
     );
   }
 
-  function removeEntry(entry: FinCashEntry & { fromLembrete?: boolean }) {
+  async function removeEntry(entry: FinCashEntry & { fromLembrete?: boolean }) {
     if (entry.fromLembrete) return;
-    if (!window.confirm(`Excluir "${entry.description}" (${moneyFin(entry.amount)}) do caixa?`)) return;
+    if (!(await confirmar(`Excluir "${entry.description}" (${moneyFin(entry.amount)}) do caixa?`, { destrutivo: true, confirmar: "Excluir" }))) return;
     if (useRemote) {
       deleteRemoteFinCashEntry(entry.id)
         .then(() => queryClient.invalidateQueries({ queryKey: ["fin-cash-entries"] }))

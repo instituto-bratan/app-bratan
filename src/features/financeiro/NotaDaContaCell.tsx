@@ -22,6 +22,7 @@ import {
   type FinExpenseNotaRecord,
 } from "@/lib/remoteData";
 import { finNotaStatusLabels, type FinExpense, type FinNotaStatus } from "./financeiroData";
+import { confirmar } from "@/components/ui/avisos";
 
 export function NotaDaContaCell({
   expense,
@@ -112,8 +113,8 @@ export function NotaDaContaCell({
                 type="button"
                 aria-label={`Remover a nota ${nota.fileName}`}
                 title="Remover esta nota"
-                onClick={() => {
-                  if (!window.confirm(`Remover a nota "${nota.fileName}" desta conta?`)) return;
+                onClick={async () => {
+                  if (!(await confirmar(`Remover a nota "${nota.fileName}" desta conta?`, { destrutivo: true, confirmar: "Remover" }))) return;
                   apagar.mutate(nota.clientRef);
                 }}
                 className="text-muted-foreground hover:text-destructive"

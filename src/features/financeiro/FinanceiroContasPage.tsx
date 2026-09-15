@@ -26,7 +26,7 @@ import { NotaDaContaCell } from "./NotaDaContaCell";
 import { FilaDoDiaCard, linhaDigitavelDaConta } from "./FilaDoDiaCard";
 import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
 import { CaixaEntradaCard } from "./CaixaEntradaCard";
-import { confirmar, toast } from "@/components/ui/avisos";
+import { confirmar, perguntar, toast } from "@/components/ui/avisos";
 import { configAtual } from "@/lib/configNegocio";
 import { precisaAprovacao } from "./filaFinanceira";
 import { buildFilaFinanceira, contaParecida } from "./filaFinanceira";
@@ -297,7 +297,7 @@ export function FinanceiroContasPage() {
     return editando ? futureOpenInstallments(financeiro.expenses, editando) : [];
   }, [editingExpenseId, financeiro.expenses]);
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
     if (!description.trim()) return setFeedback("Descreva a conta.");
@@ -322,9 +322,7 @@ export function FinanceiroContasPage() {
       const parecida = contaParecida(financeiro.expenses, { description: description.trim(), amount: value, dueDate, supplier: supplier.trim() });
       if (
         parecida &&
-        !window.confirm(
-          `Parece a mesma conta de "${parecida.description}" (vence ${parecida.dueDate.split("-").reverse().join("/")}, ${moneyFin(parecida.amount)}${parecida.paidAt ? ", já paga" : ""}). Lançar mesmo assim?`,
-        )
+        !(await confirmar("Parece uma conta repetida", { corpo: `Parece a mesma conta de "${parecida.description}" (vence ${parecida.dueDate.split("-").reverse().join("/")}, ${moneyFin(parecida.amount)}${parecida.paidAt ? ", já paga" : ""}). Lançar mesmo assim?`, confirmar: "É outra conta, lançar", cancelar: "Não lançar" }))
       ) {
         return setFeedback(`Não lancei: já existe "${parecida.description}" com esse valor. Se for outra conta, mude a descrição ou confirme.`);
       }
@@ -404,14 +402,9 @@ export function FinanceiroContasPage() {
   }
 
   // Excluir o parcelamento inteiro (as que ainda não foram pagas).
-  function excluirParcelasEmAberto(expense: FinExpense) {
+  async function excluirParcelasEmAberto(expense: FinExpense) {
     const abertas = [expense, ...futureOpenInstallments(financeiro.expenses, expense)].filter((item) => !item.paidAt);
-    if (
-      !window.confirm(
-        `Excluir ${abertas.length} parcela(s) em aberto de "${expense.description}"?\n\nParcela já paga NÃO é excluída — o histórico fica.`,
-      )
-    )
-      return;
+    if (!(await confirmar(`Excluir ${abertas.length} parcela(s) em aberto de "${expense.description}"?`, { corpo: "Parcela já paga não é excluída — o histórico fica.", destrutivo: true, confirmar: "Excluir" }))) return;
     if (abertas.some((item) => item.id === editingExpenseId)) resetForm();
     financeiro.removeExpenses(abertas.map((item) => item.id));
     setFeedback(`${abertas.length} parcela(s) em aberto excluída(s). A P12 se ajustou sozinha.`);
@@ -534,10 +527,16 @@ export function FinanceiroContasPage() {
       return proxima;
     });
   }
-  function pagarSelecionadas() {
+  async function pagarSelecionadas() {
     if (!selecionadasVisiveis.length) return;
     const total = selecionadasVisiveis.reduce((soma, expense) => soma + expense.amount, 0);
-    if (!window.confirm(`Marcar ${selecionadasVisiveis.length} conta(s) como pagas hoje (${moneyFin(total)})?`)) return;
+    const limite = configAtual<number>("aprovacao.limite") ?? 0;
+    const travadas = selecionadasVisiveis.filter((expense) => precisaAprovacao(expense, limite));
+    if (travadas.length) {
+      toast(`${travadas.length} conta(s) acima do limite ainda sem aprovação — tire da seleção ou peça a aprovação.`, { tom: "atencao", duracaoMs: 6000 });
+      return;
+    }
+    if (!(await confirmar(`Marcar ${selecionadasVisiveis.length} conta(s) como pagas hoje?`, { corpo: `Somam ${moneyFin(total)}. Dá para desfazer logo depois.`, confirmar: "Paguei" }))) return;
     const ids = selecionadasVisiveis.map((expense) => expense.id);
     for (const id of ids) financeiro.setExpensePaid(id, now);
     setSelecionadas(new Set());
@@ -551,8 +550,8 @@ export function FinanceiroContasPage() {
     setFeedback(`"${purchase.description}" marcada como recebida hoje${purchase.estoqueSetor ? " — a entrada no estoque aparece para o setor" : ""}.`);
   }
 
-  function anotarNfDaCompra(purchase: FinPurchase) {
-    const nf = window.prompt(`NF de "${purchase.description}" (número ou nome do arquivo):`, purchase.nfNote);
+  async function anotarNfDaCompra(purchase: FinPurchase) {
+    const nf = await perguntar(`NF de "${purchase.description}"`, { valorInicial: purchase.nfNote, placeholder: "número ou nome do arquivo", confirmar: "Anotar" });
     if (nf === null) return;
     financeiro.updatePurchase({ ...purchase, nfNote: nf.trim() });
   }
@@ -1254,8 +1253,8 @@ export function FinanceiroContasPage() {
                                   variant="ghost"
                                   size="icon"
                                   aria-label={`Excluir ${expense.description}`}
-                                  onClick={() => {
-                                    if (!window.confirm(`Excluir a conta "${expense.description}" (${moneyFin(expense.amount)})? A P12 se ajusta sozinha.`)) return;
+                                  onClick={async () => {
+                                    if (!(await confirmar(`Excluir a conta "${expense.description}" (${moneyFin(expense.amount)})?`, { corpo: "A P12 se ajusta sozinha.", destrutivo: true, confirmar: "Excluir" }))) return;
                                     if (editingExpenseId === expense.id) resetForm();
                                     financeiro.removeExpense(expense.id);
                                   }}

@@ -39,6 +39,7 @@ import {
   updateContactChannels,
 } from "./crmData";
 import { useCrmState } from "./useCrmState";
+import { ConsentimentosDoContato } from "./ConsentimentosDoContato";
 import { contactChannelsIssue, formatPhoneBR } from "./contactChannels";
 
 // Contratos saiu do app (decisão do Lucas, 22/07): não existe fluxo de
@@ -71,7 +72,8 @@ function statusDot(tone: "ok" | "warn" | "danger") {
 
 export function CrmContactProfilePage() {
   const { id = "" } = useParams();
-  const { pessoa } = useAuth();
+  const { pessoa, session, isPreview } = useAuth();
+  const useRemoteConsent = Boolean(pessoa && session && !isPreview);
   const { state, persist } = useCrmState();
   const [tab, setTab] = useState<ProfileTab>("resumo");
   // Edição do cadastro (29/07/2026): o perfil era 100% somente leitura, então
@@ -375,6 +377,7 @@ export function CrmContactProfilePage() {
                 <InfoItem label="Objetivo" value={contact.mainGoal} />
                 <InfoItem label="Último toque" value={lastTouch ? formatCrmDateTime(lastTouch.sentAt) : "Sem toque"} />
               </div>
+              {useRemoteConsent ? <ConsentimentosDoContato contactRef={contact.id} pessoaId={pessoa?.id ?? null} podeEditar={Boolean(pessoa)} /> : null}
             </CardContent>
           </Card>
 
