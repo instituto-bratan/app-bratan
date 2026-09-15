@@ -8,7 +8,7 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#F6F1E4",
-  "theme_color": "#3E4632",
+  "theme_color": "#F2F2F7",
   "lang": "pt-BR",
   "dir": "ltr",
   "categories": ["health", "medical"],

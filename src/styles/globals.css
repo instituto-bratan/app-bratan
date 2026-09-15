@@ -344,3 +344,14 @@ h3 {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* loading-state (21st.dev, 15/09/2026): grade de pixels e brilho do rótulo */
+@keyframes pixel-on {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 1; }
+}
+@keyframes shimmer-text {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
