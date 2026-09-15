@@ -2,7 +2,7 @@
 // A tabela `integracao` diz o que está ligado; este módulo guarda a última leitura
 // para os motores e as telas perguntarem de forma síncrona ("o WhatsApp oficial
 // está ligado?"). Quem carrega é o hook useIntegracoes (montado no AppLayout).
-export type ChaveIntegracao = "whatsapp" | "focus_nfse" | "supersign" | "feegow" | "outlook" | "push" | "itau" | "rede";
+export type ChaveIntegracao = "whatsapp" | "focus_nfse" | "supersign" | "feegow" | "outlook" | "google_agenda" | "push" | "itau" | "rede";
 
 export type IntegracaoRecord = {
   chave: ChaveIntegracao;
@@ -97,6 +97,16 @@ export const GUIA_ATIVACAO: Record<ChaveIntegracao, { passos: string[]; segredos
     ],
     segredos: ["MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET (já existem para o SharePoint)"],
     funcoes: ["outlook-agenda"],
+  },
+  google_agenda: {
+    passos: [
+      "No iClinic: Configurações de profissionais → Integrações → instalar o Google Calendar (o iClinic cria um calendário \"Agenda iClinic\" por profissional).",
+      "No Google Agenda, em cada calendário: Configurações → Integrar agenda → copiar o \"Endereço secreto no formato iCal\".",
+      "Gravar os endereços no segredo GOOGLE_AGENDA_ICS, separados por ponto e vírgula, no formato Nome=endereço (ex.: Dr. Daniel=https://…).",
+      "Ligar. O app lê os calendários de hora em hora (cron google-agenda-horario) e usa como agenda real: portal do paciente, confirmação, ocupação e semáforo.",
+    ],
+    segredos: ["GOOGLE_AGENDA_ICS"],
+    funcoes: ["google-agenda-sync"],
   },
   push: {
     passos: [

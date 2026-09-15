@@ -9,6 +9,7 @@ export const SEGREDOS: Record<string, string[]> = {
   supersign: ["SUPERSIGN_TOKEN"],
   feegow: ["FEEGOW_TOKEN"],
   outlook: ["MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET"],
+  google_agenda: ["GOOGLE_AGENDA_ICS"],
   push: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
   itau: ["ITAU_CLIENT_ID", "ITAU_CLIENT_SECRET", "ITAU_CERT_PEM"],
   rede: ["REDE_PV", "REDE_TOKEN"],

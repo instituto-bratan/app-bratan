@@ -27,6 +27,7 @@ const TESTES: Partial<Record<ChaveIntegracao, { rotulo: string; slug: string; bo
   push: { rotulo: "Mandar um aviso de teste para mim", slug: "push-enviar", body: (pessoaId) => ({ pessoaId, teste: true }) },
   feegow: { rotulo: "Sincronizar a agenda agora", slug: "feegow-sync", body: () => ({}) },
   outlook: { rotulo: "Sincronizar o calendário agora", slug: "outlook-agenda", body: () => ({}) },
+  google_agenda: { rotulo: "Ler os calendários do Google agora", slug: "google-agenda-sync", body: () => ({}) },
 };
 
 function IntegracaoCard({ item, segredos, podeEditar, pessoaId, onMudou }: { item: IntegracaoRecord; segredos?: { exigidos: string[]; faltam: string[]; prontos: boolean }; podeEditar: boolean; pessoaId: string | null; onMudou: () => Promise<void> }) {

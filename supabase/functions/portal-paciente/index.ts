@@ -125,9 +125,13 @@ Deno.serve(async (request) => {
   const [consultasManuais, agenda, medicoes, vendas, parcelas, contratos, consentimentos] = await Promise.all([
     client.from("paciente_consulta").select("id, em, profissional, tipo, local, status").eq("contact_ref", contactRef).gte("em", somaDias(-1)).order("em"),
     (async () => {
+      // Casa pelo telefone (Feegow/Outlook trazem) OU pelo nome normalizado (o calendário do Google só traz o nome).
       const tel = telefoneE164(contato.whatsapp || contato.phone || "");
-      if (!tel || tel.length < 12) return { data: [] as Record<string, unknown>[] };
-      return client.from("agenda_espelho").select("id, inicio, profissional, tipo, sala, status, confirmacao_status").eq("telefone", tel).gte("inicio", somaDias(-1)).order("inicio");
+      const norm = (v: string) => (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+      const nomeAlvo = norm(contato.full_name || "");
+      const { data } = await client.from("agenda_espelho").select("id, inicio, profissional, tipo, sala, status, confirmacao_status, telefone, paciente").gte("inicio", somaDias(-1)).lte("inicio", somaDias(120)).order("inicio");
+      const lista = ((data ?? []) as Record<string, unknown>[]).filter((a) => (tel && tel.length >= 12 && a.telefone === tel) || (nomeAlvo.length > 5 && norm(String(a.paciente ?? "")) === nomeAlvo));
+      return { data: lista };
     })(),
     client.from("paciente_medicao").select("id, dia, peso_kg, gordura_pct, massa_magra_kg, cintura_cm, origem").eq("contact_ref", contactRef).is("deleted_at", null).order("dia"),
     client.from("fin_sales").select("client_ref, sale_date, fin_sale_items(item_type, amount, description), fin_sale_payments(method, amount, installments)").eq("crm_contact_ref", contactRef).is("deleted_at", null).order("sale_date", { ascending: false }),
