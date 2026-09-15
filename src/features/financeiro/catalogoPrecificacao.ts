@@ -3,8 +3,10 @@
 // "BRATAN - PRECIFICACAO E LUCRO - TAXA HORA SALA OFICIAL (1).numbers", versão que o
 // Lucas mandou em 15/09/2026. Três mudanças em relação à de 14/09:
 //  · IMPOSTO DE NF: consulta 13,33% → 26% e procedimento 7,93% → 11,48% (células
-//    G1 e I1 da aba Precificação). A taxa de cartão média caiu de 3,84% → 2,39%
-//    (K1) e continua entrando só nas linhas em débito/parcelado;
+//    G1 e I1 da aba Precificação). A planilha trocou a taxa de cartão para 2,39%
+//    (K1) — MAS o Lucas confirmou em 15/09 que a taxa real continua 3,84%, que é
+//    a que vale aqui; a célula K1 da planilha precisa ser corrigida. Entra só nas
+//    linhas em débito/parcelado;
 //  · CUSTO HORA-SALA: despesas mensais 141.437,44 → 157.697,18. A hora de sala
 //    produtiva passou de R$ 102,05 para R$ 113,78 (R$ 1,89631/min) e a poltrona de
 //    aplicação de R$ 0,425197 para R$ 0,474078/min (R$ 28,44/hora);
@@ -39,7 +41,7 @@ export type ProdutoPrecificado = {
   preco: number;
   /** Coluna P da planilha, "Lucro Bruto Produto" (= 2 × a coluna do médico). */
   lucroBruto: number;
-  /** Coluna G da planilha, como fração do preço: NF (26% consulta · 11,48% procedimento) + cartão 2,39% nas linhas em débito/parcelado (acordo Rede Q-7621480). */
+  /** Coluna G da planilha, como fração do preço: NF (26% consulta · 11,48% procedimento) + cartão 3,84% nas linhas em débito/parcelado (taxa real confirmada pelo Lucas em 15/09; acordo Rede Q-7621480). */
   imposto: number;
   /** Coluna H: comissão comercial (10%; 1% nas tirzepatidas até 49 un). */
   comissao: number;
@@ -99,18 +101,18 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 291.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["SINAL"] },
   { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 99.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["SINAL"] },
   { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 1486.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
-  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 1580.5, imposto: 0.2839, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
+  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 1540.62, imposto: 0.2984, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
   { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 846.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
-  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 902.79, imposto: 0.2839, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 878.86, imposto: 0.2984, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
   { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 590.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /diamond/i },
   { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 138.08, imposto: 0.1148, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["BIOIMPEDANCIA"] },
-  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 171.36, imposto: 0.1387, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["BIOIMPEDANCIA"] },
+  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 167.74, imposto: 0.1532, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["BIOIMPEDANCIA"] },
   // Teste genético: o kit/laboratório ainda não tem custo comprovado (aba "Custos a
   // confirmar") — o lucro bruto aqui é SEM o kit e vai cair quando o custo entrar.
   { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 2458.07, imposto: 0.26, comissao: 0.1, custoFixo: 37.92621, minutosSala: 20, tipos: ["TRATAMENTO"], padrao: /gen[eé]tic/i },
   // Nutri e psi: preço de tabela para o seletor; não são do médico executor.
   { nome: "Dra. Géssica (nutricionista) — Pix", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 120.22, imposto: 0.26, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
-  { nome: "Dra. Géssica (nutricionista) — débito/3x", secao: "Nutrição e psicologia", preco: 650, lucroBruto: 136.69, imposto: 0.2839, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"] },
+  { nome: "Dra. Géssica (nutricionista) — débito/3x", secao: "Nutrição e psicologia", preco: 650, lucroBruto: 127.26, imposto: 0.2984, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"] },
   { nome: "Dra. Bárbara (psicóloga) — 4 sessões", secao: "Nutrição e psicologia", preco: 790, lucroBruto: 50.49, imposto: 0.26, comissao: 0.1, custoFixo: 455.114517, minutosSala: 240, tipos: ["PSICOLOGA"], padrao: /b[aá]rbara|psic/i },
 ];
 
