@@ -397,7 +397,7 @@ export function ComprovantesPage() {
               </Badge>
               <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Comprovantes</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Captura interina de comprovantes para coordenação e recepção. A etapa oficial futura envia os arquivos para o SharePoint via Microsoft Graph API.
+                Comprovantes da coordenação e da recepção. Cada arquivo entra na fila e sobe sozinho para a pasta do mês no SharePoint (a cada 15 minutos).
               </p>
             </div>
             <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">

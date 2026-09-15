@@ -1,12 +1,11 @@
 // TEXTO DE UM PDF NO NAVEGADOR (02/09/2026 — "Lançar rápido" e "Caixa de entrada").
 //
-// O pdf.js é carregado sob demanda da CDN (versão fixa) em vez de entrar no
-// bundle: o app é um PWA e só precisa disso quando alguém solta um boleto/NF
-// na tela — e a instalação local do pacote esbarrou no gerenciador de pacotes
-// desta máquina. Se a CDN não responder, quem chama recebe um erro claro e a
-// pessoa pode colar o texto do boleto em vez do arquivo.
-const PDFJS_VERSAO = "4.10.38";
-const PDFJS_BASE = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSAO}`;
+// O pdf.js é carregado sob demanda (só quando alguém solta um boleto/NF), mas
+// do PRÓPRIO app: os arquivos da versão 4.10.38 moram em public/pdfjs. Até
+// 14/09/2026 ele vinha da cdnjs e a CSP de produção (script-src 'self')
+// bloqueava o carregamento — o leitor caía sempre no "cole o texto". Servir do
+// mesmo domínio resolve sem afrouxar a política.
+const PDFJS_BASE = "/pdfjs";
 
 type PdfJs = {
   GlobalWorkerOptions: { workerSrc: string };

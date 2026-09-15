@@ -4,7 +4,7 @@
 // casa sozinho. Em vez de ele precisar "se atentar ao extrato", os problemas
 // vêm até ele em quatro caixas. Tudo que a conciliação manual desta semana
 // levou horas para achar aparece aqui em segundos.
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle2, FileUp, Landmark, Loader2, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import {
   listRemoteFinBankEntries,
   saveRemoteFinBankEntries,
+  saveRemoteFinBankMatches,
   updateRemoteFinBankEntry,
 } from "@/lib/remoteData";
 import { moneyFin, monthKeyLabel } from "./financeiroData";
@@ -100,6 +101,31 @@ export function FinanceiroExtratoPage() {
     () => conciliarExtrato(entries, financeiro.sales, financeiro.expenses, financeiro.savingsMoves, periodo.start, periodo.end),
     [entries, financeiro.sales, financeiro.expenses, financeiro.savingsMoves, periodo],
   );
+  // CONCILIAÇÃO GRAVADA (14/09/2026): o que casou sozinho fica salvo no banco,
+  // linha a linha, em vez de ser recalculado a cada abertura. Só grava o que
+  // ainda não tem match; o que a pessoa marcou (IGNORADO) não é tocado.
+  const gravadosRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!useRemote || readOnly) return;
+    const novos: { clientRef: string; matchKind: "COMANDA" | "DESPESA" | "COFRE"; matchRef: string | null; matchNote: string | null }[] = [];
+    for (const casada of balde.casadas) {
+      if (casada.entry.matchKind || gravadosRef.current.has(casada.entry.clientRef)) continue;
+      novos.push({ clientRef: casada.entry.clientRef, matchKind: casada.tipo, matchRef: null, matchNote: casada.comQue });
+    }
+    for (const grupo of balde.casadasAgrupadas) {
+      for (const entry of grupo.entries) {
+        if (entry.matchKind || gravadosRef.current.has(entry.clientRef)) continue;
+        novos.push({ clientRef: entry.clientRef, matchKind: "DESPESA", matchRef: null, matchNote: `${grupo.comQue} (pago em ${grupo.entries.length} lançamentos)` });
+      }
+    }
+    if (!novos.length) return;
+    for (const novo of novos) gravadosRef.current.add(novo.clientRef);
+    void saveRemoteFinBankMatches(novos, pessoa?.id ?? null)
+      .then((quantos) => {
+        if (quantos) void queryClient.invalidateQueries({ queryKey: ["fin-bank-entries"] });
+      })
+      .catch((error) => console.warn("Não gravei o casamento do extrato.", error));
+  }, [balde, useRemote, readOnly, pessoa?.id, queryClient]);
   // Dois números que a antecipação escondia: o que a maquininha ainda deve e o
   // faturamento mínimo acordado com a Rede (perder o acordado custa a taxa boa).
   const saldoMaquininha = useMemo(

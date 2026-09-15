@@ -13,6 +13,7 @@ import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/acces
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createRemoteFinInboxItem,
+  lerInboxComIA,
   listRemoteExpenseNotas,
   listRemoteFinInbox,
   signedUrlFinInboxFile,
@@ -24,6 +25,7 @@ import { NotaDaContaCell } from "./NotaDaContaCell";
 import { FilaDoDiaCard, linhaDigitavelDaConta } from "./FilaDoDiaCard";
 import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
 import { CaixaEntradaCard } from "./CaixaEntradaCard";
+import { confirmar, toast } from "@/components/ui/avisos";
 import { buildFilaFinanceira, contaParecida } from "./filaFinanceira";
 import { lerDocumento, type LeituraDocumento } from "./leitorDocumento";
 import { diasEntre } from "./recebiveisRede";
@@ -578,10 +580,26 @@ export function FinanceiroContasPage() {
         console.warn(`Não li o texto de ${file.name}.`, erro);
       }
       const leitura = lerDocumento(texto, now);
-      await createRemoteFinInboxItem({ file, origem: "UPLOAD", texto, leitura: leitura as unknown as Record<string, unknown>, pessoaId: pessoa?.id ?? null });
+      const item = await createRemoteFinInboxItem({ file, origem: "UPLOAD", texto, leitura: leitura as unknown as Record<string, unknown>, pessoaId: pessoa?.id ?? null });
+      // CAIXA DE ENTRADA INTELIGENTE (14/09/2026): a IA lê em seguida, em segundo
+      // plano; o item já aparece com a leitura por regex e ganha a da IA quando ela volta.
+      void lerInboxComIA(item.id)
+        .then((resposta) => {
+          if (!resposta.ok && resposta.configured) toast(`A IA não conseguiu ler ${file.name}: ${resposta.error ?? "erro"}`, { tom: "atencao" });
+        })
+        .catch(() => undefined)
+        .finally(() => void queryClient.invalidateQueries({ queryKey: ["fin-inbox"] }));
     }
     await queryClient.invalidateQueries({ queryKey: ["fin-inbox"] });
-    setFeedback(`${arquivos.length} arquivo(s) na caixa de entrada — leia cada um e clique em "Virar conta".`);
+    setFeedback(`${arquivos.length} arquivo(s) na caixa de entrada — a IA está lendo; confira e clique em "Virar conta".`);
+  }
+
+  async function inboxLerComIA(item: FinInboxItem) {
+    const resposta = await lerInboxComIA(item.id);
+    if (!resposta.configured) toast("A chave da IA não está configurada no servidor.", { tom: "atencao" });
+    else if (!resposta.ok) toast(`Não consegui ler com a IA: ${resposta.error ?? "erro"}`, { tom: "erro" });
+    else toast("Documento lido pela IA. Confira os campos antes de virar conta.", { tom: "ok" });
+    await queryClient.invalidateQueries({ queryKey: ["fin-inbox"] });
   }
 
   function inboxVirarConta(item: FinInboxItem) {
@@ -592,8 +610,8 @@ export function FinanceiroContasPage() {
     abrirFormulario();
   }
 
-  function inboxDescartar(item: FinInboxItem) {
-    if (!window.confirm(`Descartar "${item.fileName || "este item"}" da caixa de entrada?`)) return;
+  async function inboxDescartar(item: FinInboxItem) {
+    if (!(await confirmar(`Descartar "${item.fileName || "este item"}" da caixa de entrada?`, { confirmar: "Descartar", destrutivo: true }))) return;
     void updateRemoteFinInboxStatus(item.id, "DESCARTADO")
       .then(() => queryClient.invalidateQueries({ queryKey: ["fin-inbox"] }))
       .catch((erro) => setFeedback(`Não consegui descartar: ${erro instanceof Error ? erro.message : String(erro)}`));
@@ -723,7 +741,8 @@ export function FinanceiroContasPage() {
               carregando={inboxQuery.isLoading}
               onReceber={receberNaCaixa}
               onVirarConta={inboxVirarConta}
-              onDescartar={inboxDescartar}
+              onDescartar={(item) => void inboxDescartar(item)}
+              onLerComIA={usaRemoto ? inboxLerComIA : undefined}
               onAbrirArquivo={inboxAbrirArquivo}
             />
           </div>

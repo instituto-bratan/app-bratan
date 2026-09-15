@@ -5,7 +5,7 @@
 // deles (autorização que só o Lucas pode dar); até lá, a ponte é salvar os
 // arquivos e soltar aqui — em lote.
 import { useRef, useState } from "react";
-import { Inbox, Trash2, Upload } from "lucide-react";
+import { Inbox, Sparkles, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ export function CaixaEntradaCard({
   onVirarConta,
   onDescartar,
   onAbrirArquivo,
+  onLerComIA,
 }: {
   itens: FinInboxItem[];
   readOnly: boolean;
@@ -28,9 +29,12 @@ export function CaixaEntradaCard({
   onVirarConta: (item: FinInboxItem) => void;
   onDescartar: (item: FinInboxItem) => void;
   onAbrirArquivo: (item: FinInboxItem) => void;
+  /** CAIXA DE ENTRADA INTELIGENTE (14/09/2026): pede a leitura por IA de um item. */
+  onLerComIA?: (item: FinInboxItem) => Promise<void>;
 }) {
   const [arrastando, setArrastando] = useState(false);
   const [recebendo, setRecebendo] = useState(false);
+  const [lendoIA, setLendoIA] = useState<string | null>(null);
   const [erro, setErro] = useState("");
   const inputArquivo = useRef<HTMLInputElement>(null);
   const novos = itens.filter((item) => item.status === "NOVO");
@@ -110,7 +114,8 @@ export function CaixaEntradaCard({
           </p>
         ) : null}
         {novos.map((item) => {
-          const leitura = item.leitura as { valor?: number; vencimento?: string; beneficiario?: string; tipo?: string; numeroDocumento?: string };
+          const leitura = item.leitura as { valor?: number; vencimento?: string; beneficiario?: string; tipo?: string; numeroDocumento?: string; descricao?: string; ia?: { confianca?: number; validacoes?: string[]; revisar?: boolean; observacoes?: string } };
+          const ia = leitura.ia;
           return (
             <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-oliva/15 bg-white/85 p-2.5 text-sm">
               <div className="min-w-0 flex-1">
@@ -133,10 +138,35 @@ export function CaixaEntradaCard({
                   )}
                   {" · "}recebido {item.createdAt.slice(8, 10)}/{item.createdAt.slice(5, 7)}
                 </p>
+                {ia ? (
+                  <p className={cn("mt-0.5 flex flex-wrap items-center gap-1 text-[11px]", ia.revisar ? "text-amber-800" : "text-emerald-800")} title={(ia.validacoes ?? []).join(" · ")}>
+                    <Sparkles className="h-3 w-3" aria-hidden="true" />
+                    lido pela IA · confiança {Math.round(ia.confianca ?? 0)}%{leitura.descricao ? ` · ${leitura.descricao}` : ""}
+                    {ia.revisar ? " · confira antes de virar conta" : ""}
+                    {ia.observacoes ? ` · ${ia.observacoes}` : ""}
+                  </p>
+                ) : null}
               </div>
               <span className="font-bold tabular-nums text-brand-musgo">{leitura.valor ? moneyFin(leitura.valor) : "valor?"}</span>
               {readOnly ? null : (
                 <div className="flex gap-1">
+                  {onLerComIA ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs"
+                      disabled={lendoIA === item.id}
+                      title={ia ? "Ler de novo com a IA" : "Ler valor, vencimento e beneficiário com a IA"}
+                      onClick={() => {
+                        setLendoIA(item.id);
+                        void onLerComIA(item).finally(() => setLendoIA((atual) => (atual === item.id ? null : atual)));
+                      }}
+                    >
+                      <Sparkles className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                      {lendoIA === item.id ? "Lendo…" : ia ? "Reler" : "Ler com IA"}
+                    </Button>
+                  ) : null}
                   <Button type="button" size="sm" className="h-8 px-2.5 text-xs" onClick={() => onVirarConta(item)}>
                     Virar conta
                   </Button>

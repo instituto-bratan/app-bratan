@@ -20,6 +20,8 @@ const MAX_ATTEMPTS = 5;
 
 type QueueRow = {
   id: string;
+  module?: string | null;
+  entity_id?: string | null;
   storage_bucket: string;
   storage_path: string;
   file_name: string;
@@ -191,7 +193,7 @@ Deno.serve(async (request) => {
 
   const { data: pending, error: queueError } = await supabase
     .from("sharepoint_dispatch_queue")
-    .select("id, storage_bucket, storage_path, file_name, mime_type, target_folder, attempts")
+    .select("id, storage_bucket, storage_path, file_name, mime_type, target_folder, attempts, module, entity_id")
     .eq("status", "PENDING")
     .lt("attempts", MAX_ATTEMPTS)
     .order("created_at", { ascending: true })
@@ -246,6 +248,12 @@ Deno.serve(async (request) => {
         })
         .eq("id", row.id);
       results.push({ id: row.id, status: "SENT" });
+      // O registro do comprovante guarda o status do SharePoint (14/09/2026:
+      // 190 comprovantes diziam "pendente" com a fila já em SENT — a coluna
+      // nunca era atualizada). Falha aqui não desfaz o envio.
+      if (row.module === "COMPROVANTE" && row.entity_id) {
+        await supabase.from("comprovante").update({ sharepoint_status: "enviado" }).eq("id", row.entity_id);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const exhausted = row.attempts + 1 >= MAX_ATTEMPTS;

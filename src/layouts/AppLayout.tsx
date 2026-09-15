@@ -45,9 +45,13 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { PageGuideButton } from "@/components/ui/page-guide";
 import { useAuth } from "@/hooks/useAuth";
 import { BalaoDoDia } from "@/components/BalaoDoDia";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Avisos } from "@/components/ui/avisos";
 import { PublicadorDoResumo } from "@/features/financeiro/PublicadorDoResumo";
 import { useAvatar } from "@/features/perfil/avatarStore";
-import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey } from "@/lib/access";
+import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey,
+  canFinanceiroFull,
+} from "@/lib/access";
 import type { Pessoa } from "@/types/database";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
@@ -205,6 +209,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Gestão Estalecas", shortLabel: "Gestão", href: "/administracao/estalecas", icon: CircleDollarSign, allowed: canAdministracao },
       { label: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, allowed: canAdministracao },
       { label: "Auditoria", href: "/administracao/auditoria", icon: History, allowed: canAdministracao },
+      { label: "O que a IA fez", shortLabel: "IA", href: "/administracao/ia", icon: BrainCircuit, allowed: (cargo) => canAdministracao(cargo) || canFinanceiroFull(cargo) },
     ],
   },
 ];
@@ -596,7 +601,9 @@ export function AppLayout() {
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
               transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Outlet />
+              <ErrorBoundary rotulo={location.pathname}>
+                <Outlet />
+              </ErrorBoundary>
             </motion.div>
           </Suspense>
         </main>
@@ -607,6 +614,7 @@ export function AppLayout() {
           O Publicador recalcula e grava o retrato enquanto alguém do financeiro estiver logado. */}
       <PublicadorDoResumo />
       <BalaoDoDia />
+      <Avisos />
 
       <FlowLauncher pessoa={pessoa} open={flowLauncherOpen} onClose={() => setFlowLauncherOpen(false)} />
       <MobileNav pessoa={pessoa} menuOpen={flowLauncherOpen} onOpenMenu={() => setFlowLauncherOpen(true)} />

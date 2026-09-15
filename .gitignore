@@ -7,3 +7,7 @@ dist-single
 .DS_Store
 .vercel
 .env*
+
+# artefatos de build do TypeScript
+tsconfig.tsbuildinfo
+tsconfig.node.tsbuildinfo
