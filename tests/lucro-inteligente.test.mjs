@@ -347,7 +347,9 @@ test("planilha do dia: contas pagas caem no envelope certo; obra, provisão e ta
   assert.equal(dia.taxas, 0, "dinheiro não tem taxa");
   // Lucas (10/09): salário CEO e salário fixo do médico são conta FIXA (operacional); só a transferência do
   // Lucro Inteligente (e a distribuição) abate o envelope. Empréstimo continua saindo do lucro (aula).
-  assert.deepEqual(plain(dia.usado), { impostos: 700, lucro: 1900, medicoExecutor: 600, operacional: 5300 }, "1.500 LI sócios + 400 empréstimo = 1.900 no lucro; 600 LI médico; aluguel 3.000 + CEO 1.500 + médico fixo 800 = 5.300 operacional; obra, VISA-OBRA, provisão e Rede fora");
+  assert.deepEqual(plain(dia.usado), { impostos: 700, lucro: 1900, medicoExecutor: 600, operacional: 5300, provisoes: 0, reserva: 0 }, "1.500 LI sócios + 400 empréstimo = 1.900 no lucro; 600 LI médico; aluguel 3.000 + CEO 1.500 + médico fixo 800 = 5.300 operacional; obra, VISA-OBRA, provisão de impostos e Rede fora");
+  assert.equal(dia.reservado.provisoes, 0, "sem % configurado, o envelope de provisões fica desligado");
+  assert.equal(dia.reservado.reserva, 0, "idem reserva");
   assert.equal(dia.reservado.medicoExecutor, 3629.4, "consulta de 10.000: coluna P 72,6% → coluna S 50%");
   assert.equal(dia.reservado.operacional, 4370.6, "10.000 − 1.000 de imposto − 3.629,40 do médico − 1.000 de cota");
   assert.equal(dia.acumulado.saldo.operacional, -929.4, "4.370,60 reservados − 5.300 gastos (agora com CEO e médico fixo)");
@@ -489,4 +491,12 @@ test("registrar transferência cria a conta PAGA na categoria certa (mesmo dinhe
   // e a planilha do dia seguinte já abate
   const p = li.buildPlanilhaLucro({ sales: [], expenses: [medico], categories: categorias, reconciliations: [], marcas: [], config: regua(10, 21000, 50), monthKey: "2026-09", hoje: "2026-09-10" });
   assert.equal(li.resumoDosRepasses(p, [medico]).medicoExecutor.transferido, 2890.4);
+});
+
+// ---- ENVELOPES PROVISÕES / RESERVA (14/09/2026, proposta 5.3) ------------------
+test("repartir com provisões e reserva: saem do líquido antes do operacional; poupança de 13º cai em provisões", () => {
+  const r = li.repartir(10000, 4000, { impostos: 10, lucroMensal: 0, medicoExecutor: 50, provisoesPct: 5, reservaPct: 2 }, 1000);
+  assert.deepEqual(plain(r), { impostos: 1000, lucro: 1000, medicoExecutor: 2000, operacional: 5300, provisoes: 500, reserva: 200 });
+  assert.equal(li.envelopeDaConta({ id: "x", categoryRef: "cat-poup-13-colaboradores", amount: 1, description: "", supplier: "", dueDate: "2026-09-01", paidAt: "2026-09-01", method: "PIX", documentNote: "", isCapex: false, notes: "" }, null), "provisoes");
+  assert.equal(li.envelopeDaConta({ id: "y", categoryRef: "cat-poup-impostos-mensais", amount: 1, description: "", supplier: "", dueDate: "2026-09-01", paidAt: "2026-09-01", method: "PIX", documentNote: "", isCapex: false, notes: "" }, null), null, "a poupança de impostos continua fora (o envelope de impostos já cobre)");
 });

@@ -16,7 +16,7 @@ import type { FilaFinanceira } from "@/features/financeiro/filaFinanceira";
 import { saleTotal, type FinReconciliation, type FinSale } from "@/features/financeiro/financeiroData";
 import { diaUtilAnterior } from "@/features/financeiro/recebiveisRede";
 
-export type OrigemFila = "CONTA" | "COMPRA" | "COMPROVANTE" | "NOTA" | "CRM" | "LEMBRETE" | "ESTOQUE" | "NPS" | "CHECKLIST" | "FECHAMENTO" | "AVISO";
+export type OrigemFila = "CONTA" | "COMPRA" | "COMPROVANTE" | "NOTA" | "CRM" | "LEMBRETE" | "ESTOQUE" | "NPS" | "CHECKLIST" | "FECHAMENTO" | "AVISO" | "ACHADO";
 
 /** 0 = atrasado · 1 = hoje · 2 = esta semana · 3 = para saber. */
 export type Urgencia = 0 | 1 | 2 | 3;
@@ -35,6 +35,8 @@ export type ItemFilaDoDia = {
   acao: string;
   /** Quantos itens este cartão agrupa (1 = item único). */
   quantidade: number;
+  /** Achado da rotina diária: id para "Resolvido" marcar no banco. */
+  achadoId?: string;
 };
 
 export type FilaDoDia = {
@@ -76,6 +78,11 @@ export type EntradasDaFila = {
   checklist?: { pendentes: number; proxima: string | null } | null;
   fechamentoPendente?: { dia: string; total: number } | null;
   avisosImportantes?: { id: string; corpo: string; publicadoEm: string }[];
+  /**
+   * ACHADOS DA ROTINA DIÁRIA (14/09/2026, proposta 1.2): o que a rotina das 6h
+   * encontrou e ainda está aberto, já filtrado pelo cargo de quem vê.
+   */
+  achados?: { id: string; chave: string; tipo: string; dia: string; titulo: string; detalhe: string; valor: number | null; href: string; urgencia: Urgencia; quantidade: number }[];
   /** chave → ISO do dia até o qual o item fica escondido. */
   silenciados?: Record<string, string>;
 };
@@ -216,6 +223,11 @@ export function buildFilaDoDia(entrada: EntradasDaFila): FilaDoDia {
     itens.push({ chave: `aviso:${aviso.id}`, origem: "AVISO", titulo: aviso.corpo.length > 90 ? `${aviso.corpo.slice(0, 87)}…` : aviso.corpo, detalhe: `aviso importante · ${diaCurto(aviso.publicadoEm.slice(0, 10))}`, quando: aviso.publicadoEm.slice(0, 10), urgencia: 3, href: "/mural", acao: "Ler", quantidade: 1 });
   }
 
+  // ---- achados da rotina diária --------------------------------------------------
+  for (const achado of entrada.achados ?? []) {
+    itens.push({ chave: `achado:${achado.chave}`, origem: "ACHADO", titulo: achado.titulo, detalhe: `${achado.detalhe}${achado.dia ? ` · visto pela rotina em ${diaCurto(achado.dia)}` : ""}`, quando: achado.dia || hoje, urgencia: achado.urgencia, valor: achado.valor ?? undefined, href: achado.href, acao: "Abrir", quantidade: achado.quantidade || 1, achadoId: achado.id });
+  }
+
   // ---- silenciados, ordem e frases ----------------------------------------------
   const silenciados = limparSilenciados(entrada.silenciados ?? {}, hoje);
   const visiveis = itens.filter((item) => !silenciados[item.chave]);
@@ -256,6 +268,7 @@ export const origemLabels: Record<OrigemFila, string> = {
   CHECKLIST: "checklist",
   FECHAMENTO: "fechamento",
   AVISO: "aviso",
+  ACHADO: "rotina diária",
 };
 
 export const urgenciaLabels: Record<Urgencia, string> = { 0: "Atrasado", 1: "Hoje", 2: "Esta semana", 3: "Para saber" };

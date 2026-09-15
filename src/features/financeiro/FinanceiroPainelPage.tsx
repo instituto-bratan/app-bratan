@@ -19,6 +19,7 @@
 // MODO APRESENTAÇÃO: um botão esconde a navegação, aumenta a tipografia e mostra
 // um bloco por vez com as setas — para apresentar do próprio app, sem PowerPoint.
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -71,6 +72,9 @@ import {
 import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, metasForMonth, type MetasConfig } from "./metasData";
 import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMes";
 import { buildOcupacaoMes, formatHoras, heatDaOcupacao } from "./ocupacaoSala";
+import { buildSemanaEmNumeros } from "./semanaEmNumeros";
+import { useCrmState } from "@/features/crm/useCrmState";
+import { listRemoteColaboradores, listRemoteNpsRespostas } from "@/lib/remoteData";
 import { PonteWaterfall } from "./PonteWaterfall";
 import { buildPontosDaReuniao, type PontoDaReuniao } from "./pontosDaReuniao";
 import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
@@ -283,6 +287,25 @@ export function FinanceiroPainelPage() {
 
   // A régua da reunião é a SUPERMETA do mês (julho: 350 mil; agosto: 400 mil).
   const metaDoMes = useMemo(() => metasForMonth(metasConfig, monthKey).goalSuperRevenue, [metasConfig, monthKey]);
+
+  // ---- A SEMANA EM 8 NÚMEROS + RITMO DO TIME (14/09/2026, propostas 1.4 e 3.7) ----
+  // Sempre a semana de hoje (segunda a domingo), comparada só com os mesmos dias
+  // da semana anterior — regra do Lucas: nunca comparar parcial com fechado.
+  const crm = useCrmState();
+  const npsQuery = useQuery({ queryKey: ["nps-respostas-painel"], queryFn: () => listRemoteNpsRespostas().catch(() => []), staleTime: 300_000 });
+  const equipeQuery = useQuery({ queryKey: ["colaboradores-painel"], queryFn: () => listRemoteColaboradores().catch(() => []), staleTime: 600_000 });
+  const semanaNumeros = useMemo(
+    () =>
+      buildSemanaEmNumeros({
+        hoje,
+        sales: financeiro.sales,
+        expenses: financeiro.expenses,
+        crmTasks: crm.state.tasks.map((task) => ({ ownerUserId: task.assignedToUserId, status: task.status, completedAt: task.completedAt })),
+        npsRespostas: (npsQuery.data ?? []).map((r) => ({ nota: r.nota, criadoEm: r.criadoEm })),
+        nomes: Object.fromEntries((equipeQuery.data ?? []).map((c) => [c.id, c.nome])),
+      }),
+    [hoje, financeiro.sales, financeiro.expenses, crm.state.tasks, npsQuery.data, equipeQuery.data],
+  );
 
   // ---- os blocos, na ordem da reunião --------------------------------------
   const kpis = [
@@ -732,6 +755,41 @@ export function FinanceiroPainelPage() {
                 <RankBars points={ocupacao.porDiaDaSemana} formatValue={formatHoras} color={chartColors.entrada} emptyMessage="Sem comandas neste mês." />
               </div>
             </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      chave: "semana",
+      titulo: `9. A semana em 8 números${semanaNumeros.parcial ? " (em andamento)" : ""}`,
+      corpo: (
+        <div className="grid gap-4">
+          <p className={cn("leading-snug text-brand-tinta", apresentando ? "text-lg" : "text-sm")}>
+            {semanaNumeros.frase}
+            <InfoTip title="Como ler">
+              Oito números da semana de hoje (segunda a domingo), cada um com a frase que explica. A comparação é sempre com os MESMOS dias
+              da semana anterior — segunda a quarta contra segunda a quarta — porque semana pela metade não se compara com semana fechada.
+              Tudo vem das comandas, das contas, das tarefas do CRM e do totem de NPS.
+            </InfoTip>
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {semanaNumeros.numeros.map((numero) => (
+              <div key={numero.chave} className={cn("rounded-xl border p-3", tomEstilo[numero.tom].card)}>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">{numero.rotulo}</p>
+                <p className={cn("mt-1 font-bold tabular-nums", tomEstilo[numero.tom].texto, apresentando ? "text-4xl" : "text-2xl")}>{numero.valor}</p>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground first-letter:uppercase">{numero.frase}</p>
+              </div>
+            ))}
+          </div>
+          <div>
+            <p className="mb-2 text-sm font-semibold text-brand-tinta">
+              Ritmo do time — toques do CRM concluídos por pessoa{semanaNumeros.parcial ? " (até hoje)" : ""}
+            </p>
+            {semanaNumeros.ritmo.length ? (
+              <RankBars points={semanaNumeros.ritmo.map((r) => ({ label: `${r.nome}${r.toquesSemanaAnterior ? ` (semana anterior ${r.toquesSemanaAnterior})` : ""}`, value: r.toques }))} color={chartColors.entrada} formatValue={(v) => `${Math.round(v)} toque${Math.round(v) === 1 ? "" : "s"}`} emptyMessage="Nenhum toque concluído nesta semana." />
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhum toque do CRM concluído nesta semana ainda.</p>
+            )}
           </div>
         </div>
       ),

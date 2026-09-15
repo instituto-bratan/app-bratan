@@ -6,7 +6,7 @@
 // pelos acessos por pessoa — depois os sinais do mês (cabe gastar, meta do dia,
 // ocupação de sala) e, por fim, os atalhos, que viraram a segunda tela.
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -55,6 +55,8 @@ import { checklistStorageKey, checklistSummary, createChecklistRun, filterCheckl
 import { activeAvisos, initialAvisos, muralStorageKey } from "@/features/mural/muralData";
 import { pagamentosStorageKey, pagamentosSummary, type PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
+  dispararRotinaDiaria,
+  listRemoteAchados,
   listRemoteAvisos,
   listRemoteChecklistItems,
   listRemoteFinExpenses,
@@ -65,7 +67,10 @@ import {
   listRemoteNpsContatos,
   listRemotePagamentos,
   loadRemoteFinLucroPublico,
+  resolverRemoteAchado,
 } from "@/lib/remoteData";
+import { toast } from "@/components/ui/avisos";
+import { isCoordenacao } from "@/lib/access";
 import { loadLocalFinExpenses, loadLocalFinSales, moneyFin, pagamentosSemComprovante, salesPendingInvoice } from "@/features/financeiro/financeiroData";
 import { buildFilaFinanceira } from "@/features/financeiro/filaFinanceira";
 import { buildOcupacaoMes, formatHoras } from "@/features/financeiro/ocupacaoSala";
@@ -238,6 +243,37 @@ export function HomePage() {
     return fila.length ? { quantidade: fila.length, maisAntigoDias: Math.max(...fila.map((item) => item.diasDesde)) } : null;
   }, [veNps, crm.state.contacts, sales, npsQuery.data, hoje]);
 
+  // ---- achados da rotina diária (14/09/2026): abertos, filtrados pelo cargo -------------
+  // Os que a Home já calcula ao vivo (comprovante, fechamento) não entram de novo.
+  const achadosQuery = useQuery({ queryKey: ["achados-diarios"], queryFn: listRemoteAchados, enabled: useRemote, staleTime: 60_000 });
+  const achados = useMemo(() => {
+    const cargoAtual = cargo ?? "";
+    return (achadosQuery.data ?? [])
+      .filter((a) => a.tipo !== "COMPROVANTE" && a.tipo !== "FECHAMENTO")
+      .filter((a) => (a.cargos.length ? a.cargos.includes(cargoAtual) : isCoordenacao(cargo)))
+      .map((a) => ({ id: a.id, chave: a.chave, tipo: a.tipo, dia: a.dia, titulo: a.titulo, detalhe: a.detalhe, valor: a.valor, href: a.href, urgencia: a.urgencia, quantidade: a.quantidade }));
+  }, [achadosQuery.data, cargo]);
+  const queryClientHome = useQueryClient();
+  async function resolverAchado(item: { achadoId?: string; titulo: string }) {
+    if (!item.achadoId) return;
+    try {
+      await resolverRemoteAchado(item.achadoId, pessoa?.id ?? null);
+      toast(`"${item.titulo}" marcado como resolvido.`, { tom: "ok" });
+    } catch (error) {
+      toast(`Não consegui marcar: ${error instanceof Error ? error.message : String(error)}`, { tom: "erro" });
+    }
+    await queryClientHome.invalidateQueries({ queryKey: ["achados-diarios"] });
+  }
+  async function atualizarAchados() {
+    const r = await dispararRotinaDiaria();
+    if (!r.ok) toast(`A rotina não rodou: ${r.error ?? "erro"}`, { tom: "erro" });
+    else {
+      const total = Object.values(r.resumo ?? {}).reduce((a, b) => a + b, 0);
+      toast(total ? `Rotina rodou: ${total} achado${total > 1 ? "s" : ""} em aberto.` : "Rotina rodou: nada pendente encontrado.", { tom: "ok" });
+    }
+    await queryClientHome.invalidateQueries({ queryKey: ["achados-diarios"] });
+  }
+
   // ---- silenciados (por pessoa, neste aparelho) ------------------------------------------
   const silenciadosKey = `app-bratan-fila-silenciada:${pessoa?.id ?? "anon"}`;
   const [silenciados, setSilenciados] = useState<Record<string, string>>(() => limparSilenciados(readLocalValue<Record<string, string>>(silenciadosKey, {}), hoje));
@@ -271,9 +307,10 @@ export function HomePage() {
         checklist: { pendentes: checklist.pendingCount, proxima: checklist.nextItem?.descricao ?? null },
         fechamentoPendente: fechamento,
         avisosImportantes: avisos.filter((aviso) => aviso.prioridade === "importante").map((aviso) => ({ id: aviso.id, corpo: aviso.corpo, publicadoEm: aviso.publicadoEm })),
+        achados,
         silenciados,
       }),
-    [hoje, filaFinanceira, comprovantesPendentes, comandasSemNota, crmTasks, pagamentos, estoqueFila, npsFila, checklist, fechamento, avisos, silenciados],
+    [hoje, filaFinanceira, comprovantesPendentes, comandasSemNota, crmTasks, pagamentos, estoqueFila, npsFila, checklist, fechamento, avisos, achados, silenciados],
   );
   const carregando = useRemote && (finExpensesQuery.isLoading || finSalesQuery.isLoading || checklistQuery.isLoading || (veCrm && crm.isSyncing && crm.state.tasks.length === 0));
 
@@ -307,7 +344,7 @@ export function HomePage() {
         </div>
       </motion.section>
 
-      <FilaDoDiaHome fila={fila} carregando={carregando} onSilenciar={silenciar} />
+      <FilaDoDiaHome fila={fila} carregando={carregando} onSilenciar={silenciar} onResolver={(item) => void resolverAchado(item)} onAtualizarAchados={useRemote && isCoordenacao(cargo) ? atualizarAchados : undefined} />
 
       <section>
         <div className="mb-3 flex items-end justify-between gap-3">

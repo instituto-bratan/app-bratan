@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Pencil, CalendarClock, CheckCircle2, CircleDollarSign, Copy, Filter, Layers, ListChecks, Package, PiggyBank, Plus, Repeat, Trash2, Undo2, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
@@ -26,6 +27,8 @@ import { FilaDoDiaCard, linhaDigitavelDaConta } from "./FilaDoDiaCard";
 import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
 import { CaixaEntradaCard } from "./CaixaEntradaCard";
 import { confirmar, toast } from "@/components/ui/avisos";
+import { configAtual } from "@/lib/configNegocio";
+import { precisaAprovacao } from "./filaFinanceira";
 import { buildFilaFinanceira, contaParecida } from "./filaFinanceira";
 import { lerDocumento, type LeituraDocumento } from "./leitorDocumento";
 import { diasEntre } from "./recebiveisRede";
@@ -85,6 +88,19 @@ export function FinanceiroContasPage() {
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  // ⌘K "FAZER" (14/09/2026, proposta 4.2): /financeiro/contas?valor=1234,56 abre o
+  // formulário já com o valor — a pessoa digitou "1234" no atalho e caiu aqui.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const valor = searchParams.get("valor");
+    if (!valor) return;
+    setAmount(valor.replace(".", ","));
+    abrirFormulario();
+    const next = new URLSearchParams(searchParams);
+    next.delete("valor");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [dueDate, setDueDate] = useState(now);
   const [categoryRef, setCategoryRef] = useState("");
   const [method, setMethod] = useState<FinPaymentMethod>("BOLETO");
@@ -487,7 +503,21 @@ export function FinanceiroContasPage() {
     );
   }
 
+  // APROVAÇÃO ACIMA DO LIMITE (14/09/2026, proposta 1.7): a lista de aprovadores e o
+  // limite vêm das Configurações do negócio; a decisão fica gravada na conta.
+  const aprovadores = configAtual<string[]>("aprovacao.aprovadores") ?? [];
+  const podeAprovar = Boolean(pessoa?.cargo && aprovadores.includes(pessoa.cargo));
+  function aprovarConta(expense: FinExpense, decisao: "APROVADA" | "RECUSADA") {
+    if (!podeAprovar) return;
+    financeiro.updateExpense({ ...expense, aprovacaoStatus: decisao, aprovacaoPor: pessoa?.id ?? null, aprovacaoEm: new Date().toISOString(), aprovacaoNota: `${decisao === "APROVADA" ? "Aprovada" : "Recusada"} por ${pessoa?.nome ?? "—"} na Fila do dia` });
+    toast(decisao === "APROVADA" ? `"${expense.description}" aprovada — já pode ser paga.` : `"${expense.description}" recusada. Converse com quem lançou antes de pagar.`, { tom: decisao === "APROVADA" ? "ok" : "atencao" });
+  }
+
   function pagarConta(expense: FinExpense) {
+    if (precisaAprovacao(expense, configAtual<number>("aprovacao.limite") ?? 0)) {
+      toast(`"${expense.description}" está acima do limite e ainda não foi aprovada.`, { tom: "atencao" });
+      return;
+    }
     financeiro.setExpensePaid(expense.id, now);
     avisar(`"${expense.description}" marcada como paga hoje (${moneyFin(expense.amount)}). Se tiver o comprovante/NF, anexe na coluna "Nota fiscal".`, () =>
       financeiro.setExpensePaid(expense.id, null),
@@ -716,6 +746,8 @@ export function FinanceiroContasPage() {
           fila={fila}
           readOnly={readOnly}
           onPagar={pagarConta}
+          podeAprovar={podeAprovar && !readOnly}
+          onAprovar={aprovarConta}
           onAdiar={adiarConta}
           onEditar={startEditing}
           onChegou={compraChegou}

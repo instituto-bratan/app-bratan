@@ -58,6 +58,7 @@ import {
   VIGENCIA_ACORDO_REDE,
 } from "./recebiveisRede";
 import type { MetasBoard } from "./metasData";
+import { configAtual } from "@/lib/configNegocio";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
@@ -68,6 +69,13 @@ export type ReguaLucro = {
   lucroMensal: number;
   /** % do LUCRO BRUTO DOS PRODUTOS do dia que vai para o Dr. Daniel (coluna S da planilha: 50%). */
   medicoExecutor: number;
+  /**
+   * ENVELOPES OPCIONAIS (14/09/2026, proposta 5.3 — Profit First completo):
+   * provisões (13º, férias, IRPJ/CSLL trimestral) e reserva de emergência, em %
+   * do líquido. Vêm das Configurações do negócio; zero/ausente = desligado.
+   */
+  provisoesPct?: number;
+  reservaPct?: number;
 };
 
 export type DegrauLucro = ReguaLucro & {
@@ -318,10 +326,15 @@ export const CATEGORIAS_TAXAS_MAQUININHA = new Set(["cat-tarifa-bancaria-rede", 
  */
 export const CATEGORIAS_DIVIDAS_INVESTIMENTO = new Set(["cat-giro-pronamp-carro-emprestimo"]);
 
-export type EnvelopeKey = "impostos" | "lucro" | "medicoExecutor" | "operacional";
+export type EnvelopeKey = "impostos" | "lucro" | "medicoExecutor" | "operacional" | "provisoes" | "reserva";
 export type Envelopes = Record<EnvelopeKey, number>;
 
-const zeroEnvelopes = (): Envelopes => ({ impostos: 0, lucro: 0, medicoExecutor: 0, operacional: 0 });
+const zeroEnvelopes = (): Envelopes => ({ impostos: 0, lucro: 0, medicoExecutor: 0, operacional: 0, provisoes: 0, reserva: 0 });
+
+/** Contas que abastecem o envelope de provisões: as poupanças de 13º, férias, rescisão, urgências… (não a de impostos, que já tem envelope próprio). */
+export function ehProvisao(categoryRef: string) {
+  return categoryRef.startsWith("cat-poup-") && !CATEGORIAS_PROVISAO_IMPOSTOS.has(categoryRef);
+}
 
 /** Em que envelope uma conta paga cai. null = fora do jogo (obra, provisão de impostos, tarifa da maquininha). */
 export function envelopeDaConta(expense: FinExpense, category?: FinCategory | null): EnvelopeKey | null {
@@ -329,6 +342,7 @@ export function envelopeDaConta(expense: FinExpense, category?: FinCategory | nu
   if (CATEGORIAS_DIVIDAS_INVESTIMENTO.has(expense.categoryRef)) return "lucro";
   if (CATEGORIAS_IMPOSTOS.has(expense.categoryRef)) return "impostos";
   if (CATEGORIAS_PROVISAO_IMPOSTOS.has(expense.categoryRef)) return null;
+  if (ehProvisao(expense.categoryRef)) return "provisoes";
   if (CATEGORIAS_TAXAS_MAQUININHA.has(expense.categoryRef)) return null;
   if (CATEGORIAS_MEDICO_EXECUTOR.has(expense.categoryRef)) return "medicoExecutor";
   if (expenseEhCapex(expense, category)) return null;
@@ -345,8 +359,10 @@ export function repartir(liquido: number, lucroBrutoProdutos: number, regua: Reg
   const impostos = round2((liquido * regua.impostos) / 100);
   const medicoExecutor = round2((lucroBrutoProdutos * regua.medicoExecutor) / 100);
   const lucro = round2(cotaLucro);
-  const operacional = round2(liquido - impostos - medicoExecutor - lucro);
-  return { impostos, lucro, medicoExecutor, operacional };
+  const provisoes = round2((liquido * (regua.provisoesPct ?? 0)) / 100);
+  const reserva = round2((liquido * (regua.reservaPct ?? 0)) / 100);
+  const operacional = round2(liquido - impostos - medicoExecutor - lucro - provisoes - reserva);
+  return { impostos, lucro, medicoExecutor, operacional, provisoes, reserva };
 }
 
 // ---- A planilha do dia a dia -------------------------------------------------
@@ -426,6 +442,8 @@ function somaEnvelopes(a: Envelopes, b: Envelopes): Envelopes {
   return {
     impostos: round2(a.impostos + b.impostos),
     lucro: round2(a.lucro + b.lucro),
+    provisoes: round2((a.provisoes ?? 0) + (b.provisoes ?? 0)),
+    reserva: round2((a.reserva ?? 0) + (b.reserva ?? 0)),
     medicoExecutor: round2(a.medicoExecutor + b.medicoExecutor),
     operacional: round2(a.operacional + b.operacional),
   };
@@ -435,6 +453,8 @@ function subtraiEnvelopes(a: Envelopes, b: Envelopes): Envelopes {
   return {
     impostos: round2(a.impostos - b.impostos),
     lucro: round2(a.lucro - b.lucro),
+    provisoes: round2((a.provisoes ?? 0) - (b.provisoes ?? 0)),
+    reserva: round2((a.reserva ?? 0) - (b.reserva ?? 0)),
     medicoExecutor: round2(a.medicoExecutor - b.medicoExecutor),
     operacional: round2(a.operacional - b.operacional),
   };
@@ -533,7 +553,7 @@ export function buildPlanilhaLucro(input: {
       disponivel: 0,
       cartaoDisponivel: 0,
       antecipacao: 0,
-      regua: { ...regua, cotaLucro: cotaLucroDoDia(regua, dia) },
+      regua: { ...regua, provisoesPct: regua.provisoesPct ?? configAtual<number>("lucro.provisoes_pct", dia) ?? 0, reservaPct: regua.reservaPct ?? configAtual<number>("lucro.reserva_pct", dia) ?? 0, cotaLucro: cotaLucroDoDia(regua, dia) },
       reservado: zeroEnvelopes(),
       usado: usadoPorDia.get(dia) ?? zeroEnvelopes(),
       acumulado: { reservado: zeroEnvelopes(), usado: zeroEnvelopes(), saldo: zeroEnvelopes() },
@@ -577,7 +597,7 @@ export function buildPlanilhaLucro(input: {
     linha.cartaoDisponivel = cartaoHoje.liquido;
     linha.antecipacao = cartaoHoje.antecipacao;
     linha.disponivel = round2(linha.pix - taxasPix + linha.dinheiro + linha.outros + cartaoHoje.liquido);
-    linha.reservado = repartir(linha.liquido, linha.lucroBrutoProdutos, regua, linha.regua.cotaLucro);
+    linha.reservado = repartir(linha.liquido, linha.lucroBrutoProdutos, linha.regua, linha.regua.cotaLucro);
 
     acumuladoReservado = somaEnvelopes(acumuladoReservado, linha.reservado);
     acumuladoUsado = somaEnvelopes(acumuladoUsado, linha.usado);
@@ -672,7 +692,7 @@ function avaliaMes(
     const amount = expense.amount || 0;
     if (CATEGORIAS_LUCRO_SOCIOS.has(expense.categoryRef)) sociosPagos += amount;
     else if (CATEGORIAS_IMPOSTOS.has(expense.categoryRef)) impostos += amount;
-    else if (CATEGORIAS_PROVISAO_IMPOSTOS.has(expense.categoryRef)) continue;
+    else if (CATEGORIAS_PROVISAO_IMPOSTOS.has(expense.categoryRef) || ehProvisao(expense.categoryRef)) continue;
     else if (CATEGORIAS_MEDICO_EXECUTOR.has(expense.categoryRef)) medicoExecutor += amount;
     else if (CATEGORIAS_DIVIDAS_INVESTIMENTO.has(expense.categoryRef) || expenseEhCapex(expense, category)) investimento += amount;
     else operacional += amount;

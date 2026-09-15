@@ -42,8 +42,10 @@ import { useFinanceiro } from "./useFinanceiro";
 import { buildMetasBoard, defaultMetasConfig, type MetasConfig } from "./metasData";
 import { parseFinAmount } from "./financeiroData";
 import { buildCaixaProjetado } from "./caixaProjetado";
+import { AntecipacaoComparador } from "./AntecipacaoComparadorCard";
 import { EnvelopesVisuais, transferenciasPrevistas } from "./EnvelopesVisuais";
 import { CaixaProjetadoCard } from "./CaixaProjetadoCard";
+import { configAtual } from "@/lib/configNegocio";
 
 const configStorageKey = "app-bratan-fin-lucro-config";
 const marcasStorageKey = "app-bratan-fin-lucro-dias";
@@ -52,7 +54,7 @@ const metasStorageKey = "app-bratan-fin-metas-config-v1";
 /** Piso do caixa projetado (por aparelho; vira configuração quando a proposta 7.3 for aprovada). */
 const pisoCaixaStorageKey = "app-bratan-fin-caixa-piso-v1";
 
-const reguaLabels: Record<keyof ReguaLucro, string> = {
+const reguaLabels: Record<"impostos" | "lucroMensal" | "medicoExecutor", string> = {
   impostos: "Impostos (% do líquido)",
   lucroMensal: "Lucro dos sócios (R$ por mês)",
   medicoExecutor: "Médico executor (% do lucro bruto do produto — col. S)",
@@ -337,7 +339,7 @@ export function FinanceiroLucroPage() {
     }
   }, []);
   const [comAntecipacao, setComAntecipacao] = useState(false);
-  const [pisoCaixa, setPisoCaixa] = useState<number>(() => readLocalValue<number>(pisoCaixaStorageKey, 0));
+  const [pisoCaixa, setPisoCaixa] = useState<number>(() => readLocalValue<number>(pisoCaixaStorageKey, configAtual<number>("caixa.piso") ?? 0));
   const caixa = useMemo(
     () =>
       buildCaixaProjetado({
@@ -500,6 +502,7 @@ export function FinanceiroLucroPage() {
                 (anexo RAV do acordo Q-7621480). Custo de puxar = (1 + TAD)^(dias/30) − 1 sobre o valor antecipado.
               </p>
             </div>
+            <AntecipacaoComparador tadMensalPct={taxaAntecipacaoMensal(selicDaConfig(config)) * 100} valorSugerido={Math.round(planilha.linhas.reduce((soma, linha) => soma + linha.credito, 0))} />
             {config.degraus.length > 1 ? (
               <p className="mt-3 text-xs text-muted-foreground">
                 Histórico:{" "}

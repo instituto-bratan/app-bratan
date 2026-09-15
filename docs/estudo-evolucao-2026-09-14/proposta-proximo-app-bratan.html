@@ -1,0 +1,963 @@
+<title>Próximo APP BRATAN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:light dark;
+  --papel:#FAF8F1; --card:#FFFDF7; --card-2:#F3EFE2; --tinta:#2B2E24; --tinta-2:#5C6150; --muted:#7A7E6E;
+  --musgo:#4D563B; --musgo-forte:#3B4430; --oliva:#7A895E; --dourado:#C6A862; --dourado-suave:#EBDDAE; --creme:#F8EDBD;
+  --linha:#DDD6C3; --linha-forte:#C9C1A9;
+  --pronto:#5F7247; --pronto-bg:#E7ECDB; --beta:#9C7E2E; --beta-bg:#F4EAC8; --contrato:#5D6B7A; --contrato-bg:#E2E7EC; --explorar:#9A6A5A; --explorar-bg:#F0E1DA;
+  --alerta:#A34E3E; --alerta-bg:#F6E3DE;
+  --hero:#3E4632; --hero-tinta:#F6EFD9; --hero-muted:#C9CBB2;
+  --sombra:0 1px 2px rgba(43,46,36,.06),0 8px 24px -12px rgba(43,46,36,.18);
+  --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --papel:#1B1E16; --card:#23271D; --card-2:#2B3024; --tinta:#EDE8D8; --tinta-2:#C4C2AE; --muted:#9A9C8A;
+    --musgo:#B3BD98; --musgo-forte:#CBD3B4; --oliva:#96A57A; --dourado:#D6BB77; --dourado-suave:#4A422A; --creme:#3B3A2A;
+    --linha:#363B2D; --linha-forte:#4A5040;
+    --pronto:#A6B98A; --pronto-bg:#2C3524; --beta:#D9BC6E; --beta-bg:#3C351F; --contrato:#A6B4C2; --contrato-bg:#2A313A; --explorar:#D2A08F; --explorar-bg:#3D2E29;
+    --alerta:#E0907F; --alerta-bg:#3E2924;
+    --hero:#161912; --hero-tinta:#EFE8D2; --hero-muted:#A9AC95;
+    --sombra:0 1px 2px rgba(0,0,0,.3),0 10px 28px -14px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --papel:#1B1E16; --card:#23271D; --card-2:#2B3024; --tinta:#EDE8D8; --tinta-2:#C4C2AE; --muted:#9A9C8A;
+  --musgo:#B3BD98; --musgo-forte:#CBD3B4; --oliva:#96A57A; --dourado:#D6BB77; --dourado-suave:#4A422A; --creme:#3B3A2A;
+  --linha:#363B2D; --linha-forte:#4A5040;
+  --pronto:#A6B98A; --pronto-bg:#2C3524; --beta:#D9BC6E; --beta-bg:#3C351F; --contrato:#A6B4C2; --contrato-bg:#2A313A; --explorar:#D2A08F; --explorar-bg:#3D2E29;
+  --alerta:#E0907F; --alerta-bg:#3E2924;
+  --hero:#161912; --hero-tinta:#EFE8D2; --hero-muted:#A9AC95;
+  --sombra:0 1px 2px rgba(0,0,0,.3),0 10px 28px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto} *{animation:none!important;transition:none!important}}
+body{margin:0;background:var(--papel);color:var(--tinta);font-family:var(--sans);font-size:16px;line-height:1.55;padding-inline:16px;padding-block:0 64px;font-feature-settings:"tnum" 1;font-variant-numeric:tabular-nums}
+a{color:var(--musgo);text-decoration-color:var(--dourado);text-underline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:2px solid var(--dourado);outline-offset:2px;border-radius:4px}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:400;letter-spacing:-.01em;text-wrap:balance;margin:0}
+h1{font-size:clamp(2.6rem,6vw,4.6rem);line-height:.98}
+h2{font-size:clamp(1.9rem,3.4vw,2.6rem);line-height:1.1}
+h3{font-size:clamp(1.35rem,2.2vw,1.65rem);line-height:1.2}
+h4{font-size:1.2rem;line-height:1.25}
+p{margin:0 0 1em}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.serif-i{font-family:var(--serif);font-style:italic}
+.wrap{max-width:1180px;margin-inline:auto}
+.prose{max-width:74ch}
+.lede{font-size:1.15rem;color:var(--tinta-2);max-width:66ch}
+small,.small{font-size:.86rem;color:var(--tinta-2)}
+
+/* HERO */
+.hero{background:var(--hero);color:var(--hero-tinta);margin-inline:-16px;padding:40px 16px 48px}
+.hero .wrap{display:grid;gap:28px}
+.hero .eyebrow{color:var(--hero-muted)}
+.hero h1{color:var(--hero-tinta)}
+.hero h1 em{font-style:italic;color:var(--dourado)}
+.hero .lede{color:var(--hero-muted);font-size:1.18rem;max-width:62ch}
+.hero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;border-top:1px solid rgba(255,255,255,.14);padding-top:22px}
+.hero-stat{display:grid;gap:4px}
+.hero-stat b{font-family:var(--serif);font-weight:400;font-size:2.2rem;line-height:1;color:var(--hero-tinta)}
+.hero-stat span{font-size:.86rem;color:var(--hero-muted);line-height:1.35}
+.legenda-selos{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:.85rem;color:var(--hero-muted)}
+
+/* NAV */
+.nav{position:sticky;top:0;z-index:20;background:color-mix(in oklab,var(--papel) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--linha);margin-inline:-16px;padding-inline:16px}
+.nav ul{list-style:none;margin:0;padding:10px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;max-width:1180px;margin-inline:auto}
+.nav ul::-webkit-scrollbar{display:none}
+.nav a{white-space:nowrap;font-size:.86rem;font-weight:500;text-decoration:none;color:var(--tinta-2);padding:6px 11px;border-radius:999px;border:1px solid transparent}
+.nav a:hover,.nav a[aria-current="true"]{color:var(--tinta);border-color:var(--linha-forte);background:var(--card)}
+
+/* SECTIONS */
+section.bloco{padding-block:56px 8px;border-bottom:1px solid var(--linha)}
+section.bloco:last-of-type{border-bottom:0}
+.cab{display:grid;gap:10px;margin-bottom:28px;max-width:74ch}
+.cab .n{font-family:var(--serif);font-size:1rem;color:var(--dourado);letter-spacing:.02em}
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--linha);border-radius:14px;padding:18px 20px;box-shadow:var(--sombra)}
+.card h4{margin-bottom:8px}
+.card.quieto{box-shadow:none;background:var(--card-2)}
+.callout{border-left:3px solid var(--dourado);background:var(--card-2);padding:14px 18px;border-radius:0 12px 12px 0;max-width:74ch}
+.callout.alerta{border-left-color:var(--alerta);background:var(--alerta-bg)}
+.callout.alerta b{color:var(--alerta)}
+.prazo{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;padding:12px 0;border-top:1px solid var(--linha)}
+.prazo:last-child{border-bottom:1px solid var(--linha)}
+.prazo .data{font-family:var(--serif);font-size:1.5rem;line-height:1;min-width:92px;color:var(--alerta)}
+.prazo .data.ok{color:var(--musgo)}
+
+/* NÚMEROS */
+.numero{display:grid;gap:6px;padding:16px 18px;background:var(--card);border:1px solid var(--linha);border-radius:12px}
+.numero b{font-family:var(--serif);font-weight:400;font-size:2.1rem;line-height:1;color:var(--musgo-forte)}
+.numero span{font-size:.92rem;color:var(--tinta-2);line-height:1.4}
+.numero .fonte{font-family:var(--mono);font-size:.68rem;color:var(--muted);letter-spacing:.04em}
+.bar{position:relative;height:8px;border-radius:4px;background:var(--linha);overflow:hidden;margin-top:4px}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--oliva);border-radius:4px}
+.bar i.dourado{background:var(--dourado)}
+.bar i.alerta{background:var(--alerta)}
+
+/* TABELAS */
+.tabela-wrap{overflow-x:auto;border:1px solid var(--linha);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:.92rem;min-width:640px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--linha);vertical-align:top}
+th{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--card-2)}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;white-space:nowrap}
+td b{font-weight:600}
+
+/* SELOS E CHIPS */
+.selo{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.selo::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.selo.pronto{color:var(--pronto);background:var(--pronto-bg)}
+.selo.beta{color:var(--beta);background:var(--beta-bg)}
+.selo.contrato{color:var(--contrato);background:var(--contrato-bg)}
+.selo.explorar{color:var(--explorar);background:var(--explorar-bg)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chip{font:inherit;font-size:.84rem;font-weight:500;color:var(--tinta-2);background:var(--card);border:1px solid var(--linha-forte);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--musgo);color:var(--papel);border-color:var(--musgo)}
+:root[data-theme="dark"] .chip[aria-pressed="true"],:root:not([data-theme="light"]) .chip[aria-pressed="true"]{color:var(--papel)}
+.onda-tag{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+
+/* ESTUDOS */
+.estudo{padding-block:36px 12px;border-top:1px dashed var(--linha-forte)}
+.estudo:first-of-type{border-top:0}
+.estudo-cab{display:grid;gap:10px;max-width:74ch;margin-bottom:22px}
+.estudo-cab .tese{font-family:var(--serif);font-size:1.45rem;line-height:1.25;color:var(--tinta)}
+.estudo-cab .contexto{color:var(--tinta-2)}
+.propostas{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+.proposta{display:grid;grid-template-rows:auto auto 1fr auto;gap:10px;background:var(--card);border:1px solid var(--linha);border-radius:14px;padding:18px 18px 14px;box-shadow:var(--sombra);position:relative}
+.proposta[hidden]{display:none}
+.proposta .topo{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.proposta .id{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.06em}
+.proposta h4{font-size:1.18rem}
+.proposta .oque{color:var(--tinta);margin:0}
+.proposta .como{color:var(--tinta-2);font-size:.92rem;margin:0}
+.proposta .como b{color:var(--tinta);font-weight:600}
+.proposta .meta{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:.8rem;color:var(--muted);border-top:1px solid var(--linha);padding-top:10px}
+.proposta .meta .ie{display:inline-flex;gap:3px;align-items:center}
+.proposta .meta .ie i{display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--linha-forte)}
+.proposta .meta .ie i.on{background:var(--oliva)}
+.proposta .meta .ie.esf i.on{background:var(--dourado)}
+.quero{font:inherit;font-size:.8rem;font-weight:600;border:1px solid var(--linha-forte);background:transparent;color:var(--tinta-2);border-radius:999px;padding:4px 10px;cursor:pointer;margin-left:auto}
+.quero[aria-pressed="true"]{background:var(--dourado);border-color:var(--dourado);color:#2B2E24}
+.dep{font-size:.8rem;color:var(--muted)}
+.dep b{color:var(--tinta-2);font-weight:600}
+
+/* MATRIZ */
+.matriz{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+@media (min-width:980px){.matriz{grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr)}}
+.matriz svg{width:100%;height:auto;display:block;background:var(--card);border:1px solid var(--linha);border-radius:14px}
+.matriz .legenda{display:grid;gap:8px;align-content:start;font-size:.9rem}
+.matriz .legenda span{display:flex;gap:8px;align-items:center}
+.matriz .legenda i{width:12px;height:12px;border-radius:50%;display:inline-block;flex:none}
+.dot{cursor:pointer}
+.dot:hover circle{stroke-width:3}
+
+/* ONDAS */
+.ondas{display:grid;gap:14px}
+.onda{display:grid;grid-template-columns:minmax(150px,200px) 1fr;gap:18px;padding:18px 0;border-top:1px solid var(--linha)}
+.onda:last-child{border-bottom:1px solid var(--linha)}
+.onda .quando{display:grid;gap:4px}
+.onda .quando b{font-family:var(--serif);font-weight:400;font-size:1.6rem;line-height:1.05}
+.onda ul{margin:0;padding-left:1.1em;display:grid;gap:5px}
+.onda li b{font-weight:600}
+@media (max-width:640px){.onda{grid-template-columns:1fr;gap:8px}}
+
+/* DECISÕES */
+.decisoes{display:grid;gap:12px}
+.decisao{display:grid;gap:10px;background:var(--card);border:1px solid var(--linha);border-radius:14px;padding:16px 18px}
+.decisao .cab-d{display:flex;gap:12px;align-items:baseline}
+.decisao .cab-d .n{font-family:var(--serif);font-size:1.5rem;color:var(--dourado);min-width:38px;line-height:1}
+.decisao h4{font-size:1.12rem}
+.decisao p{margin:0;color:var(--tinta-2);font-size:.94rem}
+.decisao .rec{font-size:.9rem;color:var(--tinta)}
+.decisao .rec b{color:var(--musgo-forte)}
+.tri{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tri button{font:inherit;font-size:.84rem;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--linha-forte);background:transparent;color:var(--tinta-2);cursor:pointer}
+.tri button[aria-pressed="true"][data-v="sim"]{background:var(--pronto-bg);border-color:var(--pronto);color:var(--pronto)}
+.tri button[aria-pressed="true"][data-v="ajustar"]{background:var(--beta-bg);border-color:var(--beta);color:var(--beta)}
+.tri button[aria-pressed="true"][data-v="nao"]{background:var(--alerta-bg);border-color:var(--alerta);color:var(--alerta)}
+.nota{font:inherit;font-size:.9rem;width:100%;min-height:38px;padding:8px 10px;border:1px solid var(--linha);border-radius:10px;background:var(--papel);color:var(--tinta);resize:vertical}
+.acoes{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:18px}
+.btn{font:inherit;font-weight:600;font-size:.92rem;padding:10px 16px;border-radius:999px;border:1px solid var(--musgo);background:var(--musgo);color:var(--papel);cursor:pointer}
+.btn.sec{background:transparent;color:var(--musgo)}
+.resumo-box{white-space:pre-wrap;font-family:var(--mono);font-size:.78rem;line-height:1.5;background:var(--card-2);border:1px solid var(--linha);border-radius:12px;padding:14px;max-height:320px;overflow:auto;margin-top:12px}
+
+/* FONTES */
+.fontes{columns:1;column-gap:32px;font-size:.88rem}
+@media (min-width:800px){.fontes{columns:2}}
+.fontes li{break-inside:avoid;margin-bottom:6px;color:var(--tinta-2)}
+.fontes h4{column-span:all;margin:14px 0 8px;font-size:1.1rem}
+
+/* RODAPÉ */
+footer{padding-top:32px;color:var(--muted);font-size:.84rem}
+@media print{.nav,.quero,.tri,.acoes,.chips{display:none!important} .proposta,.card,.decisao{break-inside:avoid;box-shadow:none} body{padding:0} .hero{margin:0}}
+</style>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Instituto Bratan · APP BRATAN · Estudo de evolução · 14 de setembro de 2026</div>
+    <h1>O próximo <em>APP BRATAN</em>: um sistema que trabalha sozinho e pede aprovação só onde importa.</h1>
+    <p class="lede">Cinco pesquisas amplas (agentes e automação, integrações financeiras no Brasil, usabilidade e front-end, gestão de clínicas premium e um inventário completo do código) cruzadas com os números reais do banco de produção. O resultado são 7 estudos, 52 propostas, um roadmap em ondas e 15 decisões para você aprovar, ajustar ou recusar aqui mesmo.</p>
+    <div class="hero-grid">
+      <div class="hero-stat"><b>52</b><span>propostas, cada uma com maturidade, impacto e esforço</span></div>
+      <div class="hero-stat"><b>7</b><span>estudos: agentes, dinheiro, paciente, experiência, previsão, compliance, fundações</span></div>
+      <div class="hero-stat"><b>15</b><span>decisões que só você, o Dr. Daniel e a CEO podem tomar</span></div>
+      <div class="hero-stat"><b>3</b><span>prazos legais que já correm: 30/09, 01/10 e dezembro/2026</span></div>
+    </div>
+    <div class="legenda-selos">
+      <span>Maturidade:</span>
+      <span class="selo pronto">Pronto</span><span>tecnologia madura, dá para fazer já</span>
+      <span class="selo beta">Beta</span><span>funciona, exige piloto ou API em beta</span>
+      <span class="selo contrato">Contrato</span><span>depende de gerente, certificado ou homologação</span>
+      <span class="selo explorar">Explorar</span><span>direção certa, ainda sem suporte amplo</span>
+    </div>
+  </div>
+</header>
+
+<nav class="nav" aria-label="Seções do documento">
+  <ul>
+    <li><a href="#resumo">Resumo</a></li>
+    <li><a href="#diagnostico">Diagnóstico</a></li>
+    <li><a href="#estudos">Os 7 estudos</a></li>
+    <li><a href="#matriz">Impacto × esforço</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#custos">Custos</a></li>
+    <li><a href="#decisoes">Decisões</a></li>
+    <li><a href="#fontes">Fontes</a></li>
+  </ul>
+</nav>
+
+<main class="wrap">
+
+<section class="bloco" id="resumo">
+  <div class="cab">
+    <div class="n">Resumo executivo</div>
+    <h2>Dez conclusões que sustentam tudo o que vem depois</h2>
+    <p class="lede">Se você ler só esta seção, leva o essencial. Cada ponto tem um estudo inteiro atrás dele.</p>
+  </div>
+  <div class="grid-2">
+    <div class="card"><h4>1. O gargalo do app é a entrada de dados, não a lógica.</h4><p class="small">Os motores estão certos e têm 642 testes. Mas o dinheiro entra por xlsx arrastado, comprovante lido no WhatsApp e “digite aqui” em pelo menos 4 telas. Em setembro, 34 das 90 contas a pagar (38%) foram lançadas por mim via SQL a partir do grupo do WhatsApp. É o que precisa mudar primeiro.</p></div>
+    <div class="card"><h4>2. Em 2026 o “agente” virou produto pronto, com aprovação humana embutida.</h4><p class="small">Anthropic, OpenAI, Google, Microsoft e Vercel lançaram harnesses gerenciados com políticas de permissão (sempre perguntar / automático), agendamento por cron e trilha de auditoria. Não precisamos escrever o loop nem a infraestrutura. Precisamos escolher onde o humano aprova.</p></div>
+    <div class="card"><h4>3. O grupo do WhatsApp não é lido por API oficial, e não vai ser.</h4><p class="small">A Groups API da Meta só lê grupos criados pela empresa via API, com até 8 pessoas e selo verificado. Ler o grupo atual exige API não oficial, com risco real de banimento em 2026. A saída é mudar o fluxo: comprovante encaminhado 1:1 para o número da clínica, lido por webhook e casado com o extrato pelo identificador da transação.</p></div>
+    <div class="card"><h4>4. Extrato, Pix e maquininha têm API. O caminho é o gerente do Itaú e o portal da Rede.</h4><p class="small">Itaú expõe extrato, Pix com QR dinâmico, boleto híbrido e DDA, mas o onboarding é via gerente e representante legal (mTLS, token de 72 h). A Rede disponibiliza conciliação por API/EDI autorizada no portal. Agregadores como Pluggy custam R$ 2.500/mês e não fazem sentido para uma conta só.</p></div>
+    <div class="card"><h4>5. Nota fiscal do paciente e do fornecedor podem sair e entrar sozinhas.</h4><p class="small">Focus NFe (R$ 89,90/mês) ou NFE.io emitem a NFS-e de São Paulo ao fechar a comanda e capturam as NF-e emitidas contra o CNPJ. Hoje 498 das 1.066 contas estão “sem nota” e nenhuma nota de setembro está registrada.</p></div>
+    <div class="card"><h4>6. O produto certo é o plano de 6 meses. O risco está no mês 1 e no mês 6.</h4><p class="small">Em GLP-1, 30% dos pacientes param no primeiro mês e cerca de 80% em 12 meses no mercado geral; programas estruturados retêm 84% em 24 semanas. Toques D3·D7·D14·D30 pela enfermagem, semáforo de adesão e renovação trabalhada em D150–D180 valem mais que qualquer tela nova.</p></div>
+    <div class="card"><h4>7. A home deve ser uma fila, não um painel de atalhos.</h4><p class="small">Linear, Attio e Superhuman convergiram no mesmo padrão: uma lista só, ordenada por urgência, com ações de uma tecla. O app já tem a Fila do dia dentro de Contas. Ela precisa virar a porta de entrada de todos os cargos, com contagem no ícone e um resumo às 7h.</p></div>
+    <div class="card"><h4>8. A lei já chegou: CFM 2.454 em vigor, SNCR em 30/09, ANPD fiscalizando saúde até dezembro.</h4><p class="small">Qualquer IA no app (leitura de documento, resumo, chatbot) precisa de inventário de risco, aviso ao paciente quando for apoio relevante e registro no prontuário quando clínico. Receita de tirzepatida passa a ser digital via SNCR. DPO nomeado com substituto e plano de incidente de 3 dias úteis deixaram de ser opcionais.</p></div>
+    <div class="card"><h4>9. O código separa bem motor e tela, mas 8 arquivos concentram 35% das linhas.</h4><p class="small">Os motores são puros e testados. As telas gigantes (Kanban com 2.789 linhas, acesso a dados com 5.078) não têm um único teste de interface, não há lint, CI, tratamento global de erro nem tema escuro. E 28 constantes de negócio (taxas, alíquotas, repasses, preço do plano) exigem deploy para mudar.</p></div>
+    <div class="card"><h4>10. Um bug de produção já está identificado: o leitor de PDF está bloqueado.</h4><p class="small">A política de segurança do site (CSP) impede carregar o pdf.js da CDN. Soltar um boleto em PDF no “Lançar rápido” cai no “cole o texto”. Explica por que a Caixa de entrada tem zero itens desde 02/09. Correção de uma hora, já na Onda 0.</p></div>
+  </div>
+</section>
+
+<section class="bloco" id="diagnostico">
+  <div class="cab">
+    <div class="n">Estudo zero</div>
+    <h2>Diagnóstico: o que o banco de produção e o código dizem hoje</h2>
+    <p class="lede">Números lidos direto do Supabase em 14/09/2026 às 14h30, sem passar pela tela. Setembro está em curso, então os valores de setembro descrevem “até 14/09” e não são comparáveis com agosto fechado.</p>
+  </div>
+
+  <h3 style="margin-bottom:14px">Onde o trabalho manual se acumula</h3>
+  <div class="grid-3" style="margin-bottom:22px">
+    <div class="numero"><b>38%</b><span>das contas a pagar de setembro (34 de 90) foram lançadas por SQL a partir do grupo do WhatsApp e do extrato, não pela tela.</span><span class="fonte">fin_expenses · client_ref fexp-wa / fexp-concil</span></div>
+    <div class="numero"><b>36%</b><span>das contas de setembro (32 de 90) entraram no sistema depois de já terem vencido. Em agosto foram 37 de 98.</span><span class="fonte">created_at &gt; due_date</span></div>
+    <div class="numero"><b>50%</b><span>das contas de setembro (45 de 90) estão sem fornecedor preenchido. Em agosto, 51 de 98.</span><span class="fonte">supplier vazio</span></div>
+    <div class="numero"><b>498</b><span>contas de 1.066 no histórico estão marcadas “sem nota” (47%). Só 1 tem a nota anexada no app.</span><span class="fonte">nota_status = SEM_NOTA</span></div>
+    <div class="numero"><b>0</b><span>itens na Caixa de entrada desde que ela nasceu em 02/09. O leitor de PDF está bloqueado em produção pela CSP.</span><span class="fonte">fin_inbox_item</span></div>
+    <div class="numero"><b>0 de 187</b><span>linhas do extrato importado (144 de agosto, 43 de setembro) têm o casamento gravado no banco. A conciliação é recalculada na tela a cada abertura.</span><span class="fonte">fin_bank_entry.match_kind</span></div>
+    <div class="numero"><b>10 de 31</b><span>pagamentos de comandas de setembro ainda estão sem comprovante anexado (9 pendentes, 1 aguardando).</span><span class="fonte">fin_sale_payments.comprovante_status</span></div>
+    <div class="numero"><b>2 dias</b><span>de setembro têm a conferência diária da maquininha feita, de 10 dias úteis até aqui. No histórico são 126 conferências, 125 “conferido”.</span><span class="fonte">fin_reconciliations</span></div>
+    <div class="numero"><b>0</b><span>notas fiscais de paciente registradas para comandas de setembro (29 comandas). Agosto tem 60 notas para 75 comandas.</span><span class="fonte">fin_invoices.comanda_date</span></div>
+    <div class="numero"><b>R$ 47.592</b><span>em 14 lembretes de pagamento abertos, aguardando “Recebi”.</span><span class="fonte">pagamento_lembrete</span></div>
+    <div class="numero"><b>190 × pendente</b><span>comprovantes marcam “pendente” no SharePoint, enquanto a fila de envio diz 197 enviados e 3 falhas. O status do registro nunca é atualizado.</span><span class="fonte">comprovante.sharepoint_status × sharepoint_dispatch_queue</span></div>
+    <div class="numero"><b>1 de 6</b><span>compras registradas em setembro contra 6 em agosto e 71 em junho. A tela de Compras separada morreu; “também é compra” na conta é o caminho.</span><span class="fonte">fin_purchases</span></div>
+  </div>
+
+  <h3 style="margin-bottom:14px">CRM e relacionamento</h3>
+  <div class="grid-3" style="margin-bottom:22px">
+    <div class="numero"><b>117</b><span>tarefas atrasadas entre 248 pendentes (47%). Quando uma tarefa atrasa, atrasa em média 5,9 dias. 218 foram concluídas nos últimos 30 dias.</span><span class="fonte">crm_tasks · due_at &lt; agora</span></div>
+    <div class="numero"><b>71%</b><span>das 1.047 tarefas do CRM são “mandar WhatsApp” (741). Hoje cada uma é copiar, abrir o wa.me e colar. Nada é enviado pelo sistema.</span><span class="fonte">crm_tasks.task_type</span></div>
+    <div class="numero"><b>121</b><span>tarefas pendentes estão com o papel SDR (leads), 63 com a enfermagem e 54 com a concierge.</span><span class="fonte">assigned_to_role</span></div>
+    <div class="numero"><b>193 de 289</b><span>contatos (67%) não têm WhatsApp nem telefone cadastrado. Automação de mensagens precisa desse dado primeiro; 111 vieram de “LinkedIn Outbound”.</span><span class="fonte">crm_contacts</span></div>
+    <div class="numero"><b>110</b><span>negociações abertas paradas em “lead frio”, entre 158 abertas. 18 fechamentos em setembro (R$ 114.905) até 14/09; agosto fechou 58.</span><span class="fonte">crm_deals</span></div>
+    <div class="numero"><b>91</b><span>pacientes em fases ativas do programa: 39 na cadência, 34 nos três contatos D1, 10 no primeiro atendimento, 8 no agendamento. 84 inscrições de régua ativas e 54 pausadas.</span><span class="fonte">program_phase · crm_cadence_enrollments</span></div>
+    <div class="numero"><b>10</b><span>respostas de NPS no totem em toda a história, 1 nos últimos 30 dias, todas nota 10. Zero contatos da concierge registrados em setembro.</span><span class="fonte">nps_resposta · concierge_nps_contato</span></div>
+    <div class="numero"><b>5%</b><span>de ocupação de sala em agosto: 69 horas vendidas de 1.386 disponíveis. O benchmark de clínica saudável é 75 a 85%.</span><span class="fonte">estudo Lucro × contas, 11/09</span></div>
+    <div class="numero"><b>1.336</b><span>eventos de auditoria em 30 dias por 8 pessoas diferentes, de 11 colaboradores ativos. O app é usado todo dia; o estoque teve 302 movimentos no período.</span><span class="fonte">audit_event · estoque_movimento</span></div>
+  </div>
+
+  <h3 style="margin-bottom:14px">O que o inventário do código mostrou</h3>
+  <div class="grid-2" style="margin-bottom:22px">
+    <div class="card quieto">
+      <h4>Tamanho e forma</h4>
+      <ul style="margin:0;padding-left:1.1em;display:grid;gap:5px" class="small">
+        <li><b>155 arquivos, 64.727 linhas</b> de TypeScript; 44 telas reais em 52 rotas; 80 tabelas, 37 funções SQL, 177 políticas de acesso, 6 buckets, 3 Edge Functions.</li>
+        <li><b>Financeiro + CRM = 52% do código.</b> Os 8 maiores arquivos somam 22.651 linhas (35%): acesso a dados com 5.078, motor do CRM com 4.693, Kanban com 2.789, domínio financeiro com 2.559, Inteligência 360 com 2.172.</li>
+        <li><b>63 arquivos de teste, 642 casos</b>, todos de motor. Zero testes de tela. Sem ESLint, Prettier ou Biome; sem CI (a verificação é o build do Vercel); sem ErrorBoundary; sem biblioteca de toast (27 window.alert/confirm); sem tema escuro (0 ocorrências de dark:); 712 atributos ARIA (ponto forte).</li>
+        <li><b>Decisões conscientes e boas:</b> gráficos em SVG puro, gerador próprio de xlsx, PDF via impressão do navegador, extrato lido sem biblioteca, PWA com service worker próprio, leitor de boleto/PIX determinístico (dígitos verificadores, TLV do BR Code).</li>
+      </ul>
+    </div>
+    <div class="card quieto">
+      <h4>Passos manuais escritos na própria interface</h4>
+      <ul style="margin:0;padding-left:1.1em;display:grid;gap:5px" class="small">
+        <li>“Abra o portal da Rede, veja o ‘a receber’ de hoje e <b>digite aqui</b>” (Lucro Inteligente).</li>
+        <li>“<b>Arraste o arquivo</b> que você já baixa” (Extrato); “<b>Digite o saldo do Itaú</b> para fechar a conta” (Prova do dinheiro); “<b>Conte o dinheiro do cofre</b> e digite aqui” (Crediário).</li>
+        <li>WhatsApp aparece em 7 pontos do código, sempre como link wa.me: a pessoa copia, abre e manda. Feegow entra por CSV. iClinic e SuperSign só existem como passos de POP.</li>
+        <li><b>28 constantes de negócio no código</b>: taxas da Rede e piso de faturamento, SELIC congelada em 15%, feriados até 2026, alíquotas de ISS/PIS/COFINS/IRPJ/CSLL, repasses 110/150, plano mínimo 6.997, catálogo de precificação inteiro (4 commits em 13 dias), voucher de 500, e nomes de pessoas (Aline, Estevão, Andrya) em templates e rótulos.</li>
+        <li>Copy desatualizado: Comprovantes ainda diz “captura interina… etapa oficial futura envia ao SharePoint”, mas o envio automático já roda a cada 15 minutos.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout alerta">
+    <b>Bug confirmado em produção.</b> A política de segurança publicada no Vercel é <span style="font-family:var(--mono);font-size:.85em">script-src 'self'; connect-src 'self' https://*.supabase.co</span>. O leitor de PDF importa o pdf.js de cdnjs.cloudflare.com em tempo de execução, o que essa política bloqueia. Resultado: soltar um boleto ou nota em PDF no Lançar rápido ou na Caixa de entrada cai no fallback “cole o texto do boleto”. A correção é empacotar o pdf.js dentro do app (ou liberar a cdnjs na política). Está como primeiro item da Onda 0.
+  </div>
+</section>
+
+<section class="bloco" id="estudos">
+  <div class="cab">
+    <div class="n">Os sete estudos</div>
+    <h2>52 propostas, organizadas por onde elas mexem na operação</h2>
+    <p class="lede">Cada cartão diz o que muda para quem usa, como se faz, de que depende e quanto pesa. Impacto e esforço vão de 1 a 5 (quadradinhos). Use os filtros para ver só o que está pronto, ou só uma onda. O botão “Quero esta” marca a proposta para o resumo de decisões no fim.</p>
+  </div>
+  <div class="chips" role="group" aria-label="Filtros" id="filtros">
+    <span class="small" style="margin-right:4px">Maturidade:</span>
+    <button class="chip" type="button" data-f="selo" data-v="pronto" aria-pressed="false">Pronto</button>
+    <button class="chip" type="button" data-f="selo" data-v="beta" aria-pressed="false">Beta</button>
+    <button class="chip" type="button" data-f="selo" data-v="contrato" aria-pressed="false">Contrato</button>
+    <button class="chip" type="button" data-f="selo" data-v="explorar" aria-pressed="false">Explorar</button>
+    <span class="small" style="margin-left:10px;margin-right:4px">Onda:</span>
+    <button class="chip" type="button" data-f="onda" data-v="0" aria-pressed="false">0 · esta semana</button>
+    <button class="chip" type="button" data-f="onda" data-v="1" aria-pressed="false">1 · até 31/10</button>
+    <button class="chip" type="button" data-f="onda" data-v="2" aria-pressed="false">2 · nov–jan</button>
+    <button class="chip" type="button" data-f="onda" data-v="3" aria-pressed="false">3 · fev–abr/27</button>
+    <button class="chip" type="button" data-f="onda" data-v="4" aria-pressed="false">4 · explorar</button>
+    <button class="chip" type="button" id="limpar-filtros" style="margin-left:auto">Limpar</button>
+  </div>
+  <p class="small" id="contagem" style="margin-top:10px"></p>
+  <div id="estudos-root"></div>
+</section>
+
+<script>
+const ESTUDOS = [];
+ESTUDOS.push({
+  id:"E1", titulo:"O app que trabalha sozinho", sub:"Agentes, rotinas e copiloto com aprovação humana",
+  tese:"Deixar de ser um sistema onde a pessoa digita o que aconteceu e passar a ser um sistema que propõe o lançamento, pede um clique de confirmação e explica o que fez.",
+  contexto:"Em 2026 os grandes provedores entregaram o loop de agente como serviço: Claude Managed Agents (cron, cofres de credenciais, memória, política de permissão sempre-perguntar/automático), OpenAI Agents API (beta de 10/09), Vercel AI SDK 7 com aprovações assinadas e Workflows duráveis, Supabase com Cron, Queues e tarefas em segundo plano nas Edge Functions. O padrão vencedor nos casos reais (88% de faturas sem toque humano em 120 dias na Peakflo; conciliação de 12 meses em uma manhã via Open Finance) é sempre o mesmo: extração com esquema estrito, validação determinística, limiar de confiança e fila de revisão de um clique. Nada de gravar dinheiro sem humano.",
+  propostas:[
+   {id:"1.1", t:"Caixa de entrada inteligente", selo:"pronto", imp:5, esf:3, onda:1,
+    oque:"Você solta o PDF do boleto, a foto da nota ou o comprovante PIX e o app devolve a conta a pagar pronta: fornecedor, valor, vencimento, categoria P12 sugerida, e o item já casado com a linha do extrato quando existir. Você confere e clica uma vez.",
+    como:"<b>Claude Sonnet 5 (ou Haiku 4.5 em lote)</b> lê o documento com saída estruturada e citação da página; antes de qualquer gravação o app recalcula os dígitos verificadores da linha digitável, valida o E2E do PIX e o CNPJ, e só então propõe. Abaixo de 85% de confiança vai para “revisar”. Custo por página: cerca de R$ 0,04 no Sonnet, metade no Haiku.",
+    dep:"Corrigir o pdf.js (7.1). Regime de dados do provedor (6.5).", custo:"≈ R$ 20–60/mês em tokens no volume atual"},
+   {id:"1.2", t:"Rotinas noturnas em três camadas", selo:"pronto", imp:4, esf:2, onda:1,
+    oque:"Às 6h o app já montou a fila do dia, enfileirou os toques D1·D5·D7 e repescagens, avisou dos boletos que vencem, listou comandas sem comprovante, maquininha que não bateu, contas sem nota e duplicidades (o caso da bioimpedância de R$ 11.725 nunca mais passa despercebido).",
+    como:"<b>Supabase Cron → Queues → Edge Functions</b>, o padrão oficial documentado: um job coleta e enfileira, workers pequenos processam um item por vez com identificador determinístico (a lição que resolveu as duplicatas do CRM). A maior parte é SQL puro; a IA só redige o achado em português.",
+    dep:"Nenhuma externa.", custo:"incluído no plano Supabase"},
+   {id:"1.3", t:"Servidor MCP do Sistema 360", selo:"beta", imp:4, esf:3, onda:3,
+    oque:"O gestor pergunta ao Claude “o que falta pagar hoje?” ou pede “lança a conta da Stin de 2.194,09 vencendo dia 20” e o app executa com as permissões daquela pessoa, pedindo confirmação em tudo que escreve. É a mesma porta que os agentes de rotina vão usar.",
+    como:"Servidor <b>MCP stateless (especificação 2026-07-28)</b> como Edge Function, com ferramentas de negócio (lançar_conta, vincular_comprovante, conciliar, criar_tarefa, fila_do_dia) e OAuth ligado ao colaborador; a matriz de 26 módulos de acesso já dá as permissões. Escrita irreversível exige confirmação no meio da chamada (input_required) ou política sempre-perguntar.",
+    dep:"Rotinas (1.2) prontas. Piloto só com Lucas e Dr. Daniel.", custo:"tokens de uso"},
+   {id:"1.4", t:"“Perguntar ao 360” dentro da tela", selo:"beta", imp:3, esf:3, onda:3,
+    oque:"Uma caixa de pergunta no Painel e no Kanban: “quanto falta para a supermeta?”, “quem está atrasado na régua da enfermagem?”. A resposta vem como cartões, tabela e botões de ação, não como parágrafo. A IA nunca calcula: os números vêm do SQL.",
+    como:"<b>Vercel AI SDK 7 + json-render</b> (catálogo fechado de componentes com esquema Zod): o modelo só escolhe componentes e frases. Ações que movimentam dinheiro passam por aprovação assinada. Encaixa na regra já registrada de “número derivado sempre com frase”.",
+    dep:"MCP (1.3) ou funções internas equivalentes.", custo:"tokens de uso"},
+   {id:"1.5", t:"Painel do Mês narrado", selo:"pronto", imp:3, esf:2, onda:2,
+    oque:"Antes da reunião do dia 5 o app escreve o resumo de fechamento: o que aconteceu, por quê e o que fazer, com cada número ligado à sua tabela. Respeita a regra da casa: mês parcial nunca é comparado com mês fechado, só com o mesmo dia do mês anterior ou com o ritmo.",
+    como:"<b>Claude Opus 5 em esforço médio</b> sobre os agregados do Painel (pontos da reunião, ponte dos 3 lucros, momento do mês), saída estruturada validada, citação obrigatória da fonte de cada número. Gera também o PDF fiel no servidor para a contabilidade.",
+    dep:"Nenhuma externa.", custo:"≈ R$ 5/mês"},
+   {id:"1.6", t:"Governança: “o que a IA fez hoje”", selo:"pronto", imp:3, esf:2, onda:2,
+    oque:"Uma tela em Administração lista cada ação automática do dia: o que leu, o que propôs, quem aprovou, quanto custou e um botão de reverter. É também o inventário de sistemas de IA que a Resolução CFM 2.454 exige de quem contrata IA.",
+    como:"Toda chamada de modelo grava um evento com permissão avaliada, custo e resultado; orçamento mensal por chave via <b>Vercel AI Gateway</b> (sem margem sobre o preço do provedor) ou budgets dos Managed Agents. Aproveita a tabela audit_event.",
+    dep:"Caixa de entrada (1.1) e rotinas (1.2).", custo:"—"},
+   {id:"1.7", t:"Aprovação durável para pagamentos acima de um limite", selo:"pronto", imp:3, esf:2, onda:2,
+    oque:"Conta acima de, por exemplo, R$ 5.000 fica “aguardando aprovação” até a CEO ou o Dr. Daniel aprovar pelo celular, mesmo que demore dias. A decisão fica gravada com hora e pessoa. Substitui o print no grupo.",
+    como:"Estado de aprovação no banco com notificação por WhatsApp ou push; se quiser fluxo que sobrevive a deploys e espera semanas, <b>Vercel Workflows</b> pausa sem custo até a resposta. Liga com a senha do gestor já existente.",
+    dep:"Definir alçadas com a CEO.", custo:"—"},
+   {id:"1.8", t:"Agente de compras e estoque", selo:"beta", imp:3, esf:4, onda:4,
+    oque:"Quando o kardex cruza o mínimo, o app monta a cotação para Stin, Biòs e Victa, manda por e-mail ou WhatsApp, lê as notas que voltam com a Caixa de entrada e sugere o pedido para aprovação. Fecha o elo Estoque → Compras → Conta a pagar sozinho.",
+    como:"Cron + regras do kardex (ponto de pedido já existe) + modelo para redigir e ler respostas + ferramentas MCP de escrita com confirmação.",
+    dep:"MCP (1.3), Caixa de entrada (1.1), WhatsApp oficial (3.1).", custo:"tokens de uso"},
+   {id:"1.9", t:"Navegador robô para portais sem API", selo:"explorar", imp:2, esf:4, onda:4,
+    oque:"Se a Rede ou o Itaú não liberarem API, um agente abre o portal em um sandbox isolado, baixa o relatório e entrega ao app. Só leitura; qualquer clique que não seja leitura pede confirmação.",
+    como:"<b>Anthropic browser use (GA em 20/08/2026)</b> em Vercel Sandbox ou Managed Agents, lista de domínios permitida, credenciais em cofre. Alto risco operacional: última alternativa, não primeira.",
+    dep:"Só se 2.1 e 2.2 falharem.", custo:"por sessão"}
+  ]
+});
+ESTUDOS.push({
+  id:"E2", titulo:"O dinheiro que entra sozinho", sub:"Extrato, maquininha, Pix, notas, boletos e contrato por API",
+  tese:"Cada valor que hoje é digitado, arrastado ou lido no grupo passa a chegar por webhook, com o identificador da transação como chave de verdade.",
+  contexto:"Open Finance no Brasil está em fase de pagamentos: jornada sem redirecionamento obrigatória desde 06/02/2026 e Pix Automático em produção para PJ desde 22/04/2026. O Itaú tem APIs de extrato, Pix, cobrança híbrida, pagamentos e DDA, mas o onboarding é via gerente e representante legal. A Rede tem conciliação por API/EDI autorizada no portal e o e.Rede para link, tokenização e recorrência. Para NFS-e, uma Ltda em Lucro Presumido em São Paulo continua no emissor municipal (Layout 2 com IBS/CBS), e Focus NFe ou NFE.io fazem a emissão e o recebimento por API. O grupo do WhatsApp atual não é acessível pela API oficial; comprovantes precisam mudar de canal.",
+  propostas:[
+   {id:"2.1", t:"Extrato do Itaú por API, sem xlsx", selo:"contrato", imp:5, esf:3, onda:1,
+    oque:"Os 4 caixas do Extrato atualizam sozinhos ao longo do dia. A conciliação passa a gravar o casamento no banco, linha a linha, em vez de recalcular na tela. “Digite o saldo do Itaú” desaparece da Prova do dinheiro.",
+    como:"Pedir ao gerente a habilitação da <b>API de Extrato e da API Pix do Itaú</b> (client credentials + mTLS, token temporário de 72 h, configuração no bankline por representante legal). Plano B: Open Finance via ERP (Conta Azul ou Nibo, R$ 100–300/mês, extrato D-1) exportando para o app. Pluggy (R$ 2.500/mês) só se um dia consolidar Itaú, Safra e contas dos sócios.",
+    dep:"Decisão D1. Representante legal no bankline.", custo:"tarifa bancária (não publicada) ou R$ 100–300/mês no plano B"},
+   {id:"2.2", t:"Conciliação da Rede automática", selo:"contrato", imp:4, esf:3, onda:1,
+    oque:"Vendas, liquidações, taxas, cancelamentos e antecipações da maquininha chegam todo dia e batem sozinhos com o “fechamento sem comanda” dia a dia. Acaba o “abra o portal da Rede e digite o a receber”.",
+    como:"Autorizar no portal meu.userede a <b>API/EDI de conciliação da Rede</b> (a empresa cadastra razão social, CNPJ e código do estabelecimento; o representante aprova). O motor recebiveisRede já modela os dois acordos; passa a ser alimentado por dados reais, não por tabela fixa.",
+    dep:"Decisão D2.", custo:"geralmente incluído na relação com a Rede"},
+   {id:"2.3", t:"Pix dinâmico por comanda, conciliado em D+0", selo:"contrato", imp:4, esf:3, onda:2,
+    oque:"Ao fechar a comanda o app gera o QR ou copia-e-cola com o número da comanda embutido. Quando o paciente paga, o webhook marca “pago”, anexa o comprovante e alimenta o Lucro Inteligente no mesmo dia. Pode aparecer dentro do WhatsApp do paciente.",
+    como:"<b>API Pix do Itaú</b> (txid por comanda) ou, sem gerente, Asaas (R$ 1,99 por Pix) ou Inter (grátis, mas exige conta). O template order_details da Payments API do WhatsApp exibe a cobrança na conversa.",
+    dep:"2.1 ou conta em PSP. WhatsApp oficial (3.1) para exibir na conversa.", custo:"tarifa Pix do banco ou R$ 1,99/Pix"},
+   {id:"2.4", t:"Comprovantes por WhatsApp lidos automaticamente", selo:"beta", imp:5, esf:3, onda:2,
+    oque:"A CEO ou o Dr. Daniel encaminham o comprovante 1:1 para o número da clínica (mensagem iniciada por eles: grátis). O webhook baixa a imagem, o app lê valor, data, pagador e identificador da transação e casa com o extrato e com a conta. O que hoje eu faço lendo o grupo passa a acontecer em segundos.",
+    como:"<b>WhatsApp Cloud API</b> (webhook de mídia) + leitura por modelo de visão + casamento pelo E2E. Alternativa: criar via Groups API um grupo “Caixa” com até 8 pessoas, mas isso exige selo verificado (OBA) e impede a coexistência com o app da recepção. O grupo atual não é acessível oficialmente; API não oficial tem risco de banimento e fica fora.",
+    dep:"Decisão D3 (mudar o fluxo do grupo). WhatsApp oficial (3.1). Caixa de entrada (1.1).", custo:"centavos por comprovante"},
+   {id:"2.5", t:"Notas de fornecedores capturadas sozinhas", selo:"pronto", imp:4, esf:2, onda:1,
+    oque:"Toda NF-e emitida contra o CNPJ da clínica aparece na Caixa de entrada com XML e PDF, já ligada à conta a pagar (ou criando a conta). Notas de serviço em PDF que chegam por e-mail entram pelo mesmo caminho. Ataca as 498 contas “sem nota”.",
+    como:"<b>Manifestação do Destinatário (Focus NFe, incluída nos planos, 30 dias de teste)</b> para NF-e; leitura da caixa do Outlook via <b>Microsoft Graph</b> (a integração com o SharePoint já usa o mesmo app do Azure) para PDFs. Exige o certificado A1 da clínica.",
+    dep:"Decisão D4 (Focus NFe + A1).", custo:"dentro do plano Focus Solo (R$ 89,90/mês) + A1 R$ 150–235/ano"},
+   {id:"2.6", t:"Nota fiscal do paciente emitida ao fechar a comanda", selo:"pronto", imp:4, esf:3, onda:2,
+    oque:"A regra já existe no app (bioimpedância a 7,93% + consulta a 13,33%, ou unificada; sinal não gera nota). Falta apertar o botão: a NFS-e sai no webservice da Prefeitura, o PDF volta por webhook, fica na comanda e vai ao paciente por WhatsApp e e-mail. A fila de setembro está em zero notas.",
+    como:"<b>Focus NFe (Solo R$ 89,90/mês, 100 notas)</b> ou NFE.io (R$ 190/mês); Edge Function envia tomador, descrição, código de serviço e valores; já com CST e cClassTrib do Layout 2 (IBS/CBS) e redução de 60% para serviços médicos.",
+    dep:"D4. Confirmar com o contador se o destaque IBS/CBS de 01/10/2026 alcança o emissor municipal.", custo:"R$ 89,90–190/mês"},
+   {id:"2.7", t:"Pagar boletos pelo app, com dupla aprovação", selo:"contrato", imp:3, esf:3, onda:3,
+    oque:"Na Fila do dia, “pagar” dispara o pagamento do boleto depois da senha do gestor e da segunda aprovação; comprovante e agendamento voltam por webhook. O DDA lista sozinho os boletos emitidos contra o CNPJ.",
+    como:"<b>Inter (autoatendimento, sem custo de setup)</b>, Cora Pro (R$ 44,90/mês) ou Asaas (pagamento de contas grátis) para pagar; <b>DDA via API do Itaú</b> (gerente) para listar. Kamino faz tudo isso como serviço, mas mira empresas maiores.",
+    dep:"Alçadas (1.7). Conta em banco com API ou DDA do Itaú.", custo:"R$ 0–45/mês + tarifas"},
+   {id:"2.8", t:"Link de pagamento, cartão salvo, Pix Automático e crediário sem risco", selo:"pronto", imp:4, esf:2, onda:2,
+    oque:"No fechamento do Kanban, além de Pix e maquininha: link de pagamento parcelado, cartão salvo para as parcelas do plano, Pix Automático (o paciente autoriza uma vez no banco dele) e um botão “Financiar” que abre ParcelaMais (até 36x), Dr.Cash (24x, repasse em 48 h) ou BV (até R$ 30 mil). A clínica recebe à vista e o risco fica com a financeira.",
+    como:"<b>e.Rede</b> (tokenização e recorrência nas taxas do acordo) ou Asaas (2,99% + R$ 0,49 à vista; 3,49–4,29% parcelado); webhook cria comanda e comprovante. Crediário é contrato comercial, não código.",
+    dep:"Decisão D15 (parceiro de crediário).", custo:"taxas por transação"},
+   {id:"2.9", t:"Contrato assinado dentro do fechamento", selo:"pronto", imp:3, esf:2, onda:2,
+    oque:"Fechou o plano, o app gera o contrato, envia pelo WhatsApp do paciente e, quando o webhook diz “assinado”, libera a comanda e arquiva o PDF no SharePoint. O SLA manual de 24 h do POP vira automático.",
+    como:"<b>API REST v4 da SuperSign</b> (já usada; a partir de R$ 34,90/mês) ou ZapSign (R$ 0,50 por envio). Assinatura avançada vale para contrato privado (Lei 14.063/2020).",
+    dep:"Nenhuma externa além do plano da SuperSign.", custo:"R$ 34,90/mês"},
+   {id:"2.10", t:"Painel de custo de antecipação com escolha de financiador", selo:"pronto", imp:2, esf:2, onda:3,
+    oque:"Antes de antecipar, o app compara o RAV da Rede (SELIC + 0,9%) com Asaas (1,25%/mês) e InfinitePay Nitro (antecipa recebíveis de outras maquininhas via Open Finance) e mostra quanto custa cada caminho. A Resolução BCB 514/2025 deu ao lojista mais autonomia sobre a agenda registrada.",
+    como:"O motor de recebíveis já calcula o TAD; falta a tela de comparação e a SELIC vinda de fonte viva (7.4).",
+    dep:"2.2 para dados reais da agenda.", custo:"—"}
+  ]
+});
+ESTUDOS.push({
+  id:"E3", titulo:"Recepção e paciente", sub:"WhatsApp oficial, confirmação, jornada do plano e portal do paciente",
+  tese:"Transformar 741 tarefas de “copiar e colar no WhatsApp” em mensagens que saem do sistema, com registro automático, e cuidar do plano de 6 meses como um membership de ciclo.",
+  contexto:"WhatsApp Business Platform cobra por mensagem: utilidade cerca de R$ 0,03 fora da janela de 24 h e grátis dentro dela; marketing R$ 0,31–0,35; a partir de 01/10/2026 as respostas de serviço passam a ser cobradas (≈ R$ 0,035, com franquia de 1.000/mês por número). Coexistência (app da recepção + API no mesmo número) está liberada no Brasil desde abril/2026. Flows permitem NPS e escolha de horário dentro da conversa. Os softwares brasileiros (Clinicorp, Doctoralia, Amplimed) vendem agentes que confirmam, remarcam e cobram, escriba em português e check-in por QR. A evidência em GLP-1 diz que 30% param no mês 1 e que pesagem semanal e resposta ao coach são os maiores preditores de adesão. A CFM 2.454/2026 classifica agendamento e chatbot informativo como baixo risco, mas proíbe a IA de comunicar diagnóstico.",
+  propostas:[
+   {id:"3.1", t:"WhatsApp oficial no número da recepção (coexistência)", selo:"beta", imp:5, esf:3, onda:1,
+    oque:"O número que a recepção já usa passa a ter também a API: as mensagens do CRM saem do sistema com registro automático de envio e leitura, e as respostas voltam para a tarefa. O celular continua funcionando; nada muda para quem atende.",
+    como:"<b>Cloud API direta da Meta</b> (sem mensalidade; faturamento em reais desde 01/07/2026) ou 360dialog; conta Meta Business verificada; templates de utilidade aprovados (lembrete, confirmação, recibo, NPS). Coexistência exige abrir o app a cada 13 dias e é incompatível com selo OBA e ligações pela API.",
+    dep:"Decisão D3. Cadastro de WhatsApp dos contatos (hoje 193 de 289 sem número).", custo:"≈ R$ 60–150/mês em mensagens"},
+   {id:"3.2", t:"Confirmação em dois toques e lista de espera", selo:"pronto", imp:4, esf:2, onda:2,
+    oque:"48 h e 2 h antes da consulta o paciente recebe “Confirmar / Remarcar”. Quem não responde ou já faltou antes entra em risco e a recepção liga. Horário liberado vai para a lista de espera. Casos reais mostram queda de 40 a 70% nas faltas.",
+    como:"Rotina (1.2) lê a agenda (hoje API do Feegow; no iClinic, exportação ou API a exigir no contrato) e dispara templates de utilidade; resposta atualiza o Kanban e o Plano de Acompanhamento. Score de risco por regras simples: faltou antes, marcou com mais de 14 dias, primeira consulta, não respondeu.",
+    dep:"3.1. Espelho de agenda (7.5).", custo:"dentro de 3.1"},
+   {id:"3.3", t:"Onboarding 0–30, semáforo de adesão e renovação D150–180", selo:"beta", imp:5, esf:3, onda:2,
+    oque:"O plano de 6 meses ganha toques da enfermagem em D3·D7·D14·D30 (efeitos da titulação, treino de aplicação, curva de peso esperada), um semáforo por paciente (pesagem semanal enviada, resposta ao último toque, retorno agendado, dias desde a última dose) e uma régua de renovação em D150–D180 com Relatório de Resultados e oferta de Ciclo 2 ou Manutenção.",
+    como:"Novas cadências no motor (cad-onboarding, cad-renovacao) com dono real; semáforo derivado dos dados que já existem (comandas, tarefas, bioimpedâncias) mais a pesagem enviada pelo paciente por WhatsApp. Vermelho gera tarefa de resgate sozinho.",
+    dep:"Decisão D9 (Dr. Daniel e CEO desenham o produto Manutenção).", custo:"—"},
+   {id:"3.4", t:"NPS por WhatsApp Flows e check-in por QR com consentimentos", selo:"pronto", imp:3, esf:3, onda:3,
+    oque:"Depois do atendimento o paciente recebe uma tela nativa no WhatsApp (0–10 e comentário) que grava direto no NPS da Concierge. Na chegada, um QR no totem confirma os dados e coleta os consentimentos (LGPD, imagem, uso de IA, termo do tratamento) com assinatura no ato. O totem hoje tem 10 respostas na vida toda.",
+    como:"<b>WhatsApp Flows</b> (exige aprovação da Meta) + totem em modo quiosque (uma pergunta por tela, alvos grandes, reset por inatividade, fila local para funcionar sem rede).",
+    dep:"3.1. Cofre de compliance (6.1).", custo:"1 mensagem de utilidade por paciente"},
+   {id:"3.5", t:"Pré-consulta e “resumo da sua consulta”", selo:"beta", imp:3, esf:3, onda:3,
+    oque:"48 h antes, um questionário pelo WhatsApp (motivo, medicações, alergias, histórico de peso, metas, fotos de exames) vira um rascunho de anamnese para o médico. Depois da consulta, um resumo em linguagem simples com o plano de cuidado, revisado e enviado pelo próprio médico.",
+    como:"IA só organiza (baixo risco na CFM 2.454, Anexo II); nada interpretado chega ao paciente sem o médico. Registro automático no prontuário “nota apoiada por IA, revisada pelo médico”. Nenhum fornecedor brasileiro entrega o resumo ao paciente em português hoje: é diferencial.",
+    dep:"3.1, 6.2, regime de dados (6.5).", custo:"tokens de uso"},
+   {id:"3.6", t:"Agente de triagem e agendamento 24 h", selo:"beta", imp:4, esf:4, onda:3,
+    oque:"Fora do horário, o agente responde dúvidas de preço, horários e formas de pagamento, oferece horários pela agenda, qualifica o lead para o Kanban e passa para humano em qualquer assunto clínico. Casos reais: 25% dos agendamentos fora do horário da recepção e no-show de 18% para 10,6%.",
+    como:"<b>Claude na Cloud API</b> com as ferramentas do MCP (1.3) e regras CFM/LGPD embutidas, em vez do Meta Business Agent (que cobra por token e mantém os dados no fluxo da Meta). Piloto supervisionado de 4 semanas com transcrições revisadas.",
+    dep:"3.1, 1.3, 7.5. Revisão jurídica do roteiro.", custo:"tokens + mensagens"},
+   {id:"3.7", t:"Portal do paciente (PWA)", selo:"beta", imp:4, esf:5, onda:4,
+    oque:"O paciente vê o próprio plano: próximos marcos, curva de peso e composição corporal (bioimpedância sincronizada), resultados com explicação em linguagem simples, pagamentos, contrato e recibos. É o que Function Health e Superpower fazem de melhor: traduzir dado em ação.",
+    como:"Mesma base do app com login por passkey (4.9), dados só de leitura derivados do programa e das comandas; <b>InBody LookinBody Web</b> para a composição corporal; alerta ao médico se a perda de massa magra passar do limiar.",
+    dep:"3.3, 4.9, 6.5.", custo:"—"},
+   {id:"3.8", t:"Escriba em português na consulta", selo:"pronto", imp:4, esf:3, onda:3,
+    oque:"O médico conversa com o paciente e a nota clínica sai estruturada para revisão, com o registro que a CFM exige. Evidência em ensaios clínicos: 10 a 21% menos tempo de documentação e queda de burnout. Produtos brasileiros: Noa Notes (Doctoralia), Amélia (Amplimed), HiDoctor, Conclínica.",
+    como:"Contratar um produto já adequado à CFM 2.454 (mais rápido) ou construir com transcrição pt-BR (Deepgram Nova-3, ≈ R$ 0,04/min) + Claude sob ZDR/BAA. O app registra “nota apoiada por IA, revisada pelo médico” e o aviso ao paciente.",
+    dep:"Decisão do Dr. Daniel. 6.2 e 6.5.", custo:"produto pronto R$ 200–600/mês ou tokens"},
+   {id:"3.9", t:"SLA de resposta ao lead em 5 minutos", selo:"pronto", imp:3, esf:1, onda:1,
+    oque:"Cada lead novo no Kanban mostra um cronômetro; passou de 5 minutos, o coordenador é avisado. Responder em menos de 1 hora qualifica 7 vezes mais do que responder depois. É a métrica que falta no PDCA do coordenador.",
+    como:"Campo derivado no cartão (tempo desde a criação até o primeiro toque) + alerta na Fila do dia.",
+    dep:"Nenhuma.", custo:"—"},
+   {id:"3.10", t:"Indicações dentro da CFM 2.336 e evento trimestral", selo:"pronto", imp:3, esf:1, onda:1,
+    oque:"O voucher de R$ 500 liberado quando o indicado fecha pode ser lido como “premiação por trazer paciente”, o que a resolução veda (art. 9º, VIII). Trocar por cortesia clínica não condicionada (bioimpedância ou retorno de cortesia para pacientes ativos), agradecimento não financeiro e prioridade de agenda; manter a visão por indicador. E registrar um evento trimestral para pacientes como toque no CRM (+2 a 4 pontos de retenção em concierge).",
+    como:"Ajuste de regra no motor de indicações (REFERRAL_REWARD_VALUE deixa de ser gatilho financeiro) + parecer do CRM-SP ou advogado antes.",
+    dep:"Decisão D8.", custo:"—"}
+  ]
+});
+</script>
+
+<script>
+ESTUDOS.push({
+  id:"E4", titulo:"A experiência redesenhada", sub:"Fila do dia, ⌘K que faz, câmera, envelopes visuais, tema escuro",
+  tese:"Menos telas para lembrar de abrir, mais uma lista que diz o que fazer agora; menos digitação, mais câmera e confirmação; números sempre com frase.",
+  contexto:"O que os melhores produtos operacionais de 2026 têm em comum: a home é uma fila (Triage do Linear, “o que devo focar hoje” do Attio), o ⌘K executa e não só navega (Superhuman, Raycast), a interface responde em menos de 100 ms com otimismo e desfazer (Web Interface Guidelines da Vercel), e a IA aparece como itens na fila com log passo a passo, não como chatbot. No iOS 26/27, qualquer site instala como app, push declarativo e badge funcionam sem service worker, mas não há Background Sync nem leitor de código de barras nativo (usa-se WebAssembly). React 19.3 estabilizou as transições de tela; shadcn tornou o Base UI padrão em julho, com Combobox e NumberField que o Radix nunca teve. Estética para saúde premium em 2026: neutros quentes, tipografia convidativa, translucidez só no cromo, números tabulares. A paleta musgo, oliva e dourado do app já está na direção certa.",
+  propostas:[
+   {id:"4.1", t:"Fila do dia como Home de todos os cargos", selo:"pronto", imp:5, esf:3, onda:1,
+    oque:"Ao abrir o app, cada pessoa vê uma lista só, ordenada por urgência, com o que é dela: contas que vencem, toques de cadência, notas a emitir, mínimos de estoque, NPS a responder, comprovantes faltando, propostas da IA para revisar. Ações de uma tecla no desktop (concluir, adiar, delegar, silenciar até) e deslizar no celular. Concluir tira o item da frente. Contagem no ícone do app e um único resumo às 7h (“5 contas · 3 toques · 1 NF”).",
+    como:"O motor filaFinanceira já monta a fila de contas; generalizar para uma <b>fila unificada</b> alimentada pelas rotinas (1.2). Badging API e <b>Declarative Web Push</b> (iOS 18.4+, sem service worker) para a contagem e o resumo matinal. Cartões de atalho da Home atual viram a segunda tela.",
+    dep:"1.2. Decisão D5.", custo:"—"},
+   {id:"4.2", t:"⌘K que faz, não só vai", selo:"pronto", imp:3, esf:2, onda:1,
+    oque:"O Flow Launcher ganha o modo “Fazer”: digitar “stin 2194 dia 20” já oferece “lançar conta”; digitar um nome de paciente oferece “novo toque”, “abrir comanda”, “ver perfil”; digitar um valor oferece “calcular repasse”. Sinônimos em português (boleto = conta = pagar; paciente = contato), busca por subsequência e ranking pelo uso de cada pessoa.",
+    como:"<b>Base UI Combobox</b> (padrão ARIA), catálogo de comandos declarado por tela, atalhos visíveis para ensinar. A busca sem acento já existe.",
+    dep:"Nenhuma.", custo:"—"},
+   {id:"4.3", t:"Lançar rápido pela câmera", selo:"pronto", imp:4, esf:3, onda:2,
+    oque:"Apontar o celular para o boleto lê o código de barras de 44 dígitos e preenche banco, valor e vencimento. Fotografar a nota ou o comprovante manda para a Caixa de entrada inteligente e volta com os campos preenchidos e um indicador do que precisa de conferência. Sem digitar linha digitável nunca mais.",
+    como:"<b>BarcodeDetector</b> no Chrome/Android e <b>ZXing em WebAssembly</b> no iPhone (Safari não tem a API); conversão código de barras → linha digitável com dígitos verificadores; foto → Edge Function (1.1).",
+    dep:"1.1.", custo:"—"},
+   {id:"4.4", t:"Envelopes visuais e caixa projetado", selo:"pronto", imp:4, esf:3, onda:2,
+    oque:"O Lucro Inteligente ganha uma barra empilhada por dia e por mês (impostos · lucro · executor · operacional) com a régua como marcas, cada envelope como cartão com frase (“Entraram R$ X · contas pagas R$ Y → sobra R$ Z”), calendário de transferências nos dias 10 e 25, e a ponte dos 3 lucros como cascata clicável que abre os lançamentos de cada degrau. Ao lado, o saldo projetado semana a semana com faixa de incerteza, marcadores de folha, repasses e impostos, realce onde cai abaixo do mínimo e alternância com/sem antecipação mostrando o custo do TAD.",
+    como:"Componentes novos sobre os motores existentes (lucroInteligente, recebiveisRede, provisões); gráficos em <b>SVG próprio</b> como hoje ou Recharts 3 via shadcn/charts com camada de acessibilidade.",
+    dep:"2.1 e 2.2 tornam a projeção real; funciona antes com o que existe.", custo:"—"},
+   {id:"4.5", t:"Tabelas densas com edição inline e totais fixos", selo:"pronto", imp:3, esf:3, onda:3,
+    oque:"Contas, comandas, estoque e Inteligência 360 ganham tabela de verdade: cabeçalho fixo, rodapé com totais e ações em lote após seleção, três densidades, colunas visíveis por pessoa, edição direto na célula (moeda com campo numérico próprio), filtros e abas na URL para compartilhar e voltar.",
+    como:"<b>TanStack Table v9</b> (04/08/2026) + Base UI NumberField; padrão Attio/Airtable/Linear.",
+    dep:"Migração progressiva Radix → Base UI (7.4).", custo:"—"},
+   {id:"4.6", t:"Kanban com otimismo, desfazer e transições", selo:"pronto", imp:3, esf:3, onda:2,
+    oque:"“Fiz o toque” move o cartão na hora, com toast de “Desfazer” por 5 segundos e volta atrás se a gravação falhar; contagem regressiva para o próximo passo no cartão; passar de lista para detalhe do paciente com animação de continuidade; filtros e rolagem das abas preservados ao alternar. E o arquivo de 2.789 linhas vira 8 componentes por bloco.",
+    como:"<b>React 19.3 ViewTransition e Activity</b>, mutações otimistas com rollback (TanStack Query já está no app), estado na URL. Modularização é pré-requisito para tudo o mais nessa tela.",
+    dep:"7.4.", custo:"—"},
+   {id:"4.7", t:"Tema escuro e tokens “luxo silencioso”", selo:"pronto", imp:2, esf:2, onda:2,
+    oque:"Tema escuro de verdade (hoje o manifest declara fundo escuro e o app é claro), com a paleta musgo/oliva/dourado preservada, números tabulares em toda tela financeira, translucidez só nas barras (a lição que a própria Apple aprendeu no iOS 27), contraste alto em chips de status e uma serifa discreta nas telas voltadas ao paciente e ao totem.",
+    como:"Tokens em <b>OKLCH com light-dark()</b> como fonte única (Tailwind 4 @theme), exportáveis em DTCG para Figma; registry shadcn privado com os blocos do produto (KPI com frase, envelope, item da fila, cartão de cadência); um DESIGN.md no repositório guia qualquer geração assistida por IA.",
+    dep:"7.4 (Tailwind 4).", custo:"—"},
+   {id:"4.8", t:"Notificações calmas e diálogos acessíveis", selo:"pronto", imp:3, esf:2, onda:1,
+    oque:"Um resumo às 7h em vez de um aviso por evento; badge como canal periférico; vermelho só para o que é urgente de verdade. Os 27 window.alert/confirm viram diálogos do sistema de design, com foco gerenciado e leitura por teclado, e toda ação destrutiva ganha confirmação ou desfazer.",
+    como:"Biblioteca de toast e Dialog do <b>Base UI</b>; princípios de Calm Technology aplicados como checklist de revisão.",
+    dep:"Nenhuma.", custo:"—"},
+   {id:"4.9", t:"Passkeys e senha do gestor por biometria", selo:"beta", imp:3, esf:2, onda:3,
+    oque:"Entrar com Face ID ou Touch ID em vez de senha, e a trava da mesa compartilhada da recepção deixa de ser uma senha digitada na frente de todo mundo: o gestor aprova com a própria biometria no celular dele (step-up). Atende a WCAG 3.3.8 e elimina o risco de senha vazada.",
+    como:"<b>Supabase passkeys (beta desde 28/05/2026)</b> + WebAuthn como segundo fator; a RPC conferir_senha_gestor passa a aceitar a asserção WebAuthn.",
+    dep:"API em beta: piloto com 2 pessoas primeiro.", custo:"—"}
+  ]
+});
+ESTUDOS.push({
+  id:"E5", titulo:"O app que avisa antes", sub:"Ocupação, ritmo, caixa projetado e risco de falta ou abandono",
+  tese:"Trocar relatórios do que aconteceu por sinais do que vai acontecer, com regras simples primeiro e modelo estatístico só quando houver amostra.",
+  contexto:"Com 40 a 70 comandas por mês, modelos de aprendizado de máquina têm pouca amostra; regras bem escolhidas ordenam o risco tão bem quanto (histórico de faltas, antecedência do agendamento, primeira consulta, falta de resposta à confirmação). O KPI mais alavancável do negócio é a ocupação de sala (5% contra 75–85% de referência). Em dashboards financeiros, a literatura de 2026 converge para 5–8 números na primeira tela, ênfase em movimento e tempo (não em saldos), projeção semana a semana para ver o aperto antes de virar emergência, e narrativa gerada só a partir de fatos.",
+  propostas:[
+   {id:"5.1", t:"Ocupação de sala como KPI diário", selo:"pronto", imp:5, esf:2, onda:1,
+    oque:"Horas vendidas contra horas disponíveis por sala, todo dia, no Painel do Mês e na Fila do dia, com meta de 75–85% e um mapa de calor hora × dia mostrando onde a agenda está vazia. As janelas de menor demanda podem ser ofertadas em campanha (a CFM permite desconto em campanha, sem venda casada). Cada ponto de ocupação vale mais que qualquer corte de custo.",
+    como:"Minutos de sala já estão no catálogo de precificação por item; cruzar com a agenda (7.5) e com as comandas. Mapa de calor em SVG como os existentes.",
+    dep:"7.5 para horas disponíveis reais; antes disso, a grade padrão do Dr. Daniel.", custo:"—"},
+   {id:"5.2", t:"Painel semanal de 8 números e ritmo do time", selo:"pronto", imp:4, esf:2, onda:2,
+    oque:"Uma tela de 8 números para a reunião de segunda: leads respondidos em menos de 5 minutos, avaliações agendadas, comparecimento, conversão avaliação → plano, ticket, ocupação de sala, pacientes ativos por fase (D0–30 / D31–90 / D91–180) e NPS transacional. Abaixo, a barra de ritmo do time contra a supermeta ajustada aos dias úteis restantes (“no ritmo” ou “R$ X atrás”), progresso individual privado e reconhecimento de disciplina de cadência, sem badges nem confete.",
+    como:"Tudo derivado do que já existe (metasData, momentoDoMes, coordenadorVendas, pdca); gamificação leve no formato que 8 em 10 quadros de vendas ativos usam: lista simples, sempre ligada, dados em tempo real.",
+    dep:"3.9 para o SLA de lead.", custo:"—"},
+   {id:"5.3", t:"Envelopes Provisões e Reserva", selo:"pronto", imp:4, esf:2, onda:2,
+    oque:"Dois envelopes novos no Lucro Inteligente: Provisões (13º, férias, IRPJ e CSLL trimestrais) e Reserva (meta de 1 a 3 meses de despesas fixas), alocados a cada entrada no ritmo 10/25. O caixa projetado (4.4) passa a mostrar as provisões como eventos fixos e a Reserva como linha de mínimo.",
+    como:"Degraus com vigência no motor lucroInteligente (já suporta), regras de provisão já existentes em fin_provision_rules; o Profit First original usa cinco contas e recomenda distribuição trimestral de lucro.",
+    dep:"Decisão do Lucas e da CEO sobre percentuais.", custo:"—"},
+   {id:"5.4", t:"Risco de falta e de abandono como motores testáveis", selo:"beta", imp:4, esf:2, onda:2,
+    oque:"Dois motores puros, com testes, que dão a cada consulta um risco de falta e a cada paciente em plano um risco de abandono. Alimentam a confirmação em dois toques (3.2) e o semáforo (3.3); a recepção liga primeiro para quem tem mais risco. Quando houver 12 meses de dados, o modelo estatístico substitui as regras sem mudar as telas.",
+    como:"Regras: faltou antes, marcou com mais de 14 dias, primeira consulta, não confirmou em 48 h; abandono: sem pesagem semanal, sem resposta ao último toque, retorno não agendado, hiperengajamento inicial (que também prevê abandono). Formato igual aos motores atuais (TypeScript puro + node --test).",
+    dep:"Dados de agenda (7.5).", custo:"—"}
+  ]
+});
+ESTUDOS.push({
+  id:"E6", titulo:"Compliance, LGPD e prazos", sub:"O que a lei já exige do app e da clínica",
+  tese:"Transformar obrigações em registros automáticos dentro do sistema, para que compliance seja consequência do uso e não um dossiê separado.",
+  contexto:"Resolução CFM 2.454/2026 (IA na medicina) está em vigor desde 26/08/2026: IA é apoio, o médico decide; o paciente é informado quando a IA for apoio relevante e pode recusar; o prontuário registra a ferramenta, a finalidade e a revisão; é proibido delegar à IA a comunicação de diagnóstico; quem contrata IA precisa de governança e inventário de risco (agendamento e chatbot informativo são baixo risco; apoio à decisão é médio). A ANPD virou agência reguladora (Lei 15.352/2026) e prometeu ao menos dez fiscalizações em dados de saúde, biometria e financeiros até o fim de 2026; incidentes devem ser comunicados em 3 dias úteis; DPO nomeado com substituto. A RDC Anvisa 1.000/2025 leva a receita de controlados ao SNCR até 30/09/2026 (tirzepatida é receita com retenção; assinatura avançada gov.br aceita). CFM 2.336/2023 rege publicidade e indicações. Nenhum grande provedor de IA oferece residência de dados no Brasil na API direta.",
+  propostas:[
+   {id:"6.1", t:"Cofre de compliance dentro do app", selo:"pronto", imp:4, esf:3, onda:1,
+    oque:"Um lugar só, em Administração, com: consentimentos por paciente (LGPD, imagem, IA, termo de tratamento) coletados no check-in; inventário dos sistemas de IA com classe de risco (Anexo II da CFM 2.454) e Diretor Técnico responsável; DPO e substituto nomeados; RIPD atualizado para WhatsApp, IA e Supabase; plano de incidente com o relógio de 3 dias úteis; trilha de auditoria exportável. Inclui um gate na comanda para itens endovenosos e hormonais (indicação clínica, exame e consentimento específico), em linha com a CFM 2.333 e a tendência do CRM-PR 260/2026.",
+    como:"Tabelas novas pequenas + reutilização de audit_event; textos revisados por advogado; relatório em PDF no formato que uma fiscalização pede.",
+    dep:"Decisão D12 (DPO). Gate clínico é decisão do Dr. Daniel.", custo:"horas de advogado"},
+   {id:"6.2", t:"Registro automático do uso de IA e aviso ao paciente", selo:"pronto", imp:4, esf:1, onda:0,
+    oque:"Toda vez que a IA tocar em algo clínico (escriba, resumo, pré-consulta) o sistema grava “apoiado por IA, revisado por [médico] em [data]” e o termo de atendimento passa a ter o aviso e a opção de recusa. Para o financeiro (leitura de boletos), basta o inventário (6.1).",
+    como:"Campo e evento padronizados; texto do termo revisado. Custo quase zero, exigido desde 26/08/2026.",
+    dep:"Nenhuma.", custo:"—"},
+   {id:"6.3", t:"Receita controlada digital via SNCR até 30/09/2026", selo:"contrato", imp:5, esf:1, onda:0,
+    oque:"A partir de 30/09 a receita de tirzepatida e demais controlados precisa de numeração nacional única via SNCR e assinatura avançada ou qualificada. Memed e iClinic Rx ainda aguardavam liberação. O app não prescreve, mas o Plano de Acompanhamento pode registrar qual plataforma emitiu e alertar se houver paciente sem receita válida antes do refil.",
+    como:"Confirmar com o Dr. Daniel a plataforma de prescrição e o certificado; campo “receita SNCR emitida em” no marco do plano.",
+    dep:"Decisão D11. Plataforma externa.", custo:"—"},
+   {id:"6.4", t:"Opt-in de marketing e qualidade do cadastro", selo:"pronto", imp:3, esf:2, onda:1,
+    oque:"Mensagens proativas de resgate e repescagem são “marketing” para a Meta e exigem opt-in registrado; hoje há 2 opt-outs e 193 contatos sem telefone. O app passa a guardar o opt-in por contato (data, canal, texto) e a Fila do dia pede o WhatsApp faltante quando o paciente estiver na clínica.",
+    como:"Campo em crm_contacts, coleta no check-in (3.4) e na comanda; templates de marketing só saem com opt-in verdadeiro.",
+    dep:"Nenhuma.", custo:"—"},
+   {id:"6.5", t:"Regime de dados do provedor de IA", selo:"pronto", imp:4, esf:1, onda:0,
+    oque:"Definir por escrito o que cada fluxo pode usar. Financeiro (boletos, notas, extrato): Claude Sonnet 5 ou Haiku 4.5 pela Messages API com retenção zero, dados sem paciente. Clínico (escriba, resumo, pré-consulta): só recursos elegíveis a ZDR e BAA (Messages, PDF inline, saída estruturada, cache), nunca Managed Agents, Files API, lote ou execução de código, e nunca Fable 5.1, que exige retenção de 30 dias. Como não há residência no Brasil, a transferência internacional entra no RIPD e no contrato.",
+    como:"Página oficial de retenção da Anthropic (acessada 14/09): recursos elegíveis e não elegíveis listados; BAA pela Console. Uma organização separada para o clínico, outra para o financeiro.",
+    dep:"Nenhuma.", custo:"—"}
+  ]
+});
+ESTUDOS.push({
+  id:"E7", titulo:"Fundações", sub:"Para o resto não quebrar: bug do PDF, CI, configuração, modularização, agenda",
+  tese:"Investir 15% do esforço em fundações para que os outros 85% não virem manutenção.",
+  contexto:"O projeto tem motores puros, testados e pequenos, e telas gigantes sem teste. Não há lint, CI, tratamento global de erro nem tema escuro. Regras de negócio que mudam por contrato ou por lei (taxas da Rede, SELIC, feriados, alíquotas, repasses, preço do plano, catálogo de precificação) estão no código e exigem deploy. A agenda oficial está no Feegow (API REST completa) e vai para o iClinic, que não tem API pública documentada. Stack de referência em setembro/2026: React 19.3, Vite 8 (Rolldown), Tailwind 4.3, shadcn com Base UI, Zod 4, TanStack Table v9, Vitest 4 com modo navegador, Biome 2.4 ou Oxlint.",
+  propostas:[
+   {id:"7.1", t:"Onda 0: corrigir o PDF e limpar a casa", selo:"pronto", imp:3, esf:1, onda:0,
+    oque:"Empacotar o pdf.js dentro do app para o leitor de boleto voltar a funcionar em produção. Na mesma passada: remover netlify.toml e a configuração single-file mortas, unificar as três configurações do Tailwind, apagar o componente órfão, tirar o arquivo de swap do vim, corrigir o texto “captura interina” dos Comprovantes, atualizar o status do SharePoint no registro do comprovante e conferir a mudança do Supabase de 28/04/2026 (tabelas deixaram de ser expostas automaticamente na Data API).",
+    como:"Dependência pdfjs-dist no bundle (ou liberar cdnjs na CSP, pior opção). Meia jornada de trabalho.",
+    dep:"Nenhuma.", custo:"—"},
+   {id:"7.2", t:"CI, lint, ErrorBoundary e testes de tela", selo:"pronto", imp:4, esf:2, onda:1,
+    oque:"Cada push roda typecheck, os 642 testes e o build antes de chegar ao Vercel; lint padroniza o código; um erro de render em uma tela mostra “algo deu errado, tente de novo” em vez de derrubar o app inteiro; os 5 fluxos críticos (lançar conta pelo boleto, fechar comanda, fazer o toque, conferir maquininha, anexar comprovante) ganham testes de interface.",
+    como:"<b>GitHub Actions</b> + Biome 2.4 (ou Oxlint) + ErrorBoundary por rota + <b>Vitest 4 em modo navegador</b> (ou Playwright) para os fluxos críticos.",
+    dep:"Nenhuma.", custo:"—"},
+   {id:"7.3", t:"Constantes de negócio viram configuração com vigência", selo:"pronto", imp:4, esf:3, onda:2,
+    oque:"Taxas da Rede e piso do acordo, SELIC, feriados, alíquotas de ISS/PIS/COFINS/IRPJ/CSLL, repasses 110/150, preço mínimo do plano, valor da indicação, percentuais do Lucro Inteligente, o catálogo de precificação inteiro e os nomes de quem assina templates passam para tabelas com data de vigência e tela de edição para o gestor. Mudar a taxa quando a Rede muda o acordo deixa de exigir deploy (4 commits em 13 dias só para a precificação).",
+    como:"Tabela app_config_vigencia (chave, valor JSON, vigente_de, vigente_ate, quem alterou) + carregamento no início da sessão + os motores recebem a configuração como parâmetro (já funcionam assim nos testes). Importador da planilha .numbers para o catálogo.",
+    dep:"Decisão D6.", custo:"—"},
+   {id:"7.4", t:"Modularizar os 8 arquivos gigantes e atualizar a stack", selo:"pronto", imp:3, esf:4, onda:2,
+    oque:"Quebrar acesso a dados (5.078 linhas) por domínio, o motor do CRM (4.693) em catálogo, cadência, jornada e serialização, e as telas do Kanban, Inteligência 360, Estalecas, Contas e Lucro em componentes por bloco. Em uma janela dedicada, subir para React 19.3, Vite 8, Tailwind 4, shadcn com Base UI (migração componente a componente), Zod 4 e Motion.",
+    como:"Trabalho incremental protegido pelos testes existentes e pelos novos testes de tela (7.2); os upgrades têm codemods e guias oficiais.",
+    dep:"7.2 antes.", custo:"—"},
+   {id:"7.5", t:"Espelho de agenda independente do prontuário", selo:"contrato", imp:4, esf:3, onda:1,
+    oque:"O app passa a ter a agenda (consultas, salas, profissionais) e o cadastro de pacientes espelhados no Supabase, sincronizados do Feegow hoje e do iClinic depois. É o que destrava confirmação por WhatsApp, ocupação de sala, risco de falta e o Plano de Acompanhamento sem CSV manual.",
+    como:"<b>API REST do Feegow</b> (agendamentos, pacientes, financeiro) em rotina a cada 15 minutos. Para o iClinic, exigir no contrato de migração acesso a API de parceiro ou exportações agendadas; plano B é o CSV atual.",
+    dep:"Decisão D10 (contrato iClinic).", custo:"—"}
+  ]
+});
+</script>
+
+<section class="bloco" id="matriz">
+  <div class="cab">
+    <div class="n">Priorização</div>
+    <h2>Impacto × esforço: onde cada proposta cai</h2>
+    <p class="lede">Cada ponto é uma proposta; a cor é o estudo. Canto superior esquerdo é “faça primeiro”: muito impacto, pouco esforço. Passe o mouse para ver o nome; clique para ir ao cartão.</p>
+  </div>
+  <div class="matriz">
+    <svg id="svg-matriz" viewBox="0 0 760 520" role="img" aria-labelledby="mtitle mdesc"><title id="mtitle">Matriz de impacto por esforço das 52 propostas</title><desc id="mdesc">Eixo horizontal: esforço de 1 a 5. Eixo vertical: impacto de 1 a 5. Pontos coloridos por estudo.</desc></svg>
+    <div class="legenda" id="legenda-matriz"></div>
+  </div>
+</section>
+
+<section class="bloco" id="roadmap">
+  <div class="cab">
+    <div class="n">Roadmap</div>
+    <h2>Cinco ondas, da correção desta semana ao que ainda é exploração</h2>
+    <p class="lede">A ordem segue uma lógica: primeiro o que destrava dado (agenda, extrato, WhatsApp oficial), depois o que usa o dado (fila, confirmações, onboarding), por último o que só faz sentido com tudo isso rodando (agentes, portal do paciente). Pedidos a terceiros começam já, porque demoram semanas.</p>
+  </div>
+  <div class="ondas">
+    <div class="onda">
+      <div class="quando"><b>Onda 0</b><span class="small">Esta semana, até 25/09. Correções e pedidos que destravam o resto.</span></div>
+      <ul>
+        <li><b>Corrigir o leitor de PDF</b> e limpar a casa (7.1). Meia jornada.</li>
+        <li><b>Registro de IA e aviso ao paciente</b> (6.2) e <b>regime de dados por escrito</b> (6.5). Exigidos desde 26/08.</li>
+        <li><b>SNCR:</b> confirmar com o Dr. Daniel a plataforma de receita controlada antes de 30/09 (6.3).</li>
+        <li><b>Pedidos que demoram:</b> API do Itaú ao gerente (D1), conciliação da Rede no portal (D2), verificação da conta Meta Business (D3), teste grátis do Focus NFe e compra do certificado A1 (D4), parecer sobre o voucher de indicação (D8), cláusula de API no contrato do iClinic (D10).</li>
+      </ul>
+    </div>
+    <div class="onda">
+      <div class="quando"><b>Onda 1</b><span class="small">Até 31/10. A fila vira a casa e o dado passa a entrar sozinho.</span></div>
+      <ul>
+        <li><b>Fila do dia como Home</b> (4.1), com <b>rotinas noturnas</b> (1.2), <b>⌘K que faz</b> (4.2) e <b>notificações calmas</b> (4.8).</li>
+        <li><b>Caixa de entrada inteligente</b> (1.1) e <b>notas de fornecedores automáticas</b> (2.5).</li>
+        <li><b>WhatsApp oficial</b> no número da recepção (3.1); <b>opt-in</b> e cadastro de telefones (6.4); <b>SLA de lead</b> (3.9); <b>indicações redesenhadas</b> e evento trimestral (3.10).</li>
+        <li><b>Espelho de agenda do Feegow</b> (7.5) e <b>ocupação de sala</b> como KPI (5.1).</li>
+        <li><b>CI, lint, ErrorBoundary</b> e testes dos 5 fluxos críticos (7.2). <b>Cofre de compliance</b> versão 1 (6.1).</li>
+        <li><b>Extrato e Rede</b> integrados assim que as APIs forem liberadas (2.1, 2.2).</li>
+      </ul>
+    </div>
+    <div class="onda">
+      <div class="quando"><b>Onda 2</b><span class="small">Novembro a janeiro/2027. O paciente sente a diferença.</span></div>
+      <ul>
+        <li><b>Confirmação em dois toques</b> (3.2), <b>onboarding 0–30, semáforo e renovação</b> (3.3), <b>motores de risco</b> (5.4).</li>
+        <li><b>Comprovantes por WhatsApp</b> lidos sozinhos (2.4), <b>Pix dinâmico por comanda</b> (2.3), <b>nota do paciente automática</b> (2.6), <b>link, cartão salvo e crediário</b> (2.8), <b>contrato no fechamento</b> (2.9).</li>
+        <li><b>Câmera</b> no Lançar rápido (4.3), <b>envelopes visuais e caixa projetado</b> (4.4), <b>Provisões e Reserva</b> (5.3), <b>Kanban com desfazer</b> e modularizado (4.6), <b>tema escuro</b> (4.7).</li>
+        <li><b>Painel narrado</b> (1.5), <b>governança da IA</b> (1.6), <b>aprovação durável</b> de pagamentos (1.7), <b>painel de 8 números</b> (5.2).</li>
+        <li><b>Configuração com vigência</b> (7.3) e <b>janela de modularização e atualização da stack</b> (7.4).</li>
+      </ul>
+    </div>
+    <div class="onda">
+      <div class="quando"><b>Onda 3</b><span class="small">Fevereiro a abril/2027. Agentes com porta oficial.</span></div>
+      <ul>
+        <li><b>Servidor MCP do 360</b> (1.3) e <b>Perguntar ao 360</b> na tela (1.4).</li>
+        <li><b>Agente de triagem 24 h</b> em piloto supervisionado (3.6), <b>pré-consulta e resumo</b> (3.5), <b>escriba</b> (3.8).</li>
+        <li><b>NPS por Flows e check-in por QR</b> (3.4), <b>passkeys</b> (4.9), <b>tabelas densas</b> (4.5).</li>
+        <li><b>Pagar boletos pelo app</b> (2.7) e <b>painel de antecipação</b> (2.10).</li>
+      </ul>
+    </div>
+    <div class="onda">
+      <div class="quando"><b>Onda 4</b><span class="small">A explorar. Só depois que as anteriores estiverem rodando.</span></div>
+      <ul>
+        <li><b>Portal do paciente</b> (3.7), <b>agente de compras e estoque</b> (1.8), <b>navegador robô</b> para portais sem API (1.9).</li>
+        <li>Fora do roadmap por decisão: offline completo (só cirúrgico, se a enfermagem pedir), IA no dispositivo (não existe em iPhone), voz full-duplex para repescagem (telemarketing de saúde exige consentimento e roteiro sem conteúdo clínico).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="bloco" id="custos">
+  <div class="cab">
+    <div class="n">Custos recorrentes</div>
+    <h2>O que passa a ser pago por mês se tudo for aprovado</h2>
+    <p class="lede">Estimativas com preços públicos de 14/09/2026. Tarifas bancárias do Itaú e da Rede não são publicadas e precisam ser pedidas ao gerente. Horas de desenvolvimento não estão precificadas aqui.</p>
+  </div>
+  <div class="tabela-wrap">
+    <table>
+      <thead><tr><th>Serviço</th><th>Para que</th><th class="num">Mensal estimado</th><th>Quando</th><th>Observação</th></tr></thead>
+      <tbody>
+        <tr><td><b>WhatsApp Cloud API (Meta)</b></td><td>Confirmações, recibos, NPS, comprovantes, agente</td><td class="num">R$ 60 a 150</td><td>Onda 1</td><td>Utilidade ≈ R$ 0,03 por mensagem fora da janela; respostas de serviço passam a ser cobradas em 01/10/2026 (franquia de 1.000/mês). Sem mensalidade na API direta.</td></tr>
+        <tr><td><b>Focus NFe Solo</b></td><td>Emitir NFS-e do paciente e receber NF-e de fornecedores</td><td class="num">R$ 89,90</td><td>Onda 1</td><td>100 notas/mês, R$ 0,10 por excedente; teste de 30 dias da Manifestação do Destinatário. NFE.io custa R$ 190.</td></tr>
+        <tr><td><b>Certificado A1 e-CNPJ</b></td><td>Assinar notas e acessar a distribuição de NF-e</td><td class="num">≈ R$ 15</td><td>Onda 1</td><td>R$ 150 a 235 por ano.</td></tr>
+        <tr><td><b>SuperSign Essencial</b></td><td>Contrato assinado no fechamento, por API</td><td class="num">R$ 34,90</td><td>Onda 2</td><td>Já em uso na clínica; confirmar o plano atual.</td></tr>
+        <tr><td><b>Claude (Anthropic) via API</b></td><td>Leitura de documentos, narrativas, governança</td><td class="num">R$ 50 a 200</td><td>Onda 1–2</td><td>Sonnet 5 a US$ 2/10 por milhão de tokens; uma página densa custa ≈ R$ 0,04. Cresce para R$ 100 a 300 com o agente de triagem na Onda 3.</td></tr>
+        <tr><td><b>Vercel Pro</b></td><td>Workflows duráveis, cron por minuto, sandbox</td><td class="num">≈ R$ 110</td><td>Onda 2, se necessário</td><td>US$ 20 por assento com US$ 20 de crédito; só se as aprovações duráveis usarem Workflows em vez de tabela no banco.</td></tr>
+        <tr><td><b>Banco com API para pagar boletos</b></td><td>Inter (grátis) ou Cora Pro</td><td class="num">R$ 0 a 44,90</td><td>Onda 3</td><td>Alternativa a esperar o DDA do Itaú.</td></tr>
+        <tr><td><b>Escriba em português (produto pronto)</b></td><td>Documentação da consulta</td><td class="num">R$ 200 a 600</td><td>Onda 3, decisão do médico</td><td>Feegow VIP inclui Noa Notes a R$ 249 por profissional; Amplimed e HiDoctor não publicam preço.</td></tr>
+        <tr><td><b>Itaú APIs (extrato, Pix, cobrança)</b></td><td>Extrato automático, Pix dinâmico, DDA</td><td class="num">a pedir</td><td>Onda 1</td><td>Tabela de tarifas PJ não pôde ser lida; habilitação via gerente.</td></tr>
+        <tr><td><b>Não recomendado agora: Pluggy</b></td><td>Agregador Open Finance</td><td class="num">R$ 2.500</td><td>—</td><td>Só faria sentido consolidando Itaú, Safra e contas dos sócios em tempo real.</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="2"><b>Total das Ondas 1 e 2</b> (sem tarifas bancárias e sem escriba)</td><td class="num"><b>≈ R$ 250 a 500</b></td><td colspan="2">Contra o custo atual de horas: só a leitura do grupo e o lançamento por SQL de setembro consumiram uma manhã inteira minha, mais o tempo da CEO fotografando comprovantes.</td></tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<section class="bloco" id="decisoes">
+  <div class="cab">
+    <div class="n">Para você decidir</div>
+    <h2>15 decisões que não são minhas</h2>
+    <p class="lede">Cada uma tem a minha recomendação. Marque “Aprovo”, “Quero ajustar” ou “Não agora”, escreva uma observação se quiser, e no fim copie o resumo para me mandar. As marcações ficam salvas neste navegador.</p>
+  </div>
+  <div class="decisoes" id="decisoes-root"></div>
+  <div class="acoes">
+    <button class="btn" type="button" id="copiar">Copiar resumo das decisões</button>
+    <button class="btn sec" type="button" id="limpar-decisoes">Limpar marcações</button>
+    <span class="small" id="copiado" role="status"></span>
+  </div>
+  <pre class="resumo-box" id="resumo-box" aria-label="Resumo das decisões"></pre>
+</section>
+
+<section class="bloco" id="fontes">
+  <div class="cab">
+    <div class="n">Fontes principais</div>
+    <h2>De onde vieram os fatos</h2>
+    <p class="lede">Todas acessadas em 14/09/2026. A lista completa, com cerca de 300 links, está nos cinco relatórios de pesquisa que guardei; aqui estão as fontes oficiais e as mais decisivas. Preços e prazos mudam: confirmar antes de contratar.</p>
+  </div>
+  <ol class="fontes">
+    <h4>Regulação e prazos</h4>
+    <li>CFM, Resolução 2.454/2026 (IA na medicina), DOU 27/02/2026, vigência 26/08/2026 — sistemas.cfm.org.br/normas/arquivos/resolucoes/BR/2026/2454_2026.pdf</li>
+    <li>CFM, Resolução 2.336/2023 (publicidade médica) e página “O que muda” — publicidademedica.cfm.org.br/resolucao/o-que-muda</li>
+    <li>CFM, Resolução 2.333/2023 (terapias hormonais) — portal.cfm.org.br</li>
+    <li>Anvisa, RDC 1.000/2025 (receituário digital de controlados, SNCR até 30/09/2026) — via CFF, Afya e Memed (02/06/2026)</li>
+    <li>Lei 15.352/2026 (ANPD como agência) e Resoluções CD/ANPD 15/2024, 18/2024, 30 e 31/2025 — Medicina S/A 19/08/2026; HDPO; Migalhas 06/03/2026</li>
+    <li>CRM-PR, Resolução 260/2026 (soroterapia), DOU 21/08/2026 — Bem Paraná</li>
+    <li>Prefeitura de São Paulo, NFS-e: uso do Emissor Nacional e orientações 2026 (Layout 2 IBS/CBS) — prefeitura.sp.gov.br/web/fazenda</li>
+    <li>Ato Conjunto RFB/CGIBS 04/2026 (destaque IBS/CBS em 01/10/2026) — LegisWeb 31/07/2026</li>
+    <li>BCB, Resolução 514/2025 (registro de recebíveis; vigências 05/01 e 11/05/2026) — LegisWeb; Okai</li>
+    <h4>WhatsApp e Meta</h4>
+    <li>Meta, WhatsApp Business Platform Pricing e Updates to pricing — developers.facebook.com/docs/whatsapp/pricing</li>
+    <li>Meta, Groups API — developers.facebook.com/documentation/business-messaging/whatsapp/groups</li>
+    <li>Meta, Payments API Brasil — developers.facebook.com/docs/whatsapp/cloud-api/payments-api/payments-br</li>
+    <li>360dialog, Coexistence — docs.360dialog.com/docs/resources/phone-numbers/coexistence</li>
+    <li>Fortics 03/09/2026 e Nimochat 11/09/2026 sobre a cobrança de mensagens de serviço a partir de 01/10/2026</li>
+    <li>Cubo Suite 25/07/2026, banimentos de APIs não oficiais em 2026; Z-API docs sobre bloqueios</li>
+    <li>InfoMoney 04/06/2026, Meta Business Agent; Wati 07/08/2026, preço por token</li>
+    <h4>Bancos, Open Finance, adquirência e notas</h4>
+    <li>Pluggy, “Open Finance 2026: novidades” (JSR, PJ, Pix Automático) e página de preços — pluggy.ai</li>
+    <li>KMEE, comparativo de 12 APIs bancárias para ERP, 19/05/2026 — kmee.com.br</li>
+    <li>OpenPix e Omie, integração Pix Itaú (mTLS, token 72 h) — developers.openpix.com.br; ajuda.omie.com.br</li>
+    <li>Inter Developers — developers.inter.co; Cora Developers — developers.cora.com.br; Asaas — asaas.com/precos-e-taxas e docs.asaas.com</li>
+    <li>Rede, GitHub DevelopersRede (e.Rede); Citel e Adaptive, conciliação Rede por API; Conciliadora, documentação da API</li>
+    <li>Focus NFe, preços e Manifestação do Destinatário — focusnfe.com.br/precos; NFE.io — nfe.io/precos</li>
+    <li>SuperSign API — supersign.com.br/api-assinatura-digital-parcerias; ZapSign preços — zapsign.com.br/precos</li>
+    <li>ParcelaMais, Dr.Cash, Banco BV Financiamento Saúde — páginas institucionais</li>
+    <li>docs.feegow.com (API REST) e docs.iclinic.com.br (só modelos de importação)</li>
+    <h4>Agentes, IA e dados</h4>
+    <li>Anthropic, preços e modelos — platform.claude.com/docs/en/about-claude/pricing; Claude Fable 5.1 e Mythos 5.1 (01/09/2026); Opus 5 (24/07/2026); Sonnet 5 (30/06/2026)</li>
+    <li>Anthropic, API and data retention (ZDR, HIPAA, Covered Models) — platform.claude.com/docs/en/manage-claude/api-and-data-retention</li>
+    <li>Anthropic, Managed Agents: overview, scheduled deployments (09/06/2026), memory, permission policies; computer use, browser use, Skills e Files API GA (20/08/2026); Claude in Chrome GA (26/08/2026)</li>
+    <li>OpenAI, Agents API beta (10/09/2026), GPT-Live-1 (10/09/2026), pricing e “Your data” — openai.com; developers.openai.com</li>
+    <li>Google, Gemini API pricing, document understanding, Live API; ADK — ai.google.dev; adk.dev</li>
+    <li>Microsoft, Agent Framework 1.0 e Hosted Agents; Copilot Studio “What’s new” 18/08/2026</li>
+    <li>Vercel, AI SDK 6 (22/12/2025) e 7 (25/06/2026), Workflows, Sandbox, AI Gateway, Ship 2026 (30/06/2026), json-render (01/2026), Web Interface Guidelines</li>
+    <li>Model Context Protocol, especificação 2026-07-28 — blog.modelcontextprotocol.io; Supabase MCP — supabase.com/docs/guides/ai-tools/mcp</li>
+    <li>Supabase, Cron, Queues, Edge Functions (limites e tarefas em segundo plano), passkeys beta (28/05/2026), Data API (28/04/2026) — supabase.com/docs e changelog</li>
+    <li>OWASP Top 10 for Agentic Applications 2026 (09/12/2025) — genai.owasp.org</li>
+    <li>Peakflo 14/04/2026 (88% de faturas sem toque); ELVTERA (no-show 18% → 10,6%); Eupresa 11/06/2026 (conciliação de comprovantes de WhatsApp em PMEs)</li>
+    <li>Deepgram Nova-3 pt-BR; AssemblyAI pricing; Azure Document Intelligence, confiança por campo (08/04/2026)</li>
+    <h4>Usabilidade e front-end</h4>
+    <li>Linear Triage docs; Superhuman, “How to build a remarkable command palette”; Retool, “Designing the command palette”; Attio; Raycast</li>
+    <li>NN/g: progressive disclosure (2006), skeleton screens (rev. 02/09/2026), synthetic users (21/06/2024)</li>
+    <li>WebKit: Safari 26.0 (15/09/2025), Safari 27 beta (08/06/2026), Declarative Web Push (27/03/2025); MagicBell, limitações de PWA no iOS (20/03/2026); caniuse BarcodeDetector e Background Sync</li>
+    <li>React 19.3 (09/09/2026) — react.dev; Vite 8 (12/03/2026); Tailwind 4.3 (08/05/2026); shadcn changelog (Base UI padrão, 07/2026); TanStack Table v9 (04/08/2026); Zod 4; Vitest 4; Biome 2.4; Oxlint 1.80</li>
+    <li>WCAG 2.2; EN 301 549 V4.1.1 (02/09/2026); gov.br acessibilidade digital (ABNT NBR 17225)</li>
+    <li>Google Design, Material 3 Expressive research; Apple WWDC 06/2026 (ajustes do Liquid Glass); Alice, Function Health, Superpower, Oura, Relay (Profit First)</li>
+    <h4>Gestão de clínicas e saúde premium</h4>
+    <li>Macbach, 2026 Concierge Medicine Benchmark Report (05/2026); Propel, GLP-1 Patient Retention (03/07/2026); Healthcare MDPI 2025 (tirzepatida, adesão em 12 meses); JMIR 2025 (engajamento digital); Omada</li>
+    <li>Clinicorp IA (02/2026, R$ 299/mês); Doctoralia Noa Notes (18/11/2025); Amplimed Amélia; Feegow planos; iClinic análise 15/04/2026; TuoTempo</li>
+    <li>NEJM AI 2025, RCT de escribas ambientes (Nabla, DAX); JMIR Med Inform 2025</li>
+    <li>Fácil Consulta 06/02/2026 e ByDoctor 25/06/2026 (no-show no Brasil); ScienceDirect 2025 (previsão de no-show, 52 estudos); CustomerGauge 2026 (NPS em saúde)</li>
+    <li>Function Health (US$ 365/ano), Superpower (US$ 349 desde 01/09/2026), Biograph, Fountain Life; Alice (Bloomberg Línea 23/09/2025); Mounjaro no Brasil 2026 (Clínica Phorma, Bellit)</li>
+    <li>HBR, “The Short Life of Online Sales Leads” (2011) e “Stop Trying to Delight Your Customers” (2010)</li>
+  </ol>
+</section>
+
+<footer>
+  Documento preparado por Claude (Fable 5.1) para Lucas Ribeiro, Instituto Bratan, em 14/09/2026, a partir de cinco pesquisas com cerca de 400 buscas e 350 páginas lidas, do inventário do repositório app-bratan (commit edcb2d2) e de consultas somente de leitura ao banco de produção. Nada foi alterado no app nem no banco para este estudo. Números de setembro referem-se ao período até 14/09.
+</footer>
+</main>
+
+<script>
+(function(){
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+  const SELO = {pronto:"Pronto", beta:"Beta", contrato:"Contrato", explorar:"Explorar"};
+  const ONDA = {0:"Onda 0 · esta semana",1:"Onda 1 · até 31/10",2:"Onda 2 · nov–jan",3:"Onda 3 · fev–abr/27",4:"Onda 4 · explorar"};
+  const CORES = {E1:"#4D563B",E2:"#C6A862",E3:"#7A895E",E4:"#8B6E8E",E5:"#5D7F8A",E6:"#A34E3E",E7:"#5D6B7A"};
+  const TODAS = ESTUDOS.flatMap(e => e.propostas.map(p => Object.assign({estudo:e.id, estudoTitulo:e.titulo}, p)));
+
+  // ---- armazenamento local (tolerante a falha)
+  const store = {
+    get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+    set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+  };
+  let quero = new Set(store.get("bratan-proposta-quero", []));
+  let decis = store.get("bratan-proposta-decisoes", {});
+
+  // ---- estudos e propostas
+  function squares(n, cls){ let s = ""; for(let i=1;i<=5;i++) s += '<i class="'+(i<=n?"on":"")+'"></i>'; return '<span class="ie '+cls+'" title="'+(cls==="esf"?"Esforço":"Impacto")+' '+n+' de 5">'+(cls==="esf"?"Esforço":"Impacto")+' '+s+'</span>'; }
+  function cardHTML(p){
+    return '<article class="proposta" id="p-'+p.id.replace(".","-")+'" data-selo="'+p.selo+'" data-onda="'+p.onda+'" data-estudo="'+p.estudo+'">'
+      +'<div class="topo"><span class="id">'+p.estudo+' · '+p.id+'</span><span class="selo '+p.selo+'">'+SELO[p.selo]+'</span></div>'
+      +'<h4>'+p.t+'</h4>'
+      +'<p class="oque">'+p.oque+'</p>'
+      +'<p class="como">'+p.como+'</p>'
+      +'<p class="dep"><b>Depende de:</b> '+p.dep+(p.custo && p.custo!=="—" ? ' · <b>Custo:</b> '+p.custo : '')+'</p>'
+      +'<div class="meta">'+squares(p.imp,"imp")+squares(p.esf,"esf")+'<span class="onda-tag">'+ONDA[p.onda]+'</span>'
+      +'<button class="quero" type="button" data-id="'+p.id+'" aria-pressed="'+(quero.has(p.id)?"true":"false")+'">'+(quero.has(p.id)?"★ Marcada":"☆ Quero esta")+'</button></div>'
+      +'</article>';
+  }
+  function renderEstudos(){
+    const root = $("#estudos-root");
+    root.innerHTML = ESTUDOS.map(e => '<section class="estudo" id="'+e.id+'">'
+      +'<div class="estudo-cab"><div class="eyebrow">Estudo '+e.id.slice(1)+' · '+e.sub+'</div><h3>'+e.titulo+'</h3><p class="tese">'+e.tese+'</p>'
+      +'<details><summary class="small" style="cursor:pointer">O que a pesquisa mostrou</summary><p class="contexto small" style="margin-top:8px">'+e.contexto+'</p></details></div>'
+      +'<div class="propostas">'+e.propostas.map(p => cardHTML(Object.assign({estudo:e.id}, p))).join("")+'</div>'
+      +'</section>').join("");
+    root.addEventListener("click", ev => {
+      const b = ev.target.closest(".quero"); if(!b) return;
+      const id = b.dataset.id;
+      if(quero.has(id)) quero.delete(id); else quero.add(id);
+      b.setAttribute("aria-pressed", quero.has(id) ? "true":"false");
+      b.textContent = quero.has(id) ? "★ Marcada" : "☆ Quero esta";
+      store.set("bratan-proposta-quero", Array.from(quero));
+      resumo();
+    });
+  }
+
+  // ---- filtros
+  const filtro = {selo:new Set(), onda:new Set()};
+  function aplicarFiltros(){
+    let vis = 0;
+    $$(".proposta").forEach(c => {
+      const okSelo = filtro.selo.size===0 || filtro.selo.has(c.dataset.selo);
+      const okOnda = filtro.onda.size===0 || filtro.onda.has(c.dataset.onda);
+      const show = okSelo && okOnda; c.hidden = !show; if(show) vis++;
+    });
+    $$(".estudo").forEach(s => { s.style.display = $$(".proposta:not([hidden])", s).length ? "" : "none"; });
+    $("#contagem").textContent = vis===TODAS.length ? "Mostrando todas as "+TODAS.length+" propostas." : "Mostrando "+vis+" de "+TODAS.length+" propostas.";
+  }
+  $("#filtros").addEventListener("click", ev => {
+    const b = ev.target.closest(".chip"); if(!b) return;
+    if(b.id==="limpar-filtros"){ filtro.selo.clear(); filtro.onda.clear(); $$("#filtros .chip[data-f]").forEach(x=>x.setAttribute("aria-pressed","false")); aplicarFiltros(); return; }
+    const f = b.dataset.f, v = b.dataset.v; if(!f) return;
+    if(filtro[f].has(v)) filtro[f].delete(v); else filtro[f].add(v);
+    b.setAttribute("aria-pressed", filtro[f].has(v) ? "true":"false");
+    aplicarFiltros();
+  });
+
+  // ---- matriz impacto × esforço
+  function renderMatriz(){
+    const svg = $("#svg-matriz"); const W=760, H=520, L=64, R=24, T=28, B=56;
+    const x = v => L + (v-0.5)/5*(W-L-R), y = v => T + (5.5-v)/5*(H-T-B);
+    const cell = {}; TODAS.forEach(p => { const k = p.imp+"-"+p.esf; (cell[k] = cell[k]||[]).push(p); });
+    const ns = "http://www.w3.org/2000/svg";
+    const el = (n, a, txt) => { const e = document.createElementNS(ns, n); for(const k in a) e.setAttribute(k, a[k]); if(txt!=null) e.textContent = txt; return e; };
+    const fg = getComputedStyle(document.documentElement);
+    const cInk = fg.getPropertyValue("--tinta-2").trim() || "#5C6150", cLine = fg.getPropertyValue("--linha").trim() || "#DDD6C3", cMuted = fg.getPropertyValue("--muted").trim() || "#7A7E6E";
+    // quadrantes
+    svg.appendChild(el("rect",{x:L,y:T,width:(W-L-R)/2,height:(H-T-B)/2,fill:"currentColor",opacity:.05,style:"color:"+CORES.E3}));
+    svg.appendChild(el("line",{x1:x(3),y1:T,x2:x(3),y2:H-B,stroke:cLine,"stroke-dasharray":"4 4"}));
+    svg.appendChild(el("line",{x1:L,y1:y(3),x2:W-R,y2:y(3),stroke:cLine,"stroke-dasharray":"4 4"}));
+    const lab = (tx,ty,txt,anchor) => svg.appendChild(el("text",{x:tx,y:ty,fill:cMuted,"font-size":"12","font-family":"IBM Plex Mono, Menlo, monospace","letter-spacing":"1","text-anchor":anchor||"start"},txt));
+    lab(L+10,T+18,"FAÇA PRIMEIRO"); lab(W-R-10,T+18,"ESTRUTURANTES","end"); lab(L+10,H-B-10,"GANHOS MENORES"); lab(W-R-10,H-B-10,"EVITE POR AGORA","end");
+    // eixos
+    for(let v=1; v<=5; v++){
+      svg.appendChild(el("text",{x:x(v),y:H-B+22,fill:cInk,"font-size":"12","text-anchor":"middle","font-family":"Figtree, system-ui, sans-serif"}, String(v)));
+      svg.appendChild(el("text",{x:L-14,y:y(v)+4,fill:cInk,"font-size":"12","text-anchor":"end","font-family":"Figtree, system-ui, sans-serif"}, String(v)));
+    }
+    svg.appendChild(el("text",{x:(L+W-R)/2,y:H-14,fill:cInk,"font-size":"13","text-anchor":"middle","font-family":"Figtree, system-ui, sans-serif"},"Esforço →"));
+    const ty = el("text",{x:18,y:(T+H-B)/2,fill:cInk,"font-size":"13","text-anchor":"middle","font-family":"Figtree, system-ui, sans-serif",transform:"rotate(-90 18 "+((T+H-B)/2)+")"},"Impacto →"); svg.appendChild(ty);
+    // pontos
+    Object.values(cell).forEach(list => {
+      const n = list.length, ring = n>1 ? 14 + n*1.6 : 0;
+      list.forEach((p,i) => {
+        const ang = (i/n)*Math.PI*2, dx = ring*Math.cos(ang), dy = ring*Math.sin(ang);
+        const g = el("g",{class:"dot",tabindex:"0",role:"link","aria-label":p.id+" "+p.t+" (impacto "+p.imp+", esforço "+p.esf+")"});
+        g.appendChild(el("title",{},p.id+" · "+p.t+" — "+SELO[p.selo]));
+        g.appendChild(el("circle",{cx:x(p.esf)+dx,cy:y(p.imp)+dy,r:9,fill:CORES[p.estudo],"fill-opacity":.9,stroke:"#FAF8F1","stroke-width":1.5}));
+        g.appendChild(el("text",{x:x(p.esf)+dx,y:y(p.imp)+dy+3,fill:"#FFFDF7","font-size":"7.5","text-anchor":"middle","font-family":"IBM Plex Mono, Menlo, monospace","pointer-events":"none"},p.id));
+        const go = () => { const c = document.getElementById("p-"+p.id.replace(".","-")); if(!c) return; c.hidden=false; c.scrollIntoView({behavior:"smooth",block:"center"}); c.style.outline="2px solid var(--dourado)"; setTimeout(()=>c.style.outline="",1800); };
+        g.addEventListener("click", go); g.addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } });
+        svg.appendChild(g);
+      });
+    });
+    $("#legenda-matriz").innerHTML = ESTUDOS.map(e => '<span><i style="background:'+CORES[e.id]+'"></i>'+e.id+' · '+e.titulo+' <span class="small">('+e.propostas.length+')</span></span>').join("")
+      + '<p class="small" style="margin-top:8px">Impacto pondera dinheiro, tempo da equipe e risco legal. Esforço pondera desenvolvimento, dependência de terceiros e mudança de processo. São notas minhas, para discutir.</p>';
+  }
+
+  // ---- decisões
+  const DECISOES = [
+    {id:"D1", t:"Pedir ao gerente do Itaú a habilitação das APIs (extrato, Pix, cobrança, DDA)", p:"Exige representante legal no bankline, certificado mTLS e um token temporário de 72 h. Leva semanas, por isso entra na Onda 0.", rec:"Recomendo pedir agora. Sem isso, extrato e Pix continuam manuais; o plano B (ERP com Open Finance, R$ 100–300/mês) entrega extrato D-1."},
+    {id:"D2", t:"Autorizar a conciliação da Rede por API no portal", p:"A empresa se cadastra como software house ou usa uma conciliadora; o representante aprova no portal meu.userede.", rec:"Recomendo autorizar. É o que elimina “digite o a receber” e faz a maquininha bater dia a dia sozinha."},
+    {id:"D3", t:"Conta WhatsApp Business API (Meta verificada) no número da recepção e novo fluxo de comprovantes", p:"Coexistência mantém o celular funcionando. O grupo atual não é lido pela API oficial: comprovantes passariam a ser encaminhados 1:1 para o número da clínica (ou um grupo novo de até 8 pessoas com selo verificado, que impede a coexistência).", rec:"Recomendo coexistência + comprovante 1:1. O grupo continua para conversa; o comprovante vai para o número da clínica e é lido em segundos."},
+    {id:"D4", t:"Contratar Focus NFe (R$ 89,90/mês) e comprar o certificado A1 e-CNPJ", p:"Emite a NFS-e do paciente ao fechar a comanda e captura as NF-e de fornecedores. Teste grátis de 30 dias na captura.", rec:"Recomendo contratar. Ataca 498 contas sem nota e a fila de emissão parada em setembro."},
+    {id:"D5", t:"A Fila do dia vira a Home de todos os cargos", p:"Os cartões de atalho passam para a segunda tela. Cada pessoa vê a própria fila; a contagem aparece no ícone do app.", rec:"Recomendo aprovar. É o padrão que Linear, Attio e Superhuman convergiram, e a fila já existe dentro de Contas."},
+    {id:"D6", t:"Constantes de negócio saem do código e viram configuração com vigência", p:"Taxas da Rede, SELIC, feriados, alíquotas, repasses, preço do plano, catálogo de precificação e nomes de pessoas passam a ser editáveis por você, com histórico.", rec:"Recomendo aprovar. A precificação mudou 4 vezes em 13 dias, cada uma com deploy."},
+    {id:"D7", t:"Regime de dados da IA", p:"Financeiro: Claude Sonnet 5 ou Haiku 4.5 pela Messages API, sem dados de paciente. Clínico: só recursos elegíveis a retenção zero e BAA; nunca Fable 5.1 (exige 30 dias de retenção); transferência internacional no RIPD.", rec:"Recomendo aprovar como política escrita e criar organizações separadas para o clínico e o financeiro."},
+    {id:"D8", t:"Voucher de indicação: parecer e redesenho", p:"A CFM 2.336 veda vincular promoções a “premiações”. O voucher de R$ 500 liberado quando o indicado fecha pode ser lido assim.", rec:"Recomendo pedir parecer ao CRM-SP ou advogado e migrar para cortesia clínica não condicionada, agradecimento não financeiro e prioridade de agenda."},
+    {id:"D9", t:"Onboarding 0–30, semáforo de adesão, renovação D150–180 e produto Manutenção", p:"Toques D3·D7·D14·D30 pela enfermagem; renovação com Relatório de Resultados; um produto mensal pós-ciclo com preço menor. Preço e desenho clínico são do Dr. Daniel e da CEO.", rec:"Recomendo aprovar o desenho e definir preço da Manutenção. É onde a pesquisa aponta o maior ganho de receita recorrente."},
+    {id:"D10", t:"Exigir API de parceiro ou exportação agendada no contrato do iClinic", p:"O iClinic não tem API pública documentada; sem isso, confirmação, ocupação e Plano de Acompanhamento voltam ao CSV manual.", rec:"Recomendo negociar antes de assinar a migração; o Feegow atual tem API completa."},
+    {id:"D11", t:"Receita controlada digital via SNCR até 30/09/2026", p:"Tirzepatida é receita com retenção; assinatura avançada gov.br aceita. Memed e iClinic Rx aguardavam liberação.", rec:"Recomendo o Dr. Daniel confirmar a plataforma até 25/09 e o app registrar a receita emitida no marco do plano."},
+    {id:"D12", t:"Nomear DPO e substituto; cofre de compliance", p:"ANPD exige encarregado com autonomia e substituto, RIPD para IA e WhatsApp, e comunicação de incidente em 3 dias úteis; fiscalizações em saúde até dezembro.", rec:"Recomendo nomear agora (pode ser interno) e aprovar o cofre dentro do app em vez de um dossiê à parte."},
+    {id:"D13", t:"Direção visual: tema escuro, tokens, serifa nas telas do paciente", p:"Mantém musgo, oliva e dourado; números tabulares; translucidez só no cromo; identidade “luxo silencioso” em vez de flat de e-commerce.", rec:"Recomendo aprovar a direção e me deixar trazer 3 telas de referência antes de aplicar em tudo."},
+    {id:"D14", t:"Janela de modularização e atualização da stack (Onda 2)", p:"React 19.3, Vite 8, Tailwind 4, shadcn com Base UI; quebra dos 8 arquivos gigantes; protegido por CI e testes de tela novos.", rec:"Recomendo aprovar para novembro, depois que o CI estiver rodando."},
+    {id:"D15", t:"Parceiro de crediário e PSP secundário", p:"ParcelaMais (até 36x), Dr.Cash (24x, repasse em 48 h) ou BV (até R$ 30 mil) no fechamento; Asaas ou Inter para link, Pix dinâmico e Pix Automático se o Itaú demorar.", rec:"Recomendo cotar ParcelaMais e Dr.Cash agora e decidir o PSP depois da resposta do Itaú."}
+  ];
+  const VAL = {sim:"Aprovo", ajustar:"Quero ajustar", nao:"Não agora"};
+  function renderDecisoes(){
+    $("#decisoes-root").innerHTML = DECISOES.map(d => {
+      const cur = decis[d.id] || {};
+      return '<article class="decisao" id="'+d.id+'"><div class="cab-d"><span class="n">'+d.id+'</span><h4>'+d.t+'</h4></div>'
+        +'<p>'+d.p+'</p><p class="rec"><b>Recomendação:</b> '+d.rec+'</p>'
+        +'<div class="tri" role="group" aria-label="Decisão '+d.id+'">'
+        +Object.keys(VAL).map(v => '<button type="button" data-id="'+d.id+'" data-v="'+v+'" aria-pressed="'+(cur.v===v?"true":"false")+'">'+VAL[v]+'</button>').join("")
+        +'</div><textarea class="nota" data-id="'+d.id+'" placeholder="Observação (opcional)" aria-label="Observação sobre '+d.id+'">'+(cur.n||"").replace(/</g,"&lt;")+'</textarea></article>';
+    }).join("");
+    const root = $("#decisoes-root");
+    root.addEventListener("click", ev => {
+      const b = ev.target.closest(".tri button"); if(!b) return;
+      const id = b.dataset.id, v = b.dataset.v; decis[id] = decis[id] || {};
+      decis[id].v = decis[id].v===v ? undefined : v;
+      $$('.tri button[data-id="'+id+'"]', root).forEach(x => x.setAttribute("aria-pressed", x.dataset.v===decis[id].v ? "true":"false"));
+      store.set("bratan-proposta-decisoes", decis); resumo();
+    });
+    root.addEventListener("input", ev => { const t = ev.target.closest(".nota"); if(!t) return; decis[t.dataset.id] = decis[t.dataset.id]||{}; decis[t.dataset.id].n = t.value; store.set("bratan-proposta-decisoes", decis); resumo(); });
+  }
+  function resumo(){
+    const linhas = ["DECISÕES SOBRE O PRÓXIMO APP BRATAN — "+new Date().toLocaleDateString("pt-BR"), ""];
+    DECISOES.forEach(d => { const c = decis[d.id]||{}; linhas.push(d.id+" — "+(c.v ? VAL[c.v] : "(sem marcação)")+" — "+d.t+(c.n ? "\n     Obs.: "+c.n : "")); });
+    linhas.push("", "PROPOSTAS MARCADAS COM “QUERO ESTA” ("+quero.size+"):");
+    if(quero.size===0) linhas.push("(nenhuma)"); else TODAS.filter(p=>quero.has(p.id)).forEach(p => linhas.push(p.id+" — "+p.t+" ["+SELO[p.selo]+", "+ONDA[p.onda]+"]"));
+    $("#resumo-box").textContent = linhas.join("\n");
+  }
+  $("#copiar").addEventListener("click", async () => {
+    const txt = $("#resumo-box").textContent; const st = $("#copiado");
+    try { await navigator.clipboard.writeText(txt); st.textContent = "Copiado. Cole na conversa comigo."; }
+    catch(e){ st.textContent = "Não consegui copiar automaticamente; selecione o texto abaixo e copie."; }
+    setTimeout(()=>st.textContent="", 4000);
+  });
+  $("#limpar-decisoes").addEventListener("click", () => { if(!confirm("Limpar todas as marcações e observações deste navegador?")) return; decis = {}; quero = new Set(); store.set("bratan-proposta-decisoes", decis); store.set("bratan-proposta-quero", []); renderDecisoes(); renderEstudos(); aplicarFiltros(); resumo(); });
+
+  // ---- navegação: seção atual
+  function navAtual(){
+    const links = $$(".nav a"); const secs = links.map(a => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+    if(!("IntersectionObserver" in window)) return;
+    const io = new IntersectionObserver(es => { es.forEach(e => { if(e.isIntersecting){ links.forEach(a => a.setAttribute("aria-current", a.getAttribute("href")==="#"+e.target.id ? "true":"false")); } }); }, {rootMargin:"-40% 0px -55% 0px"});
+    secs.forEach(s => io.observe(s));
+  }
+
+  renderEstudos(); aplicarFiltros(); renderMatriz(); renderDecisoes(); resumo(); navAtual();
+})();
+</script>

@@ -7,6 +7,7 @@ import {
   BarChart3,
   Bell,
   BrainCircuit,
+  SlidersHorizontal,
   CalendarClock,
   CircleDollarSign,
   CheckSquare,
@@ -47,6 +48,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { BalaoDoDia } from "@/components/BalaoDoDia";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Avisos } from "@/components/ui/avisos";
+import { useConfigNegocio } from "@/lib/useConfigNegocio";
 import { PublicadorDoResumo } from "@/features/financeiro/PublicadorDoResumo";
 import { useAvatar } from "@/features/perfil/avatarStore";
 import { canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey,
@@ -210,6 +212,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, allowed: canAdministracao },
       { label: "Auditoria", href: "/administracao/auditoria", icon: History, allowed: canAdministracao },
       { label: "O que a IA fez", shortLabel: "IA", href: "/administracao/ia", icon: BrainCircuit, allowed: (cargo) => canAdministracao(cargo) || canFinanceiroFull(cargo) },
+      { label: "Configurações do negócio", shortLabel: "Config", href: "/administracao/configuracoes", icon: SlidersHorizontal, allowed: canManageAcessos },
     ],
   },
 ];
@@ -420,6 +423,50 @@ function FlowLauncher({
 }) {
   const groups = useMemo(() => visibleFlowGroups(pessoa), [pessoa]);
   const [query, setQuery] = useState("");
+  const navigate = useNavigate();
+
+  // ⌘K "FAZER" (14/09/2026, proposta 4.2): além de achar telas, o atalho entende
+  // um valor ("1234" → lançar conta de R$ 1.234) e verbos do dia a dia
+  // ("comanda", "fechamento", "toque", "comprovante"). Só mostra o que a pessoa pode abrir.
+  const acoes = useMemo(() => {
+    const term = normalizeSearch(query.trim());
+    if (!term) return [] as { chave: string; rotulo: string; href: string }[];
+    const visiveis = new Set(groups.flatMap((group) => group.entries.map((entry) => entry.href.split("?")[0])));
+    const podeIr = (href: string) => visiveis.has(href.split("?")[0]) || href === "/";
+    const lista: { chave: string; rotulo: string; href: string }[] = [];
+    const numero = query.trim().match(/^r?\$?\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)/i);
+    if (numero) {
+      const bruto = numero[1];
+      const valor = bruto.includes(",") ? Number(bruto.replace(/\./g, "").replace(",", ".")) : Number(bruto.replace(/\.(?=\d{3}(?:\D|$))/g, ""));
+      if (Number.isFinite(valor) && valor > 0) {
+        const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
+        if (podeIr("/financeiro/contas")) lista.push({ chave: "conta", rotulo: `Lançar conta a pagar de ${fmt}`, href: `/financeiro/contas?valor=${valor.toFixed(2)}` });
+        if (podeIr("/financeiro/lancar-dia")) lista.push({ chave: "comanda", rotulo: `Lançar comanda de ${fmt}`, href: "/financeiro/lancar-dia" });
+      }
+    }
+    const comandos: { palavras: string[]; rotulo: string; href: string }[] = [
+      { palavras: ["conta", "boleto", "pagar", "lancar conta", "despesa"], rotulo: "Lançar conta a pagar", href: "/financeiro/contas" },
+      { palavras: ["comanda", "venda", "lancar dia", "recebi"], rotulo: "Lançar comanda do dia", href: "/financeiro/lancar-dia" },
+      { palavras: ["fechamento", "fechar", "registrar fechamento", "aderiu"], rotulo: "Registrar fechamento (Kanban)", href: "/crm/vendas" },
+      { palavras: ["toque", "tarefa", "cadencia", "ligar", "mensagem"], rotulo: "Meus toques do CRM", href: "/crm/minhas-tarefas" },
+      { palavras: ["comprovante", "pix do paciente", "anexar"], rotulo: "Anexar comprovante", href: "/comprovantes" },
+      { palavras: ["extrato", "conciliar", "itau", "banco"], rotulo: "Conciliar extrato do Itaú", href: "/financeiro/extrato" },
+      { palavras: ["lucro", "envelope", "transferir", "repasse"], rotulo: "Lucro Inteligente (envelopes)", href: "/financeiro/lucro" },
+      { palavras: ["painel", "reuniao", "apresentar", "mes"], rotulo: "Painel do Mês", href: "/financeiro/painel" },
+      { palavras: ["estoque", "contar", "compra", "pedido"], rotulo: "Estoque e compras", href: "/estoque" },
+      { palavras: ["nps", "pesquisa", "satisfacao"], rotulo: "NPS da Concierge", href: "/concierge/nps" },
+      { palavras: ["configuracao", "limite", "regra", "vigencia"], rotulo: "Configurações do negócio", href: "/administracao/configuracoes" },
+      { palavras: ["ia", "inteligencia artificial", "governanca"], rotulo: "Governança de IA", href: "/administracao/ia" },
+      { palavras: ["fila", "hoje", "home", "inicio"], rotulo: "Fila do dia (Home)", href: "/" },
+    ];
+    for (const comando of comandos) {
+      if (!podeIr(comando.href)) continue;
+      if (comando.palavras.some((palavra) => normalizeSearch(palavra).includes(term) || term.includes(normalizeSearch(palavra)))) {
+        if (!lista.some((item) => item.href === comando.href)) lista.push({ chave: comando.href, rotulo: comando.rotulo, href: comando.href });
+      }
+    }
+    return lista.slice(0, 5);
+  }, [query, groups]);
 
   useEffect(() => {
     if (!open) setQuery("");
@@ -471,7 +518,14 @@ function FlowLauncher({
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar módulo ou fluxo..."
+                  placeholder="Buscar tela, ou digitar um valor / verbo (ex.: 1250, comanda, toque)…"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && acoes[0]) {
+                      event.preventDefault();
+                      onClose();
+                      navigate(acoes[0].href);
+                    }
+                  }}
                   autoFocus={typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches}
                   className="h-11 w-full rounded-xl border border-brand-oliva/18 bg-white/70 pl-10 pr-3 text-sm text-brand-tinta placeholder:text-muted-foreground/70 focus-visible:border-brand-dourado/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dourado/25"
                   aria-label="Buscar módulo ou fluxo"
@@ -480,9 +534,32 @@ function FlowLauncher({
             </div>
 
             <div className="max-h-[62vh] overflow-y-auto p-4 sm:p-5">
-              {filteredGroups.length === 0 ? (
+              {acoes.length ? (
+                <div className="mb-3 rounded-2xl border border-brand-dourado/40 bg-brand-creme/40 p-3">
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-brand-oliva">Fazer</p>
+                  <div className="grid gap-1.5">
+                    {acoes.map((acao, index) => (
+                      <Button
+                        key={acao.chave}
+                        type="button"
+                        variant={index === 0 ? "default" : "outline"}
+                        className="justify-start"
+                        onClick={() => {
+                          onClose();
+                          prefetchRoute(acao.href.split("?")[0]);
+                          navigate(acao.href);
+                        }}
+                      >
+                        {acao.rotulo}
+                        {index === 0 ? <span className="ml-auto text-[10px] opacity-70">Enter</span> : null}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {filteredGroups.length === 0 && !acoes.length ? (
                 <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-                  Nada encontrado para "{query.trim()}". Tente outro nome, como "tarefas" ou "kanban".
+                  Nada encontrado para "{query.trim()}". Tente outro nome, como "tarefas" ou "kanban" — ou um valor, como "1250".
                 </p>
               ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
@@ -533,6 +610,8 @@ function FlowLauncher({
 
 export function AppLayout() {
   const { pessoa, isPreview, signOut } = useAuth();
+  // CONFIGURAÇÕES COM VIGÊNCIA (14/09/2026): carrega uma vez e enche o cache dos motores.
+  useConfigNegocio();
   const location = useLocation();
   const [flowLauncherOpen, setFlowLauncherOpen] = useState(false);
   const avatar = useAvatar(pessoa?.id);

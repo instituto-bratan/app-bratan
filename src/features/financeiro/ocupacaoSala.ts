@@ -24,6 +24,7 @@ import type { FinSale, FinSaleItem, FinSaleItemType } from "./financeiroData";
 import { produtoDoItem, quantidadeDoItem, type ProdutoPrecificado } from "./catalogoPrecificacao";
 import { ehDiaUtil } from "./recebiveisRede";
 import type { CalendarHeat, ChartPoint, HeatDay } from "@/lib/chartData";
+import { configAtual } from "@/lib/configNegocio";
 
 const round1 = (value: number) => Math.round((value || 0) * 10) / 10;
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
@@ -116,7 +117,13 @@ function ultimoDiaDoMes(monthKey: string) {
 
 export function buildOcupacaoMes(input: { sales: FinSale[]; monthKey: string; hoje?: string; grade?: Partial<GradeSalas> }): OcupacaoMes {
   const { sales, monthKey } = input;
-  const grade: GradeSalas = { salas: input.grade?.salas ?? GRADE_PADRAO.salas, horasPorDiaPorSala: input.grade?.horasPorDiaPorSala ?? GRADE_PADRAO.horasPorDiaPorSala };
+  // Grade e faixa saudável vêm das Configurações do negócio (7.3); sem linha gravada, valem os padrões da planilha.
+  const gradeConfig = configAtual<Partial<GradeSalas> | undefined>("salas.grade", input.hoje);
+  const metaConfig = configAtual<{ minima: number; maxima: number } | undefined>("ocupacao.meta", input.hoje) ?? META_OCUPACAO;
+  const grade: GradeSalas = {
+    salas: input.grade?.salas ?? gradeConfig?.salas ?? GRADE_PADRAO.salas,
+    horasPorDiaPorSala: input.grade?.horasPorDiaPorSala ?? gradeConfig?.horasPorDiaPorSala ?? GRADE_PADRAO.horasPorDiaPorSala,
+  };
   const ultimo = `${monthKey}-${String(ultimoDiaDoMes(monthKey)).padStart(2, "0")}`;
   const hoje = input.hoje ?? ultimo;
   const parcial = hoje.slice(0, 7) === monthKey && hoje < ultimo;
@@ -174,7 +181,7 @@ export function buildOcupacaoMes(input: { sales: FinSale[]; monthKey: string; ho
   const horasVendidas = round2(dias.reduce((soma, dia) => soma + dia.minutos, 0) / 60);
   const horasDisponiveis = round2(diasUteis * horasDia);
   const percentual = horasDisponiveis > 0 ? round1((horasVendidas / horasDisponiveis) * 100) : 0;
-  const horasParaMeta = Math.max(0, round1(horasDisponiveis * (META_OCUPACAO.minima / 100) - horasVendidas));
+  const horasParaMeta = Math.max(0, round1(horasDisponiveis * (metaConfig.minima / 100) - horasVendidas));
   const valorDoPonto = round2((horasDisponiveis / 100) * CUSTO_HORA_SALA);
   const custoFixoAbsorvido = round2(horasVendidas * CUSTO_HORA_SALA);
   const ranking = [...porProduto.values()].sort((a, b) => b.minutos - a.minutos || a.produto.localeCompare(b.produto, "pt-BR"));
@@ -190,7 +197,7 @@ export function buildOcupacaoMes(input: { sales: FinSale[]; monthKey: string; ho
     horasVendidas,
     horasDisponiveis,
     percentual,
-    meta: { ...META_OCUPACAO },
+    meta: { minima: metaConfig.minima, maxima: metaConfig.maxima },
     horasParaMeta,
     valorDoPonto,
     custoFixoAbsorvido,

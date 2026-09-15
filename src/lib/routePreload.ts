@@ -54,6 +54,7 @@ const routeLoaders = {
   seguranca: namedPage(() => import("@/features/admin/SegurancaPage"), "SegurancaPage"),
   auditoria: namedPage(() => import("@/features/admin/AuditoriaPage"), "AuditoriaPage"),
   governancaIa: namedPage(() => import("@/features/admin/GovernancaIaPage"), "GovernancaIaPage"),
+  configuracoesNegocio: namedPage(() => import("@/features/admin/ConfiguracoesNegocioPage"), "ConfiguracoesNegocioPage"),
   marketing: namedPage(() => import("@/features/marketing/MarketingPage"), "MarketingPage"),
   inteligencia360: namedPage(() => import("@/features/inteligencia360/Inteligencia360Page"), "Inteligencia360DashboardPage"),
   inteligencia360Module: namedPage(() => import("@/features/inteligencia360/Inteligencia360Page"), "Inteligencia360ModulePage"),
@@ -116,6 +117,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/administracao/seguranca") return "seguranca";
   if (pathname === "/administracao/auditoria") return "auditoria";
   if (pathname === "/administracao/ia") return "governancaIa";
+  if (pathname === "/administracao/configuracoes") return "configuracoesNegocio";
   if (pathname === "/marketing") return "marketing";
   if (pathname === "/inteligencia-360") return "inteligencia360";
   if (pathname.startsWith("/inteligencia-360/")) return "inteligencia360Module";

@@ -51,6 +51,7 @@ import {
 } from "./crmData";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { useCrmState } from "./useCrmState";
+import { toast } from "@/components/ui/avisos";
 
 type TaskTab = "hoje" | "atrasadas" | "proximos" | "concluidas" | "todas";
 
@@ -230,9 +231,12 @@ export function CrmTasksPage() {
   // "Enviei" conclui a tarefa num toque (result SENT não pausa a régua → o
   // próximo toque nasce sozinho). Fim do "mandei mas reaparece".
   function confirmSent(task: CrmTask) {
+    // DESFAZER (14/09/2026, proposta 4.6): guarda o estado anterior e oferece 6 s para voltar.
+    const antes = state;
     persist((current) => completeCrmTask(current, task.id, { actorId: pessoa?.id ?? "preview", result: "SENT" }));
     setArmedTaskId("");
     setConciergeFeedback(`✓ ${contactDisplayName(contactsById.get(task.contactId))} — registrada como enviada e fora da sua lista de hoje.`);
+    toast(`Toque de ${contactDisplayName(contactsById.get(task.contactId))} registrado.`, { tom: "ok", acao: { rotulo: "Desfazer", onClick: () => void persist(() => antes) } });
   }
 
   // "Já agendou / foi atendida" tira do resgate: pausa a régua DESTE contato
@@ -481,6 +485,11 @@ export function CrmTasksPage() {
                     <Badge className={priorityTone(task.priority)}>{priorityLabels[task.priority]}</Badge>
                     <Badge variant="muted">{taskTypeLabels[task.taskType]}</Badge>
                     {rescue ? <Badge className="bg-amber-100 text-amber-800">Resgate</Badge> : <Badge variant="outline">{crmRoleLabels[task.assignedToRole]}</Badge>}
+                    {rescue && contact && !contact.marketingOptInEm ? (
+                      <Badge className="bg-red-100 text-red-800" title="LGPD: resgate é marketing. Registre o consentimento no perfil (Editar cadastro) ou peça na própria conversa.">
+                        sem opt-in de marketing
+                      </Badge>
+                    ) : null}
                   </div>
                   <h2 className="mt-3 flex flex-wrap items-center gap-2 text-xl font-semibold text-brand-musgo">
                     <UserRound className="h-5 w-5 shrink-0 text-brand-oliva" aria-hidden="true" />

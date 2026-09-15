@@ -147,6 +147,15 @@ export type FinExpense = {
    * comanda: nunca obrigar, mas nunca deixar ambíguo.
    */
   notaStatus?: FinNotaStatus;
+  /**
+   * APROVAÇÃO ACIMA DO LIMITE (14/09/2026, proposta 1.7): conta com valor igual ou
+   * acima do limite configurado só pode ser paga depois de APROVADA por alguém
+   * da lista de aprovadores. null = não precisa (abaixo do limite) ou antiga.
+   */
+  aprovacaoStatus?: "PENDENTE" | "APROVADA" | "RECUSADA" | null;
+  aprovacaoPor?: string | null;
+  aprovacaoEm?: string | null;
+  aprovacaoNota?: string | null;
 };
 
 // ---- Contas recorrentes -------------------------------------------------------

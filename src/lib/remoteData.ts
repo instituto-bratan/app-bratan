@@ -2330,6 +2330,8 @@ export async function listRemoteCrmState(): Promise<CrmState> {
         archivedAt: row.archived_at ?? null,
         optOut: row.opt_out ?? false,
         referrerContactId: row.referrer_contact_id ?? null,
+        marketingOptInEm: (row.marketing_opt_in_em as string | null) ?? null,
+        marketingOptInCanal: (row.marketing_opt_in_canal as string | null) ?? null,
         referralRewardPaidAt: row.referral_reward_paid_at ?? null,
       }),
     ),
@@ -2361,6 +2363,7 @@ export async function listRemoteCrmState(): Promise<CrmState> {
         programOutcome: row.program_outcome ?? null,
         adhesionChannel: row.adhesion_channel ?? null,
         programMilestonesDone: Array.isArray(row.program_milestones_done) ? (row.program_milestones_done as string[]) : [],
+        receitaSncrEm: row.receita_sncr_em ?? null,
       }),
     ),
     tasks: (tasks as any[]).map(
@@ -2490,6 +2493,8 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       updated_at: record.updatedAt || now,
       archived_at: record.archivedAt || null,
       referrer_contact_id: record.referrerContactId ?? null,
+      marketing_opt_in_em: record.marketingOptInEm ?? null,
+      marketing_opt_in_canal: record.marketingOptInCanal ?? null,
       referral_reward_paid_at: record.referralRewardPaidAt ?? null,
     })),
   );
@@ -2589,6 +2594,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       program_outcome: record.programOutcome ?? null,
       adhesion_channel: record.adhesionChannel ?? null,
       program_milestones_done: record.programMilestonesDone ?? [],
+      receita_sncr_em: record.receitaSncrEm ?? null,
     })),
   );
 
@@ -3964,7 +3970,7 @@ export async function listRemoteFinExpenses(year: number): Promise<FinExpense[]>
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_expenses")
-    .select("client_ref, description, category_ref, amount, due_date, paid_at, method, supplier, installment_num, installment_total, document_note, is_capex, notes, created_at, recurrence, nota_status")
+    .select("client_ref, description, category_ref, amount, due_date, paid_at, method, supplier, installment_num, installment_total, document_note, is_capex, notes, created_at, recurrence, nota_status, aprovacao_status, aprovacao_por, aprovacao_em, aprovacao_nota")
     .gte("due_date", `${year}-01-01`)
     .lte("due_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -3988,6 +3994,10 @@ export async function listRemoteFinExpenses(year: number): Promise<FinExpense[]>
     notes: String(row.notes ?? ""),
     createdAt: String(row.created_at ?? ""),
     recorrencia: (row.recurrence as FinExpense["recorrencia"]) ?? null,
+    aprovacaoStatus: (row.aprovacao_status as FinExpense["aprovacaoStatus"]) ?? null,
+    aprovacaoPor: (row.aprovacao_por as string | null) ?? null,
+    aprovacaoEm: (row.aprovacao_em as string | null) ?? null,
+    aprovacaoNota: (row.aprovacao_nota as string | null) ?? null,
   }));
 }
 
@@ -4055,6 +4065,10 @@ export async function createRemoteFinExpensesIgnoreDuplicates(expenses: FinExpen
       document_note: expense.documentNote,
       is_capex: expense.isCapex,
       nota_status: expense.notaStatus ?? "PENDENTE",
+    aprovacao_status: expense.aprovacaoStatus ?? null,
+    aprovacao_por: uuidOrNull(expense.aprovacaoPor ?? null),
+    aprovacao_em: expense.aprovacaoEm ?? null,
+    aprovacao_nota: expense.aprovacaoNota ?? null,
       notes: expense.notes,
       recurrence: expense.recorrencia ?? null,
       created_by: uuidOrNull(createdBy),
@@ -4088,6 +4102,10 @@ export async function updateRemoteFinExpense(expense: FinExpense) {
       is_capex: expense.isCapex,
       notes: expense.notes,
       recurrence: expense.recorrencia ?? null,
+      aprovacao_status: expense.aprovacaoStatus ?? null,
+      aprovacao_por: uuidOrNull(expense.aprovacaoPor ?? null),
+      aprovacao_em: expense.aprovacaoEm ?? null,
+      aprovacao_nota: expense.aprovacaoNota ?? null,
     })
     .eq("client_ref", expense.id);
   if (error) throw error;
@@ -5188,4 +5206,104 @@ export async function saveRemoteFinBankMatches(
     if (!error) gravados += 1;
   }
   return gravados;
+}
+
+
+// ---------------------------------------------------------------------------
+// CONFIGURAÇÕES COM VIGÊNCIA (14/09/2026, proposta 7.3)
+// ---------------------------------------------------------------------------
+export async function listRemoteAppConfig(): Promise<import("@/lib/configNegocio").LinhaConfig[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("app_config_vigencia")
+    .select("chave, valor, vigente_de, observacao, criado_em, colaborador:criado_por(nome)")
+    .order("vigente_de", { ascending: false })
+    .order("criado_em", { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    chave: String(row.chave),
+    valor: row.valor,
+    vigenteDe: String(row.vigente_de ?? "").slice(0, 10),
+    criadoEm: String(row.criado_em ?? ""),
+    observacao: String(row.observacao ?? ""),
+    criadoPorNome: ((row.colaborador as { nome?: string | null } | null)?.nome ?? null),
+  }));
+}
+
+export async function saveRemoteAppConfig(values: { chave: string; valor: unknown; vigenteDe: string; observacao?: string; pessoaId: string | null }) {
+  const client = requireSupabase();
+  const { error } = await client.from("app_config_vigencia").insert({
+    chave: values.chave,
+    valor: values.valor as never,
+    vigente_de: values.vigenteDe,
+    observacao: values.observacao ?? "",
+    criado_por: uuidOrNull(values.pessoaId),
+  });
+  if (error) throw error;
+  await safeWriteRemoteAuditEvent({ action: "config.negocio.alterar", entity: "app_config_vigencia", entityId: values.chave, metadata: { valor: values.valor, vigenteDe: values.vigenteDe } });
+}
+
+// ---------------------------------------------------------------------------
+// ACHADOS DA ROTINA DIÁRIA (14/09/2026, proposta 1.2)
+// ---------------------------------------------------------------------------
+export type AchadoDiario = {
+  id: string;
+  chave: string;
+  tipo: string;
+  dia: string;
+  titulo: string;
+  detalhe: string;
+  valor: number | null;
+  href: string;
+  urgencia: 0 | 1 | 2 | 3;
+  cargos: string[];
+  quantidade: number;
+  resolvidoEm: string | null;
+  atualizadoEm: string;
+};
+
+export async function listRemoteAchados(): Promise<AchadoDiario[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("achado_diario")
+    .select("id, chave, tipo, dia, titulo, detalhe, valor, href, urgencia, cargos, quantidade, resolvido_em, atualizado_em")
+    .is("resolvido_em", null)
+    .order("urgencia", { ascending: true })
+    .order("dia", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    chave: String(row.chave),
+    tipo: String(row.tipo),
+    dia: String(row.dia ?? "").slice(0, 10),
+    titulo: String(row.titulo ?? ""),
+    detalhe: String(row.detalhe ?? ""),
+    valor: row.valor === null || row.valor === undefined ? null : Number(row.valor),
+    href: String(row.href ?? "/"),
+    urgencia: (Number(row.urgencia ?? 2) as 0 | 1 | 2 | 3),
+    cargos: (row.cargos as string[]) ?? [],
+    quantidade: Number(row.quantidade ?? 1),
+    resolvidoEm: (row.resolvido_em as string | null) ?? null,
+    atualizadoEm: String(row.atualizado_em ?? ""),
+  }));
+}
+
+export async function resolverRemoteAchado(id: string, pessoaId: string | null) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("achado_diario")
+    .update({ resolvido_em: new Date().toISOString(), resolvido_por: uuidOrNull(pessoaId), atualizado_em: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Dispara a rotina diária agora (o cron roda às 6h; este é o botão "atualizar achados"). */
+export async function dispararRotinaDiaria(): Promise<{ ok: boolean; resumo?: Record<string, number>; error?: string }> {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke("rotina-diaria", { body: {} });
+  if (error) return { ok: false, error: await detalheDoErroDaFuncao(error) };
+  const body = (data ?? {}) as { ok?: boolean; resumo?: Record<string, number>; error?: string };
+  return { ok: Boolean(body.ok), resumo: body.resumo, error: body.error };
 }

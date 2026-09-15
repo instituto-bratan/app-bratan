@@ -78,7 +78,7 @@ export function CrmContactProfilePage() {
   // um paciente que entrou sem telefone (comanda, comprovante) não tinha onde
   // ganhar número depois — a cadência ficava sem para onde ligar.
   const [editando, setEditando] = useState(false);
-  const [cadastro, setCadastro] = useState({ fullName: "", preferredName: "", phone: "", email: "" });
+  const [cadastro, setCadastro] = useState({ fullName: "", preferredName: "", phone: "", email: "", optIn: false, optInCanal: "WhatsApp" });
   const [cadastroFeedback, setCadastroFeedback] = useState("");
   const inteligencia = useMemo(() => loadInteligencia360State(), []);
   const contact = state.contacts.find((item) => item.id === id);
@@ -112,6 +112,8 @@ export function CrmContactProfilePage() {
       preferredName: contact.preferredName,
       phone: formatPhoneBR(contact.whatsapp || contact.phone),
       email: contact.email,
+      optIn: Boolean(contact.marketingOptInEm),
+      optInCanal: contact.marketingOptInCanal || "WhatsApp",
     });
     setCadastroFeedback("");
     setEditando(true);
@@ -122,7 +124,11 @@ export function CrmContactProfilePage() {
     if (!cadastro.fullName.trim()) return setCadastroFeedback("O nome não pode ficar vazio.");
     const problema = contactChannelsIssue({ phone: cadastro.phone, email: cadastro.email });
     if (problema) return setCadastroFeedback(problema);
-    void persist((current) => updateContactChannels(current, contact.id, cadastro, pessoa?.id ?? "manual"));
+    const optInAtual = Boolean(contact.marketingOptInEm);
+    const marketingOptIn = cadastro.optIn === optInAtual && (!cadastro.optIn || cadastro.optInCanal === (contact.marketingOptInCanal || "WhatsApp"))
+      ? undefined
+      : { em: cadastro.optIn ? (optInAtual ? contact.marketingOptInEm ?? new Date().toISOString() : new Date().toISOString()) : null, canal: cadastro.optInCanal };
+    void persist((current) => updateContactChannels(current, contact.id, { ...cadastro, marketingOptIn }, pessoa?.id ?? "manual"));
     setEditando(false);
     setCadastroFeedback("");
   }
@@ -323,6 +329,26 @@ export function CrmContactProfilePage() {
                     O telefone é a chave única do CRM: ele liga esta pessoa às comandas, aos comprovantes, às dívidas e às
                     cadências — e é o que evita cadastro duplicado.
                   </p>
+                  <div className="flex flex-wrap items-center gap-3 rounded-md border border-brand-oliva/15 bg-brand-papel/60 px-3 py-2">
+                    <label className="flex items-center gap-2 text-sm text-brand-tinta">
+                      <input type="checkbox" checked={cadastro.optIn} onChange={(event) => setCadastro({ ...cadastro, optIn: event.target.checked })} />
+                      Aceitou receber mensagens de marketing e resgate
+                    </label>
+                    {cadastro.optIn ? (
+                      <select value={cadastro.optInCanal} onChange={(event) => setCadastro({ ...cadastro, optInCanal: event.target.value })} className="h-8 rounded-md border border-brand-oliva/25 bg-white px-2 text-xs" aria-label="Como o consentimento foi dado">
+                        {["WhatsApp", "Presencial (ficha)", "Telefone", "E-mail", "Site / formulário"].map((canal) => (
+                          <option key={canal} value={canal}>
+                            {canal}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <InfoTip title="LGPD">
+                      Mensagens de resgate e repescagem (60 dias, 6 meses, 1 ano) são marketing: precisam de consentimento registrado, com data e
+                      canal. As mensagens da jornada de quem está em tratamento não precisam — são execução do contrato. Sem opt-in, o app avisa
+                      na tarefa de resgate; não bloqueia.
+                    </InfoTip>
+                  </div>
                   <div className="flex flex-wrap items-center gap-3">
                     <LiquidButton type="button" size="sm" onClick={salvarCadastro}>
                       Salvar cadastro
@@ -340,6 +366,7 @@ export function CrmContactProfilePage() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <InfoItem label="WhatsApp" value={formatPhoneBR(contact.whatsapp || contact.phone)} />
                 <InfoItem label="E-mail" value={contact.email} />
+                <InfoItem label="Opt-in de marketing" value={contact.marketingOptInEm ? `sim · ${contact.marketingOptInCanal || "canal não informado"} · ${contact.marketingOptInEm.slice(8, 10)}/${contact.marketingOptInEm.slice(5, 7)}/${contact.marketingOptInEm.slice(0, 4)}` : "não registrado"} />
                 <InfoItem label="Origem" value={contact.sourceChannel} />
                 <InfoItem label="Temperatura" value={contact.leadTemperature} />
                 <InfoItem label="Persona" value={contact.personaFit} />

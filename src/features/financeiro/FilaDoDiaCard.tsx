@@ -17,6 +17,8 @@ const alertaLabel: Record<NonNullable<ItemFila["alerta"]>, string> = {
   SEM_CONTA: "sem conta a pagar",
   ATRASADO: "entrega atrasada",
   CHEGANDO: "chega hoje",
+  AGUARDA_APROVACAO: "aguarda aprovação",
+  RECUSADA: "aprovação recusada",
 };
 
 function diaCurto(iso: string) {
@@ -45,9 +47,14 @@ export function FilaDoDiaCard({
   onChegou,
   onVirarConta,
   onAnotarNf,
+  podeAprovar = false,
+  onAprovar,
 }: {
   fila: FilaFinanceira;
   readOnly: boolean;
+  /** APROVAÇÃO (14/09/2026): quem está na lista de aprovadores vê "Aprovar / Recusar" nas contas acima do limite. */
+  podeAprovar?: boolean;
+  onAprovar?: (expense: FinExpense, decisao: "APROVADA" | "RECUSADA") => void;
   onPagar: (expense: FinExpense) => void;
   onAdiar: (expense: FinExpense, novaData: string) => void;
   onEditar: (expense: FinExpense) => void;
@@ -147,9 +154,29 @@ export function FilaDoDiaCard({
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {item.tipo === "CONTA" && item.expense ? (
                           <>
-                            <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={() => onPagar(item.expense!)}>
-                              <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Paguei
-                            </Button>
+                            {item.aguardaAprovacao ? (
+                              podeAprovar && onAprovar ? (
+                                <>
+                                  <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={() => onAprovar(item.expense!, "APROVADA")}>
+                                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Aprovar
+                                  </Button>
+                                  <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs text-red-700" onClick={() => onAprovar(item.expense!, "RECUSADA")}>
+                                    Recusar
+                                  </Button>
+                                </>
+                              ) : (
+                                <span className="inline-flex h-7 items-center rounded-md border border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800" title={`Acima de ${moneyFin(fila.limiteAprovacao)}: precisa da aprovação da CEO ou do Dr. Daniel antes de pagar`}>
+                                  aguarda aprovação (acima de {moneyFin(fila.limiteAprovacao)})
+                                </span>
+                              )
+                            ) : (
+                              <Button type="button" size="sm" className="h-7 px-2 text-xs" onClick={() => onPagar(item.expense!)}>
+                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Paguei
+                              </Button>
+                            )}
+                            {item.expense.aprovacaoStatus === "APROVADA" && item.expense.aprovacaoEm ? (
+                              <span className="inline-flex h-7 items-center text-[11px] text-emerald-800" title={item.expense.aprovacaoNota ?? ""}>✓ aprovada {item.expense.aprovacaoEm.slice(8, 10)}/{item.expense.aprovacaoEm.slice(5, 7)}</span>
+                            ) : null}
                             <Button
                               type="button"
                               size="sm"

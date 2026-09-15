@@ -1,0 +1,247 @@
+[
+ {
+  "diag": {
+   "contas_set": {
+    "total": 90,
+    "pagas": 48,
+    "valor": 429467.62,
+    "lancadas_depois_de_vencer": 32,
+    "via_sql_wa_concil": 34,
+    "sem_fornecedor": 45,
+    "nota_status": {
+     "SEM_NOTA": 55,
+     "PENDENTE": 35
+    },
+    "capex": 21,
+    "valor_capex": 27563.11
+   },
+   "contas_ago": {
+    "total": 98,
+    "pagas": 90,
+    "valor": 415471.36,
+    "lancadas_depois_de_vencer": 37,
+    "via_sql": 9,
+    "sem_fornecedor": 51,
+    "nota_status": {
+     "AGUARDANDO": 33,
+     "SEM_NOTA": 36,
+     "PENDENTE": 28,
+     "ANEXADA": 1
+    }
+   },
+   "contas_total": {
+    "total": 1066,
+    "sem_nota": 498,
+    "nota_status": {
+     "AGUARDANDO": 46,
+     "SEM_NOTA": 498,
+     "PENDENTE": 521,
+     "ANEXADA": 1
+    }
+   },
+   "inbox": {
+    "total": 0,
+    "status": null
+   },
+   "bank": {
+    "total": 187,
+    "matched": 0,
+    "match_kind": {
+     "null": 187
+    },
+    "meses": {
+     "2026-09": 43,
+     "2026-08": 144
+    }
+   },
+   "comandas_set": {
+    "total": 29,
+    "valor": 95264.1,
+    "sem_contato_crm": 0,
+    "aguardando_explicacao": 0,
+    "lancado_por_setor": {
+     "null": 17,
+     "VENDAS": 12
+    }
+   },
+   "comandas_ago": {
+    "total": 75,
+    "valor": 246877.4,
+    "sem_contato_crm": 0
+   },
+   "pagamentos_set": {
+    "total": 31,
+    "comprovante_status": {
+     "ANEXADO": 21,
+     "AGUARDANDO": 1,
+     "PENDENTE": 9
+    },
+    "metodos": {
+     "CARTAO_DEBITO": 2,
+     "CARTAO_CREDITO": 14,
+     "PIX": 15
+    }
+   },
+   "reconciliations": {
+    "total": 126,
+    "set": 2,
+    "status": {
+     "DIVERGENTE": 1,
+     "CONFERIDO": 125
+    }
+   },
+   "sharepoint": {
+    "FAILED": 3,
+    "SENT": 197
+   },
+   "invoices": {
+    "total": 568,
+    "set": 0,
+    "ago": 60
+   },
+   "lembretes": {
+    "total": 60,
+    "status": {
+     "pago": 42,
+     "aberto": 14,
+     "cancelado": 4
+    },
+    "valor_aberto": 47592
+   },
+   "crm_tasks": {
+    "total": 1047,
+    "status": {
+     "DONE": 635,
+     "SKIPPED": 16,
+     "CANCELED": 164,
+     "PENDING": 232
+    },
+    "atrasadas": 117,
+    "pendentes": 248,
+    "concluidas_30d": 218,
+    "atraso_medio_dias_30d": 5.9,
+    "por_papel": {
+     "SDR_LEADS": 121,
+     "ADMIN_GESTAO": 2,
+     "ENFERMAGEM": 63,
+     "CONCIERGE": 54,
+     "RECEPCAO": 8
+    },
+    "tipos": {
+     "RESCUE": 44,
+     "WHATSAPP": 741,
+     "FOLLOW_UP": 116,
+     "CHURN_INVESTIGATION": 2,
+     "CALL": 17,
+     "IN_PERSON": 80,
+     "SCHEDULE": 47
+    }
+   },
+   "crm_contacts": {
+    "total": 289,
+    "ativos": 289,
+    "temperatura": {
+     "WARM": 174,
+     "COLD": 113,
+     "HOT": 2
+    },
+    "estagio": {
+     "ACTIVE_PATIENT": 117,
+     "SCHEDULED": 2,
+     "WARM_LEAD": 6,
+     "RESCUE": 24,
+     "COLD_LEAD": 116,
+     "INACTIVE": 6,
+     "FOLLOW_UP": 18
+    },
+    "opt_out": 2,
+    "sem_whatsapp": 193,
+    "canais": {
+     "LinkedIn Outbound": 111,
+     "Comprovante": 35,
+     "Cadência (inscrição manual)": 27,
+     "Fechamento (Estevão)": 27,
+     "Comanda / Lançar Dia": 22,
+     "Nao informado": 15,
+     "Fluxo de Resgate": 14,
+     "Repescagem Jan/2025": 8,
+     "Lembrete de pagamento": 6,
+     "Indicacao": 6,
+     "Indicação": 5,
+     "Esposo e paciente": 2
+    }
+   },
+   "crm_deals": {
+    "total": 281,
+    "status": {
+     "OPEN": 158,
+     "LOST": 2,
+     "PAUSED": 7,
+     "WON_FULL": 114
+    },
+    "stage_abertos": {
+     "PERDIDO": 2,
+     "RESGATE_D60": 24,
+     "CHURN": 2,
+     "LEAD_FRIO": 110,
+     "NAO_FECHOU": 13,
+     "FECHOU_COMPLETO": 3,
+     "LEAD_NOVO": 6,
+     "CONTATADO": 6,
+     "QUALIFICADO": 1,
+     "CONSULTA_AGENDADA": 2
+    },
+    "fases_programa": {
+     "AGENDAMENTO": 8,
+     "CADENCIA_PROGRAMA": 39,
+     "TRES_CONTATOS_D1": 34,
+     "PRIMEIRO_ATENDIMENTO": 10
+    },
+    "fechados_set": 18,
+    "valor_fechado_set": 114905,
+    "fechados_ago": 58
+   },
+   "enrollments": {
+    "PAUSED": 54,
+    "CANCELED": 43,
+    "ACTIVE": 84,
+    "COMPLETED": 16
+   },
+   "timeline_30d": 564,
+   "nps": {
+    "total": 10,
+    "ult_30d": 1,
+    "media": 10,
+    "promotores": 10,
+    "detratores": 0,
+    "com_comentario": 8
+   },
+   "concierge_set": 0,
+   "estoque": {
+    "itens": 113,
+    "movimentos_30d": 302,
+    "tipos": {
+     "SAIDA": 157,
+     "ENTRADA": 145
+    }
+   },
+   "comprovantes": {
+    "total": 190,
+    "set": 26,
+    "sharepoint_status": {
+     "pendente": 190
+    }
+   },
+   "audit_30d": {
+    "eventos": 1336,
+    "pessoas": 8
+   },
+   "colaboradores_ativos": 11,
+   "purchases": {
+    "total": 82,
+    "set": 1,
+    "ago": 6
+   }
+  }
+ }
+]

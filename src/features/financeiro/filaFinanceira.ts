@@ -11,10 +11,11 @@
 // de ação hoje — em quatro colunas — e uma frase em português que resume tudo.
 // Nada é digitado aqui; é tudo derivado.
 import type { FinExpense, FinPurchase } from "./financeiroData";
+import { configAtual } from "@/lib/configNegocio";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
-export type AlertaFila = "SEM_ARQUIVO" | "SEM_NF" | "SEM_CONTA" | "ATRASADO" | "CHEGANDO";
+export type AlertaFila = "SEM_ARQUIVO" | "SEM_NF" | "SEM_CONTA" | "ATRASADO" | "CHEGANDO" | "AGUARDA_APROVACAO" | "RECUSADA";
 
 export type ItemFila = {
   chave: string;
@@ -25,6 +26,8 @@ export type ItemFila = {
   /** Data que manda na coluna: vencimento (conta) ou entrega prevista (compra). */
   data: string;
   alerta?: AlertaFila;
+  /** APROVAÇÃO (14/09/2026, proposta 1.7): conta no limite ou acima que ainda não foi aprovada não pode ser paga pela fila. */
+  aguardaAprovacao?: boolean;
   expense?: FinExpense;
   purchase?: FinPurchase;
 };
@@ -45,7 +48,10 @@ export type FilaFinanceira = {
     comprasSemConta: number;
     pedidosAtrasados: number;
     notasSemDecisao: number;
+    aguardandoAprovacao: number;
   };
+  /** Limite de aprovação que valeu na montagem (0 = sem aprovação). */
+  limiteAprovacao: number;
   /** A frase do topo: "Hoje vencem 3 (R$ 4.200) · 9 vencidas (R$ 47.143) · 2 boletos sem arquivo". */
   resumo: string;
 };
@@ -58,9 +64,18 @@ function somaDias(iso: string, dias: number) {
 
 const brl = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value || 0);
 
-function itemDaConta(expense: FinExpense, notasAnexadas: Set<string>): ItemFila {
+/** Conta precisa de aprovação? Valor no limite ou acima e ainda não aprovada. Limite zero desliga a regra. */
+export function precisaAprovacao(expense: FinExpense, limite: number) {
+  if (!limite || limite <= 0) return false;
+  if ((expense.amount || 0) < limite) return false;
+  return expense.aprovacaoStatus !== "APROVADA";
+}
+
+function itemDaConta(expense: FinExpense, notasAnexadas: Set<string>, limiteAprovacao: number): ItemFila {
   const parcela = expense.installmentNum && expense.installmentTotal ? ` · ${expense.installmentNum}/${expense.installmentTotal}` : "";
   const semArquivo = expense.method === "BOLETO" && !expense.documentNote.trim() && !notasAnexadas.has(expense.id);
+  const aguarda = precisaAprovacao(expense, limiteAprovacao);
+  const recusada = expense.aprovacaoStatus === "RECUSADA";
   return {
     chave: `conta:${expense.id}`,
     tipo: "CONTA",
@@ -68,7 +83,8 @@ function itemDaConta(expense: FinExpense, notasAnexadas: Set<string>): ItemFila 
     detalhe: [expense.supplier, expense.method ? expense.method.replace("_", " ").toLowerCase() : ""].filter(Boolean).join(" · "),
     valor: expense.amount || 0,
     data: expense.dueDate,
-    alerta: semArquivo ? "SEM_ARQUIVO" : undefined,
+    alerta: recusada ? "RECUSADA" : aguarda ? "AGUARDA_APROVACAO" : semArquivo ? "SEM_ARQUIVO" : undefined,
+    aguardaAprovacao: aguarda,
     expense,
   };
 }
@@ -84,9 +100,12 @@ export function buildFilaFinanceira(input: {
   maxVencidosDias?: number;
   /** Compras mais velhas que isso não entram nas pendências (histórico fica em Compras). */
   maxCompraDias?: number;
+  /** Limite de aprovação (R$). Sem informar, vale o das Configurações do negócio (padrão 5.000). */
+  limiteAprovacao?: number;
 }): FilaFinanceira {
   const { expenses, hoje } = input;
   const notasAnexadas = input.notasAnexadas ?? new Set<string>();
+  const limiteAprovacao = input.limiteAprovacao ?? (configAtual<number>("aprovacao.limite", hoje) ?? 0);
   const limite = somaDias(hoje, input.diasSemana ?? 7);
   const maisVelha = somaDias(hoje, -(input.maxVencidosDias ?? 90));
   // Compra de 3 meses atrás sem "chegou" já chegou há muito tempo — ninguém vai
@@ -96,9 +115,9 @@ export function buildFilaFinanceira(input: {
   const porData = (a: ItemFila, b: ItemFila) => a.data.localeCompare(b.data) || b.valor - a.valor;
 
   const abertas = expenses.filter((expense) => !expense.paidAt && expense.dueDate);
-  const vencidas = abertas.filter((e) => e.dueDate < hoje && e.dueDate >= maisVelha).map((e) => itemDaConta(e, notasAnexadas)).sort(porData);
-  const vencemHoje = abertas.filter((e) => e.dueDate === hoje).map((e) => itemDaConta(e, notasAnexadas)).sort(porData);
-  const semana = abertas.filter((e) => e.dueDate > hoje && e.dueDate <= limite).map((e) => itemDaConta(e, notasAnexadas)).sort(porData);
+  const vencidas = abertas.filter((e) => e.dueDate < hoje && e.dueDate >= maisVelha).map((e) => itemDaConta(e, notasAnexadas, limiteAprovacao)).sort(porData);
+  const vencemHoje = abertas.filter((e) => e.dueDate === hoje).map((e) => itemDaConta(e, notasAnexadas, limiteAprovacao)).sort(porData);
+  const semana = abertas.filter((e) => e.dueDate > hoje && e.dueDate <= limite).map((e) => itemDaConta(e, notasAnexadas, limiteAprovacao)).sort(porData);
 
   const pendencias: ItemFila[] = [];
   let pedidosSemNf = 0;
@@ -149,6 +168,7 @@ export function buildFilaFinanceira(input: {
     (expense) => (expense.notaStatus ?? "PENDENTE") === "PENDENTE" && (expense.dueDate || "").slice(0, 7) === mesAtual && !notasAnexadas.has(expense.id),
   ).length;
   const boletosSemArquivo = [...vencidas, ...vencemHoje, ...semana].filter((item) => item.alerta === "SEM_ARQUIVO").length;
+  const aguardandoAprovacao = [...vencidas, ...vencemHoje, ...semana].filter((item) => item.aguardaAprovacao).length;
 
   const soma = (lista: ItemFila[]) => round2(lista.reduce((total, item) => total + item.valor, 0));
   const totais = {
@@ -160,6 +180,7 @@ export function buildFilaFinanceira(input: {
     comprasSemConta,
     pedidosAtrasados,
     notasSemDecisao,
+    aguardandoAprovacao,
   };
 
   const partes: string[] = [];
@@ -168,6 +189,7 @@ export function buildFilaFinanceira(input: {
   if (!vencemHoje.length && !vencidas.length) partes.push("nada vencido e nada para hoje");
   if (semana.length) partes.push(`${semana.length} nos próximos ${input.diasSemana ?? 7} dias (${brl(totais.semana)})`);
   if (boletosSemArquivo) partes.push(`${boletosSemArquivo} boleto${boletosSemArquivo > 1 ? "s" : ""} sem arquivo`);
+  if (aguardandoAprovacao) partes.push(`${aguardandoAprovacao} aguardando aprovação`);
   if (pedidosAtrasados) partes.push(`${pedidosAtrasados} pedido${pedidosAtrasados > 1 ? "s" : ""} para conferir se chegou`);
   if (pedidosSemNf) partes.push(`${pedidosSemNf} compra${pedidosSemNf > 1 ? "s" : ""} sem NF`);
   if (comprasSemConta) partes.push(`${comprasSemConta} compra${comprasSemConta > 1 ? "s" : ""} sem conta a pagar`);
@@ -179,6 +201,7 @@ export function buildFilaFinanceira(input: {
     semana,
     pendencias,
     totais,
+    limiteAprovacao,
     resumo: partes.join(" · "),
   };
 }

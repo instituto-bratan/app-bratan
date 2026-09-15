@@ -17,12 +17,15 @@ import type { MetasBoard } from "./metasData";
 import type { Beneficiario, PlanilhaLucro, ReguaLucro, ResumoRepasse } from "./lucroInteligente";
 import { ajustaParaDiaUtil } from "./recebiveisRede";
 import type { TransferenciaPrevista } from "./caixaProjetado";
+import { configAtual } from "@/lib/configNegocio";
 
 export const CORES_ENVELOPES = {
   impostos: "#8F7B4E",
   lucro: chartColors.resultado,
   medicoExecutor: chartColors.entrada,
   operacional: chartColors.apoio,
+  provisoes: "#8b6f47",
+  reserva: "#4f6d7a",
   negativo: chartColors.saida,
 } as const;
 
@@ -37,10 +40,11 @@ function diaCurto(iso: string) {
 export function proximasTransferencias(hoje: string, quantas = 2): string[] {
   const [ano, mes] = hoje.slice(0, 7).split("-").map(Number);
   const datas: string[] = [];
+  const dias = (configAtual<number[] | undefined>("transferencias.dias", hoje) ?? [...DIAS_DE_TRANSFERENCIA]).filter((d) => d >= 1 && d <= 31).sort((a, b) => a - b);
   for (let k = 0; k < 3 && datas.length < quantas; k += 1) {
     const data = new Date(ano, mes - 1 + k, 1);
     const chave = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
-    for (const dia of DIAS_DE_TRANSFERENCIA) {
+    for (const dia of dias.length ? dias : [...DIAS_DE_TRANSFERENCIA]) {
       const iso = ajustaParaDiaUtil(`${chave}-${String(dia).padStart(2, "0")}`);
       if (iso >= hoje && datas.length < quantas) datas.push(iso);
     }
@@ -76,7 +80,7 @@ export function EnvelopesVisuais({
   const metaPorDia = useMemo(() => new Map((board?.days ?? []).map((dia) => [dia.date, dia.dailyGoal])), [board]);
 
   // ---- a barra empilhada ----------------------------------------------------
-  const topo = Math.max(1, ...linhas.map((l) => Math.max(l.liquido, l.reservado.impostos + l.reservado.lucro + l.reservado.medicoExecutor)), ...(board?.days.map((d) => d.dailyGoal) ?? [0]));
+  const topo = Math.max(1, ...linhas.map((l) => Math.max(l.liquido, l.reservado.impostos + l.reservado.lucro + l.reservado.medicoExecutor + (l.reservado.provisoes ?? 0) + (l.reservado.reserva ?? 0))), ...(board?.days.map((d) => d.dailyGoal) ?? [0]));
   const fundo = Math.min(0, ...linhas.map((l) => Math.min(0, l.reservado.operacional)));
   const width = 760;
   const height = 250;
@@ -134,6 +138,33 @@ export function EnvelopesVisuais({
       rotuloBarra: "contas pagas ÷ cabe gastar",
     },
   ];
+  // ENVELOPES OPCIONAIS (14/09/2026, proposta 5.3): só aparecem quando a régua separa
+  // ou alguma conta de poupança já foi paga — ligados em Administração → Configurações do negócio.
+  const provisoesReservadas = t.reservado.provisoes ?? 0;
+  const provisoesUsadas = t.usado.provisoes ?? 0;
+  if (provisoesReservadas > 0.005 || provisoesUsadas > 0.005) {
+    envelopes.push({
+      chave: "provisoes",
+      titulo: "Provisões (13º, férias, IRPJ/CSLL)",
+      cor: CORES_ENVELOPES.provisoes,
+      frase: `Separados ${moneyFin(provisoesReservadas)} (${(reguaHoje.provisoesPct ?? 0).toLocaleString("pt-BR")}% do líquido) · guardados na poupança ${moneyFin(provisoesUsadas)} → ${provisoesReservadas - provisoesUsadas > 0.005 ? `falta guardar ${moneyFin(provisoesReservadas - provisoesUsadas)}` : "em dia"}.`,
+      realizado: provisoesUsadas,
+      referencia: provisoesReservadas,
+      rotuloBarra: "guardado ÷ separado",
+    });
+  }
+  const reservaSeparada = t.reservado.reserva ?? 0;
+  if (reservaSeparada > 0.005) {
+    envelopes.push({
+      chave: "reserva",
+      titulo: "Reserva de emergência",
+      cor: CORES_ENVELOPES.reserva,
+      frase: `Separados ${moneyFin(reservaSeparada)} (${(reguaHoje.reservaPct ?? 0).toLocaleString("pt-BR")}% do líquido) neste mês para a reserva; a meta é ${configAtual<number>("lucro.reserva_meta_meses") ?? 2} meses de despesas fixas.`,
+      realizado: reservaSeparada,
+      referencia: reservaSeparada,
+      rotuloBarra: "separado no mês",
+    });
+  }
 
   const proximas = proximasTransferencias(hoje, 2);
 
@@ -267,7 +298,7 @@ export function EnvelopesVisuais({
       </div>
 
       <div className="mt-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-        <p className="text-sm font-semibold text-brand-musgo">Agenda de transferências (dias 10 e 25, no dia útil)</p>
+        <p className="text-sm font-semibold text-brand-musgo">Agenda de transferências (dias {(configAtual<number[] | undefined>("transferencias.dias", hoje) ?? [...DIAS_DE_TRANSFERENCIA]).join(" e ")}, no dia útil)</p>
         <div className="mt-1.5 grid gap-1.5 text-sm text-brand-tinta sm:grid-cols-2">
           {proximas.map((data, indice) => (
             <div key={data} className="rounded-md bg-white/70 px-3 py-2">

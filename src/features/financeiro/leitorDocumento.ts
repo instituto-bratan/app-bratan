@@ -201,3 +201,49 @@ export function lerDocumento(textoBruto: string, hoje: string): LeituraDocumento
 
   return resultado;
 }
+
+
+// ---- CÂMERA (14/09/2026, proposta 4.3): o leitor de código de barras do celular
+// devolve os 44 dígitos do código de barras; o resto do app fala em LINHA
+// DIGITÁVEL (47 do boleto bancário, 48 da guia). A conversão é a da FEBRABAN.
+function mod10(digitos: string) {
+  let soma = 0;
+  let peso = 2;
+  for (let i = digitos.length - 1; i >= 0; i -= 1) {
+    let produto = Number(digitos[i]) * peso;
+    if (produto > 9) produto = Math.floor(produto / 10) + (produto % 10);
+    soma += produto;
+    peso = peso === 2 ? 1 : 2;
+  }
+  return (10 - (soma % 10)) % 10;
+}
+
+function mod11Guia(digitos: string) {
+  let soma = 0;
+  let peso = 2;
+  for (let i = digitos.length - 1; i >= 0; i -= 1) {
+    soma += Number(digitos[i]) * peso;
+    peso = peso === 9 ? 2 : peso + 1;
+  }
+  const resto = soma % 11;
+  if (resto === 0 || resto === 1) return 0;
+  if (resto === 10) return 1;
+  return 11 - resto;
+}
+
+/** 44 dígitos do código de barras → linha digitável (47 boleto bancário · 48 guia/arrecadação). null se não tem 44 dígitos. */
+export function linhaDigitavelDoCodigoDeBarras(codigo: string): string | null {
+  const barras = codigo.replace(/\D/g, "");
+  if (barras.length !== 44) return null;
+  if (barras[0] === "8") {
+    const usaMod10 = /[67]/.test(barras[2]);
+    return [0, 11, 22, 33].map((i) => {
+      const bloco = barras.slice(i, i + 11);
+      return `${bloco}${usaMod10 ? mod10(bloco) : mod11Guia(bloco)}`;
+    }).join("");
+  }
+  const campo1 = `${barras.slice(0, 4)}${barras.slice(19, 24)}`;
+  const campo2 = barras.slice(24, 34);
+  const campo3 = barras.slice(34, 44);
+  return `${campo1}${mod10(campo1)}${campo2}${mod10(campo2)}${campo3}${mod10(campo3)}${barras[4]}${barras.slice(5, 19)}`;
+}

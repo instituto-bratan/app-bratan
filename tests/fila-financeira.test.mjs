@@ -60,10 +60,20 @@ test("fila do dia: vencidas · hoje · semana, boleto sem arquivo marcado, resum
   assert.deepEqual(f.semana.map((i) => i.titulo), ["aluguel"], "20/09 está fora dos 7 dias");
   assert.equal(f.vencemHoje[0].alerta, "SEM_ARQUIVO", "boleto sem documento e sem nota anexada");
   assert.equal(f.vencidas[0].alerta, undefined, "energia tem o arquivo anotado");
-  assert.equal(f.semana[0].alerta, undefined, "débito em conta não pede boleto");
+  // APROVAÇÃO (14/09/2026, proposta 1.7): o aluguel (20.883) passa do limite padrão de R$ 5.000 → aguarda aprovação.
+  assert.equal(f.semana[0].alerta, "AGUARDA_APROVACAO", "acima do limite e sem aprovação registrada");
+  assert.equal(f.semana[0].aguardaAprovacao, true);
+  assert.equal(f.limiteAprovacao, 5000);
+  assert.equal(f.totais.aguardandoAprovacao, 1);
   assert.equal(f.totais.vencemHoje, 1580);
   assert.equal(f.totais.boletosSemArquivo, 1);
-  assert.match(f.resumo, /^hoje vencem 1 \(R\$\s?1\.580\) · 1 vencida \(R\$\s?1\.341\) · 1 nos próximos 7 dias \(R\$\s?20\.883\) · 1 boleto sem arquivo$/);
+  assert.match(f.resumo, /^hoje vencem 1 \(R\$\s?1\.580\) · 1 vencida \(R\$\s?1\.341\) · 1 nos próximos 7 dias \(R\$\s?20\.883\) · 1 boleto sem arquivo · 1 aguardando aprovação$/);
+  const semAprovacao = fila.buildFilaFinanceira({ expenses, purchases: [], hoje, limiteAprovacao: 0 });
+  assert.equal(semAprovacao.semana[0].alerta, undefined, "com o limite zerado, débito em conta não pede nada");
+  const aprovada = fila.buildFilaFinanceira({ expenses: expenses.map((e) => (e.id === "aluguel" ? { ...e, aprovacaoStatus: "APROVADA" } : e)), purchases: [], hoje });
+  assert.equal(aprovada.semana[0].alerta, undefined, "aprovada: pode pagar");
+  assert.equal(fila.precisaAprovacao({ amount: 5000 }, 5000), true, "igual ao limite já pede");
+  assert.equal(fila.precisaAprovacao({ amount: 4999.99 }, 5000), false);
   const comNota = fila.buildFilaFinanceira({ expenses, purchases: [], hoje, notasAnexadas: new Set(["stin"]) });
   assert.equal(comNota.vencemHoje[0].alerta, undefined, "nota anexada resolve o alerta");
 });

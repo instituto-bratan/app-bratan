@@ -182,6 +182,9 @@ export type CrmContact = {
   // ele fecha o plano. Opcionais → retrocompatível.
   referrerContactId?: string | null;
   referralRewardPaidAt?: string | null;
+  /** OPT-IN DE MARKETING (14/09/2026, proposta 6.4): quando e por onde a pessoa aceitou receber mensagens proativas. */
+  marketingOptInEm?: string | null;
+  marketingOptInCanal?: string | null;
 };
 
 export type CrmTask = {
@@ -241,6 +244,8 @@ export type CrmDeal = {
   // Marcos do plano de acompanhamento concluídos (aba do Dr. Daniel):
   // chaves "CHECK-1".."CHECK-6", "BIO-1".."BIO-6", "MEDICO-1".."MEDICO-3".
   programMilestonesDone?: string[];
+  /** SNCR (14/09/2026, proposta 6.3): dia em que a receita controlada deste plano foi emitida na plataforma integrada (ISO) — null = ainda não. */
+  receitaSncrEm?: string | null;
 };
 
 export type CrmCadence = {
@@ -1734,11 +1739,15 @@ export function applyContactChannels(
 export function updateContactChannels(
   state: CrmState,
   contactId: string,
-  values: { fullName?: string; preferredName?: string; phone: string; email: string },
+  values: { fullName?: string; preferredName?: string; phone: string; email: string; marketingOptIn?: { em: string | null; canal: string } },
   actorId = "sistema",
 ) {
   const contact = state.contacts.find((record) => record.id === contactId);
   if (!contact) return state;
+  // OPT-IN DE MARKETING (14/09/2026, proposta 6.4 — LGPD): quando muda, grava
+  // data e canal do consentimento; resgates e repescagens avisam quando falta.
+  const optIn = values.marketingOptIn;
+  const optInMudou = optIn !== undefined && ((optIn.em ?? null) !== (contact.marketingOptInEm ?? null) || (optIn.em && optIn.canal !== (contact.marketingOptInCanal ?? "")));
 
   const phone = normalizePhone(values.phone);
   const email = values.email.trim().toLowerCase();
@@ -1749,6 +1758,7 @@ export function updateContactChannels(
   if (email !== contact.email.trim().toLowerCase()) mudou.push(`e-mail: ${contact.email || "vazio"} → ${email || "vazio"}`);
   if (fullName !== contact.fullName) mudou.push(`nome: ${contact.fullName} → ${fullName}`);
   if (preferredName !== contact.preferredName) mudou.push(`apelido: ${contact.preferredName || "vazio"} → ${preferredName || "vazio"}`);
+  if (optInMudou) mudou.push(optIn?.em ? `opt-in de marketing: sim (${optIn.canal || "canal não informado"}, ${optIn.em.slice(0, 10)})` : "opt-in de marketing: retirado");
   if (!mudou.length) return state;
 
   const now = new Date().toISOString();
@@ -1756,7 +1766,7 @@ export function updateContactChannels(
     ...state,
     contacts: state.contacts.map((record) =>
       record.id === contactId
-        ? { ...record, fullName, preferredName, phone, whatsapp: phone, email, updatedAt: now }
+        ? { ...record, fullName, preferredName, phone, whatsapp: phone, email, updatedAt: now, ...(optInMudou ? { marketingOptInEm: optIn?.em ?? null, marketingOptInCanal: optIn?.em ? optIn.canal : null } : {}) }
         : record,
     ),
     timelineEvents: [
@@ -4690,4 +4700,38 @@ export function deriveInteligencia360FromCrm(state: CrmState, base: Inteligencia
     rescueWorkflows: [...crmRescues, ...withoutCrm.rescueWorkflows],
     actions: [...crmActions, ...withoutCrm.actions],
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// SNCR (14/09/2026, proposta 6.3): RDC Anvisa 1.000/2025 — receitas de
+// controlados 100% digitais com numeração nacional até 30/09/2026. O app não
+// emite receita; guarda a data para a coordenação enxergar quem ficou sem.
+export const PRAZO_SNCR = "2026-09-30";
+
+export function marcarReceitaSncr(state: CrmState, dealId: string, dataISO: string | null, actorId: string): CrmState {
+  const deal = state.deals.find((item) => item.id === dealId);
+  if (!deal || (deal.receitaSncrEm ?? null) === (dataISO ?? null)) return state;
+  const now = new Date().toISOString();
+  return {
+    ...state,
+    deals: state.deals.map((item) => (item.id === dealId ? { ...item, receitaSncrEm: dataISO, updatedAt: now } : item)),
+    timelineEvents: [
+      createTimelineEvent({
+        contactId: deal.contactId,
+        eventType: "NOTE",
+        eventTitle: dataISO ? `Receita registrada no SNCR em ${dataISO.slice(8, 10)}/${dataISO.slice(5, 7)}/${dataISO.slice(0, 4)}` : "Registro de receita no SNCR removido",
+        eventDescription: "Controle da RDC Anvisa 1.000/2025.",
+        sourceModule: "JORNADA",
+        sourceId: dealId,
+        createdBy: actorId,
+      }),
+      ...state.timelineEvents,
+    ],
+  };
+}
+
+/** Planos fechados (com canal de adesão) ainda sem receita no SNCR. */
+export function planosSemReceitaSncr(state: CrmState) {
+  return state.deals.filter((deal) => deal.adhesionChannel && !deal.receitaSncrEm && deal.status !== "LOST" && !deal.programOutcome);
 }

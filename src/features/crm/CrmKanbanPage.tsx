@@ -113,6 +113,10 @@ import {
 import { useCrmState } from "./useCrmState";
 import { CadenciaKanban } from "./CadenciaKanban";
 import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
+import { buildResumoSla, formatMinutos, slaDoNegocio } from "./slaLead";
+import { PRAZO_SNCR, marcarReceitaSncr } from "./crmData";
+import { configAtual } from "@/lib/configNegocio";
+import { toast } from "@/components/ui/avisos";
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
 import { usePanScroll } from "./usePanScroll";
 import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
@@ -469,6 +473,7 @@ function ProgramCard({
 export function CrmKanbanPage() {
   const { pessoa } = useAuth();
   const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead } = useCrmState();
+  const [sncrData, setSncrData] = useState("");
   // O fechamento aqui também lança a comanda do dia (pedido do Lucas, 14/08).
   const { pessoa: pessoaAuth, session, isPreview } = useAuth();
   const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
@@ -632,13 +637,18 @@ export function CrmKanbanPage() {
   const canOverridePhase = isCoordenacao(pessoa?.cargo);
   // Abas de cadência: quem tem gente ativa vira aba; as vazias ficam num seletor.
   const cadenciasResumo = useMemo(() => resumoDasCadencias(state, todayISO()), [state]);
+  // SLA DE RESPOSTA AO LEAD (14/09/2026, proposta 3.9): minutos até o primeiro toque;
+  // o limite (padrão 5 min) mora nas Configurações do negócio.
+  const resumoSla = useMemo(() => buildResumoSla(state, new Date().toISOString(), configAtual<number>("crm.sla_lead_minutos") ?? 5), [state]);
   const cadenciaAtiva = cadenciaDoBoard(board);
   const cadenciasComGente = cadenciasResumo.filter((item) => item.ativos > 0 || `cadencia:${item.cadence.id}` === board);
   const cadenciasVazias = cadenciasResumo.filter((item) => !cadenciasComGente.includes(item));
   function concluirPassoDaCadencia(taskId: string, status: CadenceSheetDStatus) {
     const completion = cadenceSheetCompletion(status);
+    const antes = state; // DESFAZER (14/09/2026, proposta 4.6)
     persist((current) => completeCrmTask(current, taskId, { ...completion, actorId: pessoa?.id ?? "preview" }));
     setFeedback(`Toque registrado: ${cadenceSheetStatusLabelSafe(status)}. O cartão anda sozinho para o próximo passo.`);
+    toast(`Toque registrado: ${cadenceSheetStatusLabelSafe(status)}.`, { tom: "ok", acao: { rotulo: "Desfazer", onClick: () => void persist(() => antes) } });
   }
   // ---- Repescagens (08/09): isca no WhatsApp → ligação. Tudo pela cadência cad-repescagem.
   const quadroRepescagem = useMemo(() => buildQuadroRepescagem(state, financeiro.sales, todayISO()), [state, financeiro.sales]);
@@ -1809,6 +1819,38 @@ export function CrmKanbanPage() {
                 {selectedDeal.programOutcome ? (
                   <Badge className="mt-2 bg-emerald-100 text-emerald-800">Desfecho: {programOutcomeLabels[selectedDeal.programOutcome]}</Badge>
                 ) : null}
+                {selectedDeal.adhesionChannel ? (
+                  <div className={cn("mt-3 rounded-md border p-2.5", selectedDeal.receitaSncrEm ? "border-emerald-200 bg-emerald-50/60" : todayISO() >= PRAZO_SNCR ? "border-red-300 bg-red-50/70" : "border-amber-200 bg-amber-50/60")}>
+                    <p className="flex items-center gap-1 text-[11px] font-bold uppercase text-brand-oliva">
+                      Receita controlada no SNCR
+                      <InfoTip title="Por que isto está aqui">
+                        RDC Anvisa 1.000/2025: receitas de medicamentos controlados (tirzepatida, semaglutida e outros com retenção) passam a ser
+                        digitais, com numeração nacional do SNCR, até 30/09/2026. Aqui fica registrado o dia em que a receita deste plano foi
+                        emitida pela plataforma integrada — o app não emite receita; só guarda a data para a coordenação acompanhar.
+                      </InfoTip>
+                    </p>
+                    {selectedDeal.receitaSncrEm ? (
+                      <p className="mt-1 text-sm text-emerald-900">Registrada em {selectedDeal.receitaSncrEm.slice(8, 10)}/{selectedDeal.receitaSncrEm.slice(5, 7)}/{selectedDeal.receitaSncrEm.slice(0, 4)}.</p>
+                    ) : (
+                      <p className="mt-1 text-sm text-brand-tinta">
+                        {todayISO() >= PRAZO_SNCR ? "Prazo da Anvisa já passou: este plano ainda não tem receita registrada no SNCR." : `Sem receita registrada no SNCR ainda (prazo da Anvisa: 30/09/2026).`}
+                      </p>
+                    )}
+                    {canOverridePhase || isCoordenacao(pessoa?.cargo) ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Input type="date" className="h-8 w-40" defaultValue={selectedDeal.receitaSncrEm ?? ""} onChange={(event) => setSncrData(event.target.value)} aria-label="Data da receita no SNCR" />
+                        <Button type="button" size="sm" variant="outline" onClick={() => { persist((current) => marcarReceitaSncr(current, selectedDeal.id, sncrData || todayISO(), pessoa?.id ?? "coordenacao")); setFeedback("Data da receita no SNCR registrada."); }}>
+                          {selectedDeal.receitaSncrEm ? "Atualizar data" : "Marcar (hoje se vazio)"}
+                        </Button>
+                        {selectedDeal.receitaSncrEm ? (
+                          <Button type="button" size="sm" variant="ghost" onClick={() => persist((current) => marcarReceitaSncr(current, selectedDeal.id, null, pessoa?.id ?? "coordenacao"))}>
+                            Limpar
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {canOverridePhase ? (
                   <div className="mt-3 border-t border-brand-oliva/15 pt-2">
                     <p className="text-[11px] font-bold uppercase text-brand-oliva">Corrigir fase (só coordenação — fica registrado)</p>
@@ -2125,14 +2167,38 @@ export function CrmKanbanPage() {
                       Pacientes/leads ainda SEM fechamento registrado. Quando o Estevão registra o fechamento, o paciente
                       entra na <strong>Jornada</strong> e as tarefas certas nascem sozinhas. ({rows.length} em aberto)
                     </p>
+                    {resumoSla.total || resumoSla.semResposta.length ? (
+                      <p className={cn("rounded-md px-2.5 py-1.5 text-xs leading-5", resumoSla.semResposta.length ? "bg-red-50 text-red-800" : "bg-emerald-50 text-emerald-800")}>
+                        <strong>Resposta ao lead:</strong> {resumoSla.frase}
+                        <InfoTip title="SLA de resposta">
+                          Tempo entre o lead entrar e o primeiro toque registrado (tarefa concluída ou mensagem/ligação na linha do tempo). A meta
+                          é {resumoSla.limiteMinutos} min, definida em Administração → Configurações do negócio. Responder na primeira hora qualifica
+                          cerca de 7 vezes mais do que responder depois.
+                        </InfoTip>
+                      </p>
+                    ) : null}
                     {rows.length ? (
                       rows.map((deal) => {
                         const contact = contactsById.get(deal.contactId);
                         const phone = contact ? (contact.whatsapp || contact.phone || "").replace(/\D/g, "") : "";
+                        const sla = slaDoNegocio(resumoSla, deal.id);
                         return (
                           <div key={deal.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/65 px-3 py-2">
                             <div className="min-w-0">
-                              <p className="truncate font-semibold text-brand-tinta">{contactDisplayName(contact)}</p>
+                              <p className="flex flex-wrap items-center gap-1.5 font-semibold text-brand-tinta">
+                                <span className="truncate">{contactDisplayName(contact)}</span>
+                                {sla ? (
+                                  <span
+                                    className={cn(
+                                      "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                                      sla.semResposta ? "bg-red-100 text-red-800" : sla.dentroDoSla ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800",
+                                    )}
+                                    title={sla.semResposta ? `Sem nenhum toque desde a entrada (${formatMinutos(sla.minutos)})` : `Primeiro toque ${formatMinutos(sla.minutos)} depois da entrada (meta ${resumoSla.limiteMinutos} min)`}
+                                  >
+                                    {sla.semResposta ? `sem resposta há ${formatMinutos(sla.minutos)}` : sla.dentroDoSla ? `respondido em ${formatMinutos(sla.minutos)}` : `respondido em ${formatMinutos(sla.minutos)} (fora da meta)`}
+                                  </span>
+                                ) : null}
+                              </p>
                               <p className="truncate text-xs text-muted-foreground">
                                 {dealStageLabels[deal.stage]}
                                 {deal.sourceChannel ? ` · ${deal.sourceChannel}` : ""}

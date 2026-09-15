@@ -6,7 +6,7 @@
 // hoje vai para o ícone do app quando ele está instalado (Badging API).
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, BellOff, CheckCircle2, ChevronRight, Clock3 } from "lucide-react";
+import { AlertTriangle, BellOff, CheckCircle2, ChevronRight, Clock3, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -26,11 +26,18 @@ export function FilaDoDiaHome({
   fila,
   carregando,
   onSilenciar,
+  onResolver,
+  onAtualizarAchados,
 }: {
   fila: FilaDoDia;
   carregando: boolean;
   onSilenciar: (chave: string, ateISO: string) => void;
+  /** Marca um achado da rotina como resolvido (some para todo mundo). */
+  onResolver?: (item: ItemFilaDoDia) => void;
+  /** Roda a rotina diária agora (coordenação). */
+  onAtualizarAchados?: () => Promise<void>;
 }) {
+  const [atualizando, setAtualizando] = useState(false);
   const navigate = useNavigate();
   const [foco, setFoco] = useState(0);
   const listaRef = useRef<HTMLDivElement>(null);
@@ -95,6 +102,22 @@ export function FilaDoDiaHome({
             {fila.silenciados ? <span className="text-muted-foreground"> · {fila.silenciados} silenciado{fila.silenciados > 1 ? "s" : ""}</span> : null}
             {carregando ? <span className="text-muted-foreground"> · atualizando…</span> : null}
           </p>
+          {onAtualizarAchados ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="mt-1 h-7 px-2 text-xs text-muted-foreground"
+              disabled={atualizando}
+              onClick={() => {
+                setAtualizando(true);
+                void onAtualizarAchados().finally(() => setAtualizando(false));
+              }}
+            >
+              <RefreshCw className={cn("mr-1 h-3.5 w-3.5", atualizando && "animate-spin")} aria-hidden="true" />
+              {atualizando ? "Procurando…" : "Rodar a rotina agora (achados)"}
+            </Button>
+          ) : null}
         </div>
         {itens.length === 0 && !carregando ? (
           <span className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
@@ -149,6 +172,11 @@ export function FilaDoDiaHome({
                         {item.acao}
                         <ChevronRight className="ml-0.5 h-3.5 w-3.5" aria-hidden="true" />
                       </Button>
+                      {item.achadoId && onResolver ? (
+                        <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => onResolver(item)} title="Marca como resolvido para todo mundo; se o problema continuar, a rotina traz de volta amanhã">
+                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Resolvido
+                        </Button>
+                      ) : null}
                       <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" onClick={() => onSilenciar(item.chave, somaDiasISO(fila.hoje, 1))} title="Esconder até amanhã (só neste aparelho)">
                         <BellOff className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> até amanhã
                       </Button>
