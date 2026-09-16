@@ -24,6 +24,8 @@ import {
   Home,
   LayoutGrid,
   LogOut,
+  Moon,
+  SunMedium,
   Megaphone,
   MessageCircle,
   ReceiptText,
@@ -59,6 +61,7 @@ import { isCoordenacao, canAcompanhamento, canAdministracao, canBaseModules, can
 import type { Pessoa } from "@/types/database";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
+import { aplicarTema, ehEscuro, guardarTema, iniciarTema, lerTema, rotuloTema, type Tema } from "@/lib/tema";
 import type { Cargo } from "@/types/database";
 import bratanMark from "@/assets/bratan-mark.png";
 
@@ -622,6 +625,21 @@ export function AppLayout() {
   useIntegracoes();
   const location = useLocation();
   const [flowLauncherOpen, setFlowLauncherOpen] = useState(false);
+  // TEMA (16/09/2026): a escolha é de quem usa e vale para o app inteiro.
+  const [tema, setTema] = useState<Tema>(() => (typeof window === "undefined" ? "sistema" : lerTema()));
+  useEffect(() => iniciarTema(), []);
+  useEffect(() => aplicarTema(tema), [tema]);
+  const escuro = typeof window === "undefined" ? false : ehEscuro(tema);
+  function alternarTema() {
+    // Um toque troca entre claro e escuro; segurar volta a seguir o aparelho.
+    const proximo: Tema = escuro ? "claro" : "escuro";
+    setTema(proximo);
+    guardarTema(proximo);
+  }
+  function seguirAparelho() {
+    setTema("sistema");
+    guardarTema("sistema");
+  }
   const avatar = useAvatar(pessoa?.id);
 
   useEffect(() => {
@@ -664,6 +682,18 @@ export function AppLayout() {
               {isPreview ? <Badge variant="gold" className="hidden sm:inline-flex">Prévia</Badge> : null}
               {pessoa?.cargo ? <Badge variant="outline" className="hidden max-w-36 truncate min-[430px]:inline-flex sm:max-w-none">{cargoLabels[pessoa.cargo]}</Badge> : null}
               {pessoa?.cargo ? <Badge variant="muted" className="hidden sm:inline-flex">{cargoGroup(pessoa.cargo)}</Badge> : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="bg-white/35 shadow-sm backdrop-blur-xl"
+                aria-label={escuro ? "Mudar para o tema claro" : "Mudar para o tema escuro"}
+                title={`Tema: ${rotuloTema[tema]}. Toque para ${escuro ? "clarear" : "escurecer"}; toque duplo para seguir o aparelho.`}
+                onClick={alternarTema}
+                onDoubleClick={seguirAparelho}
+              >
+                {escuro ? <SunMedium className="h-5 w-5" aria-hidden="true" /> : <Moon className="h-5 w-5" aria-hidden="true" />}
+              </Button>
               <Button asChild variant="ghost" size="icon" className="overflow-hidden rounded-full bg-white/35 shadow-sm backdrop-blur-xl" aria-label="Meu perfil">
                 <Link to="/meu-perfil" {...preloadRouteProps("/meu-perfil")}>
                   {avatar ? (

@@ -68,7 +68,7 @@ export function ControleDensidade({ densidade, onEscolher, className }: { densid
           title={`Linhas ${rotuloDensidade[opcao].toLowerCase()}`}
           className={cn(
             "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-            densidade === opcao ? "bg-brand-musgo text-white" : "text-brand-oliva hover:bg-brand-creme/60",
+            densidade === opcao ? "bg-brand-musgo text-brand-papel" : "text-muted-foreground hover:bg-brand-creme/60 hover:text-brand-tinta",
           )}
         >
           {rotuloDensidade[opcao]}
@@ -92,6 +92,6 @@ export function TabelaRolavel({ children, altura = "max-h-[68vh]", className }: 
 }
 
 /** Classe do <thead> que fica visível enquanto a lista rola. */
-export const cabecalhoGrudado = "sticky top-0 z-10 bg-brand-creme/95 backdrop-blur supports-[backdrop-filter]:bg-brand-creme/80";
+export const cabecalhoGrudado = "tabela-cabecalho sticky top-0 z-10 backdrop-blur";
 /** Classe do <tfoot> de totais, sempre à vista no rodapé da área que rola. */
-export const rodapeGrudado = "sticky bottom-0 z-10 border-t border-brand-oliva/25 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85";
+export const rodapeGrudado = "tabela-rodape sticky bottom-0 z-10 border-t border-brand-oliva/25 backdrop-blur";

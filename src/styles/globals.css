@@ -35,7 +35,124 @@
   --ios-surface-strong: rgba(255, 255, 255, 0.82);
   --ios-hairline: rgba(77, 86, 59, 0.16);
   --ios-shadow: 0 24px 60px rgba(43, 46, 36, 0.10);
+  --brilho-card: rgba(255, 255, 255, 0.62);
+  --tabela-cabecalho: rgba(248, 237, 189, 0.94);
+  --tabela-rodape: rgba(255, 255, 255, 0.95);
 }
+
+
+/* ============================================================================
+   TEMA ESCURO DO APP (16/09/2026, proposta 4.7 do estudo).
+
+   O app nasceu claro: são 645 lugares com "bg-white" escrito na mão, além das
+   faixas coloridas (emerald/amber/red-50) que marcam estado. Reescrever tela por
+   tela seria semanas de trabalho e um bom número de telas esquecidas pelo
+   caminho. Então o escuro é feito no CENTRO: as variáveis mudam de valor e as
+   utilitárias claras mais usadas são remapeadas aqui, uma vez só. Quem escrever
+   tela nova continua usando as mesmas classes de sempre.
+
+   A paleta é a do portal do paciente, para o app inteiro falar a mesma língua:
+   verde bem escuro no fundo, cartões um degrau acima, texto quase branco com um
+   toque de verde. Nunca preto puro.
+   ========================================================================== */
+.dark {
+  --bratan-musgo: #B3BD98;   /* no escuro os verdes da marca clareiam para virar texto e ícone */
+  --bratan-oliva: #96A57A;
+  --bratan-dourado: #D6BB77;
+  --bratan-creme: #24392D;   /* era o creme das faixas: vira a superfície de destaque */
+  --bratan-papel: #102019;
+  --bratan-tinta: #ECF3EF;
+
+  --background: 152 33% 9%;
+  --foreground: 152 20% 94%;
+  --card: 152 30% 14%;
+  --card-foreground: 152 20% 94%;
+  --primary: 140 28% 62%;
+  --primary-foreground: 152 33% 9%;
+  --secondary: 140 18% 40%;
+  --secondary-foreground: 152 20% 94%;
+  --muted: 152 24% 18%;
+  --muted-foreground: 152 12% 70%;
+  --accent: 43 50% 65%;
+  --accent-foreground: 152 33% 9%;
+  --popover: 152 30% 14%;
+  --popover-foreground: 152 20% 94%;
+  --destructive: 3 70% 62%;
+  --destructive-foreground: 152 33% 9%;
+  --border: 150 14% 26%;
+  --input: 150 14% 26%;
+  --ring: 43 50% 65%;
+  --glass: rgba(24, 47, 37, 0.62);
+  --glass-strong: rgba(24, 47, 37, 0.84);
+  --ios-surface: rgba(24, 47, 37, 0.7);
+  --ios-surface-strong: rgba(24, 47, 37, 0.88);
+  --ios-hairline: rgba(198, 232, 214, 0.14);
+  --ios-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --brilho-card: rgba(198, 232, 214, 0.06);
+  --tabela-cabecalho: rgba(34, 59, 47, 0.96);
+  --tabela-rodape: rgba(24, 47, 37, 0.96);
+
+  /* superfícies do remapeamento abaixo */
+  --superficie: #182F25;
+  --superficie-2: #223B2F;
+  color-scheme: dark;
+}
+
+.dark html,
+html.dark {
+  background: var(--bratan-papel);
+}
+.dark body {
+  background: linear-gradient(180deg, #16291F 0%, #102019 46%, #0C1913 100%);
+  background-attachment: fixed;
+}
+
+/* --- remapeamento das utilitárias claras (o coração do tema escuro) --- */
+/* branco chapado vira a superfície do cartão; o branco com transparência vira a
+   mesma superfície com a transparência equivalente, para o vidro continuar vidro. */
+.dark .bg-white { background-color: var(--superficie); }
+.dark [class*="bg-white/"] { background-color: color-mix(in oklab, var(--superficie) 88%, transparent); }
+.dark .bg-white\/10, .dark .bg-white\/20 { background-color: color-mix(in oklab, var(--superficie) 45%, transparent); }
+.dark .bg-white\/30, .dark .bg-white\/40 { background-color: color-mix(in oklab, var(--superficie) 62%, transparent); }
+.dark .bg-white\/50, .dark .bg-white\/60 { background-color: color-mix(in oklab, var(--superficie) 74%, transparent); }
+.dark .bg-white\/95, .dark .bg-white\/90 { background-color: var(--superficie); }
+.dark .bg-slate-50, .dark .bg-slate-100, .dark .bg-neutral-50, .dark .bg-zinc-50, .dark .bg-stone-50 { background-color: var(--superficie-2); }
+
+/* as faixas de estado: mesma leitura (verde = bom, âmbar = atenção, vermelho = erro),
+   agora como um fundo escuro tingido, com o texto clareado para caber no contraste. */
+.dark [class*="bg-emerald-50"], .dark [class*="bg-green-50"] { background-color: #14331F; }
+.dark [class*="bg-amber-50"], .dark [class*="bg-yellow-50"] { background-color: #33290A; }
+.dark [class*="bg-red-50"], .dark [class*="bg-rose-50"] { background-color: #3A1A16; }
+.dark [class*="bg-blue-50"], .dark [class*="bg-sky-50"] { background-color: #12283A; }
+.dark [class*="bg-violet-50"], .dark [class*="bg-purple-50"] { background-color: #241E3A; }
+.dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900, .dark .text-green-700, .dark .text-green-800 { color: #5FD98A; }
+.dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900, .dark .text-yellow-800 { color: #FFC94D; }
+.dark .text-red-700, .dark .text-red-800, .dark .text-red-900, .dark .text-rose-700 { color: #FF8A80; }
+.dark .text-blue-700, .dark .text-blue-800, .dark .text-sky-700 { color: #7FB6E8; }
+.dark .border-emerald-200, .dark .border-green-200 { border-color: #2C5B3D; }
+.dark .border-amber-200, .dark .border-yellow-200 { border-color: #5C4A15; }
+.dark .border-red-200, .dark .border-rose-200 { border-color: #6B2F28; }
+.dark .border-blue-200, .dark .border-sky-200 { border-color: #2A4A66; }
+
+/* contornos e divisórias claras somem no escuro: trocar pela hairline da casa */
+.dark [class*="border-brand-oliva/"], .dark [class*="divide-brand-oliva/"] { border-color: var(--ios-hairline); }
+.dark .border-white, .dark [class*="border-white/"] { border-color: rgba(198, 232, 214, 0.12); }
+
+
+/* "text-white" em cima de fundo da marca: no escuro o musgo clareia, então o
+   branco precisa virar o papel escuro para o rótulo continuar legível. */
+.dark .bg-brand-musgo.text-white,
+.dark .bg-brand-musgo .text-white,
+.dark .bg-brand-oliva.text-white,
+.dark .bg-brand-dourado.text-white { color: var(--bratan-papel); }
+
+
+/* cabeçalho e rodapé da tabela densa (proposta 4.5) */
+.tabela-cabecalho { background: var(--tabela-cabecalho); }
+.tabela-rodape { background: var(--tabela-rodape); }
+
+/* imagens e marcas com fundo branco não ficam boas sobre o verde escuro */
+.dark img[src*="logo"], .dark img[src*="mark"] { filter: brightness(1.08); }
 
 * {
   box-sizing: border-box;
@@ -130,9 +247,9 @@ h3 {
   }
 
   .ios-glass-quiet {
-    border-color: rgba(77, 86, 59, 0.13);
-    background: rgba(255, 255, 255, 0.58);
-    box-shadow: 0 16px 34px rgba(43, 46, 36, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.68);
+    border-color: var(--ios-hairline);
+    background: var(--glass);
+    box-shadow: 0 16px 34px rgba(43, 46, 36, 0.07), inset 0 1px 0 var(--brilho-card);
     backdrop-filter: blur(18px) saturate(1.18);
     -webkit-backdrop-filter: blur(18px) saturate(1.18);
     backface-visibility: hidden;
@@ -256,7 +373,7 @@ h3 {
 
   .mobile-app-shell section.rounded-lg.border {
     border-color: var(--ios-hairline);
-    background: rgba(255, 255, 255, 0.62);
+    background: var(--glass);
     box-shadow: var(--ios-shadow);
     backdrop-filter: blur(22px) saturate(1.22);
     -webkit-backdrop-filter: blur(22px) saturate(1.22);
@@ -278,7 +395,7 @@ h3 {
     pointer-events: none;
     content: "";
     background:
-      linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0) 34%),
+      linear-gradient(135deg, var(--brilho-card), transparent 34%),
       linear-gradient(180deg, rgba(198, 168, 98, 0.12), rgba(77, 86, 59, 0.04));
     opacity: 0.72;
   }

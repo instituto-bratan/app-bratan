@@ -5,6 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { AuthProvider } from "./hooks/useAuth";
 import "./styles/globals.css";
+import { iniciarTema } from "./lib/tema";
+
+// O tema vale desde a primeira pintura, inclusive na tela de entrada e no portal
+// do paciente (que depois pinta as próprias cores).
+if (typeof window !== "undefined" && !window.location.pathname.startsWith("/meu")) iniciarTema();
 
 const queryClient = new QueryClient({
   defaultOptions: {
