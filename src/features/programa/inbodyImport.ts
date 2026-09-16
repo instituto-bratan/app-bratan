@@ -13,7 +13,7 @@
 // (FFM / massa magra), não a massa muscular esquelética (SMM / MME). São
 // números diferentes, e trocar um pelo outro estraga a curva do paciente.
 
-import { personNamesMatch } from "@/features/crm/nameMatch";
+import { personNameTokens, personNamesMatch } from "@/features/crm/nameMatch";
 
 export type MedicaoImportada = {
   /** Linha da planilha (1 = primeira linha do arquivo), para a pessoa achar o erro. */
@@ -32,19 +32,29 @@ export type ColunasInBody = {
   peso: number;
   gordura: number;
   massaMagra: number;
+  gorduraKg: number;
   cintura: number;
 };
 
 // Os títulos que a InBody usa, em inglês e em português. Comparação sem acento,
 // sem maiúscula e sem pontuação — planilha de aparelho muda de versão para versão.
+// A ordem importa: o primeiro título que casar ganha. Por isso o nome completo da
+// coluna vem antes da sigla — "PBF (Percent Body Fat)" tem que cair na gordura, e
+// não em "Lower Limit (PBF Normal Range)".
 const TITULOS = {
   nome: ["name", "nome", "nome do usuario", "user name", "username", "paciente"],
   dia: ["test date time", "test date  time", "test date", "test datetime", "data do teste", "data hora do teste", "data teste", "data", "date"],
   peso: ["weight", "peso", "peso kg", "weight kg"],
-  gordura: ["pbf", "percent body fat", "body fat percentage", "pgc", "percentual de gordura", "gordura corporal", "gordura corporal pct", "percentual de gordura corporal"],
+  gordura: ["pbf percent body fat", "pbf", "percent body fat", "body fat percentage", "pgc", "percentual de gordura", "gordura corporal", "percentual de gordura corporal"],
   // FFM/massa magra primeiro; SLM (soft lean mass) só como último recurso.
-  massaMagra: ["ffm", "fat free mass", "massa livre de gordura", "massa magra", "mlg", "slm", "soft lean mass"],
-  cintura: ["waist circumference", "circunferencia da cintura", "circunferencia abdominal", "cintura", "wc"],
+  // NUNCA o SMM: massa muscular esquelética é outro número (ver o topo do arquivo).
+  massaMagra: ["ffm fat free mass", "ffm", "fat free mass", "massa livre de gordura", "massa magra", "mlg", "slm", "soft lean mass"],
+  // Massa de gordura em kg. Não vai para a ficha do paciente; serve para calcular
+  // a massa magra quando o aparelho não exporta o FFM (ver massaMagraDaLinha).
+  gorduraKg: ["bfm body fat mass", "bfm", "body fat mass", "massa de gordura", "massa gorda"],
+  // "Measured Circumference of Abdomen" é a medida de fita que a enfermagem anota.
+  // NÃO confundir com "WHR (Waist-Hip Ratio)", que é razão, não centímetro.
+  cintura: ["measured circumference of abdomen", "circumference of abdomen", "abdominal circumference", "waist circumference", "circunferencia da cintura", "circunferencia abdominal", "circunferencia do abdomen", "cintura"],
 } as const;
 
 export function normalizarTitulo(texto: string) {
@@ -52,6 +62,7 @@ export function normalizarTitulo(texto: string) {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    .replace(/^\s*\d+\s*[.)-]\s*/, "") // tira o "14. " que o aparelho põe na frente
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
@@ -85,6 +96,7 @@ export function lerCabecalhoInBody(linhas: string[][]): { indiceDoCabecalho: num
       peso: acharColuna(titulos, TITULOS.peso),
       gordura: acharColuna(titulos, TITULOS.gordura),
       massaMagra: acharColuna(titulos, TITULOS.massaMagra),
+      gorduraKg: acharColuna(titulos, TITULOS.gorduraKg),
       cintura: acharColuna(titulos, TITULOS.cintura),
     };
     if (colunas.nome >= 0 && colunas.dia >= 0 && colunas.peso >= 0) return { indiceDoCabecalho: i, colunas };
@@ -110,6 +122,11 @@ export function diaDaCelula(valor: string | undefined): string | null {
   const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
 
+  // Formato do próprio aparelho: "2022.12.08. 20:07:25" (ano primeiro, pontos,
+  // e um ponto sobrando no fim). Era o que barrava o arquivo real (16/09/2026).
+  const anoPrimeiro = texto.match(/^(\d{4})[.\/](\d{1,2})[.\/](\d{1,2})/);
+  if (anoPrimeiro) return `${anoPrimeiro[1]}-${anoPrimeiro[2].padStart(2, "0")}-${anoPrimeiro[3].padStart(2, "0")}`;
+
   const barra = texto.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})/);
   if (barra) {
     const primeiro = Number(barra[1]);
@@ -128,6 +145,21 @@ export function diaDaCelula(valor: string | undefined): string | null {
     return data.toISOString().slice(0, 10);
   }
   return null;
+}
+
+/**
+ * Massa magra (massa livre de gordura) da linha.
+ *
+ * O aparelho da clínica só preenche a coluna FFM em 289 de 4.119 exames — nos
+ * outros ela vem "-". Mas a massa de gordura (BFM) vem em TODOS, e massa magra
+ * é, por definição, peso menos gordura. Conferido nas 289 linhas em que os dois
+ * números existem: a diferença deu 0,000 kg em todas (16/09/2026). Então não é
+ * estimativa, é a mesma conta que o aparelho faz.
+ */
+export function massaMagraDaLinha(pesoKg: number | null, ffmKg: number | null, gorduraKg: number | null): number | null {
+  if (ffmKg !== null) return ffmKg;
+  if (pesoKg === null || gorduraKg === null) return null;
+  return Math.round((pesoKg - gorduraKg) * 100) / 100;
 }
 
 /** Descarta o que claramente não é medida de gente (o aparelho às vezes exporta linha de teste). */
@@ -172,7 +204,11 @@ export function lerMedicoesInBody(linhas: string[][]): LeituraInBody {
       dia,
       pesoKg: numeroDaCelula(celulas[colunas.peso]),
       gorduraPct: colunas.gordura >= 0 ? numeroDaCelula(celulas[colunas.gordura]) : null,
-      massaMagraKg: colunas.massaMagra >= 0 ? numeroDaCelula(celulas[colunas.massaMagra]) : null,
+      massaMagraKg: massaMagraDaLinha(
+        numeroDaCelula(celulas[colunas.peso]),
+        colunas.massaMagra >= 0 ? numeroDaCelula(celulas[colunas.massaMagra]) : null,
+        colunas.gorduraKg >= 0 ? numeroDaCelula(celulas[colunas.gorduraKg]) : null,
+      ),
       cinturaCm: colunas.cintura >= 0 ? numeroDaCelula(celulas[colunas.cintura]) : null,
     };
     if (medicao.pesoKg === null && medicao.gorduraPct === null && medicao.massaMagraKg === null && medicao.cinturaCm === null) {
@@ -186,6 +222,30 @@ export function lerMedicoesInBody(linhas: string[][]): LeituraInBody {
     medicoes.push(medicao);
   }
   return { medicoes, problemas };
+}
+
+/**
+ * Escolhe a aba certa do arquivo e lê dali.
+ *
+ * A exportação da InBody vem com duas abas — "InBody" e "Pressão Arterial" —,
+ * com colunas diferentes. Lendo tudo junto, as 1.159 linhas de pressão eram
+ * interpretadas com o cabeçalho da primeira aba e viravam 1.159 erros. Aqui
+ * cada aba é lida por conta própria e fica a que rendeu mais medições; a que
+ * não tiver nome, data e peso simplesmente não concorre.
+ */
+export function lerMedicoesDeAbas(abas: { nome: string; linhas: string[][] }[]): LeituraInBody & { aba: string } {
+  let melhor: (LeituraInBody & { aba: string }) | null = null;
+  for (const aba of abas) {
+    if (!lerCabecalhoInBody(aba.linhas)) continue;
+    const leitura = { ...lerMedicoesInBody(aba.linhas), aba: aba.nome };
+    if (!melhor || leitura.medicoes.length > melhor.medicoes.length) melhor = leitura;
+  }
+  if (melhor) return melhor;
+  return {
+    aba: "",
+    medicoes: [],
+    problemas: [{ linha: 1, motivo: "Não achei, em nenhuma aba, as colunas de nome, data do teste e peso. Exporte de novo pelo Lookin'Body, sem tirar o cabeçalho." }],
+  };
 }
 
 export type Contato = { id: string; name: string };
@@ -215,8 +275,32 @@ export function casarMedicoesComContatos(
   // Dentro do próprio arquivo, o mesmo paciente no mesmo dia também só entra uma vez.
   const vistas = new Set<string>();
 
+  // O arquivo real tem 4.119 exames de 1.149 pessoas. Comparar cada exame com
+  // cada contato do CRM travava a aba por segundos. Duas economias, sem mudar o
+  // resultado: (1) `personNamesMatch` exige o MESMO primeiro nome, então só os
+  // contatos daquele primeiro nome entram na comparação; (2) o mesmo nome
+  // aparece dezenas de vezes no arquivo e é resolvido uma vez só.
+  const porPrimeiroNome = new Map<string, Contato[]>();
+  for (const contato of contatos) {
+    const primeiro = personNameTokens(contato.name)[0];
+    if (!primeiro) continue;
+    const balde = porPrimeiroNome.get(primeiro);
+    if (balde) balde.push(contato);
+    else porPrimeiroNome.set(primeiro, [contato]);
+  }
+  const resolvidos = new Map<string, Contato[]>();
+  const candidatosDe = (nome: string) => {
+    const guardado = resolvidos.get(nome);
+    if (guardado) return guardado;
+    const primeiro = personNameTokens(nome)[0];
+    const balde = primeiro ? porPrimeiroNome.get(primeiro) ?? [] : [];
+    const achados = balde.filter((contato) => personNamesMatch(contato.name, nome));
+    resolvidos.set(nome, achados);
+    return achados;
+  };
+
   for (const medicao of medicoes) {
-    const candidatos = contatos.filter((contato) => personNamesMatch(contato.name, medicao.nome));
+    const candidatos = candidatosDe(medicao.nome);
     if (candidatos.length === 0) {
       resultado.semDono.push(medicao);
       continue;

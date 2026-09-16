@@ -20,9 +20,9 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "@/components/ui/avisos";
 import { cn } from "@/lib/utils";
-import { lerLinhasDeCsv, lerLinhasDeXlsx } from "@/lib/planilhaLeitor";
+import { lerAbasDeXlsx, lerLinhasDeCsv } from "@/lib/planilhaLeitor";
 import { createRemotePacienteMedicoesEmLote, listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
-import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesInBody, resumoPorPaciente, type Casamento, type Contato } from "./inbodyImport";
+import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesDeAbas, resumoPorPaciente, type Casamento, type Contato } from "./inbodyImport";
 
 /** Cinco anos para trás: a primeira importação traz o histórico inteiro do aparelho. */
 function historicoTodo() {
@@ -34,6 +34,14 @@ function historicoTodo() {
 /** O Supabase recusa um insert gigante — o arquivo entra em blocos. */
 const TAMANHO_DO_BLOCO = 200;
 
+/** Nomes sem repetir e sem virar um parágrafo de mil linhas (o histórico do
+ *  aparelho tem mais de mil pessoas, e a maioria não está no CRM). */
+function nomesResumidos(nomes: string[], limite = 40) {
+  const unicos = [...new Set(nomes)].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  if (unicos.length <= limite) return `${unicos.join(", ")}.`;
+  return `${unicos.slice(0, limite).join(", ")} e mais ${unicos.length - limite}.`;
+}
+
 const diaBR = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(2, 4)}`;
 
 export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Contato[]; pessoaId: string | null; ativo: boolean }) {
@@ -43,6 +51,7 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
   const [arrastando, setArrastando] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [arquivoNome, setArquivoNome] = useState("");
+  const [abaLida, setAbaLida] = useState("");
   const [casamento, setCasamento] = useState<Casamento | null>(null);
   const [problemas, setProblemas] = useState<{ linha: number; motivo: string }[]>([]);
 
@@ -89,21 +98,33 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
     setCasamento(null);
     setProblemas([]);
     setArquivoNome("");
+    setAbaLida("");
   }
 
   async function lerArquivo(arquivo: File) {
     setLendo(true);
     try {
       const ehXlsx = /\.xlsx$/i.test(arquivo.name);
-      const linhas = ehXlsx ? await lerLinhasDeXlsx(await arquivo.arrayBuffer()) : lerLinhasDeCsv(await arquivo.text());
-      const leitura = lerMedicoesInBody(linhas);
-      const historico = await queryClient.fetchQuery({
-        queryKey: chaveDoHistorico,
-        queryFn: () => listRemotePacienteMedicoesDesde(historicoTodo()),
-        staleTime: 60_000,
-      });
-      const jaRegistradas = historico.map((registro) => ({ contactRef: registro.contactRef, dia: registro.dia }));
+      const abas = ehXlsx ? await lerAbasDeXlsx(await arquivo.arrayBuffer()) : [{ nome: arquivo.name, linhas: lerLinhasDeCsv(await arquivo.text()) }];
+      const leitura = lerMedicoesDeAbas(abas);
+
+      // Só depois de ler o arquivo é que vale a pena buscar o histórico — e ele é
+      // obrigatório: sem saber o que já está no app, salvar duplicaria tudo.
+      let jaRegistradas: { contactRef: string; dia: string }[];
+      try {
+        const historico = await queryClient.fetchQuery({
+          queryKey: chaveDoHistorico,
+          queryFn: () => listRemotePacienteMedicoesDesde(historicoTodo()),
+          staleTime: 60_000,
+        });
+        jaRegistradas = historico.map((registro) => ({ contactRef: registro.contactRef, dia: registro.dia }));
+      } catch {
+        toast("Li o arquivo, mas não consegui conferir o que já está no app. Tente de novo em instantes — sem essa conferência, salvar poderia duplicar medições.", { tom: "erro", duracaoMs: 9000 });
+        return;
+      }
+
       setArquivoNome(arquivo.name);
+      setAbaLida(leitura.aba);
       setProblemas(leitura.problemas);
       setCasamento(casarMedicoesComContatos(leitura.medicoes, contatos, jaRegistradas));
     } catch (erro) {
@@ -163,7 +184,7 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
             )}
           >
             <Upload className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-            <span className="text-brand-tinta">{lendo ? "Lendo o arquivo…" : arquivoNome || "Solte aqui o .xlsx ou .csv da InBody"}</span>
+            <span className="text-brand-tinta">{lendo ? "Lendo o arquivo — o histórico inteiro leva alguns segundos…" : arquivoNome || "Solte aqui o .xlsx ou .csv da InBody"}</span>
             <input
               ref={entradaRef}
               type="file"
@@ -184,6 +205,7 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
           {casamento ? (
             <div className="space-y-3 rounded-lg border border-brand-oliva/20 bg-brand-papel/40 p-3 text-sm">
               <p className="font-semibold text-brand-musgo">{fraseDaImportacao(casamento)}</p>
+              {abaLida ? <p className="-mt-2 text-xs text-muted-foreground">Li a aba <strong>{abaLida}</strong> do arquivo.</p> : null}
 
               {porPaciente.length ? (
                 <ul className="max-h-60 space-y-1 overflow-y-auto pr-1">
@@ -205,8 +227,8 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
                   <summary className="cursor-pointer font-semibold text-amber-800">
                     {casamento.semDono.length} {casamento.semDono.length === 1 ? "nome sem paciente no CRM" : "nomes sem paciente no CRM"}
                   </summary>
-                  <p className="mt-1 max-h-24 overflow-y-auto text-xs text-muted-foreground">
-                    Cadastre a pessoa (ou confira o nome no aparelho) e importe de novo: {[...new Set(casamento.semDono.map((medicao) => medicao.nome))].join(", ")}.
+                  <p className="mt-1 max-h-32 overflow-y-auto text-xs text-muted-foreground">
+                    Cadastre a pessoa (ou confira o nome no aparelho) e importe de novo — nada se perde, o arquivo pode ser subido quantas vezes precisar: {nomesResumidos(casamento.semDono.map((medicao) => medicao.nome))}
                   </p>
                 </details>
               ) : null}
@@ -216,8 +238,8 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
                   <summary className="cursor-pointer font-semibold text-amber-800">
                     {casamento.ambiguas.length} {casamento.ambiguas.length === 1 ? "medição com mais de um paciente do mesmo nome" : "medições com mais de um paciente do mesmo nome"}
                   </summary>
-                  <p className="mt-1 max-h-24 overflow-y-auto text-xs text-muted-foreground">
-                    Estas precisam ser lançadas na ficha do paciente certo, uma por uma: {[...new Set(casamento.ambiguas.map((item) => item.medicao.nome))].join(", ")}.
+                  <p className="mt-1 max-h-32 overflow-y-auto text-xs text-muted-foreground">
+                    Estas precisam ser lançadas na ficha do paciente certo, uma por uma: {nomesResumidos(casamento.ambiguas.map((item) => item.medicao.nome))}
                   </p>
                 </details>
               ) : null}

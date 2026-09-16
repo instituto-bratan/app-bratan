@@ -95,3 +95,15 @@ test("CSV com ponto-e-vírgula (o que o Excel brasileiro salva) também entra", 
   assert.equal(medicoes.length, 2);
   assert.equal(medicoes[0].pesoKg, 82.4);
 });
+
+test("lerLinhasDeXlsx continua juntando TODAS as abas (é o que o extrato do banco usa)", async () => {
+  const outraAba = { name: "Outra", columns: [{ header: "X" }], rows: [["1"], ["2"]] };
+  const blob = escritor.buildXlsx([abaDaInBody, outraAba]);
+  const buffer = await blob.arrayBuffer();
+  const abas = await leitor.lerAbasDeXlsx(buffer);
+  const juntas = await leitor.lerLinhasDeXlsx(buffer);
+  assert.equal(abas.length, 2);
+  assert.equal(abas[0].nome, "InBody");
+  assert.equal(abas[1].nome, "Outra");
+  assert.equal(juntas.length, abas[0].linhas.length + abas[1].linhas.length);
+});

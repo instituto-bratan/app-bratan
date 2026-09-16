@@ -177,3 +177,116 @@ test("subir o histórico de novo depois da primeira vez não repete ninguém", (
   assert.equal(segundaVez.repetidas.length, 5);
   assert.equal(mod.resumoPorPaciente(segundaVez.prontas).length, 0);
 });
+
+// ---- O ARQUIVO DE VERDADE (16/09/2026) -------------------------------------
+// O Lucas exportou o histórico da clínica e a importação não reconheceu nada.
+// Estes testes travam exatamente o que o arquivo real tem: cabeçalho numerado,
+// data com o ano na frente e pontos, FFM quase sempre vazio, circunferência com
+// outro nome e uma segunda aba (Pressão Arterial) com colunas diferentes.
+const CABECALHO_REAL = [
+  "1. Name", "2. ID", "3. Height", "4. Date of Birth", "5. Gender", "6. Age",
+  "14. Test Date / Time", "15. Weight", "16. Lower Limit (Weight Normal Range)",
+  "27. BFM (Body Fat Mass)", "30. FFM (Fat Free Mass)", "33. SMM (Skeletal Muscle Mass)",
+  "39. PBF (Percent Body Fat)", "40. Lower Limit (PBF Normal Range)",
+  "68. WHR (Waist-Hip Ratio)", "85. Measured Circumference of Abdomen",
+];
+const linhaReal = (nome, dataHora, peso, bfm, ffm, smm, pbf, whr, abdomen) =>
+  [nome, "idlocal", "163", "1994.10.03.", "F", "28", dataHora, peso, "47,4", bfm, ffm, smm, pbf, "18,0", whr, abdomen];
+
+const planilhaReal = [
+  CABECALHO_REAL,
+  linhaReal("Andrya Ribeiro", "2022.12.08. 20:07:25", "67,4", "22,1", "-", "24,5", "32,8", "0,95", "-"),
+  linhaReal("José Wilson Vilela", "2026.09.16. 09:00:55", "127,1", "52,1", "75,0", "43,0", "41,0", "1,02", "112,5"),
+];
+
+test("cabeçalho numerado do aparelho ('1. Name', '14. Test Date / Time') é reconhecido", () => {
+  const cabecalho = mod.lerCabecalhoInBody(planilhaReal);
+  assert.ok(cabecalho, "achou o cabeçalho");
+  assert.equal(cabecalho.colunas.nome, 0);
+  assert.equal(cabecalho.colunas.dia, 6);
+  assert.equal(cabecalho.colunas.peso, 7, "peso é a coluna 'Weight', não 'Lower Limit (Weight...)'");
+  assert.equal(cabecalho.colunas.gordura, 12, "gordura é o PBF, não o 'Lower Limit (PBF...)'");
+});
+
+test("a data do aparelho ('2022.12.08. 20:07:25') é entendida", () => {
+  assert.equal(mod.diaDaCelula("2022.12.08. 20:07:25"), "2022-12-08");
+  assert.equal(mod.diaDaCelula("2026.09.16. 09:00:55"), "2026-09-16");
+  assert.equal(mod.diaDaCelula("2026.9.5."), "2026-09-05", "mês e dia com um dígito só");
+});
+
+test("massa magra sai de peso menos gordura quando o aparelho não exporta o FFM", () => {
+  // Conferido no arquivo real: nas 289 linhas em que os dois números vêm, a
+  // diferença é 0,000 kg. Não é estimativa, é a mesma conta do aparelho.
+  assert.equal(mod.massaMagraDaLinha(67.4, null, 22.1), 45.3);
+  assert.equal(mod.massaMagraDaLinha(67.4, 45.3, 22.1), 45.3, "com FFM, vale o FFM");
+  assert.equal(mod.massaMagraDaLinha(67.4, null, null), null, "sem gordura em kg, não inventa");
+
+  const { medicoes } = mod.lerMedicoesInBody(planilhaReal);
+  const andrya = medicoes.find((m) => m.nome === "Andrya Ribeiro");
+  assert.equal(andrya.massaMagraKg, 45.3, "FFM vazio: 67,4 − 22,1");
+  assert.notEqual(andrya.massaMagraKg, 24.5, "e nunca o SMM");
+  const jose = medicoes.find((m) => m.nome === "José Wilson Vilela");
+  assert.equal(jose.massaMagraKg, 75.0, "com FFM preenchido, vale o FFM");
+});
+
+test("cintura vem da circunferência do abdome, nunca da razão cintura-quadril", () => {
+  const { medicoes } = mod.lerMedicoesInBody(planilhaReal);
+  const jose = medicoes.find((m) => m.nome === "José Wilson Vilela");
+  assert.equal(jose.cinturaCm, 112.5);
+  assert.notEqual(jose.cinturaCm, 1.02, "WHR é razão, não centímetro");
+  const andrya = medicoes.find((m) => m.nome === "Andrya Ribeiro");
+  assert.equal(andrya.cinturaCm, null, "o traço do aparelho vira vazio");
+});
+
+test("o arquivo real entra sem nenhuma linha de erro", () => {
+  const { medicoes, problemas } = mod.lerMedicoesInBody(planilhaReal);
+  assert.equal(problemas.length, 0);
+  assert.equal(medicoes.length, 2);
+});
+
+test("a aba de Pressão Arterial não é lida como se fosse bioimpedância", () => {
+  const abaDaPressao = [
+    ["1. Name", "2. ID", "3. Test Date / Time", "4. Systolic", "5. Diastolic", "6. Pulse"],
+    ["RENATA CRISTINA", "00000", "-", "-", "-", "-"],
+    ["WALTER PAULO", "010425-1", "-", "-", "-", "-"],
+  ];
+  const leitura = mod.lerMedicoesDeAbas([
+    { nome: "InBody", linhas: planilhaReal },
+    { nome: "Pressão Arterial", linhas: abaDaPressao },
+  ]);
+  assert.equal(leitura.aba, "InBody");
+  assert.equal(leitura.medicoes.length, 2);
+  assert.equal(leitura.problemas.length, 0, "as linhas de pressão não viram erro");
+});
+
+test("arquivo sem nenhuma aba aproveitável diz o que fazer", () => {
+  const leitura = mod.lerMedicoesDeAbas([{ nome: "Pressão Arterial", linhas: [["1. Name", "4. Systolic"], ["Fulano", "120"]] }]);
+  assert.equal(leitura.medicoes.length, 0);
+  assert.match(leitura.problemas[0].motivo, /em nenhuma aba/);
+});
+
+test("casar 4.000 exames com o CRM não pode custar uma pausa na tela", () => {
+  // Nomes com primeiros nomes variados, como na clínica — é o primeiro nome que
+  // o índice usa para não comparar todo mundo com todo mundo.
+  const proprios = ["Ana", "Bruno", "Carla", "Daniel", "Eduarda", "Fabio", "Gisele", "Heitor", "Isabel", "Joana", "Kleber", "Livia", "Marcos", "Nadia", "Otavio", "Paula", "Rafael", "Sofia", "Tiago", "Vera"];
+  const sobrenomes = ["Souza", "Lima", "Nunes", "Prado", "Vaz", "Rocha", "Matos", "Braga", "Freitas", "Reis"];
+  const nomes = [];
+  for (const proprio of proprios) {
+    for (const sobrenome of sobrenomes) {
+      for (let n = 0; n < 5; n += 1) nomes.push(`${proprio} ${sobrenome} ${["Alves", "Barros", "Cunha", "Dias", "Esteves"][n]}`);
+    }
+  }
+  const contatos = nomes.map((nome, i) => ({ id: `c-${i}`, name: nome }));
+  const medicoes = [];
+  for (let volta = 0; volta < 4; volta += 1) {
+    for (const [i, nome] of nomes.entries()) {
+      medicoes.push({ linha: medicoes.length + 2, nome, dia: `2026-0${volta + 1}-1${i % 9}`, pesoKg: 80, gorduraPct: 30, massaMagraKg: 56, cinturaCm: null });
+    }
+  }
+  const comeco = Date.now();
+  const casamento = mod.casarMedicoesComContatos(medicoes, contatos, []);
+  const gasto = Date.now() - comeco;
+  assert.equal(casamento.prontas.length + casamento.repetidas.length, 4000);
+  assert.equal(casamento.semDono.length, 0);
+  assert.ok(gasto < 1500, `casamento levou ${gasto} ms — o índice por primeiro nome deve ter se perdido`);
+});

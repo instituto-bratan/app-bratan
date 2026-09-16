@@ -96,28 +96,62 @@ export function celulasDoSheetXml(xml: string, sharedStrings: string[]): string[
   return linhas;
 }
 
+export type AbaDaPlanilha = { nome: string; linhas: string[][] };
+
+/**
+ * Lê as abas SEPARADAS, cada uma com o seu nome.
+ *
+ * Existe porque nem todo arquivo tem uma tabela só: a exportação da InBody vem
+ * com "InBody" e "Pressão Arterial", com colunas diferentes. Juntar tudo numa
+ * lista só fazia as linhas da segunda aba serem lidas com o cabeçalho da
+ * primeira — e virarem 1.159 linhas de erro (16/09/2026).
+ */
+export async function lerAbasDeXlsx(buffer: ArrayBuffer): Promise<AbaDaPlanilha[]> {
+  const { nomes, decodificar } = await abrirXlsx(buffer);
+  const shared = lerSharedStrings(decodificar);
+
+  // Nome de cada aba: workbook.xml dá nome + r:id, e o .rels liga o r:id ao arquivo.
+  const workbook = decodificar("xl/workbook.xml");
+  const rels = decodificar("xl/_rels/workbook.xml.rels");
+  const alvoPorId = new Map<string, string>();
+  for (const rel of rels.matchAll(/<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g)) {
+    alvoPorId.set(rel[1], rel[2].replace(/^\/?xl\//, "").replace(/^\//, ""));
+  }
+  const declaradas: { nome: string; arquivo: string }[] = [];
+  for (const aba of workbook.matchAll(/<sheet\b[^>]*\/?>/g)) {
+    const nome = aba[0].match(/name="([^"]*)"/)?.[1] ?? "";
+    const id = aba[0].match(/r:id="([^"]+)"/)?.[1] ?? "";
+    const alvo = alvoPorId.get(id);
+    if (alvo) declaradas.push({ nome: desescapar(nome), arquivo: `xl/${alvo}` });
+  }
+
+  const arquivosDeAba = nomes.filter((nome) => /^xl\/worksheets\/sheet\d+\.xml$/.test(nome)).sort();
+  const ordem = declaradas.length ? declaradas : arquivosDeAba.map((arquivo, i) => ({ nome: `Aba ${i + 1}`, arquivo }));
+  return ordem
+    .filter((aba) => nomes.includes(aba.arquivo))
+    .map((aba) => ({ nome: aba.nome, linhas: celulasDoSheetXml(decodificar(aba.arquivo), shared) }));
+}
+
 /**
  * Lê TODAS as abas de um .xlsx e devolve as linhas como texto, na ordem do
  * arquivo. Quem chama decide o que cada coluna significa.
  */
 export async function lerLinhasDeXlsx(buffer: ArrayBuffer): Promise<string[][]> {
-  const { nomes, decodificar } = await abrirXlsx(buffer);
+  const abas = await lerAbasDeXlsx(buffer);
+  return abas.flatMap((aba) => aba.linhas);
+}
+
+function desescapar(texto: string) {
+  return texto.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+}
+
+function lerSharedStrings(decodificar: (nome: string) => string): string[] {
   const shared: string[] = [];
   const sharedXml = decodificar("xl/sharedStrings.xml");
   for (const si of sharedXml.split("<si>").slice(1)) {
-    shared.push(
-      [...si.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)]
-        .map((m) => m[1])
-        .join("")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">"),
-    );
+    shared.push(desescapar([...si.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => m[1]).join("")));
   }
-  const abas = nomes.filter((nome) => /^xl\/worksheets\/sheet\d+\.xml$/.test(nome)).sort();
-  const linhas: string[][] = [];
-  for (const aba of abas) linhas.push(...celulasDoSheetXml(decodificar(aba), shared));
-  return linhas;
+  return shared;
 }
 
 /** Lê um CSV simples (vírgula, ponto-e-vírgula ou tabulação), com aspas. */
