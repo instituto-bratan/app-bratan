@@ -290,3 +290,109 @@ test("casar 4.000 exames com o CRM não pode custar uma pausa na tela", () => {
   assert.equal(casamento.semDono.length, 0);
   assert.ok(gasto < 1500, `casamento levou ${gasto} ms — o índice por primeiro nome deve ter se perdido`);
 });
+
+// ---- OS NOMES QUE NÃO CASAM SOZINHOS (16/09/2026) --------------------------
+// Depois da primeira importação real, o Lucas abriu o portal de duas pacientes
+// e a curva estava vazia. Nenhuma das duas era bug de leitura: uma tem ficha
+// duplicada no CRM ("Karla Roberta Alfieri" e "karla alfieri", mesmo telefone) e
+// a outra está escrita de outro jeito ("ERICA GORETI" × "ERICA GORETE MOREIRA
+// PESSETI"). O app não pode escolher por semelhança — mas tem que PERGUNTAR.
+const crmDaClinica = [
+  { id: "c-karla-nova", name: "Karla Roberta Alfieri" },
+  { id: "c-karla-antiga", name: "karla alfieri" },
+  { id: "c-erica", name: "ERICA GORETI" },
+  { id: "c-flavio", name: "Flávio Carneiro" },
+  { id: "c-marcos", name: "Marcos Antonio Santos Frederico" },
+  { id: "c-ana", name: "Ana Luisa Goncalves de Melo" },
+];
+
+const exame = (nome, dia) => ({ linha: 2, nome, dia, pesoKg: 80, gorduraPct: 30, massaMagraKg: 56, cinturaCm: null });
+
+test("nome cortado em 30 letras pelo aparelho casa com a ficha inteira", () => {
+  // "Marcos Antonio Santos Frederic" tem exatamente 30 caracteres — é o corte.
+  const cortado = "Marcos Antonio Santos Frederic";
+  assert.equal(cortado.length, 30);
+  const casamento = mod.casarMedicoesComContatos([exame(cortado, "2026-09-01")], crmDaClinica, []);
+  assert.equal(casamento.prontas.length, 1);
+  assert.equal(casamento.prontas[0].contatoNome, "Marcos Antonio Santos Frederico");
+});
+
+test("nome cortado que serve para duas fichas NÃO é decidido pelo app", () => {
+  const duas = [
+    { id: "c-1", name: "Mariana de Barros Vieira Dantas" },
+    { id: "c-2", name: "Mariana de Barros Vieira Dantas Souza" },
+  ];
+  const casamento = mod.casarMedicoesComContatos([exame("Mariana de Barros Vieira Danta", "2026-09-01")], duas, []);
+  assert.equal(casamento.prontas.length, 0);
+  assert.equal(casamento.ambiguas.length, 1);
+});
+
+test("nome mais curto que o corte não ganha o benefício do prefixo", () => {
+  // "Ana" é começo de "Ana Luisa...", mas não veio cortado — seria chute.
+  const casamento = mod.casarMedicoesComContatos([exame("Ana Luisa", "2026-09-01")], crmDaClinica, []);
+  assert.equal(casamento.prontas.length, 1, "aqui casa pela regra normal de nomes");
+  const soPrimeiroNome = mod.casarMedicoesComContatos([exame("Ana", "2026-09-01")], crmDaClinica, []);
+  assert.equal(soPrimeiroNome.prontas.length, 0, "só o primeiro nome nunca basta");
+});
+
+test("sugestão exige primeiro nome batendo E mais um pedaço", () => {
+  const boas = mod.sugestoesParaNome("ERICA GORETE MOREIRA PESSETI", crmDaClinica);
+  assert.equal(boas[0]?.contato.id, "c-erica", "'Goreti' e 'Gorete' são uma letra de diferença");
+
+  const ruins = mod.sugestoesParaNome("FLAVIO PIRES DA SILVA", crmDaClinica);
+  assert.equal(ruins.length, 0, "só o primeiro nome em comum não vira sugestão");
+});
+
+test("a lista de decisões traz os ambíguos e os parecidos — e nada além disso", () => {
+  const medicoes = [
+    exame("Karla Roberta Alfieri", "2026-08-10"),
+    exame("Karla Roberta Alfieri", "2026-05-10"),
+    exame("ERICA GORETE MOREIRA PESSETI", "2026-07-24"),
+    exame("FLAVIO PIRES DA SILVA", "2026-07-24"),
+    exame("Pessoa Que Nunca Veio Aqui", "2026-07-24"),
+  ];
+  const casamento = mod.casarMedicoesComContatos(medicoes, crmDaClinica, []);
+  const pendentes = mod.nomesParaResolver(casamento, crmDaClinica);
+  const nomes = pendentes.map((p) => p.nome);
+  assert.ok(nomes.includes("Karla Roberta Alfieri"), "duas fichas com o mesmo nome");
+  assert.ok(nomes.includes("ERICA GORETE MOREIRA PESSETI"), "ficha parecida");
+  assert.ok(!nomes.includes("FLAVIO PIRES DA SILVA"), "semelhança fraca não vira pergunta");
+  assert.ok(!nomes.includes("Pessoa Que Nunca Veio Aqui"), "quem não tem ficha nenhuma não vira pergunta");
+  assert.equal(pendentes.find((p) => p.nome === "Karla Roberta Alfieri").quantas, 2, "conta as medições daquele nome");
+  assert.equal(pendentes.find((p) => p.nome === "Karla Roberta Alfieri").motivo, "AMBIGUO");
+  assert.equal(pendentes.find((p) => p.nome === "ERICA GORETE MOREIRA PESSETI").motivo, "PARECIDO");
+});
+
+test("a escolha da enfermagem manda, e sem escolha nada entra", () => {
+  const medicoes = [exame("Karla Roberta Alfieri", "2026-08-10"), exame("ERICA GORETE MOREIRA PESSETI", "2026-07-24")];
+
+  const semEscolher = mod.casarMedicoesComContatos(medicoes, crmDaClinica, []);
+  assert.equal(semEscolher.prontas.length, 0, "enquanto ninguém decide, não entra");
+
+  const escolhido = mod.casarMedicoesComContatos(medicoes, crmDaClinica, [], {
+    "Karla Roberta Alfieri": "c-karla-nova",
+    "ERICA GORETE MOREIRA PESSETI": "c-erica",
+  });
+  assert.equal(escolhido.prontas.length, 2);
+  assert.deepEqual(escolhido.prontas.map((p) => p.contactRef).sort().join(","), "c-erica,c-karla-nova");
+  assert.equal(escolhido.ambiguas.length, 0);
+  assert.equal(escolhido.semDono.length, 0);
+});
+
+test("escolher a ficha errada de propósito é possível — quem decide é a pessoa", () => {
+  const casamento = mod.casarMedicoesComContatos([exame("Karla Roberta Alfieri", "2026-08-10")], crmDaClinica, [], {
+    "Karla Roberta Alfieri": "c-karla-antiga",
+  });
+  assert.equal(casamento.prontas[0].contactRef, "c-karla-antiga");
+});
+
+test("escolha continua respeitando o que já está no app", () => {
+  const casamento = mod.casarMedicoesComContatos(
+    [exame("ERICA GORETE MOREIRA PESSETI", "2026-07-24")],
+    crmDaClinica,
+    [{ contactRef: "c-erica", dia: "2026-07-24" }],
+    { "ERICA GORETE MOREIRA PESSETI": "c-erica" },
+  );
+  assert.equal(casamento.prontas.length, 0);
+  assert.equal(casamento.repetidas.length, 1);
+});

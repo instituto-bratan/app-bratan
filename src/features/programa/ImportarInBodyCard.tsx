@@ -13,7 +13,7 @@
 // de Acompanhamento para baixo.
 //
 // O motor é puro e mora em inbodyImport.ts; esta tela só mostra e confirma.
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Scale, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { toast } from "@/components/ui/avisos";
 import { cn } from "@/lib/utils";
 import { lerAbasDeXlsx, lerLinhasDeCsv } from "@/lib/planilhaLeitor";
 import { createRemotePacienteMedicoesEmLote, listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
-import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesDeAbas, resumoPorPaciente, type Casamento, type Contato } from "./inbodyImport";
+import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesDeAbas, nomesParaResolver, resumoPorPaciente, type Casamento, type Contato, type EscolhasDeNome, type MedicaoImportada } from "./inbodyImport";
 
 /** Cinco anos para trás: a primeira importação traz o histórico inteiro do aparelho. */
 function historicoTodo() {
@@ -52,8 +52,19 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
   const [lendo, setLendo] = useState(false);
   const [arquivoNome, setArquivoNome] = useState("");
   const [abaLida, setAbaLida] = useState("");
-  const [casamento, setCasamento] = useState<Casamento | null>(null);
+  const [medicoes, setMedicoes] = useState<MedicaoImportada[] | null>(null);
+  const [jaRegistradas, setJaRegistradas] = useState<{ contactRef: string; dia: string }[]>([]);
   const [problemas, setProblemas] = useState<{ linha: number; motivo: string }[]>([]);
+  // O que a enfermagem decidiu para os nomes que o app não resolveu sozinho.
+  const [escolhas, setEscolhas] = useState<EscolhasDeNome>({});
+
+  // A conferência é recalculada a cada escolha — é o mesmo motor puro, e com o
+  // arquivo inteiro (4 mil exames) leva milésimos.
+  const casamento: Casamento | null = useMemo(
+    () => (medicoes ? casarMedicoesComContatos(medicoes, contatos, jaRegistradas, escolhas) : null),
+    [medicoes, contatos, jaRegistradas, escolhas],
+  );
+  const pendentes = useMemo(() => (casamento ? nomesParaResolver(casamento, contatos) : []), [casamento, contatos]);
 
   // O histórico serve para saber o que JÁ está no app — é ele que faz reimportar o
   // mesmo arquivo não duplicar nada. Fica pré-carregado ao abrir o bloco, mas quem
@@ -95,7 +106,9 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
   });
 
   function limpar() {
-    setCasamento(null);
+    setMedicoes(null);
+    setJaRegistradas([]);
+    setEscolhas({});
     setProblemas([]);
     setArquivoNome("");
     setAbaLida("");
@@ -110,14 +123,14 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
 
       // Só depois de ler o arquivo é que vale a pena buscar o histórico — e ele é
       // obrigatório: sem saber o que já está no app, salvar duplicaria tudo.
-      let jaRegistradas: { contactRef: string; dia: string }[];
+      let jaDoApp: { contactRef: string; dia: string }[];
       try {
         const historico = await queryClient.fetchQuery({
           queryKey: chaveDoHistorico,
           queryFn: () => listRemotePacienteMedicoesDesde(historicoTodo()),
           staleTime: 60_000,
         });
-        jaRegistradas = historico.map((registro) => ({ contactRef: registro.contactRef, dia: registro.dia }));
+        jaDoApp = historico.map((registro) => ({ contactRef: registro.contactRef, dia: registro.dia }));
       } catch {
         toast("Li o arquivo, mas não consegui conferir o que já está no app. Tente de novo em instantes — sem essa conferência, salvar poderia duplicar medições.", { tom: "erro", duracaoMs: 9000 });
         return;
@@ -126,7 +139,9 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
       setArquivoNome(arquivo.name);
       setAbaLida(leitura.aba);
       setProblemas(leitura.problemas);
-      setCasamento(casarMedicoesComContatos(leitura.medicoes, contatos, jaRegistradas));
+      setEscolhas({});
+      setJaRegistradas(jaDoApp);
+      setMedicoes(leitura.medicoes);
     } catch (erro) {
       toast(`Não consegui ler o arquivo: ${erro instanceof Error ? erro.message : "formato não reconhecido"}`, { tom: "erro", duracaoMs: 7000 });
     } finally {
@@ -220,6 +235,50 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
                     </li>
                   ))}
                 </ul>
+              ) : null}
+
+              {pendentes.length ? (
+                <div className="rounded-md border border-brand-dourado/40 bg-brand-creme/40 p-2.5">
+                  <p className="font-semibold text-brand-musgo">
+                    {pendentes.length === 1 ? "1 nome precisa de você" : `${pendentes.length} nomes precisam de você`}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    O aparelho corta o nome em 30 letras e cada pessoa digita de um jeito. Diga de quem é cada um — ou deixe em branco para não importar.
+                  </p>
+                  <ul className="mt-2 space-y-1.5">
+                    {pendentes.map((pendente) => (
+                      <li key={pendente.nome} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white/70 px-2.5 py-1.5">
+                        <span className="min-w-0">
+                          <strong className="text-brand-tinta">{pendente.nome}</strong>
+                          <span className="ml-1.5 text-xs text-muted-foreground">
+                            {pendente.quantas === 1 ? "1 medição" : `${pendente.quantas} medições`}
+                            {pendente.motivo === "AMBIGUO" ? " · mais de uma ficha com esse nome" : " · ficha parecida no CRM"}
+                          </span>
+                        </span>
+                        <select
+                          className="h-8 max-w-full rounded-md border border-brand-oliva/25 bg-white px-2 text-xs text-brand-tinta"
+                          value={escolhas[pendente.nome] ?? ""}
+                          aria-label={`Paciente de ${pendente.nome}`}
+                          onChange={(evento) =>
+                            setEscolhas((atual) => {
+                              const proximo = { ...atual };
+                              if (evento.target.value === "") delete proximo[pendente.nome];
+                              else proximo[pendente.nome] = evento.target.value;
+                              return proximo;
+                            })
+                          }
+                        >
+                          <option value="">não importar</option>
+                          {pendente.candidatos.map((candidato) => (
+                            <option key={candidato.id} value={candidato.id}>
+                              {candidato.name}
+                            </option>
+                          ))}
+                        </select>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
 
               {casamento.semDono.length ? (

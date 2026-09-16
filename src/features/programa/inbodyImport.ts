@@ -250,6 +250,80 @@ export function lerMedicoesDeAbas(abas: { nome: string; linhas: string[][] }[]):
 
 export type Contato = { id: string; name: string };
 
+/**
+ * O aparelho corta o nome em 30 caracteres.
+ *
+ * Medido no arquivo real da clínica: 155 dos 1.149 nomes têm exatamente 30
+ * caracteres, contra ~42 em cada comprimento vizinho — o amontoado é a assinatura
+ * do corte. Por isso "Marcos Antonio Santos Frederic" e "FERNANDO JOSE DOS
+ * SANTOS PEREI" nunca casavam com a ficha completa.
+ */
+const LIMITE_DE_NOME_DO_APARELHO = 30;
+
+/** Mesma escrita, ignorando acento, maiúscula e espaço repetido. */
+function achatar(nome: string) {
+  return nome
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Distância de edição, mas só o suficiente para saber se passa de `teto`. */
+function perto(a: string, b: string, teto: number) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > teto) return false;
+  let anterior = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const atual = [i];
+    let menor = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1;
+      atual[j] = Math.min(atual[j - 1] + 1, anterior[j] + 1, anterior[j - 1] + custo);
+      if (atual[j] < menor) menor = atual[j];
+    }
+    if (menor > teto) return false;
+    anterior = atual;
+  }
+  return anterior[b.length] <= teto;
+}
+
+/** Dois pedaços de nome iguais, ou com uma letra de diferença ("Goreti" × "Gorete"). */
+function pedacoIgual(a: string, b: string) {
+  return perto(a, b, a.length <= 4 || b.length <= 4 ? 0 : 1);
+}
+
+export type Sugestao = { contato: Contato; pedacosEmComum: number; primeiroNomeBate: boolean; forca: number };
+
+/**
+ * Quem, no CRM, se parece com este nome do aparelho.
+ *
+ * Serve para o caso real: a ficha diz "ERICA GORETI" e o aparelho, "ERICA
+ * GORETE MOREIRA PESSETI" — uma letra de diferença, e a paciente ficava de fora
+ * sem nada a fazer. Aqui ela vira uma sugestão que a enfermagem confirma; o app
+ * nunca decide sozinho por semelhança.
+ *
+ * A régua é dura de propósito: **primeiro nome batendo E pelo menos mais um
+ * pedaço do nome**. Com régua frouxa apareciam disparates como "FLAVIO PIRES DA
+ * SILVA → Flávio Carneiro", e sugestão errada é pior do que nenhuma: leva a
+ * enfermagem a pendurar o exame de um paciente na ficha de outro.
+ */
+export function sugestoesParaNome(nome: string, contatos: Contato[], limite = 6, pedacosPorContato?: Map<string, string[]>): Sugestao[] {
+  const doArquivo = personNameTokens(nome);
+  if (doArquivo.length < 2) return [];
+  const notas: Sugestao[] = [];
+  for (const contato of contatos) {
+    const doCrm = pedacosPorContato?.get(contato.id) ?? personNameTokens(contato.name);
+    if (doCrm.length < 2) continue;
+    if (!pedacoIgual(doArquivo[0], doCrm[0])) continue;
+    const comuns = doArquivo.filter((pedaco) => doCrm.some((outro) => pedacoIgual(pedaco, outro))).length;
+    if (comuns < 2) continue;
+    notas.push({ contato, pedacosEmComum: comuns, primeiroNomeBate: true, forca: comuns / Math.max(doArquivo.length, doCrm.length) });
+  }
+  return notas.sort((a, b) => b.pedacosEmComum - a.pedacosEmComum || b.forca - a.forca).slice(0, limite);
+}
+
 export type Casamento = {
   /** Achou um paciente só: pode salvar. */
   prontas: { medicao: MedicaoImportada; contactRef: string; contatoNome: string }[];
@@ -265,10 +339,17 @@ export type Casamento = {
  * Casa cada medição com um paciente do CRM pelo nome, e separa o que já existe.
  * Repetida é por paciente + dia: reimportar o mesmo arquivo não duplica nada.
  */
+/**
+ * O que a pessoa decidiu para os nomes que o app não resolveu sozinho:
+ * nome do arquivo → ref do contato, ou "" para deixar de fora.
+ */
+export type EscolhasDeNome = Record<string, string>;
+
 export function casarMedicoesComContatos(
   medicoes: MedicaoImportada[],
   contatos: Contato[],
   jaRegistradas: { contactRef: string; dia: string }[],
+  escolhas: EscolhasDeNome = {},
 ): Casamento {
   const existentes = new Set(jaRegistradas.map((item) => `${item.contactRef}|${item.dia}`));
   const resultado: Casamento = { prontas: [], ambiguas: [], semDono: [], repetidas: [] };
@@ -288,13 +369,28 @@ export function casarMedicoesComContatos(
     if (balde) balde.push(contato);
     else porPrimeiroNome.set(primeiro, [contato]);
   }
+  const porRef = new Map(contatos.map((contato) => [contato.id, contato]));
   const resolvidos = new Map<string, Contato[]>();
   const candidatosDe = (nome: string) => {
+    // Escolha da pessoa vence o casamento por nome — é ela que sabe se a "Karla
+    // Roberta Alfieri" do aparelho é a ficha nova ou a antiga.
+    const escolhido = escolhas[nome];
+    if (escolhido !== undefined) {
+      const contato = porRef.get(escolhido);
+      return contato ? [contato] : [];
+    }
     const guardado = resolvidos.get(nome);
     if (guardado) return guardado;
     const primeiro = personNameTokens(nome)[0];
     const balde = primeiro ? porPrimeiroNome.get(primeiro) ?? [] : [];
-    const achados = balde.filter((contato) => personNamesMatch(contato.name, nome));
+    let achados = balde.filter((contato) => personNamesMatch(contato.name, nome));
+    // Nome cortado pelo aparelho: se o que veio é exatamente o começo do nome de
+    // uma ficha (e de uma só), é a mesma pessoa. Com mais de uma ficha começando
+    // igual, volta a ser escolha de gente — cai em "ambíguas".
+    if (!achados.length && nome.length === LIMITE_DE_NOME_DO_APARELHO) {
+      const inicio = achatar(nome);
+      achados = balde.filter((contato) => achatar(contato.name).startsWith(inicio));
+    }
     resolvidos.set(nome, achados);
     return achados;
   };
@@ -318,6 +414,48 @@ export function casarMedicoesComContatos(
     resultado.prontas.push({ medicao, contactRef: candidatos[0].id, contatoNome: candidatos[0].name });
   }
   return resultado;
+}
+
+export type NomePendente = {
+  nome: string;
+  quantas: number;
+  /** AMBIGUO: mais de uma ficha com esse nome. PARECIDO: só uma ficha parecida. */
+  motivo: "AMBIGUO" | "PARECIDO";
+  candidatos: Contato[];
+};
+
+/**
+ * Os nomes que valem uma decisão da enfermagem — e só eles.
+ *
+ * O arquivo tem mais de mil pessoas e o CRM tem trezentas: a maioria dos nomes
+ * sem dono é gente que nunca entrou no programa, e pedir uma decisão sobre cada
+ * um seria pior do que não pedir nada. Entram aqui apenas dois casos: o nome que
+ * casou com mais de uma ficha (o app não pode escolher) e o nome que quase casou
+ * com uma ficha só (uma letra de diferença, um sobrenome a mais).
+ */
+export function nomesParaResolver(casamento: Casamento, contatos: Contato[], limite = 40): NomePendente[] {
+  const pendentes = new Map<string, NomePendente>();
+
+  for (const item of casamento.ambiguas) {
+    const atual = pendentes.get(item.medicao.nome);
+    if (atual) atual.quantas += 1;
+    else pendentes.set(item.medicao.nome, { nome: item.medicao.nome, quantas: 1, motivo: "AMBIGUO", candidatos: item.candidatos });
+  }
+
+  // Os pedaços de cada nome do CRM são calculados UMA vez: sem isso, mil nomes do
+  // arquivo × trezentas fichas repetiam a mesma quebra 300 mil vezes.
+  const pedacosPorContato = new Map(contatos.map((contato) => [contato.id, personNameTokens(contato.name)]));
+
+  const semDonoPorNome = new Map<string, number>();
+  for (const medicao of casamento.semDono) semDonoPorNome.set(medicao.nome, (semDonoPorNome.get(medicao.nome) ?? 0) + 1);
+  for (const [nome, quantas] of semDonoPorNome) {
+    if (pendentes.has(nome)) continue;
+    const sugestoes = sugestoesParaNome(nome, contatos, 6, pedacosPorContato);
+    if (!sugestoes.length) continue;
+    pendentes.set(nome, { nome, quantas, motivo: "PARECIDO", candidatos: sugestoes.map((sugestao) => sugestao.contato) });
+  }
+
+  return [...pendentes.values()].sort((a, b) => b.quantas - a.quantas || a.nome.localeCompare(b.nome, "pt-BR")).slice(0, limite);
 }
 
 export type ResumoDePaciente = { contactRef: string; contatoNome: string; quantas: number; primeiroDia: string; ultimoDia: string };
