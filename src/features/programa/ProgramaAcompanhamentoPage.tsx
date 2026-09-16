@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CheckCircle2, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Stethoscope, UserPlus, XCircle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Scale, Stethoscope, UserPlus, XCircle } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,8 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { ListaEsperaCard } from "./ListaEsperaCard";
 import { useCrmState } from "@/features/crm/useCrmState";
+import { listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
+import { listaParaCobrar, pesagensDaSemana } from "./pesagensSemana";
 import {
   buildPerformanceReportTable,
   buildProgramaBoard,
@@ -108,7 +111,25 @@ export function ProgramaAcompanhamentoPage() {
   const [days, setDays] = useState(7);
   const [enrollOpen, setEnrollOpen] = useState(false);
 
-  const board = useMemo(() => buildProgramaBoard(state, hoje), [state, hoje]);
+  // PESAGEM DA SEMANA (16/09/2026): o que o paciente manda pelo portal chega aqui.
+  // 60 dias bastam para a variação e para o semáforo (que olha as últimas 2 semanas).
+  const desde = useMemo(() => new Date(new Date(`${hoje}T12:00:00Z`).getTime() - 60 * 86_400_000).toISOString().slice(0, 10), [hoje]);
+  const medicoes = useQuery({
+    queryKey: ["pesagens-desde", desde],
+    queryFn: () => listRemotePacienteMedicoesDesde(desde),
+    staleTime: 60_000,
+  });
+  const boardSemPesagem = useMemo(() => buildProgramaBoard(state, hoje), [state, hoje]);
+  const pesagens = useMemo(
+    () =>
+      pesagensDaSemana({
+        pacientes: boardSemPesagem.map((card) => ({ contactId: card.contactId, nome: card.patientName, desde: card.startedAt })),
+        medicoes: (medicoes.data ?? []).map((m) => ({ contactRef: m.contactRef, dia: m.dia, pesoKg: m.pesoKg, origem: m.origem })),
+        hoje,
+      }),
+    [boardSemPesagem, medicoes.data, hoje],
+  );
+  const board = useMemo(() => buildProgramaBoard(state, hoje, undefined, pesagens.ultimaPorContato), [state, hoje, pesagens.ultimaPorContato]);
   const notClosed = useMemo(() => notClosedRecently(state, hoje, days), [state, hoje, days]);
 
   const filtered = useMemo(() => {
@@ -301,6 +322,92 @@ export function ProgramaAcompanhamentoPage() {
             ) : null}
           </section>
         ) : null}
+
+        {/* PESAGEM DA SEMANA (16/09/2026): a enfermagem vê o que chegou pelo portal e
+            quem precisa ser cobrado. Quem passa de 2 semanas sem pesar já pesa no
+            semáforo de adesão do cartão, então esta lista e o semáforo contam a mesma história. */}
+        <section className="rounded-lg border border-brand-oliva/20 bg-white/60 p-4 backdrop-blur-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-brand-musgo">
+              <Scale className="h-4 w-4" aria-hidden="true" />
+              Pesagem da semana
+              <InfoTip title="De onde vem esta lista">
+                O paciente manda o peso pelo Meu Bratan, uma vez por semana. A enfermagem também pode lançar pela ficha, no
+                cartão Portal do paciente. A semana começa na segunda. Quem passa de duas semanas sem pesar soma um ponto no
+                semáforo de adesão.
+              </InfoTip>
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">{medicoes.isLoading ? "Carregando as pesagens…" : pesagens.frase}</span>
+              {pesagens.faltando.length + pesagens.semNenhuma.length > 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(listaParaCobrar(pesagens));
+                      setCopyFeedback("Lista de quem falta pesar copiada.");
+                      window.setTimeout(() => setCopyFeedback(""), 6000);
+                    } catch {
+                      setCopyFeedback("Não consegui copiar a lista.");
+                      window.setTimeout(() => setCopyFeedback(""), 6000);
+                    }
+                  }}
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                  Copiar quem falta
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          {medicoes.isError ? (
+            <p className="mt-3 text-xs text-red-700">Não consegui ler as pesagens agora. O resto da tela continua valendo.</p>
+          ) : null}
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+              <p className="text-[11px] font-bold uppercase text-emerald-800">Mandaram nesta semana ({pesagens.mandaram.length})</p>
+              {pesagens.mandaram.length ? (
+                <ul className="mt-2 grid gap-1.5">
+                  {pesagens.mandaram.map((p) => (
+                    <li key={p.contactId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+                      <Link to={crmModuleRoutes.contact(p.contactId)} className="font-semibold text-brand-tinta hover:underline">
+                        {p.nome}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        {p.frase}
+                        {p.ultimaOrigem === "ENFERMAGEM" ? " · lançada pela enfermagem" : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">Ninguém pesou ainda nesta semana.</p>
+              )}
+            </div>
+            <div className="rounded-lg border border-brand-dourado/40 bg-brand-creme/40 p-3">
+              <p className="text-[11px] font-bold uppercase text-brand-musgo">
+                Falta cobrar ({pesagens.faltando.length + pesagens.semNenhuma.length})
+              </p>
+              {pesagens.faltando.length + pesagens.semNenhuma.length ? (
+                <ul className="mt-2 grid gap-1.5">
+                  {[...pesagens.faltando, ...pesagens.semNenhuma].map((p) => (
+                    <li key={p.contactId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+                      <Link to={crmModuleRoutes.contact(p.contactId)} className="font-semibold text-brand-tinta hover:underline">
+                        {p.nome}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">{p.frase}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">Todo mundo em dia.</p>
+              )}
+            </div>
+          </div>
+        </section>
 
         <section className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/15 bg-white/50 p-2.5 backdrop-blur-xl">
           <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar paciente" className="h-10 w-full sm:w-56" aria-label="Buscar paciente" />

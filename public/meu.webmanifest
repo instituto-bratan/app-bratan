@@ -10,7 +10,7 @@
     "standalone",
     "minimal-ui"
   ],
-  "background_color": "#F2F2F7",
+  "background_color": "#102019",
   "theme_color": "#F2F2F7",
   "lang": "pt-BR",
   "dir": "ltr",
@@ -20,19 +20,19 @@
   ],
   "icons": [
     {
-      "src": "/pwa-192x192.png",
+      "src": "/meu-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-512x512.png",
+      "src": "/meu-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-maskable-512x512.png",
+      "src": "/meu-maskable-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

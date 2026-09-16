@@ -53,7 +53,10 @@ function useIdentidadeDoPortal() {
     const tema = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     const raiz = document.documentElement;
     const barra = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]');
-    const antes = { manifest: manifest?.href ?? "", tema: tema?.content ?? "", titulo: document.title, fundo: raiz.style.backgroundColor, barra: barra?.content ?? "" };
+    // O iPhone usa o apple-touch-icon da PÁGINA ao adicionar à tela de início (o
+    // manifesto não vale para isso), então o portal troca o do app pelo seu.
+    const toque = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+    const antes = { manifest: manifest?.href ?? "", tema: tema?.content ?? "", titulo: document.title, fundo: raiz.style.backgroundColor, barra: barra?.content ?? "", toque: toque?.getAttribute("href") ?? "" };
     const escuro = window.matchMedia("(prefers-color-scheme: dark)");
     const pintar = () => {
       const cor = escuro.matches ? FUNDO.escuro : FUNDO.claro;
@@ -64,6 +67,7 @@ function useIdentidadeDoPortal() {
       if (barra) barra.content = escuro.matches ? "black-translucent" : "default";
     };
     if (manifest) manifest.href = "/meu.webmanifest";
+    if (toque) toque.href = "/meu-apple-touch-icon.png";
     document.title = "Meu Bratan";
     pintar();
     escuro.addEventListener("change", pintar);
@@ -72,6 +76,7 @@ function useIdentidadeDoPortal() {
       if (manifest) manifest.href = antes.manifest;
       if (tema) tema.content = antes.tema;
       if (barra) barra.content = antes.barra || "black-translucent";
+      if (toque && antes.toque) toque.href = antes.toque;
       raiz.style.backgroundColor = antes.fundo;
       document.title = antes.titulo;
     };

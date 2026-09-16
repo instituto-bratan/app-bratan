@@ -5547,6 +5547,16 @@ export async function listRemotePacienteMedicoes(contactRef: string): Promise<Pa
   return ((data ?? []) as any[]).map((r) => ({ id: r.id, contactRef: r.contact_ref, dia: r.dia, pesoKg: n(r.peso_kg), gorduraPct: n(r.gordura_pct), massaMagraKg: n(r.massa_magra_kg), cinturaCm: n(r.cintura_cm), origem: r.origem, observacao: r.observacao ?? "", criadoEm: r.criado_em }));
 }
 
+/** Todas as pesagens desde uma data, de todos os pacientes — alimenta o semáforo de
+ *  adesão e a tela de pesagens da semana da enfermagem (16/09/2026). */
+export async function listRemotePacienteMedicoesDesde(desdeISO: string): Promise<PacienteMedicaoRecord[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("paciente_medicao").select("*").gte("dia", desdeISO).is("deleted_at", null).order("dia", { ascending: false });
+  if (error) throw new Error(error.message);
+  const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  return ((data ?? []) as any[]).map((r) => ({ id: r.id, contactRef: r.contact_ref, dia: r.dia, pesoKg: n(r.peso_kg), gorduraPct: n(r.gordura_pct), massaMagraKg: n(r.massa_magra_kg), cinturaCm: n(r.cintura_cm), origem: r.origem, observacao: r.observacao ?? "", criadoEm: r.criado_em }));
+}
+
 export async function createRemotePacienteMedicao(entrada: { contactRef: string; dia: string; pesoKg: number | null; gorduraPct: number | null; massaMagraKg: number | null; cinturaCm: number | null; observacao: string }, registradoPor: string | null) {
   const client = requireSupabase();
   const { error } = await client.from("paciente_medicao").insert({ contact_ref: entrada.contactRef, dia: entrada.dia, peso_kg: entrada.pesoKg, gordura_pct: entrada.gorduraPct, massa_magra_kg: entrada.massaMagraKg, cintura_cm: entrada.cinturaCm, origem: "ENFERMAGEM", observacao: entrada.observacao, registrado_por: uuidOrNull(registradoPor) });

@@ -134,7 +134,7 @@ export function buildMilestones(deal: CrmDeal, todayISO: string): ProgramMilesto
 }
 
 // Todos os pacientes em acompanhamento (deals na jornada PROGRAMA, não encerrados).
-export function buildProgramaBoard(state: CrmState, todayISO: string, visitasPorContato?: Map<string, string[]>): ProgramPatientCard[] {
+export function buildProgramaBoard(state: CrmState, todayISO: string, visitasPorContato?: Map<string, string[]>, ultimaPesagemPorContato?: Map<string, string>): ProgramPatientCard[] {
   const contactById = new Map(state.contacts.map((contact) => [contact.id, contact]));
   return state.deals
     // Só entra quem REALMENTE aderiu: fechou o plano (status ganho). Antes bastava
@@ -177,6 +177,9 @@ export function buildProgramaBoard(state: CrmState, todayISO: string, visitasPor
           visitas: visitasPorContato ? visitasPorContato.get(deal.contactId) ?? [] : undefined,
           // Retorno "agendado" = próximo marco do médico ainda no futuro (a agenda oficial fica no Feegow/iClinic).
           proximoRetorno: pending.find((m) => m.type === "MEDICO" && !m.overdue)?.expectedDate ?? null,
+          // A pesagem que o paciente manda pelo portal entra aqui: passar de 2 semanas
+          // sem pesar soma um ponto no semáforo (16/09/2026). Sem o mapa, a regra é pulada.
+          ultimaPesagem: ultimaPesagemPorContato ? ultimaPesagemPorContato.get(deal.contactId) ?? null : undefined,
           hoje: todayISO,
         }),
       };
