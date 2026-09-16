@@ -494,8 +494,8 @@ function MeuPortal() {
                   </>
                 ) : (
                   <>
-                    <p className="t-title2">Sem consulta marcada</p>
-                    <p className="p-det">Quando a recepção agendar, ela aparece aqui e você confirma com um toque.</p>
+                    <p className="t-title2">Ainda não foi marcada</p>
+                    <p className="p-det">A recepção entra em contato para combinar o dia. Assim que marcar, a consulta aparece aqui e você confirma com um toque.</p>
                   </>
                 )}
               </div>

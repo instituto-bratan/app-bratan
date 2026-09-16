@@ -147,11 +147,19 @@ export type ProximaConsulta = {
 };
 
 /**
- * A próxima consulta, na ordem de confiança: agenda espelhada ou digitada pela
- * recepção (data real) → próximo marco do médico ainda não feito (previsto pela
- * adesão, a recepção confirma).
+ * A próxima consulta MARCADA — só isso.
+ *
+ * Até 16/09/2026, quando não havia consulta marcada o app mostrava a data
+ * PREVISTA pelo plano no lugar, com letra grande de bilhete. A Gabriela abriu o
+ * portal e leu "próxima consulta: 19 de fevereiro" de uma consulta que ninguém
+ * tinha marcado. Pedido do Lucas: *"quando não tem é só falar que ainda não foi
+ * marcado"*. A data prevista continua onde ela é verdade — na trilha do plano,
+ * rotulada como prevista.
+ *
+ * `marcos` fica na assinatura porque a ordem de confiança pode voltar a crescer
+ * (agenda oficial, encaixe), e a tela chama sempre do mesmo jeito.
  */
-export function proximaConsulta(consultas: PortalConsulta[], marcos: MarcoDoPlano[], hojeISO: string): ProximaConsulta | null {
+export function proximaConsulta(consultas: PortalConsulta[], _marcos: MarcoDoPlano[], hojeISO: string): ProximaConsulta | null {
   const inicioHoje = dataLocal(hojeISO);
   inicioHoje.setHours(0, 0, 0, 0);
   const reais = consultas
@@ -162,10 +170,7 @@ export function proximaConsulta(consultas: PortalConsulta[], marcos: MarcoDoPlan
     const dias = diasEntre(hojeISO, real.em.slice(0, 10));
     return { id: real.id, em: real.em, comHora: true, profissional: real.profissional, tipo: real.tipo, local: real.local, origem: real.origem, status: real.status, dias, quando: fraseDeDias(dias), titulo: diaLongo(real.em), hora: horaCurta(real.em), podeResponder: real.status !== "CONFIRMADA" && real.status !== "REMARCAR" && dias <= 14 };
   }
-  const previsto = marcos.filter((m) => m.type === "MEDICO" && !m.done).sort((a, b) => a.expectedDate.localeCompare(b.expectedDate))[0];
-  if (!previsto) return null;
-  const dias = diasEntre(hojeISO, previsto.expectedDate);
-  return { id: null, em: previsto.expectedDate, comHora: false, profissional: "Dr. Daniel", tipo: previsto.label, local: "Instituto Bratan", origem: "PREVISTA", status: "PREVISTA", dias, quando: dias < 0 ? "a recepção vai confirmar a data" : fraseDeDias(dias), titulo: diaLongo(previsto.expectedDate), hora: null, podeResponder: false };
+  return null;
 }
 
 export type ResumoEvolucao = {

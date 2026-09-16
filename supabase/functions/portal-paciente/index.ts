@@ -36,6 +36,38 @@ function normalizarLogin(valor: string) {
 }
 const somaDias = (dias: number) => new Date(Date.now() + dias * 86_400_000).toISOString();
 
+// ---- Mesma pessoa? ---------------------------------------------------------
+// A agenda do Google traz o nome como a recepção digitou, e a ficha traz o nome
+// como o cadastro tem. "GABRIELA GUAGLIANO" (ficha) × "GABRIELA GUAGLIANO
+// MARTINS LIMA" (agenda) é a mesma paciente — e, comparando texto igual a
+// texto igual, o portal dizia que ela não tinha consulta marcada (16/09/2026).
+//
+// Mesma regra do app (personNamesMatch): o PRIMEIRO nome tem que bater e um
+// conjunto de sobrenomes tem que estar contido no outro. Assim "Maria Silva" e
+// "Maria Souza" continuam sendo duas pessoas.
+const LIGACOES = new Set(["da", "de", "do", "das", "dos", "e"]);
+
+function pedacosDoNome(nome: string) {
+  return (nome ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter((pedaco) => pedaco.length > 1 && !LIGACOES.has(pedaco));
+}
+
+function mesmaPessoa(a: string, b: string) {
+  const x = pedacosDoNome(a);
+  const y = pedacosDoNome(b);
+  if (!x.length || !y.length) return false;
+  if (x[0] !== y[0]) return false;
+  if (x.length === 1 || y.length === 1) return x.length === y.length;
+  const cx = new Set(x);
+  const cy = new Set(y);
+  return x.every((p) => cy.has(p)) || y.every((p) => cx.has(p));
+}
+
 type Entrada = { acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair"; login?: string; senha?: string; token?: string; sessao?: string; pesoKg?: number; cinturaCm?: number; observacao?: string; consultaId?: string; origem?: "AGENDA" | "MANUAL"; resposta?: "CONFIRMO" | "REMARCAR" };
 
 Deno.serve(async (request) => {
@@ -185,12 +217,14 @@ Deno.serve(async (request) => {
   const [consultasManuais, agenda, medicoes, vendas, parcelas, contratos, consentimentos] = await Promise.all([
     client.from("paciente_consulta").select("id, em, profissional, tipo, local, status").eq("contact_ref", contactRef).gte("em", somaDias(-1)).order("em"),
     (async () => {
-      // Casa pelo telefone (Feegow/Outlook trazem) OU pelo nome normalizado (o calendário do Google só traz o nome).
+      // Casa pelo telefone (Feegow/Outlook trazem) OU pelo nome (o calendário do
+      // Google só traz o nome, e nunca igualzinho ao da ficha).
       const tel = telefoneE164(contato.whatsapp || contato.phone || "");
-      const norm = (v: string) => (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-      const nomeAlvo = norm(contato.full_name || "");
+      const nomeDaFicha = String(contato.full_name || "");
       const { data } = await client.from("agenda_espelho").select("id, inicio, profissional, tipo, sala, status, confirmacao_status, telefone, paciente").gte("inicio", somaDias(-1)).lte("inicio", somaDias(120)).order("inicio");
-      const lista = ((data ?? []) as Record<string, unknown>[]).filter((a) => (tel && tel.length >= 12 && a.telefone === tel) || (nomeAlvo.length > 5 && norm(String(a.paciente ?? "")) === nomeAlvo));
+      const lista = ((data ?? []) as Record<string, unknown>[]).filter(
+        (a) => (tel && tel.length >= 12 && a.telefone === tel) || mesmaPessoa(nomeDaFicha, String(a.paciente ?? "")),
+      );
       return { data: lista };
     })(),
     client.from("paciente_medicao").select("id, dia, peso_kg, gordura_pct, massa_magra_kg, cintura_cm, origem").eq("contact_ref", contactRef).is("deleted_at", null).order("dia"),

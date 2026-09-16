@@ -16,7 +16,7 @@ test("frase de dias em português, sem número solto", () => {
   assert.equal(mod.fraseDeDias(-1), "foi ontem");
 });
 
-test("próxima consulta: a real (recepção/agenda) vence a prevista; sem real, usa o próximo marco do médico", () => {
+test("próxima consulta é só a MARCADA — data prevista pelo plano nunca ocupa o lugar dela", () => {
   const marcos = [
     { key: "MEDICO-1", type: "MEDICO", n: 1, total: 3, label: "1ª consulta (mês 2)", expectedDate: "2026-09-01", done: true, overdue: false },
     { key: "MEDICO-2", type: "MEDICO", n: 2, total: 3, label: "2ª consulta (mês 4)", expectedDate: "2026-11-01", done: false, overdue: false },
@@ -28,12 +28,17 @@ test("próxima consulta: a real (recepção/agenda) vence a prevista; sem real, 
   assert.equal(real.titulo, "sábado, 26 de setembro");
   assert.equal(real.hora, "14h");
   assert.equal(real.podeResponder, true, "dentro de 14 dias e ainda não confirmada");
-  const prevista = mod.proximaConsulta([], marcos, hoje);
-  assert.equal(prevista.origem, "PREVISTA");
-  assert.equal(prevista.em, "2026-11-01");
-  assert.equal(prevista.podeResponder, false);
-  const cancelada = mod.proximaConsulta([{ id: "c2", em: "2026-09-20T10:00:00-03:00", profissional: "Dr. Daniel", tipo: "Consulta", local: "", status: "CANCELADA", origem: "MANUAL" }], [], hoje);
-  assert.equal(cancelada, null, "cancelada não conta e sem marco não há previsão");
+  // 16/09/2026: a Gabriela leu "próxima consulta: 19 de fevereiro" de uma consulta
+  // que ninguém tinha marcado — era a data prevista pelo plano, com cara de
+  // marcada. Sem consulta na agenda, a resposta certa é "ainda não foi marcada".
+  const semMarcar = mod.proximaConsulta([], marcos, hoje);
+  assert.equal(semMarcar, null, "ter marco previsto no plano não é ter consulta marcada");
+
+  const cancelada = mod.proximaConsulta([{ id: "c2", em: "2026-09-20T10:00:00-03:00", profissional: "Dr. Daniel", tipo: "Consulta", local: "", status: "CANCELADA", origem: "MANUAL" }], marcos, hoje);
+  assert.equal(cancelada, null, "cancelada não conta");
+
+  const realizada = mod.proximaConsulta([{ id: "c3", em: "2026-09-20T10:00:00-03:00", profissional: "Dr. Daniel", tipo: "Consulta", local: "", status: "REALIZADA", origem: "AGENDA" }], marcos, hoje);
+  assert.equal(realizada, null, "já realizada também não");
 });
 
 test("evolução: delta entre a primeira e a última medição, com frase de contexto", () => {
