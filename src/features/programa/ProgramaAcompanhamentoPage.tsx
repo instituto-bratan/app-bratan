@@ -26,6 +26,7 @@ import {
 } from "@/features/crm/crmData";
 import { useAuth } from "@/hooks/useAuth";
 import { ListaEsperaCard } from "./ListaEsperaCard";
+import { ImportarInBodyCard } from "./ImportarInBodyCard";
 import { useCrmState } from "@/features/crm/useCrmState";
 import { listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
 import { listaParaCobrar, pesagensDaSemana } from "./pesagensSemana";
@@ -494,6 +495,7 @@ export function ProgramaAcompanhamentoPage() {
           </Card>
         )}
 
+        <ImportarInBodyCard contatos={state.contacts.map((contato) => ({ id: contato.id, name: contato.fullName }))} pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
         <ListaEsperaCard pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
         {/* Não fecharam na semana — a lista que vai para a Assistente de Performance */}
         <Card>

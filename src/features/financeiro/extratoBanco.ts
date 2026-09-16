@@ -11,6 +11,7 @@
 // colado, para quando o arquivo vier em outro formato.
 
 import { excelSerialDate } from "@/lib/xlsxWriter";
+import { abrirXlsx, celulasDoSheetXml } from "@/lib/planilhaLeitor";
 import { saleTotal, type FinExpense, type FinSale, type FinSavingsMove } from "./financeiroData";
 import { agendaRecebiveis, diaUtilAnterior as diaUtilAnteriorRede, diaUtilSeguinte, VIGENCIA_ACORDO_REDE, type Recebivel } from "./recebiveisRede";
 
@@ -144,97 +145,6 @@ export function lerExtratoDeTexto(texto: string): BankEntry[] {
 }
 
 // ---- xlsx (ZIP + XML), sem biblioteca ------------------------------------
-async function inflar(dados: Uint8Array, comprimido: boolean) {
-  if (!comprimido) return dados;
-  const stream = new Blob([dados as unknown as BlobPart])
-    .stream()
-    .pipeThrough(new DecompressionStream("deflate-raw"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-
-/**
- * Abre um .xlsx pelo DIRETÓRIO CENTRAL do ZIP.
- *
- * Por que não varrer os cabeçalhos locais: quando o arquivo é gerado em
- * streaming (o caso do extrato do Itaú), o cabeçalho local traz tamanho ZERO e
- * o tamanho real só existe no diretório central. Varrer o começo dava
- * "unexpected end of file" na descompressão.
- */
-async function abrirXlsx(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-  const arquivos = new Map<string, Uint8Array>();
-
-  // Fim do diretório central (procura de trás para frente por causa do comentário).
-  let eocd = -1;
-  for (let i = bytes.length - 22; i >= 0 && i > bytes.length - 66000; i -= 1) {
-    if (view.getUint32(i, true) === 0x06054b50) {
-      eocd = i;
-      break;
-    }
-  }
-  if (eocd < 0) throw new Error("Arquivo não parece um .xlsx (não achei o índice do ZIP).");
-
-  const totalEntradas = view.getUint16(eocd + 10, true);
-  let cursor = view.getUint32(eocd + 16, true);
-  const decoder = new TextDecoder();
-
-  for (let n = 0; n < totalEntradas; n += 1) {
-    if (view.getUint32(cursor, true) !== 0x02014b50) break;
-    const metodo = view.getUint16(cursor + 10, true);
-    const tamanhoComprimido = view.getUint32(cursor + 20, true);
-    const tamanhoNome = view.getUint16(cursor + 28, true);
-    const tamanhoExtra = view.getUint16(cursor + 30, true);
-    const tamanhoComentario = view.getUint16(cursor + 32, true);
-    const offsetLocal = view.getUint32(cursor + 42, true);
-    const nome = decoder.decode(bytes.slice(cursor + 46, cursor + 46 + tamanhoNome));
-
-    // No cabeçalho local, pular nome + extra para chegar nos dados.
-    const nomeLocal = view.getUint16(offsetLocal + 26, true);
-    const extraLocal = view.getUint16(offsetLocal + 28, true);
-    const inicioDados = offsetLocal + 30 + nomeLocal + extraLocal;
-    if (tamanhoComprimido > 0) {
-      arquivos.set(nome, await inflar(bytes.slice(inicioDados, inicioDados + tamanhoComprimido), metodo === 8));
-    }
-    cursor += 46 + tamanhoNome + tamanhoExtra + tamanhoComentario;
-  }
-  const decodificar = (nome: string) => {
-    const dados = arquivos.get(nome);
-    return dados ? new TextDecoder().decode(dados) : "";
-  };
-  return { nomes: [...arquivos.keys()], decodificar };
-}
-
-function celulasDoSheetXml(xml: string, sharedStrings: string[]): string[][] {
-  const linhas: string[][] = [];
-  for (const linha of xml.split("<row ").slice(1)) {
-    const celulas: string[] = [];
-    for (const bruta of linha.split("<c ").slice(1)) {
-      const ref = bruta.match(/r="([A-Z]+)\d+"/)?.[1] ?? "A";
-      let indice = 0;
-      for (const letra of ref) indice = indice * 26 + (letra.charCodeAt(0) - 64);
-      indice -= 1;
-      const tipo = bruta.match(/t="([^"]+)"/)?.[1];
-      let valor = "";
-      if (tipo === "inlineStr") {
-        valor = bruta.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] ?? "";
-      } else {
-        const v = bruta.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? "";
-        valor = tipo === "s" ? (sharedStrings[Number(v)] ?? "") : v;
-      }
-      while (celulas.length < indice) celulas.push("");
-      celulas[indice] = valor
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'");
-    }
-    if (celulas.length) linhas.push(celulas);
-  }
-  return linhas;
-}
-
 /** Lê o extrato .xlsx do Itaú (todas as abas). */
 export async function lerExtratoDeXlsx(buffer: ArrayBuffer): Promise<BankEntry[]> {
   const { nomes, decodificar } = await abrirXlsx(buffer);

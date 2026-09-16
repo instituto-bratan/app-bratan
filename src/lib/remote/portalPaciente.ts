@@ -73,6 +73,34 @@ export async function createRemotePacienteMedicao(entrada: { contactRef: string;
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Grava de uma vez as medições lidas do arquivo da InBody (16/09/2026).
+ * A origem fica IMPORTACAO para separar do que a enfermagem digitou e do que o
+ * paciente mandou pelo portal. Quem chama já tirou as repetidas.
+ */
+export async function createRemotePacienteMedicoesEmLote(
+  entradas: { contactRef: string; dia: string; pesoKg: number | null; gorduraPct: number | null; massaMagraKg: number | null; cinturaCm: number | null; observacao: string }[],
+  registradoPor: string | null,
+) {
+  if (!entradas.length) return 0;
+  const client = requireSupabase();
+  const { error } = await client.from("paciente_medicao").insert(
+    entradas.map((entrada) => ({
+      contact_ref: entrada.contactRef,
+      dia: entrada.dia,
+      peso_kg: entrada.pesoKg,
+      gordura_pct: entrada.gorduraPct,
+      massa_magra_kg: entrada.massaMagraKg,
+      cintura_cm: entrada.cinturaCm,
+      origem: "IMPORTACAO",
+      observacao: entrada.observacao,
+      registrado_por: uuidOrNull(registradoPor),
+    })),
+  );
+  if (error) throw new Error(error.message);
+  return entradas.length;
+}
+
 export async function deleteRemotePacienteMedicao(id: string) {
   const client = requireSupabase();
   const { error } = await client.from("paciente_medicao").update({ deleted_at: new Date().toISOString() }).eq("id", id);
