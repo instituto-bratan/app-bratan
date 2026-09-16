@@ -42,17 +42,45 @@ export function CurvaEvolucao({ resumo }: { resumo: ResumoEvolucao }) {
       {[0.33, 0.66].map((f) => (
         <line key={f} x1={L} x2={W - R} y1={T + f * (H - T - B)} y2={T + f * (H - T - B)} stroke="var(--p-sep)" strokeWidth="1" />
       ))}
-      <path d={area} fill="url(#p-curva-area)" />
-      <path d={d} fill="none" stroke="var(--p-tint)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={area} fill="url(#p-curva-area)" className="p-curva-area" />
+      <path d={d} fill="none" stroke="var(--p-tint)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="p-curva-linha" pathLength={1} />
+      <circle cx={ultimo[0]} cy={ultimo[1]} r="13" fill="var(--p-tint)" opacity=".16" className="p-curva-halo" />
       {xy.map(([cx, cy], i) => (
         <circle key={pontos[i].dia + i} cx={cx} cy={cy} r={i === xy.length - 1 ? 7 : 5} fill={pontos[i].origem === "PACIENTE" ? "var(--p-card)" : "var(--p-tint)"} stroke={i === xy.length - 1 ? "var(--p-card)" : "var(--p-tint)"} strokeWidth={i === xy.length - 1 ? 3 : 2.5} style={i === xy.length - 1 ? { filter: "drop-shadow(0 1px 3px rgba(0,0,0,.25))" } : undefined}>
           <title>{`${diaMes(pontos[i].dia)}: ${fmt(pontos[i].peso)} kg${pontos[i].origem === "PACIENTE" ? " (você enviou)" : ""}`}</title>
         </circle>
       ))}
-      {xy.length > 1 ? <text x={primeiro[0]} y={primeiro[1] - 14} textAnchor={primeiro[0] < 60 ? "start" : "middle"} fontFamily="var(--p-rounded)" fontSize="15" fontWeight="700" fill="var(--p-label-2)">{fmt(pontos[0].peso)}</text> : null}
-      <text x={ultimo[0]} y={ultimo[1] - 16} textAnchor={ultimo[0] > W - 70 ? "end" : "middle"} fontFamily="var(--p-rounded)" fontSize="17" fontWeight="800" fill="var(--p-label)">{fmt(pontos[pontos.length - 1].peso)}</text>
-      <text x={L} y={H - 8} fontFamily="var(--p-sans)" fontSize="13" fontWeight="500" fill="var(--p-label-3)">{diaMes(pontos[0].dia)}</text>
-      <text x={W - R} y={H - 8} textAnchor="end" fontFamily="var(--p-sans)" fontSize="13" fontWeight="500" fill="var(--p-label-3)">{diaMes(pontos[pontos.length - 1].dia)}</text>
+      {xy.length > 1 ? <text x={primeiro[0]} y={primeiro[1] - 18} textAnchor={primeiro[0] < 60 ? "start" : "middle"} fontFamily="var(--p-rounded)" fontSize="26" fontWeight="700" fill="var(--p-label-2)">{fmt(pontos[0].peso)}</text> : null}
+      <text x={ultimo[0]} y={ultimo[1] - 22} textAnchor={ultimo[0] > W - 70 ? "end" : "middle"} fontFamily="var(--p-rounded)" fontSize="30" fontWeight="800" fill="var(--p-label)">{fmt(pontos[pontos.length - 1].peso)}</text>
+      <text x={L} y={H - 6} fontFamily="var(--p-sans)" fontSize="24" fontWeight="500" fill="var(--p-label-2)">{diaMes(pontos[0].dia)}</text>
+      <text x={W - R} y={H - 6} textAnchor="end" fontFamily="var(--p-sans)" fontSize="24" fontWeight="500" fill="var(--p-label-2)">{diaMes(pontos[pontos.length - 1].dia)}</text>
+    </svg>
+  );
+}
+
+/**
+ * A CURVA QUE AINDA NÃO EXISTE (16/09/2026).
+ *
+ * Quase todo paciente entra aqui antes da primeira bioimpedância, e uma frase
+ * solta num cartão vazio é a pior primeira impressão possível. Isto desenha a
+ * forma da curva que vai existir — tracejada, sem número nenhum, com o lugar do
+ * primeiro ponto marcado — para a tela ficar cheia sem inventar dado.
+ */
+export function CurvaEsperando() {
+  const W = 640;
+  const H = 150;
+  const L = 14;
+  const R = 14;
+  // Uma descida suave, só como forma: não corresponde a peso nenhum.
+  const caminho = `M ${L} 34 C 150 44, 210 62, 300 78 S 470 106, ${W - R} 116`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="A sua curva de peso aparece aqui depois da primeira medição" style={{ display: "block", overflow: "visible", height: "auto" }}>
+      {[0.33, 0.66].map((f) => (
+        <line key={f} x1={L} x2={W - R} y1={24 + f * (H - 48)} y2={24 + f * (H - 48)} stroke="var(--p-sep)" strokeWidth="1" />
+      ))}
+      <path d={caminho} fill="none" stroke="var(--p-label-3)" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="2 12" opacity=".7" />
+      <circle cx={L} cy="34" r="6" fill="var(--p-card)" stroke="var(--p-tint)" strokeWidth="2.5" />
+      <circle cx={L} cy="34" r="13" fill="var(--p-tint)" opacity=".14" className="p-curva-halo" />
     </svg>
   );
 }

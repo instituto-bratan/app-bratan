@@ -17,8 +17,8 @@ import { buildMilestones } from "@/features/programa/programaData";
 import type { CrmDeal } from "@/features/crm/crmData";
 import bratanMark from "@/assets/bratan-mark.png";
 import "./portal.css";
-import { CurvaEvolucao } from "./CurvaEvolucao";
-import { dadosDemo } from "./portalDemo";
+import { CurvaEsperando, CurvaEvolucao } from "./CurvaEvolucao";
+import { dadosDemo, dadosDemoNovo } from "./portalDemo";
 import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, emPrevia, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
 import { brl, brlCentavos, diaCurto, diaMes, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, saudacao, trilhaDoPlano, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
@@ -27,13 +27,17 @@ const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
-// As seções e o dock (cores dos gradientes = cores de sistema da Apple).
+// As seções e o dock. As cores saíram das de sistema da Apple (16/09/2026): azul,
+// rosa e roxo brigavam com o verde da casa, e o dock é o único elemento sempre
+// visível. Agora é uma escala do próprio verde, do mais fechado ao mais aberto,
+// com o dourado da marca reservado à trilha do plano — a única cor que não é verde,
+// porque marca o caminho que o paciente percorre.
 const SECOES: GradientMenuItem[] = [
-  { id: "consulta", title: "Consulta", icon: <CalendarDays />, gradientFrom: "#0A84FF", gradientTo: "#5E5CE6" },
-  { id: "evolucao", title: "Evolução", icon: <Activity />, gradientFrom: "#34C759", gradientTo: "#30B0C7" },
-  { id: "plano", title: "Plano", icon: <RouteIcon />, gradientFrom: "#C6A862", gradientTo: "#FF9F0A" },
-  { id: "pesagem", title: "Pesagem", icon: <Scale />, gradientFrom: "#FF375F", gradientTo: "#FF6482" },
-  { id: "documentos", title: "Docs", icon: <FileText />, gradientFrom: "#8E8E93", gradientTo: "#636366" },
+  { id: "consulta", title: "Consulta", icon: <CalendarDays />, gradientFrom: "var(--p-dk-consulta-1)", gradientTo: "var(--p-dk-consulta-2)" },
+  { id: "evolucao", title: "Evolução", icon: <Activity />, gradientFrom: "var(--p-dk-evolucao-1)", gradientTo: "var(--p-dk-evolucao-2)" },
+  { id: "plano", title: "Plano", icon: <RouteIcon />, gradientFrom: "var(--p-dk-plano-1)", gradientTo: "var(--p-dk-plano-2)" },
+  { id: "pesagem", title: "Pesagem", icon: <Scale />, gradientFrom: "var(--p-dk-pesagem-1)", gradientTo: "var(--p-dk-pesagem-2)" },
+  { id: "documentos", title: "Docs", icon: <FileText />, gradientFrom: "var(--p-dk-docs-1)", gradientTo: "var(--p-dk-docs-2)" },
 ];
 
 function partesDaData(iso: string) {
@@ -100,11 +104,16 @@ function EntrarPage() {
   const navigate = useNavigate();
   const [erro, setErro] = useState("");
   const token = params.get("t") ?? "";
-  const demo = params.get("demo") === "1";
+  const demo = params.get("demo") === "1" || params.get("demo") === "novo";
   useEffect(() => {
     let vivo = true;
     (async () => {
       if (ambienteSemSupabase || demo) {
+        try {
+          window.localStorage.setItem("meu-bratan-demo", params.get("demo") === "novo" ? "novo" : "andamento");
+        } catch {
+          /* sem localStorage: cai no retrato padrão */
+        }
         guardarSessao(SESSAO_DEMO);
         navigate("/meu", { replace: true });
         return;
@@ -138,7 +147,7 @@ function EntrarPage() {
               <p className="t-foot t-3">O link vale por uma semana e funciona no aparelho em que você abre. Se precisar, a recepção manda outro na hora.</p>
             </>
           ) : (
-            <LoadingState label="Preparando" variant="Dots" showElapsed={false} />
+            <div data-anima="carregando"><LoadingState label="Preparando" variant="Dots" showElapsed={false} /></div>
           )}
         </div>
       </div>
@@ -187,7 +196,10 @@ function MeuPortal() {
   const recarregar = useCallback(async () => {
     if (!sessao) return;
     if (previa) {
-      setDados(dadosDemo(hoje));
+      // /meu/entrar?demo=1 mostra quem está no meio do plano; ?demo=novo mostra
+      // o primeiro acesso, que é o que a maioria vê (16/09/2026).
+      const novo = new URLSearchParams(window.location.search).get("demo") === "novo" || window.localStorage.getItem("meu-bratan-demo") === "novo";
+      setDados(novo ? dadosDemoNovo(hoje) : dadosDemo(hoje));
       setCarregando(false);
       return;
     }
@@ -219,14 +231,14 @@ function MeuPortal() {
   // Seção visível → item aberto no dock.
   useEffect(() => {
     if (!dados || typeof IntersectionObserver === "undefined") return;
-    const alvos = SECOES.map((s) => document.getElementById(s.id)).filter((el): el is HTMLElement => Boolean(el));
+    const alvos = secoesVisiveis.map((s) => document.getElementById(s.id)).filter((el): el is HTMLElement => Boolean(el));
     const visiveis = new Map<string, number>();
     const obs = new IntersectionObserver(
       (entries) => {
         for (const e of entries) visiveis.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0);
         let melhor = "";
         let maior = 0;
-        for (const s of SECOES) {
+        for (const s of secoesVisiveis) {
           const v = visiveis.get(s.id) ?? 0;
           if (v > maior) {
             maior = v;
@@ -254,6 +266,18 @@ function MeuPortal() {
   const trilha = dados?.plano ? trilhaDoPlano(marcos, dados.plano.inicio, hoje) : null;
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
+  // O dock mostra só o que existe na página. Antes ele listava "Plano" mesmo para
+  // quem não tem plano, e o toque não levava a lugar nenhum (16/09/2026).
+  const secoesVisiveis = useMemo(
+    () =>
+      SECOES.filter((secao) => {
+        if (secao.id === "plano") return Boolean(trilha && dados?.plano);
+        if (secao.id === "documentos") return Boolean(dados?.documentos.length);
+        if (secao.id === "evolucao") return Boolean(dados);
+        return true;
+      }),
+    [trilha, dados],
+  );
 
   function irPara(id: string) {
     setSecaoAtiva(id);
@@ -318,7 +342,7 @@ function MeuPortal() {
       <div className="p-wrap">
         {carregando ? (
           <div className="p-entrar" style={{ minHeight: "70dvh" }}>
-            <LoadingState label="Preparando as suas informações" variant="Dots" showElapsed={false} />
+            <div data-anima="carregando"><LoadingState label="Preparando as suas informações" variant="Dots" showElapsed={false} /></div>
           </div>
         ) : erro ? (
           <>
@@ -413,9 +437,9 @@ function MeuPortal() {
                         </span>
                       ) : null}
                     </div>
-                    {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} /> : null}
+                    {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} /> : <CurvaEsperando />}
                     <p className="t-sub">{evolucao.frase}</p>
-                    {evolucao.deltaGordura !== null || evolucao.deltaMassaMagra !== null || evolucao.deltaCintura !== null ? (
+                    {evolucao.pontos.length > 1 && (evolucao.deltaGordura !== null || evolucao.deltaMassaMagra !== null || evolucao.deltaCintura !== null) ? (
                       <div className="p-stats">
                         <div className="p-stat">
                           <span className="t-foot t-2">Gordura corporal</span>
@@ -435,10 +459,20 @@ function MeuPortal() {
                         </div>
                       </div>
                     ) : null}
-                    <p className="t-foot t-3">Pontos cheios: medições da enfermagem. Vazados: pesagens que você mandou.</p>
+                    {evolucao.pontos.length > 1 ? <p className="t-foot t-3">Pontos cheios: medições da enfermagem. Vazados: pesagens que você mandou.</p> : <p className="t-foot t-3">Esta é a sua primeira medição. A linha aparece a partir da segunda.</p>}
                   </>
                 ) : (
-                  <p className="t-body t-2">A sua curva começa na próxima bioimpedância com a enfermagem. Se quiser, já mande a pesagem desta semana logo abaixo.</p>
+                  <div className="p-vazio">
+                    <CurvaEsperando />
+                    <div className="p-vazio-texto">
+                      <p className="t-headline">Sua curva começa na primeira medição.</p>
+                      <p className="t-sub t-2">A enfermagem faz a bioimpedância na sua próxima visita. Até lá, a pesagem que você mandar já entra aqui.</p>
+                    </div>
+                    <button type="button" className="p-btn tonal" onClick={() => document.getElementById("pesagem")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                      <Scale size={18} aria-hidden="true" />
+                      Mandar a pesagem de hoje
+                    </button>
+                  </div>
                 )}
               </div>
             </section>
@@ -498,8 +532,15 @@ function MeuPortal() {
             </section>
 
             {/* ---- O que fechou ---- */}
-            {financeiro ? (
-              <section className="p-sec p-anim" aria-labelledby="t-fin">
+            {financeiro && !dados.comandas.length ? (
+              <section id="fechou" className="p-sec p-anim" aria-labelledby="t-fin">
+                <span className="t-sec" id="t-fin">O que você fechou</span>
+                <div className="p-card">
+                  <p className="t-body t-2">{financeiro.frase}</p>
+                </div>
+              </section>
+            ) : financeiro ? (
+              <section id="fechou" className="p-sec p-anim" aria-labelledby="t-fin">
                 <span className="t-sec" id="t-fin">O que você fechou</span>
                 <div className="p-card">
                   <div className="p-metrica">
@@ -586,7 +627,7 @@ function MeuPortal() {
             </section>
 
             <footer className="p-rodape p-anim">
-              {dados.consentimentos.length ? <p className="t-foot t-3">Você autorizou: {dados.consentimentos.filter((c) => c.aceito).map((c) => CONSENT_LABEL[c.tipo] ?? c.tipo.toLowerCase()).join(", ") || "nada registrado ainda"}.</p> : null}
+              {dados.consentimentos.some((c) => c.aceito) ? <p className="t-foot t-3">Você autorizou: {dados.consentimentos.filter((c) => c.aceito).map((c) => CONSENT_LABEL[c.tipo] ?? c.tipo.toLowerCase()).join(", ")}.</p> : null}
               <p className="t-foot t-3">Seus dados ficam só com o Instituto Bratan e aparecem aqui só para você. Para mudar algo, fale com a recepção.</p>
               <button type="button" className="p-btn plain" onClick={() => void sair()}>
                 Sair deste aparelho
@@ -594,7 +635,7 @@ function MeuPortal() {
             </footer>
 
             <nav className="p-dock" aria-label="Ir para a seção">
-              <GradientMenu items={SECOES} activeId={secaoAtiva} onSelect={irPara} />
+              <GradientMenu items={secoesVisiveis} activeId={secaoAtiva} onSelect={irPara} />
             </nav>
           </>
         ) : null}

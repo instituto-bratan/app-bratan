@@ -35,3 +35,31 @@ export function dadosDemo(hojeISO: string): PortalDados {
     geradoEm: `${hojeISO}T09:00:00-03:00`,
   };
 }
+
+/**
+ * O PACIENTE QUE ACABOU DE ENTRAR (16/09/2026).
+ *
+ * É o estado que a maioria vê no primeiro acesso: plano fechado, primeira
+ * consulta marcada e mais nada — sem medição, sem histórico, sem documento.
+ * Serve para a recepção mostrar como o portal chega para quem está começando,
+ * e para conferirmos que a tela vazia continua bonita.
+ */
+export function dadosDemoNovo(hojeISO: string): PortalDados {
+  const base = dadosDemo(hojeISO);
+  const [a, m, d] = hojeISO.split("-").map(Number);
+  const dia = (n: number) => {
+    const x = new Date(a, m - 1, d + n, 12);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  };
+  const inicio = dia(-3);
+  return {
+    ...base,
+    paciente: { nome: "Helena Costa", primeiroNome: "Helena", contactRef: "demo-novo" },
+    plano: { ...base.plano!, inicio, marcosFeitos: [], valorRecebido: 0, closedAt: `${inicio}T15:00:00-03:00`, programPhaseEnteredAt: `${inicio}T15:00:00-03:00`, createdAt: `${inicio}T15:00:00-03:00` },
+    consultas: [{ id: "c1", em: `${dia(6)}T09:30:00-03:00`, profissional: "Dr. Daniel", tipo: "1ª consulta do plano", local: "Instituto Bratan · Itaim", status: "AGENDADA", origem: "MANUAL" }],
+    medicoes: [],
+    comandas: [],
+    parcelasAbertas: [],
+    documentos: [],
+  };
+}

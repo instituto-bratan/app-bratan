@@ -55,7 +55,7 @@ export default function GradientMenu({
               role="tab"
               aria-selected={active}
               aria-label={title}
-              className="absolute inset-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gradient-to)] focus-visible:ring-offset-2"
+              className="absolute inset-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-[var(--p-tint)]"
               onClick={() => onSelect?.(id)}
             />
             {/* Fundo em gradiente (hover ou ativo) */}
@@ -64,7 +64,7 @@ export default function GradientMenu({
             <span className="pointer-events-none absolute inset-x-0 top-[10px] -z-10 h-full rounded-full bg-[linear-gradient(45deg,var(--gradient-from),var(--gradient-to))] opacity-0 blur-[15px] transition-all duration-500 group-hover:opacity-50 group-data-[active=true]:opacity-50" />
             {/* Ícone */}
             <span className="pointer-events-none relative z-10 transition-all delay-0 duration-500 group-hover:scale-0 group-data-[active=true]:scale-0">
-              <span className="text-xl text-gray-500 [&>svg]:h-5 [&>svg]:w-5">{icon}</span>
+              <span className="text-xl text-[var(--p-label-2)] [&>svg]:h-5 [&>svg]:w-5">{icon}</span>
             </span>
             {/* Título */}
             <span className="pointer-events-none absolute scale-0 text-[13px] font-semibold uppercase tracking-wide text-white transition-all delay-150 duration-500 group-hover:scale-100 group-data-[active=true]:scale-100">
