@@ -334,6 +334,23 @@ function MeuPortal() {
     return () => obs.disconnect();
   }, [dados]);
 
+  // O dock mostra só o que existe na página. Antes ele listava "Plano" mesmo para
+  // quem não tem plano, e o toque não levava a lugar nenhum (16/09/2026).
+  //
+  // Este useMemo precisa ficar ANTES do `if (!sessao)` lá embaixo: com ele
+  // depois, a tela de login rodava um hook a menos que a tela cheia, e o React
+  // derrubava a página inteira ao entrar (erro #310).
+  const secoesVisiveis = useMemo(
+    () =>
+      SECOES.filter((secao) => {
+        if (secao.id === "plano") return Boolean(dados?.plano);
+        if (secao.id === "documentos") return Boolean(dados?.documentos.length);
+        if (secao.id === "evolucao") return Boolean(dados);
+        return true;
+      }),
+    [dados],
+  );
+
   const marcos: MarcoDoPlano[] = useMemo(() => {
     if (!dados?.plano) return [];
     const deal = { id: dados.plano.dealId, closedAt: dados.plano.closedAt, programPhaseEnteredAt: dados.plano.programPhaseEnteredAt ?? undefined, updatedAt: dados.plano.updatedAt, createdAt: dados.plano.createdAt, programMilestonesDone: dados.plano.marcosFeitos } as unknown as CrmDeal;
@@ -347,19 +364,6 @@ function MeuPortal() {
   const trilha = dados?.plano ? trilhaDoPlano(marcos, dados.plano.inicio, hoje) : null;
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
-  // O dock mostra só o que existe na página. Antes ele listava "Plano" mesmo para
-  // quem não tem plano, e o toque não levava a lugar nenhum (16/09/2026).
-  const secoesVisiveis = useMemo(
-    () =>
-      SECOES.filter((secao) => {
-        if (secao.id === "plano") return Boolean(trilha && dados?.plano);
-        if (secao.id === "documentos") return Boolean(dados?.documentos.length);
-        if (secao.id === "evolucao") return Boolean(dados);
-        return true;
-      }),
-    [trilha, dados],
-  );
-
   function irPara(id: string) {
     setSecaoAtiva(id);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
