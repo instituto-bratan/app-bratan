@@ -8,7 +8,9 @@
 import { corpo, db, json, telefoneE164 } from "../_shared/integracoes.ts";
 
 const TOKEN_DIAS = 7; // o link vale uma semana (fica no histórico do WhatsApp)
-const SESSAO_DIAS = 30;
+const SESSAO_DIAS = 90; // 16/09/2026: o portal é do paciente, não uma visita
+const MAX_TENTATIVAS = 5;
+const BLOQUEIO_MIN = 15;
 
 async function sha256(texto: string) {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
@@ -20,9 +22,21 @@ function tokenAleatorio() {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 const agora = () => new Date().toISOString();
+
+/** A senha nunca é gravada: só o hash dela com um sal por acesso. */
+async function hashDaSenha(senha: string, sal: string) {
+  return await sha256(`${sal}:${senha}`);
+}
+/** Aceita e-mail ou telefone e devolve sempre a mesma forma, para o login casar. */
+function normalizarLogin(valor: string) {
+  const limpo = valor.trim().toLowerCase();
+  if (limpo.includes("@")) return limpo;
+  const digitos = limpo.replace(/\D/g, "");
+  return digitos.length >= 10 ? digitos.slice(-11) : limpo;
+}
 const somaDias = (dias: number) => new Date(Date.now() + dias * 86_400_000).toISOString();
 
-type Entrada = { acao: "entrar" | "dados" | "pesagem" | "responder_consulta" | "sair"; token?: string; sessao?: string; pesoKg?: number; cinturaCm?: number; observacao?: string; consultaId?: string; origem?: "AGENDA" | "MANUAL"; resposta?: "CONFIRMO" | "REMARCAR" };
+type Entrada = { acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair"; login?: string; senha?: string; token?: string; sessao?: string; pesoKg?: number; cinturaCm?: number; observacao?: string; consultaId?: string; origem?: "AGENDA" | "MANUAL"; resposta?: "CONFIRMO" | "REMARCAR" };
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
@@ -55,10 +69,56 @@ Deno.serve(async (request) => {
     return json({ ok: true, sessao, expiraEm: somaDias(SESSAO_DIAS) });
   }
 
+  // ---- entrar_senha: o paciente entra sozinho, quando quiser (16/09/2026) -----
+  if (entrada.acao === "entrar_senha") {
+    const login = normalizarLogin(String(entrada.login ?? ""));
+    const senha = String(entrada.senha ?? "");
+    if (!login || senha.length < 8) return json({ ok: false, error: "Confira o e-mail ou telefone e a senha (mínimo de 8 caracteres)." });
+    const { data: acesso } = await client.from("paciente_acesso").select("id, contact_ref, senha_hash, revogado_em, tentativas, bloqueado_ate").eq("login", login).is("revogado_em", null).maybeSingle();
+    if (!acesso || !acesso.senha_hash) {
+      await log(null, "ENTRADA_RECUSADA", { motivo: "login desconhecido" });
+      return json({ ok: false, error: "Não encontrei esse acesso. Se você ainda não criou uma senha, entre pelo link que a recepção mandou." });
+    }
+    if (acesso.bloqueado_ate && acesso.bloqueado_ate > agora()) {
+      await log(acesso.contact_ref, "ENTRADA_RECUSADA", { motivo: "bloqueado" });
+      return json({ ok: false, error: `Muitas tentativas. Tente de novo em ${BLOQUEIO_MIN} minutos ou peça um link novo para a recepção.` });
+    }
+    if (await hashDaSenha(senha, acesso.id) !== acesso.senha_hash) {
+      const tentativas = (acesso.tentativas ?? 0) + 1;
+      const bloqueia = tentativas >= MAX_TENTATIVAS;
+      await client.from("paciente_acesso").update({ tentativas: bloqueia ? 0 : tentativas, bloqueado_ate: bloqueia ? new Date(Date.now() + BLOQUEIO_MIN * 60_000).toISOString() : null }).eq("id", acesso.id);
+      await log(acesso.contact_ref, "ENTRADA_RECUSADA", { motivo: "senha errada", tentativas });
+      return json({ ok: false, error: bloqueia ? `Muitas tentativas. Tente de novo em ${BLOQUEIO_MIN} minutos.` : "Senha incorreta." });
+    }
+    const sessao = tokenAleatorio();
+    const { error } = await client.from("paciente_acesso").update({ sessao_hash: await sha256(sessao), sessao_expira_em: somaDias(SESSAO_DIAS), ultimo_acesso_em: agora(), aparelho, tentativas: 0, bloqueado_ate: null }).eq("id", acesso.id);
+    if (error) return json({ ok: false, error: "Não consegui abrir a sessão agora. Tente de novo." });
+    await log(acesso.contact_ref, "ENTRADA_SENHA");
+    return json({ ok: true, sessao, expiraEm: somaDias(SESSAO_DIAS) });
+  }
+
+  // ---- criar_senha: quem já está dentro deixa de depender do link ------------
+  if (entrada.acao === "criar_senha") {
+    const sessaoAtual = String(entrada.sessao ?? "").trim();
+    if (!/^[0-9a-f]{64}$/.test(sessaoAtual)) return json({ ok: false, sessaoInvalida: true, error: "Sessão inválida." });
+    const { data: acesso } = await client.from("paciente_acesso").select("id, contact_ref, sessao_expira_em, revogado_em").eq("sessao_hash", await sha256(sessaoAtual)).maybeSingle();
+    if (!acesso || acesso.revogado_em || (acesso.sessao_expira_em ?? "") < agora()) return json({ ok: false, sessaoInvalida: true, error: "Sessão expirada." });
+    const login = normalizarLogin(String(entrada.login ?? ""));
+    const senha = String(entrada.senha ?? "");
+    if (!login || login.length < 6) return json({ ok: false, error: "Informe o seu e-mail ou o seu celular com DDD." });
+    if (senha.length < 8) return json({ ok: false, error: "A senha precisa de pelo menos 8 caracteres." });
+    const { data: jaUsado } = await client.from("paciente_acesso").select("id").eq("login", login).is("revogado_em", null).neq("id", acesso.id).maybeSingle();
+    if (jaUsado) return json({ ok: false, error: "Esse e-mail ou telefone já está em uso. Fale com a recepção." });
+    const { error } = await client.from("paciente_acesso").update({ login, senha_hash: await hashDaSenha(senha, acesso.id), senha_criada_em: agora(), tentativas: 0, bloqueado_ate: null }).eq("id", acesso.id);
+    if (error) return json({ ok: false, error: "Não consegui guardar a senha agora. Tente de novo." });
+    await log(acesso.contact_ref, "SENHA_CRIADA");
+    return json({ ok: true, login });
+  }
+
   // ---- demais ações exigem sessão válida ---------------------------------------
   const sessao = String(entrada.sessao ?? "").trim();
   if (!/^[0-9a-f]{64}$/.test(sessao)) return json({ ok: false, sessaoInvalida: true, error: "Sessão inválida." });
-  const { data: acesso } = await client.from("paciente_acesso").select("id, contact_ref, sessao_expira_em, revogado_em").eq("sessao_hash", await sha256(sessao)).maybeSingle();
+  const { data: acesso } = await client.from("paciente_acesso").select("id, contact_ref, sessao_expira_em, revogado_em, senha_hash, login").eq("sessao_hash", await sha256(sessao)).maybeSingle();
   if (!acesso || acesso.revogado_em || !acesso.sessao_expira_em || acesso.sessao_expira_em < agora()) return json({ ok: false, sessaoInvalida: true, error: "Sua sessão venceu. Abra o link de novo ou peça outro para a recepção." });
   const contactRef = acesso.contact_ref as string;
   await client.from("paciente_acesso").update({ ultimo_acesso_em: agora() }).eq("id", acesso.id);
@@ -170,7 +230,7 @@ Deno.serve(async (request) => {
   return json({
     ok: true,
     dados: {
-      paciente: { nome, primeiroNome: nome.split(/\s+/)[0] || "paciente", contactRef },
+      paciente: { nome, primeiroNome: nome.split(/\s+/)[0] || "paciente", contactRef, temSenha: Boolean(acesso.senha_hash), login: acesso.login ?? null },
       plano,
       consultas,
       medicoes: ((medicoes.data ?? []) as Record<string, unknown>[]).map((m) => ({ id: m.id, dia: m.dia, pesoKg: m.peso_kg === null ? null : Number(m.peso_kg), gorduraPct: m.gordura_pct === null ? null : Number(m.gordura_pct), massaMagraKg: m.massa_magra_kg === null ? null : Number(m.massa_magra_kg), cinturaCm: m.cintura_cm === null ? null : Number(m.cintura_cm), origem: m.origem })),

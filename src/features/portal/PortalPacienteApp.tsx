@@ -6,7 +6,7 @@
 // A navegação é um dock flutuante (gradient-menu do 21st.dev) que abre a seção
 // visível e leva às outras com um toque. O carregamento usa o loading-state do
 // 21st.dev. Entra por link mágico; tudo vem da função portal-paciente.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import { Activity, CalendarDays, Check, ChevronRight, FileText, Route as RouteIcon, Scale } from "lucide-react";
 import GradientMenu, { type GradientMenuItem } from "@/components/ui/gradient-menu";
@@ -19,7 +19,7 @@ import bratanMark from "@/assets/bratan-mark.png";
 import "./portal.css";
 import { CurvaEsperando, CurvaEvolucao } from "./CurvaEvolucao";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
-import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, emPrevia, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
+import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
 import { brl, brlCentavos, diaCurto, diaMes, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, saudacao, trilhaDoPlano, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
@@ -155,18 +155,72 @@ function EntrarPage() {
   );
 }
 
-// ---- Sem sessão -----------------------------------------------------------------
-function SemSessao() {
+// ---- Sem sessão: entrar com o próprio login --------------------------------------
+// Até 16/09/2026 o paciente só entrava pelo link, que vencia em uma semana. Agora
+// ele cria uma senha no primeiro acesso e entra quando quiser, do aparelho que
+// quiser. O link continua existindo para o primeiro acesso e para quem esquecer.
+function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
+  const [login, setLogin] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [entrando, setEntrando] = useState(false);
+
+  async function entrar(e: FormEvent) {
+    e.preventDefault();
+    setErro("");
+    setEntrando(true);
+    try {
+      const r = await entrarComSenha(login, senha);
+      if (!r.ok || !r.sessao) {
+        setErro(r.error ?? "Não consegui entrar agora.");
+        return;
+      }
+      guardarSessao(r.sessao);
+      aoEntrar(r.sessao);
+    } finally {
+      setEntrando(false);
+    }
+  }
+
   return (
     <div className="portal">
       <div className="p-entrar">
         <div className="p-card p-anim">
           <img src={bratanMark} alt="" style={{ width: 56, height: 56, borderRadius: 14 }} />
-          <h1 className="t-title2">Este é o seu espaço no Instituto Bratan</h1>
+          <h1 className="t-title2">Seu espaço no Instituto Bratan</h1>
           <p className="t-body t-2">Próxima consulta, sua evolução, seu plano e a pesagem da semana, num lugar só.</p>
-          <p className="t-foot t-3">Para entrar, abra o link que a recepção mandou no seu WhatsApp. Não tem senha para decorar.</p>
+          <form className="p-form" onSubmit={entrar}>
+            <label className="p-rotulo" htmlFor="portal-login">E-mail ou celular</label>
+            <input
+              id="portal-login"
+              className="p-entrada"
+              type="text"
+              inputMode="email"
+              autoComplete="username"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
+              placeholder="voce@email.com"
+            />
+            <label className="p-rotulo" htmlFor="portal-senha">Senha</label>
+            <input
+              id="portal-senha"
+              className="p-entrada"
+              type="password"
+              autoComplete="current-password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              placeholder="a senha que você criou"
+            />
+            {erro ? <p className="t-foot" style={{ color: "var(--p-bad)" }}>{erro}</p> : null}
+            <button type="submit" className="p-btn full" disabled={entrando || !login.trim() || senha.length < 8}>
+              {entrando ? "Entrando" : "Entrar"}
+            </button>
+          </form>
+          <p className="t-foot t-3">
+            Primeira vez por aqui, ou esqueceu a senha? Abra o link que a recepção mandou no seu WhatsApp — lá dentro você cria a sua senha.
+          </p>
           {ambienteSemSupabase ? (
-            <Link to="/meu/entrar" className="p-btn full">
+            <Link to="/meu/entrar" className="p-btn plain">
               Ver com dados de exemplo
             </Link>
           ) : null}
@@ -181,17 +235,41 @@ function MeuPortal() {
   useIdentidadeDoPortal();
   const navigate = useNavigate();
   const hoje = todayISO();
-  const [sessao] = useState(() => lerSessao());
+  const [sessao, setSessao] = useState(() => lerSessao());
   const previa = emPrevia(sessao);
   const [dados, setDados] = useState<PortalDados | null>(null);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [peso, setPeso] = useState("");
+  // CRIAR SENHA (16/09/2026): quem entrou pelo link deixa de depender dele.
+  const [senhaAberta, setSenhaAberta] = useState(false);
+  const [novoLogin, setNovoLogin] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [salvandoSenha, setSalvandoSenha] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [respondendo, setRespondendo] = useState(false);
   const [secaoAtiva, setSecaoAtiva] = useState("consulta");
   const [barraCompacta, setBarraCompacta] = useState(false);
   const tituloRef = useRef<HTMLHeadingElement>(null);
+
+  async function salvarSenha(e: FormEvent) {
+    e.preventDefault();
+    if (!sessao) return;
+    setSalvandoSenha(true);
+    try {
+      const r = await criarSenhaDoPortal(sessao, novoLogin, novaSenha);
+      if (!r.ok) {
+        toast(r.error ?? "Não consegui guardar a senha.", { tom: "erro" });
+        return;
+      }
+      toast("Pronto. Agora você entra por aqui quando quiser, com esse e-mail e a sua senha.", { tom: "ok", duracaoMs: 7000 });
+      setSenhaAberta(false);
+      setNovaSenha("");
+      await recarregar();
+    } finally {
+      setSalvandoSenha(false);
+    }
+  }
 
   const recarregar = useCallback(async () => {
     if (!sessao) return;
@@ -259,7 +337,7 @@ function MeuPortal() {
     return buildMilestones(deal, hoje).map((m) => ({ key: m.key, type: m.type, n: m.n, total: m.total, label: m.label, expectedDate: m.expectedDate, done: m.done, overdue: m.overdue }));
   }, [dados, hoje]);
 
-  if (!sessao) return <SemSessao />;
+  if (!sessao) return <SemSessao aoEntrar={(nova) => { setSessao(nova); void recarregar(); }} />;
   const proxima = dados ? proximaConsulta(dados.consultas, marcos, hoje) : null;
   const evolucao = dados ? resumoEvolucao(dados.medicoes, hoje) : null;
   const financeiro = dados ? resumoFinanceiro(dados.comandas, dados.parcelasAbertas, hoje) : null;
@@ -625,6 +703,36 @@ function MeuPortal() {
                 )}
               </div>
             </section>
+
+            {/* SENHA PRÓPRIA (16/09/2026): enquanto o paciente não tem, o portal
+                oferece criar — é o que tira a dependência do link de 7 dias. */}
+            {!previa && dados.paciente.temSenha === false ? (
+              <section className="p-sec p-anim">
+                <span className="t-sec">Entrar quando quiser</span>
+                <div className="p-card">
+                  {senhaAberta ? (
+                    <form className="p-form" onSubmit={salvarSenha}>
+                      <label className="p-rotulo" htmlFor="novo-login">Seu e-mail ou celular</label>
+                      <input id="novo-login" className="p-entrada" type="text" inputMode="email" autoComplete="username" value={novoLogin} onChange={(e) => setNovoLogin(e.target.value)} placeholder="voce@email.com" />
+                      <label className="p-rotulo" htmlFor="nova-senha">Crie uma senha</label>
+                      <input id="nova-senha" className="p-entrada" type="password" autoComplete="new-password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="pelo menos 8 caracteres" />
+                      <div className="p-botoes">
+                        <button type="submit" className="p-btn full" disabled={salvandoSenha || !novoLogin.trim() || novaSenha.length < 8}>
+                          {salvandoSenha ? "Guardando" : "Guardar e usar daqui em diante"}
+                        </button>
+                        <button type="button" className="p-btn plain" onClick={() => setSenhaAberta(false)}>Agora não</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <p className="t-headline">Crie uma senha e não dependa mais do link.</p>
+                      <p className="t-sub t-2">Com e-mail e senha você abre o seu espaço de qualquer aparelho, na hora que quiser.</p>
+                      <button type="button" className="p-btn tonal" onClick={() => setSenhaAberta(true)}>Criar minha senha</button>
+                    </>
+                  )}
+                </div>
+              </section>
+            ) : null}
 
             <footer className="p-rodape p-anim">
               {dados.consentimentos.some((c) => c.aceito) ? <p className="t-foot t-3">Você autorizou: {dados.consentimentos.filter((c) => c.aceito).map((c) => CONSENT_LABEL[c.tipo] ?? c.tipo.toLowerCase()).join(", ")}.</p> : null}

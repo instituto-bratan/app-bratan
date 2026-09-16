@@ -212,6 +212,15 @@
   .portal .p-dock ul { gap: 4px; }
 }
 
+
+/* ---- formulário de entrada (login do paciente, 16/09/2026) ---- */
+.portal .p-form { display: grid; gap: 8px; width: 100%; text-align: left; }
+.portal .p-rotulo { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--p-label-2); padding-left: 2px; }
+.portal .p-entrada { width: 100%; min-height: 50px; font: inherit; font-size: 17px; background: var(--p-card-2); border: 1.5px solid transparent; border-radius: 14px; padding: 0 16px; color: var(--p-label); transition: border-color .2s var(--p-ease), background-color .2s var(--p-ease); }
+.portal .p-entrada::placeholder { color: var(--p-label-3); }
+.portal .p-entrada:focus { outline: none; border-color: color-mix(in oklab, var(--p-tint) 55%, transparent); background: var(--p-card); }
+.portal .p-form .p-btn { margin-top: 6px; }
+
 /* ---- estados ---- */
 .portal .p-entrar { min-height: 100dvh; display: grid; place-items: center; padding: 24px 20px; }
 .portal .p-entrar .p-card { max-width: 24rem; width: 100%; justify-items: center; text-align: center; padding: 28px 22px; gap: 12px; }

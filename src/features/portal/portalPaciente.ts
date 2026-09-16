@@ -54,7 +54,7 @@ export type PortalPlano = {
 };
 
 export type PortalDados = {
-  paciente: { nome: string; primeiroNome: string; contactRef: string };
+  paciente: { nome: string; primeiroNome: string; contactRef: string; temSenha?: boolean; login?: string | null };
   plano: PortalPlano | null;
   consultas: PortalConsulta[];
   medicoes: PortalMedicao[];

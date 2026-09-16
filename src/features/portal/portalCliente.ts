@@ -49,6 +49,14 @@ async function chamar<T>(body: Record<string, unknown>): Promise<Resposta<T>> {
 export async function entrarComToken(token: string) {
   return chamar<{ sessao?: string; expiraEm?: string }>({ acao: "entrar", token });
 }
+/** Entrar com o login que o próprio paciente criou (16/09/2026). */
+export async function entrarComSenha(login: string, senha: string) {
+  return chamar<{ sessao?: string; expiraEm?: string }>({ acao: "entrar_senha", login, senha });
+}
+/** Criar (ou trocar) a senha de quem já está dentro pelo link. */
+export async function criarSenhaDoPortal(sessao: string, login: string, senha: string) {
+  return chamar<{ login?: string }>({ acao: "criar_senha", sessao, login, senha });
+}
 export async function carregarDados(sessao: string) {
   return chamar<{ dados?: PortalDados }>({ acao: "dados", sessao });
 }
