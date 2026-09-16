@@ -4,66 +4,92 @@
 // próprio InBody), arrasta o arquivo aqui e confere antes de salvar. O que o app
 // não conseguir casar com um paciente do CRM fica visível — nada entra calado.
 //
+// DUAS SITUAÇÕES, A MESMA TELA (pedido do Lucas, 16/09): a PRIMEIRA importação
+// traz o histórico inteiro — dezenas de pessoas, várias datas cada uma. As
+// seguintes serão de uma pessoa só. Por isso a conferência é agrupada POR
+// PACIENTE: com muita gente cabe na tela, com uma pessoa vira uma linha.
+//
+// O bloco fica fechado enquanto ninguém precisa dele, para não empurrar a tela
+// de Acompanhamento para baixo.
+//
 // O motor é puro e mora em inbodyImport.ts; esta tela só mostra e confirma.
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Scale, Upload } from "lucide-react";
+import { ChevronDown, Scale, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "@/components/ui/avisos";
 import { cn } from "@/lib/utils";
 import { lerLinhasDeCsv, lerLinhasDeXlsx } from "@/lib/planilhaLeitor";
 import { createRemotePacienteMedicoesEmLote, listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
-import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesInBody, type Casamento, type Contato } from "./inbodyImport";
+import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesInBody, resumoPorPaciente, type Casamento, type Contato } from "./inbodyImport";
 
-/** Um ano para trás: é o que o aparelho costuma guardar e o que a curva usa. */
-function umAnoAtras() {
+/** Cinco anos para trás: a primeira importação traz o histórico inteiro do aparelho. */
+function historicoTodo() {
   const data = new Date();
-  data.setFullYear(data.getFullYear() - 1);
+  data.setFullYear(data.getFullYear() - 5);
   return data.toISOString().slice(0, 10);
 }
+
+/** O Supabase recusa um insert gigante — o arquivo entra em blocos. */
+const TAMANHO_DO_BLOCO = 200;
+
+const diaBR = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(2, 4)}`;
 
 export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Contato[]; pessoaId: string | null; ativo: boolean }) {
   const queryClient = useQueryClient();
   const entradaRef = useRef<HTMLInputElement>(null);
+  const [aberto, setAberto] = useState(false);
   const [arrastando, setArrastando] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [arquivoNome, setArquivoNome] = useState("");
   const [casamento, setCasamento] = useState<Casamento | null>(null);
   const [problemas, setProblemas] = useState<{ linha: number; motivo: string }[]>([]);
 
-  const medicoesQuery = useQuery({
-    queryKey: ["paciente-medicoes-ano"],
-    queryFn: () => listRemotePacienteMedicoesDesde(umAnoAtras()),
-    enabled: ativo,
+  // O histórico serve para saber o que JÁ está no app — é ele que faz reimportar o
+  // mesmo arquivo não duplicar nada. Fica pré-carregado ao abrir o bloco, mas quem
+  // manda é o `fetchQuery` na hora de ler: se a lista ainda não tiver chegado, a
+  // leitura espera, em vez de passar batido e gravar em dobro.
+  const chaveDoHistorico = ["paciente-medicoes-historico"];
+  useQuery({
+    queryKey: chaveDoHistorico,
+    queryFn: () => listRemotePacienteMedicoesDesde(historicoTodo()),
+    enabled: ativo && aberto,
     staleTime: 60_000,
   });
 
   const salvar = useMutation({
-    mutationFn: async (prontas: NonNullable<Casamento>["prontas"]) =>
-      createRemotePacienteMedicoesEmLote(
-        prontas.map((item) => ({
-          contactRef: item.contactRef,
-          dia: item.medicao.dia,
-          pesoKg: item.medicao.pesoKg,
-          gorduraPct: item.medicao.gorduraPct,
-          massaMagraKg: item.medicao.massaMagraKg,
-          cinturaCm: item.medicao.cinturaCm,
-          observacao: `InBody · ${arquivoNome}`,
-        })),
-        pessoaId,
-      ),
+    mutationFn: async (prontas: Casamento["prontas"]) => {
+      const entradas = prontas.map((item) => ({
+        contactRef: item.contactRef,
+        dia: item.medicao.dia,
+        pesoKg: item.medicao.pesoKg,
+        gorduraPct: item.medicao.gorduraPct,
+        massaMagraKg: item.medicao.massaMagraKg,
+        cinturaCm: item.medicao.cinturaCm,
+        observacao: `InBody · ${arquivoNome}`,
+      }));
+      let salvas = 0;
+      for (let i = 0; i < entradas.length; i += TAMANHO_DO_BLOCO) {
+        salvas += await createRemotePacienteMedicoesEmLote(entradas.slice(i, i + TAMANHO_DO_BLOCO), pessoaId);
+      }
+      return salvas;
+    },
     onSuccess: (quantas) => {
       toast(`${quantas} ${quantas === 1 ? "medição entrou" : "medições entraram"} na ficha dos pacientes.`, { tom: "ok" });
-      setCasamento(null);
-      setProblemas([]);
-      setArquivoNome("");
-      void queryClient.invalidateQueries({ queryKey: ["paciente-medicoes-ano"] });
+      limpar();
+      void queryClient.invalidateQueries({ queryKey: chaveDoHistorico });
+      void queryClient.invalidateQueries({ queryKey: ["pesagens-desde"] });
       void queryClient.invalidateQueries({ queryKey: ["portal-medicoes"] });
     },
     onError: (erro: unknown) => toast(`Não deu para salvar: ${erro instanceof Error ? erro.message : "erro desconhecido"}`, { tom: "erro", duracaoMs: 7000 }),
   });
+
+  function limpar() {
+    setCasamento(null);
+    setProblemas([]);
+    setArquivoNome("");
+  }
 
   async function lerArquivo(arquivo: File) {
     setLendo(true);
@@ -71,7 +97,12 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
       const ehXlsx = /\.xlsx$/i.test(arquivo.name);
       const linhas = ehXlsx ? await lerLinhasDeXlsx(await arquivo.arrayBuffer()) : lerLinhasDeCsv(await arquivo.text());
       const leitura = lerMedicoesInBody(linhas);
-      const jaRegistradas = (medicoesQuery.data ?? []).map((registro) => ({ contactRef: registro.contactRef, dia: registro.dia }));
+      const historico = await queryClient.fetchQuery({
+        queryKey: chaveDoHistorico,
+        queryFn: () => listRemotePacienteMedicoesDesde(historicoTodo()),
+        staleTime: 60_000,
+      });
+      const jaRegistradas = historico.map((registro) => ({ contactRef: registro.contactRef, dia: registro.dia }));
       setArquivoNome(arquivo.name);
       setProblemas(leitura.problemas);
       setCasamento(casarMedicoesComContatos(leitura.medicoes, contatos, jaRegistradas));
@@ -82,134 +113,143 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
     }
   }
 
+  const porPaciente = casamento ? resumoPorPaciente(casamento.prontas) : [];
+
   return (
-    <Card className="border-brand-oliva/20">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Scale className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-          Bioimpedância da InBody
+    <section className="rounded-lg border border-brand-oliva/20 bg-white/60 backdrop-blur-xl">
+      {/* O InfoTip é um <button>: não pode ficar DENTRO do botão que abre o bloco
+          (HTML inválido, e o clique na dúvida acabava abrindo/fechando a seção).
+          Por isso a faixa é uma div, e quem abre é o botão do título. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+        <span className="flex flex-wrap items-center gap-2">
+          <Scale className="h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
+          <button type="button" onClick={() => setAberto((atual) => !atual)} className="text-left text-sm font-bold text-brand-musgo hover:underline">
+            Bioimpedância da InBody
+          </button>
+          <span className="text-xs text-muted-foreground">
+            {casamento ? fraseDaImportacao(casamento) : "Suba a planilha do aparelho — de um paciente ou de todos de uma vez."}
+          </span>
           <InfoTip title="De onde vem o arquivo">
-            No computador da enfermagem, o Lookin'Body exporta os exames em Excel. No aparelho, dá para gravar o mesmo arquivo em um pendrive. Qualquer um dos dois serve — e reimportar o mesmo arquivo não duplica nada.
+            No computador da enfermagem, o Lookin'Body exporta os exames em Excel. No aparelho, dá para gravar o mesmo arquivo em um pendrive. Qualquer um dos dois serve — e reimportar não duplica nada, porque a chave é paciente + dia.
           </InfoTip>
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Arraste a planilha exportada do aparelho. O app lê peso, gordura, massa magra e cintura, casa com o paciente pelo nome e mostra tudo antes de salvar.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div
-          onDragOver={(evento) => {
-            evento.preventDefault();
-            setArrastando(true);
-          }}
-          onDragLeave={() => setArrastando(false)}
-          onDrop={(evento) => {
-            evento.preventDefault();
-            setArrastando(false);
-            const arquivo = evento.dataTransfer.files?.[0];
-            if (arquivo) void lerArquivo(arquivo);
-          }}
-          className={cn(
-            "flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition-colors",
-            arrastando ? "border-brand-musgo bg-brand-creme/50" : "border-brand-oliva/30 bg-white/60",
-          )}
+        </span>
+        <button
+          type="button"
+          onClick={() => setAberto((atual) => !atual)}
+          aria-label={aberto ? "Esconder a importação da bioimpedância" : "Abrir a importação da bioimpedância"}
+          className="ios-pressable rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60"
         >
-          <Upload className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-          <p className="text-brand-tinta">{lendo ? "Lendo o arquivo…" : arquivoNome || "Solte aqui o .xlsx ou .csv da InBody"}</p>
-          <input
-            ref={entradaRef}
-            type="file"
-            accept=".xlsx,.csv,.txt"
-            className="hidden"
-            onChange={(evento) => {
-              const arquivo = evento.target.files?.[0];
-              if (arquivo) void lerArquivo(arquivo);
-              evento.target.value = "";
+          <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", aberto && "rotate-180")} aria-hidden="true" />
+        </button>
+      </div>
+
+      {aberto ? (
+        <div className="space-y-3 border-t border-brand-oliva/15 p-4 pt-3">
+          <div
+            onDragOver={(evento) => {
+              evento.preventDefault();
+              setArrastando(true);
             }}
-          />
-          <Button type="button" size="sm" variant="outline" disabled={lendo || !ativo} onClick={() => entradaRef.current?.click()}>
-            Escolher arquivo
-          </Button>
-          {!ativo ? <p className="text-xs text-muted-foreground">Entre com a sua conta para importar.</p> : null}
-        </div>
-
-        {casamento ? (
-          <div className="space-y-3 rounded-lg border border-brand-oliva/20 bg-brand-papel/40 p-3 text-sm">
-            <p className="font-semibold text-brand-musgo">{fraseDaImportacao(casamento)}</p>
-
-            {casamento.prontas.length ? (
-              <ul className="max-h-48 space-y-1 overflow-y-auto">
-                {casamento.prontas.map((item) => (
-                  <li key={`${item.contactRef}-${item.medicao.dia}`} className="flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-white/70 px-2.5 py-1.5">
-                    <span className="text-brand-tinta">
-                      <strong>{item.contatoNome}</strong> · {item.medicao.dia.slice(8, 10)}/{item.medicao.dia.slice(5, 7)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {item.medicao.pesoKg !== null ? `${item.medicao.pesoKg} kg` : "sem peso"}
-                      {item.medicao.gorduraPct !== null ? ` · ${item.medicao.gorduraPct}% de gordura` : ""}
-                      {item.medicao.massaMagraKg !== null ? ` · ${item.medicao.massaMagraKg} kg de massa magra` : ""}
-                      {item.medicao.cinturaCm !== null ? ` · cintura ${item.medicao.cinturaCm} cm` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            {casamento.semDono.length ? (
-              <div>
-                <p className="font-semibold text-amber-800">Sem paciente no CRM</p>
-                <p className="text-xs text-muted-foreground">
-                  Cadastre a pessoa (ou confira o nome no aparelho) e importe de novo: {casamento.semDono.map((medicao) => medicao.nome).join(", ")}.
-                </p>
-              </div>
-            ) : null}
-
-            {casamento.ambiguas.length ? (
-              <div>
-                <p className="font-semibold text-amber-800">Mais de um paciente com o mesmo nome</p>
-                <p className="text-xs text-muted-foreground">
-                  Estes precisam ser lançados na ficha do paciente certo, um por um: {casamento.ambiguas.map((item) => item.medicao.nome).join(", ")}.
-                </p>
-              </div>
-            ) : null}
-
-            {problemas.length ? (
-              <div>
-                <p className="font-semibold text-red-800">Linhas que não deu para ler</p>
-                <ul className="text-xs text-muted-foreground">
-                  {problemas.slice(0, 5).map((problema) => (
-                    <li key={problema.linha}>Linha {problema.linha}: {problema.motivo}</li>
-                  ))}
-                  {problemas.length > 5 ? <li>e mais {problemas.length - 5}.</li> : null}
-                </ul>
-              </div>
-            ) : null}
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={!casamento.prontas.length || salvar.isPending}
-                onClick={() => void salvar.mutateAsync(casamento.prontas)}
-              >
-                {salvar.isPending ? "Salvando…" : `Salvar ${casamento.prontas.length} ${casamento.prontas.length === 1 ? "medição" : "medições"}`}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setCasamento(null);
-                  setProblemas([]);
-                  setArquivoNome("");
-                }}
-              >
-                Cancelar
-              </Button>
-            </div>
+            onDragLeave={() => setArrastando(false)}
+            onDrop={(evento) => {
+              evento.preventDefault();
+              setArrastando(false);
+              const arquivo = evento.dataTransfer.files?.[0];
+              if (arquivo) void lerArquivo(arquivo);
+            }}
+            className={cn(
+              "flex flex-wrap items-center justify-center gap-3 rounded-lg border-2 border-dashed px-4 py-4 text-center text-sm transition-colors",
+              arrastando ? "border-brand-musgo bg-brand-creme/50" : "border-brand-oliva/30 bg-white/60",
+            )}
+          >
+            <Upload className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
+            <span className="text-brand-tinta">{lendo ? "Lendo o arquivo…" : arquivoNome || "Solte aqui o .xlsx ou .csv da InBody"}</span>
+            <input
+              ref={entradaRef}
+              type="file"
+              accept=".xlsx,.csv,.txt"
+              className="hidden"
+              onChange={(evento) => {
+                const arquivo = evento.target.files?.[0];
+                if (arquivo) void lerArquivo(arquivo);
+                evento.target.value = "";
+              }}
+            />
+            <Button type="button" size="sm" variant="outline" disabled={lendo || !ativo} onClick={() => entradaRef.current?.click()}>
+              Escolher arquivo
+            </Button>
+            {!ativo ? <span className="text-xs text-muted-foreground">Entre com a sua conta para importar.</span> : null}
           </div>
-        ) : null}
-      </CardContent>
-    </Card>
+
+          {casamento ? (
+            <div className="space-y-3 rounded-lg border border-brand-oliva/20 bg-brand-papel/40 p-3 text-sm">
+              <p className="font-semibold text-brand-musgo">{fraseDaImportacao(casamento)}</p>
+
+              {porPaciente.length ? (
+                <ul className="max-h-60 space-y-1 overflow-y-auto pr-1">
+                  {porPaciente.map((paciente) => (
+                    <li key={paciente.contactRef} className="flex flex-wrap items-baseline justify-between gap-x-3 rounded-md bg-white/70 px-2.5 py-1.5">
+                      <strong className="text-brand-tinta">{paciente.contatoNome}</strong>
+                      <span className="text-xs text-muted-foreground">
+                        {paciente.quantas === 1
+                          ? `1 medição em ${diaBR(paciente.primeiroDia)}`
+                          : `${paciente.quantas} medições, de ${diaBR(paciente.primeiroDia)} a ${diaBR(paciente.ultimoDia)}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {casamento.semDono.length ? (
+                <details>
+                  <summary className="cursor-pointer font-semibold text-amber-800">
+                    {casamento.semDono.length} {casamento.semDono.length === 1 ? "nome sem paciente no CRM" : "nomes sem paciente no CRM"}
+                  </summary>
+                  <p className="mt-1 max-h-24 overflow-y-auto text-xs text-muted-foreground">
+                    Cadastre a pessoa (ou confira o nome no aparelho) e importe de novo: {[...new Set(casamento.semDono.map((medicao) => medicao.nome))].join(", ")}.
+                  </p>
+                </details>
+              ) : null}
+
+              {casamento.ambiguas.length ? (
+                <details>
+                  <summary className="cursor-pointer font-semibold text-amber-800">
+                    {casamento.ambiguas.length} {casamento.ambiguas.length === 1 ? "medição com mais de um paciente do mesmo nome" : "medições com mais de um paciente do mesmo nome"}
+                  </summary>
+                  <p className="mt-1 max-h-24 overflow-y-auto text-xs text-muted-foreground">
+                    Estas precisam ser lançadas na ficha do paciente certo, uma por uma: {[...new Set(casamento.ambiguas.map((item) => item.medicao.nome))].join(", ")}.
+                  </p>
+                </details>
+              ) : null}
+
+              {problemas.length ? (
+                <details>
+                  <summary className="cursor-pointer font-semibold text-red-800">
+                    {problemas.length} {problemas.length === 1 ? "linha que não deu para ler" : "linhas que não deram para ler"}
+                  </summary>
+                  <ul className="mt-1 max-h-24 overflow-y-auto text-xs text-muted-foreground">
+                    {problemas.slice(0, 20).map((problema) => (
+                      <li key={problema.linha}>Linha {problema.linha}: {problema.motivo}</li>
+                    ))}
+                    {problemas.length > 20 ? <li>e mais {problemas.length - 20}.</li> : null}
+                  </ul>
+                </details>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" disabled={!casamento.prontas.length || salvar.isPending} onClick={() => void salvar.mutateAsync(casamento.prontas)}>
+                  {salvar.isPending
+                    ? "Salvando…"
+                    : `Salvar ${casamento.prontas.length} ${casamento.prontas.length === 1 ? "medição" : "medições"}`}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={limpar}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }

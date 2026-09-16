@@ -120,11 +120,15 @@ html.dark {
 
 /* as faixas de estado: mesma leitura (verde = bom, âmbar = atenção, vermelho = erro),
    agora como um fundo escuro tingido, com o texto clareado para caber no contraste. */
-.dark [class*="bg-emerald-50"], .dark [class*="bg-green-50"] { background-color: #14331F; }
-.dark [class*="bg-amber-50"], .dark [class*="bg-yellow-50"] { background-color: #33290A; }
-.dark [class*="bg-red-50"], .dark [class*="bg-rose-50"] { background-color: #3A1A16; }
-.dark [class*="bg-blue-50"], .dark [class*="bg-sky-50"] { background-color: #12283A; }
-.dark [class*="bg-violet-50"], .dark [class*="bg-purple-50"] { background-color: #241E3A; }
+/* ARMADILHA (achada em 16/09/2026): `[class*="bg-emerald-50"]` casa por SUBSTRING,
+   então pegava também bg-emerald-500 — e todo ponto/selo de cor cheia virava a
+   faixa pálida do escuro, sumindo no fundo. Aqui só entram a classe exata e a
+   versão com opacidade (bg-emerald-50/70), nunca o tom 500. */
+.dark .bg-emerald-50, .dark [class*="bg-emerald-50/"], .dark .bg-green-50, .dark [class*="bg-green-50/"] { background-color: #14331F; }
+.dark .bg-amber-50, .dark [class*="bg-amber-50/"], .dark .bg-yellow-50, .dark [class*="bg-yellow-50/"] { background-color: #33290A; }
+.dark .bg-red-50, .dark [class*="bg-red-50/"], .dark .bg-rose-50, .dark [class*="bg-rose-50/"] { background-color: #3A1A16; }
+.dark .bg-blue-50, .dark [class*="bg-blue-50/"], .dark .bg-sky-50, .dark [class*="bg-sky-50/"] { background-color: #12283A; }
+.dark .bg-violet-50, .dark [class*="bg-violet-50/"], .dark .bg-purple-50, .dark [class*="bg-purple-50/"] { background-color: #241E3A; }
 .dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900, .dark .text-green-700, .dark .text-green-800 { color: #5FD98A; }
 .dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900, .dark .text-yellow-800 { color: #FFC94D; }
 .dark .text-red-700, .dark .text-red-800, .dark .text-red-900, .dark .text-rose-700 { color: #FF8A80; }
@@ -347,7 +351,15 @@ h3 {
     flex-shrink: 0;
   }
 
-  .mobile-app-shell :where(h1, h2, h3, h4, p, label, a) {
+  /* Título quebra entre palavras, nunca no meio de uma: `anywhere` partia
+     "Acompanhamento" em "Acompanhame / nto" (16/09/2026). Em parágrafo, link e
+     rótulo o `anywhere` continua, porque lá aparecem e-mail, URL e código que
+     não têm onde quebrar e empurrariam a tela para o lado. */
+  .mobile-app-shell :where(h1, h2, h3, h4) {
+    overflow-wrap: break-word;
+  }
+
+  .mobile-app-shell :where(p, label, a) {
     overflow-wrap: anywhere;
   }
 
@@ -426,14 +438,19 @@ h3 {
     -webkit-backdrop-filter: blur(14px) saturate(1.14);
   }
 
-  h1[class*="text-4xl"],
-  h1[class*="text-5xl"] {
+  /* ARMADILHA, a mesma das faixas de cor (16/09/2026): `[class*="text-4xl"]`
+     casa por SUBSTRING, então pegava também `sm:text-4xl` — e todo título que
+     só cresce no desktop era inflado no celular, com `anywhere` quebrando a
+     palavra no meio ("Acompanhame / nto"). Aqui entra só a classe sem prefixo,
+     que é a que de fato vale nesta largura; e a quebra passa a ser por palavra. */
+  h1.text-4xl,
+  h1.text-5xl {
     font-size: 2.35rem;
     line-height: 1.05;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
 
-  h3[class*="text-xl"] {
+  h3.text-xl {
     line-height: 1.15;
   }
 

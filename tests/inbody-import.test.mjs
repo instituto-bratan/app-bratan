@@ -121,3 +121,59 @@ test("o resumo é frase, não número solto", () => {
   assert.match(frase, /1 medição pronta para salvar/);
   assert.match(frase, /sem paciente no CRM/);
 });
+
+// ---- A primeira importação: o histórico inteiro, com várias datas por pessoa ----
+const historicoCompleto = [
+  ["ID", "Name", "Test Date / Time", "Weight", "PBF", "FFM"],
+  ["1", "Ana Souza", "12/03/2026", "88,0", "41,0", "51,9"],
+  ["1", "Ana Souza", "12/06/2026", "85,1", "39,8", "51,2"],
+  ["1", "Ana Souza", "12/09/2026", "82,4", "38,2", "50,9"],
+  ["2", "Bruno Lima", "12/06/2026", "108,2", "33,1", "72,4"],
+  ["2", "Bruno Lima", "12/09/2026", "104,8", "31,4", "71,9"],
+];
+const doisPacientes = [
+  { id: "c-ana", name: "Ana Souza" },
+  { id: "c-bruno", name: "Bruno Lima" },
+];
+
+test("arquivo com várias pessoas e várias datas entra inteiro", () => {
+  const { medicoes, problemas } = mod.lerMedicoesInBody(historicoCompleto);
+  assert.equal(medicoes.length, 5);
+  assert.equal(problemas.length, 0);
+  const casamento = mod.casarMedicoesComContatos(medicoes, doisPacientes, []);
+  assert.equal(casamento.prontas.length, 5, "as três da Ana e as duas do Bruno");
+});
+
+test("a conferência agrupa por paciente, com o período de cada um", () => {
+  const { medicoes } = mod.lerMedicoesInBody(historicoCompleto);
+  const casamento = mod.casarMedicoesComContatos(medicoes, doisPacientes, []);
+  const resumo = mod.resumoPorPaciente(casamento.prontas);
+  assert.equal(resumo.length, 2, "duas linhas, não cinco");
+  assert.equal(resumo[0].contatoNome, "Ana Souza", "em ordem alfabética");
+  assert.equal(resumo[0].quantas, 3);
+  assert.equal(resumo[0].primeiroDia, "2026-03-12");
+  assert.equal(resumo[0].ultimoDia, "2026-09-12");
+  assert.equal(resumo[1].quantas, 2);
+});
+
+test("importação seguinte, de uma pessoa só, vira uma linha", () => {
+  const { medicoes } = mod.lerMedicoesInBody([
+    ["Name", "Test Date", "Weight"],
+    ["Bruno Lima", "12/12/2026", "101,0"],
+  ]);
+  const casamento = mod.casarMedicoesComContatos(medicoes, doisPacientes, []);
+  const resumo = mod.resumoPorPaciente(casamento.prontas);
+  assert.equal(resumo.length, 1);
+  assert.equal(resumo[0].quantas, 1);
+  assert.equal(resumo[0].primeiroDia, resumo[0].ultimoDia, "uma medição só: começo e fim no mesmo dia");
+});
+
+test("subir o histórico de novo depois da primeira vez não repete ninguém", () => {
+  const { medicoes } = mod.lerMedicoesInBody(historicoCompleto);
+  const primeiraVez = mod.casarMedicoesComContatos(medicoes, doisPacientes, []);
+  const jaNoApp = primeiraVez.prontas.map((item) => ({ contactRef: item.contactRef, dia: item.medicao.dia }));
+  const segundaVez = mod.casarMedicoesComContatos(medicoes, doisPacientes, jaNoApp);
+  assert.equal(segundaVez.prontas.length, 0);
+  assert.equal(segundaVez.repetidas.length, 5);
+  assert.equal(mod.resumoPorPaciente(segundaVez.prontas).length, 0);
+});

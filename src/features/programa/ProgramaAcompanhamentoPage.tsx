@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Scale, Stethoscope, UserPlus, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Scale, Stethoscope, UserPlus, XCircle } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,16 +64,22 @@ function formatBR(dateISO: string) {
   return dateISO ? dateISO.slice(0, 10).split("-").reverse().join("/") : "—";
 }
 
+// Contador de marcos em uma linha só. Antes era um bloco de duas linhas com
+// rótulo em cima; com 3 deles por paciente, cada cartão ganhava 60 px de altura
+// sem dizer mais nada (16/09/2026: "tá muito grande, você rola infinitamente").
 function ProgressPill({ label, done, total, icon: Icon }: { label: string; done: number; total: number; icon: typeof HeartPulse }) {
   const complete = done >= total;
   return (
-    <div className={cn("flex items-center gap-2 rounded-lg border px-3 py-2", complete ? "border-emerald-300 bg-emerald-50/70" : "border-brand-oliva/16 bg-white/70")}>
-      <Icon className={cn("h-4 w-4 shrink-0", complete ? "text-emerald-700" : "text-brand-oliva")} aria-hidden="true" />
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase leading-tight text-brand-oliva">{label}</p>
-        <p className={cn("text-sm font-bold leading-tight", complete ? "text-emerald-700" : "text-brand-tinta")}>{done}/{total}</p>
-      </div>
-    </div>
+    <span
+      title={`${label}: ${done} de ${total}`}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-bold leading-tight",
+        complete ? "border-emerald-300 bg-emerald-50/70 text-emerald-700" : "border-brand-oliva/16 bg-white/70 text-brand-tinta",
+      )}
+    >
+      <Icon className={cn("h-3 w-3 shrink-0", complete ? "text-emerald-700" : "text-brand-oliva")} aria-hidden="true" />
+      {done}/{total}
+    </span>
   );
 }
 
@@ -108,6 +114,10 @@ export function ProgramaAcompanhamentoPage() {
   // acompanhamento de tratamento de quem está no programa.
   const [canalFiltro, setCanalFiltro] = useState<CanalFiltro>("TODOS");
   const [conferenciaAberta, setConferenciaAberta] = useState(false);
+  // Os dois blocos de nomes ficam fechados: a frase-resumo já diz se precisa
+  // abrir, e abertos eles empurravam a lista de pacientes para fora da tela.
+  const [pesagemAberta, setPesagemAberta] = useState(false);
+  const [naoFecharamAberto, setNaoFecharamAberto] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [days, setDays] = useState(7);
   const [enrollOpen, setEnrollOpen] = useState(false);
@@ -248,6 +258,11 @@ export function ProgramaAcompanhamentoPage() {
           </div>
         </motion.section>
 
+        {/* A bioimpedância fica no alto porque é o que a enfermagem vem fazer aqui
+            depois de rodar o aparelho (pedido do Lucas, 16/09/2026). Fechado, é
+            uma linha; aberto, é a área de soltar o arquivo. */}
+        <ImportarInBodyCard contatos={state.contacts.map((contato) => ({ id: contato.id, name: contato.fullName }))} pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
+
         {copyFeedback ? (
           <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
@@ -327,9 +342,12 @@ export function ProgramaAcompanhamentoPage() {
         {/* PESAGEM DA SEMANA (16/09/2026): a enfermagem vê o que chegou pelo portal e
             quem precisa ser cobrado. Quem passa de 2 semanas sem pesar já pesa no
             semáforo de adesão do cartão, então esta lista e o semáforo contam a mesma história. */}
-        <section className="rounded-lg border border-brand-oliva/20 bg-white/60 p-4 backdrop-blur-xl">
+        <section className="rounded-lg border border-brand-oliva/20 bg-white/60 px-4 py-2.5 backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-sm font-bold text-brand-musgo">
+              <button type="button" onClick={() => setPesagemAberta((atual) => !atual)} className="ios-pressable -ml-0.5 rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60" aria-label={pesagemAberta ? "Esconder quem pesou" : "Ver quem pesou"}>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", pesagemAberta && "rotate-180")} aria-hidden="true" />
+              </button>
               <Scale className="h-4 w-4" aria-hidden="true" />
               Pesagem da semana
               <InfoTip title="De onde vem esta lista">
@@ -367,7 +385,7 @@ export function ProgramaAcompanhamentoPage() {
             <p className="mt-3 text-xs text-red-700">Não consegui ler as pesagens agora. O resto da tela continua valendo.</p>
           ) : null}
 
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <div className={cn("mt-3 grid gap-3 lg:grid-cols-2", !pesagemAberta && "hidden")}>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
               <p className="text-[11px] font-bold uppercase text-emerald-800">Mandaram nesta semana ({pesagens.mandaram.length})</p>
               {pesagens.mandaram.length ? (
@@ -480,7 +498,11 @@ export function ProgramaAcompanhamentoPage() {
         ) : null}
 
         {filtered.length ? (
-          <div className="grid gap-4">
+          <div className="overflow-hidden rounded-lg border border-brand-oliva/20 bg-white/60 backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-brand-oliva/15 px-3 py-1.5 text-[11px] font-semibold uppercase text-brand-oliva">
+              <span>{filtered.length} {filtered.length === 1 ? "paciente" : "pacientes"} no plano</span>
+              <span className="hidden sm:inline">check · bio · dr. · próximo passo</span>
+            </div>
             {filtered.map((card) => (
               <PatientCard key={card.dealId} card={card} onToggle={(key) => toggle(card.dealId, key)} onResgate={(c) => { void persist((current) => criarTarefaDeResgatePorRisco(current, c.dealId, c.risco.motivos, pessoa?.id ?? "coordenacao", hoje)); setCopyFeedback(`Tarefa de resgate criada para ${c.patientName} (enfermagem liga hoje).`); }} />
             ))}
@@ -495,13 +517,15 @@ export function ProgramaAcompanhamentoPage() {
           </Card>
         )}
 
-        <ImportarInBodyCard contatos={state.contacts.map((contato) => ({ id: contato.id, name: contato.fullName }))} pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
         <ListaEsperaCard pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
         {/* Não fecharam na semana — a lista que vai para a Assistente de Performance */}
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className={cn(naoFecharamAberto ? "pb-3" : "pb-4")}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <button type="button" onClick={() => setNaoFecharamAberto((atual) => !atual)} className="ios-pressable -ml-0.5 rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60" aria-label={naoFecharamAberto ? "Esconder quem não fechou" : "Ver quem não fechou"}>
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", naoFecharamAberto && "rotate-180")} aria-hidden="true" />
+                </button>
                 <XCircle className="h-5 w-5 text-red-600" aria-hidden="true" />
                 Não fecharam ({notClosed.length})
               </CardTitle>
@@ -523,7 +547,7 @@ export function ProgramaAcompanhamentoPage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className={cn("space-y-2", !naoFecharamAberto && "hidden")}>
             {notClosed.length === 0 ? (
               <p className="text-sm text-muted-foreground">Ninguém em aberto de não-fechamento nesse período. 🎉</p>
             ) : (
@@ -684,85 +708,105 @@ function EnrollPanel({
   );
 }
 
-const tomRisco = { VERDE: "bg-emerald-100 text-emerald-800", AMARELO: "bg-amber-100 text-amber-900", VERMELHO: "bg-red-100 text-red-800" } as const;
+const corDoRisco = { VERDE: "bg-emerald-500", AMARELO: "bg-amber-500", VERMELHO: "bg-red-600" } as const;
 
+// UMA LINHA POR PACIENTE (16/09/2026). Era um cartão de ~200 px: título, frase do
+// semáforo, mês, três blocos de progresso e a faixa do próximo passo. Com a
+// clínica inteira no plano, a tela virava rolagem sem fim. Agora cabe tudo em
+// uma linha — nome, fase, semáforo, contadores e o próximo passo — e o detalhe
+// (marcos para marcar, data de adesão, motivo do semáforo) abre no toque.
 function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; onToggle: (key: string) => void; onResgate?: (card: ProgramPatientCard) => void }) {
   const [open, setOpen] = useState(false);
   const next = card.nextMilestone;
 
   return (
-    <Card className={cn("border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur", card.overdueCount > 0 && "border-red-200")}>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-lg leading-tight">
-              <Link to={`/crm/contatos/${card.contactId}`} className="hover:underline">{card.patientName}</Link>
-              {card.channel ? <Badge variant="gold">{channelShort[card.channel]}</Badge> : null}
-              <Badge variant="muted">{card.phaseLabel}</Badge>
-              {card.overdueCount > 0 ? <Badge className="bg-red-100 text-red-800">{card.overdueCount} atrasado(s)</Badge> : null}
-              <Badge className={tomRisco[card.risco.nivel]} title={card.risco.frase}>
-                semáforo {card.risco.nivel.toLowerCase()}
-              </Badge>
-            </CardTitle>
-            {card.risco.nivel !== "VERDE" ? (
-              <p className={cn("mt-1 text-xs", card.risco.nivel === "VERMELHO" ? "text-red-800" : "text-amber-900")}>
-                {card.risco.frase}
-                {card.risco.nivel === "VERMELHO" && onResgate ? (
-                  <button type="button" className="ml-2 font-semibold underline underline-offset-2" onClick={() => onResgate(card)}>
-                    criar tarefa de resgate (ligar hoje)
-                  </button>
-                ) : null}
-              </p>
-            ) : null}
-            <p className="mt-1 text-xs text-muted-foreground">Mês {card.monthOfProgram}/6 · adesão {formatBR(card.startedAt)}</p>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <ProgressPill label="Checkpoints" done={card.checksDone} total={6} icon={ClipboardCheck} />
-            <ProgressPill label="Bioimped." done={card.biosDone} total={6} icon={HeartPulse} />
-            <ProgressPill label="Consultas Dr." done={card.medicoDone} total={3} icon={Stethoscope} />
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-brand-papel/60 px-3 py-2.5">
-          {next ? (
-            <p className="text-sm">
-              <span className="font-semibold text-brand-musgo">Próximo:</span>{" "}
-              <span className="font-semibold text-brand-tinta">{next.label}</span>
-              {" — previsto "}
-              <span className={cn("font-semibold", next.overdue ? "text-red-700" : "text-brand-tinta")}>{formatBR(next.expectedDate)}</span>
-              {next.overdue ? <span className="ml-1 font-bold text-red-700">(atrasado)</span> : null}
-              <span className="ml-1 text-xs text-muted-foreground">· {milestoneResponsible[next.type]}</span>
-            </p>
-          ) : (
-            <p className="text-sm font-semibold text-emerald-700">Caminhada completa — pronto para o encerramento (renovação, manutenção ou alta).</p>
-          )}
-          <Button type="button" variant="ghost" size="sm" onClick={() => setOpen((value) => !value)}>
-            {open ? "Esconder marcos" : "Ver todos os marcos"}
-          </Button>
-        </div>
+    <div className={cn("border-b border-brand-oliva/12 last:border-b-0", card.overdueCount > 0 && "bg-red-50/40")}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-label={open ? `Esconder os marcos de ${card.patientName}` : `Ver os marcos de ${card.patientName}`}
+          className="ios-pressable shrink-0 rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60"
+        >
+          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
+        </button>
 
-        {open ? (
-          <div className="mt-3 grid gap-2">
-            {(["CHECK", "BIO", "MEDICO"] as const).map((type) => (
-              <div key={type} className="flex flex-wrap items-center gap-1.5">
-                <span className="w-52 shrink-0 text-xs font-semibold uppercase text-brand-oliva">
-                  {milestoneTypeLabels[type]} <span className="font-normal normal-case text-muted-foreground">· {milestoneResponsible[type]}</span>
-                </span>
-                {card.milestones
-                  .filter((milestone) => milestone.type === type)
-                  .sort((a, b) => a.n - b.n)
-                  .map((milestone) => (
-                    <MilestoneChip key={milestone.key} milestone={milestone} onToggle={() => onToggle(milestone.key)} />
-                  ))}
-              </div>
-            ))}
-            <p className="text-[11px] leading-4 text-muted-foreground">
-              Cada setor marca o que faz (toque para marcar/desfazer). Datas previstas contam da adesão; a agenda oficial fica no Feegow.
-            </p>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+        <span
+          title={card.risco.frase}
+          className={cn("h-2.5 w-2.5 shrink-0 rounded-full", corDoRisco[card.risco.nivel])}
+          aria-label={`Semáforo ${card.risco.nivel.toLowerCase()}`}
+        />
+
+        <Link
+          to={`/crm/contatos/${card.contactId}`}
+          className="min-w-[8rem] flex-1 truncate text-sm font-semibold text-brand-tinta hover:underline"
+          title={`Mês ${card.monthOfProgram}/6 · adesão ${formatBR(card.startedAt)}`}
+        >
+          {card.patientName}
+        </Link>
+
+        <span className="hidden shrink-0 text-[11px] font-semibold uppercase text-brand-oliva sm:inline">
+          {card.channel ? `${channelShort[card.channel]} · ` : ""}
+          {card.phaseLabel}
+        </span>
+
+        <span className="flex shrink-0 items-center gap-1">
+          <ProgressPill label="Checkpoints" done={card.checksDone} total={6} icon={ClipboardCheck} />
+          <ProgressPill label="Bioimpedâncias" done={card.biosDone} total={6} icon={HeartPulse} />
+          <ProgressPill label="Consultas com o Dr." done={card.medicoDone} total={3} icon={Stethoscope} />
+        </span>
+
+        <span className="min-w-[10rem] flex-1 text-xs sm:text-right">
+          {next ? (
+            <>
+              <span className="text-muted-foreground">{next.label} · </span>
+              <span className={cn("font-semibold", next.overdue ? "text-red-700" : "text-brand-tinta")}>
+                {formatBR(next.expectedDate)}
+                {next.overdue ? " (atrasado)" : ""}
+              </span>
+            </>
+          ) : (
+            <span className="font-semibold text-emerald-700">Caminhada completa</span>
+          )}
+        </span>
+      </div>
+
+      {card.risco.nivel === "VERMELHO" ? (
+        <p className="flex flex-wrap items-center gap-x-2 px-3 pb-2 text-xs text-red-800">
+          {card.risco.frase}
+          {onResgate ? (
+            <button type="button" className="font-semibold underline underline-offset-2" onClick={() => onResgate(card)}>
+              criar tarefa de resgate (ligar hoje)
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+
+      {open ? (
+        <div className="grid gap-2 border-t border-brand-oliva/10 bg-brand-papel/40 px-3 py-2.5">
+          <p className="text-xs text-muted-foreground">
+            Mês {card.monthOfProgram}/6 · adesão {formatBR(card.startedAt)}
+            {card.channel ? ` · ${channelShort[card.channel]}` : ""} · {card.phaseLabel}
+            {card.risco.nivel === "AMARELO" ? ` · ${card.risco.frase}` : ""}
+          </p>
+          {(["CHECK", "BIO", "MEDICO"] as const).map((type) => (
+            <div key={type} className="flex flex-wrap items-center gap-1.5">
+              <span className="w-52 shrink-0 text-xs font-semibold uppercase text-brand-oliva">
+                {milestoneTypeLabels[type]} <span className="font-normal normal-case text-muted-foreground">· {milestoneResponsible[type]}</span>
+              </span>
+              {card.milestones
+                .filter((milestone) => milestone.type === type)
+                .sort((a, b) => a.n - b.n)
+                .map((milestone) => (
+                  <MilestoneChip key={milestone.key} milestone={milestone} onToggle={() => onToggle(milestone.key)} />
+                ))}
+            </div>
+          ))}
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            Cada setor marca o que faz (toque para marcar/desfazer). Datas previstas contam da adesão; a agenda oficial fica no Feegow.
+          </p>
+        </div>
+      ) : null}
+    </div>
   );
 }

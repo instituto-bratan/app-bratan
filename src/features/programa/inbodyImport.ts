@@ -236,6 +236,32 @@ export function casarMedicoesComContatos(
   return resultado;
 }
 
+export type ResumoDePaciente = { contactRef: string; contatoNome: string; quantas: number; primeiroDia: string; ultimoDia: string };
+
+/**
+ * Agrupa por paciente para a conferência caber na tela.
+ *
+ * A primeira importação traz o histórico INTEIRO do aparelho: dezenas de pessoas
+ * com várias datas cada uma. Listar medição por medição viraria uma rolagem sem
+ * fim; por paciente, cada pessoa ocupa uma linha ("Ana Souza · 6 medições, de
+ * 12/03 a 12/09"). Nas importações seguintes, que costumam ser de uma pessoa só,
+ * a mesma lista mostra uma linha — e continua certa.
+ */
+export function resumoPorPaciente(prontas: Casamento["prontas"]): ResumoDePaciente[] {
+  const porPaciente = new Map<string, ResumoDePaciente>();
+  for (const item of prontas) {
+    const atual = porPaciente.get(item.contactRef);
+    if (!atual) {
+      porPaciente.set(item.contactRef, { contactRef: item.contactRef, contatoNome: item.contatoNome, quantas: 1, primeiroDia: item.medicao.dia, ultimoDia: item.medicao.dia });
+      continue;
+    }
+    atual.quantas += 1;
+    if (item.medicao.dia < atual.primeiroDia) atual.primeiroDia = item.medicao.dia;
+    if (item.medicao.dia > atual.ultimoDia) atual.ultimoDia = item.medicao.dia;
+  }
+  return [...porPaciente.values()].sort((a, b) => a.contatoNome.localeCompare(b.contatoNome, "pt-BR"));
+}
+
 /** Frase do resumo — número derivado nunca aparece sozinho. */
 export function fraseDaImportacao(casamento: Casamento) {
   const partes = [`${casamento.prontas.length} ${casamento.prontas.length === 1 ? "medição pronta para salvar" : "medições prontas para salvar"}`];
