@@ -35,6 +35,7 @@ import { diasEntre } from "./recebiveisRede";
 import { extrairTextoArquivo } from "./pdfTexto";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
+import { ControleDensidade, TabelaRolavel, cabecalhoGrudado, rodapeGrudado, useDensidade } from "@/components/ui/tabela-densa";
 import {
   buildProvisionExpenses,
   buildProvisionPlan,
@@ -239,6 +240,8 @@ export function FinanceiroContasPage() {
     pago: monthExpenses.filter((expense) => expense.paidAt).reduce((sum, expense) => sum + expense.amount, 0),
   }), [monthExpenses]);
 
+  // Espaçamento das linhas, lembrado por pessoa (proposta 4.5).
+  const { densidade, escolher: escolherDensidade, celula } = useDensidade("contas");
   const filtroAtivo = categoryFilter !== "todas" || Boolean(buscaConta.trim()) || statusFilter !== "todas";
   const nomeDoFiltro = useMemo(() => {
     if (categoryFilter === "todas") return "";
@@ -1051,6 +1054,10 @@ export function FinanceiroContasPage() {
               ) : null}
             </div>
 
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+              <ControleDensidade densidade={densidade} onEscolher={escolherDensidade} />
+            </div>
+
             {filtroAtivo ? (
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-brand-dourado/35 bg-brand-creme/30 px-3 py-2 text-xs">
                 <span className="font-bold text-brand-tinta">
@@ -1084,9 +1091,9 @@ export function FinanceiroContasPage() {
             ) : null}
           </CardHeader>
           <CardContent>
-            <div className="mobile-scrollbar-none overflow-x-auto">
+            <TabelaRolavel>
               <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="text-xs uppercase text-brand-oliva">
+                <thead className={cn("text-xs uppercase text-brand-oliva", cabecalhoGrudado)}>
                   <tr>
                     {readOnly ? null : (
                       <th className="w-8 px-2 py-2">
@@ -1119,7 +1126,7 @@ export function FinanceiroContasPage() {
                       return (
                         <tr key={expense.id} className={cn(overdue && "bg-red-50/60", selecionadas.has(expense.id) && "bg-brand-creme/50")}>
                           {readOnly ? null : (
-                            <td className="px-2 py-2.5">
+                            <td className={cn("px-2", celula)}>
                               {!expense.paidAt && !isProvisaoExpense(expense, financeiro.categories) ? (
                                 <input
                                   type="checkbox"
@@ -1131,11 +1138,11 @@ export function FinanceiroContasPage() {
                               ) : null}
                             </td>
                           )}
-                          <td className="px-3 py-2.5 whitespace-nowrap">
+                          <td className={cn("px-3 whitespace-nowrap", celula)}>
                             {expense.dueDate.split("-").reverse().join("/")}
                             {overdue ? <span className="block text-[11px] font-semibold text-red-700">há {diasEntre(expense.dueDate, now)} dia(s)</span> : null}
                           </td>
-                          <td className="px-3 py-2.5">
+                          <td className={cn("px-3", celula)}>
                             <div className="flex flex-wrap items-center gap-1.5 font-semibold text-brand-tinta">
                               <span>
                                 {expense.description}
@@ -1209,10 +1216,39 @@ export function FinanceiroContasPage() {
                               </p>
                             ) : null}
                           </td>
-                          <td className="px-3 py-2.5 text-xs">{category?.name ?? expense.categoryRef}{expense.isCapex ? <Badge className="ml-1.5 bg-brand-creme text-brand-tinta">CAPEX</Badge> : null}</td>
-                          <td className="px-3 py-2.5 text-xs">{expense.method ? paymentMethodLabels[expense.method] : "—"}</td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-brand-musgo">{moneyFin(expense.amount)}</td>
-                          <td className="whitespace-nowrap px-3 py-2.5">
+                          <td className={cn("px-3 text-xs", celula)}>
+                            {readOnly ? (
+                              <>{category?.name ?? expense.categoryRef}</>
+                            ) : (
+                              // EDIÇÃO NA CÉLULA (16/09/2026, proposta 4.5): trocar a categoria errada
+                              // sem abrir o formulário. É o campo que manda a conta para o grupo da P12.
+                              <select
+                                value={expense.categoryRef}
+                                aria-label={`Categoria P12 de ${expense.description}`}
+                                className="max-w-[15rem] rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs text-brand-tinta transition hover:border-brand-oliva/40 focus:border-brand-musgo focus:bg-white"
+                                onChange={(event) => {
+                                  const novaRef = event.target.value;
+                                  if (novaRef === expense.categoryRef) return;
+                                  const anterior = expense.categoryRef;
+                                  const nomeNovo = categoryById.get(novaRef)?.name ?? novaRef;
+                                  financeiro.updateExpense({ ...expense, categoryRef: novaRef });
+                                  avisar(`"${expense.description}" agora está em ${nomeNovo}.`, () =>
+                                    financeiro.updateExpense({ ...expense, categoryRef: anterior }),
+                                  );
+                                }}
+                              >
+                                {financeiro.categories.map((opcao) => (
+                                  <option key={opcao.id} value={opcao.id}>
+                                    {opcao.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {expense.isCapex ? <Badge className="ml-1.5 bg-brand-creme text-brand-tinta">CAPEX</Badge> : null}
+                          </td>
+                          <td className={cn("px-3 text-xs", celula)}>{expense.method ? paymentMethodLabels[expense.method] : "—"}</td>
+                          <td className={cn("whitespace-nowrap px-3 text-right font-semibold tabular-nums text-brand-musgo", celula)}>{moneyFin(expense.amount)}</td>
+                          <td className={cn("whitespace-nowrap px-3", celula)}>
                             {isProvisaoExpense(expense, financeiro.categories) ? (
                               // Reserva para VÁRIOS impostos/encargos — sai junto com o
                               // pagamento deles, então não se marca como paga.
@@ -1233,7 +1269,7 @@ export function FinanceiroContasPage() {
                           </td>
                           {/* NOTA FISCAL DO FORNECEDOR (12/08/2026): anexar aqui manda o
                               arquivo para a pasta do SharePoint, igual ao comprovante. */}
-                          <td className="px-3 py-2.5">
+                          <td className={cn("px-3", celula)}>
                             <NotaDaContaCell
                               expense={expense}
                               notas={notasDaContas}
@@ -1242,7 +1278,7 @@ export function FinanceiroContasPage() {
                               habilitado={usaRemoto}
                             />
                           </td>
-                          <td className="whitespace-nowrap px-3 py-2.5">
+                          <td className={cn("whitespace-nowrap px-3", celula)}>
                             {readOnly ? null : (
                               <>
                                 <Button type="button" variant="ghost" size="icon" aria-label={`Editar ${expense.description}`} onClick={() => startEditing(expense)}>
@@ -1277,8 +1313,19 @@ export function FinanceiroContasPage() {
                     </tr>
                   )}
                 </tbody>
+                {monthExpenses.length ? (
+                  <tfoot className={cn("text-sm", rodapeGrudado)}>
+                    <tr>
+                      <td colSpan={readOnly ? 4 : 5} className={cn("px-3 font-semibold text-brand-tinta", celula)}>
+                        {monthExpenses.length} conta{monthExpenses.length === 1 ? "" : "s"} na lista · a pagar {moneyFin(totaisFiltrados.aPagar)} · já pago {moneyFin(totaisFiltrados.pago)}
+                      </td>
+                      <td className={cn("px-3 text-right font-bold text-brand-musgo", celula)}>{moneyFin(totaisFiltrados.total)}</td>
+                      <td colSpan={3} className={cn("px-3", celula)} />
+                    </tr>
+                  </tfoot>
+                ) : null}
               </table>
-            </div>
+            </TabelaRolavel>
           </CardContent>
         </Card>
 

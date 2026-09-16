@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Upload,
@@ -506,8 +506,12 @@ export function CrmKanbanPage() {
   });
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
-  const [board, setBoard] = useState<KanbanBoard>(() => readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
-  const [section, setSection] = useState<KanbanSection>(() => readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
+  // A ABA E A SEÇÃO FICAM NO ENDEREÇO (16/09/2026, proposta 4.6): assim dá para
+  // mandar "olha a coluna do D5" por WhatsApp e voltar no mesmo lugar depois. O que
+  // está guardado no aparelho continua valendo como padrão de quem abre sem link.
+  const [params, setParams] = useSearchParams();
+  const [board, setBoard] = useState<KanbanBoard>(() => (params.get("quadro") as KanbanBoard) || readLocalValue<KanbanBoard>("app-bratan-kanban-board-v2", "programa"));
+  const [section, setSection] = useState<KanbanSection>(() => (params.get("secao") as KanbanSection) || readLocalValue<KanbanSection>("app-bratan-kanban-section", "all"));
   const [density, setDensity] = useState<KanbanDensity>(() => readLocalValue<KanbanDensity>(DENSIDADE_STORAGE_KEY, DENSIDADE_PADRAO));
   const [fullscreen, setFullscreen] = useState(false);
   const [selectedDealId, setSelectedDealId] = useState("");
@@ -725,6 +729,9 @@ export function CrmKanbanPage() {
   function changeBoard(next: KanbanBoard) {
     setBoard(next);
     writeLocalValue("app-bratan-kanban-board-v2", next);
+    const busca = new URLSearchParams(params);
+    busca.set("quadro", next);
+    setParams(busca, { replace: true });
   }
 
   function onProgramColumnDrop(event: DragEvent<HTMLElement>, phase: CrmProgramPhase) {
@@ -752,6 +759,10 @@ export function CrmKanbanPage() {
   function changeSection(next: KanbanSection) {
     setSection(next);
     writeLocalValue("app-bratan-kanban-section", next);
+    const busca = new URLSearchParams(params);
+    if (next === "all") busca.delete("secao");
+    else busca.set("secao", next);
+    setParams(busca, { replace: true });
   }
 
   function changeDensity(next: KanbanDensity) {
@@ -1491,6 +1502,14 @@ export function CrmKanbanPage() {
         return current;
       }
       setFeedback(moved.message);
+      // DESFAZER (16/09/2026, proposta 4.6): arrastar o cartão errado é fácil, e o
+      // movimento gera tarefas. O estado inteiro de antes volta com um toque.
+      const antes = current;
+      toast(`${contactDisplayName(state.contacts.find((c) => c.id === deal.contactId)) || deal.title} foi para ${dealStageLabels[stage]}.`, {
+        tom: "ok",
+        duracaoMs: 7000,
+        acao: { rotulo: "Desfazer", onClick: () => void persist(() => antes) },
+      });
       return moved.state;
     });
   }
