@@ -28,6 +28,7 @@ import {
   UsersRound,
   Utensils,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,9 +46,11 @@ import {
   canLancarDia,
   canLembretesPagamento,
   canSeeModule,
+  type ModuleKey,
   cargoGroup,
   cargoLabels,
 } from "@/lib/access";
+import type { Cargo } from "@/types/database";
 import { formatLongDate, formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { prefetchRoute } from "@/lib/routePreload";
 import { cn } from "@/lib/utils";
@@ -61,6 +64,7 @@ import {
   listRemoteChecklistItems,
   listRemoteFinExpenses,
   listRemoteFinInvoices,
+  listRemoteExpenseNotas,
   listRemoteFinPurchases,
   listRemoteFinReconciliations,
   listRemoteFinSales,
@@ -85,22 +89,26 @@ import { AvisosNoCelularCard } from "./AvisosNoCelularCard";
 import { buildProgramaBoard } from "@/features/programa/programaData";
 
 // ---- Atalhos (a segunda tela) ------------------------------------------------
-const modules = [
-  { title: "Tarefas do dia", href: "/tarefas", icon: CheckSquare, action: "Abrir checklist", allowed: canBaseModules },
-  { title: "Almoço", href: "/almoco", icon: Utensils, action: "Ver cobertura", allowed: canBaseModules },
-  { title: "Mural de avisos", href: "/mural", icon: Bell, action: "Abrir mural", allowed: canBaseModules },
-  { title: "Suas Estalecas", href: "/estalecas", icon: Coins, action: "Minha carteira", allowed: canBaseModules },
-  { title: "POPs & Fluxos", href: "/pops-fluxos", icon: FileText, action: "Biblioteca", allowed: canBaseModules },
-  { title: "Comprovantes", href: "/comprovantes", icon: ReceiptText, action: "Anexar", allowed: canComprovantes },
-  { title: "Minhas tarefas CRM", href: "/crm/minhas-tarefas", icon: ClipboardList, action: "Meus toques", allowed: canCrmBratan },
-  { title: "Kanban Comercial", href: "/crm/vendas", icon: Target, action: "Ver vendas", allowed: canCrmBratan },
-  { title: "Cadências", href: "/crm/cadencias", icon: MessageCircle, action: "Ver cadências", allowed: canCrmBratan },
-  { title: "Lançar Dia", href: "/financeiro/lancar-dia", icon: CircleDollarSign, action: "Comanda", allowed: canLancarDia },
-  { title: "Contas a Pagar", href: "/financeiro/contas", icon: ReceiptText, action: "Fila financeira", allowed: canFinanceiroView },
-  { title: "Lucro Inteligente", href: "/financeiro/lucro", icon: Wallet, action: "Envelopes", allowed: canLembretesPagamento },
-  { title: "Painel do Mês", href: "/financeiro/painel", icon: Goal, action: "Reunião", allowed: canFinanceiroView },
-  { title: "Lembretes de pagamento", href: "/lembretes-pagamento", icon: CalendarClock, action: "Ver lembretes", allowed: canLembretesPagamento },
-  { title: "Inteligência 360", href: "/inteligencia-360", icon: BrainCircuit, action: "Abrir 360", allowed: canInteligencia360 },
+// `module` é a chave de Administração → Acessos: quem tiver a tela ocultada lá
+// também não vê o atalho aqui. Sem chave, vale só a regra do cargo.
+type Atalho = { title: string; href: string; icon: LucideIcon; action: string; allowed: (cargo: Cargo | null | undefined) => boolean; module?: ModuleKey };
+
+const modules: Atalho[] = [
+  { title: "Tarefas do dia", href: "/tarefas", icon: CheckSquare, action: "Abrir checklist", allowed: canBaseModules, module: "hoje" },
+  { title: "Almoço", href: "/almoco", icon: Utensils, action: "Ver cobertura", allowed: canBaseModules, module: "hoje" },
+  { title: "Mural de avisos", href: "/mural", icon: Bell, action: "Abrir mural", allowed: canBaseModules, module: "hoje" },
+  { title: "Suas Estalecas", href: "/estalecas", icon: Coins, action: "Minha carteira", allowed: canBaseModules, module: "estalecas" },
+  { title: "POPs & Fluxos", href: "/pops-fluxos", icon: FileText, action: "Biblioteca", allowed: canBaseModules, module: "pops" },
+  { title: "Comprovantes", href: "/comprovantes", icon: ReceiptText, action: "Anexar", allowed: canComprovantes, module: "comprovantes" },
+  { title: "Minhas tarefas CRM", href: "/crm/minhas-tarefas", icon: ClipboardList, action: "Meus toques", allowed: canCrmBratan, module: "crm" },
+  { title: "Kanban Comercial", href: "/crm/vendas", icon: Target, action: "Ver vendas", allowed: canCrmBratan, module: "crm" },
+  { title: "Cadências", href: "/crm/cadencias", icon: MessageCircle, action: "Ver cadências", allowed: canCrmBratan, module: "crm" },
+  { title: "Lançar Dia", href: "/financeiro/lancar-dia", icon: CircleDollarSign, action: "Comanda", allowed: canLancarDia, module: "fin-lancar-dia" },
+  { title: "Contas a Pagar", href: "/financeiro/contas", icon: ReceiptText, action: "Fila financeira", allowed: canFinanceiroView, module: "fin-contas" },
+  { title: "Lucro Inteligente", href: "/financeiro/lucro", icon: Wallet, action: "Envelopes", allowed: canLembretesPagamento, module: "fin-lucro" },
+  { title: "Painel do Mês", href: "/financeiro/painel", icon: Goal, action: "Reunião", allowed: canFinanceiroView, module: "fin-gestao" },
+  { title: "Lembretes de pagamento", href: "/lembretes-pagamento", icon: CalendarClock, action: "Ver lembretes", allowed: canLembretesPagamento, module: "fin-contas" },
+  { title: "Inteligência 360", href: "/inteligencia-360", icon: BrainCircuit, action: "Abrir 360", allowed: canInteligencia360, module: "inteligencia360" },
   { title: "Colaboradores", href: "/administracao/colaboradores", icon: UsersRound, action: "Gerir equipe", allowed: canAdministracao },
   { title: "Segurança", href: "/administracao/seguranca", icon: ShieldCheck, action: "Ver segurança", allowed: canAdministracao },
   { title: "Auditoria", href: "/administracao/auditoria", icon: History, action: "Ver registros", allowed: canAdministracao },
@@ -179,8 +187,11 @@ export function HomePage() {
   }, [cargo, pagamentosQuery.data, useRemote]);
 
   const finExpensesQuery = useQuery({ queryKey: ["fin-expenses", ano], queryFn: () => listRemoteFinExpenses(ano), enabled: useRemote && veFinanceiro, staleTime: 60_000 });
-  const finSalesQuery = useQuery({ queryKey: ["home-fin-sales"], queryFn: () => listRemoteFinSales(ano), enabled: useRemote && (veFinanceiro || canLancarDia(cargo)), staleTime: 60_000 });
+  const finSalesQuery = useQuery({ queryKey: ["home-fin-sales", ano], queryFn: () => listRemoteFinSales(ano), enabled: useRemote && (veFinanceiro || canLancarDia(cargo)), staleTime: 60_000 });
   const finPurchasesQuery = useQuery({ queryKey: ["home-fin-purchases", ano], queryFn: () => listRemoteFinPurchases(ano), enabled: useRemote && veFinanceiro, staleTime: 60_000 });
+  // As notas já anexadas entram na mesma conta que a tela de Contas a Pagar faz.
+  // Sem elas, a Home dizia "3 sem boleto anexado" e a tela mostrava 0.
+  const notasDaContaQuery = useQuery({ queryKey: ["fin-expense-notas"], queryFn: listRemoteExpenseNotas, enabled: useRemote && veFinanceiro, staleTime: 30_000 });
   const finInvoicesQuery = useQuery({ queryKey: ["home-fin-invoices", ano], queryFn: () => listRemoteFinInvoices(ano), enabled: useRemote && financeiroCompleto, staleTime: 60_000 });
   const finRecQuery = useQuery({ queryKey: ["home-fin-reconciliations", ano], queryFn: () => listRemoteFinReconciliations(ano), enabled: useRemote && financeiroCompleto, staleTime: 60_000 });
   const lucroPublicoQuery = useQuery({ queryKey: ["fin-lucro-publico", mesAtual], queryFn: () => loadRemoteFinLucroPublico(mesAtual), enabled: useRemote, staleTime: 60_000 });
@@ -195,6 +206,7 @@ export function HomePage() {
       // Provisão é reserva, não conta a cobrar (10/08/2026).
       expenses: expenses.filter((expense) => !expense.categoryRef.startsWith("cat-poup-")),
       purchases: useRemote ? finPurchasesQuery.data ?? [] : [],
+      notasAnexadas: new Set((notasDaContaQuery.data ?? []).map((nota) => nota.expenseRef)),
       hoje,
     });
   }, [veFinanceiro, expenses, finPurchasesQuery.data, useRemote, hoje]);
@@ -334,9 +346,15 @@ export function HomePage() {
   const ocupacao = useMemo(() => (veFinanceiro ? buildOcupacaoMes({ sales, monthKey: mesAtual, hoje }) : null), [veFinanceiro, sales, mesAtual, hoje]);
 
   const atalhos = useMemo(() => {
-    const permitidos = new Map(modules.filter((module) => module.allowed(cargo)).map((module) => [module.href, module]));
+    // O atalho obedece à MESMA regra do menu (AppLayout.entryVisible): com chave
+    // de módulo vale o controle de Acessos — que pode esconder OU liberar a mais
+    // que o cargo; sem chave, vale o cargo. Antes daqui o atalho olhava só o
+    // cargo, então quem teve uma tela ocultada continuava entrando pela Home.
+    const permitidos = new Map(
+      modules.filter((module) => (module.module ? canSeeModule(pessoa, module.module) : module.allowed(cargo))).map((module) => [module.href, module]),
+    );
     return grupos.map((grupo) => ({ ...grupo, items: grupo.hrefs.map((href) => permitidos.get(href)).filter((item): item is (typeof modules)[number] => Boolean(item)) })).filter((grupo) => grupo.items.length);
-  }, [cargo]);
+  }, [cargo, pessoa]);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">

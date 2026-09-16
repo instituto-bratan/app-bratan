@@ -46,7 +46,9 @@ import { buildNpsResumo, npsFaixa, npsFaixaLabels } from "./npsData";
 import { findOrCreateCrmContact } from "@/features/crm/crmData";
 import { clusterPersonNames, extractPersonName, personNamesMatch } from "@/features/crm/nameMatch";
 import { useCrmState } from "@/features/crm/useCrmState";
-import { listRemoteInteligencia360State, listRemoteNpsRespostas, saveRemoteInteligencia360State } from "@/lib/remoteData";
+import { listRemoteComprovantes, listRemoteInteligencia360State, listRemoteNpsRespostas, listRemotePagamentos, saveRemoteInteligencia360State } from "@/lib/remoteData";
+import { mergePagamentoReceivables } from "@/features/pagamentos/pagamentosData";
+import { mergeComprovanteReceivables } from "@/features/comprovantes/comprovantesData";
 import { BarsWithLine, CalendarHeatGrid, Donut, RankBars, chartColors } from "@/components/charts/BratanCharts";
 import {
   buildCalendarHeat,
@@ -280,13 +282,31 @@ function useInteligenciaState() {
     },
   });
 
+  // Recebíveis 360 é alimentado pelos lembretes de pagamento e pelos comprovantes
+  // marcados com "Alimentar Recebíveis 360". Até 16/09/2026 essa junção só rodava
+  // em modo local (o submit remoto voltava antes), então quem estava logado nunca
+  // via nada aqui. Agora a junção acontece na leitura, que é onde ela vale para
+  // todo mundo — e, como os ids são derivados, repetir não duplica.
+  const pagamentosQuery = useQuery({ queryKey: ["360-pagamentos"], queryFn: listRemotePagamentos, enabled: useRemote, staleTime: 30_000 });
+  const comprovantesQuery = useQuery({
+    queryKey: ["360-comprovantes", pessoa?.cargo ?? ""],
+    queryFn: () => listRemoteComprovantes(pessoa!.cargo),
+    enabled: useRemote && Boolean(pessoa?.cargo),
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
     if (!remoteStateQuery.data) return;
     if (dirtyRef.current || saveRemoteMutation.isPending) return;
-    setState(remoteStateQuery.data);
-    saveInteligencia360State(remoteStateQuery.data);
+    const base = remoteStateQuery.data;
+    const comRecebiveis: Inteligencia360State = {
+      ...base,
+      receivables: mergeComprovanteReceivables(mergePagamentoReceivables(base.receivables, pagamentosQuery.data ?? []), comprovantesQuery.data ?? []),
+    };
+    setState(comRecebiveis);
+    saveInteligencia360State(comRecebiveis);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteStateQuery.dataUpdatedAt]);
+  }, [remoteStateQuery.dataUpdatedAt, pagamentosQuery.dataUpdatedAt, comprovantesQuery.dataUpdatedAt]);
 
   // Modo LOCAL (preview/offline): deriva do CRM no load, igual o remoto re-deriva
   // a cada fetch. Sem isto, abrir o 360 sem ter tocado no CRM mostrava um retrato

@@ -2,22 +2,53 @@
 // focus_nfse ligada. Emite, depois consulta até a prefeitura devolver o número —
 // que preenche o campo "Nº" do plano de notas. O CPF do tomador, se digitado,
 // vai só no pedido e não é guardado.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileCheck2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/avisos";
 import { integracaoLigada } from "@/lib/integracoes";
-import { invocarIntegracao } from "@/lib/remoteData";
+import { invocarIntegracao, listRemoteNfseDaComanda } from "@/lib/remoteData";
 
-type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; dados?: { numero?: string; url?: string; status?: string } };
+type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; dados?: { numero?: string; url?: string; status?: string } };
+
+/** Status de uma tentativa que não vingou — só depois de uma dessas dá para emitir de novo. */
+function emissaoFalhou(status: string) {
+  return /ERRO|CANCEL|HTTP_/i.test(status);
+}
 
 export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitadoPor, onNumero }: { saleRef: string; tipo: "CONSULTA" | "TRATAMENTO"; valor: number; pacienteNome: string; solicitadoPor: string | null; onNumero: (numero: string) => void }) {
   const [ref, setRef] = useState("");
   const [status, setStatus] = useState("");
   const [cpf, setCpf] = useState("");
   const [ocupado, setOcupado] = useState(false);
-  if (!integracaoLigada("focus_nfse")) return null;
+  const ligada = integracaoLigada("focus_nfse");
+
+  // Ao abrir a tela, recupera o que já foi enviado: sem isso, um F5 no meio do
+  // caminho apagava a memória do pedido e o botão voltava a oferecer "Emitir".
+  useEffect(() => {
+    if (!ligada) return;
+    let vivo = true;
+    void listRemoteNfseDaComanda(saleRef)
+      .then((emissoes) => {
+        if (!vivo) return;
+        const desteTipo = emissoes.find((emissao) => emissao.tipo === tipo && !emissaoFalhou(emissao.status));
+        if (!desteTipo) return;
+        setRef(desteTipo.ref);
+        setStatus(desteTipo.status);
+        if (desteTipo.numero) onNumero(String(desteTipo.numero));
+      })
+      .catch(() => {
+        /* sem histórico: a trava do servidor ainda impede a nota em dobro */
+      });
+    return () => {
+      vivo = false;
+    };
+    // onNumero muda a cada render do pai; a busca é por comanda e tipo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ligada, saleRef, tipo]);
+
+  if (!ligada) return null;
 
   async function emitir() {
     if (!(valor > 0)) return toast("Valor da nota precisa ser maior que zero.", { tom: "atencao" });
@@ -28,7 +59,13 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
       setRef(r.ref ?? "");
       setStatus(r.status ?? "ENVIADA");
       setCpf("");
-      toast("Pedido enviado à prefeitura. Consulte em alguns segundos para pegar o número.", { tom: "ok" });
+      if (r.dados?.numero) onNumero(String(r.dados.numero));
+      toast(
+        r.jaEmitida
+          ? "Esta comanda já tem nota deste tipo. Use Consultar para pegar o número."
+          : "Pedido enviado à prefeitura. Consulte em alguns segundos para pegar o número.",
+        { tom: r.jaEmitida ? "info" : "ok" },
+      );
     } finally {
       setOcupado(false);
     }

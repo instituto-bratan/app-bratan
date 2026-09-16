@@ -250,7 +250,6 @@ export type ModuleKey =
   | "fin-pdca"
   | "fin-gestao"
   | "fin-extrato"
-  | "fin-canais"
   | "fin-lucro"
   | "estoque"
   | "concierge-nps";
@@ -277,7 +276,6 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-pdca": "Financeiro · PDCA",
   "fin-gestao": "Financeiro · Painel do Mês (Reunião de Líderes)",
   "fin-extrato": "Financeiro · Extrato do banco",
-  "fin-canais": "Financeiro · Canais de Venda",
   "fin-lucro": "Financeiro · Lucro Inteligente",
   estoque: "Estoque (Recepção & Enfermagem)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",

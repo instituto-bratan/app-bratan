@@ -223,6 +223,23 @@ export function applyComprovanteToPagamentos(records: PagamentoLembrete[], compr
   );
 }
 
+/**
+ * Junta ao 360 os recebíveis dos comprovantes marcados com "Alimentar Recebíveis 360".
+ * O id é derivado do comprovante, então repetir a operação não duplica nada — e o
+ * comprovante mais novo vence o que já estava lá.
+ */
+export function mergeComprovanteReceivables(receivables: Receivable[], comprovantes: ComprovanteRecord[]): Receivable[] {
+  const doComprovante = comprovantes
+    .filter((comprovante) => Boolean(comprovante.inteligencia360ReceivableId))
+    .flatMap((comprovante) => {
+      const receivable = receivableFromComprovante(comprovante);
+      return receivable ? [receivable] : [];
+    });
+  if (!doComprovante.length) return receivables;
+  const ids = new Set(doComprovante.map((record) => record.id));
+  return [...doComprovante, ...receivables.filter((record) => !ids.has(record.id))];
+}
+
 export function receivableFromComprovante(comprovante: ComprovanteRecord): Receivable | null {
   if (comprovante.tipo !== "entrada" || !comprovante.pacienteReferencia || typeof comprovante.valor !== "number" || comprovante.valor <= 0) {
     return null;

@@ -67,6 +67,26 @@ Deno.serve(async (request) => {
   if (!(valor > 0)) return json({ ok: false, error: "Valor da nota precisa ser maior que zero." }, 400);
   const aliquota = Number(entrada.tipo === "CONSULTA" ? config.aliquotaConsulta : entrada.tipo === "TRATAMENTO" ? config.aliquotaTratamento : config.aliquotaConsulta) || 0;
   const discriminacao = entrada.tipo === "CONSULTA" ? "Consulta médica" : entrada.tipo === "TRATAMENTO" ? `Serviços de saúde — ${itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 200) || "tratamento"}` : `Serviços médicos — comanda de ${sale.sale_date}`;
+  // Uma nota por comanda e por tipo. Sem esta trava, um F5 no meio do envio (ou
+  // dois cliques) manda a prefeitura emitir a MESMA nota duas vezes — e o ISS sai
+  // em dobro. Só volta a permitir emissão quando a anterior falhou ou foi cancelada.
+  const { data: jaExiste } = await client
+    .from("nfse_emissao")
+    .select("ref, status, numero, url_pdf")
+    .eq("sale_ref", entrada.saleRef)
+    .eq("tipo", entrada.tipo)
+    .order("criado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (jaExiste && !/ERRO|CANCEL|HTTP_/i.test(String(jaExiste.status ?? ""))) {
+    return json({
+      ok: true,
+      ref: jaExiste.ref,
+      status: String(jaExiste.status ?? ""),
+      jaEmitida: true,
+      dados: { numero: jaExiste.numero ?? undefined, url: jaExiste.url_pdf ?? undefined, status: jaExiste.status },
+    });
+  }
   const ref = `bratan-${entrada.saleRef}-${entrada.tipo.toLowerCase()}-${Date.now().toString(36)}`;
   let email = entrada.tomador?.email ?? "";
   if (!email && sale.crm_contact_ref) {

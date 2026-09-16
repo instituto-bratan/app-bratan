@@ -54,6 +54,8 @@ import { useCrmState } from "./useCrmState";
 import { toast } from "@/components/ui/avisos";
 import { integracaoLigada } from "@/lib/integracoes";
 import { invocarIntegracao } from "@/lib/remoteData";
+import { AccessGate } from "@/components/access/AccessGate";
+import { canCrmBratan } from "@/lib/access";
 
 type TaskTab = "hoje" | "atrasadas" | "proximos" | "concluidas" | "todas";
 
@@ -131,7 +133,7 @@ function useFilteredTasks(tasks: CrmTask[], tab: TaskTab, query: string, type: s
   }, [priority, query, tab, tasks, type]);
 }
 
-export function CrmTasksPage() {
+function CrmTasksPageConteudo() {
   const { pessoa } = useAuth();
   const { state, persist, syncMode, syncFailed, syncErrorDetail, retrySync } = useCrmState();
   const role = cargoToCrmRole(pessoa?.cargo);
@@ -676,5 +678,15 @@ export function CrmTasksPage() {
 
       <p className="text-center text-xs text-muted-foreground">Sincronização: {syncMode}. O Dashboard 360 recebe os dados derivados, sem preenchimento duplicado.</p>
     </div>
+  );
+}
+
+// A tela inteira passa pelo controle de Administração → Acessos, igual às outras
+// do CRM: sem isto, quem tivesse o CRM ocultado ainda entrava pelo endereço.
+export function CrmTasksPage() {
+  return (
+    <AccessGate allowed={canCrmBratan} label="CRM · Minhas tarefas" module="crm">
+      <CrmTasksPageConteudo />
+    </AccessGate>
   );
 }

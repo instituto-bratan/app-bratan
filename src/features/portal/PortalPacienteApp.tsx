@@ -119,7 +119,9 @@ function EntrarPage() {
         return;
       }
       if (!token) {
-        setErro("Este link está incompleto. Peça um novo para a recepção.");
+        // Sem token não é beco sem saída: quem já criou senha entra pela tela
+        // de sempre, em /meu.
+        navigate("/meu", { replace: true });
         return;
       }
       const r = await entrarComToken(token);
@@ -144,7 +146,8 @@ function EntrarPage() {
           {erro ? (
             <>
               <p className="t-body t-2">{erro}</p>
-              <p className="t-foot t-3">O link vale por uma semana e funciona no aparelho em que você abre. Se precisar, a recepção manda outro na hora.</p>
+              <p className="t-foot t-3">O link vale por uma semana. Se você já criou a sua senha, entre por aqui mesmo — senão, a recepção manda outro link na hora.</p>
+              <Link to="/meu" className="p-btn full">Entrar com a minha senha</Link>
             </>
           ) : (
             <div data-anima="carregando"><LoadingState label="Preparando" variant="Dots" showElapsed={false} /></div>

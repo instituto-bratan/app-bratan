@@ -350,13 +350,14 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
-    pattern: "/financeiro/relatorios",
+    pattern: "/financeiro/painel",
     guide: {
-      title: "Financeiro — Relatórios",
+      title: "Painel do Mês (reunião)",
       whatIs:
-        "O Financeiro em imagem: gráficos e mapa de calor gerados na hora a partir das comandas, das contas e da poupança. Nada aqui é digitado — é leitura pura.",
+        "A tela da reunião de líderes: o mês inteiro em imagem — quanto entrou, quanto saiu, o que sobrou — mais o fechamento do dia 5 e os pontos que o app já percebeu sozinho. Nada aqui é digitado; tudo vem das comandas, das contas e da poupança.",
       steps: [
-        "Escolha o ano e o mês nos botões do topo — todos os gráficos obedecem.",
+        "Escolha o ano e o mês nos botões do topo — todos os números e gráficos obedecem.",
+        "Use o botão de apresentação para projetar: a letra cresce e o menu some.",
         "Faturamento × Custos × Lucro é a P12 desenhada: barra dourada entra, barra barro sai, linha musgo é o lucro.",
         "No mapa de calor, cada quadrado é um dia do mês: quanto mais escuro, mais dinheiro entrou. Passe o mouse para ver o valor.",
         "Os donuts mostram como o dinheiro entra (PIX, cartão…), o que é vendido e para onde os custos vão.",
@@ -365,6 +366,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       tips: [
         "Se um número parecer estranho, o problema está na fonte (comanda ou conta) — corrija lá e o gráfico se corrige sozinho.",
         "Use a força dos dias da semana para decidir onde abrir agenda: dia claro no calor = espaço para vender mais.",
+        "Mês em andamento nunca se compara com mês fechado — o app avisa quando a comparação ainda não vale.",
       ],
     },
   },
@@ -662,6 +664,185 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       tips: [
         "As permissões vêm do cargo — não dá para mudá-las por aqui.",
         "Mantenha o telefone atualizado: é por ele que a equipe te encontra.",
+      ],
+    },
+  },
+  {
+    pattern: "/financeiro/extrato",
+    guide: {
+      title: "Extrato do banco",
+      whatIs:
+        "A rede de segurança do dinheiro: você arrasta o extrato do Itaú (o mesmo .xlsx que já baixa) e o app casa cada linha do banco com o que está lançado. O que não casar aparece em caixas, para você resolver uma por vez.",
+      steps: [
+        "Baixe o extrato do mês no Itaú em Excel e arraste o arquivo para a área indicada.",
+        "Veja as quatro caixas: entrou no banco e não tem comanda; tem comanda e não entrou; saiu do banco e não tem conta; tem conta e não saiu.",
+        "Resolva de cima para baixo — cada item tem o botão que leva para a tela onde o lançamento se corrige.",
+        "Subir o mesmo arquivo de novo não duplica nada: o app reconhece as linhas que já leu.",
+      ],
+      tips: [
+        "O extrato é a verdade sobre o dinheiro; o app é a verdade sobre o motivo. As caixas existem para os dois contarem a mesma história.",
+        "Faça a conferência semanalmente — quanto mais perto do fato, mais fácil lembrar o que era cada linha.",
+      ],
+    },
+  },
+  {
+    pattern: "/estoque",
+    guide: {
+      title: "Estoque",
+      whatIs:
+        "A posição de cada setor — recepção e enfermagem: o que tem, o que está acabando e o que vence primeiro. A contagem é derivada das entradas e saídas, então não existe 'ajustar o número na mão'.",
+      steps: [
+        "Escolha o setor no topo. Cada setor tem a sua lista e o seu mínimo.",
+        "Confirme as chegadas que vieram das Compras — elas esperam no topo até alguém dizer que o produto chegou.",
+        "Lance a saída sempre que usar: é a saída que faz a conta bater.",
+        "O que ficar abaixo do mínimo entra em COMPRAR e vira lista de compras na hora de pedir.",
+      ],
+      tips: [
+        "A ordem de uso é do vencimento mais próximo para o mais distante — o app já mostra nessa ordem.",
+        "Dá para imprimir a posição do setor e a lista de compras pelos botões do topo.",
+      ],
+    },
+  },
+  {
+    pattern: "/concierge/nps",
+    guide: {
+      title: "NPS da Concierge",
+      whatIs:
+        "A experiência do paciente em três toques. A lista não é montada à mão: quem passou na clínica aparece aqui, e some quando o contato é registrado.",
+      steps: [
+        "Abra a fila e comece por quem passou há mais tempo sem contato.",
+        "Clique no WhatsApp da linha — a mensagem já vem pronta.",
+        "Registre a nota e o que a pessoa falou. É isso que alimenta as dores e os elogios do resumo.",
+        "Dor que precisa de ação vira contato para resolver, com o combinado escrito.",
+      ],
+      tips: [
+        "Comentário do totem entra sozinho — o que você registra aqui é a conversa, não a nota do tablet.",
+        "No dia 5 dá para imprimir o resumo do mês para a reunião.",
+      ],
+    },
+  },
+  {
+    pattern: "/acompanhamento",
+    guide: {
+      title: "Plano de Acompanhamento",
+      whatIs:
+        "O caminho de cada paciente dentro do programa: em que mês está, qual o próximo passo e o que já foi feito. É a tela da enfermagem e da coordenação para ninguém ficar para trás.",
+      steps: [
+        "Procure o paciente pelo nome. O cartão mostra o mês do plano e o passo da vez.",
+        "Marque o passo como concluído só depois de ele acontecer de verdade.",
+        "Passo previsto e não feito fica em atraso — é essa lista que vira ligação.",
+        "Quem entra no programa aparece aqui sozinho, a partir do fechamento no Kanban.",
+      ],
+      tips: [
+        "A pesagem que o paciente manda pelo portal cai na ficha dele e aparece aqui.",
+        "Se o plano mudou de verdade (parou, trocou), registre — senão a cobrança continua saindo.",
+      ],
+    },
+  },
+  {
+    pattern: "/crm/indicacoes",
+    guide: {
+      title: "Indicações",
+      whatIs:
+        "Quem indica pacientes para o Instituto e o voucher de cada indicação. O indicado registrado aqui já nasce no CRM, sem duplicar cadastro.",
+      steps: [
+        "Registre a indicação com quem indicou e quem foi indicado (nome e telefone).",
+        "Acompanhe pela visão do indicador: quantos indicou, quantos passaram, quanto tem a receber.",
+        "O voucher libera sozinho quando o indicado passa com o doutor (a consulta vira comanda).",
+        "Pague o voucher e marque como pago — a marcação fica registrada com data e responsável.",
+      ],
+      tips: [
+        "O telefone é a chave: o mesmo paciente registrado duas vezes não cria dois cadastros.",
+        "Voucher só libera com a consulta lançada — se não liberou, confira se a comanda existe.",
+      ],
+    },
+  },
+  {
+    pattern: "/administracao/acessos",
+    guide: {
+      title: "Acessos por pessoa",
+      whatIs:
+        "Quem vê o quê, tela por tela. O cargo já define um padrão; aqui você abre exceções para uma pessoa específica — e a exceção vence o cargo.",
+      steps: [
+        "Escolha a pessoa na lista.",
+        "Para cada tela, escolha entre ocultar, ver ou editar.",
+        "Salve. A mudança vale na próxima vez que a pessoa abrir o app.",
+        "Para voltar ao padrão do cargo, use o botão de restaurar da linha.",
+      ],
+      tips: [
+        "Ocultar tira a tela do menu e também dos atalhos da Home — e barra quem tentar entrar pelo endereço.",
+        "Só quem gerencia acessos (Lucas, Dr. Daniel, CEO) entra aqui.",
+      ],
+    },
+  },
+  {
+    pattern: "/administracao/ia",
+    guide: {
+      title: "O que a IA fez",
+      whatIs:
+        "O registro de tudo que a inteligência artificial do app fez: o que leu, o que propôs, quanto custou e quem aprovou. Serve para conferência do dia a dia e para a obrigação de manter inventário dos sistemas de IA.",
+      steps: [
+        "Veja as ações do dia na lista — cada linha diz a tela, o que a IA sugeriu e se alguém aprovou.",
+        "No inventário, confira os sistemas em uso e a classe de risco de cada um.",
+        "No regime de dados, veja o que pode e o que não pode sair do app.",
+      ],
+      tips: [
+        "Dado de paciente não sai para modelo de fora sem estar declarado aqui.",
+        "Se o custo do mês surpreender, é nesta tela que se vê de onde veio.",
+      ],
+    },
+  },
+  {
+    pattern: "/administracao/configuracoes",
+    guide: {
+      title: "Configurações do negócio",
+      whatIs:
+        "Os números que regem o app — grade de salas, prazo de transferência, limite de aprovação, SLA do lead, valor do voucher. Cada mudança vale a partir de uma data, e o passado nunca é apagado.",
+      steps: [
+        "Escolha a chave que quer mudar.",
+        "Digite o novo valor e a data a partir da qual ele passa a valer.",
+        "Salve: isso cria uma linha nova no histórico, sem apagar a anterior.",
+        "Abra o histórico da chave para ver o que valia em qualquer data passada.",
+      ],
+      tips: [
+        "Mudar um número aqui muda relatório de mês passado só se você escolher uma data retroativa — pense na data antes de salvar.",
+        "Todo mundo lê; só quem gerencia acessos edita.",
+      ],
+    },
+  },
+  {
+    pattern: "/administracao/integracoes",
+    guide: {
+      title: "Integrações",
+      whatIs:
+        "As conexões com o mundo de fora — WhatsApp oficial, nota fiscal, contrato digital, agendas, avisos no celular, banco e maquininha. Cada uma mostra se está ligada e se as chaves necessárias já existem.",
+      steps: [
+        "Veja a lista: verde é ligada, cinza é desligada.",
+        "Confira a coluna de chaves — ela diz apenas se a chave existe, nunca mostra o valor.",
+        "Falta chave? A integração fica desligada até alguém configurá-la por fora do app.",
+        "Com tudo pronto, ligue a integração pelo botão da linha.",
+      ],
+      tips: [
+        "Segredo nunca é digitado no app — quem configura é quem tem acesso ao servidor.",
+        "Cada integração guarda o histórico do que entrou e saiu; use para descobrir por que algo não chegou.",
+      ],
+    },
+  },
+  {
+    pattern: "/administracao/compliance",
+    guide: {
+      title: "Cofre de compliance",
+      whatIs:
+        "Um lugar só com o que a lei pede da clínica: responsável pelos dados e substituto, relatórios de impacto, políticas, treinamentos, incidentes e consentimentos dos pacientes.",
+      steps: [
+        "Confira se o responsável pelos dados e o substituto estão preenchidos.",
+        "Registre incidentes assim que acontecerem — o relógio de três dias úteis começa a contar na hora.",
+        "Guarde políticas e treinamentos com data; é a data que prova o cumprimento.",
+        "Os consentimentos aparecem por paciente, a partir do que foi coletado na ficha do contato.",
+      ],
+      tips: [
+        "Os textos são rascunhos para o advogado revisar — o app guarda, não aconselha.",
+        "Nada aqui substitui o contrato assinado; serve para você encontrar tudo quando pedirem.",
       ],
     },
   },

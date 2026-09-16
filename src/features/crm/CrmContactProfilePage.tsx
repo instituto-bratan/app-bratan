@@ -42,6 +42,8 @@ import { useCrmState } from "./useCrmState";
 import { ConsentimentosDoContato } from "./ConsentimentosDoContato";
 import { PortalDoPacienteCard } from "@/features/portal/PortalDoPacienteCard";
 import { contactChannelsIssue, formatPhoneBR } from "./contactChannels";
+import { AccessGate } from "@/components/access/AccessGate";
+import { canCrmBratan } from "@/lib/access";
 
 // Contratos saiu do app (decisão do Lucas, 22/07): não existe fluxo de
 // contrato/SuperSign no CRM.
@@ -71,7 +73,7 @@ function statusDot(tone: "ok" | "warn" | "danger") {
   return tone === "ok" ? "bg-emerald-500" : tone === "warn" ? "bg-brand-dourado" : "bg-red-500";
 }
 
-export function CrmContactProfilePage() {
+function CrmContactProfilePageConteudo() {
   const { id = "" } = useParams();
   const { pessoa, session, isPreview } = useAuth();
   const useRemoteConsent = Boolean(pessoa && session && !isPreview);
@@ -596,5 +598,15 @@ export function CrmContactProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// A tela inteira passa pelo controle de Administração → Acessos, igual às outras
+// do CRM: sem isto, quem tivesse o CRM ocultado ainda entrava pelo endereço.
+export function CrmContactProfilePage() {
+  return (
+    <AccessGate allowed={canCrmBratan} label="CRM · Ficha do contato" module="crm">
+      <CrmContactProfilePageConteudo />
+    </AccessGate>
   );
 }

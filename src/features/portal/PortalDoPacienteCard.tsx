@@ -217,10 +217,14 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
                   </span>
                   {c.status === "AGENDADA" || c.status === "CONFIRMADA" || c.status === "REMARCAR" ? (
                     <span className="flex gap-1">
-                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => void updateRemotePacienteConsultaStatus(c.id, "REALIZADA").then(() => invalidar("portal-consultas"))}>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => void updateRemotePacienteConsultaStatus(c.id, "REALIZADA")
+                          .then(() => invalidar("portal-consultas"))
+                          .catch(() => toast("Não deu para marcar a consulta como realizada. Tente de novo.", { tom: "erro" }))}>
                         realizada
                       </Button>
-                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs text-red-700" onClick={() => void updateRemotePacienteConsultaStatus(c.id, "CANCELADA").then(() => invalidar("portal-consultas"))}>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs text-red-700" onClick={() => void updateRemotePacienteConsultaStatus(c.id, "CANCELADA")
+                          .then(() => invalidar("portal-consultas"))
+                          .catch(() => toast("Não deu para marcar a consulta como cancelada. Tente de novo.", { tom: "erro" }))}>
                         cancelar
                       </Button>
                     </span>

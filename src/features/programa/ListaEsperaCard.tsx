@@ -66,7 +66,9 @@ export function ListaEsperaCard({ pessoaId, ativo }: { pessoaId: string | null; 
                   {item.profissional ? ` · ${item.profissional}` : ""}
                   <span className="ml-1 text-xs text-muted-foreground">desde {item.criadoEm.slice(8, 10)}/{item.criadoEm.slice(5, 7)}</span>
                 </span>
-                <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => void resolverRemoteListaEspera(item.id).then(() => queryClient.invalidateQueries({ queryKey: ["lista-espera"] }))}>
+                <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => void resolverRemoteListaEspera(item.id)
+                    .then(() => queryClient.invalidateQueries({ queryKey: ["lista-espera"] }))
+                    .catch(() => toast("Não deu para tirar da lista de espera. Tente de novo.", { tom: "erro" }))}>
                   Encaixado
                 </Button>
               </li>

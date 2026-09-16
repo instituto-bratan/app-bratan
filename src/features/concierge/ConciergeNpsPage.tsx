@@ -59,7 +59,7 @@ import {
   type NpsMes,
   type NpsResultado,
 } from "./npsData";
-import { confirmar } from "@/components/ui/avisos";
+import { confirmar, toast } from "@/components/ui/avisos";
 
 const contatosKey = "app-bratan-concierge-nps-contatos";
 const mesKey = (monthKey: string) => `app-bratan-concierge-nps-mes-${monthKey}`;
@@ -550,7 +550,7 @@ export function ConciergeNpsPage() {
                         className="ml-auto text-xs text-rose-600 hover:underline"
                         onClick={async () => {
                           if (!(await confirmar(`Apagar o contato com ${contato.pacienteNome}?`, { destrutivo: true, confirmar: "Apagar" }))) return;
-                          if (useRemote) void apagarContato.mutateAsync(contato.id);
+                          if (useRemote) void apagarContato.mutateAsync(contato.id).catch(() => toast("Não deu para apagar o contato. Tente de novo.", { tom: "erro" }));
                           else {
                             setLocalContatos((prev) => {
                               const next = prev.filter((existing) => existing.id !== contato.id);

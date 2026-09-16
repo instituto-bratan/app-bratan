@@ -1,3 +1,5 @@
+import { AccessGate } from "@/components/access/AccessGate";
+import { canCrmBratan } from "@/lib/access";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -65,7 +67,7 @@ function statusTone(status: CrmCadenceStatus) {
   return "bg-white/55 text-brand-musgo";
 }
 
-export function CrmCadencesPage() {
+function CrmCadencesPageConteudo() {
   const { pessoa } = useAuth();
   const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState();
   // Sem default fixo: a régua abre na do PRÓPRIO papel (concierge → Concierge D+1),
@@ -807,5 +809,15 @@ export function CrmCadencesPage() {
       </div>
       ) : null}
     </div>
+  );
+}
+
+// A tela inteira passa pelo controle de Administração → Acessos, igual às outras
+// do CRM: sem isto, quem tivesse o CRM ocultado ainda entrava pelo endereço.
+export function CrmCadencesPage() {
+  return (
+    <AccessGate allowed={canCrmBratan} label="CRM · Cadências" module="crm">
+      <CrmCadencesPageConteudo />
+    </AccessGate>
   );
 }

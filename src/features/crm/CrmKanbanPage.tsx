@@ -126,6 +126,8 @@ import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } fro
 import { SenhaDeGestor } from "@/components/SenhaDeGestor";
 import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
 import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
+import { AccessGate } from "@/components/access/AccessGate";
+import { canCrmBratan } from "@/lib/access";
 
 const objectionOptions: CrmObjectionCategory[] = [
   "PRICE",
@@ -480,7 +482,7 @@ function ProgramCard({
   );
 }
 
-export function CrmKanbanPage() {
+function CrmKanbanPageConteudo() {
   const { pessoa } = useAuth();
   const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead } = useCrmState();
   const [sncrData, setSncrData] = useState("");
@@ -2898,5 +2900,15 @@ export function CrmKanbanPage() {
         />
       ) : null}
 </div>
+  );
+}
+
+// A tela inteira passa pelo controle de Administração → Acessos, igual às outras
+// do CRM: sem isto, quem tivesse o CRM ocultado ainda entrava pelo endereço.
+export function CrmKanbanPage() {
+  return (
+    <AccessGate allowed={canCrmBratan} label="CRM · Kanban Comercial" module="crm">
+      <CrmKanbanPageConteudo />
+    </AccessGate>
   );
 }
