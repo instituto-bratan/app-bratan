@@ -63,10 +63,17 @@ test("as datas do Programa não mudaram: bio todo mês, consulta a cada dois", (
   assert.deepEqual(medico.map((m) => m.expectedDate).join(","), "2026-05-01,2026-07-01,2026-09-01");
 });
 
-test("no Clube, os quatro marcos se espalham na mesma janela de seis meses", () => {
+test("no Clube, a primeira consulta é NO DIA do fechamento e a outra dois meses depois", () => {
+  // Regra do Lucas (17/09): "o clube é uma consulta no dia, no fechamento, e a
+  // outra depois de dois meses". A adesão do deal de teste é 01/03/2026.
   const marcos = programa.buildMilestones(deal("CLUBE_BRATAN"), HOJE);
+  const consultas = marcos.filter((m) => m.type === "MEDICO").sort((a, b) => a.n - b.n);
+  assert.deepEqual(consultas.map((m) => m.expectedDate).join(","), "2026-03-01,2026-05-01");
+  assert.match(consultas[0].label, /no fechamento/, "mês 0 lê como 'no fechamento', não '(mês 0)'");
+  assert.match(consultas[1].label, /mês 2/);
+
   const bio = marcos.filter((m) => m.type === "BIO").sort((a, b) => a.n - b.n);
-  assert.deepEqual(bio.map((m) => m.expectedDate).join(","), "2026-06-01,2026-09-01", "meses 3 e 6");
+  assert.deepEqual(bio.map((m) => m.expectedDate).join(","), "2026-03-01,2026-05-01", "as bios acompanham as consultas");
 });
 
 test("a última consulta do Clube é chamada de última — não de terceira", () => {
@@ -81,13 +88,14 @@ test("o portal do paciente não mostra trilha para quem só comprou tratamento",
   assert.equal(semMarcos, null, "sem marcos, a seção inteira some — em vez de mostrar trilha vazia");
 });
 
-test("o portal do Clube fala de 6 meses com 4 passos, não de 15", () => {
+test("o portal do Clube fala da janela dele — dois meses, quatro passos — e não de 15", () => {
   const marcos = programa.buildMilestones(deal("CLUBE_BRATAN"), HOJE).map((m) => ({
     key: m.key, type: m.type, n: m.n, total: m.total, label: m.label,
     expectedDate: m.expectedDate, done: m.done, overdue: m.overdue,
   }));
   const trilha = portal.trilhaDoPlano(marcos, "2026-03-01", HOJE);
   assert.equal(trilha.total, 4, "quatro passos, não quinze");
-  assert.equal(trilha.meses, 6);
-  assert.match(trilha.frase, /mês \d+ de 6/);
+  assert.equal(trilha.meses, 2, "a janela do Clube é de dois meses, não seis");
+  assert.equal(trilha.passos.length, 2);
+  assert.equal(trilha.passos[0].marcos.length, 2, "o que cai no fechamento aparece no mês 1");
 });

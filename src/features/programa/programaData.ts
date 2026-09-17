@@ -87,12 +87,29 @@ export const milestoneTypeLabels: Record<ProgramMilestoneType, string> = {
  * Programa isso devolve exatamente o que já valia: bioimpedância todo mês
  * (1..6) e consulta a cada dois (2, 4 e 6).
  */
-export type GradeDoPlano = { check: number; bio: number; medico: number; meses: number };
+export type GradeDoPlano = {
+  /** Em que mês do plano cai cada marco. Lista vazia = o canal não tem esse marco. */
+  CHECK: number[];
+  BIO: number[];
+  MEDICO: number[];
+  /** Tamanho da janela do acompanhamento, em meses. */
+  meses: number;
+};
 
+/**
+ * Mês 0 é o dia do fechamento. O Clube começa com a consulta na hora — por isso
+ * os meses são explícitos por canal, e não uma conta: "a primeira consulta do
+ * Clube é no dia" não sai de fórmula nenhuma.
+ */
 export const GRADE_POR_CANAL: Record<CrmAdhesionChannel, GradeDoPlano> = {
-  PROGRAMA_ACOMPANHAMENTO: { check: 6, bio: 6, medico: 3, meses: 6 },
-  CLUBE_BRATAN: { check: 0, bio: 2, medico: 2, meses: 6 },
-  SOMENTE_TRATAMENTO: { check: 0, bio: 0, medico: 0, meses: 6 },
+  // Seis meses: bioimpedância e checkpoint todo mês, consulta a cada dois.
+  PROGRAMA_ACOMPANHAMENTO: { CHECK: [1, 2, 3, 4, 5, 6], BIO: [1, 2, 3, 4, 5, 6], MEDICO: [2, 4, 6], meses: 6 },
+  // Regra do Lucas (17/09/2026): "o clube é uma consulta no dia, no fechamento,
+  // e a outra depois de dois meses". Sem checkpoint. As duas bioimpedâncias
+  // acompanham as consultas — SUPOSIÇÃO minha, confirmar com o Lucas.
+  CLUBE_BRATAN: { CHECK: [], BIO: [0, 2], MEDICO: [0, 2], meses: 2 },
+  // Só tratamento não tem marco nenhum: nem consulta, nem bioimpedância.
+  SOMENTE_TRATAMENTO: { CHECK: [], BIO: [], MEDICO: [], meses: 0 },
 };
 
 /**
@@ -107,13 +124,12 @@ export function gradeDoCanal(canal: CrmAdhesionChannel | null | undefined): Grad
   return canal ? GRADE_POR_CANAL[canal] : GRADE_POR_CANAL.PROGRAMA_ACOMPANHAMENTO;
 }
 
-/** Em que mês do plano cai o marco n de um total — distribuído na janela. */
-function mesDoMarco(n: number, total: number, meses: number) {
-  if (total <= 0) return meses;
-  return Math.max(1, Math.round((meses * n) / total));
-}
-
 const MEDICO_ORDINAL = ["1ª consulta", "2ª consulta", "3ª consulta", "4ª consulta", "5ª consulta", "6ª consulta"];
+
+/** "no fechamento" lê melhor que "(mês 0)" para a consulta que é no mesmo dia. */
+function quandoCai(mes: number) {
+  return mes === 0 ? "(no fechamento)" : `(mês ${mes})`;
+}
 
 /** "3ª e última consulta" só faz sentido quando é mesmo a última da grade. */
 function ordinalDaConsulta(n: number, total: number) {
@@ -155,24 +171,23 @@ export function buildMilestones(deal: CrmDeal, todayISO: string): ProgramMilesto
   const milestones: ProgramMilestone[] = [];
 
   for (const type of ["CHECK", "BIO", "MEDICO"] as const) {
-    const total = type === "CHECK" ? grade.check : type === "BIO" ? grade.bio : grade.medico;
-    for (let n = 1; n <= total; n += 1) {
-      const expected = addMonthsISO(start, mesDoMarco(n, total, grade.meses));
+    const meses = grade[type];
+    const total = meses.length;
+    meses.forEach((mes, indice) => {
+      const n = indice + 1;
+      const expected = addMonthsISO(start, mes);
       const key = milestoneKey(type, n);
       milestones.push({
         key,
         type,
         n,
         total,
-        label:
-          type === "MEDICO"
-            ? `${ordinalDaConsulta(n, total)} (mês ${mesDoMarco(n, total, grade.meses)})`
-            : `${milestoneTypeLabels[type]} ${n}/${total}`,
+        label: type === "MEDICO" ? `${ordinalDaConsulta(n, total)} ${quandoCai(mes)}` : `${milestoneTypeLabels[type]} ${n}/${total}`,
         expectedDate: expected,
         done: done.has(key),
         overdue: !done.has(key) && expected < todayISO,
       });
-    }
+    });
   }
   return milestones.sort((a, b) => a.expectedDate.localeCompare(b.expectedDate) || a.key.localeCompare(b.key));
 }

@@ -230,3 +230,81 @@
 .portal .p-anim { animation: p-sobe .45s var(--p-ease) both; }
 @keyframes p-sobe { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .portal .p-anim:nth-child(2) { animation-delay: .05s } .portal .p-anim:nth-child(3) { animation-delay: .1s } .portal .p-anim:nth-child(4) { animation-delay: .15s } .portal .p-anim:nth-child(5) { animation-delay: .2s } .portal .p-anim:nth-child(6) { animation-delay: .25s } .portal .p-anim:nth-child(7) { animation-delay: .3s } .portal .p-anim:nth-child(8) { animation-delay: .35s }
+
+/* ---------------------------------------------------------------------------
+   INTERRUPTOR (17/09/2026) — a ideia de referência que o Lucas mandou, escrita
+   com os tokens da casa. O traço é uma linha só percorrendo os dois círculos e
+   a barra; mudar o recorte faz a linha correr de um lado para o outro.
+   --------------------------------------------------------------------------- */
+.p-interruptor {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.p-interruptor input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.p-interruptor label {
+  --p-int-anim: 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  height: 1.5em;
+  aspect-ratio: 212.4992 / 84.4688;
+  border-radius: 2em;
+  background-color: var(--p-tint);
+  box-shadow: 0 0 0 0.5em var(--p-tint);
+  transition: background-color var(--p-int-anim), box-shadow var(--p-int-anim);
+}
+
+.p-interruptor label svg {
+  height: 100%;
+  overflow: visible;
+}
+
+.p-interruptor label svg path {
+  color: var(--p-card);
+  stroke-width: 16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 136 224;
+  transform-origin: center;
+  transition: stroke-dashoffset var(--p-int-anim), transform var(--p-int-anim);
+}
+
+.p-interruptor input:checked ~ label svg path {
+  stroke-dashoffset: 180;
+  transform: scaleY(-1);
+}
+
+/* O foco tem que aparecer: quem navega por teclado precisa ver onde está. */
+.p-interruptor input:focus-visible ~ label {
+  outline: 2px solid var(--p-tint);
+  outline-offset: 0.62em;
+}
+
+.p-interruptor-rotulo {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--p-label-3);
+  transition: color var(--p-int-anim, 0.42s);
+  white-space: nowrap;
+}
+
+.p-interruptor-rotulo.ativo {
+  color: var(--p-label);
+}
+
+/* Quem pediu menos movimento troca de estado na hora, sem o traço correndo. */
+@media (prefers-reduced-motion: reduce) {
+  .p-interruptor label,
+  .p-interruptor label svg path,
+  .p-interruptor-rotulo {
+    transition: none;
+  }
+}

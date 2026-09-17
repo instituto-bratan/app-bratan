@@ -754,9 +754,9 @@ function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; 
             bioimpedâncias e duas consultas, e quem comprou só tratamento não tem
             marco nenhum. Antes todos apareciam devendo 6/6/3. */}
         <span className="flex shrink-0 items-center gap-1">
-          {card.grade.check > 0 ? <ProgressPill label="Checkpoints" done={card.checksDone} total={card.grade.check} icon={ClipboardCheck} /> : null}
-          {card.grade.bio > 0 ? <ProgressPill label="Bioimpedâncias" done={card.biosDone} total={card.grade.bio} icon={HeartPulse} /> : null}
-          {card.grade.medico > 0 ? <ProgressPill label="Consultas com o Dr." done={card.medicoDone} total={card.grade.medico} icon={Stethoscope} /> : null}
+          {card.grade.CHECK.length > 0 ? <ProgressPill label="Checkpoints" done={card.checksDone} total={card.grade.CHECK.length} icon={ClipboardCheck} /> : null}
+          {card.grade.BIO.length > 0 ? <ProgressPill label="Bioimpedâncias" done={card.biosDone} total={card.grade.BIO.length} icon={HeartPulse} /> : null}
+          {card.grade.MEDICO.length > 0 ? <ProgressPill label="Consultas com o Dr." done={card.medicoDone} total={card.grade.MEDICO.length} icon={Stethoscope} /> : null}
           {card.milestones.length === 0 ? <span className="text-[11px] text-muted-foreground">só tratamento</span> : null}
         </span>
 

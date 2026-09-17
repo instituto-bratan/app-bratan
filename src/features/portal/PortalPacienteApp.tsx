@@ -17,10 +17,11 @@ import { buildMilestones } from "@/features/programa/programaData";
 import type { CrmDeal } from "@/features/crm/crmData";
 import bratanMark from "@/assets/bratan-mark.png";
 import "./portal.css";
-import { CurvaEsperando, CurvaEvolucao } from "./CurvaEvolucao";
+import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolucao";
+import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
 import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
-import { brl, brlCentavos, diaCurto, diaMes, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, saudacao, trilhaDoPlano, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
+import { brl, brlCentavos, diaCurto, diaMes, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, saudacao, temCurvaDeGordura, trilhaDoPlano, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
 const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o atendimento", TRATAMENTO: "termo do tratamento", IA: "apoio de inteligência artificial", IMAGEM: "uso de imagem", MARKETING: "mensagens e novidades" };
@@ -252,6 +253,9 @@ function MeuPortal() {
   const [enviando, setEnviando] = useState(false);
   const [respondendo, setRespondendo] = useState(false);
   const [secaoAtiva, setSecaoAtiva] = useState("consulta");
+  // Qual medida a curva desenha. Peso é o padrão; gordura só aparece quando há
+  // bioimpedância suficiente para formar uma linha.
+  const [metricaDaCurva, setMetricaDaCurva] = useState<MetricaDaCurva>("peso");
   const [barraCompacta, setBarraCompacta] = useState(false);
   const tituloRef = useRef<HTMLHeadingElement>(null);
 
@@ -365,6 +369,8 @@ function MeuPortal() {
   const trilha = dados?.plano ? trilhaDoPlano(marcos, dados.plano.inicio, hoje) : null;
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
+  const mostrandoGordura = metricaDaCurva === "gordura";
+  const deltaEmFoco = mostrandoGordura ? evolucao?.deltaGordura ?? null : evolucao?.deltaPeso ?? null;
   function irPara(id: string) {
     setSecaoAtiva(id);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -512,18 +518,32 @@ function MeuPortal() {
                       <div>
                         <p className="t-foot t-2">hoje · {diaMes(evolucao.ultima.dia)}</p>
                         <p className="p-num">
-                          {fmt1(evolucao.ultima.pesoKg)}
-                          <small>kg</small>
+                          {mostrandoGordura ? fmt1(evolucao.ultima.gorduraPct ?? 0) : fmt1(evolucao.ultima.pesoKg)}
+                          <small>{mostrandoGordura ? "%" : "kg"}</small>
                         </p>
                       </div>
-                      {evolucao.deltaPeso !== null && evolucao.pontos.length > 1 ? (
-                        <span className={`p-pill ${evolucao.deltaPeso < 0 ? "ok" : evolucao.deltaPeso > 0 ? "warn" : ""}`}>
-                          {sinal(evolucao.deltaPeso)}
-                          {fmt1(Math.abs(evolucao.deltaPeso))} kg desde {diaMes(evolucao.primeira.dia)}
+                      {deltaEmFoco !== null && evolucao.pontos.length > 1 ? (
+                        <span className={`p-pill ${deltaEmFoco < 0 ? "ok" : deltaEmFoco > 0 ? "warn" : ""}`}>
+                          {sinal(deltaEmFoco)}
+                          {fmt1(Math.abs(deltaEmFoco))} {mostrandoGordura ? "pts" : "kg"} desde {diaMes(evolucao.primeira.dia)}
                         </span>
                       ) : null}
                     </div>
-                    {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} /> : <CurvaEsperando />}
+                    {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} metrica={metricaDaCurva} /> : <CurvaEsperando />}
+                    {/* A gordura só vira curva quando existem duas medições com o
+                        percentual. Perder peso mantendo massa magra é o que
+                        motiva — e esse número vivia escondido num quadradinho. */}
+                    {evolucao.pontos.length > 1 && temCurvaDeGordura(evolucao) ? (
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <InterruptorDoPortal
+                          ligado={mostrandoGordura}
+                          aoTrocar={(ligado) => setMetricaDaCurva(ligado ? "gordura" : "peso")}
+                          rotuloDesligado="Peso"
+                          rotuloLigado="Gordura"
+                          descricao="Trocar a curva entre peso e gordura corporal"
+                        />
+                      </div>
+                    ) : null}
                     <p className="t-sub">{evolucao.frase}</p>
                     {evolucao.pontos.length > 1 && (evolucao.deltaGordura !== null || evolucao.deltaMassaMagra !== null || evolucao.deltaCintura !== null) ? (
                       <div className="p-stats">

@@ -173,6 +173,14 @@ export function proximaConsulta(consultas: PortalConsulta[], _marcos: MarcoDoPla
   return null;
 }
 
+/**
+ * A curva de gordura só vale a pena quando há pelo menos duas medições com o
+ * percentual — uma linha de um ponto não é curva, é um ponto.
+ */
+export function temCurvaDeGordura(resumo: ResumoEvolucao | null) {
+  return (resumo?.pontos.filter((ponto) => ponto.gordura !== null).length ?? 0) >= 2;
+}
+
 export type ResumoEvolucao = {
   primeira: PortalMedicao;
   ultima: PortalMedicao;
@@ -181,7 +189,7 @@ export type ResumoEvolucao = {
   deltaGordura: number | null;
   deltaMassaMagra: number | null;
   deltaCintura: number | null;
-  pontos: { dia: string; peso: number; origem: PortalMedicao["origem"] }[];
+  pontos: { dia: string; peso: number; gordura: number | null; origem: PortalMedicao["origem"] }[];
   frase: string;
 };
 
@@ -210,7 +218,7 @@ export function resumoEvolucao(medicoes: PortalMedicao[], hojeISO: string): Resu
   } else {
     frase = diasDesdeInicio <= 45 ? "Oscilar no começo é normal. A tendência aparece depois de três ou quatro medições." : "O peso subiu um pouco desde o início. A enfermagem vai olhar isso com você no próximo contato.";
   }
-  return { primeira, ultima, semanas, deltaPeso, deltaGordura, deltaMassaMagra, deltaCintura, pontos: comPeso.map((m) => ({ dia: m.dia, peso: m.pesoKg as number, origem: m.origem })), frase };
+  return { primeira, ultima, semanas, deltaPeso, deltaGordura, deltaMassaMagra, deltaCintura, pontos: comPeso.map((m) => ({ dia: m.dia, peso: m.pesoKg as number, gordura: m.gorduraPct, origem: m.origem })), frase };
 }
 
 export type ResumoFinanceiro = {
