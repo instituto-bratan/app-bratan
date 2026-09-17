@@ -126,6 +126,9 @@ export function gradeDoCanal(canal: CrmAdhesionChannel | null | undefined): Grad
 
 const MEDICO_ORDINAL = ["1ª consulta", "2ª consulta", "3ª consulta", "4ª consulta", "5ª consulta", "6ª consulta"];
 
+/** "3ª bioimpedância", mas "3º checkpoint" — a palavra é que manda no ordinal. */
+const GENERO_DO_MARCO: Record<"CHECK" | "BIO", string> = { CHECK: "º", BIO: "ª" };
+
 /** "no fechamento" lê melhor que "(mês 0)" para a consulta que é no mesmo dia. */
 function quandoCai(mes: number) {
   return mes === 0 ? "(no fechamento)" : `(mês ${mes})`;
@@ -185,7 +188,7 @@ export function buildMilestones(deal: CrmDeal, todayISO: string): ProgramMilesto
         // "Bioimpedância 6/6" era lido como "6 de 6 FEITAS" — o Lucas leu assim no
         // portal de uma paciente que tinha 3 (17/09/2026). O ordinal não tem essa
         // ambiguidade: "6ª bioimpedância" é a sexta, não seis concluídas.
-        label: type === "MEDICO" ? `${ordinalDaConsulta(n, total)} ${quandoCai(mes)}` : `${n}ª ${milestoneTypeLabels[type].toLowerCase()}`,
+        label: type === "MEDICO" ? `${ordinalDaConsulta(n, total)} ${quandoCai(mes)}` : `${n}${GENERO_DO_MARCO[type]} ${milestoneTypeLabels[type].toLowerCase()}`,
         expectedDate: expected,
         done: done.has(key),
         overdue: !done.has(key) && expected < todayISO,

@@ -47,6 +47,12 @@ test("Clube Bratan: duas bioimpedâncias, duas consultas, nenhum checkpoint", ()
   assert.equal(marcos.find((m) => m.type === "BIO").label, "1ª bioimpedância");
 });
 
+test("o ordinal concorda com a palavra: 3ª bioimpedância, mas 3º checkpoint", () => {
+  const marcos = programa.buildMilestones(deal("PROGRAMA_ACOMPANHAMENTO"), HOJE);
+  assert.equal(marcos.find((m) => m.type === "BIO" && m.n === 3).label, "3ª bioimpedância");
+  assert.equal(marcos.find((m) => m.type === "CHECK" && m.n === 3).label, "3º checkpoint performance");
+});
+
 test("Só tratamento: nenhum marco — não deve nada a ninguém", () => {
   const marcos = programa.buildMilestones(deal("SOMENTE_TRATAMENTO"), HOJE);
   assert.equal(marcos.length, 0);
