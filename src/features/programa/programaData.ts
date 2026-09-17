@@ -47,10 +47,12 @@ export type ProgramPatientCard = {
   patientName: string;
   phone: string;
   channel: CrmAdhesionChannel | null;
+  /** Quantos marcos de cada tipo este canal dá direito — os totais da tela saem daqui. */
+  grade: GradeDoPlano;
   phase: CrmProgramPhase;
   phaseLabel: string;
   startedAt: string; // início do programa (adesão)
-  monthOfProgram: number; // 1..6 (trava em 6)
+  monthOfProgram: number; // mês atual dentro da janela do canal
   milestones: ProgramMilestone[];
   checksDone: number;
   biosDone: number;
@@ -67,7 +69,57 @@ export const milestoneTypeLabels: Record<ProgramMilestoneType, string> = {
   MEDICO: "Consulta Dr. Daniel",
 };
 
-const MEDICO_ORDINAL = ["1ª consulta", "2ª consulta", "3ª e última consulta"];
+/**
+ * A GRADE DE CADA CANAL (17/09/2026).
+ *
+ * Pedido do Lucas: *"todos aqui estão com seis checkpoints, seis
+ * bioimpedâncias, três consultas, mas não são todos que fecharam o plano de
+ * acompanhamento. Quem fechou o clube só tem acesso a duas bioimpedâncias e
+ * duas consultas. E só tratamento não tem nada disso — nem consulta, nem
+ * bioimpedância."*
+ *
+ * Até aqui a grade era a mesma para todo mundo, então quem comprou só
+ * tratamento aparecia devendo 15 passos que nunca teve direito a fazer — no
+ * quadro da enfermagem e, pior, no portal do próprio paciente.
+ *
+ * `meses` é a janela do acompanhamento; a data de cada marco é distribuída
+ * dentro dela (marco n de N cai no mês `round(meses * n / N)`). Para o
+ * Programa isso devolve exatamente o que já valia: bioimpedância todo mês
+ * (1..6) e consulta a cada dois (2, 4 e 6).
+ */
+export type GradeDoPlano = { check: number; bio: number; medico: number; meses: number };
+
+export const GRADE_POR_CANAL: Record<CrmAdhesionChannel, GradeDoPlano> = {
+  PROGRAMA_ACOMPANHAMENTO: { check: 6, bio: 6, medico: 3, meses: 6 },
+  CLUBE_BRATAN: { check: 0, bio: 2, medico: 2, meses: 6 },
+  SOMENTE_TRATAMENTO: { check: 0, bio: 0, medico: 0, meses: 6 },
+};
+
+/**
+ * Sem canal registrado, vale a grade do Programa — a mesma de antes.
+ *
+ * É de propósito: mudar para "nenhum marco" faria sumir do quadro gente que
+ * está em acompanhamento de verdade e só não teve o canal preenchido. Esses
+ * casos já aparecem na Conferência da tela como "sem canal", que é onde eles
+ * devem ser resolvidos.
+ */
+export function gradeDoCanal(canal: CrmAdhesionChannel | null | undefined): GradeDoPlano {
+  return canal ? GRADE_POR_CANAL[canal] : GRADE_POR_CANAL.PROGRAMA_ACOMPANHAMENTO;
+}
+
+/** Em que mês do plano cai o marco n de um total — distribuído na janela. */
+function mesDoMarco(n: number, total: number, meses: number) {
+  if (total <= 0) return meses;
+  return Math.max(1, Math.round((meses * n) / total));
+}
+
+const MEDICO_ORDINAL = ["1ª consulta", "2ª consulta", "3ª consulta", "4ª consulta", "5ª consulta", "6ª consulta"];
+
+/** "3ª e última consulta" só faz sentido quando é mesmo a última da grade. */
+function ordinalDaConsulta(n: number, total: number) {
+  const nome = MEDICO_ORDINAL[n - 1] ?? `${n}ª consulta`;
+  return n === total && total > 1 ? `${nome.replace("ª consulta", "ª")} e última consulta` : nome;
+}
 
 export function milestoneKey(type: ProgramMilestoneType, n: number) {
   return `${type}-${n}`;
@@ -99,36 +151,28 @@ export function programStartDate(deal: CrmDeal): string {
 export function buildMilestones(deal: CrmDeal, todayISO: string): ProgramMilestone[] {
   const start = programStartDate(deal);
   const done = new Set(deal.programMilestonesDone ?? []);
+  const grade = gradeDoCanal(deal.adhesionChannel);
   const milestones: ProgramMilestone[] = [];
-  for (let n = 1; n <= 6; n += 1) {
-    const expected = addMonthsISO(start, n);
-    for (const type of ["CHECK", "BIO"] as const) {
+
+  for (const type of ["CHECK", "BIO", "MEDICO"] as const) {
+    const total = type === "CHECK" ? grade.check : type === "BIO" ? grade.bio : grade.medico;
+    for (let n = 1; n <= total; n += 1) {
+      const expected = addMonthsISO(start, mesDoMarco(n, total, grade.meses));
       const key = milestoneKey(type, n);
       milestones.push({
         key,
         type,
         n,
-        total: 6,
-        label: `${milestoneTypeLabels[type]} ${n}/6`,
+        total,
+        label:
+          type === "MEDICO"
+            ? `${ordinalDaConsulta(n, total)} (mês ${mesDoMarco(n, total, grade.meses)})`
+            : `${milestoneTypeLabels[type]} ${n}/${total}`,
         expectedDate: expected,
         done: done.has(key),
         overdue: !done.has(key) && expected < todayISO,
       });
     }
-  }
-  for (let n = 1; n <= 3; n += 1) {
-    const expected = addMonthsISO(start, n * 2);
-    const key = milestoneKey("MEDICO", n);
-    milestones.push({
-      key,
-      type: "MEDICO",
-      n,
-      total: 3,
-      label: `${MEDICO_ORDINAL[n - 1]} (mês ${n * 2})`,
-      expectedDate: expected,
-      done: done.has(key),
-      overdue: !done.has(key) && expected < todayISO,
-    });
   }
   return milestones.sort((a, b) => a.expectedDate.localeCompare(b.expectedDate) || a.key.localeCompare(b.key));
 }
@@ -161,10 +205,11 @@ export function buildProgramaBoard(state: CrmState, todayISO: string, visitasPor
         patientName: contact?.fullName || deal.title || "Paciente",
         phone: contact?.phone || "",
         channel: deal.adhesionChannel ?? null,
+        grade: gradeDoCanal(deal.adhesionChannel),
         phase: deal.programPhase as CrmProgramPhase,
         phaseLabel: programPhaseLabels[deal.programPhase as CrmProgramPhase],
         startedAt: start,
-        monthOfProgram: Math.min(6, monthsBetween(start, todayISO) + 1),
+        monthOfProgram: Math.min(gradeDoCanal(deal.adhesionChannel).meses, monthsBetween(start, todayISO) + 1),
         milestones,
         checksDone,
         biosDone,

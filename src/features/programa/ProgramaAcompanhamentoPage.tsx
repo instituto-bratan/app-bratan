@@ -740,7 +740,7 @@ function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; 
         <Link
           to={`/crm/contatos/${card.contactId}`}
           className="min-w-[8rem] flex-1 truncate text-sm font-semibold text-brand-tinta hover:underline"
-          title={`Mês ${card.monthOfProgram}/6 · adesão ${formatBR(card.startedAt)}`}
+          title={`Mês ${card.monthOfProgram}/${card.grade.meses} · adesão ${formatBR(card.startedAt)}`}
         >
           {card.patientName}
         </Link>
@@ -750,10 +750,14 @@ function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; 
           {card.phaseLabel}
         </span>
 
+        {/* Os totais vêm da GRADE DO CANAL (17/09/2026): o Clube dá direito a duas
+            bioimpedâncias e duas consultas, e quem comprou só tratamento não tem
+            marco nenhum. Antes todos apareciam devendo 6/6/3. */}
         <span className="flex shrink-0 items-center gap-1">
-          <ProgressPill label="Checkpoints" done={card.checksDone} total={6} icon={ClipboardCheck} />
-          <ProgressPill label="Bioimpedâncias" done={card.biosDone} total={6} icon={HeartPulse} />
-          <ProgressPill label="Consultas com o Dr." done={card.medicoDone} total={3} icon={Stethoscope} />
+          {card.grade.check > 0 ? <ProgressPill label="Checkpoints" done={card.checksDone} total={card.grade.check} icon={ClipboardCheck} /> : null}
+          {card.grade.bio > 0 ? <ProgressPill label="Bioimpedâncias" done={card.biosDone} total={card.grade.bio} icon={HeartPulse} /> : null}
+          {card.grade.medico > 0 ? <ProgressPill label="Consultas com o Dr." done={card.medicoDone} total={card.grade.medico} icon={Stethoscope} /> : null}
+          {card.milestones.length === 0 ? <span className="text-[11px] text-muted-foreground">só tratamento</span> : null}
         </span>
 
         <span className="min-w-[10rem] flex-1 text-xs sm:text-right">
@@ -765,6 +769,8 @@ function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; 
                 {next.overdue ? " (atrasado)" : ""}
               </span>
             </>
+          ) : card.milestones.length === 0 ? (
+            <span className="text-muted-foreground">sem marcos — acompanhamento do tratamento</span>
           ) : (
             <span className="font-semibold text-emerald-700">Caminhada completa</span>
           )}
@@ -785,7 +791,7 @@ function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; 
       {open ? (
         <div className="grid gap-2 border-t border-brand-oliva/10 bg-brand-papel/40 px-3 py-2.5">
           <p className="text-xs text-muted-foreground">
-            Mês {card.monthOfProgram}/6 · adesão {formatBR(card.startedAt)}
+            Mês {card.monthOfProgram}/{card.grade.meses} · adesão {formatBR(card.startedAt)}
             {card.channel ? ` · ${channelShort[card.channel]}` : ""} · {card.phaseLabel}
             {card.risco.nivel === "AMARELO" ? ` · ${card.risco.frase}` : ""}
           </p>

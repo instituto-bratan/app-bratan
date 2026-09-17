@@ -249,20 +249,53 @@ export type PassoDaTrilha = {
 const QUEM: Record<MarcoDoPlano["type"], string> = { CHECK: "enfermagem", BIO: "enfermagem", MEDICO: "Dr. Daniel" };
 
 /** A trilha dos seis meses, agrupada por mês, com o mês atual em destaque. */
-export function trilhaDoPlano(marcos: MarcoDoPlano[], inicioISO: string, hojeISO: string): { passos: PassoDaTrilha[]; mesAtual: number; feitos: number; total: number; frase: string } {
+/**
+ * Em que mês do plano cai uma data prevista.
+ *
+ * Conta MÊS DE CALENDÁRIO, não bloco de 30 dias: o marco do "mês 2" é o que
+ * cai dois meses depois da adesão, e dois meses podem ter 61 dias — com blocos
+ * de 30 ele escorregava para o mês 3.
+ */
+function mesDaData(inicioISO: string, dataISO: string) {
+  const [ai, mi, di] = inicioISO.slice(0, 10).split("-").map(Number);
+  const [ad, md, dd] = dataISO.slice(0, 10).split("-").map(Number);
+  let meses = (ad - ai) * 12 + (md - mi);
+  if (dd < di) meses -= 1;
+  return Math.max(1, meses);
+}
+
+/**
+ * A trilha do plano do paciente.
+ *
+ * ATÉ 17/09/2026 ELA MENTIA PARA QUEM NÃO FECHOU O PROGRAMA. Os meses eram
+ * fixos em seis e a consulta era colocada no mês `n * 2` — regra que só vale
+ * para a grade do Programa de Acompanhamento (6 bio + 3 consultas em 6 meses).
+ * Quem fechou o Clube Bratan, que dá direito a duas bioimpedâncias e duas
+ * consultas, via no próprio portal uma caminhada de seis meses que nunca
+ * comprou; e quem fechou só tratamento via quinze passos a dever.
+ *
+ * Agora o mês de cada marco vem da DATA PREVISTA dele, e a janela do plano é a
+ * do último marco. Sem marco nenhum (só tratamento), devolve null — e a seção
+ * simplesmente não aparece, em vez de mostrar uma trilha vazia.
+ */
+export function trilhaDoPlano(marcos: MarcoDoPlano[], inicioISO: string, hojeISO: string): { passos: PassoDaTrilha[]; mesAtual: number; feitos: number; total: number; meses: number; frase: string } | null {
+  if (!marcos.length) return null;
+  const meses = Math.max(...marcos.map((m) => mesDaData(inicioISO, m.expectedDate)));
   const diasNoPlano = Math.max(0, diasEntre(inicioISO, hojeISO));
-  const mesAtual = Math.min(6, Math.floor(diasNoPlano / 30) + 1);
+  const mesAtual = Math.min(meses, Math.floor(diasNoPlano / 30) + 1);
   const passos: PassoDaTrilha[] = [];
-  for (let mes = 1; mes <= 6; mes += 1) {
-    const doMes = marcos.filter((m) => (m.type === "MEDICO" ? m.n * 2 === mes : m.n === mes)).map((m) => ({ ...m, quem: QUEM[m.type] }));
+  for (let mes = 1; mes <= meses; mes += 1) {
+    const doMes = marcos.filter((m) => mesDaData(inicioISO, m.expectedDate) === mes).map((m) => ({ ...m, quem: QUEM[m.type] }));
     const todosFeitos = doMes.length > 0 && doMes.every((m) => m.done);
     passos.push({ mes, rotulo: `Mês ${mes}`, estado: mes < mesAtual || todosFeitos ? "feito" : mes === mesAtual ? "agora" : "futuro", marcos: doMes });
   }
   const feitos = marcos.filter((m) => m.done).length;
   const total = marcos.length;
   const proximo = marcos.filter((m) => !m.done).sort((a, b) => a.expectedDate.localeCompare(b.expectedDate))[0];
-  const frase = proximo ? `Você está no mês ${mesAtual} de 6. O próximo passo é ${proximo.label.toLowerCase()}, com ${QUEM[proximo.type]}, previsto para ${diaMes(proximo.expectedDate)}.` : "Você completou a caminhada dos seis meses.";
-  return { passos, mesAtual, feitos, total, frase };
+  const frase = proximo
+    ? `Você está no mês ${mesAtual} de ${meses}. O próximo passo é ${proximo.label.toLowerCase()}, com ${QUEM[proximo.type]}, previsto para ${diaMes(proximo.expectedDate)}.`
+    : `Você completou a caminhada${meses === 6 ? " dos seis meses" : ""}.`;
+  return { passos, mesAtual, feitos, total, meses, frase };
 }
 
 export const CANAL_LABEL: Record<string, string> = {

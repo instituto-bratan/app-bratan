@@ -334,6 +334,12 @@ function MeuPortal() {
     return () => obs.disconnect();
   }, [dados]);
 
+  const marcos: MarcoDoPlano[] = useMemo(() => {
+    if (!dados?.plano) return [];
+    const deal = { id: dados.plano.dealId, closedAt: dados.plano.closedAt, programPhaseEnteredAt: dados.plano.programPhaseEnteredAt ?? undefined, updatedAt: dados.plano.updatedAt, createdAt: dados.plano.createdAt, programMilestonesDone: dados.plano.marcosFeitos } as unknown as CrmDeal;
+    return buildMilestones(deal, hoje).map((m) => ({ key: m.key, type: m.type, n: m.n, total: m.total, label: m.label, expectedDate: m.expectedDate, done: m.done, overdue: m.overdue }));
+  }, [dados, hoje]);
+
   // O dock mostra só o que existe na página. Antes ele listava "Plano" mesmo para
   // quem não tem plano, e o toque não levava a lugar nenhum (16/09/2026).
   //
@@ -343,7 +349,7 @@ function MeuPortal() {
   const secoesVisiveis = useMemo(
     () =>
       SECOES.filter((secao) => {
-        if (secao.id === "plano") return Boolean(dados?.plano);
+        if (secao.id === "plano") return Boolean(dados?.plano) && marcos.length > 0;
         if (secao.id === "documentos") return Boolean(dados?.documentos.length);
         if (secao.id === "evolucao") return Boolean(dados);
         return true;
@@ -351,11 +357,6 @@ function MeuPortal() {
     [dados],
   );
 
-  const marcos: MarcoDoPlano[] = useMemo(() => {
-    if (!dados?.plano) return [];
-    const deal = { id: dados.plano.dealId, closedAt: dados.plano.closedAt, programPhaseEnteredAt: dados.plano.programPhaseEnteredAt ?? undefined, updatedAt: dados.plano.updatedAt, createdAt: dados.plano.createdAt, programMilestonesDone: dados.plano.marcosFeitos } as unknown as CrmDeal;
-    return buildMilestones(deal, hoje).map((m) => ({ key: m.key, type: m.type, n: m.n, total: m.total, label: m.label, expectedDate: m.expectedDate, done: m.done, overdue: m.overdue }));
-  }, [dados, hoje]);
 
   if (!sessao) return <SemSessao aoEntrar={(nova) => { setSessao(nova); void recarregar(); }} />;
   const proxima = dados ? proximaConsulta(dados.consultas, marcos, hoje) : null;
