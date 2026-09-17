@@ -5,7 +5,16 @@ import { diaMes, type ResumoEvolucao } from "./portalPaciente";
 
 export type MetricaDaCurva = "peso" | "gordura";
 
-export function CurvaEvolucao({ resumo, metrica = "peso" }: { resumo: ResumoEvolucao; metrica?: MetricaDaCurva }) {
+export function CurvaEvolucao({
+  resumo,
+  metrica = "peso",
+  inicioDoPlano,
+}: {
+  resumo: ResumoEvolucao;
+  metrica?: MetricaDaCurva;
+  /** Dia do fechamento. Vira uma marca na curva quando o paciente abre o histórico. */
+  inicioDoPlano?: string | null;
+}) {
   // A curva desenha UMA medida de cada vez. Com gordura, só entram os pontos que
   // têm o percentual — bioimpedância nem sempre acompanha a pesagem do paciente.
   const pontos = metrica === "gordura" ? resumo.pontos.filter((ponto) => ponto.gordura !== null) : resumo.pontos;
@@ -52,6 +61,34 @@ export function CurvaEvolucao({ resumo, metrica = "peso" }: { resumo: ResumoEvol
       <path d={area} fill="url(#p-curva-area)" className="p-curva-area" />
       <path d={d} fill="none" stroke="var(--p-tint)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="p-curva-linha" pathLength={1} />
       <circle cx={ultimo[0]} cy={ultimo[1]} r="13" fill="var(--p-tint)" opacity=".16" className="p-curva-halo" />
+      {/* A MARCA DO PLANO (17/09/2026). Só aparece quando o paciente abriu o
+          histórico e o fechamento está dentro do que a curva desenha: é a
+          virada, e ver onde ela começou é o que dá orgulho a quem vem de anos
+          tentando. Fora dessa janela, desenhar a linha seria mentira visual. */}
+      {inicioDoPlano && inicioDoPlano >= pontos[0].dia && inicioDoPlano <= pontos[pontos.length - 1].dia ? (
+        <g>
+          <line
+            x1={x(inicioDoPlano)}
+            x2={x(inicioDoPlano)}
+            y1={T - 12}
+            y2={H - B}
+            stroke="var(--p-plano)"
+            strokeWidth="2"
+            strokeDasharray="4 5"
+            opacity="0.75"
+          />
+          <text
+            x={x(inicioDoPlano)}
+            y={T - 18}
+            textAnchor={x(inicioDoPlano) > W - 120 ? "end" : "middle"}
+            fontSize="22"
+            fontWeight="700"
+            fill="var(--p-plano)"
+          >
+            seu plano começa
+          </text>
+        </g>
+      ) : null}
       {xy.map(([cx, cy], i) => (
         <circle key={pontos[i].dia + i} cx={cx} cy={cy} r={i === xy.length - 1 ? 7 : 5} fill={pontos[i].origem === "PACIENTE" ? "var(--p-card)" : "var(--p-tint)"} stroke={i === xy.length - 1 ? "var(--p-card)" : "var(--p-tint)"} strokeWidth={i === xy.length - 1 ? 3 : 2.5} style={i === xy.length - 1 ? { filter: "drop-shadow(0 1px 3px rgba(0,0,0,.25))" } : undefined}>
           <title>{`${diaMes(pontos[i].dia)}: ${fmt(valorDoPonto(pontos[i]))}${unidade}${pontos[i].origem === "PACIENTE" ? " (você enviou)" : ""}`}</title>

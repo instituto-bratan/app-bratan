@@ -21,7 +21,7 @@ import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolu
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
 import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
-import { brl, brlCentavos, diaCurto, diaMes, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, saudacao, temCurvaDeGordura, trilhaDoPlano, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
+import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, saudacao, temCurvaDeGordura, trilhaDoPlano, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
 const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o atendimento", TRATAMENTO: "termo do tratamento", IA: "apoio de inteligência artificial", IMAGEM: "uso de imagem", MARKETING: "mensagens e novidades" };
@@ -256,6 +256,9 @@ function MeuPortal() {
   // Qual medida a curva desenha. Peso é o padrão; gordura só aparece quando há
   // bioimpedância suficiente para formar uma linha.
   const [metricaDaCurva, setMetricaDaCurva] = useState<MetricaDaCurva>("peso");
+  // A curva começa no fechamento do plano (decisão do Lucas, 17/09/2026). Quem
+  // quiser ver a vida toda abre — e aí a virada aparece marcada no gráfico.
+  const [verHistoricoTodo, setVerHistoricoTodo] = useState(false);
   const [barraCompacta, setBarraCompacta] = useState(false);
   const tituloRef = useRef<HTMLHeadingElement>(null);
 
@@ -364,7 +367,9 @@ function MeuPortal() {
 
   if (!sessao) return <SemSessao aoEntrar={(nova) => { setSessao(nova); void recarregar(); }} />;
   const proxima = dados ? proximaConsulta(dados.consultas, marcos, hoje) : null;
-  const evolucao = dados ? resumoEvolucao(dados.medicoes, hoje) : null;
+  const inicioDoPlano = dados?.plano?.inicio ?? null;
+  const antesDoPlano = dados ? medicoesAntesDoPlano(dados.medicoes, inicioDoPlano) : 0;
+  const evolucao = dados ? resumoEvolucao(dados.medicoes, hoje, verHistoricoTodo ? undefined : inicioDoPlano ?? undefined) : null;
   const financeiro = dados ? resumoFinanceiro(dados.comandas, dados.parcelasAbertas, hoje) : null;
   const trilha = dados?.plano ? trilhaDoPlano(marcos, dados.plano.inicio, hoje) : null;
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
@@ -535,10 +540,17 @@ function MeuPortal() {
                         </span>
                       ) : null}
                     </div>
-                    {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} metrica={metricaDaCurva} /> : <CurvaEsperando />}
+                    {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} metrica={metricaDaCurva} inicioDoPlano={verHistoricoTodo ? inicioDoPlano : null} /> : <CurvaEsperando />}
                     {/* A gordura só vira curva quando existem duas medições com o
                         percentual. Perder peso mantendo massa magra é o que
                         motiva — e esse número vivia escondido num quadradinho. */}
+                    {antesDoPlano > 0 ? (
+                      <button type="button" className="p-btn plain" onClick={() => setVerHistoricoTodo((atual) => !atual)}>
+                        {verHistoricoTodo
+                          ? "Ver só o meu plano"
+                          : `Ver desde o começo (mais ${antesDoPlano} ${antesDoPlano === 1 ? "medição" : "medições"})`}
+                      </button>
+                    ) : null}
                     {evolucao.pontos.length > 1 && temCurvaDeGordura(evolucao) ? (
                       <div style={{ display: "flex", justifyContent: "center" }}>
                         <InterruptorDoPortal

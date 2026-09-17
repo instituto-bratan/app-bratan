@@ -91,3 +91,43 @@ test("nome do plano e link do portal", () => {
   assert.equal(mod.montarLinkPortal("https://app-bratan.vercel.app/", "abc"), "https://app-bratan.vercel.app/meu/entrar?t=abc");
   assert.equal(mod.saudacao("Maria", 9), "Bom dia, Maria.");
 });
+
+// ---- A CURVA COMEÇA NO PLANO (17/09/2026) ----------------------------------
+// A importação da InBody trouxe anos de exames. Sem recorte, quem fechou o plano
+// há um mês lia "acompanhando há 166 semanas" e "desde junho de 2023 você já
+// perdeu...", misturando a vida inteira com o que o plano entregou.
+// Decisão do Lucas: de cara mostra o plano; a vida toda é a pedido do paciente.
+const med = (dia, pesoKg, gorduraPct = null) => ({ id: dia, dia, pesoKg, gorduraPct, massaMagraKg: null, cinturaCm: null, origem: "IMPORTACAO" });
+
+const historicoLongo = [
+  med("2023-06-26", 98.0),
+  med("2024-03-10", 95.0),
+  med("2026-08-24", 92.0), // dia do fechamento
+  med("2026-09-10", 89.5),
+];
+
+test("de cara, a curva mostra só do fechamento do plano para frente", () => {
+  const r = mod.resumoEvolucao(historicoLongo, hoje, "2026-08-24");
+  assert.equal(r.pontos.length, 2, "as medições de 2023 e 2024 ficam de fora");
+  assert.equal(r.primeira.dia, "2026-08-24");
+  assert.equal(r.deltaPeso, -2.5, "o que o plano entregou, não a vida inteira");
+  assert.equal(r.semanas, 2, "'acompanhando há' passa a contar do plano");
+});
+
+test("sem recorte, a curva mostra a vida toda", () => {
+  const r = mod.resumoEvolucao(historicoLongo, hoje);
+  assert.equal(r.pontos.length, 4);
+  assert.equal(r.primeira.dia, "2023-06-26");
+  assert.equal(r.deltaPeso, -8.5);
+});
+
+test("o botão só aparece quando existe mesmo histórico anterior", () => {
+  assert.equal(mod.medicoesAntesDoPlano(historicoLongo, "2026-08-24"), 2);
+  assert.equal(mod.medicoesAntesDoPlano(historicoLongo, "2023-01-01"), 0, "tudo dentro do plano: nada a oferecer");
+  assert.equal(mod.medicoesAntesDoPlano(historicoLongo, null), 0, "sem plano, não há corte");
+});
+
+test("o dia do fechamento entra no plano, não no passado", () => {
+  const r = mod.resumoEvolucao(historicoLongo, hoje, "2026-08-24");
+  assert.equal(r.primeira.dia, "2026-08-24", "quem mediu no próprio dia do fechamento conta como plano");
+});

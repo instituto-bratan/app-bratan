@@ -173,6 +173,13 @@ export function proximaConsulta(consultas: PortalConsulta[], _marcos: MarcoDoPla
   return null;
 }
 
+/** Quantas medições existem ANTES do plano começar — é o que o botão oferece. */
+export function medicoesAntesDoPlano(medicoes: PortalMedicao[], inicioISO: string | null | undefined) {
+  if (!inicioISO) return 0;
+  const corte = inicioISO.slice(0, 10);
+  return medicoes.filter((m) => m.pesoKg !== null && m.pesoKg > 0 && m.dia < corte).length;
+}
+
 /**
  * A curva de gordura só vale a pena quando há pelo menos duas medições com o
  * percentual — uma linha de um ponto não é curva, é um ponto.
@@ -193,9 +200,21 @@ export type ResumoEvolucao = {
   frase: string;
 };
 
-/** A curva: começo × hoje, com a frase que dá contexto (o primeiro mês é adaptação). */
-export function resumoEvolucao(medicoes: PortalMedicao[], hojeISO: string): ResumoEvolucao | null {
-  const comPeso = medicoes.filter((m) => m.pesoKg !== null && m.pesoKg > 0).sort((a, b) => a.dia.localeCompare(b.dia));
+/**
+ * A curva: começo × hoje, com a frase que dá contexto (o primeiro mês é adaptação).
+ *
+ * `desdeISO` recorta o que entra. Decisão do Lucas (17/09/2026): **de cara, a
+ * curva mostra o plano** — do fechamento para frente. O paciente que quiser vê
+ * a vida toda com um toque.
+ *
+ * Por que o recorte é o padrão: a importação da InBody trouxe anos de exames.
+ * Sem recorte, alguém que fechou o plano há um mês lia "acompanhando há 166
+ * semanas" e "desde junho de 2023 você já perdeu...", misturando a vida inteira
+ * com o que o plano entregou.
+ */
+export function resumoEvolucao(medicoes: PortalMedicao[], hojeISO: string, desdeISO?: string): ResumoEvolucao | null {
+  const noRecorte = desdeISO ? medicoes.filter((m) => m.dia >= desdeISO.slice(0, 10)) : medicoes;
+  const comPeso = noRecorte.filter((m) => m.pesoKg !== null && m.pesoKg > 0).sort((a, b) => a.dia.localeCompare(b.dia));
   if (!comPeso.length) return null;
   const primeira = comPeso[0];
   const ultima = comPeso[comPeso.length - 1];
