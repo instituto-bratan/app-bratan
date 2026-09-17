@@ -1641,8 +1641,34 @@ export function monthFeesExpenseRef(month: string) {
   return `fexp-tarifas-${month}`;
 }
 
+/**
+ * Lê um valor em dinheiro digitado por gente.
+ *
+ * ARMADILHA DE CEM VEZES (achada em 17/09/2026, auditoria da NFS-e): a versão
+ * anterior apagava TODO ponto antes de converter, porque no Brasil o ponto é
+ * separador de milhar. Só que o teclado numérico do notebook e o `inputMode`
+ * do iPhone oferecem PONTO, não vírgula — então "5119.00" virava 511900, e um
+ * tratamento de R$ 5.119,00 entrava como R$ 511.900,00. Em 11 telas: comanda,
+ * fechamento, repasses, poupança, lucro, prova do dinheiro, nota fiscal.
+ *
+ * Regra: com vírgula, vale o padrão brasileiro (ponto = milhar, vírgula =
+ * decimal). Sem vírgula, o último grupo decide — três dígitos é milhar
+ * ("1.000" = mil), qualquer outra quantidade é decimal ("5119.00" = 5119).
+ */
 export function parseFinAmount(value: string) {
-  const normalized = String(value ?? "").replace(/\./g, "").replace(",", ".");
+  const texto = String(value ?? "").trim();
+  if (!texto) return 0;
+  let normalized: string;
+  if (texto.includes(",")) {
+    normalized = texto.replace(/\./g, "").replace(",", ".");
+  } else {
+    const grupos = texto.split(".");
+    const ultimo = grupos[grupos.length - 1];
+    normalized =
+      grupos.length > 1 && ultimo.length !== 3
+        ? `${grupos.slice(0, -1).join("")}.${ultimo}`
+        : texto.replace(/\./g, "");
+  }
   const amount = Number(normalized);
   return Number.isFinite(amount) ? amount : 0;
 }

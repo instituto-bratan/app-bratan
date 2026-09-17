@@ -1,11 +1,22 @@
 // focus-nfse (15/09/2026, proposta 3.3): emite/consulta/cancela a NFS-e de uma
-// comanda pela API da Focus NFe (prefeitura de São Paulo). Regras da casa: a
-// nota é da CONSULTA (13,33%) ou do TRATAMENTO (7,93%) ou UNIFICADA — quem
-// escolhe é a recepção/financeiro na hora de emitir. O app NÃO guarda CPF: o
-// CPF do tomador, quando informado, vai só no pedido à Focus e não é salvo.
-// Desligada por padrão; precisa de FOCUS_NFE_TOKEN e da configuração fiscal
-// (CNPJ, inscrição municipal, código do serviço, alíquotas, ambiente).
+// comanda pela API da Focus NFe (prefeitura de São Paulo).
+//
+// REGRA DA CASA (ditada pelo Lucas em 17/09/2026, conferida em três notas reais
+// de 01/09): quem escolhe é o PACIENTE — nota UNIFICADA (tudo junto, imposto
+// menor) ou notas SEPARADAS. E o código de serviço do município muda com a
+// natureza da nota:
+//   04197 "Clínicas e casas de saúde"  → CONSULTA
+//   04030 "Medicina e biomedicina"     → BIOIMPEDÂNCIA, TRATAMENTO e UNIFICADA
+// Errar esse código é errar imposto, então ele sai da configuração por tipo e
+// nunca de um campo único.
+//
+// O CPF do tomador fica em contato_documento (tabela à parte, permissão
+// própria): vai no pedido à Focus e NUNCA no que a gente grava.
+//
+// Desligada por padrão; precisa do token DO AMBIENTE e da configuração fiscal
+// (CNPJ, inscrição municipal, códigos de serviço, alíquotas, ambiente).
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
+import { quemChama } from "../_shared/claude.ts";
 
 type Entrada = {
   acao: "emitir" | "consultar" | "cancelar";
@@ -18,12 +29,32 @@ type Entrada = {
   solicitadoPor?: string;
 };
 
-function baseUrl(config: Record<string, unknown>) {
-  return String(config.ambiente ?? "homologacao") === "producao" ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br";
+/** Produção e homologação são DOIS servidores e DOIS tokens diferentes. */
+function ehProducao(config: Record<string, unknown>) {
+  return String(config.ambiente ?? "homologacao") === "producao";
 }
 
-function cabecalho() {
-  return { Authorization: `Basic ${btoa(`${Deno.env.get("FOCUS_NFE_TOKEN")}:`)}`, "Content-Type": "application/json" };
+function baseUrl(config: Record<string, unknown>) {
+  return ehProducao(config) ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br";
+}
+
+/**
+ * O token segue o ambiente, e isso não é detalhe: com um token só, apontar o
+ * `ambiente` para produção enquanto se testa emitiria NOTA DE VERDADE, com
+ * número, ISS e tudo. Cada ambiente tem o seu segredo, e trocar de ambiente sem
+ * ter o token daquele lado falha na hora, em vez de emitir por engano.
+ */
+function tokenDoAmbiente(config: Record<string, unknown>) {
+  return Deno.env.get(ehProducao(config) ? "FOCUS_NFE_TOKEN_PRODUCAO" : "FOCUS_NFE_TOKEN_HOMOLOGACAO") ?? "";
+}
+
+/** Só para o texto do registro — o corpo do pedido é lido uma vez só, mais abaixo. */
+function entradaAcaoSegura(request: Request) {
+  return request.method === "POST" ? "emitir/consultar" : request.method;
+}
+
+function cabecalho(config: Record<string, unknown>) {
+  return { Authorization: `Basic ${btoa(`${tokenDoAmbiente(config)}:`)}`, "Content-Type": "application/json" };
 }
 
 Deno.serve(async (request) => {
@@ -32,9 +63,25 @@ Deno.serve(async (request) => {
   const client = db();
   const integracao = await lerIntegracao(client, "focus_nfse");
   if (!integracao.ligada) return respostaDesligada("focus_nfse");
-  const faltam = segredosFaltando(["FOCUS_NFE_TOKEN"]);
-  if (faltam.length) return respostaSemSegredos("focus_nfse", faltam);
+  // QUEM ESTÁ PEDINDO A NOTA (17/09/2026). Esta função roda com a chave de
+  // serviço, que ignora toda a RLS, e emite documento fiscal no CNPJ do
+  // Instituto com o CPF do paciente. Sem identificar o chamador, a chave pública
+  // que vai no site bastaria para alguém emitir nota em nome da clínica e
+  // mandá-la para o e-mail que quisesse. Agora só emite quem entrou com a conta.
+  const CARGOS_QUE_EMITEM = new Set(["gestor_financeiro", "gestor", "ceo", "dr_daniel", "secretaria_executiva"]);
+  const pediu = await quemChama(client, request);
+  if (!pediu?.pessoaId) {
+    return json({ ok: false, error: "Entre com a sua conta para emitir nota fiscal." }, 401);
+  }
+  if (!CARGOS_QUE_EMITEM.has(pediu.cargo)) {
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "RECUSADO", resumo: `${pediu.nome || pediu.pessoaId} tentou ${entradaAcaoSegura(request)} sem acesso a Impostos & NFs` });
+    return json({ ok: false, error: "O seu acesso não inclui emitir nota fiscal. Fale com a coordenação." }, 403);
+  }
+
   const config = integracao.config;
+  const nomeDoToken = ehProducao(config) ? "FOCUS_NFE_TOKEN_PRODUCAO" : "FOCUS_NFE_TOKEN_HOMOLOGACAO";
+  const faltam = segredosFaltando([nomeDoToken]);
+  if (faltam.length) return respostaSemSegredos("focus_nfse", faltam);
   const entrada = await corpo<Entrada>(request);
   const base = baseUrl(config);
 
@@ -42,7 +89,7 @@ Deno.serve(async (request) => {
     if (!entrada.ref) return json({ ok: false, error: "Informe a ref." }, 400);
     const resposta = await fetch(`${base}/v2/nfse/${encodeURIComponent(entrada.ref)}`, {
       method: entrada.acao === "cancelar" ? "DELETE" : "GET",
-      headers: cabecalho(),
+      headers: cabecalho(config),
       body: entrada.acao === "cancelar" ? JSON.stringify({ justificativa: entrada.justificativa ?? "Cancelamento solicitado pelo Instituto Bratan" }) : undefined,
     });
     const dados = (await resposta.json().catch(() => ({}))) as Record<string, unknown>;
@@ -125,8 +172,17 @@ Deno.serve(async (request) => {
   };
   const payloadGuardado = JSON.parse(JSON.stringify(payload)) as { tomador: Record<string, unknown> };
   delete payloadGuardado.tomador.cpf; // CPF nunca fica no banco do app
-  await client.from("nfse_emissao").insert({ ref, sale_ref: entrada.saleRef, tipo: entrada.tipo, valor, status: "ENVIANDO", payload: payloadGuardado, solicitado_por: entrada.solicitadoPor ?? null });
-  const resposta = await fetch(`${base}/v2/nfse?ref=${encodeURIComponent(ref)}`, { method: "POST", headers: cabecalho(), body: JSON.stringify(payload) });
+  // O registro vem ANTES do envio, e o erro dele PARA o envio: sem isso, um CHECK
+  // novo no banco (ou qualquer falha de gravação) deixaria a nota sair na
+  // prefeitura sem ficar registrada aqui — dinheiro e ISS sem rastro no app.
+  const { error: erroDoRegistro } = await client
+    .from("nfse_emissao")
+    .insert({ ref, sale_ref: entrada.saleRef, tipo: entrada.tipo, valor, status: "ENVIANDO", payload: payloadGuardado, solicitado_por: pediu.pessoaId });
+  if (erroDoRegistro) {
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "ERRO", resumo: `Não registrei a emissão ${ref} e por isso NÃO enviei à prefeitura: ${erroDoRegistro.message}` });
+    return json({ ok: false, error: `Não consegui registrar a emissão no app, então não enviei à prefeitura. Detalhe: ${erroDoRegistro.message}` }, 500);
+  }
+  const resposta = await fetch(`${base}/v2/nfse?ref=${encodeURIComponent(ref)}`, { method: "POST", headers: cabecalho(config), body: JSON.stringify(payload) });
   const dados = (await resposta.json().catch(() => ({}))) as Record<string, unknown>;
   const status = String(dados.status ?? (resposta.ok ? "processando_autorizacao" : `http_${resposta.status}`)).toUpperCase();
   await client.from("nfse_emissao").update({ status, resposta: dados, erro: resposta.ok ? null : JSON.stringify(dados.erros ?? dados).slice(0, 500), atualizado_em: new Date().toISOString() }).eq("ref", ref);
