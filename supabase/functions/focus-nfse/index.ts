@@ -66,6 +66,12 @@ Deno.serve(async (request) => {
   const valor = Number(entrada.valor ?? total);
   if (!(valor > 0)) return json({ ok: false, error: "Valor da nota precisa ser maior que zero." }, 400);
   const aliquota = Number(entrada.tipo === "CONSULTA" ? config.aliquotaConsulta : entrada.tipo === "TRATAMENTO" ? config.aliquotaTratamento : config.aliquotaConsulta) || 0;
+  // A Focus espera a alíquota em DECIMAL: 0,02 para 2%. Digitar "2" pensando em
+  // porcentagem emitiria a nota com 200% de ISS — erro de cem vezes num campo de
+  // imposto, que só apareceria na conta da prefeitura. Melhor recusar.
+  if (aliquota > 1) {
+    return json({ ok: false, error: `Alíquota de ISS configurada como ${aliquota}. Ela é decimal: use 0.02 para 2%.` }, 400);
+  }
   const discriminacao = entrada.tipo === "CONSULTA" ? "Consulta médica" : entrada.tipo === "TRATAMENTO" ? `Serviços de saúde — ${itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 200) || "tratamento"}` : `Serviços médicos — comanda de ${sale.sale_date}`;
   // Uma nota por comanda e por tipo. Sem esta trava, um F5 no meio do envio (ou
   // dois cliques) manda a prefeitura emitir a MESMA nota duas vezes — e o ISS sai
