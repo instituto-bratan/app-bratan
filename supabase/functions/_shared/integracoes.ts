@@ -66,6 +66,35 @@ export function telefoneE164(bruto: string) {
   return `55${d}`;
 }
 
+// ---- Mesma pessoa? ---------------------------------------------------------
+// Compartilhado porque a agenda do Google só traz o NOME do paciente (nenhum dos
+// 283 eventos tem telefone) e a ficha traz o nome do cadastro — nunca igualzinho.
+// Mesma regra do app (personNamesMatch): o primeiro nome tem que bater e um
+// conjunto de sobrenomes tem que estar contido no outro, então "Maria Silva" e
+// "Maria Souza" continuam sendo duas pessoas.
+const LIGACOES_DO_NOME = new Set(["da", "de", "do", "das", "dos", "e"]);
+
+export function pedacosDoNome(nome: string) {
+  return (nome ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter((pedaco) => pedaco.length > 1 && !LIGACOES_DO_NOME.has(pedaco));
+}
+
+export function mesmaPessoa(a: string, b: string) {
+  const x = pedacosDoNome(a);
+  const y = pedacosDoNome(b);
+  if (!x.length || !y.length) return false;
+  if (x[0] !== y[0]) return false;
+  if (x.length === 1 || y.length === 1) return x.length === y.length;
+  const cx = new Set(x);
+  const cy = new Set(y);
+  return x.every((p) => cy.has(p)) || y.every((p) => cx.has(p));
+}
+
 export function agoraBrasiliaISO() {
   return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
 }
