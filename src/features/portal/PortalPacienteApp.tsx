@@ -371,6 +371,12 @@ function MeuPortal() {
   const partes = proxima ? partesDaData(proxima.em) : null;
   const mostrandoGordura = metricaDaCurva === "gordura";
   const deltaEmFoco = mostrandoGordura ? evolucao?.deltaGordura ?? null : evolucao?.deltaPeso ?? null;
+  const fraseDaGordura =
+    evolucao && evolucao.deltaGordura !== null && evolucao.deltaGordura < 0
+      ? `Desde ${diaMes(evolucao.primeira.dia)} a sua gordura corporal caiu ${fmt1(Math.abs(evolucao.deltaGordura))} pontos.`
+      : evolucao && evolucao.deltaGordura !== null && evolucao.deltaGordura > 0
+        ? "A gordura corporal subiu desde a primeira medição. A enfermagem vai olhar isso com você no próximo contato."
+        : "A gordura corporal está estável entre as medições.";
   function irPara(id: string) {
     setSecaoAtiva(id);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -544,7 +550,9 @@ function MeuPortal() {
                         />
                       </div>
                     ) : null}
-                    <p className="t-sub">{evolucao.frase}</p>
+                    {/* A frase acompanha o que a curva está mostrando: falar de quilo
+                        embaixo de uma curva de gordura confunde quem está lendo. */}
+                    <p className="t-sub">{mostrandoGordura ? fraseDaGordura : evolucao.frase}</p>
                     {evolucao.pontos.length > 1 && (evolucao.deltaGordura !== null || evolucao.deltaMassaMagra !== null || evolucao.deltaCintura !== null) ? (
                       <div className="p-stats">
                         <div className="p-stat">
