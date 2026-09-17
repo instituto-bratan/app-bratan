@@ -42,7 +42,9 @@ test("Clube Bratan: duas bioimpedâncias, duas consultas, nenhum checkpoint", ()
   assert.equal(conta(marcos, "BIO"), 2);
   assert.equal(conta(marcos, "MEDICO"), 2);
   assert.equal(marcos.length, 4);
-  assert.equal(marcos.find((m) => m.type === "BIO").label, "Bioimpedância 1/2", "o rótulo diz o total certo");
+  // O rótulo é ORDINAL de propósito: "Bioimpedância 1/2" era lido como
+  // "1 de 2 feitas" (Lucas, 17/09). "1ª bioimpedância" não tem essa leitura.
+  assert.equal(marcos.find((m) => m.type === "BIO").label, "1ª bioimpedância");
 });
 
 test("Só tratamento: nenhum marco — não deve nada a ninguém", () => {

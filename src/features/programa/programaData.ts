@@ -182,7 +182,10 @@ export function buildMilestones(deal: CrmDeal, todayISO: string): ProgramMilesto
         type,
         n,
         total,
-        label: type === "MEDICO" ? `${ordinalDaConsulta(n, total)} ${quandoCai(mes)}` : `${milestoneTypeLabels[type]} ${n}/${total}`,
+        // "Bioimpedância 6/6" era lido como "6 de 6 FEITAS" — o Lucas leu assim no
+        // portal de uma paciente que tinha 3 (17/09/2026). O ordinal não tem essa
+        // ambiguidade: "6ª bioimpedância" é a sexta, não seis concluídas.
+        label: type === "MEDICO" ? `${ordinalDaConsulta(n, total)} ${quandoCai(mes)}` : `${n}ª ${milestoneTypeLabels[type].toLowerCase()}`,
         expectedDate: expected,
         done: done.has(key),
         overdue: !done.has(key) && expected < todayISO,

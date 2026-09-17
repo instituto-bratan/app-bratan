@@ -36,6 +36,25 @@ function normalizarLogin(valor: string) {
 }
 const somaDias = (dias: number) => new Date(Date.now() + dias * 86_400_000).toISOString();
 
+/** O nome que o paciente entende para cada tipo de item da comanda. */
+const ROTULO_DO_ITEM: Record<string, string> = {
+  CONSULTA: "Consulta",
+  BIOIMPEDANCIA: "Bioimpedância",
+  TRATAMENTO: "Tratamento",
+  SINAL: "Sinal",
+  RETORNO: "Retorno",
+  DESTRAVAR: "Consulta",
+  MEDICACAO: "Medicação",
+  EXAME: "Exame",
+  NUTRICIONISTA: "Nutrição",
+  PSICOLOGA: "Psicologia",
+  OUTRO: "Atendimento",
+};
+
+function rotuloDoItem(tipo: string) {
+  return ROTULO_DO_ITEM[tipo] ?? "Atendimento";
+}
+
 // ---- Mesma pessoa? ---------------------------------------------------------
 // A agenda do Google traz o nome como a recepção digitou, e a ficha traz o nome
 // como o cadastro tem. "GABRIELA GUAGLIANO" (ficha) × "GABRIELA GUAGLIANO
@@ -248,7 +267,16 @@ Deno.serve(async (request) => {
   ];
 
   const comandas = ((vendas.data ?? []) as Record<string, unknown>[]).map((v) => {
-    const itens = ((v.fin_sale_items as Record<string, unknown>[]) ?? []).map((i) => ({ descricao: (i.description as string) || String(i.item_type ?? ""), tipo: String(i.item_type ?? ""), valor: Number(i.amount || 0) }));
+    const itens = ((v.fin_sale_items as Record<string, unknown>[]) ?? []).map((i) => ({
+      // NUNCA a descrição livre da comanda (17/09/2026). Ela é anotação INTERNA:
+      // no exame real que motivou este conserto, o paciente estava recebendo
+      // "Emitir NF de tratamento somente", o nome de uma colega ("Andrya
+      // ciente"), a posologia e a combinação de pagamento. O portal mostra o que
+      // a pessoa comprou e quanto custou — nada do que a equipe escreve para si.
+      descricao: rotuloDoItem(String(i.item_type ?? "")),
+      tipo: String(i.item_type ?? ""),
+      valor: Number(i.amount || 0),
+    }));
     return { id: v.client_ref as string, dia: v.sale_date as string, itens, pagamentos: ((v.fin_sale_payments as Record<string, unknown>[]) ?? []).map((p) => ({ metodo: String(p.method ?? ""), valor: Number(p.amount || 0), parcelas: Number(p.installments || 1) })), total: Math.round(itens.reduce((s, i) => s + i.valor, 0) * 100) / 100 };
   });
 

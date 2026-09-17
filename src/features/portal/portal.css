@@ -239,7 +239,10 @@
 .p-interruptor {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  /* Espaço generoso: o interruptor tem 0.5em de sombra em volta, então um gap
+     pequeno deixava as palavras encostadas nele (Lucas, 17/09/2026). */
+  gap: 18px;
+  padding: 6px 0;
 }
 
 .p-interruptor input {
