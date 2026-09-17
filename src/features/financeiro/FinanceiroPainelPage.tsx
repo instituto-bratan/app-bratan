@@ -75,7 +75,7 @@ import { buildOcupacaoMes, formatHoras, heatDaOcupacao } from "./ocupacaoSala";
 import { buildSemanaEmNumeros } from "./semanaEmNumeros";
 import { NarrativaDoMesCard, PerguntarAo360Card } from "./PainelIaCards";
 import { useCrmState } from "@/features/crm/useCrmState";
-import { listRemoteAgendaEspelho, listRemoteColaboradores, listRemoteNpsRespostas } from "@/lib/remoteData";
+import { listRemoteAgendaEspelho, listRemoteColaboradores, listRemoteNpsRespostas, lerRemoteSaldoBanco } from "@/lib/remoteData";
 import { PonteWaterfall } from "./PonteWaterfall";
 import { buildPontosDaReuniao, type PontoDaReuniao } from "./pontosDaReuniao";
 import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
@@ -148,16 +148,10 @@ export function FinanceiroPainelPage() {
   );
 
   // O saldo do banco é digitado na P12 (Prova do dinheiro) e reaproveitado aqui.
-  const saldoSalvoItau = ((): number | null => {
-    try {
-      const bruto = window.localStorage.getItem("app-bratan-fin-saldo-itau-v1");
-      if (!bruto) return null;
-      const valor = parseFinAmount(String((JSON.parse(bruto) as { texto?: string }).texto ?? ""));
-      return valor > 0 ? valor : null;
-    } catch {
-      return null;
-    }
-  })();
+  // Vem do app desde 17/09/2026: lido do localStorage, ele existia só no aparelho
+  // de quem digitou e o bloco de lucro real sumia para o resto da reunião.
+  const saldoBanco = useQuery({ queryKey: ["fin-saldo-banco"], queryFn: lerRemoteSaldoBanco, staleTime: 30_000 });
+  const saldoSalvoItau = saldoBanco.data && saldoBanco.data.valor > 0 ? saldoBanco.data.valor : null;
   const perto = monthKey === hoje.slice(0, 7) || monthKey === previousMonthKey(hoje.slice(0, 7));
   const lucroRealCaixa =
     perto && saldoSalvoItau !== null

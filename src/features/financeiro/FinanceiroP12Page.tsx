@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { BrainCircuit, Eye, EyeOff, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
@@ -6,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { canFinanceiroView } from "@/lib/access";
-import { readLocalValue, writeLocalValue } from "@/lib/localStore";
+import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
+import { lerRemoteSaldoBanco, salvarRemoteSaldoBanco } from "@/lib/remoteData";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import {
   buildP12Matrix,
@@ -38,15 +41,40 @@ function cellValue(value: number, isRevenue = false) {
 export function FinanceiroP12Page() {
   // Saldo do Itaú digitado (Prova do dinheiro) — compartilhado com o card do
   // fechamento, onde vira o LUCRO REAL do mês (definição do Lucas, 03/08/2026).
+  //
+  // Até 17/09/2026 ele morava SÓ no localStorage de quem digitava: na reunião, o
+  // Painel do Lucas mostrava o lucro real e o mesmo Painel no notebook do Dr.
+  // Daniel mostrava um bloco vazio. Agora é do app (fin_saldo_banco, uma linha
+  // por dia); o localStorage fica como espelho para o modo offline.
+  const { pessoa } = useAuth();
+  const queryClient = useQueryClient();
   const SALDO_KEY = "app-bratan-fin-saldo-itau-v1";
   const saldoSalvo = readLocalValue<{ texto: string; atualizadoEm: string }>(SALDO_KEY, { texto: "", atualizadoEm: "" });
   const [saldoTexto, setSaldoTexto] = useState(saldoSalvo.texto);
   const [saldoAtualizadoEm, setSaldoAtualizadoEm] = useState(saldoSalvo.atualizadoEm);
+  const [saldoTocado, setSaldoTocado] = useState(false);
+
+  const saldoRemoto = useQuery({ queryKey: ["fin-saldo-banco"], queryFn: lerRemoteSaldoBanco, staleTime: 30_000 });
+  useEffect(() => {
+    // Enquanto ninguém digitou nesta sessão, o que vale é o que está no app.
+    if (saldoTocado || !saldoRemoto.data) return;
+    setSaldoTexto(String(saldoRemoto.data.valor).replace(".", ","));
+    setSaldoAtualizadoEm(saldoRemoto.data.atualizadoEm);
+  }, [saldoRemoto.data, saldoTocado]);
+
   function handleSaldoChange(valor: string) {
+    setSaldoTocado(true);
     setSaldoTexto(valor);
     const agora = new Date().toISOString();
     setSaldoAtualizadoEm(agora);
     writeLocalValue(SALDO_KEY, { texto: valor, atualizadoEm: agora });
+    const numero = parseFinAmount(valor);
+    if (!(numero > 0)) return;
+    void salvarRemoteSaldoBanco(todayISO(), numero, pessoa?.id ?? null)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["fin-saldo-banco"] }))
+      .catch(() => {
+        /* offline: fica o espelho local e a próxima digitação tenta de novo */
+      });
   }
   const [year, setYear] = useState(new Date().getFullYear());
   const [monthFilter, setMonthFilter] = useState<number | null>(null);

@@ -130,3 +130,25 @@ export async function listRemoteFinSavings(): Promise<FinSavingsMove[]> {
     createdAt: String(row.created_at ?? ""),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// SALDO DO BANCO (17/09/2026). O valor digitado na Prova do dinheiro (P12) morava
+// só no localStorage de quem digitou — então o "lucro real (caixa)" do Painel
+// aparecia para o Lucas e sumia para todo mundo na reunião. Agora é do app.
+export type SaldoDoBanco = { dia: string; valor: number; atualizadoEm: string };
+
+export async function lerRemoteSaldoBanco(): Promise<SaldoDoBanco | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("fin_saldo_banco").select("dia, valor, atualizado_em").order("dia", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { dia: data.dia as string, valor: Number(data.valor), atualizadoEm: data.atualizado_em as string };
+}
+
+export async function salvarRemoteSaldoBanco(dia: string, valor: number, atualizadoPor: string | null) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("fin_saldo_banco")
+    .upsert({ dia, valor, atualizado_por: uuidOrNull(atualizadoPor), atualizado_em: new Date().toISOString() }, { onConflict: "dia" });
+  if (error) throw new Error(error.message);
+}

@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, canFinanceiroView } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import {
+  lerRemoteSaldoBanco,
   listRemoteFinLucroDias,
   loadRemoteFinLucroConfig,
   saveRemoteFinLucroConfig,
@@ -329,16 +330,9 @@ export function FinanceiroLucroPage() {
   const metasConfig = useMemo<MetasConfig>(() => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }), []);
   const metasBoard = useMemo(() => buildMetasBoard(financeiro.sales, metasConfig, month), [financeiro.sales, metasConfig, month]);
   // O saldo do Itaú é digitado na Prova do dinheiro (P12) e reaproveitado aqui.
-  const saldoItau = useMemo(() => {
-    try {
-      const bruto = window.localStorage.getItem("app-bratan-fin-saldo-itau-v1");
-      if (!bruto) return null;
-      const valor = parseFinAmount(String((JSON.parse(bruto) as { texto?: string }).texto ?? ""));
-      return valor > 0 ? valor : null;
-    } catch {
-      return null;
-    }
-  }, []);
+  // Vem do app desde 17/09/2026 (antes era localStorage, ou seja, de um aparelho só).
+  const saldoBanco = useQuery({ queryKey: ["fin-saldo-banco"], queryFn: lerRemoteSaldoBanco, staleTime: 30_000 });
+  const saldoItau = saldoBanco.data && saldoBanco.data.valor > 0 ? saldoBanco.data.valor : null;
   const [comAntecipacao, setComAntecipacao] = useState(false);
   const [pisoCaixa, setPisoCaixa] = useState<number>(() => readLocalValue<number>(pisoCaixaStorageKey, configAtual<number>("caixa.piso") ?? 0));
   const caixa = useMemo(
