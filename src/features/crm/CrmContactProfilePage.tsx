@@ -41,6 +41,7 @@ import {
 import { useCrmState } from "./useCrmState";
 import { ConsentimentosDoContato } from "./ConsentimentosDoContato";
 import { PortalDoPacienteCard } from "@/features/portal/PortalDoPacienteCard";
+import { CpfDoPacienteCard } from "./CpfDoPacienteCard";
 import { contactChannelsIssue, formatPhoneBR } from "./contactChannels";
 import { AccessGate } from "@/components/access/AccessGate";
 import { canCrmBratan } from "@/lib/access";
@@ -381,6 +382,11 @@ function CrmContactProfilePageConteudo() {
                 <InfoItem label="Último toque" value={lastTouch ? formatCrmDateTime(lastTouch.sentAt) : "Sem toque"} />
               </div>
               {useRemoteConsent ? <ConsentimentosDoContato contactRef={contact.id} pessoaId={pessoa?.id ?? null} podeEditar={Boolean(pessoa)} /> : null}
+              {useRemoteConsent ? (
+                <div className="mt-4">
+                  <CpfDoPacienteCard contactRef={contact.id} pessoaId={pessoa?.id ?? null} ativo={Boolean(pessoa)} />
+                </div>
+              ) : null}
               {useRemoteConsent ? (
                 <div className="mt-4">
                   <PortalDoPacienteCard

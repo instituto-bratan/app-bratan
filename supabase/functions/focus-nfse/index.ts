@@ -99,11 +99,21 @@ Deno.serve(async (request) => {
     const { data: contato } = await client.from("crm_contacts").select("email").eq("client_ref", sale.crm_contact_ref).maybeSingle();
     email = contato?.email ?? "";
   }
+  // CPF: o que veio no pedido manda; senão, o guardado na ficha (decisão do
+  // Lucas em 17/09/2026). É ele que faz a nota sair identificada e o paciente
+  // ganhar o bilhete do sorteio. Sem CPF a nota continua saindo — só sem o
+  // tomador identificado. O número vai no pedido e NUNCA no que gravamos.
+  let cpfDoTomador = (entrada.tomador?.cpf ?? "").replace(/\D/g, "");
+  if (!cpfDoTomador && sale.crm_contact_ref) {
+    const { data: documento } = await client.from("contato_documento").select("cpf").eq("contact_ref", sale.crm_contact_ref).maybeSingle();
+    cpfDoTomador = String(documento?.cpf ?? "").replace(/\D/g, "");
+  }
+  if (cpfDoTomador && cpfDoTomador.length !== 11) cpfDoTomador = "";
   const payload: Record<string, unknown> = {
     data_emissao: new Date().toISOString(),
     natureza_operacao: String(config.naturezaOperacao ?? "1"),
     prestador: { cnpj: String(config.cnpjPrestador).replace(/\D/g, ""), inscricao_municipal: String(config.inscricaoMunicipal), codigo_municipio: "3550308" },
-    tomador: { razao_social: entrada.tomador?.nome || sale.patient_name, email: email || undefined, cpf: entrada.tomador?.cpf ? entrada.tomador.cpf.replace(/\D/g, "") : undefined },
+    tomador: { razao_social: entrada.tomador?.nome || sale.patient_name, email: email || undefined, cpf: cpfDoTomador || undefined },
     servico: {
       aliquota,
       discriminacao,

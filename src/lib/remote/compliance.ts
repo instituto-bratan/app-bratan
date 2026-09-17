@@ -82,3 +82,34 @@ export async function ultimoRemoteIaEvento(funcao: string, entityRef: string): P
   const eventos = await listRemoteIaEventos().catch(() => [] as IaEventoRecord[]);
   return eventos.find((e) => e.id === (data as { id: string }).id) ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// CPF DO PACIENTE (17/09/2026). Mora em tabela separada de propósito: a ficha do
+// contato é lida por quase todo mundo e pela função do portal, e o CPF não pode
+// viajar junto por acidente. Quem enxerga e quem grava é decidido pelo acesso à
+// tela de Impostos & NFs, que é onde a nota é emitida.
+export type CpfDoContato = { contactRef: string; cpf: string; coletadoEm: string; atualizadoEm: string };
+
+export async function lerRemoteCpfDoContato(contactRef: string): Promise<CpfDoContato | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("contato_documento").select("contact_ref, cpf, coletado_em, atualizado_em").eq("contact_ref", contactRef).maybeSingle();
+  // Sem permissão, o Supabase devolve lista vazia em vez de erro — o app trata
+  // como "não tenho", que é exatamente o comportamento certo para quem não pode ver.
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { contactRef: data.contact_ref as string, cpf: data.cpf as string, coletadoEm: data.coletado_em as string, atualizadoEm: data.atualizado_em as string };
+}
+
+export async function salvarRemoteCpfDoContato(contactRef: string, cpf: string, atualizadoPor: string | null) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("contato_documento")
+    .upsert({ contact_ref: contactRef, cpf, atualizado_por: uuidOrNull(atualizadoPor), atualizado_em: new Date().toISOString() }, { onConflict: "contact_ref" });
+  if (error) throw new Error(error.message);
+}
+
+export async function apagarRemoteCpfDoContato(contactRef: string) {
+  const client = requireSupabase();
+  const { error } = await client.from("contato_documento").delete().eq("contact_ref", contactRef);
+  if (error) throw new Error(error.message);
+}
