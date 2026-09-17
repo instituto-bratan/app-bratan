@@ -373,7 +373,7 @@ function MeuPortal() {
   const deltaEmFoco = mostrandoGordura ? evolucao?.deltaGordura ?? null : evolucao?.deltaPeso ?? null;
   const fraseDaGordura =
     evolucao && evolucao.deltaGordura !== null && evolucao.deltaGordura < 0
-      ? `Desde ${diaMes(evolucao.primeira.dia)} a sua gordura corporal caiu ${fmt1(Math.abs(evolucao.deltaGordura))} pontos.`
+      ? `Desde ${diaMes(evolucao.primeira.dia)} a sua gordura corporal caiu ${Math.abs(evolucao.deltaGordura).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} pontos.`
       : evolucao && evolucao.deltaGordura !== null && evolucao.deltaGordura > 0
         ? "A gordura corporal subiu desde a primeira medição. A enfermagem vai olhar isso com você no próximo contato."
         : "A gordura corporal está estável entre as medições.";
