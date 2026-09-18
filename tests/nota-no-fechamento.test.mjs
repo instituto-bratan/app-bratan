@@ -129,3 +129,67 @@ test("o que falta na ficha para a nota sair identificada", () => {
   assert.deepEqual(mod.pendenciasDoTomador({ nome: "Rosana", cpf: "10301613800", email: "r@x.com" }).join(","), "");
   assert.deepEqual(mod.pendenciasDoTomador({ nome: "Rosana", cpf: "", email: "" }).join(","), "CPF,e-mail");
 });
+
+// ---------------------------------------------------------------------------
+// A TRAVA DO FECHAMENTO (18/09/2026)
+//
+// Lucas, sobre a minha proposta de nunca travar o fechamento pela nota:
+// *"não concordo, pois tudo tem que ter nf"*. Estes testes são essa frase.
+// ---------------------------------------------------------------------------
+const planoVazio = { notas: [], somaDasNotas: 0, diferenca: 0, impostoTotal: 0, impedimento: "" };
+
+test("sem nota escolhida e com dinheiro na mão, o fechamento não passa", () => {
+  const nota = { ...mod.notaDoFechamentoVazia, escolha: "REPARTIDA", divisao: mod.divisaoVazia };
+  const plano = mod.planoDeNotas({ escolha: "REPARTIDA", valorRecebido: 6997, divisao: mod.divisaoVazia, diaISO: DIA, parcelas: PIX });
+  const trava = mod.travaDoFechamento({ nota, valorRecebido: 6997, ehSinal: false, plano });
+  assert.equal(trava, "Diga quanto vai em cada nota.");
+});
+
+test("a divisão que não fecha com o recebido trava, e diz quanto falta", () => {
+  const divisao = { consulta: 1500, bioimpedancia: 0, tratamento: 4000 };
+  const plano = mod.planoDeNotas({ escolha: "REPARTIDA", valorRecebido: 6997, divisao, diaISO: DIA, parcelas: PIX });
+  const trava = mod.travaDoFechamento({ nota: { escolha: "REPARTIDA", divisao, motivoSemNota: "" }, valorRecebido: 6997, ehSinal: false, plano });
+  assert.match(trava, /Faltam/);
+  assert.match(trava, /1\.497/);
+});
+
+test("sinal de consulta não exige nota — é adiantamento, a nota sai no fechamento", () => {
+  const nota = { ...mod.notaDoFechamentoVazia, escolha: "SEM_NOTA", motivoSemNota: "" };
+  const trava = mod.travaDoFechamento({ nota, valorRecebido: 500, ehSinal: true, plano: planoVazio });
+  assert.equal(trava, "");
+});
+
+test("'não emitir agora' passa, mas só com motivo escrito", () => {
+  const semMotivo = { ...mod.notaDoFechamentoVazia, escolha: "SEM_NOTA", motivoSemNota: "   " };
+  assert.equal(
+    mod.travaDoFechamento({ nota: semMotivo, valorRecebido: 3000, ehSinal: false, plano: planoVazio }),
+    "Diga por que esta comanda não vai ter nota fiscal.",
+  );
+  const comMotivo = { ...semMotivo, motivoSemNota: "Paciente vai passar o CPF da empresa amanhã" };
+  assert.equal(mod.travaDoFechamento({ nota: comMotivo, valorRecebido: 3000, ehSinal: false, plano: planoVazio }), "");
+});
+
+test("fechamento sem dinheiro não exige nota", () => {
+  const nota = { ...mod.notaDoFechamentoVazia, escolha: "REPARTIDA" };
+  assert.equal(mod.travaDoFechamento({ nota, valorRecebido: 0, ehSinal: false, plano: planoVazio }), "");
+});
+
+test("o resumo leva os códigos, porque é o que quem emite lê", () => {
+  const divisao = { consulta: 1000, bioimpedancia: 500, tratamento: 5119 };
+  const plano = mod.planoDeNotas({ escolha: "REPARTIDA", valorRecebido: 6619, divisao, diaISO: DIA, parcelas: PIX });
+  const resumo = mod.resumoDaNota({ escolha: "REPARTIDA", divisao, motivoSemNota: "" }, plano);
+  assert.match(resumo, /NF repartida em 3/);
+  assert.match(resumo, /04197/);
+  assert.match(resumo, /04030/);
+
+  const unificada = mod.planoDeNotas({ escolha: "UNIFICADA", valorRecebido: 6619, divisao: mod.divisaoVazia, diaISO: DIA, parcelas: PIX });
+  const resumoUnificado = mod.resumoDaNota({ escolha: "UNIFICADA", divisao: mod.divisaoVazia, motivoSemNota: "" }, unificada);
+  assert.match(resumoUnificado, /NF unificada/);
+  assert.match(resumoUnificado, /04030/);
+  assert.doesNotMatch(resumoUnificado, /04197/, "a unificada é nota de tratamento, nunca de consulta");
+});
+
+test("sem nota, o resumo carrega o motivo — a decisão fica registrada", () => {
+  const resumo = mod.resumoDaNota({ escolha: "SEM_NOTA", divisao: mod.divisaoVazia, motivoSemNota: "CPF do titular pendente" }, planoVazio);
+  assert.equal(resumo, "Sem nota agora — CPF do titular pendente");
+});

@@ -86,7 +86,13 @@ export function dataBR(diaISO: string) {
  * forma (PIX + cartão é comum), as duas entram, porque a nota tem que descrever
  * o que aconteceu de verdade.
  */
-export function comoFoiPago(parcelas: { forma: FinPaymentMethod; parcelas?: number }[]) {
+/**
+ * O número de vezes chega como TEXTO — é o valor de um <select> na tela do
+ * fechamento. Aceitar os dois evita uma conversão no meio do caminho, que é
+ * exatamente onde "6" viraria 1 sem ninguém ver e a nota sairia dizendo
+ * "CARTÃO DE CRÉDITO" em vez de "EM 6 VEZES".
+ */
+export function comoFoiPago(parcelas: { forma: FinPaymentMethod; parcelas?: number | string }[]) {
   const pedacos: string[] = [];
   const POR_EXTENSO: Partial<Record<FinPaymentMethod, string>> = {
     PIX: "PIX",
@@ -99,7 +105,7 @@ export function comoFoiPago(parcelas: { forma: FinPaymentMethod; parcelas?: numb
   };
   for (const parcela of parcelas) {
     if (parcela.forma === "CARTAO_CREDITO") {
-      const vezes = Math.max(1, Math.round(parcela.parcelas ?? 1));
+      const vezes = Math.max(1, Math.round(Number(parcela.parcelas ?? 1) || 1));
       pedacos.push(vezes > 1 ? `CARTÃO DE CRÉDITO EM ${vezes} VEZES` : "CARTÃO DE CRÉDITO");
       continue;
     }
@@ -170,7 +176,7 @@ export function planoDeNotas(entrada: {
   valorRecebido: number;
   divisao: DivisaoDaNota;
   diaISO: string;
-  parcelas: { forma: FinPaymentMethod; parcelas?: number }[];
+  parcelas: { forma: FinPaymentMethod; parcelas?: number | string }[];
 }): PlanoDeNotas {
   const { escolha, valorRecebido, divisao, diaISO } = entrada;
   const pagamento = comoFoiPago(entrada.parcelas ?? []);
@@ -235,4 +241,74 @@ export function pendenciasDoTomador(tomador: { nome: string; cpf: string; email:
   if (!tomador.cpf.trim()) faltando.push("CPF");
   if (!tomador.email.trim()) faltando.push("e-mail");
   return faltando;
+}
+
+// ---------------------------------------------------------------------------
+// O ESTADO DA NOTA DENTRO DA TELA DE FECHAMENTO (18/09/2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tudo que a tela precisa guardar sobre a nota, num objeto só.
+ *
+ * Em quatro props soltas (escolha, consulta, bio, tratamento) os três lugares
+ * que usam o fechamento teriam que repetir quatro estados cada — e bastava um
+ * esquecer para a nota sair diferente conforme o caminho.
+ */
+export type NotaDoFechamento = {
+  escolha: EscolhaDaNota;
+  divisao: DivisaoDaNota;
+  /** Por que não sai nota agora. Obrigatório quando a escolha é SEM_NOTA. */
+  motivoSemNota: string;
+};
+
+export const notaDoFechamentoVazia: NotaDoFechamento = {
+  escolha: "UNIFICADA",
+  divisao: divisaoVazia,
+  motivoSemNota: "",
+};
+
+/**
+ * O que impede salvar o fechamento. Vazio = pode salvar.
+ *
+ * REGRA DO LUCAS (17/09/2026): *"não concordo, pois tudo tem que ter nf"*. Eu
+ * tinha proposto que a nota nunca travasse o fechamento; ele recusou. Então
+ * trava — com duas exceções que são da operação, não do sistema:
+ *
+ *  · SINAL de consulta não gera nota. É adiantamento: a nota sai inteira quando
+ *    o paciente fecha o tratamento, e emitir agora seria nota em duplicidade.
+ *  · Fechamento sem dinheiro (valor zero) não tem o que faturar.
+ *
+ * "Não emitir agora" continua existindo, mas cobra um motivo escrito. A escolha
+ * de não ter nota vira decisão registrada, com nome e data, em vez de sumir.
+ */
+export function travaDoFechamento(entrada: {
+  nota: NotaDoFechamento;
+  valorRecebido: number;
+  ehSinal: boolean;
+  plano: PlanoDeNotas;
+}): string {
+  const { nota, valorRecebido, ehSinal, plano } = entrada;
+  if (!(valorRecebido > 0)) return "";
+  if (ehSinal) return "";
+  if (nota.escolha === "SEM_NOTA") {
+    return nota.motivoSemNota.trim() ? "" : "Diga por que esta comanda não vai ter nota fiscal.";
+  }
+  return plano.impedimento;
+}
+
+/**
+ * A decisão da nota em uma linha, para viajar junto da comanda.
+ *
+ * É este texto que aparece no Lançar dia e na aba de Impostos & NF — quem for
+ * emitir lê exatamente o que foi combinado com o paciente, com os códigos.
+ */
+export function resumoDaNota(nota: NotaDoFechamento, plano: PlanoDeNotas): string {
+  if (nota.escolha === "SEM_NOTA") {
+    const motivo = nota.motivoSemNota.trim();
+    return motivo ? `Sem nota agora — ${motivo}` : "Sem nota agora";
+  }
+  if (!plano.notas.length) return "";
+  const partes = plano.notas.map((n) => `${naturezaLabels[n.natureza].toLowerCase()} ${moneyFin(n.valor)} (${n.codigoServico})`);
+  const cabeca = nota.escolha === "UNIFICADA" ? "NF unificada" : `NF repartida em ${plano.notas.length}`;
+  return `${cabeca}: ${partes.join(" · ")}`;
 }

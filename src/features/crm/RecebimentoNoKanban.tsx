@@ -51,6 +51,9 @@ import {
   type QuandoNota,
   type TipoRecebimento,
 } from "./recebimentoKanbanData";
+import { NotaNoFechamentoCard } from "./NotaNoFechamentoCard";
+import type { NotaDoFechamento } from "./notaNoFechamento";
+import { todayISO } from "@/lib/localStore";
 
 export function RecebimentoNoKanban({
   valorTexto,
@@ -65,6 +68,9 @@ export function RecebimentoNoKanban({
   tipo,
   onTipoChange,
   tiposDisponiveis,
+  nota,
+  onNotaChange,
+  tomador,
   notaInstrucao,
   onNotaInstrucaoChange,
   quandoNota,
@@ -97,6 +103,11 @@ export function RecebimentoNoKanban({
   tipo: TipoRecebimento;
   onTipoChange: (tipo: TipoRecebimento) => void;
   tiposDisponiveis: TipoRecebimento[];
+  /** A decisão da nota: unificada, repartida (com os valores) ou sem nota com motivo. */
+  nota: NotaDoFechamento;
+  onNotaChange: (nota: NotaDoFechamento) => void;
+  /** Para avisar o que ainda falta na ficha para a nota sair identificada. */
+  tomador?: { nome: string; cpf: string; email: string };
   notaInstrucao: string;
   onNotaInstrucaoChange: (texto: string) => void;
   quandoNota: QuandoNota;
@@ -555,10 +566,20 @@ export function RecebimentoNoKanban({
           escrito aqui não aparecia em NENHUMA outra tela. É a MESMA coisa que o
           campo "Observações (ex.: NF unificada)" do Lançar dia, e agora com o
           mesmo nome, para quem lança reconhecer na hora. */}
+      <NotaNoFechamentoCard
+        nota={nota}
+        onNotaChange={onNotaChange}
+        valorRecebido={valor}
+        diaISO={todayISO()}
+        parcelas={divisao}
+        ehSinal={tipo === "SINAL_CONSULTA"}
+        tomador={tomador ?? { nome: "", cpf: "", email: "" }}
+      />
+
       <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
           <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-          Como a nota vai ser emitida
+          Recado para quem emite
         </p>
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
           <div>

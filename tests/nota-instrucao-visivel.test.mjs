@@ -13,12 +13,29 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const ler = (relativo) => fs.readFileSync(path.resolve(repoRoot, relativo), "utf8");
 
 test("no bloco de recebimento, a nota fica FORA do gate do valor", () => {
+  // 18/09/2026: o campo de texto virou a TELA da nota (NotaNoFechamentoCard),
+  // com a escolha unificada/repartida e os valores. A garantia é a mesma de
+  // 25/08: a nota fica sempre à vista, nunca escondida atrás do valor digitado.
   const fonte = ler("src/features/crm/RecebimentoNoKanban.tsx");
   const gate = fonte.indexOf("{valor > 0 ? (");
   const fechaGate = fonte.indexOf("paciente e o card no Kanban.", gate);
-  const bloco = fonte.indexOf("Como a nota vai ser emitida");
-  assert.ok(bloco > fechaGate, "o bloco da nota tem de vir DEPOIS do fim do condicional do valor");
+  const cartao = fonte.indexOf("<NotaNoFechamentoCard");
+  assert.ok(cartao > fechaGate, "a tela da nota tem de vir DEPOIS do fim do condicional do valor");
   assert.ok(/Observações da nota \(ex\.: NF unificada/.test(fonte), "usa o mesmo nome do Lançar dia");
+});
+
+test("a tela da nota oferece as três escolhas e reparte por natureza", () => {
+  const fonte = ler("src/features/crm/NotaNoFechamentoCard.tsx");
+  assert.ok(/Consulta \(R\$\)/.test(fonte), "campo de consulta");
+  assert.ok(/Bioimpedância \(R\$\)/.test(fonte), "campo de bioimpedância");
+  assert.ok(/Tratamento \(R\$\)/.test(fonte), "campo de tratamento");
+  assert.ok(/Ver o texto que vai na nota/.test(fonte), "dá para ler a discriminação antes de emitir");
+});
+
+test("o fechamento no Kanban trava quando a nota não está resolvida", () => {
+  const fonte = ler("src/features/crm/CrmKanbanPage.tsx");
+  assert.ok(/travaDoFechamento\(\{/.test(fonte), "calcula a trava");
+  assert.ok(/disabled=\{Boolean\(fcTravaDaNota\)\}/.test(fonte), "e o botão de salvar obedece a ela");
 });
 
 test("o Lançar dia mostra a instrução da nota na comanda do dia", () => {

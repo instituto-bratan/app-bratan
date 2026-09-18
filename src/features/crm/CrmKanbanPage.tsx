@@ -35,6 +35,13 @@ import { createRemoteFinCashEntry, listRemoteFinCashEntries, listRemotePagamento
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
 import {
+  notaDoFechamentoVazia,
+  planoDeNotas,
+  resumoDaNota,
+  travaDoFechamento,
+  type NotaDoFechamento,
+} from "./notaNoFechamento";
+import {
   ehContinuacao,
   parcelaVazia,
   travaDoComprovante,
@@ -549,6 +556,7 @@ function CrmKanbanPageConteudo() {
   const [newItens, setNewItens] = useState<ItemFechado[]>([]);
   const [newTipo, setNewTipo] = useState<"SINAL_CONSULTA" | "PRIMEIRA_CONSULTA" | "RETORNO">("SINAL_CONSULTA");
   const [newNotaInstrucao, setNewNotaInstrucao] = useState("");
+  const [newNota, setNewNota] = useState<NotaDoFechamento>(notaDoFechamentoVazia);
   const [newNotaQuando, setNewNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
   const [newArquivos, setNewArquivos] = useState<File[]>([]);
   const [newMandaDepois, setNewMandaDepois] = useState(false);
@@ -576,6 +584,7 @@ function CrmKanbanPageConteudo() {
   // O que o paciente fechou, produto a produto, da tabela de preços (02/09/2026).
   const [fcItens, setFcItens] = useState<ItemFechado[]>([]);
   const [fcNotaInstrucao, setFcNotaInstrucao] = useState("");
+  const [fcNota, setFcNota] = useState<NotaDoFechamento>(notaDoFechamentoVazia);
   const [fcNotaQuando, setFcNotaQuando] = useState<"AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO">("COM_A_CONSULTA");
   const [fcArquivos, setFcArquivos] = useState<File[]>([]);
   const [fcMandaDepois, setFcMandaDepois] = useState(false);
@@ -584,6 +593,22 @@ function CrmKanbanPageConteudo() {
   const [fcObjectionCategory, setFcObjectionCategory] = useState<CrmObjectionCategory>("PRICE");
   const [fcPartialReason, setFcPartialReason] = useState("");
   const [fcFeedback, setFcFeedback] = useState("");
+  // A NOTA TRAVA O FECHAMENTO (18/09/2026). Lucas: "não concordo, pois tudo
+  // tem que ter nf". Sinal de consulta e fechamento sem dinheiro passam —
+  // são exceções da operação, e quem decide isso é a função, não a tela.
+  const fcValorRecebido = parseFinAmount(fcReceived);
+  const fcTravaDaNota = travaDoFechamento({
+    nota: fcNota,
+    valorRecebido: fcValorRecebido,
+    ehSinal: fcTipo === "SINAL_CONSULTA",
+    plano: planoDeNotas({
+      escolha: fcNota.escolha,
+      valorRecebido: fcValorRecebido,
+      divisao: fcNota.divisao,
+      diaISO: todayISO(),
+      parcelas: fcDivisao,
+    }),
+  });
   const [tourOpen, setTourOpen] = useState(false);
   const { seen: tourSeen, markSeen: markTourSeen } = useTourSeen("app-bratan-tour-kanban");
   const boardRef = useRef<HTMLDivElement>(null);
@@ -1135,7 +1160,9 @@ function CrmKanbanPageConteudo() {
         itens: newItens,
         arquivos: newArquivos,
         mandaDepois: newMandaDepois,
-        notaInstrucao: newNotaInstrucao,
+        notaInstrucao: [resumoDaNota(newNota, planoDeNotas({ escolha: newNota.escolha, valorRecebido: recebidoAgora, divisao: newNota.divisao, diaISO: todayISO(), parcelas: newDivisao })), newNotaInstrucao.trim()]
+          .filter(Boolean)
+          .join(" · "),
         notaQuando: newNotaQuando,
         tipo: newTipo,
         plano: false,
@@ -1315,7 +1342,9 @@ function CrmKanbanPageConteudo() {
         itens: fcItens,
         arquivos: fcArquivos,
         mandaDepois: fcMandaDepois,
-        notaInstrucao: fcNotaInstrucao,
+        notaInstrucao: [resumoDaNota(fcNota, planoDeNotas({ escolha: fcNota.escolha, valorRecebido: receivedAmount, divisao: fcNota.divisao, diaISO: todayISO(), parcelas: fcDivisao })), fcNotaInstrucao.trim()]
+          .filter(Boolean)
+          .join(" · "),
         notaQuando: fcNotaQuando,
         tipo: fcTipo,
         plano: ehPlano,
@@ -2610,6 +2639,8 @@ function CrmKanbanPageConteudo() {
                       tipo={fcTipo}
                       onTipoChange={setFcTipo}
                       tiposDisponiveis={["TRATAMENTO", "PRIMEIRA_CONSULTA", "RETORNO"]}
+                      nota={fcNota}
+                      onNotaChange={setFcNota}
                       notaInstrucao={fcNotaInstrucao}
                       onNotaInstrucaoChange={setFcNotaInstrucao}
                       quandoNota={fcNotaQuando}
@@ -2673,7 +2704,9 @@ function CrmKanbanPageConteudo() {
                         tipo={fcTipo}
                         onTipoChange={setFcTipo}
                         tiposDisponiveis={["PRIMEIRA_CONSULTA", "RETORNO"]}
-                        notaInstrucao={fcNotaInstrucao}
+                        nota={fcNota}
+                      onNotaChange={setFcNota}
+                      notaInstrucao={fcNotaInstrucao}
                         onNotaInstrucaoChange={setFcNotaInstrucao}
                         quandoNota={fcNotaQuando}
                         onQuandoNotaChange={setFcNotaQuando}
@@ -2693,8 +2726,16 @@ function CrmKanbanPageConteudo() {
                     {fcFeedback}
                   </div>
                 ) : null}
+                {fcTravaDaNota ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    {fcTravaDaNota}
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <LiquidButton type="submit" className="h-10 px-5">Salvar fechamento</LiquidButton>
+                  <LiquidButton type="submit" className="h-10 px-5" disabled={Boolean(fcTravaDaNota)}>
+                    Salvar fechamento
+                  </LiquidButton>
                   <Button type="button" variant="outline" onClick={() => setFechamentoOpen(false)}>Cancelar</Button>
                 </div>
               </form>
@@ -2786,6 +2827,8 @@ function CrmKanbanPageConteudo() {
                     tipo={newTipo}
                     onTipoChange={(tipo) => setNewTipo(tipo as typeof newTipo)}
                     tiposDisponiveis={["SINAL_CONSULTA", "PRIMEIRA_CONSULTA", "RETORNO"]}
+                    nota={newNota}
+                    onNotaChange={setNewNota}
                     notaInstrucao={newNotaInstrucao}
                     onNotaInstrucaoChange={setNewNotaInstrucao}
                     quandoNota={newNotaQuando}

@@ -104,7 +104,14 @@ Deno.serve(async (request) => {
 
   // ---- emitir -----------------------------------------------------------------
   if (!entrada.saleRef || !entrada.tipo) return json({ ok: false, error: "Informe saleRef e tipo." }, 400);
-  const obrigatorios = ["cnpjPrestador", "inscricaoMunicipal", "codigoServico"].filter((campo) => !String(config[campo] ?? "").trim());
+  // O código do serviço do município MUDA com a natureza da nota:
+  //   04197 "Clínicas e casas de saúde"  → CONSULTA
+  //   04030 "Medicina e biomedicina"     → BIOIMPEDÂNCIA, TRATAMENTO e UNIFICADA
+  // Até 18/09/2026 isto vinha de um campo único (`codigoServico`) e as duas notas
+  // saíam com o MESMO código — o oposto do que o cabeçalho deste arquivo manda.
+  // Agora é um campo por tipo, e faltando qualquer um a nota não sai.
+  const obrigatorios = ["cnpjPrestador", "inscricaoMunicipal", "codigoServicoConsulta", "codigoServicoTratamento"]
+    .filter((campo) => !String(config[campo] ?? "").trim());
   if (obrigatorios.length) return json({ ok: false, error: `Configure na integração: ${obrigatorios.join(", ")}.` }, 400);
   const { data: sale } = await client.from("fin_sales").select("client_ref, sale_date, patient_name, crm_contact_ref, fin_sale_items(item_type, amount, description)").eq("client_ref", entrada.saleRef).is("deleted_at", null).maybeSingle();
   if (!sale) return json({ ok: false, error: "Comanda não encontrada." }, 404);
@@ -112,12 +119,33 @@ Deno.serve(async (request) => {
   const total = itens.reduce((s, i) => s + Number(i.amount || 0), 0);
   const valor = Number(entrada.valor ?? total);
   if (!(valor > 0)) return json({ ok: false, error: "Valor da nota precisa ser maior que zero." }, 400);
-  const aliquota = Number(entrada.tipo === "CONSULTA" ? config.aliquotaConsulta : entrada.tipo === "TRATAMENTO" ? config.aliquotaTratamento : config.aliquotaConsulta) || 0;
-  // A Focus espera a alíquota em DECIMAL: 0,02 para 2%. Digitar "2" pensando em
-  // porcentagem emitiria a nota com 200% de ISS — erro de cem vezes num campo de
-  // imposto, que só apareceria na conta da prefeitura. Melhor recusar.
-  if (aliquota > 1) {
-    return json({ ok: false, error: `Alíquota de ISS configurada como ${aliquota}. Ela é decimal: use 0.02 para 2%.` }, 400);
+  // A UNIFICADA é uma nota de TRATAMENTO — é exatamente por isso que ela sai mais
+  // barata. Então ela segue a alíquota e o código de tratamento, nunca os de consulta.
+  const ehConsulta = entrada.tipo === "CONSULTA";
+  const aliquota = Number(ehConsulta ? config.aliquotaConsulta : config.aliquotaTratamento) || 0;
+  // ALÍQUOTA EM PONTO PERCENTUAL — 2 para 2%, não 0,02.
+  //
+  // 18/09/2026: esta trava estava INVERTIDA. O comentário antigo dizia que a
+  // Focus queria decimal e recusava qualquer valor acima de 1. Está errado: o
+  // exemplo oficial da Focus para São Paulo manda `"aliquota": "5"` com
+  // `"valor_servicos": "1"` — ou seja, ponto percentual. Com a trava antiga a
+  // nota sairia com 0,02% de ISS em vez de 2%, cem vezes MENOS imposto. Esse é
+  // o erro que não aparece na hora e cobra juros depois.
+  // Fonte: focusnfe.com.br/guides/nfse/municipios-integrados/sao-paulo-sp/
+  //
+  // As duas travas agora protegem os dois lados do engano:
+  if (aliquota > 0 && aliquota < 0.5) {
+    return json({ ok: false, error: `Alíquota de ISS configurada como ${aliquota}. Ela vai em ponto percentual: use 2 para 2%, não 0.02.` }, 400);
+  }
+  // A LC 116/2003 limita o ISS a 5%. Acima disso é digitação errada, não regra nova.
+  if (aliquota > 5) {
+    return json({ ok: false, error: `Alíquota de ISS configurada como ${aliquota}%. O teto legal do ISS é 5%.` }, 400);
+  }
+  // optante_simples_nacional é OBRIGATÓRIO no envio da Focus e muda o cálculo do
+  // ISS na prefeitura. Não dá para adivinhar nem para "chutar false": ou está
+  // respondido na configuração fiscal, ou a nota não sai.
+  if (config.optanteSimplesNacional === undefined || config.optanteSimplesNacional === null) {
+    return json({ ok: false, error: "Falta responder na configuração fiscal se a empresa é optante pelo Simples Nacional. Sem isso a nota não é enviada." }, 400);
   }
   const discriminacao = entrada.tipo === "CONSULTA" ? "Consulta médica" : entrada.tipo === "TRATAMENTO" ? `Serviços de saúde — ${itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 200) || "tratamento"}` : `Serviços médicos — comanda de ${sale.sale_date}`;
   // Uma nota por comanda e por tipo. Sem esta trava, um F5 no meio do envio (ou
@@ -159,14 +187,16 @@ Deno.serve(async (request) => {
   const payload: Record<string, unknown> = {
     data_emissao: new Date().toISOString(),
     natureza_operacao: String(config.naturezaOperacao ?? "1"),
+    optante_simples_nacional: Boolean(config.optanteSimplesNacional),
     prestador: { cnpj: String(config.cnpjPrestador).replace(/\D/g, ""), inscricao_municipal: String(config.inscricaoMunicipal), codigo_municipio: "3550308" },
     tomador: { razao_social: entrada.tomador?.nome || sale.patient_name, email: email || undefined, cpf: cpfDoTomador || undefined },
     servico: {
       aliquota,
       discriminacao,
       iss_retido: Boolean(config.issRetido),
-      item_lista_servico: String(config.codigoServico),
-      codigo_tributario_municipio: String(config.codigoTributarioMunicipio ?? config.codigoServico),
+      item_lista_servico: String(ehConsulta ? config.codigoServicoConsulta : config.codigoServicoTratamento),
+      // São Paulo não usa este campo ("Não utilizado" no guia da Focus); fica só se alguém configurar.
+      ...(config.codigoTributarioMunicipio ? { codigo_tributario_municipio: String(config.codigoTributarioMunicipio) } : {}),
       valor_servicos: Math.round(valor * 100) / 100,
     },
   };
