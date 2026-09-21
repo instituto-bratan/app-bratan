@@ -35,7 +35,9 @@ test("a tela da nota oferece as três escolhas e reparte por natureza", () => {
 test("o fechamento no Kanban trava quando a nota não está resolvida", () => {
   const fonte = ler("src/features/crm/CrmKanbanPage.tsx");
   assert.ok(/travaDoFechamento\(\{/.test(fonte), "calcula a trava");
-  assert.ok(/disabled=\{Boolean\(fcTravaDaNota\)\}/.test(fonte), "e o botão de salvar obedece a ela");
+  // O botão ganhou o estado de emissão em 21/09; a trava continua mandando nele.
+  assert.ok(/disabled=\{Boolean\(fcTravaDaNota\)/.test(fonte), "e o botão de salvar obedece a ela");
+  assert.ok(/disabled=\{Boolean\(fcTravaDaNota\) \|\| fcEmitindo\}/.test(fonte), "e não deixa apertar duas vezes enquanto a nota está saindo");
 });
 
 test("o Lançar dia mostra a instrução da nota na comanda do dia", () => {

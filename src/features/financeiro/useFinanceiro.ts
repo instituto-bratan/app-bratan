@@ -310,19 +310,29 @@ export function useFinanceiro(year = new Date().getFullYear()) {
    * Lança a comanda. O `onFalha` existe porque erro de gravação NÃO pode ficar
    * só no console (25/08/2026): a comanda ficava salva no aparelho, sumia do
    * Lançar dia de todo mundo, e ninguém era avisado.
+   *
+   * DEVOLVE UMA PROMESSA (21/09/2026) que resolve `true` quando a comanda
+   * chegou ao servidor. Quem emite nota fiscal no fechamento precisa disso: a
+   * Edge Function procura a comanda pelo `client_ref`, e pedir a nota antes da
+   * gravação terminar dá "comanda não encontrada" — parece falha da nota, mas é
+   * só pressa. A promessa NUNCA rejeita, senão os chamadores que ignoram o
+   * retorno passariam a estourar rejeição não tratada.
    */
-  function addSale(sale: FinSale, onFalha?: (mensagem: string) => void) {
+  function addSale(sale: FinSale, onFalha?: (mensagem: string) => void): Promise<boolean> {
     setSales((current) => {
       const next = [sale, ...current];
       saveLocalFinSales(next);
       return next;
     });
-    if (useRemote) {
-      void createSaleMutation.mutateAsync(sale).catch((error) => {
+    if (!useRemote) return Promise.resolve(false);
+    return createSaleMutation
+      .mutateAsync(sale)
+      .then(() => true)
+      .catch((error) => {
         console.warn("Venda não sincronizou.", error);
         onFalha?.((error as Error)?.message ?? "erro desconhecido");
+        return false;
       });
-    }
   }
 
   function updateSale(sale: FinSale) {

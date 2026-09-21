@@ -21,8 +21,17 @@ import { quemChama } from "../_shared/claude.ts";
 type Entrada = {
   acao: "emitir" | "consultar" | "cancelar";
   saleRef?: string;
-  tipo?: "CONSULTA" | "TRATAMENTO" | "UNIFICADA";
+  tipo?: "CONSULTA" | "BIOIMPEDANCIA" | "TRATAMENTO" | "UNIFICADA";
   valor?: number;
+  /**
+   * O texto que vai na nota, montado na TELA (notaNoFechamento.ts).
+   *
+   * Sem isto a função escrevia a própria frase genérica, e a discriminação que
+   * a clínica usa — conferida caractere a caractere nas notas 6203, 6204 e 6205
+   * de 01/09/2026 — não chegava na prefeitura. O que a pessoa leu antes de
+   * confirmar tem que ser exatamente o que sai impresso.
+   */
+  discriminacao?: string;
   ref?: string;
   justificativa?: string;
   tomador?: { nome?: string; cpf?: string; email?: string };
@@ -179,7 +188,7 @@ Deno.serve(async (request) => {
   if (ehProducao && config.reformaConfirmadaPeloContador !== true) {
     return json({ ok: false, error: "Os códigos de IBS/CBS, NBS e indicador de operação ainda não foram confirmados pelo contador. Enquanto isso, a emissão em produção fica bloqueada — em homologação ela roda." }, 400);
   }
-  const discriminacao = entrada.tipo === "CONSULTA" ? "Consulta médica" : entrada.tipo === "TRATAMENTO" ? `Serviços de saúde — ${itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 200) || "tratamento"}` : `Serviços médicos — comanda de ${sale.sale_date}`;
+  const discriminacao = String(entrada.discriminacao ?? "").trim() || (entrada.tipo === "CONSULTA" ? "Consulta médica" : entrada.tipo === "TRATAMENTO" ? `Serviços de saúde — ${itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 200) || "tratamento"}` : `Serviços médicos — comanda de ${sale.sale_date}`);
   // Uma nota por comanda e por tipo. Sem esta trava, um F5 no meio do envio (ou
   // dois cliques) manda a prefeitura emitir a MESMA nota duas vezes — e o ISS sai
   // em dobro. Só volta a permitir emissão quando a anterior falhou ou foi cancelada.

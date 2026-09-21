@@ -106,6 +106,7 @@ import {
   type CrmTask,
   type GestorCallStatus,
 } from "./crmData";
+import { emitirNotasDoFechamento } from "./emitirNotaDoFechamento";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
 import { ContactChannelsFields } from "./ContactChannelsFields";
@@ -597,18 +598,31 @@ function CrmKanbanPageConteudo() {
   // tem que ter nf". Sinal de consulta e fechamento sem dinheiro passam —
   // são exceções da operação, e quem decide isso é a função, não a tela.
   const fcValorRecebido = parseFinAmount(fcReceived);
+  // O plano é calculado UMA vez: a trava, o rótulo do botão e a emissão têm que
+  // falar da mesma coisa. Calculado em três lugares, um deles ia divergir.
+  const fcPlanoDaNota = planoDeNotas({
+    escolha: fcNota.escolha,
+    valorRecebido: fcValorRecebido,
+    divisao: fcNota.divisao,
+    diaISO: todayISO(),
+    parcelas: fcDivisao,
+  });
   const fcTravaDaNota = travaDoFechamento({
     nota: fcNota,
     valorRecebido: fcValorRecebido,
     ehSinal: fcTipo === "SINAL_CONSULTA",
-    plano: planoDeNotas({
-      escolha: fcNota.escolha,
-      valorRecebido: fcValorRecebido,
-      divisao: fcNota.divisao,
-      diaISO: todayISO(),
-      parcelas: fcDivisao,
-    }),
+    plano: fcPlanoDaNota,
   });
+  // O botão só promete emitir quando a nota REALMENTE vai sair. Prometer e não
+  // cumprir é pior do que não prometer: quem fecha vai embora achando que a
+  // prefeitura já recebeu.
+  const fcVaiEmitirNota =
+    integracaoLigada("focus_nfse") &&
+    fcNota.escolha !== "SEM_NOTA" &&
+    fcTipo !== "SINAL_CONSULTA" &&
+    fcValorRecebido > 0 &&
+    fcPlanoDaNota.notas.length > 0;
+  const [fcEmitindo, setFcEmitindo] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const { seen: tourSeen, markSeen: markTourSeen } = useTourSeen("app-bratan-tour-kanban");
   const boardRef = useRef<HTMLDivElement>(null);
@@ -999,7 +1013,7 @@ function CrmKanbanPageConteudo() {
         saleRef: null,
         observacao: [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Fechamento em dinheiro (caixa do crediário)",
       });
-      return { saleId: null, valorDinheiro, valorComanda: 0 };
+      return { saleId: null, valorDinheiro, valorComanda: 0, comandaGravada: Promise.resolve(false) };
     }
 
     const saleId = createFinId("fsale");
@@ -1051,7 +1065,9 @@ function CrmKanbanPageConteudo() {
       lancadoPorSetor: values.setor,
       aguardandoExplicacao: false,
     };
-    financeiro.addSale(comanda, (mensagem) =>
+    // A promessa sobe junto: é ela que o emissor da nota espera antes de pedir
+    // a NFS-e, porque a Edge Function procura a comanda pelo client_ref.
+    const comandaGravada = financeiro.addSale(comanda, (mensagem) =>
       setFeedback(
         `⚠️ A COMANDA NÃO FOI GRAVADA (${mensagem}). Ela está só neste aparelho — lance de novo pelo "Lançar dia" para o dinheiro entrar no fechamento.`,
       ),
@@ -1080,7 +1096,7 @@ function CrmKanbanPageConteudo() {
       );
     });
 
-    return { saleId, valorDinheiro, valorComanda };
+    return { saleId, valorDinheiro, valorComanda, comandaGravada };
   }
 
   function handleCreateLead(event: FormEvent) {
@@ -1219,7 +1235,7 @@ function CrmKanbanPageConteudo() {
     if (!newRecebido.trim() || Math.abs(parseFinAmount(newRecebido) - totalAnterior) < 0.005) setNewRecebido(formataValor(total));
   }
 
-  function handleRegistrarFechamento(event: FormEvent) {
+  async function handleRegistrarFechamento(event: FormEvent) {
     event.preventDefault();
     setFcFeedback("");
     if (!fcPatient.ref && !fcPatient.name.trim()) return setFcFeedback("Escolha o paciente (ou digite o nome completo para criar).");
@@ -1330,9 +1346,10 @@ function CrmKanbanPageConteudo() {
     // diário e o extrato conferem. O valor vendido é o contrato, não o caixa.
     // NÃO FECHOU TAMBÉM PAGA (25/08/2026): a consulta que o paciente pagou vira
     // comanda igual, com o item e a régua do "não fechou".
+    let lancado: ReturnType<typeof lancarComandaEComprovante> = null;
     if (receivedAmount > 0) {
       const ehPlano = fcResultado === "PROGRAMA_ACOMPANHAMENTO" || fcResultado === "CLUBE_BRATAN";
-      const lancado = lancarComandaEComprovante({
+      lancado = lancarComandaEComprovante({
         contactRef: refDoPaciente,
         pacienteNome:
           fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
@@ -1374,6 +1391,35 @@ function CrmKanbanPageConteudo() {
       }
     }
 
+    // A NOTA SAI AQUI (21/09/2026) — depois da comanda existir, antes de fechar.
+    //
+    // O diálogo fica aberto enquanto a prefeitura é chamada: emitir documento
+    // fiscal com a tela já fechada deixaria quem fechou sem saber se saiu. São
+    // poucos segundos, e é o único momento em que a pessoa ainda está ali.
+    if (fcVaiEmitirNota && lancado?.saleId) {
+      setFcEmitindo(true);
+      try {
+        const emissao = await emitirNotasDoFechamento({
+          saleRef: lancado.saleId,
+          escolha: fcNota.escolha,
+          notas: fcPlanoDaNota.notas,
+          pacienteNome: fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
+          // O CPF vem da ficha, no servidor: ele nunca passa por esta tela nem
+          // fica gravado no app.
+          cpf: "",
+          solicitadoPor: pessoaAuth?.id ?? null,
+          comandaGravada: lancado.comandaGravada,
+          invocar: (slug, body) => invocarIntegracao(slug, body),
+        });
+        if (emissao.recado) {
+          toast(emissao.recado, { tom: emissao.tudoCerto ? "ok" : "atencao", duracaoMs: emissao.tudoCerto ? 6000 : 12000 });
+          if (!emissao.tudoCerto) setFeedback(emissao.recado);
+        }
+      } finally {
+        setFcEmitindo(false);
+      }
+    }
+
     setFechamentoOpen(false);
     setFcPatient({ ref: "", name: "" });
     setFcChannels(emptyContactChannels);
@@ -1388,6 +1434,7 @@ function CrmKanbanPageConteudo() {
     setFcItemTipo("TRATAMENTO");
     setFcItens([]);
     setFcNotaInstrucao("");
+    setFcNota(notaDoFechamentoVazia);
     setFcNotaQuando("COM_A_CONSULTA");
     setFcArquivos([]);
     setFcMandaDepois(false);
@@ -2732,11 +2779,20 @@ function CrmKanbanPageConteudo() {
                     {fcTravaDaNota}
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2">
-                  <LiquidButton type="submit" className="h-10 px-5" disabled={Boolean(fcTravaDaNota)}>
-                    Salvar fechamento
+                <div className="flex flex-wrap items-center gap-2">
+                  <LiquidButton type="submit" className="h-10 px-5" disabled={Boolean(fcTravaDaNota) || fcEmitindo}>
+                    {fcEmitindo
+                      ? "Emitindo a nota…"
+                      : fcVaiEmitirNota
+                        ? fcPlanoDaNota.notas.length > 1
+                          ? `Salvar e emitir ${fcPlanoDaNota.notas.length} notas`
+                          : "Salvar e emitir a nota"
+                        : "Salvar fechamento"}
                   </LiquidButton>
-                  <Button type="button" variant="outline" onClick={() => setFechamentoOpen(false)}>Cancelar</Button>
+                  <Button type="button" variant="outline" disabled={fcEmitindo} onClick={() => setFechamentoOpen(false)}>Cancelar</Button>
+                  {fcEmitindo ? (
+                    <span className="text-xs text-muted-foreground">Falando com a prefeitura — não feche a tela.</span>
+                  ) : null}
                 </div>
               </form>
             </motion.div>
