@@ -120,6 +120,8 @@ export type PortalPlano = {
 };
 
 export type PortalDados = {
+  /** Chave pública VAPID, para o navegador assinar os avisos. Ausente = avisos desligados. */
+  pushPublicKey?: string | null;
   paciente: { nome: string; primeiroNome: string; contactRef: string; temSenha?: boolean; login?: string | null };
   plano: PortalPlano | null;
   consultas: PortalConsulta[];

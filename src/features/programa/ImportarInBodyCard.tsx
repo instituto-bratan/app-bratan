@@ -21,7 +21,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "@/components/ui/avisos";
 import { cn } from "@/lib/utils";
 import { lerAbasDeXlsx, lerLinhasDeCsv } from "@/lib/planilhaLeitor";
-import { createRemotePacienteMedicoesEmLote, listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
+import { createRemotePacienteMedicoesEmLote, invocarIntegracao, listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
+import { diasAtras, fraseDoAviso, pacientesParaAvisar } from "@/features/portal/pushDoPaciente";
 import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesDeAbas, nomesParaResolver, resumoPorPaciente, type Casamento, type Contato, type EscolhasDeNome, type MedicaoImportada } from "./inbodyImport";
 
 /** Cinco anos para trás: a primeira importação traz o histórico inteiro do aparelho. */
@@ -99,8 +100,25 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
       }
       return salvas;
     },
-    onSuccess: (quantas) => {
+    onSuccess: (quantas, prontas) => {
       toast(`${quantas} ${quantas === 1 ? "medição entrou" : "medições entraram"} na ficha dos pacientes.`, { tom: "ok" });
+      // "SUA BIOIMPEDÂNCIA JÁ ESTÁ AQUI" (21/09/2026, passo 3 do portal). Só
+      // exames dos últimos 7 dias contam como novidade — a primeira importação
+      // traz anos de histórico e ninguém quer saber que "o exame de 2023
+      // chegou". Um aviso por paciente. Se falhar, o exame já está salvo e a
+      // pessoa só fica sem o aviso — por isso é fire-and-forget com toast.
+      const avisar = pacientesParaAvisar(prontas, diasAtras(new Date().toISOString().slice(0, 10), 7));
+      if (avisar.length) {
+        const diaMaisNovo = avisar.map((p) => p.dia).sort().at(-1);
+        void invocarIntegracao<{ ok: boolean; pacientesAvisados?: number; semAssinatura?: number; error?: string }>("push-paciente", {
+          contactRefs: avisar.map((p) => p.contactRef),
+          motivo: "INBODY",
+          dia: diaMaisNovo,
+        }).then((r) => {
+          const frase = fraseDoAviso(r);
+          if (frase) toast(frase, { tom: r.ok ? "info" : "atencao", duracaoMs: 6000 });
+        });
+      }
       limpar();
       void queryClient.invalidateQueries({ queryKey: chaveDoHistorico });
       void queryClient.invalidateQueries({ queryKey: ["pesagens-desde"] });

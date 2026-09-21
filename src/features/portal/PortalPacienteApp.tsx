@@ -20,7 +20,8 @@ import "./portal.css";
 import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolucao";
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
-import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
+import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal, sairDoPush } from "./portalCliente";
+import { chaveVapidParaBytes } from "./pushDoPaciente";
 import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, fraseDoDia, oQueABalancaNaoMostra, resumoEvolucao, resumoFinanceiro, resumoInBody, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
@@ -726,6 +727,11 @@ function MeuPortal() {
               </div>
             </section>
 
+            {/* ---- Avisos no celular (21/09/2026, passo 3) ----
+                O único aviso que existe é "sua bioimpedância chegou". Só faz
+                sentido no app instalado; no navegador comum a gente explica. */}
+            <AvisosNoCelular sessao={sessao} previa={previa} chavePublica={dados.pushPublicKey ?? null} />
+
             {/* ---- O que fechou ---- */}
             {financeiro && !dados.comandas.length ? (
               <section id="fechou" className="p-sec p-anim" aria-labelledby="t-fin">
@@ -875,5 +881,119 @@ export function PortalPacienteApp() {
       <Route path="entrar" element={<EntrarPage />} />
       <Route path="*" element={<MeuPortal />} />
     </Routes>
+  );
+}
+
+/**
+ * AVISOS NO CELULAR (21/09/2026, passo 3 do portal).
+ *
+ * A regra do estudo: app que avisa quando chega DADO REAL segura o paciente;
+ * app que avisa por avisar é desinstalado. Então há UM aviso — "sua
+ * bioimpedância já está aqui" — e o paciente liga e desliga quando quiser.
+ *
+ * Web Push só existe com o app instalado (no iPhone, "Adicionar à Tela de
+ * Início"). Fora disso o botão não aparece: prometer e não entregar é pior do
+ * que não prometer.
+ */
+function AvisosNoCelular({ sessao, previa, chavePublica }: { sessao: string | null; previa: boolean; chavePublica: string | null }) {
+  const suportado = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+  const instalado = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true);
+  const [estado, setEstado] = useState<"carregando" | "desligado" | "ligado" | "negado" | "erro">("carregando");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    if (!suportado) return setEstado("desligado");
+    if (Notification.permission === "denied") return setEstado("negado");
+    let vivo = true;
+    void navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => {
+        if (vivo) setEstado(sub ? "ligado" : "desligado");
+      })
+      .catch(() => {
+        if (vivo) setEstado("desligado");
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [suportado]);
+
+  async function ligar() {
+    if (!chavePublica || !sessao || previa) return;
+    setOcupado(true);
+    setErro("");
+    try {
+      const permissao = await Notification.requestPermission();
+      if (permissao !== "granted") {
+        setEstado(permissao === "denied" ? "negado" : "desligado");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveVapidParaBytes(chavePublica) });
+      const json = sub.toJSON();
+      const r = await assinarPush(sessao, { endpoint: sub.endpoint, keys: { p256dh: json.keys?.p256dh ?? "", auth: json.keys?.auth ?? "" } }, navigator.userAgent.slice(0, 120));
+      if (!r.ok) {
+        await sub.unsubscribe().catch(() => undefined);
+        setErro(r.error ?? "Não consegui ligar os avisos agora.");
+        setEstado("erro");
+        return;
+      }
+      setEstado("ligado");
+    } catch {
+      setErro("Não consegui ligar os avisos neste aparelho.");
+      setEstado("erro");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function desligar() {
+    if (!sessao) return;
+    setOcupado(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await sairDoPush(sessao, sub.endpoint).catch(() => undefined);
+        await sub.unsubscribe().catch(() => undefined);
+      }
+      setEstado("desligado");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  // Sem chave pública os avisos estão desligados no Instituto: não há o que oferecer.
+  if (!chavePublica && !previa) return null;
+
+  return (
+    <section id="avisos" className="p-sec p-anim" aria-labelledby="t-avisos">
+      <span className="t-sec" id="t-avisos">Avisos no celular</span>
+      <div className="p-card">
+        <p className="t-headline">Saber na hora que a bioimpedância chegou</p>
+        <p className="t-foot t-2">
+          Um aviso só, quando a enfermagem colocar um exame novo aqui. Nada de propaganda, nada de lembrete diário.
+        </p>
+        {previa ? (
+          <p className="t-foot t-2">Na prévia os avisos não são enviados — o botão aparece para quem entra pelo app.</p>
+        ) : !suportado || !instalado ? (
+          <p className="t-foot t-2">
+            Para receber avisos, adicione o Meu Bratan à tela de início do celular (no iPhone: Compartilhar → Adicionar à Tela de Início) e abra por ali.
+          </p>
+        ) : estado === "negado" ? (
+          <p className="t-foot t-2">Os avisos estão bloqueados nos ajustes do celular. Libere em Ajustes → Notificações → Meu Bratan.</p>
+        ) : estado === "ligado" ? (
+          <button type="button" className="p-btn plain" disabled={ocupado} onClick={() => void desligar()}>
+            {ocupado ? "Um momento…" : "Avisos ligados · desligar"}
+          </button>
+        ) : (
+          <button type="button" className="p-btn" disabled={ocupado || estado === "carregando"} onClick={() => void ligar()}>
+            {ocupado ? "Ligando…" : "Ligar avisos"}
+          </button>
+        )}
+        {erro ? <p className="t-foot" style={{ color: "#b45a3c" }}>{erro}</p> : null}
+      </div>
+    </section>
   );
 }

@@ -87,7 +87,23 @@ function mesmaPessoa(a: string, b: string) {
   return x.every((p) => cy.has(p)) || y.every((p) => cx.has(p));
 }
 
-type Entrada = { acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair"; login?: string; senha?: string; token?: string; sessao?: string; pesoKg?: number; cinturaCm?: number; observacao?: string; consultaId?: string; origem?: "AGENDA" | "MANUAL"; resposta?: "CONFIRMO" | "REMARCAR" };
+type Entrada = {
+  acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair" | "push_assinar" | "push_sair";
+  login?: string;
+  senha?: string;
+  token?: string;
+  sessao?: string;
+  pesoKg?: number;
+  cinturaCm?: number;
+  observacao?: string;
+  consultaId?: string;
+  origem?: "AGENDA" | "MANUAL";
+  resposta?: "CONFIRMO" | "REMARCAR";
+  /** Web Push (21/09/2026): a assinatura que o navegador do paciente gerou. */
+  assinatura?: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+  endpoint?: string;
+  aparelho?: string;
+};
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
@@ -177,6 +193,32 @@ Deno.serve(async (request) => {
   if (entrada.acao === "sair") {
     await client.from("paciente_acesso").update({ sessao_hash: null, sessao_expira_em: null }).eq("id", acesso.id);
     await log(contactRef, "SAIDA");
+    return json({ ok: true });
+  }
+
+  // ---- Avisos no celular (21/09/2026, passo 3 do portal) -----------------------
+  // A assinatura fica em paciente_push_assinatura, chave contact_ref, e só entra
+  // por aqui — com sessão válida. O endpoint é único: o mesmo aparelho que assina
+  // de novo só atualiza a linha, não duplica o aviso.
+  if (entrada.acao === "push_assinar") {
+    const endpoint = String(entrada.assinatura?.endpoint ?? "").trim();
+    const p256dh = String(entrada.assinatura?.keys?.p256dh ?? "").trim();
+    const auth = String(entrada.assinatura?.keys?.auth ?? "").trim();
+    if (!/^https:\/\//.test(endpoint) || !p256dh || !auth) return json({ ok: false, error: "Assinatura incompleta." });
+    const { error } = await client
+      .from("paciente_push_assinatura")
+      .upsert({ contact_ref: contactRef, endpoint, p256dh, auth, aparelho: String(entrada.aparelho ?? aparelho).slice(0, 160), falhas: 0 }, { onConflict: "endpoint" });
+    if (error) return json({ ok: false, error: "Não consegui ligar os avisos agora. Tente de novo." });
+    await log(contactRef, "PUSH_LIGADO");
+    return json({ ok: true });
+  }
+
+  if (entrada.acao === "push_sair") {
+    const endpoint = String(entrada.endpoint ?? "").trim();
+    // Só apaga a assinatura DESTE paciente: o endpoint é dele, mas a checagem
+    // do contact_ref impede que uma sessão apague a assinatura de outra pessoa.
+    if (endpoint) await client.from("paciente_push_assinatura").delete().eq("endpoint", endpoint).eq("contact_ref", contactRef);
+    await log(contactRef, "PUSH_DESLIGADO");
     return json({ ok: true });
   }
 
@@ -288,10 +330,16 @@ Deno.serve(async (request) => {
   const vistos = new Set<string>();
   const consent = ((consentimentos.data ?? []) as Record<string, unknown>[]).filter((c) => (vistos.has(c.tipo as string) ? false : (vistos.add(c.tipo as string), true))).map((c) => ({ tipo: c.tipo as string, aceito: Boolean(c.aceito) && !c.revogado_em, em: String(c.coletado_em ?? "") }));
 
+  // A chave pública VAPID (é pública mesmo) — sem ela o navegador não assina.
+  // Integração desligada = sem chave = o portal nem oferece o botão.
+  const { data: push } = await client.from("integracao").select("ligada, config").eq("chave", "push").maybeSingle();
+  const pushPublicKey = push?.ligada ? String((push.config as Record<string, unknown> | null)?.vapidPublicKey ?? "").trim() || null : null;
+
   await log(contactRef, "LEITURA");
   return json({
     ok: true,
     dados: {
+      pushPublicKey,
       paciente: { nome, primeiroNome: nome.split(/\s+/)[0] || "paciente", contactRef, temSenha: Boolean(acesso.senha_hash), login: acesso.login ?? null },
       plano,
       consultas,

@@ -69,3 +69,12 @@ export async function responderConsulta(sessao: string, consultaId: string, orig
 export async function sairDoPortal(sessao: string) {
   return chamar<Record<string, never>>({ acao: "sair", sessao });
 }
+
+/** Guardar a assinatura de push deste aparelho na ficha do paciente (21/09/2026). */
+export async function assinarPush(sessao: string, assinatura: { endpoint: string; keys: { p256dh: string; auth: string } }, aparelho: string) {
+  return chamar<Record<string, never>>({ acao: "push_assinar", sessao, assinatura, aparelho });
+}
+/** Parar de avisar neste aparelho. */
+export async function sairDoPush(sessao: string, endpoint: string) {
+  return chamar<Record<string, never>>({ acao: "push_sair", sessao, endpoint });
+}

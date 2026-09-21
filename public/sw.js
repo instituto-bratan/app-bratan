@@ -91,7 +91,7 @@ self.addEventListener("push", (event) => {
   }
   event.waitUntil(
     (async () => {
-      await self.registration.showNotification(dados.title, { body: dados.body, icon: "/pwa-192x192.png", badge: "/pwa-192x192.png", data: { url: dados.url || "/" }, tag: "fila-do-dia", renotify: true });
+      await self.registration.showNotification(dados.title, { body: dados.body, icon: "/pwa-192x192.png", badge: "/pwa-192x192.png", data: { url: dados.url || "/" }, tag: dados.tag || "fila-do-dia", renotify: true });
       try {
         if (typeof dados.badge === "number" && "setAppBadge" in navigator) await navigator.setAppBadge(dados.badge);
       } catch {
