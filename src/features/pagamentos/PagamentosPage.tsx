@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { CalendarClock, CheckCircle2, CircleDollarSign, Clock3, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, CircleDollarSign, Clock3, Copy, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,7 @@ import {
   mergePagamentoReceivables,
   money,
   pagamentoFiltroLabels,
+  textoDeCobranca,
   pagamentosStorageKey,
   pagamentosSummary,
   pagamentoStatusLabels,
@@ -59,7 +60,7 @@ import {
   type PagamentoFiltro,
   type PagamentoLembrete,
 } from "./pagamentosData";
-import { confirmar } from "@/components/ui/avisos";
+import { confirmar, toast } from "@/components/ui/avisos";
 
 type FormState = {
   pacienteNome: string;
@@ -810,6 +811,32 @@ export function PagamentosPage() {
                     {pagamentoFiltroLabels[item]}
                   </Button>
                 ))}
+                {/* O TEXTINHO DE COBRAR (21/09/2026). Copia exatamente quem
+                    está na tela: trocou o filtro para "Vencidos", copiou os
+                    vencidos. Uma régua só, a que o Lucas já está olhando. */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto"
+                  disabled={!visibleRecords.length}
+                  onClick={() => {
+                    const texto = textoDeCobranca(visibleRecords);
+                    if (!texto) return;
+                    void navigator.clipboard
+                      ?.writeText(texto)
+                      .then(() =>
+                        toast(
+                          `Lista de ${pagamentoFiltroLabels[filter].toLowerCase()} copiada — ${visibleRecords.length} ${visibleRecords.length === 1 ? "pessoa" : "pessoas"}.`,
+                          { tom: "ok" },
+                        ),
+                      )
+                      .catch(() => toast("Não consegui copiar. Tente de novo.", { tom: "erro" }));
+                  }}
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                  Copiar cobrança
+                </Button>
               </CardContent>
             </Card>
 

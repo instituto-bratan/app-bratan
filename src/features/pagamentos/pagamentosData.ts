@@ -91,6 +91,40 @@ export function isPagamentoProximo(record: PagamentoLembrete) {
   return record.status === "aberto" && target > today && target <= end;
 }
 
+/**
+ * O TEXTO DE COBRANÇA PARA COLAR NO WHATSAPP (21/09/2026).
+ *
+ * Lucas: *"eu preciso que você dê para eu copiar um textinho, por exemplo,
+ * cobrar, e aí vai estar o nome das pessoas e quanto que elas devem e a
+ * descrição, a observação"* — e mandou o formato pronto:
+ *
+ *   COBRAR:
+ *   - GABRIELA GODOI ( R$ 5.508,00 - PAGAR CLUBE DE CONSULTAS DANIEL 03 ...)
+ *   - SIDNEY FLORENCIO ( 2 DOSE DE TESTOSTERONA UNDECILATO - VAI PAGAR POR DOSE ATE 3X)
+ *
+ * Repare no SIDNEY: a linha dele não tem valor. Quando o lembrete não tem
+ * valor fechado (paciente que vai pagar por dose), o parêntese leva só a
+ * observação — inventar "R$ 0,00" ali seria cobrar a pessoa de um valor que
+ * ninguém combinou.
+ *
+ * A ordem é a mesma da tela, e quem decide QUEM entra é o filtro que o Lucas já
+ * está olhando (vencidos, hoje, próximos, abertos): o texto é o retrato do que
+ * está na frente dele, não uma segunda regra para ele ter que lembrar.
+ */
+export function textoDeCobranca(records: PagamentoLembrete[]): string {
+  const linhas = records.map((record) => {
+    const pedacos = [
+      typeof record.valorPendente === "number" && record.valorPendente > 0 ? money(record.valorPendente) : "",
+      (record.observacao ?? "").trim(),
+    ].filter(Boolean);
+    const nome = (record.pacienteNome ?? "").trim() || "(sem nome)";
+    // Sem valor E sem observação não sobra nada para cobrar — mas o nome ainda
+    // precisa aparecer, senão a pessoa some da lista sem ninguém notar.
+    return pedacos.length ? `- ${nome} ( ${pedacos.join(" - ")})` : `- ${nome}`;
+  });
+  return linhas.length ? ["COBRAR:", ...linhas].join("\n") : "";
+}
+
 export function sortPagamentos(records: PagamentoLembrete[]) {
   return [...records].sort((a, b) => {
     if (a.status !== b.status) {
