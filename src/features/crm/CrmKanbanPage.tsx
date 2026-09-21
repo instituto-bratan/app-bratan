@@ -107,6 +107,7 @@ import {
   type GestorCallStatus,
 } from "./crmData";
 import { emitirNotasDoFechamento } from "./emitirNotaDoFechamento";
+import { descricaoPadraoDoFechamento, tipoDoItemDoFechamento } from "./tipoDoItemNoFechamento";
 import { CrmSyncBanner } from "./CrmSyncBanner";
 import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
 import { ContactChannelsFields } from "./ContactChannelsFields";
@@ -581,7 +582,7 @@ function CrmKanbanPageConteudo() {
   // dali já lança a comanda automaticamente... pra gente evitar o retrabalho."
   const [fcDivisao, setFcDivisao] = useState<ParcelaDoRecebimento[]>([parcelaVazia("PIX")]);
   const [fcTipo, setFcTipo] = useState<TipoRecebimento>("TRATAMENTO");
-  const [fcItemTipo, setFcItemTipo] = useState<FinSaleItemType>("TRATAMENTO");
+  const [fcItemTipo, setFcItemTipo] = useState<FinSaleItemType>("CONSULTA");
   // O que o paciente fechou, produto a produto, da tabela de preços (02/09/2026).
   const [fcItens, setFcItens] = useState<ItemFechado[]>([]);
   const [fcNotaInstrucao, setFcNotaInstrucao] = useState("");
@@ -623,6 +624,13 @@ function CrmKanbanPageConteudo() {
     fcValorRecebido > 0 &&
     fcPlanoDaNota.notas.length > 0;
   const [fcEmitindo, setFcEmitindo] = useState(false);
+  // O TIPO DO ITEM SEGUE O QUE FOI VENDIDO (21/09/2026). Nascia fixo em
+  // "Tratamento", então Plano e Consulta Black caíam como tratamento na comanda
+  // e na planilha do contador. O seletor continua na tela e continua mandando —
+  // isto só troca o padrão quando muda o tipo de atendimento ou o canal.
+  useEffect(() => {
+    setFcItemTipo(tipoDoItemDoFechamento({ tipo: fcTipo, canal: fcResultado }));
+  }, [fcTipo, fcResultado]);
   const [tourOpen, setTourOpen] = useState(false);
   const { seen: tourSeen, markSeen: markTourSeen } = useTourSeen("app-bratan-tour-kanban");
   const boardRef = useRef<HTMLDivElement>(null);
@@ -955,6 +963,13 @@ function CrmKanbanPageConteudo() {
     /** Marcou "vou mandar depois": fica AGUARDANDO de propósito. */
     mandaDepois: boolean;
     notaInstrucao: string;
+    /**
+     * O que escrever na linha da comanda quando ninguém escolheu produto nem
+     * escreveu nada. NÃO é enfeite: o ticket médio lê a NATUREZA do item, e a
+     * natureza de um item de tipo CONSULTA sai da descrição. Sem isto, um sinal
+     * de R$ 500 entraria no ticket como venda.
+     */
+    descricaoPadrao: string;
     notaQuando: "AGORA" | "COM_A_CONSULTA" | "AGUARDANDO_ORIENTACAO";
     tipo: "SINAL_CONSULTA" | "PRIMEIRA_CONSULTA" | "TRATAMENTO" | "RETORNO";
     plano: boolean;
@@ -1037,7 +1052,7 @@ function CrmKanbanPageConteudo() {
                 id: createFinId("fitem"),
                 itemType: values.itemTipo,
                 amount: valorComanda,
-                description: values.notaInstrucao.trim(),
+                description: values.notaInstrucao.trim() || values.descricaoPadrao,
               },
             ];
       })(),
@@ -1179,6 +1194,7 @@ function CrmKanbanPageConteudo() {
         notaInstrucao: [resumoDaNota(newNota, planoDeNotas({ escolha: newNota.escolha, valorRecebido: recebidoAgora, divisao: newNota.divisao, diaISO: todayISO(), parcelas: newDivisao })), newNotaInstrucao.trim()]
           .filter(Boolean)
           .join(" · "),
+        descricaoPadrao: descricaoPadraoDoFechamento({ tipo: newTipo, canal: "SOMENTE_TRATAMENTO" }),
         notaQuando: newNotaQuando,
         tipo: newTipo,
         plano: false,
@@ -1362,6 +1378,7 @@ function CrmKanbanPageConteudo() {
         notaInstrucao: [resumoDaNota(fcNota, planoDeNotas({ escolha: fcNota.escolha, valorRecebido: receivedAmount, divisao: fcNota.divisao, diaISO: todayISO(), parcelas: fcDivisao })), fcNotaInstrucao.trim()]
           .filter(Boolean)
           .join(" · "),
+        descricaoPadrao: descricaoPadraoDoFechamento({ tipo: fcTipo, canal: fcResultado }),
         notaQuando: fcNotaQuando,
         tipo: fcTipo,
         plano: ehPlano,
@@ -1431,7 +1448,7 @@ function CrmKanbanPageConteudo() {
     setFcResultado("PROGRAMA_ACOMPANHAMENTO");
     setFcDivisao([parcelaVazia("PIX")]);
     setFcTipo("TRATAMENTO");
-    setFcItemTipo("TRATAMENTO");
+    setFcItemTipo("CONSULTA");
     setFcItens([]);
     setFcNotaInstrucao("");
     setFcNota(notaDoFechamentoVazia);

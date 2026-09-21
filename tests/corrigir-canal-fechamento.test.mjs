@@ -111,7 +111,9 @@ test("trocar para o mesmo canal não faz nada; canal certo em quem não tem jorn
 });
 
 test("sinal de R$ 200 existe no catálogo, ao lado do de R$ 500 (áudio da CEO)", () => {
-  const sinais = cat.CATALOGO_PRECIFICACAO.filter((p) => p.tipos.includes("SINAL"));
+  // O sinal passou a LANÇAR como consulta em 21/09; o que o identifica como
+  // sinal (e o mantém fora do ticket médio) é a natureza.
+  const sinais = cat.CATALOGO_PRECIFICACAO.filter((p) => p.natureza === "SINAL");
   assert.deepEqual(j(sinais.map((p) => [p.nome, p.preco])), [["Sinal de consulta", 500], ["Sinal de consulta (R$ 200)", 200]]);
   const duzentos = cat.produtoPorNome("Sinal de consulta (R$ 200)");
   assert.equal(duzentos.preco, 200);

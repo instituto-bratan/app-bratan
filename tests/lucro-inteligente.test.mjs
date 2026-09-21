@@ -191,7 +191,9 @@ test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fec
 
   const cheio = cat.itensDaComanda(escolhidos, 8767, parse, criarId);
   assert.deepEqual(plain(cheio.map((i) => [i.description, i.itemType, i.amount])), [
-    ["Plano de Acompanhamento · 6 meses", "TRATAMENTO", 6997],
+    // 21/09/2026: o Plano passou a LANÇAR como consulta na comanda (pedido do
+    // Lucas). O que ele é para o ticket continua sendo PLANO, pela natureza.
+    ["Plano de Acompanhamento · 6 meses", "CONSULTA", 6997],
     ["HCG (frasco)", "TRATAMENTO", 590],
     ["Vitamina D 600.000 UI", "TRATAMENTO", 1180],
   ], "recebido igual à soma: itens intactos, com o nome exato da tabela");

@@ -9,9 +9,9 @@
 // tudo — dinheiro que entrou é dinheiro que entrou. Só o ticket e o PDCA olham
 // a natureza.
 import type { FinSaleItemType } from "./financeiroData";
-import { CATALOGO_PRECIFICACAO, type ProdutoPrecificado } from "./catalogoPrecificacao";
+import { CATALOGO_PRECIFICACAO, type NaturezaItem, type ProdutoPrecificado } from "./catalogoPrecificacao";
 
-export type NaturezaItem = "PLANO" | "CONSULTA" | "TRATAMENTO" | "MEDICACAO" | "SINAL" | "EXAME" | "OUTRO_PROFISSIONAL" | "OUTRO";
+export type { NaturezaItem };
 
 export const naturezaLabels: Record<NaturezaItem, string> = {
   PLANO: "Plano",
@@ -31,6 +31,11 @@ export const NATUREZAS_QUE_CONTAM_COMO_VENDA: NaturezaItem[] = ["PLANO", "CONSUL
 const SECOES_MEDICACAO = new Set(["Hormonais (por dose)", "Vitaminas IM (por dose)", "Vitalidade e performance", "Composição corporal e peso"]);
 
 export function naturezaDoProduto(produto: ProdutoPrecificado): NaturezaItem {
+  // A NATUREZA VEM ANTES DO TIPO (21/09/2026). Desde que Plano, sinal,
+  // mapeamento e teste genético passaram a LANÇAR como consulta, ler `tipos[0]`
+  // colocaria o sinal e o mapeamento dentro do ticket médio — exatamente o que
+  // a regra de 08/09 tira de lá. Quem tem natureza declarada manda nela.
+  if (produto.natureza) return produto.natureza;
   const tipo = produto.tipos[0];
   if (tipo === "SINAL") return "SINAL";
   if (tipo === "CONSULTA" || tipo === "RETORNO") return "CONSULTA";
@@ -47,6 +52,8 @@ export function naturezaDoProduto(produto: ProdutoPrecificado): NaturezaItem {
 // de um tratamento, conta — mesmo citando a tirzepatida que vai junto. Se ela
 // fala SÓ do remédio ("2 doses de Undecilato", "valor medicamento"), é
 // medicação avulsa. Descrição vazia fica como tratamento (não dá para saber).
+const PALAVRAS_SINAL = /\bsinal\b|\bentrada da consulta\b/i;
+const PALAVRAS_EXAME = /mapeamento corporal|bioimped/i;
 const PALAVRAS_PLANO = /\bplano\b|programa|acompanhamento|\bclub(e)?\b/i;
 const PALAVRAS_TRATAMENTO = /tratamento|consulta|implante|procedimento|protocolo|reposi[cç][aã]o|\brep\.? ?hormonal|teste gen[eé]tico|honor[aá]rio/i;
 const PALAVRAS_MEDICACAO =
@@ -61,7 +68,6 @@ export function naturezaDoItem(item: { itemType: FinSaleItemType; description?: 
   switch (item.itemType) {
     case "SINAL":
       return "SINAL";
-    case "CONSULTA":
     case "RETORNO":
       return "CONSULTA";
     case "BIOIMPEDANCIA":
@@ -76,7 +82,14 @@ export function naturezaDoItem(item: { itemType: FinSaleItemType; description?: 
     default:
       break;
   }
-  // 3. TRATAMENTO livre: a descrição decide.
+  // 3. CONSULTA livre: sinal e mapeamento agora LANÇAM como consulta, então o
+  //    tipo sozinho não basta — a descrição é que separa o que conta no ticket.
+  if (item.itemType === "CONSULTA") {
+    if (PALAVRAS_SINAL.test(descricao)) return "SINAL";
+    if (PALAVRAS_EXAME.test(descricao)) return "EXAME";
+    return "CONSULTA";
+  }
+  // 4. TRATAMENTO livre: a descrição decide.
   if (PALAVRAS_PLANO.test(descricao)) return "PLANO";
   if (PALAVRAS_TRATAMENTO.test(descricao)) return "TRATAMENTO";
   if (PALAVRAS_MEDICACAO.test(descricao)) return "MEDICACAO";

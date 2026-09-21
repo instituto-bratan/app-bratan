@@ -34,6 +34,9 @@ import type { FinSaleItem, FinSaleItemType } from "./financeiroData";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
+/** O que o item é para o ticket médio e o PDCA. Mora aqui para `naturezaItem.ts` poder importar sem ciclo. */
+export type NaturezaItem = "PLANO" | "CONSULTA" | "TRATAMENTO" | "MEDICACAO" | "SINAL" | "EXAME" | "OUTRO_PROFISSIONAL" | "OUTRO";
+
 export type ProdutoPrecificado = {
   nome: string;
   /** Agrupamento da tabela, para o seletor. */
@@ -47,6 +50,18 @@ export type ProdutoPrecificado = {
   comissao: number;
   /** Coluna L: repasse nutri/psi da linha — na planilha é um valor da LINHA, não multiplica pela quantidade. */
   repasse?: number;
+  /**
+   * O que este produto É para o ticket médio e o PDCA — quando isso não pode
+   * ser deduzido do `tipos`.
+   *
+   * 21/09/2026: o Lucas pediu que Plano, sinal, mapeamento e teste genético
+   * passassem a LANÇAR como consulta na comanda. Só que a natureza era lida de
+   * `tipos[0]`, então a troca faria o sinal e o mapeamento entrarem no ticket —
+   * o contrário da regra dele de 08/09 ("no ticket e no PDCA não entram sinal
+   * nem medicamentos separados"). Os dois conceitos andavam grudados por
+   * acidente; agora o tipo diz como se lança e a natureza diz o que conta.
+   */
+  natureza?: NaturezaItem;
   /** Colunas K + O por unidade (consumível × sessões + minutos de sala × R$/min), tirado direto da planilha, sem arredondar. */
   custoFixo: number;
   /**
@@ -56,6 +71,15 @@ export type ProdutoPrecificado = {
    * zera a coluna O dos pellets). É a base do KPI de ocupação de sala (14/09/2026).
    */
   minutosSala: number;
+  /**
+   * Os tipos de item da comanda em que este produto aparece.
+   *
+   * O PRIMEIRO é o que a comanda grava hoje. Os seguintes são os tipos com que
+   * ele JÁ FOI gravado: sem eles, a troca de 21/09 (Plano, sinal, mapeamento e
+   * teste genético passaram a lançar como consulta) faria o app deixar de
+   * reconhecer as comandas de julho a setembro, e o Lucro Inteligente perderia
+   * meses inteiros em silêncio.
+   */
   tipos: FinSaleItemType[];
   padrao?: RegExp;
 };
@@ -64,7 +88,7 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   // APP DO DR. DANIEL — itens do plano
   // Só o Plano custa R$ 6.997 (Lucas, 02/09: "o clube virou Consulta Black" — a
   // R$ 1.500, com 5% de desconto em tratamentos; está na esteira de consultas).
-  { nome: "Plano de Acompanhamento · 6 meses", secao: "Plano de Acompanhamento", preco: 6997, lucroBruto: 3476.74, imposto: 0.26, comissao: 0.1, repasse: 660, custoFixo: 341.335887, minutosSala: 180, tipos: ["TRATAMENTO"], padrao: /programa|acompanhamento|plano/i },
+  { nome: "Plano de Acompanhamento · 6 meses", secao: "Plano de Acompanhamento", preco: 6997, lucroBruto: 3476.74, imposto: 0.26, comissao: 0.1, repasse: 660, custoFixo: 341.335887, minutosSala: 180, tipos: ["CONSULTA", "TRATAMENTO"], natureza: "PLANO", padrao: /programa|acompanhamento|plano/i },
   { nome: "Testosterona base / cipionato / enantato", secao: "Hormonais (por dose)", preco: 490, lucroBruto: 324.31, imposto: 0.1148, comissao: 0.1, custoFixo: 60.441164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
   { nome: "Testosterona blend", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 349.5, imposto: 0.1148, comissao: 0.1, custoFixo: 113.771164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /blend/i },
   { nome: "Testosterona + HCG", secao: "Hormonais (por dose)", preco: 790, lucroBruto: 392.73, imposto: 0.1148, comissao: 0.1, custoFixo: 227.581552, minutosSala: 20, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
@@ -98,18 +122,18 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   // não consigo lançar um comprovante de 200... preciso ficar justificando esses
   // 200 reais". Os dois valores praticados viram opção própria; o lucro bruto
   // segue a mesma FÓRMULA da planilha: 200 − NF 26% − comissão 10% − poltrona = 99,56.
-  { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 291.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["SINAL"] },
-  { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 99.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["SINAL"] },
+  { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 291.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["CONSULTA", "SINAL"], natureza: "SINAL" },
+  { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 99.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["CONSULTA", "SINAL"], natureza: "SINAL" },
   { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 1486.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
   { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 1540.62, imposto: 0.2984, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
   { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 846.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
   { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 878.86, imposto: 0.2984, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
   { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 590.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /diamond/i },
-  { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 138.08, imposto: 0.1148, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["BIOIMPEDANCIA"] },
-  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 167.74, imposto: 0.1532, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["BIOIMPEDANCIA"] },
+  { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 138.08, imposto: 0.1148, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["CONSULTA", "BIOIMPEDANCIA"], natureza: "EXAME" },
+  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 167.74, imposto: 0.1532, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["CONSULTA", "BIOIMPEDANCIA"], natureza: "EXAME" },
   // Teste genético: o kit/laboratório ainda não tem custo comprovado (aba "Custos a
   // confirmar") — o lucro bruto aqui é SEM o kit e vai cair quando o custo entrar.
-  { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 2458.07, imposto: 0.26, comissao: 0.1, custoFixo: 37.92621, minutosSala: 20, tipos: ["TRATAMENTO"], padrao: /gen[eé]tic/i },
+  { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 2458.07, imposto: 0.26, comissao: 0.1, custoFixo: 37.92621, minutosSala: 20, tipos: ["CONSULTA", "TRATAMENTO"], natureza: "TRATAMENTO", padrao: /gen[eé]tic/i },
   // Nutri e psi: preço de tabela para o seletor; não são do médico executor.
   { nome: "Dra. Géssica (nutricionista) — Pix", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 120.22, imposto: 0.26, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
   { nome: "Dra. Géssica (nutricionista) — débito/3x", secao: "Nutrição e psicologia", preco: 650, lucroBruto: 127.26, imposto: 0.2984, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"] },
@@ -154,6 +178,15 @@ export function produtoDoItem(item: { itemType: FinSaleItemType; amount: number;
   //    produto é escolhido na lista. Zero chute.
   const exato = descricao ? CATALOGO_PRECIFICACAO.find((produto) => produto.nome === descricao) : null;
   if (exato) return exato;
+  // 2 e 3 rodam primeiro entre os produtos DO TIPO do item e, só se aí não sair
+  // nada, no catálogo inteiro.
+  //
+  // O SEGUNDO PASSE EXISTE POR CAUSA DO HISTÓRICO (21/09/2026). Plano, sinal,
+  // mapeamento e teste genético passaram a lançar como CONSULTA — mas as
+  // comandas de julho a setembro já estão gravadas como TRATAMENTO, SINAL e
+  // BIOIMPEDANCIA. Sem este passe, um Plano de R$ 6.997 lançado em agosto
+  // deixaria de ser encontrado, e o Lucro Inteligente perderia a coluna P de
+  // meses inteiros — em silêncio, que é como esse tipo de erro sempre aparece.
   const candidatos = CATALOGO_PRECIFICACAO.filter((produto) => produto.tipos.includes(item.itemType));
   if (!candidatos.length) return null;
   // 2. Palavra-chave na descrição; entre os que batem (as quatro tirzepatidas), o preço mais próximo decide.
