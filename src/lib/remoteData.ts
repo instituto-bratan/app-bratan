@@ -2728,6 +2728,26 @@ export async function saveRemoteCrmCoordenadorMes(monthKey: string, dados: Recor
   if (error) throw error;
 }
 
+// ---- Check-in semanal · a tabela que o Estevão preenche (21/09/2026) -----------
+// A chave é a SEXTA que abre a semana (AAAA-MM-DD). Só as linhas digitadas e a
+// meta base são gravadas: faturamento, ticket, conversão e meta acumulada saem
+// derivados no app, porque número derivado que se grava congela e passa a
+// mentir assim que a régua muda.
+export async function loadRemoteCrmCheckinSemana(sextaISO: string): Promise<Record<string, unknown> | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("crm_checkin_semana").select("dados").eq("semana_inicio", sextaISO).maybeSingle();
+  if (error) throw error;
+  return (data?.dados as Record<string, unknown>) ?? null;
+}
+
+export async function saveRemoteCrmCheckinSemana(sextaISO: string, dados: Record<string, unknown>, updatedBy?: string | null) {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("crm_checkin_semana")
+    .upsert({ semana_inicio: sextaISO, dados, updated_by: updatedBy ?? null, updated_at: new Date().toISOString() }, { onConflict: "semana_inicio" });
+  if (error) throw error;
+}
+
 // ---- Lucro Inteligente · resumo público (08/09/2026) ----------------------------
 // Qualquer pessoa logada lê; só o financeiro grava (a tela do Lucro publica).
 export type FinLucroPublicoRemote = {
