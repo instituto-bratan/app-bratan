@@ -32,6 +32,12 @@ export function dadosDemo(hojeISO: string): PortalDados {
       { tipo: "NOTA_FISCAL", titulo: "Nota fiscal nº 6104", url: null, numero: "6104", dia: soma(-99) },
     ],
     consentimentos: [{ tipo: "LGPD", aceito: true, em: `${inicio}T15:00:00-03:00` }, { tipo: "TRATAMENTO", aceito: true, em: `${inicio}T15:00:00-03:00` }],
+    // Fotos de evolução: na demo são silhuetas desenhadas (nunca foto de gente).
+    fotos: [
+      { id: "demo-f1", dia: inicio, angulo: "FRENTE", url: silhueta(1.0, "primeira") },
+      { id: "demo-f2", dia: hojeISO, angulo: "FRENTE", url: silhueta(0.86, "hoje") },
+      { id: "demo-l1", dia: inicio, angulo: "LADO", url: silhueta(1.0, "primeira") },
+    ],
     geradoEm: `${hojeISO}T09:00:00-03:00`,
   };
 }
@@ -62,4 +68,15 @@ export function dadosDemoNovo(hojeISO: string): PortalDados {
     parcelasAbertas: [],
     documentos: [],
   };
+}
+
+/**
+ * Silhueta para a demo das fotos de evolução: um SVG desenhado, com a largura
+ * do tronco em escala, para a comparação "primeira × hoje" aparecer sem usar
+ * foto de pessoa nenhuma.
+ */
+function silhueta(escala: number, legenda: string) {
+  const w = Math.round(46 * escala);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 200"><rect width="150" height="200" fill="#e8efe9"/><circle cx="75" cy="38" r="16" fill="#9fb8a6"/><rect x="${75 - w}" y="58" width="${w * 2}" height="78" rx="22" fill="#9fb8a6"/><rect x="${75 - w * 0.7}" y="130" width="${w * 0.55}" height="56" rx="10" fill="#9fb8a6"/><rect x="${75 + w * 0.15}" y="130" width="${w * 0.55}" height="56" rx="10" fill="#9fb8a6"/><text x="75" y="196" font-family="sans-serif" font-size="11" text-anchor="middle" fill="#5c7a64">${legenda}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }

@@ -78,3 +78,12 @@ export async function assinarPush(sessao: string, assinatura: { endpoint: string
 export async function sairDoPush(sessao: string, endpoint: string) {
   return chamar<Record<string, never>>({ acao: "push_sair", sessao, endpoint });
 }
+
+/** Mandar uma foto de evolução já reduzida (base64 sem prefixo). Só o paciente vê. */
+export async function enviarFoto(sessao: string, angulo: "FRENTE" | "LADO" | "COSTAS", base64: string, tipo: string) {
+  return chamar<{ foto?: { id: string; dia: string; angulo: "FRENTE" | "LADO" | "COSTAS"; url: string } }>({ acao: "foto_enviar", sessao, angulo, base64, tipo });
+}
+/** Apagar de verdade — arquivo e registro. */
+export async function apagarFoto(sessao: string, id: string) {
+  return chamar<Record<string, never>>({ acao: "foto_apagar", sessao, fotoId: id });
+}

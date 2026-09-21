@@ -320,3 +320,18 @@
 .portal .p-balanca { border-left: 4px solid var(--p-tint); }
 .portal .p-balanca.escondeu { border-left-color: color-mix(in oklab, var(--p-tint) 45%, #b8a45c); }
 .portal .p-balanca-num { font-size: 28px; line-height: 32px; letter-spacing: -.02em; }
+
+/* ---- fotos de evolução (21/09/2026) ---- */
+.portal .p-fotos { display: grid; gap: 14px; }
+.portal .p-fotos-par { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.portal .p-foto { position: relative; aspect-ratio: 3 / 4; border-radius: 14px; overflow: hidden; background: color-mix(in oklab, var(--p-tint) 12%, var(--p-card)); display: grid; place-items: center; }
+.portal .p-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.portal .p-foto .p-foto-data { position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; font-weight: 600; letter-spacing: -.01em; }
+.portal .p-foto .p-foto-vazia { font-size: 13px; line-height: 17px; text-align: center; padding: 0 12px; color: var(--p-2); }
+.portal .p-foto-apagar { position: absolute; right: 8px; top: 8px; width: 28px; height: 28px; border-radius: 999px; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 16px; line-height: 28px; text-align: center; cursor: pointer; }
+.portal .p-fotos-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.portal .p-fotos-acoes label.p-btn { cursor: pointer; }
+.portal .p-fotos-acoes input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.portal .p-seletor { display: inline-flex; gap: 4px; padding: 3px; border-radius: 999px; background: color-mix(in oklab, var(--p-tint) 10%, var(--p-card)); }
+.portal .p-seletor button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--p-2); }
+.portal .p-seletor button[aria-pressed="true"] { background: var(--p-tint); color: #fff; }

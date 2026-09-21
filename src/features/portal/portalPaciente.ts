@@ -17,6 +17,9 @@ export type PortalConsulta = {
   origem: "AGENDA" | "MANUAL";
 };
 
+import type { PortalFoto } from "./fotosDoPaciente";
+export type { PortalFoto };
+
 export type PortalMedicao = {
   id: string;
   dia: string; // ISO data
@@ -130,6 +133,8 @@ export type PortalDados = {
   parcelasAbertas: PortalParcela[];
   documentos: PortalDocumento[];
   consentimentos: { tipo: string; aceito: boolean; em: string }[];
+  /** Fotos de evolução (21/09/2026). URLs assinadas de 1 h. Só o paciente vê. */
+  fotos?: PortalFoto[];
   geradoEm: string;
 };
 

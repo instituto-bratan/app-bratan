@@ -20,8 +20,10 @@ import "./portal.css";
 import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolucao";
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
-import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal, sairDoPush } from "./portalCliente";
+import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal, sairDoPush, enviarFoto, apagarFoto } from "./portalCliente";
 import { chaveVapidParaBytes } from "./pushDoPaciente";
+import { ANGULOS, fraseDasFotos, paresPorAngulo, rotuloDoAngulo, validarFoto, type AnguloDaFoto, type PortalFoto } from "./fotosDoPaciente";
+import { reduzirFoto } from "./redimensionarFoto";
 import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, fraseDoDia, oQueABalancaNaoMostra, resumoEvolucao, resumoFinanceiro, resumoInBody, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
@@ -674,6 +676,9 @@ function MeuPortal() {
               </section>
             ) : null}
 
+            {/* ---- Fotos de evolução (21/09/2026, passo 4) ---- */}
+            <FotosDeEvolucao sessao={sessao} previa={previa} fotosIniciais={dados.fotos ?? []} />
+
             {trilha && dados.plano ? (
               <section id="plano" className="p-sec p-anim" aria-labelledby="t-plano">
                 <span className="t-sec" id="t-plano">{nomeDoPlano(dados.plano.canal)}</span>
@@ -992,6 +997,120 @@ function AvisosNoCelular({ sessao, previa, chavePublica }: { sessao: string | nu
             {ocupado ? "Ligando…" : "Ligar avisos"}
           </button>
         )}
+        {erro ? <p className="t-foot" style={{ color: "#b45a3c" }}>{erro}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * FOTOS DE EVOLUÇÃO (21/09/2026, passo 4 do portal).
+ *
+ * Em emagrecimento nada move mais do que a própria foto de três meses atrás ao
+ * lado da de hoje — e é o que o paciente já faz sozinho, perdido no rolo da
+ * câmera. Aqui: três ângulos, a primeira × a mais recente, e a promessa escrita
+ * "só você vê". Nenhuma tela da equipe mostra isto; quem quiser mostra na
+ * consulta, do próprio celular.
+ *
+ * A foto é reduzida no aparelho antes de sair (redimensionarFoto.ts): a função
+ * recebe 200 KB, não 5 MB.
+ */
+function FotosDeEvolucao({ sessao, previa, fotosIniciais }: { sessao: string | null; previa: boolean; fotosIniciais: PortalFoto[] }) {
+  const [fotos, setFotos] = useState<PortalFoto[]>(fotosIniciais);
+  const [angulo, setAngulo] = useState<AnguloDaFoto>("FRENTE");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+  useEffect(() => setFotos(fotosIniciais), [fotosIniciais]);
+  const pares = paresPorAngulo(fotos);
+
+  async function escolher(arquivo: File | null) {
+    if (!arquivo || !sessao || previa) return;
+    setErro("");
+    setOcupado(true);
+    try {
+      const reduzida = await reduzirFoto(arquivo);
+      const problema = validarFoto(reduzida.tipo, reduzida.bytes);
+      if (problema) return setErro(problema);
+      const r = await enviarFoto(sessao, angulo, reduzida.base64, reduzida.tipo);
+      if (!r.ok || !r.foto) return setErro(r.error ?? "Não consegui guardar a foto.");
+      setFotos((atual) => [...atual, r.foto as PortalFoto]);
+    } catch (falha) {
+      setErro((falha as Error)?.message || "Não consegui abrir a foto.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function apagar(foto: PortalFoto) {
+    if (!sessao || previa) return;
+    if (!window.confirm("Apagar esta foto? Ela some de verdade — não fica cópia em lugar nenhum.")) return;
+    setOcupado(true);
+    try {
+      const r = await apagarFoto(sessao, foto.id);
+      if (!r.ok) return setErro(r.error ?? "Não consegui apagar agora.");
+      setFotos((atual) => atual.filter((f) => f.id !== foto.id));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  const par = pares.find((p) => p.angulo === angulo)!;
+  const Quadro = ({ foto, rotulo }: { foto: PortalFoto | null; rotulo: string }) => (
+    <div className="p-foto">
+      {foto?.url ? (
+        <>
+          <img src={foto.url} alt={`${rotuloDoAngulo[foto.angulo]}, ${diaCurto(foto.dia)}`} loading="lazy" />
+          <span className="p-foto-data">{diaCurto(foto.dia)}</span>
+          {!previa ? (
+            <button type="button" className="p-foto-apagar" aria-label="Apagar esta foto" disabled={ocupado} onClick={() => void apagar(foto)}>
+              ×
+            </button>
+          ) : null}
+        </>
+      ) : (
+        <span className="p-foto-vazia">{rotulo}</span>
+      )}
+    </div>
+  );
+
+  return (
+    <section id="fotos" className="p-sec p-anim" aria-labelledby="t-fotos">
+      <span className="t-sec" id="t-fotos">Suas fotos de evolução</span>
+      <div className="p-card p-fotos">
+        <p className="t-body">{fraseDasFotos(pares)}</p>
+        <div className="p-seletor" role="group" aria-label="Ângulo">
+          {ANGULOS.map((a) => (
+            <button key={a} type="button" aria-pressed={angulo === a} onClick={() => setAngulo(a)}>
+              {rotuloDoAngulo[a]}
+            </button>
+          ))}
+        </div>
+        <div className="p-fotos-par">
+          <Quadro foto={par.primeira} rotulo={previa ? "A primeira foto fica aqui" : "Tire a primeira"} />
+          <Quadro foto={par.ultima} rotulo={par.primeira ? "A próxima aparece aqui" : "E a mais recente, aqui"} />
+        </div>
+        {par.todas.length > 2 ? (
+          <p className="t-foot t-2">
+            Mais {par.todas.length - 2} {par.todas.length - 2 === 1 ? "foto" : "fotos"} deste ângulo entre a primeira e a mais recente.
+          </p>
+        ) : null}
+        <div className="p-fotos-acoes">
+          {previa ? (
+            <p className="t-foot t-2">Na prévia não dá para mandar foto. Quem entra pelo app tira aqui, do próprio celular.</p>
+          ) : (
+            <>
+              <label className="p-btn">
+                {ocupado ? "Guardando…" : `Tirar foto ${rotuloDoAngulo[angulo].toLowerCase()}`}
+                <input type="file" accept="image/*" capture="environment" disabled={ocupado} onChange={(e) => void escolher(e.target.files?.[0] ?? null).finally(() => (e.target.value = ""))} />
+              </label>
+              <label className="p-btn plain">
+                Escolher do rolo
+                <input type="file" accept="image/*" disabled={ocupado} onChange={(e) => void escolher(e.target.files?.[0] ?? null).finally(() => (e.target.value = ""))} />
+              </label>
+            </>
+          )}
+        </div>
+        <p className="t-foot t-2">Mesma luz, mesma distância, mesma roupa: é isso que faz a comparação valer. Só você vê estas fotos — a equipe não tem acesso.</p>
         {erro ? <p className="t-foot" style={{ color: "#b45a3c" }}>{erro}</p> : null}
       </div>
     </section>

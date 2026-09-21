@@ -88,7 +88,7 @@ function mesmaPessoa(a: string, b: string) {
 }
 
 type Entrada = {
-  acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair" | "push_assinar" | "push_sair";
+  acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair" | "push_assinar" | "push_sair" | "foto_enviar" | "foto_apagar";
   login?: string;
   senha?: string;
   token?: string;
@@ -103,7 +103,24 @@ type Entrada = {
   assinatura?: { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
   endpoint?: string;
   aparelho?: string;
+  /** Fotos de evolução (21/09/2026): a imagem já reduzida no aparelho, em base64 sem prefixo. */
+  angulo?: "FRENTE" | "LADO" | "COSTAS";
+  base64?: string;
+  tipo?: string;
+  fotoId?: string;
 };
+
+const FOTO_BUCKET = "paciente-fotos";
+const FOTO_MAX_BYTES = 2 * 1024 * 1024;
+const FOTO_TIPOS = new Set(["image/jpeg", "image/png", "image/webp"]);
+const FOTO_URL_SEGUNDOS = 3600;
+
+function base64ParaBytes(base64: string): Uint8Array {
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i += 1) bytes[i] = binario.charCodeAt(i);
+  return bytes;
+}
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
@@ -222,6 +239,54 @@ Deno.serve(async (request) => {
     return json({ ok: true });
   }
 
+  // ---- Fotos de evolução (21/09/2026, passo 4 do portal) ----------------------
+  // Foto de corpo é dado sensível: bucket privado, sem política; só esta função
+  // grava e lê (por URL assinada de 1 h). Apagar apaga de verdade — arquivo e
+  // linha — porque é a promessa do portal: "só você vê, e some quando quiser".
+  if (entrada.acao === "foto_enviar") {
+    const angulo = entrada.angulo;
+    if (angulo !== "FRENTE" && angulo !== "LADO" && angulo !== "COSTAS") return json({ ok: false, error: "Diga o ângulo da foto." });
+    const tipo = String(entrada.tipo ?? "image/jpeg");
+    if (!FOTO_TIPOS.has(tipo)) return json({ ok: false, error: "Mande uma foto (JPG, PNG ou WebP)." });
+    const base64 = String(entrada.base64 ?? "").replace(/^data:[^,]+,/, "").trim();
+    // 4 caracteres de base64 = 3 bytes: barrar antes de decodificar 3 MB à toa.
+    if (!base64 || (base64.length * 3) / 4 > FOTO_MAX_BYTES + 1024) return json({ ok: false, error: "A foto ficou grande demais. Tente outra." });
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ParaBytes(base64);
+    } catch {
+      return json({ ok: false, error: "Não consegui ler a foto. Tente de novo." });
+    }
+    if (bytes.length === 0 || bytes.length > FOTO_MAX_BYTES) return json({ ok: false, error: "A foto ficou grande demais. Tente outra." });
+    const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+    const extensao = tipo === "image/png" ? "png" : tipo === "image/webp" ? "webp" : "jpg";
+    const sufixo = crypto.randomUUID().slice(0, 8);
+    const caminho = `${contactRef.replace(/[^a-zA-Z0-9_-]/g, "_")}/${hoje}/${angulo.toLowerCase()}-${sufixo}.${extensao}`;
+    const { error: erroUpload } = await client.storage.from(FOTO_BUCKET).upload(caminho, bytes, { contentType: tipo, upsert: false });
+    if (erroUpload) return json({ ok: false, error: "Não consegui guardar a foto agora. Tente de novo." });
+    const { data: linha, error: erroLinha } = await client.from("paciente_foto").insert({ contact_ref: contactRef, dia: hoje, angulo, caminho, bytes: bytes.length }).select("id, dia, angulo").single();
+    if (erroLinha || !linha) {
+      // Sem a linha, o arquivo seria um órfão que ninguém consegue apagar pelo portal.
+      await client.storage.from(FOTO_BUCKET).remove([caminho]);
+      return json({ ok: false, error: "Não consegui guardar a foto agora. Tente de novo." });
+    }
+    const { data: assinada } = await client.storage.from(FOTO_BUCKET).createSignedUrl(caminho, FOTO_URL_SEGUNDOS);
+    await log(contactRef, "FOTO_ENVIADA", { angulo, bytes: bytes.length });
+    return json({ ok: true, foto: { id: linha.id, dia: linha.dia, angulo: linha.angulo, url: assinada?.signedUrl ?? "" } });
+  }
+
+  if (entrada.acao === "foto_apagar") {
+    const id = String(entrada.fotoId ?? "").trim();
+    if (!id) return json({ ok: false, error: "Diga qual foto." });
+    // O contact_ref na busca é o que impede uma sessão apagar a foto de outra pessoa.
+    const { data: foto } = await client.from("paciente_foto").select("id, caminho").eq("id", id).eq("contact_ref", contactRef).maybeSingle();
+    if (!foto) return json({ ok: false, error: "Essa foto não está mais aqui." });
+    await client.storage.from(FOTO_BUCKET).remove([foto.caminho as string]);
+    await client.from("paciente_foto").delete().eq("id", foto.id);
+    await log(contactRef, "FOTO_APAGADA");
+    return json({ ok: true });
+  }
+
   if (entrada.acao === "pesagem") {
     const peso = Number(entrada.pesoKg);
     if (!(peso >= 30 && peso <= 300)) return json({ ok: false, error: "Peso fora do esperado. Confira e mande de novo (em kg, ex.: 82,4)." });
@@ -330,6 +395,14 @@ Deno.serve(async (request) => {
   const vistos = new Set<string>();
   const consent = ((consentimentos.data ?? []) as Record<string, unknown>[]).filter((c) => (vistos.has(c.tipo as string) ? false : (vistos.add(c.tipo as string), true))).map((c) => ({ tipo: c.tipo as string, aceito: Boolean(c.aceito) && !c.revogado_em, em: String(c.coletado_em ?? "") }));
 
+  // Fotos de evolução: só as deste paciente, com URL assinada de 1 h. O bucket é
+  // privado; sem a assinatura a URL não abre — nem para quem tiver o link.
+  const { data: fotosLinhas } = await client.from("paciente_foto").select("id, dia, angulo, caminho").eq("contact_ref", contactRef).order("dia");
+  const caminhos = ((fotosLinhas ?? []) as Record<string, unknown>[]).map((f) => f.caminho as string);
+  const { data: assinadas } = caminhos.length ? await client.storage.from(FOTO_BUCKET).createSignedUrls(caminhos, FOTO_URL_SEGUNDOS) : { data: [] as { path: string | null; signedUrl: string }[] };
+  const urlPorCaminho = new Map((assinadas ?? []).map((a) => [a.path ?? "", a.signedUrl]));
+  const fotos = ((fotosLinhas ?? []) as Record<string, unknown>[]).map((f) => ({ id: f.id, dia: String(f.dia).slice(0, 10), angulo: f.angulo, url: urlPorCaminho.get(f.caminho as string) ?? "" }));
+
   // A chave pública VAPID (é pública mesmo) — sem ela o navegador não assina.
   // Integração desligada = sem chave = o portal nem oferece o botão.
   const { data: push } = await client.from("integracao").select("ligada, config").eq("chave", "push").maybeSingle();
@@ -348,6 +421,7 @@ Deno.serve(async (request) => {
       parcelasAbertas: ((parcelas.data ?? []) as Record<string, unknown>[]).map((p) => ({ id: p.id, valor: Number(p.valor_pendente || 0), prevista: String(p.data_prevista ?? "").slice(0, 10), observacao: String(p.observacao ?? "") })),
       documentos,
       consentimentos: consent,
+      fotos,
       geradoEm: agora(),
     },
   });
