@@ -24,6 +24,10 @@ import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenh
 import { chaveVapidParaBytes } from "./pushDoPaciente";
 import { ANGULOS, fraseDasFotos, paresPorAngulo, rotuloDoAngulo, validarFoto, type AnguloDaFoto, type PortalFoto } from "./fotosDoPaciente";
 import { reduzirFoto } from "./redimensionarFoto";
+import { fraseDoCartao, opcoesDoCartao, textoDeCompartilhar, type OpcaoDoCartao } from "./cartaoCompartilhavel";
+import { cartaoParaBlob, compartilharCartao, desenharCartao } from "./desenharCartao";
+import { Confete } from "@/components/ui/motion-confetti";
+import { CountUp } from "@/components/ui/count-up";
 import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, fraseDoDia, oQueABalancaNaoMostra, resumoEvolucao, resumoFinanceiro, resumoInBody, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
@@ -382,6 +386,8 @@ function MeuPortal() {
   // frase só embaixo da saudação, e o card que a curva de peso não conta.
   const fraseTopo = dados ? fraseDoDia({ hojeISO: hoje, inbody, evolucao, proxima, trilha }) : "";
   const balanca = oQueABalancaNaoMostra(evolucao);
+  // CARTÃO COMPARTILHÁVEL (21/09/2026, passo 5): só notícia boa; vazio = some.
+  const opcoesDeCartao = opcoesDoCartao(evolucao, inbody);
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
   const mostrandoGordura = metricaDaCurva === "gordura";
@@ -492,7 +498,7 @@ function MeuPortal() {
                     <div>
                       <p className="t-foot t-2">InBody Score</p>
                       <p className="p-num">
-                        {inbody.score}
+                        <CountUp to={inbody.score} from={Math.max(0, inbody.score - 12)} duration={1.1} digitEffect="slide" />
                         <small>/100</small>
                       </p>
                     </div>
@@ -678,6 +684,9 @@ function MeuPortal() {
 
             {/* ---- Fotos de evolução (21/09/2026, passo 4) ---- */}
             <FotosDeEvolucao sessao={sessao} previa={previa} fotosIniciais={dados.fotos ?? []} />
+
+            {/* ---- Cartão compartilhável (21/09/2026, passo 5) ---- */}
+            {opcoesDeCartao.length ? <CartaoDaConquista opcoes={opcoesDeCartao} /> : null}
 
             {trilha && dados.plano ? (
               <section id="plano" className="p-sec p-anim" aria-labelledby="t-plano">
@@ -1112,6 +1121,84 @@ function FotosDeEvolucao({ sessao, previa, fotosIniciais }: { sessao: string | n
         </div>
         <p className="t-foot t-2">Mesma luz, mesma distância, mesma roupa: é isso que faz a comparação valer. Só você vê estas fotos — a equipe não tem acesso.</p>
         {erro ? <p className="t-foot" style={{ color: "#b45a3c" }}>{erro}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * CARTÃO COMPARTILHÁVEL (21/09/2026, passo 5 do portal).
+ *
+ * É o paciente quem conta — a clínica não publica nada. O cartão é desenhado
+ * no aparelho (desenharCartao.ts) e sai pelo compartilhar do celular: nada
+ * passa pelo servidor e a equipe não fica sabendo. Sem foto, sem peso
+ * absoluto: só o que mudou e há quanto tempo. O confete é o único momento
+ * de festa do portal — e só depois que o cartão saiu.
+ */
+function CartaoDaConquista({ opcoes }: { opcoes: OpcaoDoCartao[] }) {
+  const [chave, setChave] = useState(opcoes[0].chave);
+  const opcao = opcoes.find((o) => o.chave === chave) ?? opcoes[0];
+  const previaRef = useRef<HTMLCanvasElement>(null);
+  const [disparos, setDisparos] = useState(0);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState("");
+
+  useEffect(() => {
+    let vivo = true;
+    void desenharCartao(opcao)
+      .then((canvas) => {
+        const alvo = previaRef.current;
+        if (!vivo || !alvo) return;
+        alvo.width = canvas.width;
+        alvo.height = canvas.height;
+        alvo.getContext("2d")?.drawImage(canvas, 0, 0);
+      })
+      .catch(() => setAviso("Não consegui desenhar o cartão neste navegador."));
+    return () => {
+      vivo = false;
+    };
+  }, [opcao]);
+
+  async function compartilhar() {
+    setAviso("");
+    setOcupado(true);
+    try {
+      const canvas = await desenharCartao(opcao);
+      const blob = await cartaoParaBlob(canvas);
+      const resultado = await compartilharCartao(blob, textoDeCompartilhar(opcao));
+      if (resultado === "CANCELADO") return;
+      setDisparos((n) => n + 1);
+      if (resultado === "BAIXADO") setAviso("A imagem foi salva no aparelho. No celular, o botão abre direto o WhatsApp e o Instagram.");
+    } catch {
+      setAviso("Não consegui compartilhar agora. Tente de novo.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <section id="conquista" className="p-sec p-anim" aria-labelledby="t-conquista">
+      <span className="t-sec" id="t-conquista">Sua conquista, para contar</span>
+      <div className="p-card p-conquista">
+        <p className="t-body">{fraseDoCartao(opcoes)}</p>
+        {opcoes.length > 1 ? (
+          <div className="p-seletor wrap" role="group" aria-label="O que mostrar no cartão">
+            {opcoes.map((o) => (
+              <button key={o.chave} type="button" aria-pressed={o.chave === opcao.chave} onClick={() => setChave(o.chave)}>
+                {o.rotulo}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="p-cartao-palco">
+          <canvas ref={previaRef} className="p-cartao-previa" aria-label={`Cartão: ${opcao.numero} ${opcao.unidade}, ${opcao.legenda}`} />
+          <Confete disparos={disparos} />
+        </div>
+        <button type="button" className="p-btn" disabled={ocupado} onClick={() => void compartilhar()}>
+          {ocupado ? "Preparando…" : "Compartilhar"}
+        </button>
+        <p className="t-foot t-2">O cartão nasce no seu celular e vai só para quem você mandar. A clínica não publica nada por você.</p>
+        {aviso ? <p className="t-foot t-2">{aviso}</p> : null}
       </div>
     </section>
   );
