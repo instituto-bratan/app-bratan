@@ -147,6 +147,34 @@ Deno.serve(async (request) => {
   if (config.optanteSimplesNacional === undefined || config.optanteSimplesNacional === null) {
     return json({ ok: false, error: "Falta responder na configuração fiscal se a empresa é optante pelo Simples Nacional. Sem isso a nota não é enviada." }, 400);
   }
+  // ---- REFORMA TRIBUTÁRIA: os campos do IBS e da CBS (21/09/2026) -------------
+  //
+  // Era ISTO que derrubava a emissão com o erro 1002 ("Versão do Schema XML
+  // Incorreto"). O suporte da Focus respondeu em 21/09/2026: empresa do REGIME
+  // NORMAL em São Paulo só consegue emitir informando os campos do IBS/CBS.
+  // Não era campo nosso errado — era campo nosso FALTANDO.
+  // Fonte: focusnfe.com.br/guides/nfse/municipios-integrados/sao-paulo-sp/
+  //
+  // Três deles classificam TRIBUTO e não podem ser adivinhados: errar aqui é
+  // recolher imposto errado, e esse erro não aparece na tela — aparece na
+  // fiscalização. Mesma trava do optante do Simples: ou veio do contador, ou a
+  // nota não sai. Em homologação a trava afrouxa de propósito, senão não dá
+  // para testar; em PRODUÇÃO ela só abre com a confirmação explícita.
+  const fiscaisDaReforma: [string, string][] = [
+    ["ibsCbsClassificacaoTributaria", "o código de classificação tributária do IBS/CBS (cClassTrib)"],
+    ["codigoNbs", "o código NBS do serviço (Nomenclatura Brasileira de Serviços)"],
+    ["codigoIndicadorOperacao", "o código indicador da operação de fornecimento"],
+  ];
+  const semResposta = fiscaisDaReforma.filter(([campo]) => !String(config[campo] ?? "").trim());
+  if (semResposta.length) {
+    return json({ ok: false, error: `A Reforma Tributária passou a exigir estes campos na NFS-e de São Paulo, e eles vêm do contador: ${semResposta.map(([, texto]) => texto).join("; ")}.` }, 400);
+  }
+  // O valor pode estar preenchido com o exemplo da Focus e ainda assim estar
+  // errado para a nossa atividade. Produção exige que alguém tenha conferido.
+  const ehProducao = String(config.ambiente ?? "homologacao") === "producao";
+  if (ehProducao && config.reformaConfirmadaPeloContador !== true) {
+    return json({ ok: false, error: "Os códigos de IBS/CBS, NBS e indicador de operação ainda não foram confirmados pelo contador. Enquanto isso, a emissão em produção fica bloqueada — em homologação ela roda." }, 400);
+  }
   const discriminacao = entrada.tipo === "CONSULTA" ? "Consulta médica" : entrada.tipo === "TRATAMENTO" ? `Serviços de saúde — ${itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 200) || "tratamento"}` : `Serviços médicos — comanda de ${sale.sale_date}`;
   // Uma nota por comanda e por tipo. Sem esta trava, um F5 no meio do envio (ou
   // dois cliques) manda a prefeitura emitir a MESMA nota duas vezes — e o ISS sai
@@ -188,6 +216,15 @@ Deno.serve(async (request) => {
     data_emissao: new Date().toISOString(),
     natureza_operacao: String(config.naturezaOperacao ?? "1"),
     optante_simples_nacional: Boolean(config.optanteSimplesNacional),
+    // Reforma Tributária, obrigatórios na raiz. Os três zeros não são chute:
+    // a clínica não tem exigibilidade suspensa, a nota é regular (não é
+    // complementar) e o paciente é ao mesmo tempo tomador e destinatário.
+    exigibilidade_suspensa: 0,
+    finalidade_emissao: 0,
+    indicador_destinatario: 0,
+    // Quem consome a consulta é o próprio paciente. Fica configurável porque
+    // nota para empresa pode ter outra leitura.
+    consumidor_final: Number(config.consumidorFinal ?? 1),
     prestador: { cnpj: String(config.cnpjPrestador).replace(/\D/g, ""), inscricao_municipal: String(config.inscricaoMunicipal), codigo_municipio: "3550308" },
     tomador: { razao_social: entrada.tomador?.nome || sale.patient_name, email: email || undefined, cpf: cpfDoTomador || undefined },
     servico: {
@@ -195,6 +232,16 @@ Deno.serve(async (request) => {
       discriminacao,
       iss_retido: Boolean(config.issRetido),
       item_lista_servico: String(ehConsulta ? config.codigoServicoConsulta : config.codigoServicoTratamento),
+      // Reforma Tributária, obrigatórios dentro de servico.
+      base_calculo: Math.round(valor * 100) / 100,
+      valor_final_cobrado: Math.round(valor * 100) / 100,
+      valor_ipi: 0, // serviço médico não tem IPI
+      codigo_nbs: String(config.codigoNbs),
+      codigo_indicador_operacao: String(config.codigoIndicadorOperacao),
+      ibs_cbs_classificacao_tributaria: String(config.ibsCbsClassificacaoTributaria),
+      ...(String(config.ibsCbsClassificacaoTributariaRegular ?? "").trim()
+        ? { ibs_cbs_classificacao_tributaria_regular: String(config.ibsCbsClassificacaoTributariaRegular) }
+        : {}),
       // São Paulo não usa este campo ("Não utilizado" no guia da Focus); fica só se alguém configurar.
       ...(config.codigoTributarioMunicipio ? { codigo_tributario_municipio: String(config.codigoTributarioMunicipio) } : {}),
       valor_servicos: Math.round(valor * 100) / 100,
