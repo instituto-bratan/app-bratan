@@ -123,6 +123,7 @@ export function CrmCheckinSemanalPage() {
       linhas,
       metaBase: parseFinAmount(metaBaseTexto),
       saldoHerdado,
+      hojeISO: todayISO(),
     }),
     [sexta, linhas, metaBaseTexto, saldoHerdado],
   );
@@ -294,7 +295,7 @@ export function CrmCheckinSemanalPage() {
               ["Orçamento prescrito", numero(resumo.prescrito)],
               ["Orçamento realizado", numero(resumo.realizado)],
               ["Conversão", resumo.conversao === null ? "—" : `${(resumo.conversao * 100).toFixed(1).replace(".", ",")}%`],
-              ["Meta da próxima", numero(resumo.metaDaProxima)],
+              [resumo.encerrada ? "Meta da próxima" : "Meta da próxima (por ora)", numero(resumo.metaDaProxima)],
             ].map(([rotulo, valor]) => (
               <div key={rotulo} className="rounded-lg border border-brand-oliva/15 bg-brand-creme/40 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{rotulo}</p>
@@ -302,10 +303,16 @@ export function CrmCheckinSemanalPage() {
               </div>
             ))}
           </div>
+          {/* SEMANA ABERTA NÃO É SEMANA PERDIDA (21/09/2026). Na segunda-feira
+              a tela dizia "faltaram R$ 90 mil" e já dobrava a meta seguinte,
+              com quatro dias pela frente. Mesma regra de nunca comparar mês
+              parcial com mês fechado. */}
           <p className="text-sm text-muted-foreground">
-            {resumo.faltou > 0
-              ? `Faltaram ${numero(resumo.faltou)} para a meta de ${numero(resumo.meta)} — e é isso que vai somar na semana que vem.`
-              : `Meta de ${numero(resumo.meta)} batida. A próxima volta para a base, sem acúmulo.`}
+            {resumo.faltou <= 0
+              ? `Meta de ${numero(resumo.meta)} batida. A próxima volta para a base, sem acúmulo.`
+              : resumo.encerrada
+                ? `Faltaram ${numero(resumo.faltou)} para a meta de ${numero(resumo.meta)} — e é isso que somou na meta da próxima.`
+                : `Faltam ${numero(resumo.faltou)} para a meta de ${numero(resumo.meta)}. A semana ainda está aberta: só o que sobrar na quinta é que vai acumular.`}
           </p>
           <div>
             <Button

@@ -150,3 +150,30 @@ test("o que o Estevão corrigiu à mão manda sobre o que o app deduziu", () => 
   assert.equal(linhas[0].pago, 1200, "ele corrigiu o valor; a comanda não sobrescreve");
   assert.equal(linhas[0].novo, true);
 });
+
+test("semana AINDA ABERTA não acumula: só o que sobrar na quinta é que empurra", () => {
+  // Segunda-feira 21/09, semana 18–24/09. Faturou 0 de uma meta de 100 mil.
+  const aberta = { ...semana([linha("Ana", 0, 0)], 100000, 0), hojeISO: "2026-09-21" };
+  const r = mod.resumoDoCheckin(aberta);
+  assert.equal(r.encerrada, false);
+  assert.equal(r.faltou, 100000, "o quanto falta continua sendo verdade");
+  assert.equal(r.metaDaProxima, 100000, "mas a próxima NÃO dobra com a semana em andamento");
+  assert.equal(mod.saldoParaProximaSemana(aberta), 0, "semana aberta não empurra saldo");
+});
+
+test("na sexta seguinte a semana está fechada e aí sim acumula", () => {
+  const fechada = { ...semana([linha("Ana", 0, 70000)], 100000, 0), hojeISO: "2026-09-25" };
+  const r = mod.resumoDoCheckin(fechada);
+  assert.equal(r.encerrada, true);
+  assert.equal(r.metaDaProxima, 130000, "o exemplo do Lucas, agora no momento certo");
+  assert.equal(mod.saldoParaProximaSemana(fechada), 30000);
+});
+
+test("a própria quinta ainda é semana aberta — fecha na quinta à noite", () => {
+  const naQuinta = { ...semana([linha("Ana", 0, 0)], 100000, 0), hojeISO: "2026-09-24" };
+  assert.equal(mod.resumoDoCheckin(naQuinta).encerrada, false, "ainda dá tempo de fechar venda na quinta");
+});
+
+test("sem hojeISO o comportamento antigo continua (semana tratada como fechada)", () => {
+  assert.equal(mod.resumoDoCheckin(semana([linha("Ana", 100000, 70000)], 100000, 0)).metaDaProxima, 130000);
+});

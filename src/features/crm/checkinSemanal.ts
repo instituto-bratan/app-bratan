@@ -50,6 +50,15 @@ export type SemanaDoCheckin = {
   metaBase: number;
   /** O que sobrou de metas anteriores e foi empurrado para cá. */
   saldoHerdado: number;
+  /**
+   * O dia de hoje, para saber se a semana já FECHOU.
+   *
+   * Sem isto a semana em andamento era tratada como semana perdida: na
+   * segunda-feira a tela já dizia "faltaram R$ 90 mil" e dobrava a meta da
+   * semana seguinte, com a semana ainda tendo quatro dias pela frente. É a
+   * mesma regra da casa de nunca comparar mês parcial com mês fechado.
+   */
+  hojeISO?: string;
 };
 
 export type ResumoDoCheckin = {
@@ -63,9 +72,17 @@ export type ResumoDoCheckin = {
   conversao: number | null;
   /** metaBase + saldoHerdado: é a régua real da semana. */
   meta: number;
-  /** O que faltou para a meta. Zero quando bateu — sobra não vira crédito. */
+  /** O que falta para a meta. Zero quando bateu — sobra não vira crédito. */
   faltou: number;
-  /** A meta da semana que vem: a base dela mais o que faltou nesta. */
+  /** A semana já acabou? Só semana fechada empurra saldo para a seguinte. */
+  encerrada: boolean;
+  /**
+   * A meta da semana que vem.
+   *
+   * Enquanto a semana está aberta é só a base: o que falta ainda pode ser
+   * feito, e somar isso agora seria punir a equipe por uma quinta-feira que
+   * nem chegou.
+   */
   metaDaProxima: number;
 };
 
@@ -143,6 +160,9 @@ export function resumoDoCheckin(semana: SemanaDoCheckin): ResumoDoCheckin {
   const pagantes = linhas.filter((linha) => (linha.pago || 0) > 0).length;
   const meta = centavos(semana.metaBase + semana.saldoHerdado);
   const faltou = Math.max(0, centavos(meta - faturamento));
+  // A semana fecha na quinta. Sem `hojeISO` (uso antigo, testes), trata-se como
+  // fechada — é o comportamento que já existia.
+  const encerrada = semana.hojeISO ? semana.hojeISO.slice(0, 10) > semana.fim.slice(0, 10) : true;
   return {
     pacientesTotais,
     pacientesNovos,
@@ -153,7 +173,8 @@ export function resumoDoCheckin(semana: SemanaDoCheckin): ResumoDoCheckin {
     conversao: prescrito > 0 ? realizado / prescrito : null,
     meta,
     faltou,
-    metaDaProxima: centavos(semana.metaBase + faltou),
+    encerrada,
+    metaDaProxima: centavos(semana.metaBase + (encerrada ? faltou : 0)),
   };
 }
 
@@ -166,7 +187,8 @@ export function resumoDoCheckin(semana: SemanaDoCheckin): ResumoDoCheckin {
  * semana boa.
  */
 export function saldoParaProximaSemana(semana: SemanaDoCheckin): number {
-  return resumoDoCheckin(semana).faltou;
+  const resumo = resumoDoCheckin(semana);
+  return resumo.encerrada ? resumo.faltou : 0;
 }
 
 function moeda(valor: number) {

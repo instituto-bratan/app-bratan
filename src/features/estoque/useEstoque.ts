@@ -55,7 +55,11 @@ export function useEstoque() {
 
   const items = useRemote ? (itemsQuery.data ?? []) : localItems;
   const moves = useRemote ? (movesQuery.data ?? []) : localMoves;
-  const compras: FinPurchase[] = useRemote ? (comprasQuery.data ?? []) : readLocalValue<FinPurchase[]>("app-bratan-fin-purchases", []).filter((compra) => compra.estoqueSetor);
+  const comprasKey = "app-bratan-fin-purchases";
+  const [localCompras, setLocalCompras] = useState<FinPurchase[]>(() =>
+    readLocalValue<FinPurchase[]>(comprasKey, []).filter((compra) => compra.estoqueSetor),
+  );
+  const compras: FinPurchase[] = useRemote ? (comprasQuery.data ?? []) : localCompras;
 
   async function upsertItem(item: EstoqueItem) {
     if (useRemote) {
@@ -132,6 +136,15 @@ export function useEstoque() {
     if (useRemote) {
       await createRemoteFinPurchase(compra, entrada.criadoPor);
       invalidate();
+    } else {
+      // Sem servidor a compra ainda precisa existir, senão o botão "Já comprei"
+      // fica mudo e o item continua gritando COMPRAR — que é justamente o
+      // problema que ele veio resolver.
+      setLocalCompras((atual) => {
+        const proximas = [compra, ...atual];
+        writeLocalValue(comprasKey, [...readLocalValue<FinPurchase[]>(comprasKey, []), compra]);
+        return proximas;
+      });
     }
     return compra;
   }

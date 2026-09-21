@@ -200,7 +200,11 @@ export function EstoquePage() {
     [estoque.items, estoque.moves, setor, hoje],
   );
   const chegadas = useMemo(() => chegadasPendentes(estoque.compras, estoque.moves, setor), [estoque.compras, estoque.moves, setor]);
-  const precisaComprar = posicao.filter((linha) => linha.status !== "OK");
+  // "Para comprar" é o que AINDA falta comprar — item já comprado (a caminho)
+  // saiu da conta, senão o card continua cobrando uma tarefa que já foi feita,
+  // que é o problema que o status A_CAMINHO veio resolver. Zerado fica: falta hoje.
+  const precisaComprar = posicao.filter((linha) => linha.status === "COMPRAR" || linha.status === "ZERADO");
+  const aCaminho = posicao.filter((linha) => linha.status === "A_CAMINHO");
 
   // ---------------- novo item ----------------
   const [nome, setNome] = useState("");
@@ -639,7 +643,12 @@ export function EstoquePage() {
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
             { label: "Itens no setor", value: String(posicao.length), hint: setorLabels[setor] },
-            { label: "Para comprar", value: String(precisaComprar.length), hint: "zerados ou abaixo do mínimo", alerta: precisaComprar.length > 0 },
+            {
+              label: "Para comprar",
+              value: String(precisaComprar.length),
+              hint: aCaminho.length ? `zerados ou abaixo do mínimo · ${aCaminho.length} já comprado(s)` : "zerados ou abaixo do mínimo",
+              alerta: precisaComprar.length > 0,
+            },
             { label: "Vencendo (60 dias)", value: String(alertas.length), hint: "lotes com validade próxima", alerta: alertas.length > 0 },
             { label: "Chegadas a confirmar", value: String(chegadas.length), hint: "compras esperando entrada", alerta: chegadas.length > 0 },
           ].map((cardInfo) => (
