@@ -160,9 +160,13 @@ Deno.serve(async (request) => {
   // fiscalização. Mesma trava do optante do Simples: ou veio do contador, ou a
   // nota não sai. Em homologação a trava afrouxa de propósito, senão não dá
   // para testar; em PRODUÇÃO ela só abre com a confirmação explícita.
+  // O NBS segue a mesma regra do código do município: muda com a natureza da
+  // nota. 1.2301.21.00 "Serviços de clínica médica" cobre consulta e check-up;
+  // 1.2301.22.00 "Serviços médicos especializados" cobre o que a gente aplica.
   const fiscaisDaReforma: [string, string][] = [
     ["ibsCbsClassificacaoTributaria", "o código de classificação tributária do IBS/CBS (cClassTrib)"],
-    ["codigoNbs", "o código NBS do serviço (Nomenclatura Brasileira de Serviços)"],
+    ["codigoNbsConsulta", "o código NBS da consulta"],
+    ["codigoNbsTratamento", "o código NBS do tratamento"],
     ["codigoIndicadorOperacao", "o código indicador da operação de fornecimento"],
   ];
   const semResposta = fiscaisDaReforma.filter(([campo]) => !String(config[campo] ?? "").trim());
@@ -236,7 +240,7 @@ Deno.serve(async (request) => {
       base_calculo: Math.round(valor * 100) / 100,
       valor_final_cobrado: Math.round(valor * 100) / 100,
       valor_ipi: 0, // serviço médico não tem IPI
-      codigo_nbs: String(config.codigoNbs),
+      codigo_nbs: String(ehConsulta ? config.codigoNbsConsulta : config.codigoNbsTratamento),
       codigo_indicador_operacao: String(config.codigoIndicadorOperacao),
       ibs_cbs_classificacao_tributaria: String(config.ibsCbsClassificacaoTributaria),
       ...(String(config.ibsCbsClassificacaoTributariaRegular ?? "").trim()
