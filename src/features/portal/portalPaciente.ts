@@ -48,6 +48,12 @@ export type ResumoInBody = {
   tmbKcal: number | null;
   /** Uma frase só — o significado, não o dado (regra da Oura que o Lucas comprou). */
   frase: string;
+  /**
+   * A versão curta, para o topo da tela. Visto na prévia (21/09): a frase do
+   * dia repetia, palavra por palavra, a frase do card logo abaixo. Manchete em
+   * cima, frase completa no card.
+   */
+  manchete: string;
 };
 
 /**
@@ -71,6 +77,12 @@ export function resumoInBody(medicoes: PortalMedicao[], desdeISO?: string): Resu
     comScore.length > 1 && typeof primeira.massaMuscularKg === "number" && typeof musculoKg === "number" ? round1(musculoKg - primeira.massaMuscularKg) : null;
   const visceralAcimaDoNormal = typeof visceral === "number" && visceral > VISCERAL_LIMITE_NORMAL;
 
+  let manchete: string;
+  if (deltaScore === null) manchete = `Seu primeiro InBody Score chegou: ${score} de 100.`;
+  else if (deltaScore >= 2) manchete = `Novo exame: seu Score subiu ${deltaScore} pontos desde ${diaMes(primeira.dia)}.`;
+  else if (deltaScore <= -2) manchete = `Novo exame: seu Score caiu ${Math.abs(deltaScore)} pontos desde ${diaMes(primeira.dia)}.`;
+  else manchete = `Novo exame: seu Score continua em ${score} de 100.`;
+
   let frase: string;
   if (deltaScore === null) frase = `Seu primeiro InBody Score é ${score} de 100. O próximo exame mostra a direção.`;
   else if (deltaScore >= 2) frase = `Seu Score subiu ${deltaScore} pontos desde ${diaMes(primeira.dia)}${deltaMusculo !== null && deltaMusculo >= 0.3 ? `, com ${deltaMusculo.toLocaleString("pt-BR")} kg a mais de músculo` : ""}.`;
@@ -78,7 +90,7 @@ export function resumoInBody(medicoes: PortalMedicao[], desdeISO?: string): Resu
   else frase = `Seu Score está estável desde ${diaMes(primeira.dia)}.`;
   if (visceralAcimaDoNormal) frase += ` A gordura visceral está no nível ${visceral} — a faixa ideal do aparelho vai até ${VISCERAL_LIMITE_NORMAL}.`;
 
-  return { ultima, primeira, score, deltaScore, visceral, visceralAcimaDoNormal, musculoKg, deltaMusculo, tmbKcal: ultima.tmbKcal ?? null, frase };
+  return { ultima, primeira, score, deltaScore, visceral, visceralAcimaDoNormal, musculoKg, deltaMusculo, tmbKcal: ultima.tmbKcal ?? null, frase, manchete };
 }
 
 export type PortalComanda = {
@@ -292,6 +304,109 @@ export function resumoEvolucao(medicoes: PortalMedicao[], hojeISO: string, desde
     frase = diasDesdeInicio <= 45 ? "Oscilar no começo é normal. A tendência aparece depois de três ou quatro medições." : "O peso subiu um pouco desde o início. A enfermagem vai olhar isso com você no próximo contato.";
   }
   return { primeira, ultima, semanas, deltaPeso, deltaGordura, deltaMassaMagra, deltaCintura, pontos: comPeso.map((m) => ({ dia: m.dia, peso: m.pesoKg as number, gordura: m.gorduraPct, origem: m.origem })), frase };
+}
+
+// ---------------------------------------------------------------------------
+// O QUE A BALANÇA NÃO MOSTRA (21/09/2026) — passo 2 do portal
+// ---------------------------------------------------------------------------
+
+export type BalancaNaoMostra = {
+  /**
+   * MENTIU: o peso não caiu (ou subiu) e mesmo assim a composição melhorou —
+   *   15 pacientes da clínica viveram isso e nunca souberam.
+   * IDEAL: perdeu peso e NÃO perdeu músculo — é o que só 20% conseguem.
+   * ESCONDEU: perdeu peso, mas parte do que saiu era músculo. Dito com cuidado
+   *   e mandando para a enfermagem — é ela quem ajusta.
+   */
+  tipo: "MENTIU" | "IDEAL" | "ESCONDEU";
+  titulo: string;
+  /** O número grande do card. */
+  destaque: string;
+  frase: string;
+};
+
+/**
+ * O card que a curva de peso não consegue contar.
+ *
+ * Nas 1.014 medições da clínica, 19,4% de todo o peso perdido era músculo, e
+ * 15 pessoas viram a balança subir tendo ganhado massa magra. Esse é o dado
+ * que a balança esconde — e é exatamente o que o Instituto mede e os outros
+ * não. Sem gordura ou massa magra nas duas pontas, não há o que dizer.
+ */
+export function oQueABalancaNaoMostra(evolucao: ResumoEvolucao | null): BalancaNaoMostra | null {
+  if (!evolucao || evolucao.pontos.length < 2 || evolucao.deltaPeso === null) return null;
+  const { deltaPeso, deltaGordura, deltaMassaMagra } = evolucao;
+  const desde = diaMes(evolucao.primeira.dia);
+  const kg = (n: number) => `${Math.abs(n).toLocaleString("pt-BR")} kg`;
+  const pts = (n: number) => `${Math.abs(n).toLocaleString("pt-BR")} ${Math.abs(n) === 1 ? "ponto" : "pontos"}`;
+
+  // A balança não caiu — mas a composição melhorou.
+  if (deltaPeso >= -0.4 && ((deltaMassaMagra !== null && deltaMassaMagra >= 0.5) || (deltaGordura !== null && deltaGordura <= -1))) {
+    const ganhouMusculo = deltaMassaMagra !== null && deltaMassaMagra >= 0.5;
+    const balanca = deltaPeso > 0.4 ? `A balança subiu ${kg(deltaPeso)} desde ${desde}` : `A balança quase não mexeu desde ${desde}`;
+    const composicao = [
+      ganhouMusculo ? `você ganhou ${kg(deltaMassaMagra as number)} de massa magra` : "",
+      deltaGordura !== null && deltaGordura <= -1 ? `perdeu ${pts(deltaGordura)} de gordura` : "",
+    ].filter(Boolean);
+    return {
+      tipo: "MENTIU",
+      titulo: "A balança não contou tudo",
+      destaque: ganhouMusculo ? `+${kg(deltaMassaMagra as number)} de músculo` : `−${pts(deltaGordura as number)} de gordura`,
+      frase: `${balanca} — mas ${composicao.join(" e ")}. Músculo pesa: é por isso que aqui se mede composição, não só peso.`,
+    };
+  }
+
+  // Perdeu peso de verdade.
+  if (deltaPeso <= -1 && deltaMassaMagra !== null) {
+    if (deltaMassaMagra >= 0) {
+      return {
+        tipo: "IDEAL",
+        titulo: "Só saiu gordura",
+        destaque: `−${kg(deltaPeso)}`,
+        frase: `Você perdeu ${kg(deltaPeso)} desde ${desde} e a massa magra ${deltaMassaMagra >= 0.5 ? `subiu ${kg(deltaMassaMagra)}` : "ficou onde estava"}. Perder peso sem perder músculo é o que a maioria não consegue.`,
+      };
+    }
+    if (deltaMassaMagra <= -0.5) {
+      const parte = Math.round((Math.abs(deltaMassaMagra) / Math.abs(deltaPeso)) * 100);
+      return {
+        tipo: "ESCONDEU",
+        titulo: "O que a balança não mostra",
+        destaque: `${kg(deltaMassaMagra)} de massa magra`,
+        frase: `Dos ${kg(deltaPeso)} que saíram desde ${desde}, ${kg(deltaMassaMagra)} eram massa magra${parte >= 10 ? ` — cerca de ${parte}%` : ""}. A enfermagem vai olhar isso com você no próximo toque: é ajuste de proteína e treino, não motivo para parar.`,
+      };
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// A FRASE DO DIA (21/09/2026) — uma coisa só no topo
+// ---------------------------------------------------------------------------
+
+/**
+ * O que vai embaixo do "Boa tarde, Mariana": UMA frase, a mais importante hoje.
+ *
+ * Regra da Oura que o Lucas comprou: "as pessoas não querem o dado, querem o
+ * significado". A ordem é a da novidade — exame novo fala primeiro, consulta
+ * em cima da hora vem depois, e o passo do plano é o pano de fundo.
+ */
+export function fraseDoDia(entrada: {
+  hojeISO: string;
+  inbody: ResumoInBody | null;
+  evolucao: ResumoEvolucao | null;
+  proxima: ProximaConsulta | null;
+  trilha: { frase: string } | null;
+}): string {
+  const { hojeISO, inbody, evolucao, proxima, trilha } = entrada;
+  if (inbody && diasEntre(inbody.ultima.dia, hojeISO) <= 10) return inbody.manchete;
+  if (evolucao && evolucao.pontos.length > 1 && diasEntre(evolucao.ultima.dia, hojeISO) <= 7) return evolucao.frase;
+  if (proxima && proxima.dias <= 2) {
+    const quando = proxima.dias === 0 ? "hoje" : proxima.dias === 1 ? "amanhã" : proxima.quando;
+    return `Sua consulta com ${proxima.profissional} é ${quando}, às ${proxima.hora}.`;
+  }
+  if (trilha) return trilha.frase;
+  if (evolucao) return evolucao.frase;
+  return "Aqui está o seu espaço no Instituto.";
 }
 
 export type ResumoFinanceiro = {

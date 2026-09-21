@@ -21,7 +21,7 @@ import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolu
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
 import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
-import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, resumoInBody, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
+import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, fraseDoDia, oQueABalancaNaoMostra, resumoEvolucao, resumoFinanceiro, resumoInBody, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
 const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o atendimento", TRATAMENTO: "termo do tratamento", IA: "apoio de inteligência artificial", IMAGEM: "uso de imagem", MARKETING: "mensagens e novidades" };
@@ -375,6 +375,10 @@ function MeuPortal() {
   // O NÚMERO ÚNICO NO TOPO (21/09/2026). Pedido do Lucas: "mostrar o Score no
   // topo". Segue o mesmo recorte da curva — do plano para frente por padrão.
   const inbody = dados ? resumoInBody(dados.medicoes, verHistoricoTodo ? undefined : inicioDoPlano ?? undefined) : null;
+  // A FRASE DO DIA e O QUE A BALANÇA NÃO MOSTRA (21/09/2026, passo 2): uma
+  // frase só embaixo da saudação, e o card que a curva de peso não conta.
+  const fraseTopo = dados ? fraseDoDia({ hojeISO: hoje, inbody, evolucao, proxima, trilha }) : "";
+  const balanca = oQueABalancaNaoMostra(evolucao);
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
   const mostrandoGordura = metricaDaCurva === "gordura";
@@ -471,7 +475,7 @@ function MeuPortal() {
             <Marca previa={previa} />
             <header className="p-cabeca p-anim">
               <h1 ref={tituloRef} className="t-large">{saudacao(dados.paciente.primeiroNome)}</h1>
-              <p className="t-sub t-2">{trilha ? trilha.frase : "Aqui está o seu espaço no Instituto."}</p>
+              <p className="t-sub t-2">{fraseTopo}</p>
             </header>
 
             {/* ---- O número único: InBody Score ----
@@ -656,6 +660,19 @@ function MeuPortal() {
             </section>
 
             {/* ---- Plano ---- */}
+            {/* ---- O que a balança não mostra ----
+                Só existe quando há gordura ou massa magra nas duas pontas. É o
+                dado que a clínica mede e os outros não. */}
+            {balanca ? (
+              <section id="balanca" className="p-sec p-anim" aria-labelledby="t-balanca">
+                <span className="t-sec" id="t-balanca">{balanca.titulo}</span>
+                <div className={`p-card p-balanca ${balanca.tipo.toLowerCase()}`}>
+                  <p className="p-num p-balanca-num">{balanca.destaque}</p>
+                  <p className="t-body">{balanca.frase}</p>
+                </div>
+              </section>
+            ) : null}
+
             {trilha && dados.plano ? (
               <section id="plano" className="p-sec p-anim" aria-labelledby="t-plano">
                 <span className="t-sec" id="t-plano">{nomeDoPlano(dados.plano.canal)}</span>

@@ -315,3 +315,8 @@
     transition: none;
   }
 }
+
+/* ---- o que a balança não mostra (21/09/2026) ---- */
+.portal .p-balanca { border-left: 4px solid var(--p-tint); }
+.portal .p-balanca.escondeu { border-left-color: color-mix(in oklab, var(--p-tint) 45%, #b8a45c); }
+.portal .p-balanca-num { font-size: 28px; line-height: 32px; letter-spacing: -.02em; }
