@@ -2541,7 +2541,7 @@ export async function listRemoteFinPurchases(year: number): Promise<FinPurchase[
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_purchases")
-    .select("client_ref, purchase_date, description, supplier, amount, method, card, installments, nf_note, delivery_eta, received_at, expense_ref, notes, estoque_setor, created_at")
+    .select("client_ref, purchase_date, description, supplier, amount, method, card, installments, nf_note, delivery_eta, received_at, expense_ref, notes, estoque_setor, estoque_item_ref, created_at")
     .gte("purchase_date", `${year}-01-01`)
     .lte("purchase_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -2562,6 +2562,7 @@ export async function listRemoteFinPurchases(year: number): Promise<FinPurchase[
     expenseRef: (row.expense_ref as string | null) ?? null,
     notes: String(row.notes ?? ""),
     estoqueSetor: (row.estoque_setor as FinPurchase["estoqueSetor"]) ?? null,
+    estoqueItemRef: (row.estoque_item_ref as string | null) ?? null,
     createdAt: String(row.created_at ?? new Date().toISOString()),
   }));
 }
@@ -2583,6 +2584,7 @@ export async function createRemoteFinPurchase(purchase: FinPurchase, createdBy: 
     expense_ref: purchase.expenseRef,
     notes: purchase.notes,
     estoque_setor: purchase.estoqueSetor ?? null,
+    estoque_item_ref: purchase.estoqueItemRef ?? null,
     created_by: uuidOrNull(createdBy),
   });
   if (error) throw error;
@@ -2612,6 +2614,7 @@ export async function updateRemoteFinPurchase(purchase: FinPurchase) {
       expense_ref: purchase.expenseRef,
       notes: purchase.notes,
       estoque_setor: purchase.estoqueSetor ?? null,
+      estoque_item_ref: purchase.estoqueItemRef ?? null,
     })
     .eq("client_ref", purchase.id);
   if (error) throw error;

@@ -7,6 +7,7 @@ import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import {
   createRemoteEstoqueMove,
   deleteRemoteEstoqueItem,
+  createRemoteFinPurchase,
   listRemoteComprasParaEstoque,
   listRemoteEstoqueItems,
   listRemoteEstoqueMoves,
@@ -94,10 +95,52 @@ export function useEstoque() {
     });
   }
 
+  /**
+   * REGISTRAR A COMPRA DE UM ITEM (21/09/2026).
+   *
+   * É o elo que faltava. O status "a caminho" depende de a compra apontar para
+   * o item, e ninguém ia preencher esse vínculo numa tela de Financeiro do
+   * outro lado do app — então o registro nasce aqui, na lista onde a falta é
+   * vista. Sem isto, o "já comprei ou não" continuaria sem resposta.
+   */
+  async function registrarCompra(entrada: {
+    item: EstoqueItem;
+    fornecedor: string;
+    valor: number;
+    previsao: string | null;
+    observacao: string;
+    criadoPor: string | null;
+  }) {
+    const compra: FinPurchase = {
+      id: `fpur-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      purchaseDate: new Date().toISOString().slice(0, 10),
+      description: entrada.item.nome,
+      supplier: entrada.fornecedor,
+      amount: entrada.valor,
+      method: "PIX",
+      card: null,
+      installments: 1,
+      nfNote: "",
+      deliveryEta: entrada.previsao,
+      receivedAt: null,
+      expenseRef: null,
+      notes: entrada.observacao,
+      estoqueSetor: entrada.item.setor,
+      estoqueItemRef: entrada.item.id,
+      createdAt: new Date().toISOString(),
+    };
+    if (useRemote) {
+      await createRemoteFinPurchase(compra, entrada.criadoPor);
+      invalidate();
+    }
+    return compra;
+  }
+
   return {
     items,
     moves,
     compras,
+    registrarCompra,
     loading: useRemote && (itemsQuery.isLoading || movesQuery.isLoading),
     syncMode: useRemote ? "Supabase" : "Somente local",
     upsertItem,

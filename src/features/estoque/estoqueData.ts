@@ -96,11 +96,47 @@ export function saldoDoItem(moves: EstoqueMovimento[], itemRef: string) {
   return Math.round(saldo * 100) / 100;
 }
 
-export type EstoqueStatus = "OK" | "COMPRAR" | "ZERADO";
+export type EstoqueStatus = "OK" | "COMPRAR" | "ZERADO" | "A_CAMINHO";
 
-export function statusDoItem(saldo: number, minimo: number): EstoqueStatus {
+export const estoqueStatusLabels: Record<EstoqueStatus, string> = {
+  OK: "OK",
+  COMPRAR: "Comprar",
+  ZERADO: "Zerado",
+  A_CAMINHO: "Já comprei — a caminho",
+};
+
+/**
+ * A COMPRA ABERTA DE UM ITEM (21/09/2026).
+ *
+ * Aberta = registrada, com o item apontado, e ainda SEM entrada no estoque.
+ * A data de recebimento no Financeiro não basta: alguém pode carimbar
+ * "recebido" sem a caixa ter sido conferida e guardada. O que tira o item de
+ * "a caminho" é o movimento de entrada, que é quem de fato viu o produto.
+ */
+export function compraAbertaDoItem(
+  itemId: string,
+  purchases: FinPurchase[],
+  moves: EstoqueMovimento[],
+): FinPurchase | null {
+  const jaDeuEntrada = new Set(moves.filter((mov) => mov.compraRef).map((mov) => mov.compraRef));
+  const abertas = purchases
+    .filter((compra) => compra.estoqueItemRef === itemId && !jaDeuEntrada.has(compra.id))
+    .sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate));
+  return abertas[0] ?? null;
+}
+
+/**
+ * O status do item.
+ *
+ * `temCompraAberta` existe porque saldo baixo NÃO quer dizer "comprar" quando a
+ * compra já foi feita. Era exatamente isso que fazia a lista gritar COMPRAR
+ * para uma medicação que já estava vindo — e o Lucas comprar de novo, ou travar
+ * na dúvida. Zerado continua zerado mesmo com compra a caminho: o paciente de
+ * hoje não pode esperar a transportadora.
+ */
+export function statusDoItem(saldo: number, minimo: number, temCompraAberta = false): EstoqueStatus {
   if (saldo <= 0) return "ZERADO";
-  if (minimo > 0 && saldo <= minimo) return "COMPRAR";
+  if (minimo > 0 && saldo <= minimo) return temCompraAberta ? "A_CAMINHO" : "COMPRAR";
   return "OK";
 }
 
@@ -109,21 +145,36 @@ export type PosicaoItem = {
   saldo: number;
   status: EstoqueStatus;
   ultimoMovimento: string | null;
+  /** A compra já feita e ainda não recebida. É o que responde "já comprei?". */
+  compraAberta: FinPurchase | null;
 };
 
 /** A posição de um setor inteiro, pronta para a tabela e para o relatório. */
-export function posicaoDoSetor(items: EstoqueItem[], moves: EstoqueMovimento[], setor: EstoqueSetor): PosicaoItem[] {
+export function posicaoDoSetor(
+  items: EstoqueItem[],
+  moves: EstoqueMovimento[],
+  setor: EstoqueSetor,
+  purchases: FinPurchase[] = [],
+): PosicaoItem[] {
   return items
     .filter((item) => item.setor === setor)
     .map((item) => {
       const doItem = moves.filter((mov) => mov.itemRef === item.id);
       const ultimo = doItem.length ? doItem.reduce((a, b) => (ordemCronologica(a, b) >= 0 ? a : b)) : null;
       const saldo = saldoDoItem(moves, item.id);
-      return { item, saldo, status: statusDoItem(saldo, item.minimo), ultimoMovimento: ultimo?.movDate ?? null };
+      const compraAberta = compraAbertaDoItem(item.id, purchases, moves);
+      return {
+        item,
+        saldo,
+        status: statusDoItem(saldo, item.minimo, Boolean(compraAberta)),
+        ultimoMovimento: ultimo?.movDate ?? null,
+        compraAberta,
+      };
     })
     .sort((a, b) => {
-      // Quem precisa de atenção primeiro: zerado, depois comprar, depois OK.
-      const peso = { ZERADO: 0, COMPRAR: 1, OK: 2 } as const;
+      // Quem precisa de atenção primeiro: zerado, comprar, a caminho, OK. O que
+      // já foi comprado desce — não é mais tarefa de ninguém até chegar.
+      const peso = { ZERADO: 0, COMPRAR: 1, A_CAMINHO: 2, OK: 3 } as const;
       if (peso[a.status] !== peso[b.status]) return peso[a.status] - peso[b.status];
       return a.item.nome.localeCompare(b.item.nome, "pt-BR");
     });
@@ -411,6 +462,8 @@ export type ItemDaListaDeCompra = {
   item: EstoqueItem;
   saldo: number;
   comprar: number;
+  /** Compra já registrada e não recebida. Só aparece em item ZERADO, que fica na lista mesmo assim. */
+  jaComprado?: FinPurchase | null;
 };
 
 /**
@@ -418,12 +471,48 @@ export type ItemDaListaDeCompra = {
  * de quanto comprar — repõe até 2× o mínimo (chega em cima do ponto de pedido
  * de novo em ~duas janelas), nunca menos que 1.
  */
-export function listaDeCompra(items: EstoqueItem[], moves: EstoqueMovimento[], setor: EstoqueSetor): ItemDaListaDeCompra[] {
-  return posicaoDoSetor(items, moves, setor)
-    .filter((linha) => linha.status !== "OK")
+export function listaDeCompra(
+  items: EstoqueItem[],
+  moves: EstoqueMovimento[],
+  setor: EstoqueSetor,
+  purchases: FinPurchase[] = [],
+): ItemDaListaDeCompra[] {
+  return posicaoDoSetor(items, moves, setor, purchases)
+    // O que já foi comprado sai da lista de comprar — é o ponto inteiro: a
+    // lista tem que responder "o que falta COMPRAR", não "o que está baixo".
+    // Item ZERADO fica mesmo com compra a caminho: falta hoje, e quem atende
+    // hoje precisa saber.
+    .filter((linha) => linha.status === "ZERADO" || linha.status === "COMPRAR")
     .map((linha) => ({
       item: linha.item,
       saldo: linha.saldo,
       comprar: Math.max(Math.ceil(linha.item.minimo * 2 - linha.saldo), 1),
+      jaComprado: linha.compraAberta,
     }));
+}
+
+/**
+ * O que já foi comprado e ainda não chegou, no setor — a resposta para
+ * *"está chegando?"*, numa lista só.
+ */
+export function oQueEstaChegando(
+  items: EstoqueItem[],
+  moves: EstoqueMovimento[],
+  setor: EstoqueSetor,
+  purchases: FinPurchase[],
+  hojeISO: string,
+): { item: EstoqueItem; compra: FinPurchase; diasDesdeACompra: number; atrasada: boolean }[] {
+  const dias = (de: string, ate: string) =>
+    Math.round((Date.parse(`${ate.slice(0, 10)}T00:00:00Z`) - Date.parse(`${de.slice(0, 10)}T00:00:00Z`)) / 86400000);
+  return posicaoDoSetor(items, moves, setor, purchases)
+    .filter((linha): linha is PosicaoItem & { compraAberta: FinPurchase } => Boolean(linha.compraAberta))
+    .map((linha) => ({
+      item: linha.item,
+      compra: linha.compraAberta,
+      diasDesdeACompra: Math.max(0, dias(linha.compraAberta.purchaseDate, hojeISO)),
+      // Passou da data prometida e ninguém deu entrada: é aqui que a compra
+      // esquecida aparece, em vez de sumir entre "já comprei" e "chegou".
+      atrasada: Boolean(linha.compraAberta.deliveryEta && linha.compraAberta.deliveryEta.slice(0, 10) < hojeISO.slice(0, 10)),
+    }))
+    .sort((a, b) => b.diasDesdeACompra - a.diasDesdeACompra);
 }

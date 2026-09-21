@@ -34,7 +34,7 @@ import { canEditModule, canSeeModule, isCoordenacao } from "@/lib/access";
 import { salvarArquivo } from "@/lib/salvarArquivo";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
-import type { FinPurchase } from "@/features/financeiro/financeiroData";
+import { parseFinAmount, type FinPurchase } from "@/features/financeiro/financeiroData";
 import {
   acharPorCodigo,
   saldoDoItem,
@@ -67,6 +67,7 @@ const statusChip = {
   ZERADO: { rotulo: "ZEROU", classe: "border-rose-300 bg-rose-100 text-rose-900" },
   COMPRAR: { rotulo: "COMPRAR", classe: "border-amber-300 bg-amber-100 text-amber-900" },
   OK: { rotulo: "OK", classe: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+  A_CAMINHO: { rotulo: "A CAMINHO", classe: "border-sky-300 bg-sky-100 text-sky-900" },
 } as const;
 
 /** Sugestões de categoria por setor — só para digitar menos (datalist). */
@@ -75,9 +76,102 @@ const categoriasSugeridas: Record<EstoqueSetor, string[]> = {
   ENFERMAGEM: ["Medicação", "Injetáveis", "Descartáveis", "Curativo", "Coleta/Exames"],
 };
 
+/**
+ * "JÁ COMPREI" — o elo que faltava (21/09/2026).
+ *
+ * Lucas: *"tenho dificuldade de anotar quando eu compro e aí me perco no
+ * controle se está chegando, se eu já comprei ou não."*
+ *
+ * O registro mora AQUI, na linha onde a falta é vista, e não numa tela de
+ * Financeiro do outro lado do app: anotar tem que custar menos do que não
+ * anotar, senão ninguém anota — e sem o registro o item fica gritando COMPRAR
+ * para sempre.
+ */
+function JaCompreiForm({
+  linha,
+  onRegistrar,
+}: {
+  linha: ReturnType<typeof posicaoDoSetor>[number];
+  onRegistrar: (entrada: { item: EstoqueItem; fornecedor: string; valor: number; previsao: string | null; observacao: string }) => Promise<void>;
+}) {
+  const [fornecedor, setFornecedor] = useState("");
+  const [valor, setValor] = useState("");
+  const [previsao, setPrevisao] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  if (linha.compraAberta) {
+    return (
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+        <strong>Já comprei.</strong> {linha.compraAberta.supplier || "Fornecedor não anotado"} em {diaBR(linha.compraAberta.purchaseDate)}
+        {linha.compraAberta.deliveryEta ? `, previsto para ${diaBR(linha.compraAberta.deliveryEta)}` : ""}.
+        {" "}Some daqui quando alguém der a entrada da caixa.
+      </div>
+    );
+  }
+  if (linha.status === "OK") return null;
+
+  return (
+    <form
+      className="grid gap-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3 md:grid-cols-[1fr_0.7fr_0.8fr_auto]"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setSalvando(true);
+        try {
+          await onRegistrar({
+            item: linha.item,
+            fornecedor: fornecedor.trim(),
+            valor: parseFinAmount(valor),
+            previsao: previsao || null,
+            observacao: "",
+          });
+          setFornecedor("");
+          setValor("");
+          setPrevisao("");
+        } finally {
+          setSalvando(false);
+        }
+      }}
+    >
+      <div>
+        <Label>Comprei de quem</Label>
+        <Input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} placeholder="Stin, Biòs…" />
+      </div>
+      <div>
+        <Label>Quanto</Label>
+        <Input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" placeholder="0,00" />
+      </div>
+      <div>
+        <Label>Chega quando</Label>
+        <Input type="date" value={previsao} onChange={(e) => setPrevisao(e.target.value)} />
+      </div>
+      <div className="flex items-end">
+        <Button type="submit" variant="outline" disabled={salvando} className="h-10">
+          {salvando ? "Anotando…" : "Já comprei"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function EstoquePage() {
   const { pessoa } = useAuth();
   const estoque = useEstoque();
+
+  /** Registra a compra do item e avisa — é o que faz o status virar "a caminho". */
+  async function registrarCompraDoItem(entrada: {
+    item: EstoqueItem;
+    fornecedor: string;
+    valor: number;
+    previsao: string | null;
+    observacao: string;
+  }) {
+    try {
+      await estoque.registrarCompra({ ...entrada, criadoPor: pessoa?.id ?? null });
+      setFeedback(`Anotado: ${entrada.item.nome} foi comprado. Ele sai da lista de comprar e fica "a caminho" até alguém dar a entrada.`);
+    } catch (falha) {
+      setFeedback(`Não consegui anotar a compra: ${(falha as Error).message}`);
+    }
+  }
   const hoje = todayISO();
 
   // Cada dona cai direto no próprio setor; a coordenação alterna entre os dois.
@@ -94,7 +188,13 @@ export function EstoquePage() {
   const [itemAberto, setItemAberto] = useState("");
   const [novoAberto, setNovoAberto] = useState(false);
 
-  const posicao = useMemo(() => posicaoDoSetor(estoque.items, estoque.moves, setor), [estoque.items, estoque.moves, setor]);
+  // AS COMPRAS ENTRAM NA CONTA (21/09/2026): sem elas, um item já comprado
+  // continuava marcado COMPRAR até a caixa chegar — e era isso que fazia o
+  // Lucas perder o controle de "já comprei ou não".
+  const posicao = useMemo(
+    () => posicaoDoSetor(estoque.items, estoque.moves, setor, estoque.compras),
+    [estoque.items, estoque.moves, setor, estoque.compras],
+  );
   const alertas = useMemo(
     () => alertasDeValidade(estoque.items.filter((item) => item.setor === setor), estoque.moves, hoje),
     [estoque.items, estoque.moves, setor, hoje],
@@ -332,7 +432,7 @@ export function EstoquePage() {
   }
 
   function imprimirListaDeCompra() {
-    const lista = listaDeCompra(estoque.items, estoque.moves, setor);
+    const lista = listaDeCompra(estoque.items, estoque.moves, setor, estoque.compras);
     if (!lista.length) {
       setFeedback("Nada para comprar: nenhum item zerado ou abaixo do mínimo. 👌");
       return;
@@ -751,6 +851,7 @@ export function EstoquePage() {
                             await estoque.deleteItem(linha.item.id);
                             setFeedback(`Item "${linha.item.nome}" removido (o histórico de movimentos fica guardado).`);
                           }}
+                          formCompra={<JaCompreiForm linha={linha} onRegistrar={registrarCompraDoItem} />}
                           formMovimento={
                             <form className="grid gap-3 md:grid-cols-[0.8fr_0.6fr_0.7fr_0.8fr_1fr_auto]" onSubmit={(event) => lancarMovimento(linha.item, event)}>
                               <div>
@@ -811,6 +912,7 @@ function FragmentoItem({
   onToggle,
   onExcluir,
   formMovimento,
+  formCompra,
 }: {
   linha: ReturnType<typeof posicaoDoSetor>[number];
   cobertura: number | null;
@@ -823,6 +925,7 @@ function FragmentoItem({
   onToggle: () => void;
   onExcluir: () => void;
   formMovimento: React.ReactNode;
+  formCompra: React.ReactNode;
 }) {
   const chip = statusChip[linha.status];
   return (
@@ -847,6 +950,14 @@ function FragmentoItem({
         </td>
         <td className="py-2 pr-3">
           <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold", chip.classe)}>{chip.rotulo}</span>
+          {/* DESDE QUANDO (21/09/2026): "a caminho" sem data vira desculpa
+              eterna. Com a data, a compra esquecida aparece sozinha. */}
+          {linha.compraAberta ? (
+            <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">
+              comprei {diaBR(linha.compraAberta.purchaseDate)}
+              {linha.compraAberta.deliveryEta ? ` · chega ${diaBR(linha.compraAberta.deliveryEta)}` : ""}
+            </span>
+          ) : null}
         </td>
         <td className="py-2 text-muted-foreground">{diaBR(linha.ultimoMovimento)}</td>
       </tr>
@@ -855,6 +966,7 @@ function FragmentoItem({
           <td colSpan={7} className="px-3 py-3">
             <div className="grid gap-4">
               {podeEditar ? formMovimento : null}
+              {podeEditar ? formCompra : null}
               {lotes.length ? (
                 <div className="text-xs">
                   <p className="mb-1 font-semibold uppercase tracking-wide text-brand-oliva">Lotes na prateleira (o que vence antes, primeiro)</p>

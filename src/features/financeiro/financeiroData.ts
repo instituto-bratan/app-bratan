@@ -888,6 +888,14 @@ export type FinPurchase = {
    * pendente para a dona do setor dar a entrada.
    */
   estoqueSetor?: "RECEPCAO" | "ENFERMAGEM" | null;
+  /**
+   * De QUAL item do estoque esta compra é (21/09/2026).
+   *
+   * `estoqueSetor` já dizia para onde a caixa vai; sem saber de que item ela é,
+   * o estoque continuava marcando COMPRAR depois de a compra ter sido feita —
+   * e era isso que fazia o Lucas perder o controle de "já comprei ou não".
+   */
+  estoqueItemRef?: string | null;
   createdAt: string;
 };
 
