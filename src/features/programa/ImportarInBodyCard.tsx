@@ -87,6 +87,10 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
         gorduraPct: item.medicao.gorduraPct,
         massaMagraKg: item.medicao.massaMagraKg,
         cinturaCm: item.medicao.cinturaCm,
+        inbodyScore: item.medicao.inbodyScore,
+        gorduraVisceral: item.medicao.gorduraVisceral,
+        massaMuscularKg: item.medicao.massaMuscularKg,
+        tmbKcal: item.medicao.tmbKcal,
         observacao: `InBody · ${arquivoNome}`,
       }));
       let salvas = 0;

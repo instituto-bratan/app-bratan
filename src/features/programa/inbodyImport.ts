@@ -24,6 +24,18 @@ export type MedicaoImportada = {
   gorduraPct: number | null;
   massaMagraKg: number | null;
   cinturaCm: number | null;
+  /**
+   * OS QUATRO QUE ERAM JOGADOS FORA (21/09/2026). O aparelho exporta 111
+   * colunas; estas quatro estão em TODO exame do InBody 120 da clínica e são
+   * as que mais falam com o paciente. Conferidas no arquivo real de 16/09.
+   */
+  inbodyScore: number | null;
+  /** VFL. O aparelho escreve "Level 10" — só o número fica. Até 9 é a faixa normal do InBody. */
+  gorduraVisceral: number | null;
+  /** SMM — músculo esquelético. NÃO é a massa magra (FFM): são números diferentes. */
+  massaMuscularKg: number | null;
+  /** BMR, em kcal/dia. */
+  tmbKcal: number | null;
 };
 
 export type ColunasInBody = {
@@ -34,6 +46,10 @@ export type ColunasInBody = {
   massaMagra: number;
   gorduraKg: number;
   cintura: number;
+  inbodyScore: number;
+  visceral: number;
+  smm: number;
+  bmr: number;
 };
 
 // Os títulos que a InBody usa, em inglês e em português. Comparação sem acento,
@@ -55,6 +71,13 @@ const TITULOS = {
   // "Measured Circumference of Abdomen" é a medida de fita que a enfermagem anota.
   // NÃO confundir com "WHR (Waist-Hip Ratio)", que é razão, não centímetro.
   cintura: ["measured circumference of abdomen", "circumference of abdomen", "abdominal circumference", "waist circumference", "circunferencia da cintura", "circunferencia abdominal", "circunferencia do abdomen", "cintura"],
+  // Nomes exatos do Lookin'Body (arquivo real de 16/09/2026), já sem o "62. " da
+  // frente. O título completo vem primeiro: "smm" sozinho também casaria com
+  // "SMM/WT" e com os limites "Lower Limit (SMM Normal Range)".
+  inbodyScore: ["inbody score", "score inbody", "pontuacao inbody"],
+  visceral: ["vfl visceral fat level", "visceral fat level", "vfl", "nivel de gordura visceral", "gordura visceral"],
+  smm: ["smm skeletal muscle mass", "skeletal muscle mass", "smm", "massa muscular esqueletica", "mme"],
+  bmr: ["bmr basal metabolic rate", "basal metabolic rate", "bmr", "taxa metabolica basal", "tmb"],
 } as const;
 
 export function normalizarTitulo(texto: string) {
@@ -98,6 +121,10 @@ export function lerCabecalhoInBody(linhas: string[][]): { indiceDoCabecalho: num
       massaMagra: acharColuna(titulos, TITULOS.massaMagra),
       gorduraKg: acharColuna(titulos, TITULOS.gorduraKg),
       cintura: acharColuna(titulos, TITULOS.cintura),
+      inbodyScore: acharColuna(titulos, TITULOS.inbodyScore),
+      visceral: acharColuna(titulos, TITULOS.visceral),
+      smm: acharColuna(titulos, TITULOS.smm),
+      bmr: acharColuna(titulos, TITULOS.bmr),
     };
     if (colunas.nome >= 0 && colunas.dia >= 0 && colunas.peso >= 0) return { indiceDoCabecalho: i, colunas };
   }
@@ -168,6 +195,10 @@ function medidaPlausivel(medicao: MedicaoImportada) {
   if (medicao.gorduraPct !== null && (medicao.gorduraPct < 1 || medicao.gorduraPct > 80)) return false;
   if (medicao.massaMagraKg !== null && (medicao.massaMagraKg < 10 || medicao.massaMagraKg > 200)) return false;
   if (medicao.cinturaCm !== null && (medicao.cinturaCm < 30 || medicao.cinturaCm > 250)) return false;
+  if (medicao.inbodyScore !== null && (medicao.inbodyScore < 0 || medicao.inbodyScore > 100)) return false;
+  if (medicao.gorduraVisceral !== null && (medicao.gorduraVisceral < 1 || medicao.gorduraVisceral > 30)) return false;
+  if (medicao.massaMuscularKg !== null && (medicao.massaMuscularKg < 5 || medicao.massaMuscularKg > 100)) return false;
+  if (medicao.tmbKcal !== null && (medicao.tmbKcal < 500 || medicao.tmbKcal > 5000)) return false;
   return true;
 }
 
@@ -210,6 +241,11 @@ export function lerMedicoesInBody(linhas: string[][]): LeituraInBody {
         colunas.gorduraKg >= 0 ? numeroDaCelula(celulas[colunas.gorduraKg]) : null,
       ),
       cinturaCm: colunas.cintura >= 0 ? numeroDaCelula(celulas[colunas.cintura]) : null,
+      inbodyScore: colunas.inbodyScore >= 0 ? numeroDaCelula(celulas[colunas.inbodyScore]) : null,
+      // "Level 10" → 10: numeroDaCelula já descarta as letras.
+      gorduraVisceral: colunas.visceral >= 0 ? numeroDaCelula(celulas[colunas.visceral]) : null,
+      massaMuscularKg: colunas.smm >= 0 ? numeroDaCelula(celulas[colunas.smm]) : null,
+      tmbKcal: colunas.bmr >= 0 ? numeroDaCelula(celulas[colunas.bmr]) : null,
     };
     if (medicao.pesoKg === null && medicao.gorduraPct === null && medicao.massaMagraKg === null && medicao.cinturaCm === null) {
       problemas.push({ linha: numeroDaLinha, motivo: `A linha de ${nome} não trouxe nenhuma medida.` });

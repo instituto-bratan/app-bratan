@@ -24,8 +24,62 @@ export type PortalMedicao = {
   gorduraPct: number | null;
   massaMagraKg: number | null;
   cinturaCm: number | null;
+  /** Os quatro do InBody que passaram a ser guardados em 21/09/2026. Só o exame do aparelho tem. */
+  inbodyScore?: number | null;
+  gorduraVisceral?: number | null;
+  massaMuscularKg?: number | null;
+  tmbKcal?: number | null;
   origem: "ENFERMAGEM" | "PACIENTE" | "IMPORTACAO";
 };
+
+/** Faixa normal do nível de gordura visceral segundo o próprio InBody: 1 a 9. */
+export const VISCERAL_LIMITE_NORMAL = 9;
+
+export type ResumoInBody = {
+  ultima: PortalMedicao;
+  /** Primeira medição com Score — para o "desde quando". Igual à última quando só há uma. */
+  primeira: PortalMedicao;
+  score: number;
+  deltaScore: number | null;
+  visceral: number | null;
+  visceralAcimaDoNormal: boolean;
+  musculoKg: number | null;
+  deltaMusculo: number | null;
+  tmbKcal: number | null;
+  /** Uma frase só — o significado, não o dado (regra da Oura que o Lucas comprou). */
+  frase: string;
+};
+
+/**
+ * O "número único" do portal: o InBody Score, com o que mudou desde o começo.
+ *
+ * É o equivalente honesto da "idade metabólica" que o Lucas pediu — o InBody 120
+ * da clínica NÃO exporta idade metabólica, e inventar uma seria exatamente o
+ * tipo de número que depois vira story e não se sustenta. O Score é do aparelho.
+ */
+export function resumoInBody(medicoes: PortalMedicao[], desdeISO?: string): ResumoInBody | null {
+  const noRecorte = desdeISO ? medicoes.filter((m) => m.dia >= desdeISO.slice(0, 10)) : medicoes;
+  const comScore = noRecorte.filter((m) => typeof m.inbodyScore === "number" && m.inbodyScore > 0).sort((a, b) => a.dia.localeCompare(b.dia));
+  if (!comScore.length) return null;
+  const primeira = comScore[0];
+  const ultima = comScore[comScore.length - 1];
+  const score = ultima.inbodyScore as number;
+  const deltaScore = comScore.length > 1 ? Math.round(score - (primeira.inbodyScore as number)) : null;
+  const visceral = ultima.gorduraVisceral ?? null;
+  const musculoKg = ultima.massaMuscularKg ?? null;
+  const deltaMusculo =
+    comScore.length > 1 && typeof primeira.massaMuscularKg === "number" && typeof musculoKg === "number" ? round1(musculoKg - primeira.massaMuscularKg) : null;
+  const visceralAcimaDoNormal = typeof visceral === "number" && visceral > VISCERAL_LIMITE_NORMAL;
+
+  let frase: string;
+  if (deltaScore === null) frase = `Seu primeiro InBody Score é ${score} de 100. O próximo exame mostra a direção.`;
+  else if (deltaScore >= 2) frase = `Seu Score subiu ${deltaScore} pontos desde ${diaMes(primeira.dia)}${deltaMusculo !== null && deltaMusculo >= 0.3 ? `, com ${deltaMusculo.toLocaleString("pt-BR")} kg a mais de músculo` : ""}.`;
+  else if (deltaScore <= -2) frase = `Seu Score caiu ${Math.abs(deltaScore)} pontos desde ${diaMes(primeira.dia)}. A enfermagem olha isso com você no próximo toque.`;
+  else frase = `Seu Score está estável desde ${diaMes(primeira.dia)}.`;
+  if (visceralAcimaDoNormal) frase += ` A gordura visceral está no nível ${visceral} — a faixa ideal do aparelho vai até ${VISCERAL_LIMITE_NORMAL}.`;
+
+  return { ultima, primeira, score, deltaScore, visceral, visceralAcimaDoNormal, musculoKg, deltaMusculo, tmbKcal: ultima.tmbKcal ?? null, frase };
+}
 
 export type PortalComanda = {
   id: string;

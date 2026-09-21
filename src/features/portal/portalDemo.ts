@@ -14,13 +14,13 @@ export function dadosDemo(hojeISO: string): PortalDados {
     plano: { dealId: "demo-deal", canal: "PROGRAMA", inicio, fase: "CADENCIA_PROGRAMA", marcosFeitos: ["CHECK-1", "BIO-1", "CHECK-2", "BIO-2", "MEDICO-1", "CHECK-3", "BIO-3"], valorContratado: 8990, valorRecebido: 5995, closedAt: `${inicio}T15:00:00-03:00`, programPhaseEnteredAt: `${inicio}T15:00:00-03:00`, createdAt: `${inicio}T15:00:00-03:00`, updatedAt: `${hojeISO}T09:00:00-03:00` },
     consultas: [{ id: "c1", em: `${soma(11)}T14:00:00-03:00`, profissional: "Dr. Daniel", tipo: "2ª consulta de acompanhamento", local: "Instituto Bratan · Itaim", status: "AGENDADA", origem: "MANUAL" }],
     medicoes: [
-      { id: "m1", dia: inicio, pesoKg: 92.4, gorduraPct: 34.1, massaMagraKg: 55.2, cinturaCm: 98, origem: "ENFERMAGEM" },
+      { id: "m1", dia: inicio, pesoKg: 92.4, gorduraPct: 34.1, massaMagraKg: 55.2, cinturaCm: 98, inbodyScore: 64, gorduraVisceral: 12, massaMuscularKg: 30.1, tmbKcal: 1562, origem: "ENFERMAGEM" },
       { id: "m2", dia: soma(-86), pesoKg: 91.6, gorduraPct: null, massaMagraKg: null, cinturaCm: null, origem: "PACIENTE" },
-      { id: "m3", dia: soma(-70), pesoKg: 90.1, gorduraPct: 33.0, massaMagraKg: 55.4, cinturaCm: 96, origem: "ENFERMAGEM" },
+      { id: "m3", dia: soma(-70), pesoKg: 90.1, gorduraPct: 33.0, massaMagraKg: 55.4, cinturaCm: 96, inbodyScore: 66, gorduraVisceral: 11, massaMuscularKg: 30.3, tmbKcal: 1566, origem: "ENFERMAGEM" },
       { id: "m4", dia: soma(-55), pesoKg: 89.3, gorduraPct: null, massaMagraKg: null, cinturaCm: null, origem: "PACIENTE" },
-      { id: "m5", dia: soma(-40), pesoKg: 88.0, gorduraPct: 31.5, massaMagraKg: 55.6, cinturaCm: 94, origem: "ENFERMAGEM" },
+      { id: "m5", dia: soma(-40), pesoKg: 88.0, gorduraPct: 31.5, massaMagraKg: 55.6, cinturaCm: 94, inbodyScore: 69, gorduraVisceral: 10, massaMuscularKg: 30.6, tmbKcal: 1571, origem: "ENFERMAGEM" },
       { id: "m6", dia: soma(-26), pesoKg: 87.4, gorduraPct: null, massaMagraKg: null, cinturaCm: null, origem: "PACIENTE" },
-      { id: "m7", dia: soma(-10), pesoKg: 86.2, gorduraPct: 30.2, massaMagraKg: 55.9, cinturaCm: 92, origem: "ENFERMAGEM" },
+      { id: "m7", dia: soma(-10), pesoKg: 86.2, gorduraPct: 30.2, massaMagraKg: 55.9, cinturaCm: 92, inbodyScore: 72, gorduraVisceral: 10, massaMuscularKg: 30.9, tmbKcal: 1579, origem: "ENFERMAGEM" },
     ],
     comandas: [
       { id: "s1", dia: inicio, itens: [{ descricao: "Programa de Acompanhamento · 6 meses", tipo: "PLANO", valor: 8990 }], pagamentos: [{ metodo: "PIX", valor: 2995, parcelas: 1 }, { metodo: "CARTAO_CREDITO", valor: 3000, parcelas: 3 }], total: 8990 },

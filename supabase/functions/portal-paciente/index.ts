@@ -246,7 +246,7 @@ Deno.serve(async (request) => {
       );
       return { data: lista };
     })(),
-    client.from("paciente_medicao").select("id, dia, peso_kg, gordura_pct, massa_magra_kg, cintura_cm, origem").eq("contact_ref", contactRef).is("deleted_at", null).order("dia"),
+    client.from("paciente_medicao").select("id, dia, peso_kg, gordura_pct, massa_magra_kg, cintura_cm, inbody_score, gordura_visceral, massa_muscular_kg, tmb_kcal, origem").eq("contact_ref", contactRef).is("deleted_at", null).order("dia"),
     client.from("fin_sales").select("client_ref, sale_date, fin_sale_items(item_type, amount, description), fin_sale_payments(method, amount, installments)").eq("crm_contact_ref", contactRef).is("deleted_at", null).order("sale_date", { ascending: false }),
     client.from("pagamento_lembrete").select("id, valor_pendente, data_prevista, observacao").eq("crm_contact_ref", contactRef).eq("status", "aberto").is("deleted_at", null).order("data_prevista"),
     deal ? client.from("contrato_assinatura").select("id, status, url_assinatura, criado_em").eq("deal_ref", deal.client_ref).order("criado_em", { ascending: false }) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
@@ -295,7 +295,7 @@ Deno.serve(async (request) => {
       paciente: { nome, primeiroNome: nome.split(/\s+/)[0] || "paciente", contactRef, temSenha: Boolean(acesso.senha_hash), login: acesso.login ?? null },
       plano,
       consultas,
-      medicoes: ((medicoes.data ?? []) as Record<string, unknown>[]).map((m) => ({ id: m.id, dia: m.dia, pesoKg: m.peso_kg === null ? null : Number(m.peso_kg), gorduraPct: m.gordura_pct === null ? null : Number(m.gordura_pct), massaMagraKg: m.massa_magra_kg === null ? null : Number(m.massa_magra_kg), cinturaCm: m.cintura_cm === null ? null : Number(m.cintura_cm), origem: m.origem })),
+      medicoes: ((medicoes.data ?? []) as Record<string, unknown>[]).map((m) => ({ id: m.id, dia: m.dia, pesoKg: m.peso_kg === null ? null : Number(m.peso_kg), gorduraPct: m.gordura_pct === null ? null : Number(m.gordura_pct), massaMagraKg: m.massa_magra_kg === null ? null : Number(m.massa_magra_kg), cinturaCm: m.cintura_cm === null ? null : Number(m.cintura_cm), inbodyScore: m.inbody_score == null ? null : Number(m.inbody_score), gorduraVisceral: m.gordura_visceral == null ? null : Number(m.gordura_visceral), massaMuscularKg: m.massa_muscular_kg == null ? null : Number(m.massa_muscular_kg), tmbKcal: m.tmb_kcal == null ? null : Number(m.tmb_kcal), origem: m.origem })),
       comandas,
       parcelasAbertas: ((parcelas.data ?? []) as Record<string, unknown>[]).map((p) => ({ id: p.id, valor: Number(p.valor_pendente || 0), prevista: String(p.data_prevista ?? "").slice(0, 10), observacao: String(p.observacao ?? "") })),
       documentos,

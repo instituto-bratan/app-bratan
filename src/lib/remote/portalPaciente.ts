@@ -79,7 +79,19 @@ export async function createRemotePacienteMedicao(entrada: { contactRef: string;
  * paciente mandou pelo portal. Quem chama já tirou as repetidas.
  */
 export async function createRemotePacienteMedicoesEmLote(
-  entradas: { contactRef: string; dia: string; pesoKg: number | null; gorduraPct: number | null; massaMagraKg: number | null; cinturaCm: number | null; observacao: string }[],
+  entradas: {
+    contactRef: string;
+    dia: string;
+    pesoKg: number | null;
+    gorduraPct: number | null;
+    massaMagraKg: number | null;
+    cinturaCm: number | null;
+    inbodyScore?: number | null;
+    gorduraVisceral?: number | null;
+    massaMuscularKg?: number | null;
+    tmbKcal?: number | null;
+    observacao: string;
+  }[],
   registradoPor: string | null,
 ) {
   if (!entradas.length) return 0;
@@ -92,6 +104,10 @@ export async function createRemotePacienteMedicoesEmLote(
       gordura_pct: entrada.gorduraPct,
       massa_magra_kg: entrada.massaMagraKg,
       cintura_cm: entrada.cinturaCm,
+      inbody_score: entrada.inbodyScore ?? null,
+      gordura_visceral: entrada.gorduraVisceral ?? null,
+      massa_muscular_kg: entrada.massaMuscularKg ?? null,
+      tmb_kcal: entrada.tmbKcal ?? null,
       origem: "IMPORTACAO",
       observacao: entrada.observacao,
       registrado_por: uuidOrNull(registradoPor),

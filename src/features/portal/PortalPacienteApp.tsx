@@ -21,7 +21,7 @@ import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolu
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
 import { SESSAO_DEMO, ambienteSemSupabase, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal } from "./portalCliente";
-import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, saudacao, temCurvaDeGordura, trilhaDoPlano, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
+import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, resumoEvolucao, resumoFinanceiro, resumoInBody, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
 const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o atendimento", TRATAMENTO: "termo do tratamento", IA: "apoio de inteligência artificial", IMAGEM: "uso de imagem", MARKETING: "mensagens e novidades" };
@@ -372,6 +372,9 @@ function MeuPortal() {
   const evolucao = dados ? resumoEvolucao(dados.medicoes, hoje, verHistoricoTodo ? undefined : inicioDoPlano ?? undefined) : null;
   const financeiro = dados ? resumoFinanceiro(dados.comandas, dados.parcelasAbertas, hoje) : null;
   const trilha = dados?.plano ? trilhaDoPlano(marcos, dados.plano.inicio, hoje) : null;
+  // O NÚMERO ÚNICO NO TOPO (21/09/2026). Pedido do Lucas: "mostrar o Score no
+  // topo". Segue o mesmo recorte da curva — do plano para frente por padrão.
+  const inbody = dados ? resumoInBody(dados.medicoes, verHistoricoTodo ? undefined : inicioDoPlano ?? undefined) : null;
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
   const mostrandoGordura = metricaDaCurva === "gordura";
@@ -470,6 +473,55 @@ function MeuPortal() {
               <h1 ref={tituloRef} className="t-large">{saudacao(dados.paciente.primeiroNome)}</h1>
               <p className="t-sub t-2">{trilha ? trilha.frase : "Aqui está o seu espaço no Instituto."}</p>
             </header>
+
+            {/* ---- O número único: InBody Score ----
+                Só aparece quando existe exame do aparelho. É o "significado, não o
+                dado": um número, o que mudou, e uma frase. */}
+            {inbody ? (
+              <section id="inbody" className="p-sec p-anim" aria-labelledby="t-inbody">
+                <span className="t-sec" id="t-inbody">Seu InBody · {diaMes(inbody.ultima.dia)}</span>
+                <div className="p-card">
+                  <div className="p-metrica">
+                    <div>
+                      <p className="t-foot t-2">InBody Score</p>
+                      <p className="p-num">
+                        {inbody.score}
+                        <small>/100</small>
+                      </p>
+                    </div>
+                    {inbody.deltaScore !== null ? (
+                      <span className={`p-pill ${inbody.deltaScore > 0 ? "ok" : inbody.deltaScore < 0 ? "warn" : ""}`}>
+                        {sinal(inbody.deltaScore)}
+                        {Math.abs(inbody.deltaScore)} pts desde {diaMes(inbody.primeira.dia)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="t-body">{inbody.frase}</p>
+                  <div className="p-stats">
+                    <div className="p-stat">
+                      <span className="t-foot t-2">Gordura visceral</span>
+                      <b className="t-title3">{inbody.visceral === null ? "—" : `nível ${inbody.visceral}`}</b>
+                      <span className="t-foot t-2">{inbody.visceral === null ? "" : inbody.visceralAcimaDoNormal ? `ideal até ${VISCERAL_LIMITE_NORMAL}` : "na faixa ideal"}</span>
+                    </div>
+                    <div className="p-stat">
+                      <span className="t-foot t-2">Massa muscular</span>
+                      <b className="t-title3">{inbody.musculoKg === null ? "—" : `${fmt1(inbody.musculoKg)} kg`}</b>
+                      <span className="t-foot t-2">{inbody.deltaMusculo === null ? "músculo esquelético" : `${sinal(inbody.deltaMusculo)}${fmt1(Math.abs(inbody.deltaMusculo))} kg desde o começo`}</span>
+                    </div>
+                    <div className="p-stat">
+                      <span className="t-foot t-2">Metabolismo basal</span>
+                      <b className="t-title3">{inbody.tmbKcal === null ? "—" : `${Math.round(inbody.tmbKcal).toLocaleString("pt-BR")} kcal`}</b>
+                      <span className="t-foot t-2">o que o corpo gasta em repouso, por dia</span>
+                    </div>
+                    <div className="p-stat">
+                      <span className="t-foot t-2">Gordura corporal</span>
+                      <b className="t-title3">{inbody.ultima.gorduraPct === null ? "—" : `${fmt1(inbody.ultima.gorduraPct)}%`}</b>
+                      <span className="t-foot t-2">no mesmo exame</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : null}
 
             {/* ---- Próxima consulta: o bilhete ---- */}
             <section id="consulta" className="p-sec p-anim" aria-labelledby="t-consulta">
