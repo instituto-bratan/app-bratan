@@ -1,6 +1,12 @@
 // focus-nfse-webhook (15/09/2026): a Focus avisa quando a prefeitura autoriza,
-// rejeita ou cancela a nota. Publicar com --no-verify-jwt; proteger com
-// ?token=<FOCUS_WEBHOOK_TOKEN> na URL cadastrada na Focus.
+// rejeita ou cancela a nota. PUBLICAR SEMPRE COM --no-verify-jwt (a Focus não
+// manda JWT do Supabase; sem a flag o gateway barra o aviso antes de chegar
+// aqui — aconteceu em 22/09 num deploy em lote).
+//
+// Proteção: o segredo FOCUS_WEBHOOK_TOKEN tem que vir ou no header que a tela
+// da Focus permite cadastrar ("Header de Autorização" = X-Webhook-Token,
+// "Chave" = o valor) ou em ?token= na URL. Enquanto o segredo não existir, o
+// webhook aceita qualquer POST — mitigado: só altera emissão que já existe.
 //
 // 22/09/2026: quando o aviso é de AUTORIZAÇÃO, o e-mail da nota sai daqui para
 // o paciente (uma vez só — enviarEmailDaNota confere status e repetição).
@@ -9,8 +15,12 @@ import { enviarEmailDaNota, notaAutorizada } from "../_shared/focus.ts";
 
 Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "use POST" }, 405);
-  const esperado = Deno.env.get("FOCUS_WEBHOOK_TOKEN");
-  if (esperado && new URL(request.url).searchParams.get("token") !== esperado) return json({ error: "token inválido" }, 401);
+  const esperado = (Deno.env.get("FOCUS_WEBHOOK_TOKEN") ?? "").trim();
+  if (esperado) {
+    const noHeader = (request.headers.get("x-webhook-token") ?? "").trim();
+    const naUrl = (new URL(request.url).searchParams.get("token") ?? "").trim();
+    if (noHeader !== esperado && naUrl !== esperado) return json({ error: "token inválido" }, 401);
+  }
   const dados = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const ref = String(dados.ref ?? "");
   if (!ref) return json({ ok: true, ignorado: true });
