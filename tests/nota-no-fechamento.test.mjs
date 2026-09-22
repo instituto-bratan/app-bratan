@@ -33,7 +33,9 @@ test("o texto da nota de consulta é igual ao da nota 6205", () => {
 });
 
 test("o texto da nota de bioimpedância é igual ao da nota 6204", () => {
-  const esperado = "EXAME DE BIOIMPEDÂNCIA REALIZADO NO DIA 01/09/2026, SOLICITADO PELO MÉDICO DANIEL BRATAN DE OLIVEIRA, CRM/SP: 168.649.";
+  // 22/09/2026: o contador exige a palavra "procedimento" na discriminação —
+  // é ela que amarra o texto ao código 04030.
+  const esperado = "PROCEDIMENTO MÉDICO: EXAME DE BIOIMPEDÂNCIA REALIZADO NO DIA 01/09/2026, SOLICITADO PELO MÉDICO DANIEL BRATAN DE OLIVEIRA, CRM/SP: 168.649.";
   assert.equal(mod.discriminacao("BIOIMPEDANCIA", DIA, "PIX"), esperado);
 });
 

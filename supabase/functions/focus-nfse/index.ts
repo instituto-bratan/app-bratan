@@ -170,8 +170,14 @@ Deno.serve(async (request) => {
   // nota não sai. Em homologação a trava afrouxa de propósito, senão não dá
   // para testar; em PRODUÇÃO ela só abre com a confirmação explícita.
   // O NBS segue a mesma regra do código do município: muda com a natureza da
-  // nota. 1.2301.21.00 "Serviços de clínica médica" cobre consulta e check-up;
-  // 1.2301.22.00 "Serviços médicos especializados" cobre o que a gente aplica.
+  // nota. Os três códigos vieram do contador em 22/09/2026:
+  //   123012100 → consultas
+  //   123012200 → procedimentos médicos
+  //   123011100 → serviços cirúrgicos (guardado em `codigoNbsCirurgia`; a
+  //               clínica não emite cirurgia hoje, então nada aqui usa)
+  // E o indicador da operação é 100301 dentro do país (100302 seria exterior,
+  // que não é o nosso caso). Até 21/09 estes campos eram um palpite que passava
+  // no schema — passar no schema não é estar certo.
   const fiscaisDaReforma: [string, string][] = [
     ["ibsCbsClassificacaoTributaria", "o código de classificação tributária do IBS/CBS (cClassTrib)"],
     ["codigoNbsConsulta", "o código NBS da consulta"],
@@ -188,7 +194,32 @@ Deno.serve(async (request) => {
   if (ehProducao && config.reformaConfirmadaPeloContador !== true) {
     return json({ ok: false, error: "Os códigos de IBS/CBS, NBS e indicador de operação ainda não foram confirmados pelo contador. Enquanto isso, a emissão em produção fica bloqueada — em homologação ela roda." }, 400);
   }
-  const discriminacao = String(entrada.discriminacao ?? "").trim() || (entrada.tipo === "CONSULTA" ? "Consulta médica" : entrada.tipo === "TRATAMENTO" ? `Serviços de saúde — ${itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 200) || "tratamento"}` : `Serviços médicos — comanda de ${sale.sale_date}`);
+  // A DISCRIMINAÇÃO TEM QUE DIZER O QUE É (contador, 22/09/2026).
+  //
+  // "Informar sempre em discriminação de serviços se é consulta ou
+  // procedimento" — é o texto que amarra a nota ao código do serviço do
+  // município (04197 consulta × 04030 procedimento) e ao NBS. Uma nota de
+  // procedimento com discriminação genérica ("serviços de saúde") é exatamente
+  // o tipo de divergência que a prefeitura cobra depois.
+  //
+  // Por isso o texto livre que vem da tela não é aceito como está: se ele não
+  // trouxer a palavra, a palavra entra na frente. A UNIFICADA diz as duas, que
+  // é o que ela é.
+  const palavraDaNatureza = ehConsulta ? "Consulta" : "Procedimento";
+  const descricaoDosItens = itens.map((i) => i.description).filter(Boolean).join(", ").slice(0, 180);
+  const discriminacaoPadrao = ehConsulta
+    ? "Consulta médica"
+    : entrada.tipo === "BIOIMPEDANCIA"
+      ? "Procedimento médico — avaliação de composição corporal (bioimpedância)"
+      : entrada.tipo === "UNIFICADA"
+        ? `Consulta e procedimento médico${descricaoDosItens ? ` — ${descricaoDosItens}` : ""}`
+        : `Procedimento médico${descricaoDosItens ? ` — ${descricaoDosItens}` : ""}`;
+  const discriminacaoPedida = String(entrada.discriminacao ?? "").trim();
+  const discriminacao = !discriminacaoPedida
+    ? discriminacaoPadrao
+    : new RegExp(palavraDaNatureza, "i").test(discriminacaoPedida)
+      ? discriminacaoPedida
+      : `${palavraDaNatureza} — ${discriminacaoPedida}`.slice(0, 250);
   // Uma nota por comanda e por tipo. Sem esta trava, um F5 no meio do envio (ou
   // dois cliques) manda a prefeitura emitir a MESMA nota duas vezes — e o ISS sai
   // em dobro. Só volta a permitir emissão quando a anterior falhou ou foi cancelada.

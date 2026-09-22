@@ -121,6 +121,12 @@ export function comoFoiPago(parcelas: { forma: FinPaymentMethod; parcelas?: numb
 /**
  * O texto que vai na nota, por natureza — reproduzindo o que a clínica escreve
  * hoje à mão. Foi conferido caractere a caractere nas notas 6203, 6204 e 6205.
+ *
+ * 22/09/2026, exigência do contador: "informar sempre em discriminação de
+ * serviços se é consulta ou procedimento". É o texto que amarra a nota ao
+ * código do serviço (04197 consulta × 04030 procedimento). A da consulta e a
+ * de tratamento já diziam; a de bioimpedância dizia só "EXAME", e por isso
+ * ganhou o prefixo — ela é cobrada como procedimento (04030).
  */
 export function discriminacao(natureza: NaturezaDaNota, diaISO: string, pagamento: string) {
   const dia = dataBR(diaISO);
@@ -128,7 +134,7 @@ export function discriminacao(natureza: NaturezaDaNota, diaISO: string, pagament
     return `CONSULTA MÉDICA REALIZADA NO DIA ${dia}, SOLICITADO PELO MÉDICO\n${MEDICO},CRM/SP:${CRM}`;
   }
   if (natureza === "BIOIMPEDANCIA") {
-    return `EXAME DE BIOIMPEDÂNCIA REALIZADO NO DIA ${dia}, SOLICITADO PELO MÉDICO ${MEDICO}, CRM/SP: ${CRM}.`;
+    return `PROCEDIMENTO MÉDICO: EXAME DE BIOIMPEDÂNCIA REALIZADO NO DIA ${dia}, SOLICITADO PELO MÉDICO ${MEDICO}, CRM/SP: ${CRM}.`;
   }
   // TRATAMENTO — e também a UNIFICADA, que é uma nota de tratamento.
   const comoPagou = pagamento ? `\nOS PROCEDIMENTOS MÉDICOS REFERIDOS FORAM PAGOS EM ${pagamento}.` : "";
