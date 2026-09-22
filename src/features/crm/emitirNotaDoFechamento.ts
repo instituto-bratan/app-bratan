@@ -37,6 +37,10 @@ export function tipoDaNota(escolha: EscolhaDaNota, natureza: NaturezaDaNota): Ti
 }
 
 export type ResultadoDeUmaNota = {
+  /** O número da prefeitura, quando ela respondeu a tempo. */
+  numero: string;
+  /** A nota já foi para o e-mail do paciente. */
+  emailEnviado: boolean;
   tipo: TipoDaNotaFiscal;
   valor: number;
   /** true quando a Focus aceitou o pedido (a prefeitura ainda pode recusar depois). */
@@ -63,6 +67,9 @@ type Resposta = {
   error?: string;
   jaEmitida?: boolean;
   dados?: { numero?: string; status?: string };
+  /** 22/09/2026: a função espera a prefeitura alguns segundos e já manda o e-mail. */
+  numero?: string | null;
+  emailEnviado?: boolean;
 };
 
 /** O que a tela precisa passar. Nada aqui vem de estado do React. */
@@ -72,6 +79,8 @@ export type PedidoDeEmissao = {
   notas: NotaParaEmitir[];
   pacienteNome: string;
   cpf: string;
+  /** E-mail do paciente: é para onde a nota vai (22/09/2026). Vazio = a função tenta a ficha. */
+  email?: string;
   solicitadoPor: string | null;
   /** Resolve quando a comanda terminou de gravar no servidor. */
   comandaGravada: Promise<boolean>;
@@ -114,7 +123,11 @@ export async function emitirNotasDoFechamento(pedido: PedidoDeEmissao): Promise<
         tipo,
         valor: nota.valor,
         discriminacao: nota.discriminacao,
-        tomador: pedido.cpf.trim() ? { nome: pedido.pacienteNome, cpf: pedido.cpf.trim() } : { nome: pedido.pacienteNome },
+        tomador: {
+          nome: pedido.pacienteNome,
+          ...(pedido.cpf.trim() ? { cpf: pedido.cpf.trim() } : {}),
+          ...((pedido.email ?? "").trim() ? { email: (pedido.email ?? "").trim() } : {}),
+        },
         solicitadoPor: pedido.solicitadoPor,
       });
       resultados.push({
@@ -124,6 +137,8 @@ export async function emitirNotasDoFechamento(pedido: PedidoDeEmissao): Promise<
         jaExistia: resposta.jaEmitida === true,
         ref: so(resposta.ref),
         status: so(resposta.dados?.status ?? resposta.status).toUpperCase(),
+        numero: so(resposta.numero ?? resposta.dados?.numero),
+        emailEnviado: resposta.emailEnviado === true,
         erro: resposta.ok === true ? "" : so(resposta.error) || `a Focus recusou (${so(resposta.status) || "sem detalhe"})`,
       });
     } catch (falha) {
@@ -136,6 +151,8 @@ export async function emitirNotasDoFechamento(pedido: PedidoDeEmissao): Promise<
         jaExistia: false,
         ref: "",
         status: "ERRO",
+        numero: "",
+        emailEnviado: false,
         erro: (falha as Error)?.message ?? "não consegui falar com a prefeitura",
       });
     }
@@ -164,13 +181,22 @@ export function recadoDaEmissao(notas: ResultadoDeUmaNota[]): string {
   const falhas = notas.filter((nota) => !nota.aceita);
   const partes: string[] = [];
 
+  const autorizadas = aceitas.filter((nota) => nota.numero);
   if (aceitas.length) {
     const quais = aceitas.map((nota) => NOME_DO_TIPO[nota.tipo]).join(" e ");
-    partes.push(
-      aceitas.length === 1
-        ? `Nota de ${quais} pedida à prefeitura.`
-        : `${aceitas.length} notas pedidas à prefeitura (${quais}).`,
-    );
+    if (autorizadas.length === aceitas.length) {
+      // A prefeitura respondeu a tempo: diz o número, que é o que a pessoa quer ler.
+      const numeros = autorizadas.map((nota) => `nº ${nota.numero}`).join(" e ");
+      partes.push(aceitas.length === 1 ? `Nota de ${quais} autorizada, ${numeros}.` : `${aceitas.length} notas autorizadas (${quais}): ${numeros}.`);
+    } else {
+      partes.push(
+        aceitas.length === 1
+          ? `Nota de ${quais} pedida à prefeitura.`
+          : `${aceitas.length} notas pedidas à prefeitura (${quais}).`,
+      );
+    }
+    const porEmail = aceitas.filter((nota) => nota.emailEnviado).length;
+    if (porEmail) partes.push(porEmail === aceitas.length ? "Enviada por e-mail ao paciente." : `${porEmail} de ${aceitas.length} enviadas por e-mail ao paciente.`);
   }
   if (repetidas.length) {
     partes.push(`${repetidas.length === 1 ? "Uma nota já existia" : `${repetidas.length} notas já existiam`} nesta comanda e não foram pedidas de novo.`);
@@ -179,7 +205,7 @@ export function recadoDaEmissao(notas: ResultadoDeUmaNota[]): string {
     const detalhe = falhas.map((nota) => `${NOME_DO_TIPO[nota.tipo]}: ${nota.erro}`).join(" · ");
     partes.push(`Ficou faltando — ${detalhe}. Emita pela aba Impostos & NF.`);
   }
-  if (aceitas.length && !falhas.length) {
+  if (aceitas.length && !falhas.length && autorizadas.length < aceitas.length) {
     partes.push("O número sai em alguns segundos; consulte em Impostos & NF.");
   }
   return partes.join(" ");

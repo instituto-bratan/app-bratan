@@ -71,6 +71,7 @@ export function RecebimentoNoKanban({
   nota,
   onNotaChange,
   tomador,
+  onEmailChange,
   notaInstrucao,
   onNotaInstrucaoChange,
   quandoNota,
@@ -108,6 +109,8 @@ export function RecebimentoNoKanban({
   onNotaChange: (nota: NotaDoFechamento) => void;
   /** Para avisar o que ainda falta na ficha para a nota sair identificada. */
   tomador?: { nome: string; cpf: string; email: string };
+  /** Deixa quem fecha acertar o e-mail para onde a nota vai. */
+  onEmailChange?: (email: string) => void;
   notaInstrucao: string;
   onNotaInstrucaoChange: (texto: string) => void;
   quandoNota: QuandoNota;
@@ -574,6 +577,7 @@ export function RecebimentoNoKanban({
         parcelas={divisao}
         ehSinal={tipo === "SINAL_CONSULTA"}
         tomador={tomador ?? { nome: "", cpf: "", email: "" }}
+        onEmailChange={onEmailChange}
       />
 
       <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">

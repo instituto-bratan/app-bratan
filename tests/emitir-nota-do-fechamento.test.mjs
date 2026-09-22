@@ -159,3 +159,25 @@ test("o recado da unificada fala em uma nota só", async () => {
   assert.match(resultado.recado, /Nota de unificada pedida/i);
   assert.match(resultado.recado, /consulte em Impostos & NF/i);
 });
+
+test("o e-mail do paciente vai no tomador quando existe — e o recado diz que a nota foi por e-mail (22/09/2026)", async () => {
+  const focus = focusFalsa([{ ok: true, ref: "r1", status: "AUTORIZADO", numero: "6210", emailEnviado: true }]);
+  const { entrada } = pedido({ focus, entrada: { email: " maria@exemplo.com " } });
+  const r = await mod.emitirNotasDoFechamento(entrada);
+  assert.equal(focus.chamadas[0].body.tomador.email, "maria@exemplo.com", "vai sem espaços");
+  assert.equal(focus.chamadas[0].body.tomador.cpf, undefined, "sem CPF na tela, sem CPF no pedido");
+  assert.equal(r.notas[0].numero, "6210");
+  assert.equal(r.notas[0].emailEnviado, true);
+  assert.match(r.recado, /autorizada, nº 6210/);
+  assert.match(r.recado, /Enviada por e-mail ao paciente/);
+  assert.doesNotMatch(r.recado, /consulte em Impostos/, "com número não manda consultar");
+});
+
+test("sem e-mail, o tomador vai só com o nome e o recado continua o de antes", async () => {
+  const focus = focusFalsa([{ ok: true, ref: "r1", status: "processando_autorizacao" }]);
+  const { entrada } = pedido({ focus });
+  const r = await mod.emitirNotasDoFechamento(entrada);
+  assert.equal(focus.chamadas[0].body.tomador.email, undefined);
+  assert.match(r.recado, /pedida à prefeitura/);
+  assert.match(r.recado, /O número sai em alguns segundos/);
+});

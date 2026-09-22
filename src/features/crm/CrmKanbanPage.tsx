@@ -31,7 +31,7 @@ import {
 import { formataValor, itensDaComanda, totalDosItensFechados, type ItemFechado } from "@/features/financeiro/catalogoPrecificacao";
 import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFechamentoCard";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
-import { createRemoteFinCashEntry, listRemoteFinCashEntries, listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
+import { createRemoteFinCashEntry, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
 import {
@@ -624,6 +624,20 @@ function CrmKanbanPageConteudo() {
     fcValorRecebido > 0 &&
     fcPlanoDaNota.notas.length > 0;
   const [fcEmitindo, setFcEmitindo] = useState(false);
+  // O E-MAIL PARA ONDE A NOTA VAI (22/09/2026). Nasce do cadastro do paciente e
+  // pode ser acertado no próprio fechamento; se o cadastro não tinha, ganha.
+  const [fcEmailNota, setFcEmailNota] = useState("");
+  useEffect(() => {
+    setFcEmailNota(state.contacts.find((item) => item.id === fcPatient.ref)?.email ?? "");
+  }, [fcPatient.ref, state.contacts]);
+  // Se o CPF já está na ficha, o card não pede — e diz a verdade quando falta.
+  const fcCpfNaFicha = useQuery({
+    queryKey: ["contato-cpf", fcPatient.ref],
+    queryFn: () => lerRemoteCpfDoContato(fcPatient.ref).catch(() => null),
+    enabled: fechamentoOpen && Boolean(fcPatient.ref) && Boolean(pessoaAuth) && !isPreview,
+    staleTime: 60_000,
+  });
+  const fcTomador = { nome: fcPatient.name, cpf: fcCpfNaFicha.data?.cpf ? "na ficha" : "", email: fcEmailNota };
   // O TIPO DO ITEM SEGUE O QUE FOI VENDIDO (21/09/2026). Nascia fixo em
   // "Tratamento", então Plano e Consulta Black caíam como tratamento na comanda
   // e na planilha do contador. O seletor continua na tela e continua mandando —
@@ -1424,6 +1438,7 @@ function CrmKanbanPageConteudo() {
           // O CPF vem da ficha, no servidor: ele nunca passa por esta tela nem
           // fica gravado no app.
           cpf: "",
+          email: fcEmailNota,
           solicitadoPor: pessoaAuth?.id ?? null,
           comandaGravada: lancado.comandaGravada,
           invocar: (slug, body) => invocarIntegracao(slug, body),
@@ -1432,6 +1447,12 @@ function CrmKanbanPageConteudo() {
           toast(emissao.recado, { tom: emissao.tudoCerto ? "ok" : "atencao", duracaoMs: emissao.tudoCerto ? 6000 : 12000 });
           if (!emissao.tudoCerto) setFeedback(emissao.recado);
         }
+        // O e-mail digitado no fechamento vira cadastro: da próxima vez já vem preenchido.
+        const emailNota = fcEmailNota.trim().toLowerCase();
+        const contatoDaNota = state.contacts.find((item) => item.id === refDoPaciente);
+        if (emailNota && contatoDaNota && contatoDaNota.email.trim().toLowerCase() !== emailNota) {
+          persist((current) => updateContactChannels(current, refDoPaciente, { phone: contatoDaNota.phone, email: emailNota }, pessoa?.id ?? "manual"));
+        }
       } finally {
         setFcEmitindo(false);
       }
@@ -1439,6 +1460,7 @@ function CrmKanbanPageConteudo() {
 
     setFechamentoOpen(false);
     setFcPatient({ ref: "", name: "" });
+    setFcEmailNota("");
     setFcChannels(emptyContactChannels);
     setFcSold("");
     setFcReceived("");
@@ -2704,6 +2726,8 @@ function CrmKanbanPageConteudo() {
                       onTipoChange={setFcTipo}
                       tiposDisponiveis={["TRATAMENTO", "PRIMEIRA_CONSULTA", "RETORNO"]}
                       nota={fcNota}
+          tomador={fcTomador}
+          onEmailChange={setFcEmailNota}
                       onNotaChange={setFcNota}
                       notaInstrucao={fcNotaInstrucao}
                       onNotaInstrucaoChange={setFcNotaInstrucao}
@@ -2769,6 +2793,8 @@ function CrmKanbanPageConteudo() {
                         onTipoChange={setFcTipo}
                         tiposDisponiveis={["PRIMEIRA_CONSULTA", "RETORNO"]}
                         nota={fcNota}
+          tomador={fcTomador}
+          onEmailChange={setFcEmailNota}
                       onNotaChange={setFcNota}
                       notaInstrucao={fcNotaInstrucao}
                         onNotaInstrucaoChange={setFcNotaInstrucao}
@@ -2901,6 +2927,8 @@ function CrmKanbanPageConteudo() {
                     onTipoChange={(tipo) => setNewTipo(tipo as typeof newTipo)}
                     tiposDisponiveis={["SINAL_CONSULTA", "PRIMEIRA_CONSULTA", "RETORNO"]}
                     nota={newNota}
+          tomador={{ nome: newName, cpf: "", email: newEmail }}
+          onEmailChange={setNewEmail}
                     onNotaChange={setNewNota}
                     notaInstrucao={newNotaInstrucao}
                     onNotaInstrucaoChange={setNewNotaInstrucao}

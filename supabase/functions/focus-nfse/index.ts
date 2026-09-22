@@ -17,9 +17,12 @@
 // (CNPJ, inscrição municipal, códigos de serviço, alíquotas, ambiente).
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
 import { quemChama } from "../_shared/claude.ts";
+import { baseUrl, cabecalhoFocus as cabecalho, emailValido, enviarEmailDaNota, nomeDoTokenFocus, notaAutorizada } from "../_shared/focus.ts";
 
 type Entrada = {
-  acao: "emitir" | "consultar" | "cancelar";
+  acao: "emitir" | "consultar" | "cancelar" | "reenviar_email";
+  /** Para o reenvio: o e-mail do paciente digitado depois. */
+  email?: string;
   saleRef?: string;
   tipo?: "CONSULTA" | "BIOIMPEDANCIA" | "TRATAMENTO" | "UNIFICADA";
   valor?: number;
@@ -38,32 +41,12 @@ type Entrada = {
   solicitadoPor?: string;
 };
 
-/** Produção e homologação são DOIS servidores e DOIS tokens diferentes. */
-function ehProducao(config: Record<string, unknown>) {
-  return String(config.ambiente ?? "homologacao") === "producao";
-}
-
-function baseUrl(config: Record<string, unknown>) {
-  return ehProducao(config) ? "https://api.focusnfe.com.br" : "https://homologacao.focusnfe.com.br";
-}
-
-/**
- * O token segue o ambiente, e isso não é detalhe: com um token só, apontar o
- * `ambiente` para produção enquanto se testa emitiria NOTA DE VERDADE, com
- * número, ISS e tudo. Cada ambiente tem o seu segredo, e trocar de ambiente sem
- * ter o token daquele lado falha na hora, em vez de emitir por engano.
- */
-function tokenDoAmbiente(config: Record<string, unknown>) {
-  return Deno.env.get(ehProducao(config) ? "FOCUS_NFE_TOKEN_PRODUCAO" : "FOCUS_NFE_TOKEN_HOMOLOGACAO") ?? "";
-}
+// Servidor, token e cabeçalho da Focus moram em _shared/focus.ts (22/09/2026):
+// produção e homologação são DOIS servidores e DOIS tokens, e a regra é uma só.
 
 /** Só para o texto do registro — o corpo do pedido é lido uma vez só, mais abaixo. */
 function entradaAcaoSegura(request: Request) {
   return request.method === "POST" ? "emitir/consultar" : request.method;
-}
-
-function cabecalho(config: Record<string, unknown>) {
-  return { Authorization: `Basic ${btoa(`${tokenDoAmbiente(config)}:`)}`, "Content-Type": "application/json" };
 }
 
 Deno.serve(async (request) => {
@@ -88,11 +71,23 @@ Deno.serve(async (request) => {
   }
 
   const config = integracao.config;
-  const nomeDoToken = ehProducao(config) ? "FOCUS_NFE_TOKEN_PRODUCAO" : "FOCUS_NFE_TOKEN_HOMOLOGACAO";
+  const nomeDoToken = nomeDoTokenFocus(config);
   const faltam = segredosFaltando([nomeDoToken]);
   if (faltam.length) return respostaSemSegredos("focus_nfse", faltam);
   const entrada = await corpo<Entrada>(request);
   const base = baseUrl(config);
+
+  // ---- reenviar por e-mail (22/09/2026) ------------------------------------------
+  // Para a nota que saiu sem e-mail (paciente sem cadastro) ou com e-mail errado.
+  if (entrada.acao === "reenviar_email") {
+    if (!entrada.ref) return json({ ok: false, error: "Informe a ref." }, 400);
+    const email = emailValido(entrada.email);
+    if (!email) return json({ ok: false, error: "Informe um e-mail válido." }, 400);
+    await client.from("nfse_emissao").update({ email_para: email, email_enviado_em: null, email_erro: null }).eq("ref", entrada.ref);
+    const envio = await enviarEmailDaNota(client, config, entrada.ref, email);
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: entrada.ref, status: envio.enviado ? "EMAIL_ENVIADO" : "EMAIL_NAO_ENVIADO", resumo: envio.enviado ? `Nota ${entrada.ref} reenviada por e-mail` : `E-mail da nota ${entrada.ref} não saiu: ${envio.motivo}` });
+    return json({ ok: envio.enviado, error: envio.enviado ? undefined : `Não consegui enviar: ${envio.motivo}.`, emailEnviado: envio.enviado });
+  }
 
   if (entrada.acao === "consultar" || entrada.acao === "cancelar") {
     if (!entrada.ref) return json({ ok: false, error: "Informe a ref." }, 400);
@@ -108,7 +103,15 @@ Deno.serve(async (request) => {
       .update({ status: status.toUpperCase(), numero: (dados.numero as string) ?? undefined, url_pdf: (dados.url as string) ?? (dados.caminho_xml_nota_fiscal as string) ?? undefined, resposta: dados, erro: resposta.ok ? null : JSON.stringify(dados.erros ?? dados).slice(0, 500), atualizado_em: new Date().toISOString() })
       .eq("ref", entrada.ref);
     await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: entrada.ref, status: status.toUpperCase(), resumo: `${entrada.acao} ${entrada.ref}` });
-    return json({ ok: resposta.ok, status, dados });
+    // Autorizou na consulta? Então é agora que o e-mail sai (uma vez só; a
+    // função de envio confere status e repetição).
+    let emailEnviado = false;
+    if (entrada.acao === "consultar" && notaAutorizada(status)) {
+      const { data: linha } = await client.from("nfse_emissao").select("email_para, payload").eq("ref", entrada.ref).maybeSingle();
+      const destino = linha?.email_para || (linha?.payload as { tomador?: { email?: string } } | null)?.tomador?.email || "";
+      emailEnviado = (await enviarEmailDaNota(client, config, entrada.ref, destino)).enviado;
+    }
+    return json({ ok: resposta.ok, status, dados, emailEnviado });
   }
 
   // ---- emitir -----------------------------------------------------------------
@@ -298,15 +301,36 @@ Deno.serve(async (request) => {
   // prefeitura sem ficar registrada aqui — dinheiro e ISS sem rastro no app.
   const { error: erroDoRegistro } = await client
     .from("nfse_emissao")
-    .insert({ ref, sale_ref: entrada.saleRef, tipo: entrada.tipo, valor, status: "ENVIANDO", payload: payloadGuardado, solicitado_por: pediu.pessoaId });
+    .insert({ ref, sale_ref: entrada.saleRef, tipo: entrada.tipo, valor, status: "ENVIANDO", payload: payloadGuardado, solicitado_por: pediu.pessoaId, email_para: emailValido(email) || null });
   if (erroDoRegistro) {
     await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "ERRO", resumo: `Não registrei a emissão ${ref} e por isso NÃO enviei à prefeitura: ${erroDoRegistro.message}` });
     return json({ ok: false, error: `Não consegui registrar a emissão no app, então não enviei à prefeitura. Detalhe: ${erroDoRegistro.message}` }, 500);
   }
   const resposta = await fetch(`${base}/v2/nfse?ref=${encodeURIComponent(ref)}`, { method: "POST", headers: cabecalho(config), body: JSON.stringify(payload) });
-  const dados = (await resposta.json().catch(() => ({}))) as Record<string, unknown>;
-  const status = String(dados.status ?? (resposta.ok ? "processando_autorizacao" : `http_${resposta.status}`)).toUpperCase();
+  let dados = (await resposta.json().catch(() => ({}))) as Record<string, unknown>;
+  let status = String(dados.status ?? (resposta.ok ? "processando_autorizacao" : `http_${resposta.status}`)).toUpperCase();
   await client.from("nfse_emissao").update({ status, resposta: dados, erro: resposta.ok ? null : JSON.stringify(dados.erros ?? dados).slice(0, 500), atualizado_em: new Date().toISOString() }).eq("ref", ref);
   await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: ref, status, resumo: `NFS-e ${entrada.tipo} de R$ ${valor.toFixed(2)} da comanda ${entrada.saleRef}` });
-  return json({ ok: resposta.ok, ref, status, dados });
+
+  // A PREFEITURA COSTUMA RESPONDER EM SEGUNDOS (22/09/2026). Em vez de mandar
+  // quem fechou clicar em "Consultar", esperamos até ~7 s aqui: se autorizou,
+  // o número volta na mesma resposta e o e-mail ao paciente já sai. Se não deu
+  // tempo, o webhook ou a consulta terminam o serviço — nada se perde.
+  let emailEnviado = false;
+  if (resposta.ok && !notaAutorizada(status)) {
+    for (const espera of [1500, 2500, 3000]) {
+      await new Promise((r) => setTimeout(r, espera));
+      const consulta = await fetch(`${base}/v2/nfse/${encodeURIComponent(ref)}`, { headers: cabecalho(config) }).catch(() => null);
+      if (!consulta?.ok) continue;
+      const atual = (await consulta.json().catch(() => ({}))) as Record<string, unknown>;
+      const statusAtual = String(atual.status ?? "").toUpperCase();
+      if (!statusAtual || statusAtual === status) continue;
+      dados = atual;
+      status = statusAtual;
+      await client.from("nfse_emissao").update({ status, numero: (atual.numero as string) ?? undefined, url_pdf: (atual.url as string) ?? (atual.caminho_xml_nota_fiscal as string) ?? undefined, resposta: atual, erro: /erro/i.test(status) ? JSON.stringify(atual.erros ?? atual).slice(0, 500) : null, atualizado_em: new Date().toISOString() }).eq("ref", ref);
+      if (notaAutorizada(status) || /erro|cancel/i.test(status)) break;
+    }
+  }
+  if (notaAutorizada(status)) emailEnviado = (await enviarEmailDaNota(client, config, ref, email)).enviado;
+  return json({ ok: resposta.ok, ref, status, dados, numero: (dados.numero as string) ?? null, emailEnviado, emailPara: emailValido(email) || null });
 });

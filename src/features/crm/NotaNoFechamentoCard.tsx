@@ -77,6 +77,7 @@ export function NotaNoFechamentoCard({
   parcelas,
   ehSinal,
   tomador,
+  onEmailChange,
 }: {
   nota: NotaDoFechamento;
   onNotaChange: (nota: NotaDoFechamento) => void;
@@ -86,6 +87,8 @@ export function NotaNoFechamentoCard({
   /** Sinal de consulta é adiantamento — a nota sai inteira no fechamento. */
   ehSinal: boolean;
   tomador: { nome: string; cpf: string; email: string };
+  /** 22/09/2026: a nota vai por e-mail ao paciente — este é o campo para acertar o endereço na hora. */
+  onEmailChange?: (email: string) => void;
 }) {
   const [mostrarTexto, setMostrarTexto] = useState(false);
   const plano = planoDeNotas({ escolha: nota.escolha, valorRecebido, divisao: nota.divisao, diaISO, parcelas });
@@ -227,10 +230,31 @@ export function NotaNoFechamentoCard({
         </p>
       ) : null}
 
+      {/* O E-MAIL É PARA ONDE A NOTA VAI (22/09/2026, pedido do Lucas). Vem da
+          ficha quando existe; quem fecha confere ou digita aqui, e o cadastro
+          do paciente ganha o e-mail junto. */}
+      {nota.escolha !== "SEM_NOTA" && !ehSinal && onEmailChange ? (
+        <div className="grid gap-1">
+          <Label htmlFor="nota-email-paciente" className="text-xs">
+            E-mail do paciente <span className="font-normal text-muted-foreground">— a nota autorizada vai para ele</span>
+          </Label>
+          <Input
+            id="nota-email-paciente"
+            type="email"
+            inputMode="email"
+            autoComplete="off"
+            value={tomador.email}
+            onChange={(event) => onEmailChange(event.target.value)}
+            placeholder="nome@exemplo.com"
+            className="h-9 bg-white"
+          />
+        </div>
+      ) : null}
+
       {nota.escolha !== "SEM_NOTA" && plano.notas.length && faltaNoTomador.length ? (
         <p className="text-[11px] leading-snug text-muted-foreground">
-          Para a nota sair identificada ainda falta na ficha: <strong>{faltaNoTomador.join(", ")}</strong>. Dá para fechar
-          assim — a nota sai sem esse dado.
+          Para a nota sair completa ainda falta: <strong>{faltaNoTomador.map((item) => (item === "CPF" ? "CPF (guardar na ficha do paciente)" : item)).join(", ")}</strong>.
+          Dá para fechar assim — a nota sai sem esse dado{faltaNoTomador.includes("e-mail") ? " e não vai por e-mail" : ""}.
         </p>
       ) : null}
     </div>

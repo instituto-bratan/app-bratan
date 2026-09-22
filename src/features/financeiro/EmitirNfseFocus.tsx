@@ -10,7 +10,7 @@ import { toast } from "@/components/ui/avisos";
 import { integracaoLigada } from "@/lib/integracoes";
 import { invocarIntegracao, listRemoteNfseDaComanda } from "@/lib/remoteData";
 
-type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; dados?: { numero?: string; url?: string; status?: string } };
+type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; numero?: string | null; emailEnviado?: boolean; dados?: { numero?: string; url?: string; status?: string } };
 
 /** Status de uma tentativa que não vingou — só depois de uma dessas dá para emitir de novo. */
 function emissaoFalhou(status: string) {
@@ -21,6 +21,7 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
   const [ref, setRef] = useState("");
   const [status, setStatus] = useState("");
   const [cpf, setCpf] = useState("");
+  const [email, setEmail] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const ligada = integracaoLigada("focus_nfse");
 
@@ -54,16 +55,19 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
     if (!(valor > 0)) return toast("Valor da nota precisa ser maior que zero.", { tom: "atencao" });
     setOcupado(true);
     try {
-      const r = await invocarIntegracao<Resposta>("focus-nfse", { acao: "emitir", saleRef, tipo, valor, tomador: cpf.trim() ? { nome: pacienteNome, cpf: cpf.trim() } : { nome: pacienteNome }, solicitadoPor });
+      const r = await invocarIntegracao<Resposta>("focus-nfse", { acao: "emitir", saleRef, tipo, valor, tomador: { nome: pacienteNome, ...(cpf.trim() ? { cpf: cpf.trim() } : {}), ...(email.trim() ? { email: email.trim() } : {}) }, solicitadoPor });
       if (!r.ok) return toast(r.error ?? `A Focus recusou: ${r.status ?? ""}`, { tom: "erro", duracaoMs: 7000 });
       setRef(r.ref ?? "");
       setStatus(r.status ?? "ENVIADA");
       setCpf("");
-      if (r.dados?.numero) onNumero(String(r.dados.numero));
+      const numero = r.numero ?? r.dados?.numero;
+      if (numero) onNumero(String(numero));
       toast(
         r.jaEmitida
           ? "Esta comanda já tem nota deste tipo. Use Consultar para pegar o número."
-          : "Pedido enviado à prefeitura. Consulte em alguns segundos para pegar o número.",
+          : numero
+            ? `Nota autorizada: nº ${numero}.${r.emailEnviado ? " Enviada por e-mail ao paciente." : ""}`
+            : "Pedido enviado à prefeitura. Consulte em alguns segundos para pegar o número.",
         { tom: r.jaEmitida ? "info" : "ok" },
       );
     } finally {
@@ -92,6 +96,7 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
       {!ref ? (
         <>
           <Input value={cpf} onChange={(event) => setCpf(event.target.value)} placeholder="CPF do tomador (opcional, não fica salvo)" className="h-8 w-56 text-xs" inputMode="numeric" />
+          <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail do paciente (a nota vai para ele)" className="h-8 w-60 text-xs" type="email" inputMode="email" />
           <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado} onClick={() => void emitir()}>
             <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir na prefeitura (Focus)
           </Button>

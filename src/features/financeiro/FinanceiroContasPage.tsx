@@ -26,6 +26,9 @@ import { NotaDaContaCell } from "./NotaDaContaCell";
 import { FilaDoDiaCard, linhaDigitavelDaConta } from "./FilaDoDiaCard";
 import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
 import { CaixaEntradaCard } from "./CaixaEntradaCard";
+import { NotasRecebidasCard } from "./NotasRecebidasCard";
+import { configIntegracao, integracaoLigada } from "@/lib/integracoes";
+import { buscarNotasRecebidas, ignorarNotaRecebida, listRemoteNotasRecebidas, urlDaNotaRecebida, vincularNotaRecebida, type NotaRecebida } from "@/lib/remote/notasRecebidas";
 import { confirmar, perguntar, toast } from "@/components/ui/avisos";
 import { configAtual } from "@/lib/configNegocio";
 import { precisaAprovacao } from "./filaFinanceira";
@@ -83,6 +86,35 @@ export function FinanceiroContasPage() {
     staleTime: 30_000,
   });
   const notasDaContas = notasQuery.data ?? [];
+  // NOTAS CONTRA O INSTITUTO (22/09/2026): o que a Focus achou no nosso CNPJ.
+  const focusLigada = integracaoLigada("focus_nfse");
+  const notasRecebidasQuery = useQuery({ queryKey: ["notas-recebidas"], queryFn: listRemoteNotasRecebidas, enabled: usaRemoto && focusLigada, staleTime: 30_000 });
+  const ultimaBuscaFocus = String((configIntegracao<{ notasRecebidas?: { ultimoResumo?: string; ultimaSincronizacao?: string } }>("focus_nfse").notasRecebidas?.ultimoResumo) ?? "");
+  async function notasRecebidasBuscar() {
+    const r = await buscarNotasRecebidas();
+    await queryClient.invalidateQueries({ queryKey: ["notas-recebidas"] });
+    await queryClient.invalidateQueries({ queryKey: ["fin-expense-notas"] });
+    return r.frase || r.error || (r.ok ? "Busca concluída." : "Não consegui buscar.");
+  }
+  async function notasRecebidasVincular(nota: NotaRecebida, expenseRef: string) {
+    const r = await vincularNotaRecebida(nota.chave, expenseRef);
+    if (!r.ok) {
+      setFeedback(r.error ?? "Não consegui vincular a nota.");
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ["notas-recebidas"] });
+    await queryClient.invalidateQueries({ queryKey: ["fin-expense-notas"] });
+    setFeedback(`Nota de ${nota.emitenteNome || nota.emitenteDocumento} anexada à conta e na fila do SharePoint.`);
+  }
+  async function notasRecebidasIgnorar(nota: NotaRecebida) {
+    await ignorarNotaRecebida(nota.chave);
+    await queryClient.invalidateQueries({ queryKey: ["notas-recebidas"] });
+  }
+  async function notasRecebidasAbrir(nota: NotaRecebida) {
+    const caminho = nota.storagePathPdf ?? nota.storagePathXml;
+    if (!caminho) return;
+    window.open(await urlDaNotaRecebida(caminho), "_blank", "noopener");
+  }
   const readOnly = !canEditModule(pessoa, "fin-contas");
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
@@ -781,6 +813,19 @@ export function FinanceiroContasPage() {
             />
           </div>
         )}
+        {usaRemoto && focusLigada ? (
+          <NotasRecebidasCard
+            itens={notasRecebidasQuery.data ?? []}
+            contas={financeiro.expenses}
+            carregando={notasRecebidasQuery.isLoading}
+            ultimaBusca={ultimaBuscaFocus}
+            readOnly={readOnly}
+            onBuscar={notasRecebidasBuscar}
+            onVincular={notasRecebidasVincular}
+            onIgnorar={notasRecebidasIgnorar}
+            onAbrir={notasRecebidasAbrir}
+          />
+        ) : null}
 
         {feedback ? (
           <div className="flex flex-wrap items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">

@@ -3274,6 +3274,7 @@ export * from "./remote/estalecas";
 export * from "./remote/nps";
 export * from "./remote/notaFiscalConta";
 export * from "./remote/caixaDeEntrada";
+export * from "./remote/notasRecebidas";
 export * from "./remote/ia";
 export * from "./remote/configuracoes";
 export * from "./remote/rotinaDiaria";
