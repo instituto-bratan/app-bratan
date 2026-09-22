@@ -340,3 +340,17 @@
 .portal .p-seletor.wrap { flex-wrap: wrap; border-radius: 18px; }
 .portal .p-cartao-palco { position: relative; display: grid; place-items: center; padding: 6px 0; }
 .portal .p-cartao-previa { width: min(200px, 56vw); aspect-ratio: 9 / 16; height: auto; border-radius: 22px; box-shadow: 0 18px 40px rgba(0,0,0,.28); background: #0E1F17; display: block; }
+
+/* ---- a voz do doutor (22/09/2026) ---- */
+.portal .p-voz { display: grid; gap: 14px; }
+.portal .p-voz-cabeca { display: flex; align-items: center; gap: 12px; }
+.portal .p-voz-cabeca > div { min-width: 0; }
+.portal .p-voz-avatar { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: var(--p-tint-soft, color-mix(in oklab, var(--p-tint) 14%, var(--p-card))); display: grid; place-items: center; }
+.portal .p-voz-avatar img { width: 26px; height: 26px; object-fit: contain; }
+.portal .p-voz-player { display: flex; align-items: center; gap: 12px; }
+.portal .p-voz-play { width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; border: 0; background: var(--p-tint); color: var(--p-on-tint, #fff); display: grid; place-items: center; cursor: pointer; box-shadow: 0 8px 20px -10px var(--p-tint); transition: transform .12s ease; }
+.portal .p-voz-play:active { transform: scale(.94); }
+.portal .p-voz-barra { position: relative; flex: 1; height: 6px; border-radius: 999px; background: color-mix(in oklab, var(--p-tint) 14%, var(--p-card)); overflow: hidden; }
+.portal .p-voz-barra > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--p-tint); border-radius: 999px; transition: width .2s linear; }
+.portal .p-voz-tempo { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--p-label-2); min-width: 84px; text-align: right; }
+.portal .p-voz-texto { font-size: 15px; line-height: 22px; white-space: pre-wrap; margin: 0; }

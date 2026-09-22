@@ -8,7 +8,7 @@
 // 21st.dev. Entra por link mágico; tudo vem da função portal-paciente.
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
-import { Activity, CalendarDays, Check, ChevronRight, FileText, Route as RouteIcon, Scale } from "lucide-react";
+import { Activity, CalendarDays, Check, ChevronRight, FileText, Pause, Play, Route as RouteIcon, Scale } from "lucide-react";
 import GradientMenu, { type GradientMenuItem } from "@/components/ui/gradient-menu";
 import LoadingState from "@/components/ui/loading-state";
 import { Avisos, toast } from "@/components/ui/avisos";
@@ -20,7 +20,7 @@ import "./portal.css";
 import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolucao";
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
-import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal, sairDoPush, enviarFoto, apagarFoto } from "./portalCliente";
+import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal, sairDoPush, enviarFoto, apagarFoto, marcarVozOuvida } from "./portalCliente";
 import { chaveVapidParaBytes } from "./pushDoPaciente";
 import { ANGULOS, fraseDasFotos, paresPorAngulo, rotuloDoAngulo, validarFoto, type AnguloDaFoto, type PortalFoto } from "./fotosDoPaciente";
 import { reduzirFoto } from "./redimensionarFoto";
@@ -535,6 +535,9 @@ function MeuPortal() {
                 </div>
               </section>
             ) : null}
+
+            {/* ---- A voz do doutor (22/09/2026, passo 6) ---- */}
+            {dados.vozDoDoutor ? <VozDoDoutor sessao={sessao} previa={previa} voz={dados.vozDoDoutor} /> : null}
 
             {/* ---- Próxima consulta: o bilhete ---- */}
             <section id="consulta" className="p-sec p-anim" aria-labelledby="t-consulta">
@@ -1199,6 +1202,103 @@ function CartaoDaConquista({ opcoes }: { opcoes: OpcaoDoCartao[] }) {
         </button>
         <p className="t-foot t-2">O cartão nasce no seu celular e vai só para quem você mandar. A clínica não publica nada por você.</p>
         {aviso ? <p className="t-foot t-2">{aviso}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * A VOZ DO DOUTOR (22/09/2026, passo 6 do portal).
+ *
+ * Uma nota de áudio do Dr. Daniel para a fase em que o paciente está —
+ * gravada por ele em Administração → Portal do paciente. Player próprio (o
+ * <audio controls> do iPhone não segue o tema); o texto do que ele disse fica
+ * embaixo, para quem não pode ouvir agora. Ao terminar, o portal registra que
+ * ouviu — é o que diz ao doutor que a mensagem chega.
+ */
+function VozDoDoutor({ sessao, previa, voz }: { sessao: string | null; previa: boolean; voz: NonNullable<PortalDados["vozDoDoutor"]> }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [tocando, setTocando] = useState(false);
+  const [posicao, setPosicao] = useState(0);
+  const [duracao, setDuracao] = useState(voz.duracaoS ?? 0);
+  const [lerTexto, setLerTexto] = useState(!voz.urlAudio);
+  const [ouvida, setOuvida] = useState(Boolean(voz.ouvidaEm));
+  const [erro, setErro] = useState("");
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+  async function alternar() {
+    const a = audioRef.current;
+    if (!a) return;
+    try {
+      if (a.paused) await a.play();
+      else a.pause();
+    } catch {
+      setErro("Não consegui tocar o áudio neste aparelho. O texto está logo abaixo.");
+      setLerTexto(true);
+    }
+  }
+  function terminou() {
+    setTocando(false);
+    setPosicao(0);
+    if (!ouvida) {
+      setOuvida(true);
+      if (sessao && !previa) void marcarVozOuvida(sessao, voz.id);
+    }
+  }
+  const pct = duracao > 0 ? Math.min(100, (posicao / duracao) * 100) : 0;
+
+  return (
+    <section id="doutor" className="p-sec p-anim" aria-labelledby="t-doutor">
+      <span className="t-sec" id="t-doutor">Uma palavra do Dr. Daniel · {voz.rotuloDaFase}</span>
+      <div className="p-card p-voz">
+        <div className="p-voz-cabeca">
+          <span className="p-voz-avatar" aria-hidden="true">
+            <img src={bratanMark} alt="" />
+          </span>
+          <div>
+            <p className="t-title3">{voz.titulo}</p>
+            <p className="t-foot t-2">{ouvida ? "Você já ouviu esta mensagem" : voz.urlAudio ? "Gravada para quem está nesta fase do plano" : "Mensagem para quem está nesta fase do plano"}</p>
+          </div>
+        </div>
+        {voz.urlAudio ? (
+          <>
+            <div className="p-voz-player">
+              <button type="button" className="p-voz-play" aria-label={tocando ? "Pausar" : "Ouvir a mensagem"} onClick={() => void alternar()}>
+                {tocando ? <Pause size={22} strokeWidth={2.4} /> : <Play size={22} strokeWidth={2.4} style={{ marginLeft: 3 }} />}
+              </button>
+              <div className="p-voz-barra" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+                <i style={{ width: `${pct}%` }} />
+              </div>
+              <span className="p-voz-tempo">
+                {fmt(posicao)} / {fmt(duracao)}
+              </span>
+            </div>
+            <audio
+              ref={audioRef}
+              src={voz.urlAudio}
+              preload="metadata"
+              onPlay={() => setTocando(true)}
+              onPause={() => setTocando(false)}
+              onEnded={terminou}
+              onTimeUpdate={(e) => setPosicao(e.currentTarget.currentTime)}
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration;
+                if (Number.isFinite(d) && d > 0) setDuracao(d);
+              }}
+              onError={() => {
+                setErro("O áudio não abriu neste aparelho. O texto está logo abaixo.");
+                setLerTexto(true);
+              }}
+            />
+            {erro ? <p className="t-foot t-2">{erro}</p> : null}
+            {voz.texto ? (
+              <button type="button" className="p-btn plain" style={{ justifySelf: "start", paddingLeft: 0 }} onClick={() => setLerTexto((v) => !v)}>
+                {lerTexto ? "Esconder o texto" : "Ler o que ele disse"}
+              </button>
+            ) : null}
+          </>
+        ) : null}
+        {lerTexto && voz.texto ? <p className="p-voz-texto">{voz.texto}</p> : null}
       </div>
     </section>
   );

@@ -135,7 +135,21 @@ export type PortalDados = {
   consentimentos: { tipo: string; aceito: boolean; em: string }[];
   /** Fotos de evolução (21/09/2026). URLs assinadas de 1 h. Só o paciente vê. */
   fotos?: PortalFoto[];
+  /** A voz do doutor (22/09/2026): a mensagem da fase em que o paciente está. null = sem gravação para a fase. */
+  vozDoDoutor?: PortalVozDoDoutor | null;
   geradoEm: string;
+};
+
+export type PortalVozDoDoutor = {
+  id: string;
+  fase: string;
+  rotuloDaFase: string;
+  titulo: string;
+  texto: string;
+  /** URL assinada de 1 h; null = mensagem só em texto. */
+  urlAudio: string | null;
+  duracaoS: number | null;
+  ouvidaEm: string | null;
 };
 
 /** O que o portal precisa saber de um marco (subconjunto do ProgramMilestone do app). */

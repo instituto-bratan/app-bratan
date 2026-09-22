@@ -6,6 +6,7 @@
 // Publicar com --no-verify-jwt. Nunca devolve CPF, notas internas, prontuário,
 // diagnóstico ou dados de outra pessoa: o payload é montado campo a campo.
 import { corpo, db, json, telefoneE164 } from "../_shared/integracoes.ts";
+import { FASE_INFO, faseDoPaciente, mensagemParaFase } from "../_shared/vozDoDoutor.ts";
 
 const TOKEN_DIAS = 7; // o link vale uma semana (fica no histórico do WhatsApp)
 const SESSAO_DIAS = 90; // 16/09/2026: o portal é do paciente, não uma visita
@@ -88,7 +89,9 @@ function mesmaPessoa(a: string, b: string) {
 }
 
 type Entrada = {
-  acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair" | "push_assinar" | "push_sair" | "foto_enviar" | "foto_apagar";
+  acao: "entrar" | "entrar_senha" | "criar_senha" | "dados" | "pesagem" | "responder_consulta" | "sair" | "push_assinar" | "push_sair" | "foto_enviar" | "foto_apagar" | "voz_ouvida";
+  /** A voz do doutor (22/09/2026): qual mensagem o paciente terminou de ouvir. */
+  mensagemId?: string;
   login?: string;
   senha?: string;
   token?: string;
@@ -327,6 +330,15 @@ Deno.serve(async (request) => {
     return json({ ok: true, status: resposta });
   }
 
+  // A voz do doutor (22/09/2026): registra que ouviu — é o que diz ao doutor se a
+  // mensagem chega, e evita repetir "novo" para quem já escutou.
+  if (entrada.acao === "voz_ouvida") {
+    const id = String(entrada.mensagemId ?? "").trim();
+    if (!id) return json({ ok: false, error: "Diga qual mensagem." });
+    await log(contactRef, "VOZ_OUVIDA", { id });
+    return json({ ok: true });
+  }
+
   if (entrada.acao !== "dados") return json({ ok: false, error: `Ação desconhecida: ${entrada.acao}` }, 400);
 
   // ---- dados: o retrato do paciente, campo a campo ------------------------------
@@ -408,11 +420,37 @@ Deno.serve(async (request) => {
   const { data: push } = await client.from("integracao").select("ligada, config").eq("chave", "push").maybeSingle();
   const pushPublicKey = push?.ligada ? String((push.config as Record<string, unknown> | null)?.vapidPublicKey ?? "").trim() || null : null;
 
+  // ---- A VOZ DO DOUTOR (22/09/2026, passo 6) ---------------------------------------
+  // A fase vem do tempo desde o fechamento; a mensagem ativa daquela fase vem
+  // da tabela que a coordenação alimenta; o áudio sai por URL assinada de 1 h.
+  // Sem gravação para a fase, o card nem aparece — não se inventa voz do médico.
+  let vozDoDoutor: Record<string, unknown> | null = null;
+  try {
+    const hojeBR = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+    const fase = faseDoPaciente(plano, hojeBR);
+    const { data: mensagens } = await client.from("portal_mensagem_doutor").select("id, fase, titulo, texto, storage_path, duracao_s, ativo").eq("ativo", true);
+    const lista = ((mensagens ?? []) as Record<string, unknown>[]).map((m) => ({ id: String(m.id), fase: m.fase as typeof fase, ativo: Boolean(m.ativo), titulo: String(m.titulo ?? ""), texto: String(m.texto ?? ""), storagePath: (m.storage_path as string | null) ?? null, duracaoS: m.duracao_s == null ? null : Number(m.duracao_s) }));
+    const msg = mensagemParaFase(lista, fase);
+    if (msg) {
+      let urlAudio: string | null = null;
+      if (msg.storagePath) {
+        const { data: assinada } = await client.storage.from("portal-voz-doutor").createSignedUrl(msg.storagePath, 3600);
+        urlAudio = assinada?.signedUrl ?? null;
+      }
+      const { data: ouvidas } = await client.from("paciente_portal_evento").select("criado_em, detalhe").eq("contact_ref", contactRef).eq("acao", "VOZ_OUVIDA").order("criado_em", { ascending: false }).limit(20);
+      const ouvida = ((ouvidas ?? []) as { criado_em: string; detalhe: { id?: string } | null }[]).find((e) => e.detalhe?.id === msg.id);
+      vozDoDoutor = { id: msg.id, fase, rotuloDaFase: FASE_INFO[fase].rotulo, titulo: msg.titulo || FASE_INFO[fase].rotulo, texto: msg.texto, urlAudio, duracaoS: msg.duracaoS, ouvidaEm: ouvida?.criado_em ?? null };
+    }
+  } catch {
+    vozDoDoutor = null;
+  }
+
   await log(contactRef, "LEITURA");
   return json({
     ok: true,
     dados: {
       pushPublicKey,
+      vozDoDoutor,
       paciente: { nome, primeiroNome: nome.split(/\s+/)[0] || "paciente", contactRef, temSenha: Boolean(acesso.senha_hash), login: acesso.login ?? null },
       plano,
       consultas,

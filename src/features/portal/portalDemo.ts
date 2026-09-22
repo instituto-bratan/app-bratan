@@ -33,6 +33,8 @@ export function dadosDemo(hojeISO: string): PortalDados {
     ],
     consentimentos: [{ tipo: "LGPD", aceito: true, em: `${inicio}T15:00:00-03:00` }, { tipo: "TRATAMENTO", aceito: true, em: `${inicio}T15:00:00-03:00` }],
     // Fotos de evolução: na demo são silhuetas desenhadas (nunca foto de gente).
+    // A voz do doutor: na demo é só texto (não existe áudio de exemplo — e não se inventa voz do médico).
+    vozDoDoutor: { id: "demo-voz", fase: "MEIO", rotuloDaFase: "Meio do caminho", titulo: "Você está no meio do caminho", texto: "Mariana, esse é o mês em que a balança costuma andar mais devagar — e é normal. O que eu olho agora é a composição: gordura caindo, músculo firme. Você está fazendo exatamente isso. Mantém a rotina, me manda a pesagem da semana, e a gente ajusta o resto na consulta.", urlAudio: null, duracaoS: null, ouvidaEm: null },
     fotos: [
       { id: "demo-f1", dia: inicio, angulo: "FRENTE", url: silhueta(1.0, "primeira") },
       { id: "demo-f2", dia: hojeISO, angulo: "FRENTE", url: silhueta(0.86, "hoje") },

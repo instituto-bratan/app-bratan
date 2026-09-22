@@ -87,3 +87,8 @@ export async function enviarFoto(sessao: string, angulo: "FRENTE" | "LADO" | "CO
 export async function apagarFoto(sessao: string, id: string) {
   return chamar<Record<string, never>>({ acao: "foto_apagar", sessao, fotoId: id });
 }
+
+/** A voz do doutor (22/09/2026): o paciente terminou de ouvir a mensagem. */
+export async function marcarVozOuvida(sessao: string, mensagemId: string) {
+  return chamar<Record<string, never>>({ acao: "voz_ouvida", sessao, mensagemId });
+}
