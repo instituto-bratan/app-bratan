@@ -12,6 +12,7 @@
 // o paciente (uma vez só — enviarEmailDaNota confere status e repetição).
 import { db, json, lerIntegracao, registrarEvento } from "../_shared/integracoes.ts";
 import { enviarEmailDaNota, notaAutorizada } from "../_shared/focus.ts";
+import { arquivarPorRef } from "../_shared/arquivarNotaEmitida.ts";
 
 Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "use POST" }, 405);
@@ -43,6 +44,11 @@ Deno.serve(async (request) => {
     emailEnviado = envio.enviado;
     if (!envio.enviado && envio.motivo !== "já enviado") {
       await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: ref, status: "EMAIL_NAO_ENVIADO", resumo: `E-mail da nota ${ref} não saiu: ${envio.motivo}` });
+    }
+    // PDF e XML para o bucket e para a pasta do mês no SharePoint (22/09/2026).
+    const arquivo = await arquivarPorRef(client, integracao.config, ref);
+    if (arquivo.erro && !arquivo.arquivos) {
+      await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: ref, status: "ARQUIVO_PENDENTE", resumo: `Arquivo da nota ${ref} fica para o varredor: ${arquivo.erro}`.slice(0, 900) });
     }
   }
   return json({ ok: true, emailEnviado });

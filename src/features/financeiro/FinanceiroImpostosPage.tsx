@@ -36,6 +36,10 @@ import {
   type PendingInvoiceSale,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
+import { integracaoLigada } from "@/lib/integracoes";
+import { listRemoteNfseDaComanda } from "@/lib/remoteData";
+import type { NfseEmissao } from "@/lib/remote/integracoes";
+import { fraseDasNotasFocus, linhasDasNotasFocus, notasFocusVivas } from "./notasEmitidasFocus";
 import { abaControleImpostos } from "./exportContabilidade";
 import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
 
@@ -90,6 +94,36 @@ function EmissaoCard({
     if (numbersDirty || !baseNumber) return;
     setLines((current) => current.map((line, index) => ({ ...line, numberText: String(baseNumber + index) })));
   }, [baseNumber, numbersDirty]);
+
+  // O QUE A FOCUS JÁ EMITIU PARA ESTA COMANDA (22/09/2026). A nota que sai no
+  // fechamento (unificada, em geral) vira o plano desta tela: uma linha por
+  // nota, com o número da prefeitura preenchido, e o botão "Emitir" some das
+  // linhas que ela cobre. Antes a tela não a via e oferecia emitir de novo.
+  const focusLigada = integracaoLigada("focus_nfse");
+  const [emissoesFocus, setEmissoesFocus] = useState<NfseEmissao[] | null>(null);
+  useEffect(() => {
+    if (!focusLigada) return;
+    let vivo = true;
+    void listRemoteNfseDaComanda(sale.id)
+      .then((lista) => {
+        if (vivo) setEmissoesFocus(lista);
+      })
+      .catch(() => {
+        if (vivo) setEmissoesFocus([]);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [focusLigada, sale.id]);
+  const vivasFocus = useMemo(() => notasFocusVivas(emissoesFocus ?? []), [emissoesFocus]);
+  useEffect(() => {
+    const linhasFocus = linhasDasNotasFocus(vivasFocus);
+    if (!linhasFocus) return;
+    setLines(linhasFocus);
+    setNumbersDirty(true);
+    if (vivasFocus.length === 1 && vivasFocus[0].tipo === "UNIFICADA") setPlanKey("UNIFICADA");
+    setError("");
+  }, [vivasFocus]);
 
   function switchPlan(key: string) {
     const plan = plans.find((candidate) => candidate.key === key);
@@ -182,6 +216,13 @@ function EmissaoCard({
         </div>
       </div>
 
+      {vivasFocus.length ? (
+        <p className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-brand-musgo/30 bg-brand-musgo/10 px-2 py-1 text-xs text-brand-tinta">
+          <CheckCircle2 className="h-3.5 w-3.5 text-brand-musgo" aria-hidden="true" />
+          {fraseDasNotasFocus(vivasFocus)}
+        </p>
+      ) : null}
+
       {plans.length > 1 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {plans.map((plan, index) => (
@@ -262,6 +303,7 @@ function EmissaoCard({
               valor={parseFinAmount(line.amountText)}
               pacienteNome={sale.patientName}
               solicitadoPor={null}
+              emissoes={emissoesFocus ?? undefined}
               onNumero={(numero) => {
                 setNumbersDirty(true);
                 setLines((current) => current.map((candidate, position) => (position === index ? { ...candidate, numberText: numero } : candidate)));
@@ -305,7 +347,7 @@ function EmissaoCard({
           <Input type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} className="h-9 w-36" />
         </label>
         <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={register}>
-          Registrar {parsedLines.length} nota{parsedLines.length > 1 ? "s" : ""} · {moneyFin(linesTotal)}
+          {vivasFocus.length ? "Registrar no controle" : "Registrar"} {parsedLines.length} nota{parsedLines.length > 1 ? "s" : ""} · {moneyFin(linesTotal)}
         </LiquidButton>
       </div>
 

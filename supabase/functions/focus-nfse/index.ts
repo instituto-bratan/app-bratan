@@ -18,9 +18,11 @@
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
 import { quemChama } from "../_shared/claude.ts";
 import { baseUrl, cabecalhoFocus as cabecalho, emailValido, enviarEmailDaNota, nomeDoTokenFocus, notaAutorizada } from "../_shared/focus.ts";
+import { arquivarNotasPendentes, arquivarPorRef } from "../_shared/arquivarNotaEmitida.ts";
+import { notaExistenteCobre, rotuloDoTipoDeNota } from "../_shared/notaEmitida.ts";
 
 type Entrada = {
-  acao: "emitir" | "consultar" | "cancelar" | "reenviar_email";
+  acao: "emitir" | "consultar" | "cancelar" | "reenviar_email" | "arquivar_pendentes";
   /** Para o reenvio: o e-mail do paciente digitado depois. */
   email?: string;
   saleRef?: string;
@@ -61,7 +63,19 @@ Deno.serve(async (request) => {
   // que vai no site bastaria para alguém emitir nota em nome da clínica e
   // mandá-la para o e-mail que quisesse. Agora só emite quem entrou com a conta.
   const CARGOS_QUE_EMITEM = new Set(["gestor_financeiro", "gestor", "ceo", "dr_daniel", "secretaria_executiva"]);
+  const entrada = await corpo<Entrada>(request);
   const pediu = await quemChama(client, request);
+  // O VARREDOR DE ARQUIVOS (22/09/2026) pode rodar sem pessoa: é o cron das
+  // 7h35 (chave anônima, corpo vazio) e ele só baixa PDF/XML de nota JÁ
+  // autorizada para o bucket e para a pasta do mês no SharePoint. Não emite,
+  // não consulta, não cancela.
+  if (!entrada.acao || entrada.acao === "arquivar_pendentes") {
+    const faltamSegredos = segredosFaltando([nomeDoTokenFocus(integracao.config)]);
+    if (faltamSegredos.length) return respostaSemSegredos("focus_nfse", faltamSegredos);
+    const r = await arquivarNotasPendentes(client, integracao.config);
+    if (r.notas) await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: r.erros.length ? "PARCIAL" : "OK", resumo: `Arquivo das notas emitidas: ${r.notas} nota(s) olhada(s), ${r.arquivos} arquivo(s) para o SharePoint${r.erros.length ? `. Atenção: ${r.erros.join(" | ")}` : ""}`.slice(0, 900) });
+    return json({ ok: true, ...r });
+  }
   if (!pediu?.pessoaId) {
     return json({ ok: false, error: "Entre com a sua conta para emitir nota fiscal." }, 401);
   }
@@ -74,7 +88,6 @@ Deno.serve(async (request) => {
   const nomeDoToken = nomeDoTokenFocus(config);
   const faltam = segredosFaltando([nomeDoToken]);
   if (faltam.length) return respostaSemSegredos("focus_nfse", faltam);
-  const entrada = await corpo<Entrada>(request);
   const base = baseUrl(config);
 
   // ---- reenviar por e-mail (22/09/2026) ------------------------------------------
@@ -110,6 +123,7 @@ Deno.serve(async (request) => {
       const { data: linha } = await client.from("nfse_emissao").select("email_para, payload").eq("ref", entrada.ref).maybeSingle();
       const destino = linha?.email_para || (linha?.payload as { tomador?: { email?: string } } | null)?.tomador?.email || "";
       emailEnviado = (await enviarEmailDaNota(client, config, entrada.ref, destino)).enviado;
+      await arquivarPorRef(client, config, entrada.ref);
     }
     return json({ ok: resposta.ok, status, dados, emailEnviado });
   }
@@ -226,20 +240,27 @@ Deno.serve(async (request) => {
   // Uma nota por comanda e por tipo. Sem esta trava, um F5 no meio do envio (ou
   // dois cliques) manda a prefeitura emitir a MESMA nota duas vezes — e o ISS sai
   // em dobro. Só volta a permitir emissão quando a anterior falhou ou foi cancelada.
-  const { data: jaExiste } = await client
+  //
+  // 22/09/2026: a trava passou a olhar TODOS os tipos. A primeira nota real
+  // saiu UNIFICADA pelo fechamento e a tela Impostos & NFs, que só procurava
+  // "tratamento", teria deixado sair uma segunda nota da mesma comanda. A
+  // unificada cobre a comanda inteira; e onde já saiu uma parte, não sai
+  // unificada (notaExistenteCobre).
+  const { data: existentes } = await client
     .from("nfse_emissao")
-    .select("ref, status, numero, url_pdf")
+    .select("ref, tipo, status, numero, url_pdf")
     .eq("sale_ref", entrada.saleRef)
-    .eq("tipo", entrada.tipo)
-    .order("criado_em", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (jaExiste && !/ERRO|CANCEL|HTTP_/i.test(String(jaExiste.status ?? ""))) {
+    .order("criado_em", { ascending: false });
+  const jaExiste = ((existentes ?? []) as { ref: string; tipo: string; status: string | null; numero: string | null; url_pdf: string | null }[]).find(
+    (e) => !/ERRO|CANCEL|HTTP_/i.test(String(e.status ?? "")) && notaExistenteCobre(e.tipo, entrada.tipo!),
+  );
+  if (jaExiste) {
     return json({
       ok: true,
       ref: jaExiste.ref,
       status: String(jaExiste.status ?? ""),
       jaEmitida: true,
+      cobertaPor: { tipo: jaExiste.tipo, rotulo: rotuloDoTipoDeNota(jaExiste.tipo), numero: jaExiste.numero ?? null },
       dados: { numero: jaExiste.numero ?? undefined, url: jaExiste.url_pdf ?? undefined, status: jaExiste.status },
     });
   }
@@ -331,6 +352,10 @@ Deno.serve(async (request) => {
       if (notaAutorizada(status) || /erro|cancel/i.test(status)) break;
     }
   }
-  if (notaAutorizada(status)) emailEnviado = (await enviarEmailDaNota(client, config, ref, email)).enviado;
+  if (notaAutorizada(status)) {
+    emailEnviado = (await enviarEmailDaNota(client, config, ref, email)).enviado;
+    // PDF e XML para o bucket e para a pasta do mês no SharePoint (22/09/2026).
+    await arquivarPorRef(client, config, ref);
+  }
   return json({ ok: resposta.ok, ref, status, dados, numero: (dados.numero as string) ?? null, emailEnviado, emailPara: emailValido(email) || null });
 });
