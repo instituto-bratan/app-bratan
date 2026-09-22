@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, ChevronDown, FileText, Landmark, Plus, ReceiptText, Sparkles, Trash2, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { EmitirNfseFocus } from "./EmitirNfseFocus";
+import { LoteDeNotasCard } from "./LoteDeNotasCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -728,6 +729,9 @@ export function FinanceiroImpostosPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* O LOTE CONFERIDO (22/09/2026): as notas de setembro que faltavam, uma linha cada, emitidas pela Focus em sequência. */}
+        <LoteDeNotasCard readOnly={readOnly} onRegister={registerBatch} />
 
         <Card>
           <CardHeader>
