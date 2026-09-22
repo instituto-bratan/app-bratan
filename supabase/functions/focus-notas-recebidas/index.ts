@@ -21,7 +21,7 @@
 // que destrava o XML completo), a menos que a configuração desligue.
 //
 // Quem chama: o botão "Buscar na Focus" do Contas a Pagar (quem cuida do
-// financeiro) ou o cron das 7h30 (com a chave de serviço). A integração é a
+// financeiro) ou o cron das 7h30 (com a chave anônima, como a rotina diária). A integração é a
 // mesma da emissão (`focus_nfse`): ligada = pode; segredo = o mesmo token.
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
 import { quemChama } from "../_shared/claude.ts";
@@ -62,13 +62,20 @@ Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "use POST" }, 405);
   const client = db();
 
-  // Quem pede: uma pessoa do financeiro, ou o cron com a chave de serviço.
+  // QUEM PEDE (22/09/2026, conferido no primeiro disparo). O cron do Supabase
+  // chama com a chave ANÔNIMA — o mesmo padrão da rotina diária, e o gateway já
+  // conferiu a assinatura dela. Sem usuário, a função só aceita `sincronizar`,
+  // que é idempotente e conservadora (casa sozinha só sem dúvida). Vincular,
+  // ignorar e reabrir exigem uma pessoa do financeiro logada.
+  const entrada = await corpo<Entrada>(request);
+  const acao = entrada.acao ?? "sincronizar";
   const pediu = await quemChama(client, request);
   const bearer = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const ehCron = Boolean(bearer) && bearer === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+  const ehServico = Boolean(bearer) && bearer === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+  const ehCron = ehServico || (!pediu?.pessoaId && Boolean(bearer) && acao === "sincronizar");
   if (!ehCron && !pediu?.pessoaId) return json({ ok: false, error: "Entre com a sua conta para buscar as notas." }, 401);
   if (!ehCron && !CARGOS.has(pediu!.cargo)) return json({ ok: false, error: "O seu acesso não inclui as notas recebidas. Fale com a coordenação." }, 403);
-  const quem = ehCron ? "cron" : pediu!.nome || pediu!.pessoaId!;
+  const quem = pediu?.pessoaId ? pediu.nome || pediu.pessoaId : "cron";
 
   const integracao = await lerIntegracao(client, "focus_nfse");
   if (!integracao.ligada) return respostaDesligada("focus_nfse");
@@ -78,8 +85,6 @@ Deno.serve(async (request) => {
   const cnpj = String(config.cnpjPrestador ?? "").replace(/\D/g, "");
   if (!cnpj) return json({ ok: false, error: "Falta o CNPJ do prestador na configuração fiscal." }, 400);
   const base = baseUrl(config);
-  const entrada = await corpo<Entrada>(request);
-  const acao = entrada.acao ?? "sincronizar";
   const opcoes = (config.notasRecebidas as Record<string, unknown> | undefined) ?? {};
 
   // ---- vincular / ignorar / reabrir --------------------------------------------
