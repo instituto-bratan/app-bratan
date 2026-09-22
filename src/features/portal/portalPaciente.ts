@@ -540,3 +540,160 @@ export function primeiroNome(nome: string) {
 export function montarLinkPortal(origin: string, token: string) {
   return `${origin.replace(/\/$/, "")}/meu/entrar?t=${encodeURIComponent(token)}`;
 }
+
+// ---------------------------------------------------------------------------
+// QUATRO ABAS (22/09/2026): Hoje · Corpo · Jornada · Você.
+//
+// O portal deixou de ser uma rolagem só com doze cartões do mesmo peso. Cada
+// aba responde a UMA pergunta do paciente: "onde eu estou e o que faço agora"
+// (Hoje), "o que mudou no meu corpo" (Corpo), "o que já vivi e o que vem pela
+// frente" (Jornada), "o que é meu: contrato, notas, avisos, senha" (Você).
+// A aba mora na rota, para o botão "voltar" do celular funcionar e a recepção
+// poder mandar link direto para uma delas.
+// ---------------------------------------------------------------------------
+export type AbaDoPortal = "hoje" | "corpo" | "jornada" | "voce";
+
+export const ABAS: { id: AbaDoPortal; rotulo: string; rota: string }[] = [
+  { id: "hoje", rotulo: "Hoje", rota: "/meu" },
+  { id: "corpo", rotulo: "Corpo", rota: "/meu/corpo" },
+  { id: "jornada", rotulo: "Jornada", rota: "/meu/jornada" },
+  { id: "voce", rotulo: "Você", rota: "/meu/voce" },
+];
+
+export function abaDaRota(pathname: string): AbaDoPortal {
+  const fim = pathname.replace(/\/+$/, "").split("/").pop() ?? "";
+  return ABAS.find((a) => a.id === fim)?.id ?? "hoje";
+}
+
+export function rotaDaAba(aba: AbaDoPortal) {
+  return ABAS.find((a) => a.id === aba)?.rota ?? "/meu";
+}
+
+export type TrilhaDoPlano = NonNullable<ReturnType<typeof trilhaDoPlano>>;
+
+export type ResumoDaJornada = {
+  meses: number;
+  mesAtual: number;
+  /** Quanto do mês atual já passou (0 a 1) — é o que o anel preenche no segmento de agora. */
+  fracaoDoMes: number;
+  semana: number;
+  dias: number;
+  feitos: number;
+  total: number;
+  concluida: boolean;
+  segmentos: PassoDaTrilha["estado"][];
+  titulo: string; // "Semana 14 do seu plano"
+  passos: string; // "5 de 9 passos concluídos"
+  proximo: string; // "Próximo passo: 2ª bioimpedância, com a enfermagem, em 19 de out."
+};
+
+/**
+ * O que o anel do topo conta: em que mês e semana do plano o paciente está,
+ * quanto do mês já andou e qual é o próximo passo — em uma frase cada.
+ */
+export function resumoDaJornada(trilha: TrilhaDoPlano, marcos: MarcoDoPlano[], inicioISO: string, hojeISO: string): ResumoDaJornada {
+  const dias = Math.max(0, diasEntre(inicioISO, hojeISO));
+  const semana = Math.floor(dias / 7) + 1;
+  const inicioDoMes = (trilha.mesAtual - 1) * 30;
+  const fracaoDoMes = dias >= trilha.meses * 30 ? 1 : Math.min(1, Math.max(0, (dias - inicioDoMes) / 30));
+  const proximo = marcos.filter((m) => !m.done).sort((a, b) => a.expectedDate.localeCompare(b.expectedDate))[0] ?? null;
+  const concluida = !proximo;
+  return {
+    meses: trilha.meses,
+    mesAtual: trilha.mesAtual,
+    fracaoDoMes,
+    semana,
+    dias,
+    feitos: trilha.feitos,
+    total: trilha.total,
+    concluida,
+    segmentos: trilha.passos.map((p) => p.estado),
+    titulo: concluida ? "Você completou a caminhada" : `Semana ${semana} do seu plano`,
+    passos: `${trilha.feitos} de ${trilha.total} passos concluídos`,
+    proximo: proximo
+      ? proximo.overdue
+        ? `Próximo passo: ${proximo.label.toLowerCase()}, com ${QUEM[proximo.type]}. Estava previsto para ${diaMes(proximo.expectedDate)} — a recepção combina a data com você.`
+        : `Próximo passo: ${proximo.label.toLowerCase()}, com ${QUEM[proximo.type]}, em ${diaMes(proximo.expectedDate)}.`
+      : "Todos os passos do plano foram feitos. O acompanhamento continua com a equipe.",
+  };
+}
+
+export type EventoDaJornada = {
+  id: string;
+  dia: string;
+  tipo: "INICIO" | "CONSULTA" | "BIO" | "CHECK" | "HOJE" | "PREVISTO";
+  estado: "feito" | "hoje" | "futuro" | "atrasado";
+  quando: string; // "14 de jun" · "hoje" · "marcada · 28 de set" · "previsto · 19 de out" · "estava previsto · 12 de set"
+  titulo: string;
+  detalhe: string;
+};
+
+const um = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const capitalizar = (s: string) => s.replace(/^\p{L}/u, (c) => c.toUpperCase());
+
+/**
+ * A LINHA DO TEMPO DA JORNADA (22/09/2026).
+ *
+ * Junta, em uma lista só e na ordem em que aconteceram: o começo do plano, as
+ * bioimpedâncias feitas (com o número medido naquele dia), as consultas
+ * realizadas, o marcador de HOJE, a próxima consulta marcada e os passos
+ * previstos pelo plano. Marco já feito que tem o evento real correspondente
+ * (medição ou consulta perto da data) NÃO entra de novo — o evento real conta
+ * por ele. Passo previsto de consulta que já tem consulta marcada perto da
+ * data também sai, porque a marcada é a verdade.
+ */
+export function linhaDoTempo(entrada: { plano: PortalPlano | null; consultas: PortalConsulta[]; medicoes: PortalMedicao[]; marcos: MarcoDoPlano[]; hojeISO: string }): EventoDaJornada[] {
+  const { plano, consultas, medicoes, marcos, hojeISO } = entrada;
+  const inicio = plano?.inicio ?? null;
+  const dentroDoPlano = (dia: string) => !inicio || dia.slice(0, 10) >= inicio.slice(0, 10);
+  const perto = (a: string, b: string) => Math.abs(diasEntre(a.slice(0, 10), b.slice(0, 10))) <= 20;
+  const eventos: EventoDaJornada[] = [];
+
+  if (plano) eventos.push({ id: "inicio", dia: plano.inicio, tipo: "INICIO", estado: "feito", quando: diaMes(plano.inicio), titulo: `Você começou o ${nomeDoPlano(plano.canal)}`, detalhe: "" });
+
+  const bios = medicoes.filter((m) => m.origem !== "PACIENTE" && dentroDoPlano(m.dia)).sort((a, b) => a.dia.localeCompare(b.dia));
+  bios.forEach((m, i) => {
+    const partes = [m.pesoKg !== null ? `${um(m.pesoKg)} kg` : "", m.gorduraPct !== null ? `${um(m.gorduraPct)}% de gordura` : "", m.inbodyScore ? `InBody ${m.inbodyScore}` : ""].filter(Boolean);
+    eventos.push({ id: `bio-${m.id}`, dia: m.dia, tipo: "BIO", estado: "feito", quando: diaMes(m.dia), titulo: i === 0 && plano ? "Primeira bioimpedância" : "Bioimpedância", detalhe: partes.join(" · ") });
+  });
+
+  const realizadas = consultas.filter((c) => c.status === "REALIZADA" && dentroDoPlano(c.em) && c.em.slice(0, 10) <= hojeISO).sort((a, b) => a.em.localeCompare(b.em));
+  for (const c of realizadas) eventos.push({ id: `consulta-${c.id}`, dia: c.em.slice(0, 10), tipo: "CONSULTA", estado: "feito", quando: diaMes(c.em), titulo: capitalizar(c.tipo), detalhe: `com ${c.profissional}` });
+
+  eventos.push({ id: "hoje", dia: hojeISO, tipo: "HOJE", estado: "hoje", quando: "hoje", titulo: "Você está aqui", detalhe: "" });
+
+  const marcadas = consultas.filter((c) => (c.status === "AGENDADA" || c.status === "CONFIRMADA" || c.status === "AGUARDANDO" || c.status === "REMARCAR") && c.em.slice(0, 10) >= hojeISO).sort((a, b) => a.em.localeCompare(b.em));
+  for (const c of marcadas) {
+    const hora = horaCurta(c.em);
+    eventos.push({ id: `marcada-${c.id}`, dia: c.em.slice(0, 10), tipo: "CONSULTA", estado: "futuro", quando: `marcada · ${diaMes(c.em)}`, titulo: capitalizar(c.tipo), detalhe: `com ${c.profissional} · ${hora}${c.status === "CONFIRMADA" ? " · você confirmou" : c.status === "REMARCAR" ? " · a recepção vai remarcar" : ""}` });
+  }
+
+  for (const m of marcos) {
+    if (m.done) {
+      // O evento real conta por ele; só entra quando não há registro perto da data.
+      if (m.type === "BIO" && bios.some((b) => perto(b.dia, m.expectedDate))) continue;
+      if (m.type === "MEDICO" && realizadas.some((c) => perto(c.em, m.expectedDate))) continue;
+      eventos.push({ id: `marco-${m.key}`, dia: m.expectedDate, tipo: m.type === "CHECK" ? "CHECK" : m.type === "BIO" ? "BIO" : "CONSULTA", estado: "feito", quando: diaMes(m.expectedDate), titulo: capitalizar(m.label), detalhe: `feito · com ${QUEM[m.type]}` });
+      continue;
+    }
+    if (m.type === "MEDICO" && marcadas.some((c) => perto(c.em, m.expectedDate))) continue;
+    const atrasado = m.expectedDate < hojeISO;
+    eventos.push({ id: `marco-${m.key}`, dia: atrasado ? hojeISO : m.expectedDate, tipo: "PREVISTO", estado: atrasado ? "atrasado" : "futuro", quando: atrasado ? `estava previsto · ${diaMes(m.expectedDate)}` : `previsto · ${diaMes(m.expectedDate)}`, titulo: capitalizar(m.label), detalhe: atrasado ? `com ${QUEM[m.type]} · a recepção combina a data com você` : `com ${QUEM[m.type]}` });
+  }
+
+  const ordem: Record<EventoDaJornada["estado"], number> = { feito: 0, atrasado: 1, hoje: 2, futuro: 3 };
+  const peso = (e: EventoDaJornada) => (e.tipo === "INICIO" ? -1 : 0);
+  return eventos.sort((a, b) => a.dia.slice(0, 10).localeCompare(b.dia.slice(0, 10)) || peso(a) - peso(b) || ordem[a.estado] - ordem[b.estado]);
+}
+
+/** O ponto na aba: só quando existe uma AÇÃO pendente de verdade (nunca lembrete por lembrete). */
+export function pendenciasDasAbas(proxima: ProximaConsulta | null): Partial<Record<AbaDoPortal, number>> {
+  return proxima?.podeResponder ? { hoje: 1 } : {};
+}
+
+/** Desde quando a pessoa é paciente: o começo do plano, senão a primeira comanda ou medição. */
+export function pacienteDesde(dados: Pick<PortalDados, "plano" | "comandas" | "medicoes">): string | null {
+  if (dados.plano?.inicio) return dados.plano.inicio;
+  const dias = [...dados.comandas.map((c) => c.dia), ...dados.medicoes.map((m) => m.dia)].filter(Boolean).sort();
+  return dias[0] ?? null;
+}

@@ -1,15 +1,16 @@
-// MEU BRATAN — o portal do paciente, redesenho estilo Apple (15/09/2026).
+// MEU BRATAN — o portal do paciente (redesenho estilo Apple em 15/09/2026;
+// quatro abas em 22/09/2026).
 //
-// Uma página só, no celular: título grande que encolhe numa barra translúcida,
-// o bilhete da próxima consulta (única superfície colorida), a curva no espírito
-// do app Saúde, a trilha dos seis meses, o que fechou, a pesagem e os documentos.
-// A navegação é um dock flutuante (gradient-menu do 21st.dev) que abre a seção
-// visível e leva às outras com um toque. O carregamento usa o loading-state do
-// 21st.dev. Entra por link mágico; tudo vem da função portal-paciente.
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
-import { Activity, CalendarDays, Check, ChevronRight, FileText, Pause, Play, Route as RouteIcon, Scale } from "lucide-react";
-import GradientMenu, { type GradientMenuItem } from "@/components/ui/gradient-menu";
+// Hoje · Corpo · Jornada · Você. O topo do Hoje é o anel da jornada (um
+// segmento por mês do plano), a única superfície colorida da tela. Título
+// grande que encolhe numa barra translúcida, cartões brancos de canto 20 px,
+// números em fonte arredondada como no app Saúde. No celular a barra de abas
+// fica embaixo; no computador vira um trilho à esquerda e os cartões se
+// arrumam em duas colunas. Entra por link mágico ou senha; tudo vem da função
+// portal-paciente.
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { Link, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Activity, CalendarDays, Check, ChevronRight, FileText, Flag, Home, Pause, Play, Route as RouteIcon, Scale, Stethoscope, User } from "lucide-react";
 import LoadingState from "@/components/ui/loading-state";
 import { Avisos, toast } from "@/components/ui/avisos";
 import { todayISO } from "@/lib/localStore";
@@ -28,25 +29,12 @@ import { fraseDoCartao, opcoesDoCartao, textoDeCompartilhar, type OpcaoDoCartao 
 import { cartaoParaBlob, compartilharCartao, desenharCartao } from "./desenharCartao";
 import { Confete } from "@/components/ui/motion-confetti";
 import { CountUp } from "@/components/ui/count-up";
-import { brl, brlCentavos, diaCurto, diaMes, medicoesAntesDoPlano, nomeDoPlano, proximaConsulta, fraseDoDia, oQueABalancaNaoMostra, resumoEvolucao, resumoFinanceiro, resumoInBody, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type MarcoDoPlano, type PortalDados } from "./portalPaciente";
+import { ABAS, abaDaRota, brl, brlCentavos, diaCurto, diaMes, linhaDoTempo, medicoesAntesDoPlano, nomeDoPlano, pacienteDesde, pendenciasDasAbas, proximaConsulta, fraseDoDia, oQueABalancaNaoMostra, resumoDaJornada, resumoEvolucao, resumoFinanceiro, resumoInBody, rotaDaAba, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type AbaDoPortal, type EventoDaJornada, type MarcoDoPlano, type PassoDaTrilha, type PortalDados, type ResumoDaJornada } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
 const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o atendimento", TRATAMENTO: "termo do tratamento", IA: "apoio de inteligência artificial", IMAGEM: "uso de imagem", MARKETING: "mensagens e novidades" };
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-
-// As seções e o dock. As cores saíram das de sistema da Apple (16/09/2026): azul,
-// rosa e roxo brigavam com o verde da casa, e o dock é o único elemento sempre
-// visível. Agora é uma escala do próprio verde, do mais fechado ao mais aberto,
-// com o dourado da marca reservado à trilha do plano — a única cor que não é verde,
-// porque marca o caminho que o paciente percorre.
-const SECOES: GradientMenuItem[] = [
-  { id: "consulta", title: "Consulta", icon: <CalendarDays />, gradientFrom: "var(--p-dk-consulta-1)", gradientTo: "var(--p-dk-consulta-2)" },
-  { id: "evolucao", title: "Evolução", icon: <Activity />, gradientFrom: "var(--p-dk-evolucao-1)", gradientTo: "var(--p-dk-evolucao-2)" },
-  { id: "plano", title: "Plano", icon: <RouteIcon />, gradientFrom: "var(--p-dk-plano-1)", gradientTo: "var(--p-dk-plano-2)" },
-  { id: "pesagem", title: "Pesagem", icon: <Scale />, gradientFrom: "var(--p-dk-pesagem-1)", gradientTo: "var(--p-dk-pesagem-2)" },
-  { id: "documentos", title: "Docs", icon: <FileText />, gradientFrom: "var(--p-dk-docs-1)", gradientTo: "var(--p-dk-docs-2)" },
-];
 
 function partesDaData(iso: string) {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`) : new Date(iso);
@@ -242,9 +230,35 @@ function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
 }
 
 // ---- A página -------------------------------------------------------------------
+//
+// QUATRO ABAS (22/09/2026). Até aqui o portal era uma rolagem só, com doze
+// cartões do mesmo peso, e a pergunta "onde eu estou no meu plano?" só tinha
+// resposta no oitavo cartão. Agora cada aba responde a uma pergunta:
+//   Hoje    — onde estou e o que faço agora: o anel dos meses, a consulta, o
+//             corpo em uma linha, a voz do doutor
+//   Corpo   — o que mudou: InBody, curva, pesagem, o que a balança não mostra, fotos
+//   Jornada — o que já vivi e o que vem: a linha do tempo, o plano, a conquista
+//   Você    — o que é meu: contrato e notas, avisos, senha, sair
+// A rota guarda a aba (/meu, /meu/corpo, /meu/jornada, /meu/voce): o "voltar"
+// do celular funciona e a recepção pode mandar link direto para uma delas.
+// No celular a barra de abas fica embaixo (padrão do iOS); no computador vira
+// um trilho à esquerda e os cartões se arrumam em duas colunas.
+
+const ICONE_DA_ABA: Record<AbaDoPortal, ReactNode> = { hoje: <Home />, corpo: <Activity />, jornada: <RouteIcon />, voce: <User /> };
+const ICONE_DO_EVENTO: Record<EventoDaJornada["tipo"], ReactNode> = {
+  INICIO: <Flag size={17} strokeWidth={2.2} />,
+  BIO: <Activity size={17} strokeWidth={2.2} />,
+  CONSULTA: <Stethoscope size={17} strokeWidth={2.2} />,
+  CHECK: <Check size={16} strokeWidth={3} />,
+  HOJE: <i className="p-tempo-agora" />,
+  PREVISTO: <CalendarDays size={17} strokeWidth={2.2} />,
+};
+
 function MeuPortal() {
   useIdentidadeDoPortal();
   const navigate = useNavigate();
+  const location = useLocation();
+  const aba = abaDaRota(location.pathname);
   const hoje = todayISO();
   const [sessao, setSessao] = useState(() => lerSessao());
   const previa = emPrevia(sessao);
@@ -259,7 +273,6 @@ function MeuPortal() {
   const [salvandoSenha, setSalvandoSenha] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [respondendo, setRespondendo] = useState(false);
-  const [secaoAtiva, setSecaoAtiva] = useState("consulta");
   // Qual medida a curva desenha. Peso é o padrão; gordura só aparece quando há
   // bioimpedância suficiente para formar uma linha.
   const [metricaDaCurva, setMetricaDaCurva] = useState<MetricaDaCurva>("peso");
@@ -267,6 +280,9 @@ function MeuPortal() {
   // quiser ver a vida toda abre — e aí a virada aparece marcada no gráfico.
   const [verHistoricoTodo, setVerHistoricoTodo] = useState(false);
   const [barraCompacta, setBarraCompacta] = useState(false);
+  // Ao trocar de aba pedindo uma seção (ex.: "Mandar a pesagem" de Hoje leva à
+  // pesagem em Corpo), a rolagem acontece depois que a aba nova desenhou.
+  const [pendenteRolar, setPendenteRolar] = useState<string | null>(null);
   const tituloRef = useRef<HTMLHeadingElement>(null);
 
   async function salvarSenha(e: FormEvent) {
@@ -321,32 +337,20 @@ function MeuPortal() {
     const obs = new IntersectionObserver(([entry]) => setBarraCompacta(!entry.isIntersecting), { rootMargin: "-56px 0px 0px 0px", threshold: 0 });
     obs.observe(alvo);
     return () => obs.disconnect();
-  }, [dados]);
+  }, [dados, aba]);
 
-  // Seção visível → item aberto no dock.
+  // Aba nova começa do topo — como um app, não como uma página que continua rolada.
   useEffect(() => {
-    if (!dados || typeof IntersectionObserver === "undefined") return;
-    const alvos = secoesVisiveis.map((s) => document.getElementById(s.id)).filter((el): el is HTMLElement => Boolean(el));
-    const visiveis = new Map<string, number>();
-    const obs = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) visiveis.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0);
-        let melhor = "";
-        let maior = 0;
-        for (const s of secoesVisiveis) {
-          const v = visiveis.get(s.id) ?? 0;
-          if (v > maior) {
-            maior = v;
-            melhor = s.id;
-          }
-        }
-        if (melhor) setSecaoAtiva(melhor);
-      },
-      { rootMargin: "-25% 0px -45% 0px", threshold: [0, 0.2, 0.5, 0.8, 1] },
-    );
-    alvos.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
-  }, [dados]);
+    window.scrollTo({ top: 0 });
+  }, [aba]);
+
+  useEffect(() => {
+    if (!pendenteRolar) return;
+    const el = document.getElementById(pendenteRolar);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setPendenteRolar(null);
+  }, [pendenteRolar, aba, dados]);
 
   const marcos: MarcoDoPlano[] = useMemo(() => {
     if (!dados?.plano) return [];
@@ -354,23 +358,8 @@ function MeuPortal() {
     return buildMilestones(deal, hoje).map((m) => ({ key: m.key, type: m.type, n: m.n, total: m.total, label: m.label, expectedDate: m.expectedDate, done: m.done, overdue: m.overdue }));
   }, [dados, hoje]);
 
-  // O dock mostra só o que existe na página. Antes ele listava "Plano" mesmo para
-  // quem não tem plano, e o toque não levava a lugar nenhum (16/09/2026).
-  //
-  // Este useMemo precisa ficar ANTES do `if (!sessao)` lá embaixo: com ele
-  // depois, a tela de login rodava um hook a menos que a tela cheia, e o React
-  // derrubava a página inteira ao entrar (erro #310).
-  const secoesVisiveis = useMemo(
-    () =>
-      SECOES.filter((secao) => {
-        if (secao.id === "plano") return Boolean(dados?.plano) && marcos.length > 0;
-        if (secao.id === "documentos") return Boolean(dados?.documentos.length);
-        if (secao.id === "evolucao") return Boolean(dados);
-        return true;
-      }),
-    [dados],
-  );
-
+  // A linha do tempo é a lista mais longa do portal; só recalcula quando os dados mudam.
+  const eventos = useMemo(() => (dados ? linhaDoTempo({ plano: dados.plano, consultas: dados.consultas, medicoes: dados.medicoes, marcos, hojeISO: hoje }) : []), [dados, marcos, hoje]);
 
   if (!sessao) return <SemSessao aoEntrar={(nova) => { setSessao(nova); void recarregar(); }} />;
   const proxima = dados ? proximaConsulta(dados.consultas, marcos, hoje) : null;
@@ -379,17 +368,19 @@ function MeuPortal() {
   const evolucao = dados ? resumoEvolucao(dados.medicoes, hoje, verHistoricoTodo ? undefined : inicioDoPlano ?? undefined) : null;
   const financeiro = dados ? resumoFinanceiro(dados.comandas, dados.parcelasAbertas, hoje) : null;
   const trilha = dados?.plano ? trilhaDoPlano(marcos, dados.plano.inicio, hoje) : null;
-  // O NÚMERO ÚNICO NO TOPO (21/09/2026). Pedido do Lucas: "mostrar o Score no
-  // topo". Segue o mesmo recorte da curva — do plano para frente por padrão.
+  const jornada = trilha && dados?.plano ? resumoDaJornada(trilha, marcos, dados.plano.inicio, hoje) : null;
+  // O NÚMERO ÚNICO (21/09/2026). Pedido do Lucas: "mostrar o Score no topo".
+  // Segue o mesmo recorte da curva — do plano para frente por padrão.
   const inbody = dados ? resumoInBody(dados.medicoes, verHistoricoTodo ? undefined : inicioDoPlano ?? undefined) : null;
-  // A FRASE DO DIA e O QUE A BALANÇA NÃO MOSTRA (21/09/2026, passo 2): uma
-  // frase só embaixo da saudação, e o card que a curva de peso não conta.
+  // A FRASE DO DIA e O QUE A BALANÇA NÃO MOSTRA (21/09/2026, passo 2).
   const fraseTopo = dados ? fraseDoDia({ hojeISO: hoje, inbody, evolucao, proxima, trilha }) : "";
   const balanca = oQueABalancaNaoMostra(evolucao);
   // CARTÃO COMPARTILHÁVEL (21/09/2026, passo 5): só notícia boa; vazio = some.
   const opcoesDeCartao = opcoesDoCartao(evolucao, inbody);
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
+  const pendencias = pendenciasDasAbas(proxima);
+  const desde = dados ? pacienteDesde(dados) : null;
   const mostrandoGordura = metricaDaCurva === "gordura";
   const deltaEmFoco = mostrandoGordura ? evolucao?.deltaGordura ?? null : evolucao?.deltaPeso ?? null;
   const fraseDaGordura =
@@ -398,9 +389,14 @@ function MeuPortal() {
       : evolucao && evolucao.deltaGordura !== null && evolucao.deltaGordura > 0
         ? "A gordura corporal subiu desde a primeira medição. A enfermagem vai olhar isso com você no próximo contato."
         : "A gordura corporal está estável entre as medições.";
-  function irPara(id: string) {
-    setSecaoAtiva(id);
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  function irPara(destino: AbaDoPortal, secao?: string) {
+    if (destino === aba) {
+      if (secao) document.getElementById(secao)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (secao) setPendenteRolar(secao);
+    navigate(rotaDaAba(destino));
   }
 
   async function mandarPesagem() {
@@ -451,18 +447,482 @@ function MeuPortal() {
 
   const fmt1 = (n: number | null | undefined) => (n === null || n === undefined ? "—" : n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
   const sinal = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "");
+  const rotuloDaAba = ABAS.find((a) => a.id === aba)?.rotulo ?? "Hoje";
+
+  // O título e a frase de cada aba: a saudação só em Hoje; as outras dizem o que são.
+  const cabecalho = dados
+    ? aba === "hoje"
+      ? { titulo: saudacao(dados.paciente.primeiroNome), frase: fraseTopo }
+      : aba === "corpo"
+        ? {
+            titulo: "Seu corpo",
+            frase: evolucao
+              ? evolucao.pontos.length > 1
+                ? `${evolucao.semanas} semanas de acompanhamento · última medição em ${diaMes(evolucao.ultima.dia)}.`
+                : `Primeira medição em ${diaMes(evolucao.ultima.dia)}. A linha aparece a partir da segunda.`
+              : "A primeira medição da enfermagem abre a sua curva. A pesagem que você mandar já entra aqui.",
+          }
+        : aba === "jornada"
+          ? { titulo: "Sua jornada", frase: trilha ? trilha.frase : proxima ? `Próxima consulta ${proxima.quando}. Aqui ficam as suas consultas e bioimpedâncias, na ordem em que aconteceram.` : "Suas consultas e bioimpedâncias, na ordem em que aconteceram." }
+          : { titulo: dados.paciente.nome, frase: desde ? `Paciente do Instituto Bratan desde ${diaMes(desde)}.` : "Seu espaço no Instituto Bratan." }
+    : null;
+
+  // ---- as partes da tela ----------------------------------------------------------
+
+  const cartaoDaConsulta = (
+    <section id="consulta" className="p-sec p-anim" aria-labelledby="t-consulta">
+      <span className="t-sec" id="t-consulta">Próxima consulta</span>
+      <div className="p-card p-consulta">
+        {proxima && partes ? (
+          <>
+            <div className="p-data">
+              <span className="p-dia">{partes.dia}</span>
+              <div className="p-quando-col">
+                <b>{partes.semana}</b>
+                <span>
+                  {partes.mes}
+                  {proxima.hora ? ` · ${proxima.hora}` : ""}
+                </span>
+              </div>
+              <span className={`p-pill ${proxima.dias <= 2 ? "tint" : ""}`}>{proxima.quando}</span>
+            </div>
+            <p className="t-sub t-2">
+              {proxima.tipo} com {proxima.profissional} · {proxima.local}
+            </p>
+            {proxima.status === "CONFIRMADA" ? (
+              <span className="p-pill ok" style={{ justifySelf: "start" }}>
+                <Check size={14} strokeWidth={3} /> você confirmou
+              </span>
+            ) : proxima.status === "REMARCAR" ? (
+              <span className="p-pill" style={{ justifySelf: "start" }}>a recepção vai te chamar para remarcar</span>
+            ) : null}
+            {proxima.podeResponder ? (
+              <div className="p-botoes">
+                <button type="button" className="p-btn full" disabled={respondendo} onClick={() => void responder("CONFIRMO")}>
+                  Confirmo, estarei lá
+                </button>
+                <button type="button" className="p-btn plain full" disabled={respondendo} onClick={() => void responder("REMARCAR")}>
+                  Preciso remarcar
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <p className="t-title3">Ainda não foi marcada</p>
+            <p className="t-sub t-2">A recepção entra em contato para combinar o dia. Assim que marcar, a consulta aparece aqui e você confirma com um toque.</p>
+          </>
+        )}
+      </div>
+    </section>
+  );
+
+  const formularioDePesagem = (
+    <section id="pesagem" className="p-sec p-anim" aria-labelledby="t-pesagem">
+      <span className="t-sec" id="t-pesagem">Pesagem da semana</span>
+      <div className="p-card">
+        <p className="t-headline">Quanto a balança marcou hoje?</p>
+        <form
+          className="p-campo"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void mandarPesagem();
+          }}
+        >
+          <input inputMode="decimal" placeholder="82,4" value={peso} onChange={(e) => setPeso(e.target.value)} aria-label="Peso em quilos" />
+          <span className="p-unid">kg</span>
+          <button type="submit" className="p-btn mini" disabled={enviando || !peso.trim()}>
+            {enviando ? "Enviando" : "Enviar"}
+          </button>
+        </form>
+        <p className="t-foot t-2">
+          {ultimaPesagemPropria ? `Sua última pesagem foi em ${diaCurto(ultimaPesagemPropria.dia)}: ${fmt1(ultimaPesagemPropria.pesoKg)} kg. ` : ""}
+          Uma vez por semana, de manhã, antes do café. A enfermagem vê por aqui e entra em contato se precisar.
+        </p>
+      </div>
+    </section>
+  );
+
+  const painelHoje = dados ? (
+    <>
+      <section className="p-sec p-anim wide" aria-label="Onde você está na jornada">
+        <HeroDaJornada jornada={jornada} plano={dados.plano} proxima={proxima} evolucao={evolucao} aoAbrir={() => irPara("jornada")} />
+      </section>
+      {cartaoDaConsulta}
+      <section className="p-sec p-anim" aria-labelledby="t-corpo-linha">
+        <span className="t-sec" id="t-corpo-linha">Seu corpo</span>
+        <Toque className="p-card p-corpo-resumo" rotulo="Abrir a aba Corpo" aoTocar={() => irPara("corpo")}>
+          {evolucao ? (
+            <>
+              <div className="p-corpo-topo">
+                <div>
+                  <p className="t-foot t-2">hoje · {diaMes(evolucao.ultima.dia)}</p>
+                  <p className="p-num">
+                    {fmt1(evolucao.ultima.pesoKg)}
+                    <small>kg</small>
+                  </p>
+                </div>
+                {evolucao.pontos.length > 1 ? <Faisca valores={evolucao.pontos.map((p) => p.peso)} /> : null}
+              </div>
+              <p className="t-sub">{evolucao.pontos.length > 1 && evolucao.deltaPeso !== null ? `${sinal(evolucao.deltaPeso)}${fmt1(Math.abs(evolucao.deltaPeso))} kg desde ${diaMes(evolucao.primeira.dia)}.` : "Primeira medição registrada. A linha aparece a partir da segunda."}</p>
+              {evolucao.pontos.length > 1 ? (
+                <div className="p-chips">
+                  {evolucao.deltaGordura !== null ? <span className={`p-pill ${evolucao.deltaGordura < 0 ? "ok" : ""}`}>gordura {sinal(evolucao.deltaGordura)}{fmt1(Math.abs(evolucao.deltaGordura))} pts</span> : null}
+                  {evolucao.deltaMassaMagra !== null ? <span className={`p-pill ${evolucao.deltaMassaMagra >= 0 ? "ok" : ""}`}>massa magra {sinal(evolucao.deltaMassaMagra)}{fmt1(Math.abs(evolucao.deltaMassaMagra))} kg</span> : null}
+                  {inbody ? <span className="p-pill tint">InBody {inbody.score}{inbody.deltaScore !== null && inbody.deltaScore !== 0 ? ` · ${sinal(inbody.deltaScore)}${Math.abs(inbody.deltaScore)}` : ""}</span> : null}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <p className="t-headline">Sua curva começa na primeira medição.</p>
+              <p className="t-sub t-2">A enfermagem faz a bioimpedância na sua próxima visita. Até lá, a pesagem que você mandar já entra aqui.</p>
+            </>
+          )}
+          <span className="p-link">
+            {evolucao ? "Ver a evolução completa" : "Mandar a pesagem de hoje"} <ChevronRight size={16} />
+          </span>
+        </Toque>
+      </section>
+      {dados.vozDoDoutor ? <VozDoDoutor sessao={sessao} previa={previa} voz={dados.vozDoDoutor} /> : null}
+    </>
+  ) : null;
+
+  const painelCorpo = dados ? (
+    <>
+      {inbody ? (
+        <section id="inbody" className="p-sec p-anim" aria-labelledby="t-inbody">
+          <span className="t-sec" id="t-inbody">Seu InBody · {diaMes(inbody.ultima.dia)}</span>
+          <div className="p-card">
+            <div className="p-metrica">
+              <div>
+                <p className="t-foot t-2">InBody Score</p>
+                <p className="p-num">
+                  <CountUp to={inbody.score} from={Math.max(0, inbody.score - 12)} duration={1.1} digitEffect="slide" />
+                  <small>/100</small>
+                </p>
+              </div>
+              {inbody.deltaScore !== null ? (
+                <span className={`p-pill ${inbody.deltaScore > 0 ? "ok" : inbody.deltaScore < 0 ? "warn" : ""}`}>
+                  {sinal(inbody.deltaScore)}
+                  {Math.abs(inbody.deltaScore)} pts desde {diaMes(inbody.primeira.dia)}
+                </span>
+              ) : null}
+            </div>
+            <p className="t-body">{inbody.frase}</p>
+            <div className="p-stats">
+              <div className="p-stat">
+                <span className="t-foot t-2">Gordura visceral</span>
+                <b className="t-title3">{inbody.visceral === null ? "—" : `nível ${inbody.visceral}`}</b>
+                <span className="t-foot t-2">{inbody.visceral === null ? "" : inbody.visceralAcimaDoNormal ? `ideal até ${VISCERAL_LIMITE_NORMAL}` : "na faixa ideal"}</span>
+              </div>
+              <div className="p-stat">
+                <span className="t-foot t-2">Massa muscular</span>
+                <b className="t-title3">{inbody.musculoKg === null ? "—" : `${fmt1(inbody.musculoKg)} kg`}</b>
+                <span className="t-foot t-2">{inbody.deltaMusculo === null ? "músculo esquelético" : `${sinal(inbody.deltaMusculo)}${fmt1(Math.abs(inbody.deltaMusculo))} kg desde o começo`}</span>
+              </div>
+              <div className="p-stat">
+                <span className="t-foot t-2">Metabolismo basal</span>
+                <b className="t-title3">{inbody.tmbKcal === null ? "—" : `${Math.round(inbody.tmbKcal).toLocaleString("pt-BR")} kcal`}</b>
+                <span className="t-foot t-2">o que o corpo gasta em repouso, por dia</span>
+              </div>
+              <div className="p-stat">
+                <span className="t-foot t-2">Gordura corporal</span>
+                <b className="t-title3">{inbody.ultima.gorduraPct === null ? "—" : `${fmt1(inbody.ultima.gorduraPct)}%`}</b>
+                <span className="t-foot t-2">no mesmo exame</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section id="evolucao" className="p-sec p-anim" aria-labelledby="t-evolucao">
+        <span className="t-sec" id="t-evolucao">Sua evolução</span>
+        <div className="p-card">
+          {evolucao ? (
+            <>
+              <div className="p-metrica">
+                <div>
+                  <p className="t-foot t-2">hoje · {diaMes(evolucao.ultima.dia)}</p>
+                  <p className="p-num">
+                    {mostrandoGordura ? fmt1(evolucao.ultima.gorduraPct ?? 0) : fmt1(evolucao.ultima.pesoKg)}
+                    <small>{mostrandoGordura ? "%" : "kg"}</small>
+                  </p>
+                </div>
+                {deltaEmFoco !== null && evolucao.pontos.length > 1 ? (
+                  <span className={`p-pill ${deltaEmFoco < 0 ? "ok" : deltaEmFoco > 0 ? "warn" : ""}`}>
+                    {sinal(deltaEmFoco)}
+                    {fmt1(Math.abs(deltaEmFoco))} {mostrandoGordura ? "pts" : "kg"} desde {diaMes(evolucao.primeira.dia)}
+                  </span>
+                ) : null}
+              </div>
+              {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} metrica={metricaDaCurva} inicioDoPlano={verHistoricoTodo ? inicioDoPlano : null} /> : <CurvaEsperando />}
+              {antesDoPlano > 0 ? (
+                <button type="button" className="p-btn plain" onClick={() => setVerHistoricoTodo((atual) => !atual)}>
+                  {verHistoricoTodo ? "Ver só o meu plano" : `Ver desde o começo (mais ${antesDoPlano} ${antesDoPlano === 1 ? "medição" : "medições"})`}
+                </button>
+              ) : null}
+              {evolucao.pontos.length > 1 && temCurvaDeGordura(evolucao) ? (
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <InterruptorDoPortal
+                    ligado={mostrandoGordura}
+                    aoTrocar={(ligado) => setMetricaDaCurva(ligado ? "gordura" : "peso")}
+                    rotuloDesligado="Peso"
+                    rotuloLigado="Gordura"
+                    descricao="Trocar a curva entre peso e gordura corporal"
+                  />
+                </div>
+              ) : null}
+              <p className="t-sub">{mostrandoGordura ? fraseDaGordura : evolucao.frase}</p>
+              {evolucao.pontos.length > 1 && (evolucao.deltaGordura !== null || evolucao.deltaMassaMagra !== null || evolucao.deltaCintura !== null) ? (
+                <div className="p-stats">
+                  <div className="p-stat">
+                    <span className="t-foot t-2">Gordura corporal</span>
+                    <b>{evolucao.deltaGordura === null ? "—" : `${sinal(evolucao.deltaGordura)}${fmt1(Math.abs(evolucao.deltaGordura))} pts`}</b>
+                  </div>
+                  <div className="p-stat">
+                    <span className="t-foot t-2">Massa magra</span>
+                    <b>{evolucao.deltaMassaMagra === null ? "—" : `${sinal(evolucao.deltaMassaMagra)}${fmt1(Math.abs(evolucao.deltaMassaMagra))} kg`}</b>
+                  </div>
+                  <div className="p-stat">
+                    <span className="t-foot t-2">Cintura</span>
+                    <b>{evolucao.deltaCintura === null ? "—" : `${sinal(evolucao.deltaCintura)}${fmt1(Math.abs(evolucao.deltaCintura))} cm`}</b>
+                  </div>
+                  <div className="p-stat">
+                    <span className="t-foot t-2">Acompanhando há</span>
+                    <b>{evolucao.semanas} sem.</b>
+                  </div>
+                </div>
+              ) : null}
+              {evolucao.pontos.length > 1 ? <p className="t-foot t-3">Pontos cheios: medições da enfermagem. Vazados: pesagens que você mandou.</p> : <p className="t-foot t-3">Esta é a sua primeira medição. A linha aparece a partir da segunda.</p>}
+            </>
+          ) : (
+            <div className="p-vazio">
+              <CurvaEsperando />
+              <div className="p-vazio-texto">
+                <p className="t-headline">Sua curva começa na primeira medição.</p>
+                <p className="t-sub t-2">A enfermagem faz a bioimpedância na sua próxima visita. Até lá, a pesagem que você mandar já entra aqui.</p>
+              </div>
+              <button type="button" className="p-btn tonal" onClick={() => irPara("corpo", "pesagem")}>
+                <Scale size={18} aria-hidden="true" />
+                Mandar a pesagem de hoje
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {formularioDePesagem}
+
+      {balanca ? (
+        <section id="balanca" className="p-sec p-anim" aria-labelledby="t-balanca">
+          <span className="t-sec" id="t-balanca">{balanca.titulo}</span>
+          <div className={`p-card p-balanca ${balanca.tipo.toLowerCase()}`}>
+            <p className="p-num p-balanca-num">{balanca.destaque}</p>
+            <p className="t-body">{balanca.frase}</p>
+          </div>
+        </section>
+      ) : null}
+
+      <FotosDeEvolucao sessao={sessao} previa={previa} fotosIniciais={dados.fotos ?? []} />
+    </>
+  ) : null;
+
+  const painelJornada = dados ? (
+    <>
+      {trilha && dados.plano ? (
+        <section id="plano" className="p-sec p-anim" aria-labelledby="t-plano">
+          <span className="t-sec" id="t-plano">{nomeDoPlano(dados.plano.canal)}</span>
+          <div className="p-card">
+            <div className="p-metrica">
+              <div>
+                <p className="t-title3">Mês {trilha.mesAtual} de {trilha.meses}</p>
+                <p className="t-foot t-2">desde {diaMes(dados.plano.inicio)} · {trilha.feitos} de {trilha.total} passos concluídos</p>
+              </div>
+              {jornada ? <span className="p-pill tint">semana {jornada.semana}</span> : null}
+            </div>
+            <div className="p-progress" role="img" aria-label={`Mês ${trilha.mesAtual} de ${trilha.meses}`}>
+              {trilha.passos.map((p) => (
+                <i key={p.mes} className={p.estado === "feito" ? "on" : p.estado === "agora" ? "now" : ""} />
+              ))}
+            </div>
+            <p className="t-foot t-2">Cada barra é um mês do plano. A linha do tempo abaixo mostra o que já aconteceu e o que vem.</p>
+          </div>
+        </section>
+      ) : null}
+
+      <section id="linha-do-tempo" className="p-sec p-anim" aria-labelledby="t-tempo">
+        <span className="t-sec" id="t-tempo">Sua linha do tempo</span>
+        <div className="p-card">
+          {eventos.length > 1 ? (
+            <LinhaDoTempo eventos={eventos} />
+          ) : (
+            <p className="t-body t-2">Suas consultas e bioimpedâncias vão aparecendo aqui, na ordem em que acontecerem.</p>
+          )}
+        </div>
+      </section>
+
+      {opcoesDeCartao.length ? <CartaoDaConquista opcoes={opcoesDeCartao} /> : null}
+    </>
+  ) : null;
+
+  const painelVoce = dados ? (
+    <>
+      <section className="p-sec p-anim" aria-label="Seu perfil">
+        <div className="p-card p-perfil">
+          <span className="p-avatar" aria-hidden="true">{iniciais(dados.paciente.nome)}</span>
+          <div className="p-cresce">
+            <p className="t-headline">{dados.paciente.nome}</p>
+            <p className="t-foot t-2">{[dados.plano ? nomeDoPlano(dados.plano.canal) : "", desde ? `desde ${diaMes(desde)}` : "", dados.paciente.login ?? ""].filter(Boolean).join(" · ") || "Instituto Bratan"}</p>
+          </div>
+        </div>
+      </section>
+
+      {financeiro && !dados.comandas.length ? (
+        <section id="fechou" className="p-sec p-anim" aria-labelledby="t-fin">
+          <span className="t-sec" id="t-fin">O que você fechou</span>
+          <div className="p-card">
+            <p className="t-body t-2">{financeiro.frase}</p>
+          </div>
+        </section>
+      ) : financeiro ? (
+        <section id="fechou" className="p-sec p-anim" aria-labelledby="t-fin">
+          <span className="t-sec" id="t-fin">O que você fechou</span>
+          <div className="p-card">
+            <div className="p-metrica">
+              <div>
+                <p className="t-foot t-2">já pago</p>
+                <p className="p-num" style={{ fontSize: 34 }}>{brl(financeiro.pago)}</p>
+              </div>
+              {financeiro.emAberto > 0.005 ? <span className="p-pill">falta {brl(financeiro.emAberto)}</span> : <span className="p-pill ok"><Check size={14} strokeWidth={3} /> tudo em dia</span>}
+            </div>
+            {financeiro.contratado > 0 ? (
+              <div className="p-track" aria-hidden="true">
+                <i style={{ width: `${Math.min(100, Math.round((financeiro.pago / Math.max(financeiro.contratado, financeiro.pago + financeiro.emAberto)) * 100))}%` }} />
+              </div>
+            ) : null}
+            <ul className="p-lista">
+              {dados.comandas.map((c) => (
+                <li key={c.id} className="p-row">
+                  <div className="p-cresce">
+                    <p className="t-body" style={{ fontWeight: 500 }}>{c.itens.map((i) => i.descricao).join(" + ")}</p>
+                    <p className="t-foot t-2">
+                      {diaCurto(c.dia)} · {c.pagamentos.map((p) => `${METODO[p.metodo] ?? p.metodo.toLowerCase()}${p.parcelas > 1 ? ` ${p.parcelas}x` : ""}`).join(" · ") || "sem pagamento registrado"}
+                    </p>
+                  </div>
+                  <span className="p-valor">{brl(c.total)}</span>
+                </li>
+              ))}
+            </ul>
+            {financeiro.parcelas.length ? (
+              <>
+                <span className="t-sec" style={{ padding: 0 }}>Parcelas a vencer</span>
+                <ul className="p-lista">
+                  {financeiro.parcelas.map((p) => (
+                    <li key={p.id} className="p-row">
+                      <div className="p-cresce">
+                        <p className="t-body">{diaCurto(p.prevista)}</p>
+                        {p.observacao ? <p className="t-foot t-2">{p.observacao}</p> : null}
+                      </div>
+                      <span className="p-valor">{brlCentavos(p.valor)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      <section id="documentos" className="p-sec p-anim" aria-labelledby="t-docs">
+        <span className="t-sec" id="t-docs">Documentos</span>
+        <div className="p-card">
+          {dados.documentos.length ? (
+            <ul className="p-lista">
+              {dados.documentos.map((d, i) => {
+                const corpo = (
+                  <>
+                    <span className="p-check" style={{ borderColor: "transparent", background: "var(--p-tint-soft)", color: "var(--p-tint)" }}>
+                      <FileText size={14} />
+                    </span>
+                    <div className="p-cresce">
+                      <p className="t-body" style={{ fontWeight: 500 }}>{d.titulo}</p>
+                      <p className="t-foot t-2">{diaCurto(d.dia)}{d.url ? "" : " · peça o arquivo à recepção"}</p>
+                    </div>
+                    {d.url ? <ChevronRight size={18} className="p-chev" /> : null}
+                  </>
+                );
+                return d.url ? (
+                  <li key={`${d.tipo}-${i}`}>
+                    <a className="p-row" href={d.url} target="_blank" rel="noreferrer">
+                      {corpo}
+                    </a>
+                  </li>
+                ) : (
+                  <li key={`${d.tipo}-${i}`} className="p-row">
+                    {corpo}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="t-body t-2">Seu contrato e as notas fiscais aparecem aqui conforme forem emitidos.</p>
+          )}
+        </div>
+      </section>
+
+      <AvisosNoCelular sessao={sessao} previa={previa} chavePublica={dados.pushPublicKey ?? null} />
+
+      {/* SENHA PRÓPRIA (16/09/2026): enquanto o paciente não tem, o portal
+          oferece criar — é o que tira a dependência do link de 7 dias. */}
+      {!previa && dados.paciente.temSenha === false ? (
+        <section className="p-sec p-anim">
+          <span className="t-sec">Entrar quando quiser</span>
+          <div className="p-card">
+            {senhaAberta ? (
+              <form className="p-form" onSubmit={salvarSenha}>
+                <label className="p-rotulo" htmlFor="novo-login">Seu e-mail ou celular</label>
+                <input id="novo-login" className="p-entrada" type="text" inputMode="email" autoComplete="username" value={novoLogin} onChange={(e) => setNovoLogin(e.target.value)} placeholder="voce@email.com" />
+                <label className="p-rotulo" htmlFor="nova-senha">Crie uma senha</label>
+                <input id="nova-senha" className="p-entrada" type="password" autoComplete="new-password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="pelo menos 8 caracteres" />
+                <div className="p-botoes">
+                  <button type="submit" className="p-btn full" disabled={salvandoSenha || !novoLogin.trim() || novaSenha.length < 8}>
+                    {salvandoSenha ? "Guardando" : "Guardar e usar daqui em diante"}
+                  </button>
+                  <button type="button" className="p-btn plain" onClick={() => setSenhaAberta(false)}>Agora não</button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <p className="t-headline">Crie uma senha e não dependa mais do link.</p>
+                <p className="t-sub t-2">Com e-mail e senha você abre o seu espaço de qualquer aparelho, na hora que quiser.</p>
+                <button type="button" className="p-btn tonal" onClick={() => setSenhaAberta(true)}>Criar minha senha</button>
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <footer className="p-rodape p-anim wide">
+        {dados.consentimentos.some((c) => c.aceito) ? <p className="t-foot t-3">Você autorizou: {dados.consentimentos.filter((c) => c.aceito).map((c) => CONSENT_LABEL[c.tipo] ?? c.tipo.toLowerCase()).join(", ")}.</p> : null}
+        <p className="t-foot t-3">Seus dados ficam só com o Instituto Bratan e aparecem aqui só para você. Para mudar algo, fale com a recepção.</p>
+        <button type="button" className="p-btn plain" onClick={() => void sair()}>
+          Sair deste aparelho
+        </button>
+      </footer>
+    </>
+  ) : null;
 
   return (
-    <div className="portal">
+    <div className="portal p-app" data-aba={aba}>
       <Avisos />
       <div className="p-bar" data-visivel={barraCompacta} aria-hidden={!barraCompacta}>
-        Meu Bratan
+        {rotuloDaAba}
       </div>
+      {dados ? <TrilhoDeAbas aba={aba} pendencias={pendencias} nome={dados.paciente.nome} previa={previa} aoEscolher={(a) => irPara(a)} aoSair={() => void sair()} /> : null}
       <div className="p-wrap">
         {carregando ? (
-          <div className="p-entrar" style={{ minHeight: "70dvh" }}>
-            <div data-anima="carregando"><LoadingState label="Preparando as suas informações" variant="Dots" showElapsed={false} /></div>
-          </div>
+          <Esqueleto />
         ) : erro ? (
           <>
             <Marca />
@@ -479,415 +939,223 @@ function MeuPortal() {
               </div>
             </div>
           </>
-        ) : dados ? (
+        ) : dados && cabecalho ? (
           <>
-            <Marca previa={previa} />
-            <header className="p-cabeca p-anim">
-              <h1 ref={tituloRef} className="t-large">{saudacao(dados.paciente.primeiroNome)}</h1>
-              <p className="t-sub t-2">{fraseTopo}</p>
+            <div className="p-so-celular">
+              <Marca previa={previa} />
+            </div>
+            <header className="p-cabeca p-anim" key={`cabeca-${aba}`}>
+              <h1 ref={tituloRef} className="t-large">{cabecalho.titulo}</h1>
+              <p className="t-sub t-2">{cabecalho.frase}</p>
             </header>
-
-            {/* ---- O número único: InBody Score ----
-                Só aparece quando existe exame do aparelho. É o "significado, não o
-                dado": um número, o que mudou, e uma frase. */}
-            {inbody ? (
-              <section id="inbody" className="p-sec p-anim" aria-labelledby="t-inbody">
-                <span className="t-sec" id="t-inbody">Seu InBody · {diaMes(inbody.ultima.dia)}</span>
-                <div className="p-card">
-                  <div className="p-metrica">
-                    <div>
-                      <p className="t-foot t-2">InBody Score</p>
-                      <p className="p-num">
-                        <CountUp to={inbody.score} from={Math.max(0, inbody.score - 12)} duration={1.1} digitEffect="slide" />
-                        <small>/100</small>
-                      </p>
-                    </div>
-                    {inbody.deltaScore !== null ? (
-                      <span className={`p-pill ${inbody.deltaScore > 0 ? "ok" : inbody.deltaScore < 0 ? "warn" : ""}`}>
-                        {sinal(inbody.deltaScore)}
-                        {Math.abs(inbody.deltaScore)} pts desde {diaMes(inbody.primeira.dia)}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="t-body">{inbody.frase}</p>
-                  <div className="p-stats">
-                    <div className="p-stat">
-                      <span className="t-foot t-2">Gordura visceral</span>
-                      <b className="t-title3">{inbody.visceral === null ? "—" : `nível ${inbody.visceral}`}</b>
-                      <span className="t-foot t-2">{inbody.visceral === null ? "" : inbody.visceralAcimaDoNormal ? `ideal até ${VISCERAL_LIMITE_NORMAL}` : "na faixa ideal"}</span>
-                    </div>
-                    <div className="p-stat">
-                      <span className="t-foot t-2">Massa muscular</span>
-                      <b className="t-title3">{inbody.musculoKg === null ? "—" : `${fmt1(inbody.musculoKg)} kg`}</b>
-                      <span className="t-foot t-2">{inbody.deltaMusculo === null ? "músculo esquelético" : `${sinal(inbody.deltaMusculo)}${fmt1(Math.abs(inbody.deltaMusculo))} kg desde o começo`}</span>
-                    </div>
-                    <div className="p-stat">
-                      <span className="t-foot t-2">Metabolismo basal</span>
-                      <b className="t-title3">{inbody.tmbKcal === null ? "—" : `${Math.round(inbody.tmbKcal).toLocaleString("pt-BR")} kcal`}</b>
-                      <span className="t-foot t-2">o que o corpo gasta em repouso, por dia</span>
-                    </div>
-                    <div className="p-stat">
-                      <span className="t-foot t-2">Gordura corporal</span>
-                      <b className="t-title3">{inbody.ultima.gorduraPct === null ? "—" : `${fmt1(inbody.ultima.gorduraPct)}%`}</b>
-                      <span className="t-foot t-2">no mesmo exame</span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            ) : null}
-
-            {/* ---- A voz do doutor (22/09/2026, passo 6) ---- */}
-            {dados.vozDoDoutor ? <VozDoDoutor sessao={sessao} previa={previa} voz={dados.vozDoDoutor} /> : null}
-
-            {/* ---- Próxima consulta: o bilhete ---- */}
-            <section id="consulta" className="p-sec p-anim" aria-labelledby="t-consulta">
-              <div className="p-bilhete">
-                <span className="t-sec" id="t-consulta">Próxima consulta</span>
-                {proxima && partes ? (
-                  <>
-                    <div className="p-data">
-                      <span className="p-dia">{partes.dia}</span>
-                      <div className="p-quando-col">
-                        <b>{partes.semana}</b>
-                        <span>
-                          {partes.mes}
-                          {proxima.hora ? ` · ${proxima.hora}` : ""}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="p-em">{proxima.quando}</p>
-                    <p className="p-det">
-                      {proxima.tipo} com {proxima.profissional} · {proxima.local}
-                      {proxima.origem === "PREVISTA" ? ". Data prevista pelo seu plano; a recepção confirma o dia e a hora." : ""}
-                    </p>
-                    {proxima.status === "CONFIRMADA" ? (
-                      <span className="p-pill" style={{ justifySelf: "start" }}>
-                        <Check size={14} strokeWidth={3} /> você confirmou
-                      </span>
-                    ) : proxima.status === "REMARCAR" ? (
-                      <span className="p-pill" style={{ justifySelf: "start" }}>a recepção vai te chamar para remarcar</span>
-                    ) : null}
-                    {proxima.podeResponder ? (
-                      <div className="p-botoes">
-                        <button type="button" className="p-btn full" disabled={respondendo} onClick={() => void responder("CONFIRMO")}>
-                          Confirmo, estarei lá
-                        </button>
-                        <button type="button" className="p-btn plain full" disabled={respondendo} onClick={() => void responder("REMARCAR")}>
-                          Preciso remarcar
-                        </button>
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <p className="t-title2">Ainda não foi marcada</p>
-                    <p className="p-det">A recepção entra em contato para combinar o dia. Assim que marcar, a consulta aparece aqui e você confirma com um toque.</p>
-                  </>
-                )}
-              </div>
-            </section>
-
-            {/* ---- Evolução ---- */}
-            <section id="evolucao" className="p-sec p-anim" aria-labelledby="t-evolucao">
-              <span className="t-sec" id="t-evolucao">Sua evolução</span>
-              <div className="p-card">
-                {evolucao ? (
-                  <>
-                    <div className="p-metrica">
-                      <div>
-                        <p className="t-foot t-2">hoje · {diaMes(evolucao.ultima.dia)}</p>
-                        <p className="p-num">
-                          {mostrandoGordura ? fmt1(evolucao.ultima.gorduraPct ?? 0) : fmt1(evolucao.ultima.pesoKg)}
-                          <small>{mostrandoGordura ? "%" : "kg"}</small>
-                        </p>
-                      </div>
-                      {deltaEmFoco !== null && evolucao.pontos.length > 1 ? (
-                        <span className={`p-pill ${deltaEmFoco < 0 ? "ok" : deltaEmFoco > 0 ? "warn" : ""}`}>
-                          {sinal(deltaEmFoco)}
-                          {fmt1(Math.abs(deltaEmFoco))} {mostrandoGordura ? "pts" : "kg"} desde {diaMes(evolucao.primeira.dia)}
-                        </span>
-                      ) : null}
-                    </div>
-                    {evolucao.pontos.length > 1 ? <CurvaEvolucao resumo={evolucao} metrica={metricaDaCurva} inicioDoPlano={verHistoricoTodo ? inicioDoPlano : null} /> : <CurvaEsperando />}
-                    {/* A gordura só vira curva quando existem duas medições com o
-                        percentual. Perder peso mantendo massa magra é o que
-                        motiva — e esse número vivia escondido num quadradinho. */}
-                    {antesDoPlano > 0 ? (
-                      <button type="button" className="p-btn plain" onClick={() => setVerHistoricoTodo((atual) => !atual)}>
-                        {verHistoricoTodo
-                          ? "Ver só o meu plano"
-                          : `Ver desde o começo (mais ${antesDoPlano} ${antesDoPlano === 1 ? "medição" : "medições"})`}
-                      </button>
-                    ) : null}
-                    {evolucao.pontos.length > 1 && temCurvaDeGordura(evolucao) ? (
-                      <div style={{ display: "flex", justifyContent: "center" }}>
-                        <InterruptorDoPortal
-                          ligado={mostrandoGordura}
-                          aoTrocar={(ligado) => setMetricaDaCurva(ligado ? "gordura" : "peso")}
-                          rotuloDesligado="Peso"
-                          rotuloLigado="Gordura"
-                          descricao="Trocar a curva entre peso e gordura corporal"
-                        />
-                      </div>
-                    ) : null}
-                    {/* A frase acompanha o que a curva está mostrando: falar de quilo
-                        embaixo de uma curva de gordura confunde quem está lendo. */}
-                    <p className="t-sub">{mostrandoGordura ? fraseDaGordura : evolucao.frase}</p>
-                    {evolucao.pontos.length > 1 && (evolucao.deltaGordura !== null || evolucao.deltaMassaMagra !== null || evolucao.deltaCintura !== null) ? (
-                      <div className="p-stats">
-                        <div className="p-stat">
-                          <span className="t-foot t-2">Gordura corporal</span>
-                          <b>{evolucao.deltaGordura === null ? "—" : `${sinal(evolucao.deltaGordura)}${fmt1(Math.abs(evolucao.deltaGordura))} pts`}</b>
-                        </div>
-                        <div className="p-stat">
-                          <span className="t-foot t-2">Massa magra</span>
-                          <b>{evolucao.deltaMassaMagra === null ? "—" : `${sinal(evolucao.deltaMassaMagra)}${fmt1(Math.abs(evolucao.deltaMassaMagra))} kg`}</b>
-                        </div>
-                        <div className="p-stat">
-                          <span className="t-foot t-2">Cintura</span>
-                          <b>{evolucao.deltaCintura === null ? "—" : `${sinal(evolucao.deltaCintura)}${fmt1(Math.abs(evolucao.deltaCintura))} cm`}</b>
-                        </div>
-                        <div className="p-stat">
-                          <span className="t-foot t-2">Acompanhando há</span>
-                          <b>{evolucao.semanas} sem.</b>
-                        </div>
-                      </div>
-                    ) : null}
-                    {evolucao.pontos.length > 1 ? <p className="t-foot t-3">Pontos cheios: medições da enfermagem. Vazados: pesagens que você mandou.</p> : <p className="t-foot t-3">Esta é a sua primeira medição. A linha aparece a partir da segunda.</p>}
-                  </>
-                ) : (
-                  <div className="p-vazio">
-                    <CurvaEsperando />
-                    <div className="p-vazio-texto">
-                      <p className="t-headline">Sua curva começa na primeira medição.</p>
-                      <p className="t-sub t-2">A enfermagem faz a bioimpedância na sua próxima visita. Até lá, a pesagem que você mandar já entra aqui.</p>
-                    </div>
-                    <button type="button" className="p-btn tonal" onClick={() => document.getElementById("pesagem")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                      <Scale size={18} aria-hidden="true" />
-                      Mandar a pesagem de hoje
-                    </button>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* ---- Plano ---- */}
-            {/* ---- O que a balança não mostra ----
-                Só existe quando há gordura ou massa magra nas duas pontas. É o
-                dado que a clínica mede e os outros não. */}
-            {balanca ? (
-              <section id="balanca" className="p-sec p-anim" aria-labelledby="t-balanca">
-                <span className="t-sec" id="t-balanca">{balanca.titulo}</span>
-                <div className={`p-card p-balanca ${balanca.tipo.toLowerCase()}`}>
-                  <p className="p-num p-balanca-num">{balanca.destaque}</p>
-                  <p className="t-body">{balanca.frase}</p>
-                </div>
-              </section>
-            ) : null}
-
-            {/* ---- Fotos de evolução (21/09/2026, passo 4) ---- */}
-            <FotosDeEvolucao sessao={sessao} previa={previa} fotosIniciais={dados.fotos ?? []} />
-
-            {/* ---- Cartão compartilhável (21/09/2026, passo 5) ---- */}
-            {opcoesDeCartao.length ? <CartaoDaConquista opcoes={opcoesDeCartao} /> : null}
-
-            {trilha && dados.plano ? (
-              <section id="plano" className="p-sec p-anim" aria-labelledby="t-plano">
-                <span className="t-sec" id="t-plano">{nomeDoPlano(dados.plano.canal)}</span>
-                <div className="p-card">
-                  <div>
-                    <p className="t-title3">Mês {trilha.mesAtual} de 6</p>
-                    <p className="t-foot t-2">desde {diaMes(dados.plano.inicio)} · {trilha.feitos} de {trilha.total} passos concluídos</p>
-                  </div>
-                  <div className="p-progress" role="img" aria-label={`Mês ${trilha.mesAtual} de 6`}>
-                    {trilha.passos.map((p) => (
-                      <i key={p.mes} className={p.estado === "feito" ? "on" : p.estado === "agora" ? "now" : ""} />
-                    ))}
-                  </div>
-                  <ul className="p-lista">
-                    {(trilha.passos.find((p) => p.estado === "agora") ?? trilha.passos[trilha.passos.length - 1]).marcos.map((m) => (
-                      <li key={m.key} className="p-row">
-                        <span className={`p-check ${m.done ? "on" : m.overdue ? "late" : ""}`}>{m.done ? <Check size={14} strokeWidth={3} /> : null}</span>
-                        <div className="p-cresce">
-                          <p className="t-body" style={{ fontWeight: 500 }}>{m.label}</p>
-                          <p className="t-foot t-2">{m.done ? "feito" : `previsto para ${diaMes(m.expectedDate)}`} · com {m.quem}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
-            ) : null}
-
-            {/* ---- Pesagem ---- */}
-            <section id="pesagem" className="p-sec p-anim" aria-labelledby="t-pesagem">
-              <span className="t-sec" id="t-pesagem">Pesagem da semana</span>
-              <div className="p-card">
-                <p className="t-headline">Quanto a balança marcou hoje?</p>
-                <form
-                  className="p-campo"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void mandarPesagem();
-                  }}
-                >
-                  <input inputMode="decimal" placeholder="82,4" value={peso} onChange={(e) => setPeso(e.target.value)} aria-label="Peso em quilos" />
-                  <span className="p-unid">kg</span>
-                  <button type="submit" className="p-btn mini" disabled={enviando || !peso.trim()}>
-                    {enviando ? "Enviando" : "Enviar"}
-                  </button>
-                </form>
-                <p className="t-foot t-2">
-                  {ultimaPesagemPropria ? `Sua última pesagem foi em ${diaCurto(ultimaPesagemPropria.dia)}: ${fmt1(ultimaPesagemPropria.pesoKg)} kg. ` : ""}
-                  Uma vez por semana, de manhã, antes do café. A enfermagem vê por aqui e entra em contato se precisar.
-                </p>
-              </div>
-            </section>
-
-            {/* ---- Avisos no celular (21/09/2026, passo 3) ----
-                O único aviso que existe é "sua bioimpedância chegou". Só faz
-                sentido no app instalado; no navegador comum a gente explica. */}
-            <AvisosNoCelular sessao={sessao} previa={previa} chavePublica={dados.pushPublicKey ?? null} />
-
-            {/* ---- O que fechou ---- */}
-            {financeiro && !dados.comandas.length ? (
-              <section id="fechou" className="p-sec p-anim" aria-labelledby="t-fin">
-                <span className="t-sec" id="t-fin">O que você fechou</span>
-                <div className="p-card">
-                  <p className="t-body t-2">{financeiro.frase}</p>
-                </div>
-              </section>
-            ) : financeiro ? (
-              <section id="fechou" className="p-sec p-anim" aria-labelledby="t-fin">
-                <span className="t-sec" id="t-fin">O que você fechou</span>
-                <div className="p-card">
-                  <div className="p-metrica">
-                    <div>
-                      <p className="t-foot t-2">já pago</p>
-                      <p className="p-num" style={{ fontSize: 34 }}>{brl(financeiro.pago)}</p>
-                    </div>
-                    {financeiro.emAberto > 0.005 ? <span className="p-pill">falta {brl(financeiro.emAberto)}</span> : <span className="p-pill ok"><Check size={14} strokeWidth={3} /> tudo em dia</span>}
-                  </div>
-                  {financeiro.contratado > 0 ? (
-                    <div className="p-track" aria-hidden="true">
-                      <i style={{ width: `${Math.min(100, Math.round((financeiro.pago / Math.max(financeiro.contratado, financeiro.pago + financeiro.emAberto)) * 100))}%` }} />
-                    </div>
-                  ) : null}
-                  <ul className="p-lista">
-                    {dados.comandas.map((c) => (
-                      <li key={c.id} className="p-row">
-                        <div className="p-cresce">
-                          <p className="t-body" style={{ fontWeight: 500 }}>{c.itens.map((i) => i.descricao).join(" + ")}</p>
-                          <p className="t-foot t-2">
-                            {diaCurto(c.dia)} · {c.pagamentos.map((p) => `${METODO[p.metodo] ?? p.metodo.toLowerCase()}${p.parcelas > 1 ? ` ${p.parcelas}x` : ""}`).join(" · ") || "sem pagamento registrado"}
-                          </p>
-                        </div>
-                        <span className="p-valor">{brl(c.total)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {financeiro.parcelas.length ? (
-                    <>
-                      <span className="t-sec" style={{ padding: 0 }}>Parcelas a vencer</span>
-                      <ul className="p-lista">
-                        {financeiro.parcelas.map((p) => (
-                          <li key={p.id} className="p-row">
-                            <div className="p-cresce">
-                              <p className="t-body">{diaCurto(p.prevista)}</p>
-                              {p.observacao ? <p className="t-foot t-2">{p.observacao}</p> : null}
-                            </div>
-                            <span className="p-valor">{brlCentavos(p.valor)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  ) : null}
-                </div>
-              </section>
-            ) : null}
-
-            {/* ---- Documentos ---- */}
-            <section id="documentos" className="p-sec p-anim" aria-labelledby="t-docs">
-              <span className="t-sec" id="t-docs">Documentos</span>
-              <div className="p-card">
-                {dados.documentos.length ? (
-                  <ul className="p-lista">
-                    {dados.documentos.map((d, i) => {
-                      const corpo = (
-                        <>
-                          <span className="p-check" style={{ borderColor: "transparent", background: "var(--p-tint-soft)", color: "var(--p-tint)" }}>
-                            <FileText size={14} />
-                          </span>
-                          <div className="p-cresce">
-                            <p className="t-body" style={{ fontWeight: 500 }}>{d.titulo}</p>
-                            <p className="t-foot t-2">{diaCurto(d.dia)}{d.url ? "" : " · peça o arquivo à recepção"}</p>
-                          </div>
-                          {d.url ? <ChevronRight size={18} className="p-chev" /> : null}
-                        </>
-                      );
-                      return d.url ? (
-                        <li key={`${d.tipo}-${i}`}>
-                          <a className="p-row" href={d.url} target="_blank" rel="noreferrer">
-                            {corpo}
-                          </a>
-                        </li>
-                      ) : (
-                        <li key={`${d.tipo}-${i}`} className="p-row">
-                          {corpo}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="t-body t-2">Seu contrato e as notas fiscais aparecem aqui conforme forem emitidos.</p>
-                )}
-              </div>
-            </section>
-
-            {/* SENHA PRÓPRIA (16/09/2026): enquanto o paciente não tem, o portal
-                oferece criar — é o que tira a dependência do link de 7 dias. */}
-            {!previa && dados.paciente.temSenha === false ? (
-              <section className="p-sec p-anim">
-                <span className="t-sec">Entrar quando quiser</span>
-                <div className="p-card">
-                  {senhaAberta ? (
-                    <form className="p-form" onSubmit={salvarSenha}>
-                      <label className="p-rotulo" htmlFor="novo-login">Seu e-mail ou celular</label>
-                      <input id="novo-login" className="p-entrada" type="text" inputMode="email" autoComplete="username" value={novoLogin} onChange={(e) => setNovoLogin(e.target.value)} placeholder="voce@email.com" />
-                      <label className="p-rotulo" htmlFor="nova-senha">Crie uma senha</label>
-                      <input id="nova-senha" className="p-entrada" type="password" autoComplete="new-password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="pelo menos 8 caracteres" />
-                      <div className="p-botoes">
-                        <button type="submit" className="p-btn full" disabled={salvandoSenha || !novoLogin.trim() || novaSenha.length < 8}>
-                          {salvandoSenha ? "Guardando" : "Guardar e usar daqui em diante"}
-                        </button>
-                        <button type="button" className="p-btn plain" onClick={() => setSenhaAberta(false)}>Agora não</button>
-                      </div>
-                    </form>
-                  ) : (
-                    <>
-                      <p className="t-headline">Crie uma senha e não dependa mais do link.</p>
-                      <p className="t-sub t-2">Com e-mail e senha você abre o seu espaço de qualquer aparelho, na hora que quiser.</p>
-                      <button type="button" className="p-btn tonal" onClick={() => setSenhaAberta(true)}>Criar minha senha</button>
-                    </>
-                  )}
-                </div>
-              </section>
-            ) : null}
-
-            <footer className="p-rodape p-anim">
-              {dados.consentimentos.some((c) => c.aceito) ? <p className="t-foot t-3">Você autorizou: {dados.consentimentos.filter((c) => c.aceito).map((c) => CONSENT_LABEL[c.tipo] ?? c.tipo.toLowerCase()).join(", ")}.</p> : null}
-              <p className="t-foot t-3">Seus dados ficam só com o Instituto Bratan e aparecem aqui só para você. Para mudar algo, fale com a recepção.</p>
-              <button type="button" className="p-btn plain" onClick={() => void sair()}>
-                Sair deste aparelho
-              </button>
-            </footer>
-
-            <nav className="p-dock" aria-label="Ir para a seção">
-              <GradientMenu items={secoesVisiveis} activeId={secaoAtiva} onSelect={irPara} />
-            </nav>
+            <div className="p-painel p-grid" key={aba} aria-label={rotuloDaAba}>
+              {aba === "hoje" ? painelHoje : aba === "corpo" ? painelCorpo : aba === "jornada" ? painelJornada : painelVoce}
+            </div>
           </>
         ) : null}
       </div>
+      {dados ? <BarraDeAbas aba={aba} pendencias={pendencias} aoEscolher={(a) => irPara(a)} /> : null}
+    </div>
+  );
+}
+
+// ---- peças da nova arquitetura ---------------------------------------------------
+
+function iniciais(nome: string) {
+  const partes = (nome || "").trim().split(/\s+/).filter(Boolean);
+  return ((partes[0]?.[0] ?? "") + (partes.length > 1 ? partes[partes.length - 1][0] : "")).toUpperCase() || "•";
+}
+
+/** Um cartão inteiro que se toca: semântica de botão sem colocar <p> dentro de <button>. */
+function Toque({ children, className, rotulo, aoTocar }: { children: ReactNode; className?: string; rotulo: string; aoTocar: () => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={rotulo}
+      className={`p-toque ${className ?? ""}`}
+      onClick={aoTocar}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          aoTocar();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * O ANEL DA JORNADA — a assinatura do portal (22/09/2026).
+ *
+ * Um segmento por mês do plano (seis no Programa de Acompanhamento). Meses
+ * vencidos cheios, o mês de agora preenchido na proporção dos dias que já
+ * passaram, os futuros só no trilho. É a grade do plano desenhada — não um
+ * anel genérico de porcentagem: o paciente vê a caminhada inteira e o ponto
+ * em que está, sem ler número nenhum. Os segmentos entram um a um.
+ */
+function AnelDaJornada({ segmentos, fracao, mesAtual }: { segmentos: PassoDaTrilha["estado"][]; fracao: number; mesAtual: number }) {
+  const n = Math.max(1, segmentos.length);
+  const r = 52;
+  const C = 2 * Math.PI * r;
+  const gap = n > 1 ? 12 : 0;
+  const L = (C - n * gap) / n;
+  return (
+    <div className="p-anel" role="img" aria-label={`Mês ${mesAtual} de ${n} do plano`}>
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        {segmentos.map((estado, i) => {
+          const offset = -(i * (L + gap));
+          const cheio = estado === "feito" ? L : estado === "agora" ? Math.max(L * fracao, 2) : 0;
+          return (
+            <g key={i} className="p-anel-seg" style={{ animationDelay: `${0.06 * i}s` }}>
+              <circle cx="60" cy="60" r={r} className="p-anel-trilho" strokeDasharray={`${L} ${C - L}`} strokeDashoffset={offset} />
+              {cheio > 0 ? <circle cx="60" cy="60" r={r} className={`p-anel-cheio ${estado}`} strokeDasharray={`${cheio} ${C - cheio}`} strokeDashoffset={offset} style={{ animationDelay: `${0.25 + 0.09 * i}s` }} /> : null}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="p-anel-centro">
+        <span className="p-anel-rotulo">mês</span>
+        <span className="p-anel-num">{mesAtual}</span>
+        <span className="p-anel-de">de {n}</span>
+      </div>
+    </div>
+  );
+}
+
+/** A tese do Hoje: onde a pessoa está na jornada, em um bloco só, na cor da casa. */
+function HeroDaJornada({ jornada, plano, proxima, evolucao, aoAbrir }: { jornada: ResumoDaJornada | null; plano: PortalDados["plano"]; proxima: ReturnType<typeof proximaConsulta>; evolucao: ReturnType<typeof resumoEvolucao>; aoAbrir: () => void }) {
+  if (jornada && plano) {
+    return (
+      <div className="p-hero">
+        <span className="p-hero-eyebrow">{nomeDoPlano(plano.canal)}</span>
+        <AnelDaJornada segmentos={jornada.segmentos} fracao={jornada.fracaoDoMes} mesAtual={jornada.mesAtual} />
+        <div className="p-hero-texto">
+          <p className="p-hero-titulo">{jornada.titulo}</p>
+          <p className="p-hero-sub">{jornada.passos}</p>
+          <p className="p-hero-sub p-hero-desde">desde {diaMes(plano.inicio)}</p>
+        </div>
+        <p className="p-hero-prox">{jornada.proximo}</p>
+        <button type="button" className="p-hero-link" onClick={aoAbrir}>
+          Ver a jornada <ChevronRight size={16} />
+        </button>
+      </div>
+    );
+  }
+  // Sem plano com passos (só consulta ou tratamento): o bloco fala do acompanhamento.
+  return (
+    <div className="p-hero p-hero-simples">
+      <div className="p-hero-texto">
+        <span className="p-hero-eyebrow">Acompanhamento no Instituto Bratan</span>
+        <p className="p-hero-titulo">{evolucao && evolucao.pontos.length > 1 ? `Acompanhando há ${evolucao.semanas} semanas` : "Seu espaço no Instituto"}</p>
+        <p className="p-hero-sub">{proxima ? `Sua próxima consulta ${proxima.quando}, ${proxima.titulo}${proxima.hora ? `, às ${proxima.hora}` : ""}.` : "Quando a recepção marcar a sua próxima consulta, ela aparece aqui e você confirma com um toque."}</p>
+        <button type="button" className="p-hero-link" onClick={aoAbrir}>
+          Ver a jornada <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A faísca: a curva do peso em miniatura, para o cartão "Seu corpo" de Hoje. */
+function Faisca({ valores }: { valores: number[] }) {
+  const w = 104;
+  const h = 40;
+  const min = Math.min(...valores);
+  const max = Math.max(...valores);
+  const faixa = max - min || 1;
+  const pontos = valores.map((v, i) => [2 + (i / Math.max(1, valores.length - 1)) * (w - 4), h - 4 - ((v - min) / faixa) * (h - 8)] as const);
+  const ultimo = pontos[pontos.length - 1];
+  return (
+    <svg className="p-faisca" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+      <polyline points={pontos.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")} />
+      <circle cx={ultimo[0]} cy={ultimo[1]} r="3.2" />
+    </svg>
+  );
+}
+
+function LinhaDoTempo({ eventos }: { eventos: EventoDaJornada[] }) {
+  return (
+    <ol className="p-tempo">
+      {eventos.map((e) => (
+        <li key={e.id} className={e.estado} data-tipo={e.tipo}>
+          <span className="p-tempo-marca" aria-hidden="true">{ICONE_DO_EVENTO[e.tipo]}</span>
+          <div className="p-tempo-corpo">
+            <span className="p-tempo-data">{e.quando}</span>
+            <p className="t-body" style={{ fontWeight: 500 }}>{e.titulo}</p>
+            {e.detalhe ? <p className="t-foot t-2">{e.detalhe}</p> : null}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** A barra de abas do celular: quatro itens com rótulo e um pino que desliza até o ativo. */
+function BarraDeAbas({ aba, pendencias, aoEscolher }: { aba: AbaDoPortal; pendencias: Partial<Record<AbaDoPortal, number>>; aoEscolher: (aba: AbaDoPortal) => void }) {
+  const indice = Math.max(0, ABAS.findIndex((a) => a.id === aba));
+  return (
+    <nav className="p-tabbar" aria-label="Abas do portal" style={{ "--i": indice } as CSSProperties}>
+      <span className="p-tabbar-pino" aria-hidden="true" />
+      {ABAS.map((a) => (
+        <button key={a.id} type="button" className="p-tab" aria-current={a.id === aba ? "page" : undefined} onClick={() => aoEscolher(a.id)}>
+          <span className="p-tab-icone">
+            {ICONE_DA_ABA[a.id]}
+            {pendencias[a.id] ? <i className="p-tab-ponto" aria-label="tem algo para você responder" /> : null}
+          </span>
+          <span className="p-tab-rotulo">{a.rotulo}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** No computador a barra vira um trilho à esquerda, com a marca em cima e a pessoa embaixo. */
+function TrilhoDeAbas({ aba, pendencias, nome, previa, aoEscolher, aoSair }: { aba: AbaDoPortal; pendencias: Partial<Record<AbaDoPortal, number>>; nome: string; previa: boolean; aoEscolher: (aba: AbaDoPortal) => void; aoSair: () => void }) {
+  return (
+    <aside className="p-rail" aria-label="Navegação do portal">
+      <div className="p-rail-marca">
+        <img src={bratanMark} alt="" />
+        <div>
+          <b>Meu Bratan</b>
+          <small>Instituto Bratan</small>
+        </div>
+      </div>
+      {previa ? <span className="p-demo" style={{ marginLeft: 10, justifySelf: "start" }}>dados de exemplo</span> : null}
+      <nav className="p-rail-nav" aria-label="Abas">
+        {ABAS.map((a) => (
+          <button key={a.id} type="button" className="p-rail-item" aria-current={a.id === aba ? "page" : undefined} onClick={() => aoEscolher(a.id)}>
+            {ICONE_DA_ABA[a.id]}
+            <span>{a.rotulo}</span>
+            {pendencias[a.id] ? <i className="p-tab-ponto" aria-label="tem algo para você responder" /> : null}
+          </button>
+        ))}
+      </nav>
+      <div className="p-rail-fim">
+        <div className="p-perfil">
+          <span className="p-avatar mini" aria-hidden="true">{iniciais(nome)}</span>
+          <div className="p-cresce">
+            <p className="t-sub" style={{ fontWeight: 600 }}>{nome}</p>
+            <button type="button" className="p-rail-sair" onClick={aoSair}>Sair deste aparelho</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/** Enquanto os dados não chegam: a forma da tela, respirando — não um relógio. */
+function Esqueleto() {
+  return (
+    <div className="p-esqueleto" data-anima="carregando" role="status" aria-label="Preparando as suas informações">
+      <div className="p-skel" style={{ width: 120, height: 14, marginTop: 18 }} />
+      <div className="p-skel" style={{ width: "62%", height: 34 }} />
+      <div className="p-skel" style={{ width: "88%", height: 16 }} />
+      <div className="p-skel p-skel-hero" />
+      <div className="p-skel" style={{ height: 150 }} />
+      <div className="p-skel" style={{ height: 120 }} />
     </div>
   );
 }
@@ -1249,7 +1517,7 @@ function VozDoDoutor({ sessao, previa, voz }: { sessao: string | null; previa: b
 
   return (
     <section id="doutor" className="p-sec p-anim" aria-labelledby="t-doutor">
-      <span className="t-sec" id="t-doutor">Uma palavra do Dr. Daniel · {voz.rotuloDaFase}</span>
+      <span className="t-sec" id="t-doutor">Uma palavra do Dr. Daniel</span>
       <div className="p-card p-voz">
         <div className="p-voz-cabeca">
           <span className="p-voz-avatar" aria-hidden="true">
@@ -1257,7 +1525,7 @@ function VozDoDoutor({ sessao, previa, voz }: { sessao: string | null; previa: b
           </span>
           <div>
             <p className="t-title3">{voz.titulo}</p>
-            <p className="t-foot t-2">{ouvida ? "Você já ouviu esta mensagem" : voz.urlAudio ? "Gravada para quem está nesta fase do plano" : "Mensagem para quem está nesta fase do plano"}</p>
+            <p className="t-foot t-2">{voz.rotuloDaFase} · {ouvida ? "você já ouviu esta mensagem" : voz.urlAudio ? "gravada para quem está nesta fase do plano" : "para quem está nesta fase do plano"}</p>
           </div>
         </div>
         {voz.urlAudio ? (

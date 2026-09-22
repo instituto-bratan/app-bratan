@@ -12,7 +12,12 @@ export function dadosDemo(hojeISO: string): PortalDados {
   return {
     paciente: { nome: "Mariana Prado", primeiroNome: "Mariana", contactRef: "demo" },
     plano: { dealId: "demo-deal", canal: "PROGRAMA", inicio, fase: "CADENCIA_PROGRAMA", marcosFeitos: ["CHECK-1", "BIO-1", "CHECK-2", "BIO-2", "MEDICO-1", "CHECK-3", "BIO-3"], valorContratado: 8990, valorRecebido: 5995, closedAt: `${inicio}T15:00:00-03:00`, programPhaseEnteredAt: `${inicio}T15:00:00-03:00`, createdAt: `${inicio}T15:00:00-03:00`, updatedAt: `${hojeISO}T09:00:00-03:00` },
-    consultas: [{ id: "c1", em: `${soma(11)}T14:00:00-03:00`, profissional: "Dr. Daniel", tipo: "2ª consulta de acompanhamento", local: "Instituto Bratan · Itaim", status: "AGENDADA", origem: "MANUAL" }],
+    // As consultas que já aconteceram entram na linha do tempo da Jornada (22/09/2026).
+    consultas: [
+      { id: "c0", em: `${soma(-101)}T10:00:00-03:00`, profissional: "Dr. Daniel", tipo: "Primeira consulta", local: "Instituto Bratan · Itaim", status: "REALIZADA", origem: "MANUAL" },
+      { id: "c2", em: `${soma(-40)}T14:00:00-03:00`, profissional: "Dr. Daniel", tipo: "1ª consulta de acompanhamento", local: "Instituto Bratan · Itaim", status: "REALIZADA", origem: "MANUAL" },
+      { id: "c1", em: `${soma(11)}T14:00:00-03:00`, profissional: "Dr. Daniel", tipo: "2ª consulta de acompanhamento", local: "Instituto Bratan · Itaim", status: "AGENDADA", origem: "MANUAL" },
+    ],
     medicoes: [
       { id: "m1", dia: inicio, pesoKg: 92.4, gorduraPct: 34.1, massaMagraKg: 55.2, cinturaCm: 98, inbodyScore: 64, gorduraVisceral: 12, massaMuscularKg: 30.1, tmbKcal: 1562, origem: "ENFERMAGEM" },
       { id: "m2", dia: soma(-86), pesoKg: 91.6, gorduraPct: null, massaMagraKg: null, cinturaCm: null, origem: "PACIENTE" },
@@ -69,6 +74,10 @@ export function dadosDemoNovo(hojeISO: string): PortalDados {
     comandas: [],
     parcelasAbertas: [],
     documentos: [],
+    fotos: [],
+    // Quem acabou de entrar está no COMEÇO — a mensagem do meio do caminho (e o
+    // nome da Mariana) não cabem aqui (22/09/2026).
+    vozDoDoutor: { id: "demo-voz-comeco", fase: "COMECO", rotuloDaFase: "Começo", titulo: "Bem-vinda ao seu plano", texto: "Começar é a parte mais difícil, e você já fez. Nas primeiras semanas o corpo está se ajustando: a balança sobe e desce, e isso não quer dizer nada ainda. Não se pese todo dia. Vem na primeira consulta que a gente monta o caminho juntos.", urlAudio: null, duracaoS: null, ouvidaEm: null },
   };
 }
 
