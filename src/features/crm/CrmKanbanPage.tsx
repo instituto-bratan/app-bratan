@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload,
   AlertTriangle,
   ArrowRight,
@@ -31,7 +31,8 @@ import {
 import { formataValor, itensDaComanda, totalDosItensFechados, type ItemFechado } from "@/features/financeiro/catalogoPrecificacao";
 import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFechamentoCard";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
-import { createRemoteFinCashEntry, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, uploadRemoteComprovante } from "@/lib/remoteData";
+import { createRemoteFinCashEntry, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, salvarRemoteCpfDoContato, uploadRemoteComprovante } from "@/lib/remoteData";
+import { cpfDigitos, cpfValido } from "@/lib/cpf";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
 import {
@@ -638,6 +639,9 @@ function CrmKanbanPageConteudo() {
     staleTime: 60_000,
   });
   const fcTomador = { nome: fcPatient.name, cpf: fcCpfNaFicha.data?.cpf ? "na ficha" : "", email: fcEmailNota };
+  // CPF digitado na hora, quando a ficha não tem (pedido do Lucas, 22/09/2026).
+  const [fcCpfNota, setFcCpfNota] = useState("");
+  const queryClientKanban = useQueryClient();
   // O TIPO DO ITEM SEGUE O QUE FOI VENDIDO (21/09/2026). Nascia fixo em
   // "Tratamento", então Plano e Consulta Black caíam como tratamento na comanda
   // e na planilha do contador. O seletor continua na tela e continua mandando —
@@ -1430,6 +1434,18 @@ function CrmKanbanPageConteudo() {
     if (fcVaiEmitirNota && lancado?.saleId) {
       setFcEmitindo(true);
       try {
+        // O CPF digitado na hora vai nesta nota e, se der permissão, para a ficha.
+        // Sem permissão (quem fecha nem sempre cuida de Impostos & NF) a nota sai
+        // identificada mesmo assim — a função não guarda o número em lugar nenhum.
+        const cpfDigitado = cpfValido(fcCpfNota) ? cpfDigitos(fcCpfNota) : "";
+        if (cpfDigitado && !fcCpfNaFicha.data?.cpf) {
+          try {
+            await salvarRemoteCpfDoContato(refDoPaciente, cpfDigitado, pessoaAuth?.id ?? null);
+            void queryClientKanban.invalidateQueries({ queryKey: ["contato-cpf", refDoPaciente] });
+          } catch {
+            /* sem permissão para a ficha: o CPF vai só nesta nota */
+          }
+        }
         const emissao = await emitirNotasDoFechamento({
           saleRef: lancado.saleId,
           escolha: fcNota.escolha,
@@ -1437,7 +1453,7 @@ function CrmKanbanPageConteudo() {
           pacienteNome: fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
           // O CPF vem da ficha, no servidor: ele nunca passa por esta tela nem
           // fica gravado no app.
-          cpf: "",
+          cpf: cpfDigitado,
           email: fcEmailNota,
           solicitadoPor: pessoaAuth?.id ?? null,
           comandaGravada: lancado.comandaGravada,
@@ -1461,6 +1477,7 @@ function CrmKanbanPageConteudo() {
     setFechamentoOpen(false);
     setFcPatient({ ref: "", name: "" });
     setFcEmailNota("");
+    setFcCpfNota("");
     setFcChannels(emptyContactChannels);
     setFcSold("");
     setFcReceived("");
@@ -2728,6 +2745,8 @@ function CrmKanbanPageConteudo() {
                       nota={fcNota}
           tomador={fcTomador}
           onEmailChange={setFcEmailNota}
+          cpfRascunho={fcCpfNota}
+          onCpfChange={setFcCpfNota}
                       onNotaChange={setFcNota}
                       notaInstrucao={fcNotaInstrucao}
                       onNotaInstrucaoChange={setFcNotaInstrucao}
@@ -2795,6 +2814,8 @@ function CrmKanbanPageConteudo() {
                         nota={fcNota}
           tomador={fcTomador}
           onEmailChange={setFcEmailNota}
+          cpfRascunho={fcCpfNota}
+          onCpfChange={setFcCpfNota}
                       onNotaChange={setFcNota}
                       notaInstrucao={fcNotaInstrucao}
                         onNotaInstrucaoChange={setFcNotaInstrucao}

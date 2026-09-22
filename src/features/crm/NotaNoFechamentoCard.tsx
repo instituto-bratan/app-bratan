@@ -25,6 +25,7 @@ import { AlertTriangle, Check, FileText, Receipt } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { cpfEnquantoDigita, cpfValido } from "@/lib/cpf";
 import { moneyFin, parseFinAmount, type FinPaymentMethod } from "@/features/financeiro/financeiroData";
 import {
   economiaDaUnificada,
@@ -78,6 +79,8 @@ export function NotaNoFechamentoCard({
   ehSinal,
   tomador,
   onEmailChange,
+  cpfRascunho = "",
+  onCpfChange,
 }: {
   nota: NotaDoFechamento;
   onNotaChange: (nota: NotaDoFechamento) => void;
@@ -89,11 +92,20 @@ export function NotaNoFechamentoCard({
   tomador: { nome: string; cpf: string; email: string };
   /** 22/09/2026: a nota vai por e-mail ao paciente — este é o campo para acertar o endereço na hora. */
   onEmailChange?: (email: string) => void;
+  /**
+   * CPF NA HORA (22/09/2026, pedido do Lucas: "o CPF dele não tá cadastrado,
+   * coloca aí"). Só aparece quando a ficha não tem; o que for digitado vai
+   * nesta nota e é guardado na ficha por quem tiver permissão.
+   */
+  cpfRascunho?: string;
+  onCpfChange?: (cpf: string) => void;
 }) {
   const [mostrarTexto, setMostrarTexto] = useState(false);
   const plano = planoDeNotas({ escolha: nota.escolha, valorRecebido, divisao: nota.divisao, diaISO, parcelas });
   const economia = economiaDaUnificada(valorRecebido, nota.divisao);
-  const faltaNoTomador = pendenciasDoTomador(tomador);
+  const cpfDigitadoOk = cpfValido(cpfRascunho);
+  const faltaNoTomador = pendenciasDoTomador({ ...tomador, cpf: tomador.cpf || (cpfDigitadoOk ? "digitado" : "") });
+  const semCpfNaFicha = !tomador.cpf;
   const escolhas: EscolhaDaNota[] = ["UNIFICADA", "REPARTIDA", "SEM_NOTA"];
 
   return (
@@ -233,6 +245,34 @@ export function NotaNoFechamentoCard({
       {/* O E-MAIL É PARA ONDE A NOTA VAI (22/09/2026, pedido do Lucas). Vem da
           ficha quando existe; quem fecha confere ou digita aqui, e o cadastro
           do paciente ganha o e-mail junto. */}
+      {nota.escolha !== "SEM_NOTA" && !ehSinal && onCpfChange && semCpfNaFicha ? (
+        <div className="grid gap-1 rounded-md border border-amber-300/70 bg-amber-50/70 p-2.5">
+          <Label htmlFor="nota-cpf-paciente" className="flex items-center gap-1.5 text-xs text-amber-900">
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+            O CPF deste paciente não está cadastrado — coloque aqui para a nota sair no nome dele
+          </Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              id="nota-cpf-paciente"
+              value={cpfRascunho}
+              onChange={(event) => onCpfChange(cpfEnquantoDigita(event.target.value))}
+              placeholder="000.000.000-00"
+              inputMode="numeric"
+              autoComplete="off"
+              className="h-9 w-44 bg-white"
+              aria-label="CPF do paciente"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              {cpfRascunho && !cpfDigitadoOk
+                ? "Esse CPF não confere. Confira os números."
+                : cpfDigitadoOk
+                  ? "Vai nesta nota e fica guardado na ficha."
+                  : "Sem CPF a nota sai, mas o paciente perde o bilhete da Nota do Milhão."}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       {nota.escolha !== "SEM_NOTA" && !ehSinal && onEmailChange ? (
         <div className="grid gap-1">
           <Label htmlFor="nota-email-paciente" className="text-xs">

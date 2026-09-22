@@ -72,6 +72,8 @@ export function RecebimentoNoKanban({
   onNotaChange,
   tomador,
   onEmailChange,
+  cpfRascunho,
+  onCpfChange,
   notaInstrucao,
   onNotaInstrucaoChange,
   quandoNota,
@@ -111,6 +113,9 @@ export function RecebimentoNoKanban({
   tomador?: { nome: string; cpf: string; email: string };
   /** Deixa quem fecha acertar o e-mail para onde a nota vai. */
   onEmailChange?: (email: string) => void;
+  /** CPF digitado na hora, quando a ficha não tem. */
+  cpfRascunho?: string;
+  onCpfChange?: (cpf: string) => void;
   notaInstrucao: string;
   onNotaInstrucaoChange: (texto: string) => void;
   quandoNota: QuandoNota;
@@ -578,6 +583,8 @@ export function RecebimentoNoKanban({
         ehSinal={tipo === "SINAL_CONSULTA"}
         tomador={tomador ?? { nome: "", cpf: "", email: "" }}
         onEmailChange={onEmailChange}
+        cpfRascunho={cpfRascunho}
+        onCpfChange={onCpfChange}
       />
 
       <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
