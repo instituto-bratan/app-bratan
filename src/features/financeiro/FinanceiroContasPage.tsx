@@ -28,7 +28,10 @@ import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
 import { CaixaEntradaCard } from "./CaixaEntradaCard";
 import { NotasRecebidasCard } from "./NotasRecebidasCard";
 import { configIntegracao, integracaoLigada } from "@/lib/integracoes";
-import { buscarNotasRecebidas, ignorarNotaRecebida, listRemoteNotasRecebidas, urlDaNotaRecebida, vincularNotaRecebida, type NotaRecebida } from "@/lib/remote/notasRecebidas";
+import { buscarNotasRecebidas, bytesDaNotaRecebida, ignorarNotaRecebida, importarNfseSP, listRemoteNotasRecebidas, urlDaNotaRecebida, vincularNotaRecebida, type NotaRecebida } from "@/lib/remote/notasRecebidas";
+import { baixarZipDoMes } from "./notasRecebidasExport";
+import { lerLinhasDeCsv } from "@/lib/planilhaLeitor";
+import { lerExportacaoPrefeituraSP } from "../../../supabase/functions/_shared/notasRecebidas";
 import { confirmar, perguntar, toast } from "@/components/ui/avisos";
 import { configAtual } from "@/lib/configNegocio";
 import { precisaAprovacao } from "./filaFinanceira";
@@ -111,9 +114,30 @@ export function FinanceiroContasPage() {
     await queryClient.invalidateQueries({ queryKey: ["notas-recebidas"] });
   }
   async function notasRecebidasAbrir(nota: NotaRecebida) {
+    // NFS-e de São Paulo não tem arquivo aqui: abre no portal da prefeitura.
+    if (nota.urlExterna && !nota.storagePathPdf && !nota.storagePathXml) {
+      window.open(nota.urlExterna, "_blank", "noopener");
+      return;
+    }
     const caminho = nota.storagePathPdf ?? nota.storagePathXml;
     if (!caminho) return;
     window.open(await urlDaNotaRecebida(caminho), "_blank", "noopener");
+  }
+  // O PACOTE DO MÊS PARA A CONTABILIDADE (22/09/2026): PDFs + XMLs + índice em Excel.
+  async function notasRecebidasZip(mes: string, notas: NotaRecebida[]) {
+    const r = await baixarZipDoMes(notas, mes, financeiro.expenses.map((c) => ({ id: c.id, description: c.description })), bytesDaNotaRecebida);
+    return r.status === "CANCELADO" ? "Download cancelado." : `ZIP do mês ${mes.slice(5, 7)}/${mes.slice(0, 4)} salvo (${r.nome}). Mande para a contabilidade.`;
+  }
+  // As NFS-e tomadas em São Paulo: o CSV que o portal da prefeitura exporta.
+  async function notasRecebidasImportarCsv(arquivo: File) {
+    const texto = new TextDecoder("iso-8859-1").decode(await arquivo.arrayBuffer());
+    const lidas = lerExportacaoPrefeituraSP(lerLinhasDeCsv(texto));
+    if (lidas.erro) return lidas.erro;
+    if (!lidas.notas.length) return "O arquivo não tem notas.";
+    const r = await importarNfseSP(lidas.notas);
+    await queryClient.invalidateQueries({ queryKey: ["notas-recebidas"] });
+    await queryClient.invalidateQueries({ queryKey: ["fin-expense-notas"] });
+    return r.ok ? r.frase ?? "Importado." : r.error ?? "Não consegui importar.";
   }
   const readOnly = !canEditModule(pessoa, "fin-contas");
   const now = todayISO();
@@ -824,6 +848,8 @@ export function FinanceiroContasPage() {
             onVincular={notasRecebidasVincular}
             onIgnorar={notasRecebidasIgnorar}
             onAbrir={notasRecebidasAbrir}
+            onBaixarZip={notasRecebidasZip}
+            onImportarCsv={notasRecebidasImportarCsv}
           />
         ) : null}
 

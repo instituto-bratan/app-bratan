@@ -74,3 +74,36 @@ test("o resumo diz o que aconteceu, inclusive quando a Focus reclamou", () => {
   assert.equal(mod.resumoDaSincronizacao({ novas: 3, vinculadas: 2, pendentes: 1, erros: [] }), "3 notas novas · 2 casadas com a conta sozinhas · 1 esperando você escolher a conta");
   assert.match(mod.resumoDaSincronizacao({ novas: 0, vinculadas: 0, pendentes: 0, erros: ["NF-e: a Focus respondeu 403"] }), /Atenção: NF-e: a Focus respondeu 403/);
 });
+
+// ---- NFS-e tomadas em SP: o CSV da prefeitura (22/09/2026) ----
+const CAB = ["Tipo de Registro", "Nº NF-e", "Data Hora NFE", "Código de Verificação da NF-e", "Tipo de RPS", "Série do RPS", "Número do RPS", "Data de Emissão do RPS", "Inscrição Municipal do Prestador", "Indicador de CPF/CNPJ do Prestador", "CPF ou CNPJ do Prestador", "Razão Social do Prestador", "Situação da Nota Fiscal", "Valor dos Serviços", "Valor do ISS", "Código do Serviço Prestado na Nota Fiscal", "Discriminação dos Serviços"];
+const linha = (n, razao, valor, sit = "T") => ["2", n, "16/09/2026 12:13:00", "ABCD1234", "RPS", "", "", "", "1.234.567-8", "2", "34.675.631/0001-22", razao, sit, valor, "66,00", "17019", "HONORARIOS ADVOCATICIOS|SETEMBRO"];
+
+test("o CSV da prefeitura vira notas: número, prestador, valor em vírgula, data BR, link do portal", () => {
+  const r = mod.lerExportacaoPrefeituraSP([CAB, linha("00000123", "PALOVA AMISSES E ADVOGADOS ASSOCIADOS", "3.300,00"), ["9", "1", "", "", "", "", "", "", "", "", "", "", "", "3.300,00", "66,00", "", ""]]);
+  assert.equal(r.erro, "");
+  assert.equal(r.notas.length, 1, "o totalizador do fim é descartado");
+  assert.equal(r.ignoradas, 1);
+  const n = r.notas[0];
+  assert.equal(n.numero, "123");
+  assert.equal(n.cnpjPrestador, "34675631000122");
+  assert.equal(n.valorServicos, 3300);
+  assert.equal(n.valorIss, 66);
+  assert.equal(n.emitidaEm, "2026-09-16T12:13:00-03:00");
+  assert.equal(n.situacao, "autorizada");
+  assert.equal(n.discriminacao, "HONORARIOS ADVOCATICIOS\nSETEMBRO");
+  assert.equal(n.chave, "SP-34675631000122-123");
+  assert.equal(n.urlExterna, "https://nfe.prefeitura.sp.gov.br/nfe.aspx?ccm=12345678&nf=123&cod=ABCD1234");
+});
+
+test("nota cancelada no CSV vem como cancelada; cabeçalho estranho dá erro claro", () => {
+  const r = mod.lerExportacaoPrefeituraSP([CAB, linha("7", "X LTDA", "100,00", "C")]);
+  assert.equal(r.notas[0].situacao, "cancelada");
+  const e = mod.lerExportacaoPrefeituraSP([["a", "b"], ["1", "2"]]);
+  assert.match(e.erro, /Não reconheci o cabeçalho/);
+});
+
+test("nome do arquivo na pasta do mês: número, emitente e valor", () => {
+  const n = { chave: "35260938115624000127550010000123451000012345", tipo: "NFE", emitenteDocumento: "38115624000127", emitenteNome: "STIN PHARMA LTDA", valor: 2291.7, emitidaEm: "2026-09-09" };
+  assert.equal(mod.nomeDoArquivoRecebido(n, "pdf"), "NF 12345 - STIN PHARMA LTDA - R$ 2.291,70.pdf");
+});

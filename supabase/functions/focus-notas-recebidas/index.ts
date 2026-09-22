@@ -1,43 +1,49 @@
 // focus-notas-recebidas (22/09/2026) — o que os fornecedores emitem contra nós.
 //
-// Pedido do Lucas: "receber todas as notas fiscais contra nós também". A Focus
-// entrega duas listas no CNPJ da clínica:
+// Pedido do Lucas: "receber todas as notas fiscais contra nós também… eu tenho
+// que mandar para a contabilidade". A Focus entrega duas listas no CNPJ da
+// clínica, incrementais pela `versao` (cursor na configuração da integração):
 //   · NF-e (modelo 55, mercadoria): GET /v2/nfes_recebidas?cnpj=…&versao=…
-//     — exige `habilita_manifestacao` no cadastro da empresa na Focus;
 //   · NFS-e do padrão nacional (serviço): GET /v2/nfsens_recebidas?cnpj=…
-//     — exige `habilita_nfsen_recebidas_producao` + data_inicio_recebimento_nfsen.
-// As duas são incrementais pela `versao` (cursor guardado na configuração da
-// integração), voltam no máximo 100 por vez e dizem a versão máxima no
-// cabeçalho X-Max-Version.
+// A NFS-e da própria prefeitura de São Paulo não passa pela Focus: entra pela
+// ação `importar_nfse_sp`, com o arquivo que o portal da prefeitura exporta.
 //
-// O que a função faz com cada nota nova e autorizada: baixa o PDF (e o XML da
-// NF-e) para o bucket notas-fiscais-despesa, tenta casar com a conta paga
-// (valor + data + fornecedor, regras em _shared/notasRecebidas.ts) e, quando
-// não há dúvida, anexa sozinha — nasce uma fin_expense_nota igual à anexada à
-// mão, entra na mesma fila do SharePoint e a conta vira ANEXADA pelo gatilho
-// que já existe. Em dúvida, fica NOVA para o Lucas escolher no Contas a Pagar.
+// O QUE APRENDEMOS NO PRIMEIRO DIA (22/09), e que desenhou esta versão:
+// 1. A SEFAZ só libera o XML completo (e o DANFE) DEPOIS da manifestação de
+//    ciência, num ciclo posterior — a lista chega com `nfe_completa: false`
+//    para tudo. Então: primeiro ciência, depois espera, depois baixa.
+// 2. Cada nota nova dispara um webhook da Focus, e cada webhook chamava esta
+//    função inteira: 145 notas = 145 sincronizações ao mesmo tempo = 429 "máximo
+//    de 100 requisições por minuto". Agora há TRAVA (uma busca por vez, e o
+//    webhook/cron pula se outra rodou há menos de 90 s) e ORÇAMENTO de
+//    requisições por rodada (≤ 70): o que não cabe fica para a próxima.
+// 3. A fila do SharePoint recusava módulo de nota de fornecedor (constraint) —
+//    corrigido no banco. TODA nota recebida vai para a pasta do mês do contador
+//    (módulo NOTA_RECEBIDA), casada ou não. Casar com a conta é outra coisa.
 //
-// Na NF-e também registra a "ciência da operação" (manifestação mais leve, a
-// que destrava o XML completo), a menos que a configuração desligue.
-//
-// Quem chama: o botão "Buscar na Focus" do Contas a Pagar (quem cuida do
-// financeiro) ou o cron das 7h30 (com a chave anônima, como a rotina diária). A integração é a
-// mesma da emissão (`focus_nfse`): ligada = pode; segredo = o mesmo token.
+// Vincular não exige arquivo: a conta vira ANEXADA na hora e o arquivo entra
+// na fin_expense_nota quando a SEFAZ liberar.
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
 import { quemChama } from "../_shared/claude.ts";
 import { baseUrl, cabecalhoFocus, nomeDoTokenFocus } from "../_shared/focus.ts";
-import { candidatosDaNota, dadosDaChaveNfe, nomeDoArquivoNaPasta, numeroCurto, pastaDoMes, resumoDaSincronizacao, vinculoAutomatico, type ContaParaCasar, type NotaRecebidaBase } from "../_shared/notasRecebidas.ts";
+import { candidatosDaNota, dadosDaChaveNfe, nomeDoArquivoRecebido, numeroCurto, pastaDoMes, resumoDaSincronizacao, vinculoAutomatico, type ContaParaCasar, type NfseSpImportada, type NotaRecebidaBase, type TipoDeNotaRecebida } from "../_shared/notasRecebidas.ts";
 
-type Entrada = { acao?: "sincronizar" | "vincular" | "ignorar" | "reabrir"; chave?: string; expenseRef?: string };
+type Entrada = { acao?: "sincronizar" | "vincular" | "ignorar" | "reabrir" | "importar_nfse_sp"; chave?: string; expenseRef?: string; notas?: NfseSpImportada[] };
 
 const CARGOS = new Set(["gestor_financeiro", "ceo", "dr_daniel"]);
 const BUCKET = "notas-fiscais-despesa";
 const PASTA_SHAREPOINT = "NOTA FISCAL E COMPROVANTES/NOTAS FISCAIS RECEBIDAS";
+const ORCAMENTO_DE_REQUISICOES = 70; // a Focus corta em 100/min; o webhook e o cron também gastam
+const LIMITE_CIENCIAS = 30;
+const LIMITE_DOWNLOADS = 12; // cada nota = até 2 arquivos + 2 uploads
+const TRAVA_MINUTOS = 4;
+const DEBOUNCE_SEGUNDOS = 90;
 
 type LinhaFocus = Record<string, unknown>;
+type LinhaBanco = Record<string, unknown>;
 
 /** Baixa um arquivo da Focus. Ela responde 302 para um link assinado — e o link NÃO pode receber o nosso Authorization. */
-async function baixarDaFocus(url: string, config: Record<string, unknown>): Promise<{ bytes: Uint8Array; mime: string } | null> {
+async function baixarDaFocus(url: string, config: Record<string, unknown>): Promise<Uint8Array | null> {
   const primeira = await fetch(url, { headers: cabecalhoFocus(config), redirect: "manual" });
   let resposta = primeira;
   if (primeira.status >= 300 && primeira.status < 400) {
@@ -47,8 +53,7 @@ async function baixarDaFocus(url: string, config: Record<string, unknown>): Prom
   }
   if (!resposta.ok) return null;
   const bytes = new Uint8Array(await resposta.arrayBuffer());
-  if (!bytes.length) return null;
-  return { bytes, mime: resposta.headers.get("content-type")?.split(";")[0] || "application/octet-stream" };
+  return bytes.length ? bytes : null;
 }
 
 function notaBase(l: LinhaFocus, tipo: "NFE" | "NFSE"): NotaRecebidaBase {
@@ -57,25 +62,28 @@ function notaBase(l: LinhaFocus, tipo: "NFE" | "NFSE"): NotaRecebidaBase {
     : { chave: String(l.chave_nfse ?? ""), tipo, emitenteDocumento: String(l.documento_prestador ?? "").replace(/\D/g, ""), emitenteNome: String(l.nome_prestador ?? ""), valor: Number(l.valor_total ?? 0), emitidaEm: String(l.data_emissao ?? "") };
 }
 
+function baseDaLinha(n: LinhaBanco): NotaRecebidaBase & { numero: string | null } {
+  return { chave: String(n.chave), tipo: n.tipo as TipoDeNotaRecebida, emitenteDocumento: String(n.emitente_documento ?? ""), emitenteNome: String(n.emitente_nome ?? ""), valor: Number(n.valor ?? 0), emitidaEm: String(n.emitida_em ?? ""), numero: (n.numero as string | null) ?? null };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
   if (request.method !== "POST") return json({ error: "use POST" }, 405);
   const client = db();
 
-  // QUEM PEDE (22/09/2026, conferido no primeiro disparo). O cron do Supabase
-  // chama com a chave ANÔNIMA — o mesmo padrão da rotina diária, e o gateway já
-  // conferiu a assinatura dela. Sem usuário, a função só aceita `sincronizar`,
-  // que é idempotente e conservadora (casa sozinha só sem dúvida). Vincular,
-  // ignorar e reabrir exigem uma pessoa do financeiro logada.
+  // QUEM PEDE. O cron e os webhooks da Focus chegam com a chave anônima (o
+  // gateway já conferiu a assinatura) e sem usuário: só podem `sincronizar`,
+  // que é idempotente e conservadora. Vincular, ignorar, reabrir e importar
+  // exigem uma pessoa do financeiro logada.
   const entrada = await corpo<Entrada>(request);
   const acao = entrada.acao ?? "sincronizar";
   const pediu = await quemChama(client, request);
   const bearer = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   const ehServico = Boolean(bearer) && bearer === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
-  const ehCron = ehServico || (!pediu?.pessoaId && Boolean(bearer) && acao === "sincronizar");
-  if (!ehCron && !pediu?.pessoaId) return json({ ok: false, error: "Entre com a sua conta para buscar as notas." }, 401);
-  if (!ehCron && !CARGOS.has(pediu!.cargo)) return json({ ok: false, error: "O seu acesso não inclui as notas recebidas. Fale com a coordenação." }, 403);
-  const quem = pediu?.pessoaId ? pediu.nome || pediu.pessoaId : "cron";
+  const ehAutomatico = ehServico || (!pediu?.pessoaId && Boolean(bearer) && acao === "sincronizar");
+  if (!ehAutomatico && !pediu?.pessoaId) return json({ ok: false, error: "Entre com a sua conta para buscar as notas." }, 401);
+  if (!ehAutomatico && !CARGOS.has(pediu!.cargo)) return json({ ok: false, error: "O seu acesso não inclui as notas recebidas. Fale com a coordenação." }, 403);
+  const quem = pediu?.pessoaId ? pediu.nome || pediu.pessoaId : "automático";
 
   const integracao = await lerIntegracao(client, "focus_nfse");
   if (!integracao.ligada) return respostaDesligada("focus_nfse");
@@ -86,49 +94,67 @@ Deno.serve(async (request) => {
   if (!cnpj) return json({ ok: false, error: "Falta o CNPJ do prestador na configuração fiscal." }, 400);
   const base = baseUrl(config);
   const opcoes = (config.notasRecebidas as Record<string, unknown> | undefined) ?? {};
+  const agoraISO = () => new Date().toISOString();
 
-  // ---- vincular / ignorar / reabrir --------------------------------------------
+  async function salvarOpcoes(novas: Record<string, unknown>) {
+    const { data } = await client.from("integracao").select("config").eq("chave", "focus_nfse").maybeSingle();
+    const atual = (data?.config as Record<string, unknown>) ?? config;
+    const atuais = (atual.notasRecebidas as Record<string, unknown>) ?? {};
+    await client.from("integracao").update({ config: { ...atual, notasRecebidas: { ...atuais, ...novas } }, atualizado_em: agoraISO() }).eq("chave", "focus_nfse");
+  }
+
+  // ---- contas para casar (usadas por vincular automático e pela importação) -----
+  async function contasParaCasar(): Promise<ContaParaCasar[]> {
+    const desde = new Date(Date.now() - 150 * 86400000).toISOString().slice(0, 10);
+    const { data } = await client.from("fin_expenses").select("client_ref, description, supplier, amount, paid_at, due_date, nota_status").is("deleted_at", null).gte("due_date", desde).neq("nota_status", "ANEXADA");
+    return ((data ?? []) as LinhaBanco[]).map((c) => ({ id: String(c.client_ref), description: String(c.description ?? ""), supplier: String(c.supplier ?? ""), amount: Number(c.amount ?? 0), paidAt: (c.paid_at as string | null) ?? null, dueDate: String(c.due_date ?? ""), notaStatus: (c.nota_status as string | null) ?? null }));
+  }
+
+  // ---- vincular: a conta vira ANEXADA agora; o arquivo entra quando existir ------
   async function vincular(chave: string, expenseRef: string, motivo: string) {
     const { data: nota } = await client.from("nota_recebida").select("*").eq("chave", chave).maybeSingle();
     if (!nota) return { ok: false, error: "Nota não encontrada." };
     const { data: conta } = await client.from("fin_expenses").select("client_ref, description, nota_status").eq("client_ref", expenseRef).is("deleted_at", null).maybeSingle();
     if (!conta) return { ok: false, error: "Conta não encontrada." };
     if (conta.nota_status === "ANEXADA") return { ok: false, error: "Essa conta já tem nota anexada. Escolha outra ou apague a nota dela antes." };
-    const baseNota: NotaRecebidaBase = { chave, tipo: nota.tipo, emitenteDocumento: nota.emitente_documento, emitenteNome: nota.emitente_nome, valor: Number(nota.valor), emitidaEm: String(nota.emitida_em ?? "") };
-    const caminho = (nota.storage_path_pdf as string | null) ?? (nota.storage_path_xml as string | null);
-    if (!caminho) return { ok: false, error: "O arquivo desta nota ainda não foi baixado — busque de novo na Focus." };
-    const ehPdf = caminho.endsWith(".pdf");
+    const b = baseDaLinha(nota as LinhaBanco);
+    const caminho = (nota.storage_path_pdf as string | null) ?? (nota.storage_path_xml as string | null) ?? null;
+    const ehPdf = Boolean(caminho?.endsWith(".pdf"));
     const id = crypto.randomUUID();
-    const nomeNaPasta = nomeDoArquivoNaPasta(String(conta.description ?? ""), baseNota, ehPdf ? "pdf" : "xml");
+    const rotuloTipo = b.tipo === "NFE" ? "NF-e" : b.tipo === "NFSE_SP" ? "NFS-e de São Paulo" : "NFS-e";
     const { error: erroNota } = await client.from("fin_expense_nota").insert({
       client_ref: `nf-desp-${id}`,
       expense_ref: expenseRef,
-      storage_bucket: BUCKET,
+      storage_bucket: caminho ? BUCKET : null,
       storage_path: caminho,
-      file_name: nomeNaPasta,
-      mime_type: ehPdf ? "application/pdf" : "application/xml",
+      file_name: caminho ? nomeDoArquivoRecebido(b, ehPdf ? "pdf" : "xml") : `${rotuloTipo} ${numeroCurto(b)} — ${b.emitenteNome}`,
+      mime_type: caminho ? (ehPdf ? "application/pdf" : "application/xml") : null,
       file_size: null,
-      numero: numeroCurto(baseNota),
-      emitente: nota.emitente_nome,
-      valor: Number(nota.valor),
-      emitida_em: String(nota.emitida_em ?? "").slice(0, 10) || null,
-      observacao: `Recebida pela Focus (${nota.tipo === "NFE" ? "NF-e" : "NFS-e"} chave ${chave}) — ${motivo}.`,
+      numero: numeroCurto(b),
+      emitente: b.emitenteNome,
+      valor: b.valor,
+      emitida_em: b.emitidaEm.slice(0, 10) || null,
+      observacao: `${rotuloTipo} recebida (${b.tipo === "NFSE_SP" ? `portal da prefeitura, ${String(nota.url_externa ?? "")}` : `Focus, chave ${chave}`}) — ${motivo}.${caminho ? "" : " Arquivo entra quando a SEFAZ liberar o XML completo."}`,
       uploaded_by: pediu?.pessoaId ?? null,
     });
     if (erroNota) return { ok: false, error: `Não consegui anexar: ${erroNota.message}` };
-    const mes = pastaDoMes(baseNota.emitidaEm);
-    await client.from("sharepoint_dispatch_queue").insert({
-      module: "NOTA_FISCAL_DESPESA",
-      entity_id: id,
-      storage_bucket: BUCKET,
-      storage_path: caminho,
-      file_name: nomeNaPasta,
-      mime_type: ehPdf ? "application/pdf" : "application/xml",
-      target_folder: `${PASTA_SHAREPOINT}/${mes.slice(0, 4)}/${mes.slice(5, 7)}`,
-      created_by: pediu?.pessoaId ?? null,
-    });
-    await client.from("nota_recebida").update({ status: "VINCULADA", expense_ref: expenseRef, nota_ref: `nf-desp-${id}`, vinculo_motivo: motivo, vinculada_por: pediu?.pessoaId ?? null, vinculada_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq("chave", chave);
+    await client.from("nota_recebida").update({ status: "VINCULADA", expense_ref: expenseRef, nota_ref: `nf-desp-${id}`, vinculo_motivo: motivo, vinculada_por: pediu?.pessoaId ?? null, vinculada_em: agoraISO(), atualizado_em: agoraISO() }).eq("chave", chave);
     return { ok: true };
+  }
+
+  async function casarSozinhas(candidatas: LinhaBanco[], contas: ContaParaCasar[]) {
+    let vinculadas = 0;
+    for (const n of candidatas) {
+      const casa = vinculoAutomatico(candidatosDaNota(baseDaLinha(n), contas));
+      if (!casa) continue;
+      const r = await vincular(String(n.chave), casa.conta.id, `casada sozinha: ${casa.motivos.join(", ")}`);
+      if (r.ok) {
+        vinculadas += 1;
+        const usada = contas.find((c) => c.id === casa.conta.id);
+        if (usada) usada.notaStatus = "ANEXADA";
+      }
+    }
+    return vinculadas;
   }
 
   if (acao === "vincular") {
@@ -139,125 +165,224 @@ Deno.serve(async (request) => {
   }
   if (acao === "ignorar" || acao === "reabrir") {
     if (!entrada.chave) return json({ ok: false, error: "Informe a nota." }, 400);
-    await client.from("nota_recebida").update({ status: acao === "ignorar" ? "IGNORADA" : "NOVA", vinculo_motivo: `${acao === "ignorar" ? "ignorada" : "reaberta"} por ${quem}`, atualizado_em: new Date().toISOString() }).eq("chave", entrada.chave);
+    await client.from("nota_recebida").update({ status: acao === "ignorar" ? "IGNORADA" : "NOVA", vinculo_motivo: `${acao === "ignorar" ? "ignorada" : "reaberta"} por ${quem}`, atualizado_em: agoraISO() }).eq("chave", entrada.chave);
     return json({ ok: true });
   }
 
-  // ---- sincronizar -------------------------------------------------------------
+  // ---- importar o arquivo da prefeitura de São Paulo (NFS-e tomadas) --------------
+  if (acao === "importar_nfse_sp") {
+    const notas = Array.isArray(entrada.notas) ? entrada.notas : [];
+    if (!notas.length) return json({ ok: false, error: "Nenhuma nota no arquivo." }, 400);
+    let novas = 0;
+    let jaExistiam = 0;
+    const paraCasar: LinhaBanco[] = [];
+    for (const n of notas.slice(0, 2000)) {
+      if (!n.chave || !n.numero) continue;
+      const cancelada = n.situacao !== "autorizada";
+      const linha = {
+        chave: n.chave,
+        tipo: "NFSE_SP",
+        numero: n.numero,
+        emitente_documento: n.cnpjPrestador,
+        emitente_nome: n.razaoPrestador,
+        cnpj_destinatario: cnpj,
+        valor: n.valorServicos,
+        emitida_em: n.emitidaEm || null,
+        situacao: n.situacao,
+        url_externa: n.urlExterna || null,
+        resumo: { codigoServico: n.codigoServico, valorIss: n.valorIss, ccmPrestador: n.ccmPrestador, codigoVerificacao: n.codigoVerificacao, discriminacao: String(n.discriminacao ?? "").slice(0, 1000), origem: "PORTAL_SP" },
+        atualizado_em: agoraISO(),
+      };
+      const { data: existente } = await client.from("nota_recebida").select("chave, status").eq("chave", n.chave).maybeSingle();
+      if (existente) {
+        jaExistiam += 1;
+        await client.from("nota_recebida").update({ ...linha, ...(cancelada && existente.status === "NOVA" ? { status: "CANCELADA" } : {}) }).eq("chave", n.chave);
+      } else {
+        const { error } = await client.from("nota_recebida").insert({ ...linha, status: cancelada ? "CANCELADA" : "NOVA" });
+        if (!error) {
+          novas += 1;
+          if (!cancelada) paraCasar.push({ ...linha });
+        }
+      }
+    }
+    const vinculadas = paraCasar.length ? await casarSozinhas(paraCasar, await contasParaCasar()) : 0;
+    const frase = `${novas} nota${novas === 1 ? "" : "s"} de serviço de São Paulo importada${novas === 1 ? "" : "s"}${jaExistiam ? ` (${jaExistiam} já estavam aqui)` : ""}${vinculadas ? ` · ${vinculadas} casada${vinculadas === 1 ? "" : "s"} com a conta sozinha${vinculadas === 1 ? "" : "s"}` : ""}.`;
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "ENTRADA", entidade: "nota_recebida", status: "OK", resumo: `Importação do portal da prefeitura (${quem}): ${frase}` });
+    return json({ ok: true, novas, jaExistiam, vinculadas, frase });
+  }
+
+  // ---- sincronizar ----------------------------------------------------------------
+  // Trava: uma busca por vez. Webhook e cron ainda respeitam um intervalo mínimo
+  // — a Focus avisa cada nota que chega, e 145 avisos não podem virar 145 buscas.
+  const agoraMs = Date.now();
+  const emAndamentoDesde = Date.parse(String(opcoes.emAndamentoDesde ?? "")) || 0;
+  if (emAndamentoDesde && agoraMs - emAndamentoDesde < TRAVA_MINUTOS * 60_000) {
+    return json({ ok: true, pulou: true, frase: "Outra busca está rodando agora. Em um minuto ela termina — o que não couber fica para a próxima." });
+  }
+  if (ehAutomatico) {
+    const ultima = Date.parse(String(opcoes.ultimaSincronizacao ?? "")) || 0;
+    if (ultima && agoraMs - ultima < DEBOUNCE_SEGUNDOS * 1000) return json({ ok: true, pulou: true, frase: "Buscou há menos de dois minutos; a próxima rodada pega o que chegou." });
+  }
+  await salvarOpcoes({ emAndamentoDesde: agoraISO() });
+
   const erros: string[] = [];
   const novas: NotaRecebidaBase[] = [];
   const cursores: Record<string, number> = { versaoNfe: Number(opcoes.versaoNfe ?? 0), versaoNfsen: Number(opcoes.versaoNfsen ?? 0) };
-
-  for (const tipo of ["NFE", "NFSE"] as const) {
-    if (tipo === "NFSE" && opcoes.sincronizarNfsen === false) continue;
-    const rota = tipo === "NFE" ? "nfes_recebidas" : "nfsens_recebidas";
-    const chaveCursor = tipo === "NFE" ? "versaoNfe" : "versaoNfsen";
-    let versao = cursores[chaveCursor];
-    for (let volta = 0; volta < 20; volta += 1) {
-      const resposta = await fetch(`${base}/v2/${rota}?cnpj=${cnpj}&versao=${versao}`, { headers: cabecalhoFocus(config) });
-      const dados = (await resposta.json().catch(() => null)) as LinhaFocus[] | LinhaFocus | null;
-      if (!resposta.ok) {
-        const msg = dados && !Array.isArray(dados) ? String(dados.mensagem ?? dados.codigo ?? JSON.stringify(dados)) : `HTTP ${resposta.status}`;
-        const dica = resposta.status === 403 || /habilit|permiss|nao_autorizad/i.test(msg)
-          ? tipo === "NFE" ? " — no cadastro da empresa na Focus falta ligar habilita_manifestacao" : " — no cadastro da empresa na Focus falta ligar habilita_nfsen_recebidas_producao (com data_inicio_recebimento_nfsen)"
-          : "";
-        erros.push(`${tipo === "NFE" ? "NF-e" : "NFS-e"}: a Focus respondeu ${resposta.status} ${msg}${dica}`);
-        break;
-      }
-      const linhas = Array.isArray(dados) ? dados : [];
-      for (const l of linhas) {
-        const b = notaBase(l, tipo);
-        if (!b.chave) continue;
-        const { data: existente } = await client.from("nota_recebida").select("chave, status, storage_path_pdf").eq("chave", b.chave).maybeSingle();
-        const situacao = String(l.situacao ?? "");
-        const cancelada = /cancelad|denegad/i.test(situacao);
-        const linha = {
-          chave: b.chave,
-          tipo,
-          emitente_documento: b.emitenteDocumento,
-          emitente_nome: b.emitenteNome,
-          cnpj_destinatario: String(l.cnpj_destinatario ?? cnpj),
-          valor: b.valor,
-          emitida_em: b.emitidaEm || null,
-          situacao,
-          manifestacao: (l.manifestacao_destinatario as string | null) ?? null,
-          versao: Number(l.versao ?? 0),
-          resumo: l,
-          atualizado_em: new Date().toISOString(),
-        };
-        if (existente) {
-          // Nota que já estava aqui: só acompanha situação/manifestação; cancelamento tira da fila.
-          await client.from("nota_recebida").update({ ...linha, ...(cancelada && existente.status === "NOVA" ? { status: "CANCELADA" } : {}) }).eq("chave", b.chave);
-        } else {
-          await client.from("nota_recebida").insert({ ...linha, status: cancelada ? "CANCELADA" : "NOVA" });
-          if (!cancelada) novas.push(b);
-        }
-        versao = Math.max(versao, Number(l.versao ?? 0));
-      }
-      const maxCabecalho = Number(resposta.headers.get("x-max-version") ?? 0);
-      if (maxCabecalho > versao) versao = maxCabecalho;
-      if (linhas.length < 100) break;
-    }
-    cursores[chaveCursor] = versao;
-  }
-
-  // ---- arquivos, ciência e casamento das novas ----------------------------------
+  let requisicoes = 0;
+  const cabe = (n = 1) => requisicoes + n <= ORCAMENTO_DE_REQUISICOES;
+  const gasta = (n = 1) => {
+    requisicoes += n;
+  };
+  let ciencias = 0;
+  let arquivos = 0;
   let vinculadas = 0;
-  const desde = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
-  const { data: contasBrutas } = await client
-    .from("fin_expenses")
-    .select("client_ref, description, supplier, amount, paid_at, due_date, nota_status")
-    .is("deleted_at", null)
-    .gte("due_date", desde)
-    .neq("nota_status", "ANEXADA");
-  const contas: ContaParaCasar[] = ((contasBrutas ?? []) as Record<string, unknown>[]).map((c) => ({ id: String(c.client_ref), description: String(c.description ?? ""), supplier: String(c.supplier ?? ""), amount: Number(c.amount ?? 0), paidAt: (c.paid_at as string | null) ?? null, dueDate: String(c.due_date ?? ""), notaStatus: (c.nota_status as string | null) ?? null }));
 
-  for (const b of novas) {
-    const mes = pastaDoMes(b.emitidaEm);
-    const rota = b.tipo === "NFE" ? "nfes_recebidas" : "nfsens_recebidas";
-    const atualiza: Record<string, unknown> = {};
-    const pdf = await baixarDaFocus(`${base}/v2/${rota}/${b.chave}.pdf`, config).catch(() => null);
-    if (pdf) {
-      const caminho = `recebidas/${mes}/${b.chave}.pdf`;
-      const { error } = await client.storage.from(BUCKET).upload(caminho, pdf.bytes, { contentType: "application/pdf", upsert: true });
-      if (!error) {
-        atualiza.storage_bucket = BUCKET;
-        atualiza.storage_path_pdf = caminho;
+  try {
+    // 1) Listar o que mudou desde o último cursor.
+    for (const tipo of ["NFE", "NFSE"] as const) {
+      if (tipo === "NFSE" && opcoes.sincronizarNfsen === false) continue;
+      const rota = tipo === "NFE" ? "nfes_recebidas" : "nfsens_recebidas";
+      const chaveCursor = tipo === "NFE" ? "versaoNfe" : "versaoNfsen";
+      let versao = cursores[chaveCursor];
+      for (let volta = 0; volta < 10 && cabe(); volta += 1) {
+        gasta();
+        const resposta = await fetch(`${base}/v2/${rota}?cnpj=${cnpj}&versao=${versao}`, { headers: cabecalhoFocus(config) });
+        const dados = (await resposta.json().catch(() => null)) as LinhaFocus[] | LinhaFocus | null;
+        if (!resposta.ok) {
+          const msg = dados && !Array.isArray(dados) ? String(dados.mensagem ?? dados.codigo ?? JSON.stringify(dados)) : `HTTP ${resposta.status}`;
+          const dica = resposta.status === 403 || /habilit|permiss|nao_autorizad/i.test(msg) ? (tipo === "NFE" ? " — no cadastro da empresa na Focus falta ligar habilita_manifestacao" : " — no cadastro da empresa na Focus falta ligar habilita_nfsen_recebidas_producao") : "";
+          erros.push(`${tipo === "NFE" ? "NF-e" : "NFS-e"}: a Focus respondeu ${resposta.status} ${msg}${dica}`);
+          break;
+        }
+        const linhas = Array.isArray(dados) ? dados : [];
+        for (const l of linhas) {
+          const b = notaBase(l, tipo);
+          if (!b.chave) continue;
+          const situacao = String(l.situacao ?? "");
+          const cancelada = /cancelad|denegad/i.test(situacao);
+          const linha = {
+            chave: b.chave,
+            tipo,
+            numero: tipo === "NFE" ? dadosDaChaveNfe(b.chave)?.numero ?? null : b.chave.replace(/\D/g, "").slice(-8),
+            emitente_documento: b.emitenteDocumento,
+            emitente_nome: b.emitenteNome,
+            cnpj_destinatario: String(l.cnpj_destinatario ?? cnpj),
+            valor: b.valor,
+            emitida_em: b.emitidaEm || null,
+            situacao,
+            manifestacao: (l.manifestacao_destinatario as string | null) ?? null,
+            versao: Number(l.versao ?? 0),
+            resumo: l,
+            atualizado_em: agoraISO(),
+          };
+          const { data: existente } = await client.from("nota_recebida").select("chave, status, manifestacao").eq("chave", b.chave).maybeSingle();
+          if (existente) {
+            // Não deixa a lista apagar a ciência que registramos e a Focus ainda não refletiu.
+            const manifestacao = linha.manifestacao ?? (existente.manifestacao as string | null) ?? null;
+            await client.from("nota_recebida").update({ ...linha, manifestacao, ...(cancelada && existente.status === "NOVA" ? { status: "CANCELADA" } : {}) }).eq("chave", b.chave);
+          } else {
+            await client.from("nota_recebida").insert({ ...linha, status: cancelada ? "CANCELADA" : "NOVA" });
+            if (!cancelada) novas.push(b);
+          }
+          versao = Math.max(versao, Number(l.versao ?? 0));
+        }
+        const maxCabecalho = Number(resposta.headers.get("x-max-version") ?? 0);
+        if (maxCabecalho > versao) versao = maxCabecalho;
+        if (linhas.length < 100) break;
+      }
+      cursores[chaveCursor] = versao;
+    }
+
+    // 2) Ciência da operação nas NF-e que ainda não têm: é a manifestação mais
+    //    leve ("sei que existe", não confirma a compra) e é o que faz a SEFAZ
+    //    liberar o XML completo. Em lotes, dentro do orçamento.
+    if (opcoes.cienciaAutomatica !== false) {
+      const { data: semCiencia } = await client.from("nota_recebida").select("chave").eq("tipo", "NFE").is("manifestacao", null).ilike("situacao", "autorizad%").order("emitida_em", { ascending: false }).limit(LIMITE_CIENCIAS);
+      for (const n of (semCiencia ?? []) as LinhaBanco[]) {
+        if (!cabe()) break;
+        gasta();
+        const r = await fetch(`${base}/v2/nfes_recebidas/${n.chave}/manifesto`, { method: "POST", headers: cabecalhoFocus(config), body: JSON.stringify({ tipo: "ciencia" }) }).catch(() => null);
+        if (r?.ok) {
+          ciencias += 1;
+          await client.from("nota_recebida").update({ manifestacao: "ciencia", atualizado_em: agoraISO() }).eq("chave", n.chave);
+        } else if (r) {
+          const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+          // Já manifestada por fora (ou no portal) — registra para não insistir.
+          if (/ja|já|existe|duplic/i.test(String(d.mensagem ?? ""))) await client.from("nota_recebida").update({ manifestacao: "ciencia", atualizado_em: agoraISO() }).eq("chave", n.chave);
+        }
       }
     }
-    if (b.tipo === "NFE") {
-      const xml = await baixarDaFocus(`${base}/v2/${rota}/${b.chave}.xml`, config).catch(() => null);
-      if (xml) {
-        const caminho = `recebidas/${mes}/${b.chave}.xml`;
-        const { error } = await client.storage.from(BUCKET).upload(caminho, xml.bytes, { contentType: "application/xml", upsert: true });
+
+    // 3) Arquivos: só quando a Focus já tem o XML completo (nfe_completa) — antes
+    //    disso o ".xml" é um resumo e o ".pdf" não existe. NFS-e nacional vem
+    //    completa de saída. Cada arquivo baixado vai para a pasta do mês no
+    //    SharePoint (é o que o contador recebe) e, se a nota já está casada, para
+    //    a fin_expense_nota dela.
+    const { data: semArquivo } = await client
+      .from("nota_recebida")
+      .select("*")
+      .in("status", ["NOVA", "VINCULADA"])
+      .ilike("situacao", "autorizad%")
+      .is("storage_path_pdf", null)
+      .or("tipo.eq.NFSE,and(tipo.eq.NFE,resumo->>nfe_completa.eq.true)")
+      .order("emitida_em", { ascending: false })
+      .limit(LIMITE_DOWNLOADS);
+    for (const n of (semArquivo ?? []) as LinhaBanco[]) {
+      if (!cabe(2)) break;
+      const b = baseDaLinha(n);
+      const rota = b.tipo === "NFE" ? "nfes_recebidas" : "nfsens_recebidas";
+      const mes = pastaDoMes(b.emitidaEm);
+      const pastaSp = `${PASTA_SHAREPOINT}/${mes.slice(0, 4)}/${mes.slice(5, 7)}`;
+      const atualiza: Record<string, unknown> = {};
+      const fila: Record<string, unknown>[] = [];
+      gasta();
+      const pdf = await baixarDaFocus(`${base}/v2/${rota}/${b.chave}.pdf`, config).catch(() => null);
+      if (pdf) {
+        const caminho = `recebidas/${mes}/${b.chave}.pdf`;
+        const { error } = await client.storage.from(BUCKET).upload(caminho, pdf, { contentType: "application/pdf", upsert: true });
         if (!error) {
           atualiza.storage_bucket = BUCKET;
-          atualiza.storage_path_xml = caminho;
+          atualiza.storage_path_pdf = caminho;
+          fila.push({ module: "NOTA_RECEBIDA", entity_id: b.chave, storage_bucket: BUCKET, storage_path: caminho, file_name: nomeDoArquivoRecebido(b, "pdf"), mime_type: "application/pdf", target_folder: pastaSp });
         }
       }
-      // Ciência da operação: "sei que essa nota existe". É a manifestação mais
-      // leve — não confirma a compra — e é o que destrava o XML completo.
-      if (opcoes.cienciaAutomatica !== false) {
-        const r = await fetch(`${base}/v2/nfes_recebidas/${b.chave}/manifesto`, { method: "POST", headers: cabecalhoFocus(config), body: JSON.stringify({ tipo: "ciencia" }) }).catch(() => null);
-        if (r?.ok) atualiza.manifestacao = "ciencia";
+      if (b.tipo === "NFE") {
+        gasta();
+        const xml = await baixarDaFocus(`${base}/v2/${rota}/${b.chave}.xml`, config).catch(() => null);
+        if (xml) {
+          const caminho = `recebidas/${mes}/${b.chave}.xml`;
+          const { error } = await client.storage.from(BUCKET).upload(caminho, xml, { contentType: "application/xml", upsert: true });
+          if (!error) {
+            atualiza.storage_bucket = BUCKET;
+            atualiza.storage_path_xml = caminho;
+            fila.push({ module: "NOTA_RECEBIDA", entity_id: b.chave, storage_bucket: BUCKET, storage_path: caminho, file_name: nomeDoArquivoRecebido(b, "xml"), mime_type: "application/xml", target_folder: pastaSp });
+          }
+        }
+      }
+      if (!Object.keys(atualiza).length) continue;
+      arquivos += fila.length;
+      const { error: erroFila } = await client.from("sharepoint_dispatch_queue").insert(fila);
+      if (erroFila) erros.push(`SharePoint: ${erroFila.message}`);
+      else atualiza.sharepoint_enviado_em = agoraISO();
+      await client.from("nota_recebida").update({ ...atualiza, atualizado_em: agoraISO() }).eq("chave", b.chave);
+      // Nota já casada com uma conta: o arquivo entra nela agora.
+      if (n.nota_ref && atualiza.storage_path_pdf) {
+        await client.from("fin_expense_nota").update({ storage_bucket: BUCKET, storage_path: atualiza.storage_path_pdf, file_name: nomeDoArquivoRecebido(b, "pdf"), mime_type: "application/pdf", updated_at: agoraISO() }).eq("client_ref", String(n.nota_ref));
       }
     }
-    if (Object.keys(atualiza).length) await client.from("nota_recebida").update({ ...atualiza, atualizado_em: new Date().toISOString() }).eq("chave", b.chave);
 
-    const casa = vinculoAutomatico(candidatosDaNota(b, contas));
-    if (casa && (atualiza.storage_path_pdf || atualiza.storage_path_xml)) {
-      const r = await vincular(b.chave, casa.conta.id, `casada sozinha: ${casa.motivos.join(", ")}`);
-      if (r.ok) {
-        vinculadas += 1;
-        const usada = contas.find((c) => c.id === casa.conta.id);
-        if (usada) usada.notaStatus = "ANEXADA";
-      }
-    }
+    // 4) Casar sozinha o que não tem dúvida — arquivo não é pré-requisito.
+    const { data: novasSemDono } = await client.from("nota_recebida").select("*").eq("status", "NOVA").ilike("situacao", "autorizad%").order("emitida_em", { ascending: false }).limit(300);
+    vinculadas = await casarSozinhas((novasSemDono ?? []) as LinhaBanco[], await contasParaCasar());
+  } catch (falha) {
+    erros.push(`Falha inesperada: ${String((falha as Error)?.message ?? falha).slice(0, 200)}`);
   }
 
   const { count: pendentes } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("status", "NOVA");
-  const resumo = { novas: novas.length, vinculadas, pendentes: Number(pendentes ?? 0), erros };
-  await client.from("integracao").update({ config: { ...config, notasRecebidas: { ...opcoes, ...cursores, ultimaSincronizacao: new Date().toISOString(), ultimoResumo: resumoDaSincronizacao(resumo) } }, atualizado_em: new Date().toISOString() }).eq("chave", "focus_nfse");
-  await registrarEvento(client, { chave: "focus_nfse", direcao: "ENTRADA", entidade: "nota_recebida", status: erros.length ? "PARCIAL" : "OK", resumo: `Notas recebidas (${quem}): ${resumoDaSincronizacao(resumo)}` });
-  return json({ ok: erros.length === 0, ...resumo, frase: resumoDaSincronizacao(resumo), dadosDaPrimeira: novas[0] ? dadosDaChaveNfe(novas[0].chave) : null });
+  const { count: aguardandoSefaz } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("tipo", "NFE").in("status", ["NOVA", "VINCULADA"]).ilike("situacao", "autorizad%").is("storage_path_pdf", null);
+  const resumo = { novas: novas.length, vinculadas, pendentes: Number(pendentes ?? 0), erros, ciencias, arquivos, aguardandoSefaz: Number(aguardandoSefaz ?? 0) };
+  const frase = resumoDaSincronizacao(resumo);
+  await salvarOpcoes({ ...cursores, emAndamentoDesde: null, ultimaSincronizacao: agoraISO(), ultimoResumo: frase, requisicoesNaUltima: requisicoes });
+  await registrarEvento(client, { chave: "focus_nfse", direcao: "ENTRADA", entidade: "nota_recebida", status: erros.length ? "PARCIAL" : "OK", resumo: `Notas recebidas (${quem}, ${requisicoes} req.): ${frase}`.slice(0, 500) });
+  return json({ ok: erros.length === 0, ...resumo, frase, requisicoes });
 });

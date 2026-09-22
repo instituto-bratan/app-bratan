@@ -1,6 +1,7 @@
 export type SharePointModule =
   | "COMPROVANTE"
   | "NOTA_FISCAL_DESPESA"
+  | "NOTA_RECEBIDA"
   | "ESTORNO"
   | "CRM_DOCUMENTO"
   | "POP"
@@ -17,6 +18,8 @@ export const sharePointFolderMap: Record<SharePointModule, string> = {
   // Nota do FORNECEDOR anexada à conta a pagar (12/08/2026). Vai para a mesma
   // biblioteca do comprovante, em subpasta própria com ano/mês.
   NOTA_FISCAL_DESPESA: "NOTA FISCAL E COMPROVANTES/NOTAS FISCAIS RECEBIDAS",
+  // Toda nota emitida contra o Instituto (22/09/2026), casada ou não — é o que o contador recebe.
+  NOTA_RECEBIDA: "NOTA FISCAL E COMPROVANTES/NOTAS FISCAIS RECEBIDAS",
   ESTORNO: "NOTA FISCAL E COMPROVANTES/ESTORNOS",
   CRM_DOCUMENTO: "CRM - Documentos",
   POP: "POPs",
@@ -24,7 +27,7 @@ export const sharePointFolderMap: Record<SharePointModule, string> = {
   OUTRO: "APP BRATAN - Outros",
 };
 
-const monthlyModules: SharePointModule[] = ["COMPROVANTE", "NOTA_FISCAL_DESPESA", "ESTORNO"];
+const monthlyModules: SharePointModule[] = ["COMPROVANTE", "NOTA_FISCAL_DESPESA", "NOTA_RECEBIDA", "ESTORNO"];
 
 export function sharePointTargetFolder(module: SharePointModule, reference = new Date()) {
   const base = sharePointFolderMap[module] ?? sharePointFolderMap.OUTRO;

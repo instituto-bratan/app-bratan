@@ -77,6 +77,10 @@ export function NotaDaContaCell({
   });
 
   async function abrir(nota: FinExpenseNotaRecord) {
+    if (!nota.storagePath) {
+      setErro("O arquivo desta nota ainda não chegou da SEFAZ — a busca das notas recebidas baixa sozinha quando liberar.");
+      return;
+    }
     try {
       const url = await getRemoteExpenseNotaUrl(nota.storagePath);
       window.open(url, "_blank", "noopener,noreferrer");

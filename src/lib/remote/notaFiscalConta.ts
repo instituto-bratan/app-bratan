@@ -32,7 +32,8 @@ export async function listRemoteExpenseNotas(): Promise<FinExpenseNotaRecord[]> 
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
     clientRef: String(row.client_ref),
     expenseRef: String(row.expense_ref),
-    storagePath: String(row.storage_path),
+    // Nota casada antes do arquivo chegar da SEFAZ (22/09/2026): fica vazio até o XML completo baixar.
+    storagePath: row.storage_path ? String(row.storage_path) : "",
     fileName: String(row.file_name ?? ""),
     mimeType: String(row.mime_type ?? ""),
     numero: String(row.numero ?? ""),
