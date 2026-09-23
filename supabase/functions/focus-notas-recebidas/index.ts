@@ -35,8 +35,8 @@ const BUCKET = "notas-fiscais-despesa";
 const PASTA_SHAREPOINT = "NOTA FISCAL E COMPROVANTES/NOTAS FISCAIS RECEBIDAS";
 const ORCAMENTO_DE_REQUISICOES = 70; // a Focus corta em 100/min; o webhook e o cron também gastam
 const LIMITE_CIENCIAS = 30;
-const LIMITE_DOWNLOADS = 12; // cada nota = até 2 arquivos + 2 uploads
-const LIMITE_RECONFERENCIAS = 20; // NF-e presas relidas na Focus por volta (1 requisição cada)
+const LIMITE_DOWNLOADS = 20; // cada nota = até 2 arquivos + 2 uploads (subiu de 12 em 23/09 para escoar as 118 confirmadas)
+const LIMITE_RECONFERENCIAS = 15; // NF-e presas relidas na Focus por volta (1 requisição cada)
 const TRAVA_MINUTOS = 4;
 const DEBOUNCE_SEGUNDOS = 90;
 
@@ -249,6 +249,7 @@ Deno.serve(async (request) => {
   let reconferidas = 0;
   let completaramAgora = 0;
   const manifestoErros: string[] = [];
+  let confirmacoes = 0;
 
   try {
     // 1) Listar o que mudou desde o último cursor.
@@ -323,7 +324,7 @@ Deno.serve(async (request) => {
       .in("status", ["NOVA", "VINCULADA"])
       .ilike("situacao", "autorizad%")
       .is("storage_path_pdf", null)
-      .eq("manifestacao", "ciencia")
+      .in("manifestacao", ["ciencia", "confirmacao"])
       .lt("atualizado_em", umaHoraAtras)
       .order("emitida_em", { ascending: false })
       .limit(LIMITE_RECONFERENCIAS);
@@ -353,7 +354,7 @@ Deno.serve(async (request) => {
       // zera para pedir de novo (só se não estiver marcada como erro).
       const manifestacaoNaFocus = ((d.manifestacao_destinatario as string | null) ?? null) || null;
       const manifestacaoAtual = String(n.manifestacao ?? "");
-      const novaManifestacao = manifestacaoNaFocus ?? (manifestacaoAtual === "ciencia" && !completa ? null : n.manifestacao);
+      const novaManifestacao = manifestacaoNaFocus ?? ((manifestacaoAtual === "ciencia" || manifestacaoAtual === "confirmacao") && !completa ? null : n.manifestacao);
       await client
         .from("nota_recebida")
         .update({
@@ -369,11 +370,30 @@ Deno.serve(async (request) => {
     //    leve ("sei que existe", não confirma a compra) e é o que faz a SEFAZ
     //    liberar o XML completo. Em lotes, dentro do orçamento.
     if (opcoes.cienciaAutomatica !== false) {
-      const { data: semCiencia } = await client.from("nota_recebida").select("chave").eq("tipo", "NFE").is("manifestacao", null).ilike("situacao", "autorizad%").order("emitida_em", { ascending: false }).limit(LIMITE_CIENCIAS);
+      // CONFIRMAÇÃO DA OPERAÇÃO NAS NOTAS ANTIGAS (autorizado pelo Lucas em
+      // 23/09/2026). A SEFAZ só aceita "ciência" até 10 dias da emissão
+      // (rejeição 596); passado isso, o que libera o XML é a "confirmação da
+      // operação" (até 180 dias) — que declara que a mercadoria foi recebida.
+      // Para compras que chegaram de fato, é a verdade; e é o Lucas quem
+      // autorizou. Entram aqui as notas sem manifestação e as que a SEFAZ
+      // recusou por prazo (596).
+      const { data: semCiencia } = await client
+        .from("nota_recebida")
+        .select("chave, emitida_em, manifestacao, resumo")
+        .eq("tipo", "NFE")
+        .ilike("situacao", "autorizad%")
+        .is("storage_path_pdf", null)
+        .or("manifestacao.is.null,and(manifestacao.eq.erro,resumo->>manifesto_erro.ilike.*596*)")
+        .order("emitida_em", { ascending: false })
+        .limit(LIMITE_CIENCIAS);
       for (const n of (semCiencia ?? []) as LinhaBanco[]) {
         if (!cabe()) break;
+        const diasDaEmissao = Math.floor((Date.now() - (Date.parse(String(n.emitida_em ?? "")) || Date.now())) / 86_400_000);
+        const recusadaPorPrazo = String(n.manifestacao ?? "") === "erro";
+        const tipoManifesto = opcoes.confirmacaoAutomatica !== false && (diasDaEmissao > 10 || recusadaPorPrazo) ? "confirmacao" : "ciencia";
+        if (tipoManifesto === "ciencia" && recusadaPorPrazo) continue; // sem confirmação automática, não insiste na ciência recusada
         gasta();
-        const r = await fetch(`${base}/v2/nfes_recebidas/${n.chave}/manifesto`, { method: "POST", headers: cabecalhoFocus(config), body: JSON.stringify({ tipo: "ciencia" }) }).catch(() => null);
+        const r = await fetch(`${base}/v2/nfes_recebidas/${n.chave}/manifesto`, { method: "POST", headers: cabecalhoFocus(config), body: JSON.stringify({ tipo: tipoManifesto }) }).catch(() => null);
         if (!r) continue;
         const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
         // A RESPOSTA É SÍNCRONA E O QUE VALE É O CORPO (23/09/2026). Até aqui o
@@ -385,15 +405,16 @@ Deno.serve(async (request) => {
         const statusSefaz = String(d.status_sefaz ?? "");
         const registrou = r.ok && (statusDoEvento === "evento_registrado" || statusSefaz === "573" || /duplicidade|ja |já /i.test(String(d.mensagem_sefaz ?? d.mensagem ?? "")));
         if (registrou) {
-          ciencias += 1;
-          await client.from("nota_recebida").update({ manifestacao: "ciencia", atualizado_em: agoraISO() }).eq("chave", n.chave);
+          if (tipoManifesto === "ciencia") ciencias += 1;
+          else confirmacoes += 1;
+          await client.from("nota_recebida").update({ manifestacao: tipoManifesto, atualizado_em: agoraISO() }).eq("chave", n.chave);
         } else {
           const motivo = `${statusSefaz ? `${statusSefaz} ` : ""}${String(d.mensagem_sefaz ?? d.mensagem ?? d.codigo ?? `HTTP ${r.status}`)}`.slice(0, 200);
           manifestoErros.push(`${dadosDaChaveNfe(String(n.chave))?.numero ?? n.chave}: ${motivo}`);
           // Fica marcada como erro para não insistir a cada volta; a reconferência
           // e a tela podem zerar para tentar de novo.
-          const resumoAtual = ((await client.from("nota_recebida").select("resumo").eq("chave", n.chave).maybeSingle()).data?.resumo ?? {}) as Record<string, unknown>;
-          await client.from("nota_recebida").update({ manifestacao: `erro`, resumo: { ...resumoAtual, manifesto_erro: motivo, manifesto_erro_em: agoraISO() }, atualizado_em: agoraISO() }).eq("chave", n.chave);
+          const resumoAtual = (n.resumo ?? {}) as Record<string, unknown>;
+          await client.from("nota_recebida").update({ manifestacao: `erro`, resumo: { ...resumoAtual, manifesto_erro: `${tipoManifesto}: ${motivo}`, manifesto_erro_em: agoraISO() }, atualizado_em: agoraISO() }).eq("chave", n.chave);
         }
       }
     }
@@ -466,7 +487,7 @@ Deno.serve(async (request) => {
   const { count: pendentes } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("status", "NOVA");
   const { count: aguardandoSefaz } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("tipo", "NFE").in("status", ["NOVA", "VINCULADA"]).ilike("situacao", "autorizad%").is("storage_path_pdf", null);
   if (manifestoErros.length) erros.push(`SEFAZ recusou a ciência em ${manifestoErros.length}: ${manifestoErros.slice(0, 3).join(" | ")}${manifestoErros.length > 3 ? " …" : ""}`);
-  const resumo = { novas: novas.length, vinculadas, pendentes: Number(pendentes ?? 0), erros, ciencias, arquivos, aguardandoSefaz: Number(aguardandoSefaz ?? 0), reconferidas, completaramAgora };
+  const resumo = { novas: novas.length, vinculadas, pendentes: Number(pendentes ?? 0), erros, ciencias, arquivos, aguardandoSefaz: Number(aguardandoSefaz ?? 0), reconferidas, completaramAgora, confirmacoes };
   const frase = resumoDaSincronizacao(resumo);
   await salvarOpcoes({ ...cursores, emAndamentoDesde: null, ultimaSincronizacao: agoraISO(), ultimoResumo: frase, requisicoesNaUltima: requisicoes });
   await registrarEvento(client, { chave: "focus_nfse", direcao: "ENTRADA", entidade: "nota_recebida", status: erros.length ? "PARCIAL" : "OK", resumo: `Notas recebidas (${quem}, ${requisicoes} req.): ${frase}`.slice(0, 500) });
