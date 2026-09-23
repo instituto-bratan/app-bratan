@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, BellRing, CalendarDays, CheckCircle2, FileText, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -58,7 +58,16 @@ import {
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { ConferenciaFechamentoCard } from "./ConferenciaFechamentoCard";
 import { useFinanceiro } from "./useFinanceiro";
-import { confirmar } from "@/components/ui/avisos";
+import { confirmar, toast } from "@/components/ui/avisos";
+import { integracaoLigada } from "@/lib/integracoes";
+import { cpfDigitos, cpfValido } from "@/lib/cpf";
+import { invocarIntegracao, lerRemoteCpfDoContato, listRemoteNfseDasComandas, salvarRemoteCpfDoContato } from "@/lib/remoteData";
+import { updateContactChannels } from "@/features/crm/crmData";
+import { NotaNoFechamentoCard } from "@/features/crm/NotaNoFechamentoCard";
+import { emitirNotasDoFechamento } from "@/features/crm/emitirNotaDoFechamento";
+import { notaDoFechamentoVazia, planoDeNotas, resumoDaNota, travaDoFechamento, type NotaDoFechamento } from "@/features/crm/notaNoFechamento";
+import { NotaDaComandaDialog } from "./NotaDaComandaDialog";
+import { divisaoDosItens, ehSoSinal, estadoDaNota, parcelasDaComanda, quandoPadrao, valorFaturavel } from "./notaNaComandaDoDia";
 
 type DraftItem = { itemType: FinSaleItemType; amount: string; description: string };
 type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine
@@ -128,12 +137,56 @@ export function FinanceiroLancarDiaPage() {
   // instrução da NF sem ninguém perceber.
   const [notaInstrucao, setNotaInstrucao] = useState("");
   const [notaQuando, setNotaQuando] = useState<QuandoNota>("COM_A_CONSULTA");
+  // A NOTA SAI DAQUI TAMBÉM (23/09/2026). Pedido do Lucas: "se não emitiu no
+  // Kanban, quando for lançar na comanda diária vai emitir a nota". O cartão é
+  // o mesmo do fechamento; a divisão nasce dos itens; sinal de consulta não
+  // emite; e "Emitir: agora" é o padrão quando não é sinal.
+  const focusLigada = integracaoLigada("focus_nfse");
+  const [notaFiscal, setNotaFiscal] = useState<NotaDoFechamento>(notaDoFechamentoVazia);
+  const [emailNota, setEmailNota] = useState("");
+  const [cpfNota, setCpfNota] = useState("");
+  const [emitindoNota, setEmitindoNota] = useState(false);
+  const [notaDaComanda, setNotaDaComanda] = useState<FinSale | null>(null);
 
   const summary = useMemo(() => buildDailyCardSummary(financeiro.sales, date), [financeiro.sales, date]);
   const daySales = useMemo(
     () => financeiro.sales.filter((sale) => sale.saleDate === date),
     [financeiro.sales, date],
   );
+
+  const itensDaNota = useMemo(() => items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount) })).filter((item) => item.amount > 0), [items]);
+  const soSinal = ehSoSinal(itensDaNota);
+  const valorDaNota = valorFaturavel(itensDaNota);
+  const parcelasDaNota = useMemo(() => parcelasDaComanda(payments.map((p) => ({ method: p.method, installments: Math.max(1, Number(p.installments) || 1) }))), [payments]);
+  // A divisão acompanha os itens enquanto a pessoa digita; quem escolher "repartida" já encontra os valores certos.
+  useEffect(() => {
+    setNotaFiscal((atual) => ({ ...atual, divisao: divisaoDosItens(itensDaNota) }));
+  }, [itensDaNota]);
+  // Sinal espera a consulta; o resto emite agora — só troca quando o "só sinal" muda, para não atropelar quem escolheu à mão.
+  useEffect(() => {
+    if (editingSaleId) return;
+    setNotaQuando(quandoPadrao(itensDaNota));
+  }, [soSinal, editingSaleId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cpfNaFicha = useQuery({
+    queryKey: ["contato-cpf", patientRef],
+    queryFn: () => lerRemoteCpfDoContato(patientRef).catch(() => null),
+    enabled: Boolean(patientRef) && Boolean(session) && !isPreview && focusLigada,
+    staleTime: 60_000,
+  });
+  useEffect(() => {
+    setEmailNota(crmState.contacts.find((item) => item.id === patientRef)?.email ?? "");
+  }, [patientRef, crmState.contacts]);
+  const planoDaNota = planoDeNotas({ escolha: notaFiscal.escolha, valorRecebido: valorDaNota, divisao: notaFiscal.divisao, diaISO: date, parcelas: parcelasDaNota });
+  const emiteAoLancar = focusLigada && !editingSaleId && notaQuando === "AGORA" && !soSinal && valorDaNota > 0;
+  const travaDaNota = emiteAoLancar ? travaDoFechamento({ nota: notaFiscal, valorRecebido: valorDaNota, ehSinal: soSinal, plano: planoDaNota }) : "";
+  const vaiEmitirNota = emiteAoLancar && notaFiscal.escolha !== "SEM_NOTA" && planoDaNota.notas.length > 0;
+  // As notas já emitidas das comandas do dia: é o que diz "sem nota" ou "NF nº X" na lista.
+  const emissoesDoDia = useQuery({
+    queryKey: ["nfse-comandas-do-dia", date, daySales.map((sale) => sale.id).join("|")],
+    queryFn: () => listRemoteNfseDasComandas(daySales.map((sale) => sale.id)),
+    enabled: focusLigada && daySales.length > 0 && Boolean(session) && !isPreview,
+    staleTime: 30_000,
+  });
   const dayZeroMark = useMemo(
     () => financeiro.reconciliations.find((rec) => rec.day === date && rec.divergenceNote === "Dia sem atendimentos (zerado)"),
     [financeiro.reconciliations, date],
@@ -238,9 +291,10 @@ export function FinanceiroLancarDiaPage() {
     setFeedback(`Pagamento ajustado para ${moneyFin(itemsTotal)}, a soma dos itens. Confira e salve.`);
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
+    if (travaDaNota) return setFeedback(travaDaNota);
     const validItems: FinSaleItem[] = items
       .filter((item) => parseAmount(item.amount) > 0)
       .map((item) => ({ id: createFinId("fitem"), itemType: item.itemType, amount: parseAmount(item.amount), description: item.description.trim() }));
@@ -284,7 +338,7 @@ export function FinanceiroLancarDiaPage() {
       // O CAMINHO DAS PEDRAS NÃO PODE SE PERDER NA EDIÇÃO (25/08/2026): estes
       // campos nascem no fechamento do Kanban e eram TODOS zerados quando
       // alguém editava a comanda aqui.
-      notaInstrucao: notaInstrucao.trim(),
+      notaInstrucao: (editingSale ? [notaInstrucao.trim()] : [emiteAoLancar ? resumoDaNota(notaFiscal, planoDaNota) : "", notaInstrucao.trim()]).filter(Boolean).join(" · "),
       notaQuando,
       tipoAtendimento: editingSale?.tipoAtendimento ?? null,
       planoOuAvulsa: editingSale?.planoOuAvulsa ?? null,
@@ -392,15 +446,67 @@ export function FinanceiroLancarDiaPage() {
       financeiro.updateSale(sale);
       setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.${crmNote}`);
     } else {
-      financeiro.addSale(sale);
+      const comandaGravada = financeiro.addSale(sale);
       setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}.${crmNote}${lembreteNote} Pode adicionar o próximo paciente.`);
+      // A NOTA SAI AQUI (23/09/2026), depois da comanda existir — igual ao Kanban.
+      if (vaiEmitirNota && sale.crmContactRef) {
+        setEmitindoNota(true);
+        try {
+          const cpfDigitado = cpfValido(cpfNota) ? cpfDigitos(cpfNota) : "";
+          if (cpfDigitado && !cpfNaFicha.data?.cpf) {
+            try {
+              await salvarRemoteCpfDoContato(sale.crmContactRef, cpfDigitado, pessoa?.id ?? null);
+              void queryClient.invalidateQueries({ queryKey: ["contato-cpf", sale.crmContactRef] });
+            } catch {
+              /* sem permissão para a ficha: o CPF vai só nesta nota */
+            }
+          }
+          const emissao = await emitirNotasDoFechamento({
+            saleRef: sale.id,
+            escolha: notaFiscal.escolha,
+            notas: planoDaNota.notas,
+            pacienteNome: sale.patientName,
+            cpf: cpfDigitado,
+            email: emailNota,
+            solicitadoPor: pessoa?.id ?? null,
+            comandaGravada,
+            invocar: (slug, body) => invocarIntegracao(slug, body),
+          });
+          if (emissao.recado) {
+            toast(emissao.recado, { tom: emissao.tudoCerto ? "ok" : "atencao", duracaoMs: emissao.tudoCerto ? 6000 : 12000 });
+            setFeedback((atual) => `${atual} ${emissao.recado}`);
+          }
+          const emailLimpo = emailNota.trim().toLowerCase();
+          const contato = crmState.contacts.find((item) => item.id === sale.crmContactRef);
+          if (emailLimpo && contato && contato.email.trim().toLowerCase() !== emailLimpo) {
+            persistCrm((current) => updateContactChannels(current, sale.crmContactRef, { phone: contato.phone, email: emailLimpo }, pessoa?.id ?? "manual"));
+          }
+          void queryClient.invalidateQueries({ queryKey: ["nfse-comandas-do-dia"] });
+        } finally {
+          setEmitindoNota(false);
+        }
+      }
     }
     resetForm();
+    setNotaFiscal(notaDoFechamentoVazia);
+    setCpfNota("");
     setAbaterLembrete(true);
   }
 
   return (
     <AccessGate allowed={canLancarDia} label="Financeiro · Lançar dia" module="fin-lancar-dia">
+      {notaDaComanda ? (
+        <NotaDaComandaDialog
+          sale={notaDaComanda}
+          emailInicial={crmState.contacts.find((item) => item.id === notaDaComanda.crmContactRef)?.email ?? ""}
+          onFechar={() => setNotaDaComanda(null)}
+          onEmitida={() => void queryClient.invalidateQueries({ queryKey: ["nfse-comandas-do-dia"] })}
+          onEmailConfirmado={(email) => {
+            const contato = crmState.contacts.find((item) => item.id === notaDaComanda.crmContactRef);
+            if (contato) persistCrm((current) => updateContactChannels(current, contato.id, { phone: contato.phone, email }, pessoa?.id ?? "manual"));
+          }}
+        />
+      ) : null}
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <motion.section
           initial={{ opacity: 0, y: 12 }}
@@ -714,6 +820,30 @@ export function FinanceiroLancarDiaPage() {
                     <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Opcional" />
                   </div>
 
+                  {/* A NOTA FISCAL NA COMANDA DO DIA (23/09/2026): o mesmo cartão do
+                      fechamento do Kanban. Aparece quando a Focus está ligada, há
+                      valor a faturar e "Emitir" está em "agora". */}
+                  {focusLigada && !editingSaleId && valorDaNota > 0 && !soSinal ? (
+                    notaQuando === "AGORA" ? (
+                      <NotaNoFechamentoCard
+                        nota={notaFiscal}
+                        onNotaChange={setNotaFiscal}
+                        valorRecebido={valorDaNota}
+                        diaISO={date}
+                        parcelas={parcelasDaNota}
+                        ehSinal={soSinal}
+                        tomador={{ nome: patientName.trim(), cpf: cpfNaFicha.data?.cpf ? "na ficha" : "", email: emailNota }}
+                        onEmailChange={setEmailNota}
+                        cpfRascunho={cpfNota}
+                        onCpfChange={setCpfNota}
+                      />
+                    ) : (
+                      <p className="rounded-md border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-xs text-muted-foreground">
+                        A nota desta comanda não sai agora ({quandoNotaLabels[notaQuando].toLowerCase()}). Para emitir junto com o lançamento, escolha "Agora" em Emitir. Depois, ela fica com o botão "Emitir nota" na lista do dia.
+                      </p>
+                    )
+                  ) : null}
+
                   {/* MESMO CAMPO DO REGISTRAR FECHAMENTO (25/08/2026): o que se
                       escreve aqui é o que a pessoa lê na hora de emitir a nota,
                       e aparece na lista do dia com o selo NF. */}
@@ -777,9 +907,9 @@ export function FinanceiroLancarDiaPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">
-                    <LiquidButton type="submit" size="sm">
+                    <LiquidButton type="submit" size="sm" disabled={emitindoNota}>
                       {editingSaleId ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-                      {editingSaleId ? "Salvar alterações" : "Lançar e adicionar próximo paciente"}
+                      {emitindoNota ? "Emitindo a nota na prefeitura…" : editingSaleId ? "Salvar alterações" : vaiEmitirNota ? "Lançar e emitir a nota" : "Lançar e adicionar próximo paciente"}
                     </LiquidButton>
                     {editingSaleId ? (
                       <Button type="button" variant="ghost" size="sm" onClick={() => { resetForm(); setFeedback(""); }}>
@@ -837,6 +967,22 @@ export function FinanceiroLancarDiaPage() {
                             ) : null}
                           </p>
                         ) : null}
+                        {/* EM QUE PÉ ESTÁ A NOTA (23/09/2026): autorizada, enviada, sem nota (com o botão), sinal, ou "não emitir". */}
+                        {focusLigada && emissoesDoDia.data ? (() => {
+                          const estado = estadoDaNota(sale, emissoesDoDia.data.filter((e) => e.saleRef === sale.id));
+                          const pedeEmissao = estado.estado === "SEM_NOTA" || estado.estado === "ERRO";
+                          return (
+                            <p className={cn("mt-1 inline-flex flex-wrap items-center gap-1.5 text-xs", estado.estado === "AUTORIZADA" ? "font-semibold text-brand-musgo" : pedeEmissao ? "font-semibold text-amber-700" : "text-muted-foreground")}>
+                              {estado.estado === "AUTORIZADA" ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : pedeEmissao ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                              {estado.rotulo}
+                              {pedeEmissao && !isPreview ? (
+                                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setNotaDaComanda(sale)}>
+                                  <FileText className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir nota
+                                </Button>
+                              ) : null}
+                            </p>
+                          );
+                        })() : null}
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-brand-musgo">{moneyFin(saleTotal(sale))}</span>

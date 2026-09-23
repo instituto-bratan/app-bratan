@@ -57,7 +57,7 @@ test("o Lançar dia tem o MESMO campo do fechamento", () => {
   const fonte = ler("src/features/financeiro/FinanceiroLancarDiaPage.tsx");
   assert.ok(/Como a nota vai ser emitida/.test(fonte), "mesmo título");
   assert.ok(/setNotaInstrucao/.test(fonte) && /setNotaQuando/.test(fonte), "com estado próprio");
-  assert.ok(/notaInstrucao: notaInstrucao\.trim\(\)/.test(fonte), "e grava na comanda");
+  assert.ok(/notaInstrucao: (notaInstrucao\.trim\(\)|\(editingSale \? \[notaInstrucao\.trim\(\)\])/.test(fonte), "e grava na comanda (23/09: junto com o resumo da nota emitida na hora)");
 });
 
 test("editar a comanda NÃO apaga mais o caminho das pedras", () => {
