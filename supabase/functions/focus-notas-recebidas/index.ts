@@ -248,6 +248,7 @@ Deno.serve(async (request) => {
   let vinculadas = 0;
   let reconferidas = 0;
   let completaramAgora = 0;
+  const manifestoErros: string[] = [];
 
   try {
     // 1) Listar o que mudou desde o último cursor.
@@ -322,7 +323,7 @@ Deno.serve(async (request) => {
       .in("status", ["NOVA", "VINCULADA"])
       .ilike("situacao", "autorizad%")
       .is("storage_path_pdf", null)
-      .not("manifestacao", "is", null)
+      .eq("manifestacao", "ciencia")
       .lt("atualizado_em", umaHoraAtras)
       .order("emitida_em", { ascending: false })
       .limit(LIMITE_RECONFERENCIAS);
@@ -346,14 +347,19 @@ Deno.serve(async (request) => {
       // 23/09/2026: só valor, emitente, situação, versão e nfe_completa). Então a
       // ciência que registramos só é zerada quando a Focus DIZ, com o campo
       // presente e vazio, que não há manifestação — ausência do campo não é "não".
-      const trazManifestacao = Object.prototype.hasOwnProperty.call(d, "manifestacao_destinatario");
-      const manifestacaoNaFocus = trazManifestacao ? ((d.manifestacao_destinatario as string | null) || null) : undefined;
+      // Pela documentação, `manifestacao_destinatario` nulo = sem manifestação,
+      // e o JSON simplesmente omite o campo nulo. Então: a Focus diz "ciencia" →
+      // fica; diz nada e o app achava que tinha → a ciência não chegou à SEFAZ,
+      // zera para pedir de novo (só se não estiver marcada como erro).
+      const manifestacaoNaFocus = ((d.manifestacao_destinatario as string | null) ?? null) || null;
+      const manifestacaoAtual = String(n.manifestacao ?? "");
+      const novaManifestacao = manifestacaoNaFocus ?? (manifestacaoAtual === "ciencia" && !completa ? null : n.manifestacao);
       await client
         .from("nota_recebida")
         .update({
           resumo: { ...resumoAtual, ...d },
           versao: Number(d.versao ?? resumoAtual.versao ?? 0),
-          ...(manifestacaoNaFocus === undefined ? {} : { manifestacao: manifestacaoNaFocus ?? (completa ? n.manifestacao : null) }),
+          manifestacao: novaManifestacao,
           atualizado_em: agoraISO(),
         })
         .eq("chave", n.chave);
@@ -368,13 +374,26 @@ Deno.serve(async (request) => {
         if (!cabe()) break;
         gasta();
         const r = await fetch(`${base}/v2/nfes_recebidas/${n.chave}/manifesto`, { method: "POST", headers: cabecalhoFocus(config), body: JSON.stringify({ tipo: "ciencia" }) }).catch(() => null);
-        if (r?.ok) {
+        if (!r) continue;
+        const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+        // A RESPOSTA É SÍNCRONA E O QUE VALE É O CORPO (23/09/2026). Até aqui o
+        // app marcava "ciência" em qualquer HTTP 200 — e a Focus responde 200
+        // com `status: "erro"` quando a SEFAZ recusa. Foi assim que 17 notas de
+        // setembro ficaram 20 horas "com ciência" sem a SEFAZ saber de nada.
+        // Só é ciência com `evento_registrado` (ou 573, "já manifestada").
+        const statusDoEvento = String(d.status ?? "");
+        const statusSefaz = String(d.status_sefaz ?? "");
+        const registrou = r.ok && (statusDoEvento === "evento_registrado" || statusSefaz === "573" || /duplicidade|ja |já /i.test(String(d.mensagem_sefaz ?? d.mensagem ?? "")));
+        if (registrou) {
           ciencias += 1;
           await client.from("nota_recebida").update({ manifestacao: "ciencia", atualizado_em: agoraISO() }).eq("chave", n.chave);
-        } else if (r) {
-          const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-          // Já manifestada por fora (ou no portal) — registra para não insistir.
-          if (/ja|já|existe|duplic/i.test(String(d.mensagem ?? ""))) await client.from("nota_recebida").update({ manifestacao: "ciencia", atualizado_em: agoraISO() }).eq("chave", n.chave);
+        } else {
+          const motivo = `${statusSefaz ? `${statusSefaz} ` : ""}${String(d.mensagem_sefaz ?? d.mensagem ?? d.codigo ?? `HTTP ${r.status}`)}`.slice(0, 200);
+          manifestoErros.push(`${dadosDaChaveNfe(String(n.chave))?.numero ?? n.chave}: ${motivo}`);
+          // Fica marcada como erro para não insistir a cada volta; a reconferência
+          // e a tela podem zerar para tentar de novo.
+          const resumoAtual = ((await client.from("nota_recebida").select("resumo").eq("chave", n.chave).maybeSingle()).data?.resumo ?? {}) as Record<string, unknown>;
+          await client.from("nota_recebida").update({ manifestacao: `erro`, resumo: { ...resumoAtual, manifesto_erro: motivo, manifesto_erro_em: agoraISO() }, atualizado_em: agoraISO() }).eq("chave", n.chave);
         }
       }
     }
@@ -446,6 +465,7 @@ Deno.serve(async (request) => {
 
   const { count: pendentes } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("status", "NOVA");
   const { count: aguardandoSefaz } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("tipo", "NFE").in("status", ["NOVA", "VINCULADA"]).ilike("situacao", "autorizad%").is("storage_path_pdf", null);
+  if (manifestoErros.length) erros.push(`SEFAZ recusou a ciência em ${manifestoErros.length}: ${manifestoErros.slice(0, 3).join(" | ")}${manifestoErros.length > 3 ? " …" : ""}`);
   const resumo = { novas: novas.length, vinculadas, pendentes: Number(pendentes ?? 0), erros, ciencias, arquivos, aguardandoSefaz: Number(aguardandoSefaz ?? 0), reconferidas, completaramAgora };
   const frase = resumoDaSincronizacao(resumo);
   await salvarOpcoes({ ...cursores, emAndamentoDesde: null, ultimaSincronizacao: agoraISO(), ultimoResumo: frase, requisicoesNaUltima: requisicoes });
