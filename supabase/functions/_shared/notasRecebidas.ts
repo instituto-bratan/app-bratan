@@ -152,7 +152,7 @@ export function nomeDoArquivoNaPasta(descricaoDaConta: string, nota: NotaRecebid
 }
 
 /** A frase que volta para quem apertou "buscar". */
-export function resumoDaSincronizacao(r: { novas: number; vinculadas: number; pendentes: number; erros: string[]; ciencias?: number; arquivos?: number; aguardandoSefaz?: number }) {
+export function resumoDaSincronizacao(r: { novas: number; vinculadas: number; pendentes: number; erros: string[]; ciencias?: number; arquivos?: number; aguardandoSefaz?: number; reconferidas?: number; completaramAgora?: number }) {
   const partes: string[] = [];
   if (r.novas === 0 && !r.erros.length) partes.push("Nenhuma nota nova contra o Instituto.");
   if (r.novas > 0) partes.push(`${r.novas} nota${r.novas === 1 ? "" : "s"} nova${r.novas === 1 ? "" : "s"}`);
@@ -160,6 +160,7 @@ export function resumoDaSincronizacao(r: { novas: number; vinculadas: number; pe
   if (r.pendentes > 0) partes.push(`${r.pendentes} esperando você escolher a conta`);
   if (r.arquivos) partes.push(`${r.arquivos} arquivo${r.arquivos === 1 ? "" : "s"} baixado${r.arquivos === 1 ? "" : "s"} e mandado${r.arquivos === 1 ? "" : "s"} ao SharePoint`);
   if (r.ciencias) partes.push(`ciência registrada em ${r.ciencias}`);
+  if (r.reconferidas) partes.push(`${r.reconferidas} reconferida${r.reconferidas === 1 ? "" : "s"} na Focus${r.completaramAgora ? ` (${r.completaramAgora} já com XML completo)` : ""}`);
   if (r.aguardandoSefaz) partes.push(`${r.aguardandoSefaz} ainda sem o XML completo (a SEFAZ libera depois da ciência; a próxima busca pega)`);
   const texto = partes.join(" · ");
   return r.erros.length ? `${texto ? `${texto}. ` : ""}Atenção: ${r.erros.join(" | ")}` : texto;

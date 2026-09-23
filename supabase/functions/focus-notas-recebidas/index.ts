@@ -36,6 +36,7 @@ const PASTA_SHAREPOINT = "NOTA FISCAL E COMPROVANTES/NOTAS FISCAIS RECEBIDAS";
 const ORCAMENTO_DE_REQUISICOES = 70; // a Focus corta em 100/min; o webhook e o cron também gastam
 const LIMITE_CIENCIAS = 30;
 const LIMITE_DOWNLOADS = 12; // cada nota = até 2 arquivos + 2 uploads
+const LIMITE_RECONFERENCIAS = 20; // NF-e presas relidas na Focus por volta (1 requisição cada)
 const TRAVA_MINUTOS = 4;
 const DEBOUNCE_SEGUNDOS = 90;
 
@@ -225,17 +226,28 @@ Deno.serve(async (request) => {
   }
   await salvarOpcoes({ emAndamentoDesde: agoraISO() });
 
+  // A RODADA INTEIRA DENTRO DE UM TRY (23/09/2026). Em 23/09 uma volta morreu no
+  // meio e não deixou rastro: sem evento, com a trava presa por quatro minutos
+  // e a fila parada. Agora qualquer falha vira um evento ERRO legível, a trava
+  // solta na hora, e o relógio corta o trabalho antes do limite da plataforma
+  // (o que não couber fica para a próxima volta — nada se perde).
+  const inicioDaRodadaMs = Date.now();
+  const LIMITE_DA_RODADA_MS = 100_000;
+  const temTempo = () => Date.now() - inicioDaRodadaMs < LIMITE_DA_RODADA_MS;
+  try {
   const erros: string[] = [];
   const novas: NotaRecebidaBase[] = [];
   const cursores: Record<string, number> = { versaoNfe: Number(opcoes.versaoNfe ?? 0), versaoNfsen: Number(opcoes.versaoNfsen ?? 0) };
   let requisicoes = 0;
-  const cabe = (n = 1) => requisicoes + n <= ORCAMENTO_DE_REQUISICOES;
+  const cabe = (n = 1) => requisicoes + n <= ORCAMENTO_DE_REQUISICOES && temTempo();
   const gasta = (n = 1) => {
     requisicoes += n;
   };
   let ciencias = 0;
   let arquivos = 0;
   let vinculadas = 0;
+  let reconferidas = 0;
+  let completaramAgora = 0;
 
   try {
     // 1) Listar o que mudou desde o último cursor.
@@ -291,6 +303,60 @@ Deno.serve(async (request) => {
         if (linhas.length < 100) break;
       }
       cursores[chaveCursor] = versao;
+    }
+
+    // 1b) RECONFERIR NA FOCUS AS NF-e PRESAS (23/09/2026).
+    //
+    // O app só sabia que o XML ficou completo quando a Focus listava a nota de
+    // novo com uma `versao` maior. Em 23/09 havia 134 NF-e com ciência há mais
+    // de 20 horas e `nfe_completa: false` — e nada as buscava de novo. Aqui cada
+    // nota presa (ciência há mais de 1 h) é lida diretamente, uma requisição
+    // por nota, do mês mais recente para trás: o resumo é atualizado, e se a
+    // Focus disser que a ciência não está lá, ela volta a ser registrada logo
+    // abaixo. Dentro do orçamento; o que não couber fica para a próxima volta.
+    const umaHoraAtras = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: presas } = await client
+      .from("nota_recebida")
+      .select("chave, resumo, manifestacao")
+      .eq("tipo", "NFE")
+      .in("status", ["NOVA", "VINCULADA"])
+      .ilike("situacao", "autorizad%")
+      .is("storage_path_pdf", null)
+      .not("manifestacao", "is", null)
+      .lt("atualizado_em", umaHoraAtras)
+      .order("emitida_em", { ascending: false })
+      .limit(LIMITE_RECONFERENCIAS);
+    for (const n of (presas ?? []) as LinhaBanco[]) {
+      if (!cabe(1 + 4)) break; // deixa espaço para os downloads
+      const resumoAtual = (n.resumo ?? {}) as Record<string, unknown>;
+      if (String(resumoAtual.nfe_completa ?? "") === "true") continue;
+      gasta();
+      const r = await fetch(`${base}/v2/nfes_recebidas/${n.chave}`, { headers: cabecalhoFocus(config) }).catch(() => null);
+      if (!r) continue;
+      const d = (await r.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!r.ok || !d) {
+        // Mesmo sem resposta útil, marca a passagem para não reconferir a mesma nota a cada volta.
+        await client.from("nota_recebida").update({ atualizado_em: agoraISO() }).eq("chave", n.chave);
+        continue;
+      }
+      reconferidas += 1;
+      const completa = String(d.nfe_completa ?? "") === "true";
+      if (completa) completaramAgora += 1;
+      // A resposta da nota avulsa NÃO traz o campo da manifestação (conferido em
+      // 23/09/2026: só valor, emitente, situação, versão e nfe_completa). Então a
+      // ciência que registramos só é zerada quando a Focus DIZ, com o campo
+      // presente e vazio, que não há manifestação — ausência do campo não é "não".
+      const trazManifestacao = Object.prototype.hasOwnProperty.call(d, "manifestacao_destinatario");
+      const manifestacaoNaFocus = trazManifestacao ? ((d.manifestacao_destinatario as string | null) || null) : undefined;
+      await client
+        .from("nota_recebida")
+        .update({
+          resumo: { ...resumoAtual, ...d },
+          versao: Number(d.versao ?? resumoAtual.versao ?? 0),
+          ...(manifestacaoNaFocus === undefined ? {} : { manifestacao: manifestacaoNaFocus ?? (completa ? n.manifestacao : null) }),
+          atualizado_em: agoraISO(),
+        })
+        .eq("chave", n.chave);
     }
 
     // 2) Ciência da operação nas NF-e que ainda não têm: é a manifestação mais
@@ -380,9 +446,15 @@ Deno.serve(async (request) => {
 
   const { count: pendentes } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("status", "NOVA");
   const { count: aguardandoSefaz } = await client.from("nota_recebida").select("chave", { count: "exact", head: true }).eq("tipo", "NFE").in("status", ["NOVA", "VINCULADA"]).ilike("situacao", "autorizad%").is("storage_path_pdf", null);
-  const resumo = { novas: novas.length, vinculadas, pendentes: Number(pendentes ?? 0), erros, ciencias, arquivos, aguardandoSefaz: Number(aguardandoSefaz ?? 0) };
+  const resumo = { novas: novas.length, vinculadas, pendentes: Number(pendentes ?? 0), erros, ciencias, arquivos, aguardandoSefaz: Number(aguardandoSefaz ?? 0), reconferidas, completaramAgora };
   const frase = resumoDaSincronizacao(resumo);
   await salvarOpcoes({ ...cursores, emAndamentoDesde: null, ultimaSincronizacao: agoraISO(), ultimoResumo: frase, requisicoesNaUltima: requisicoes });
   await registrarEvento(client, { chave: "focus_nfse", direcao: "ENTRADA", entidade: "nota_recebida", status: erros.length ? "PARCIAL" : "OK", resumo: `Notas recebidas (${quem}, ${requisicoes} req.): ${frase}`.slice(0, 500) });
   return json({ ok: erros.length === 0, ...resumo, frase, requisicoes });
+  } catch (falha) {
+    const mensagem = (falha as Error)?.message ?? String(falha);
+    await salvarOpcoes({ emAndamentoDesde: null }).catch(() => undefined);
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "ENTRADA", entidade: "nota_recebida", status: "ERRO", resumo: `Notas recebidas (${quem}): a rodada parou no meio — ${mensagem}`.slice(0, 900) }).catch(() => undefined);
+    return json({ ok: false, error: `A busca parou no meio: ${mensagem}` }, 500);
+  }
 });
