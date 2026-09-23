@@ -11,6 +11,7 @@
 // Sem os segredos configurados, a função responde com configured:false e não altera a fila.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
+import { pastaDoArquivo } from "../_shared/pastaPorTipo.ts";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 const SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024;
@@ -189,6 +190,70 @@ Deno.serve(async (request) => {
       message:
         "Fila preservada. Configure MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET e SHAREPOINT_DRIVE_ID via supabase secrets set para ativar o envio.",
     });
+  }
+
+  // MOVER POR TIPO (pedido do Lucas, 23/09/2026): as notas que já estavam na
+  // pasta do mês vão para "PDF" ou "XML" dentro dela. Move o item no próprio
+  // SharePoint (PATCH parentReference), sem baixar nem subir de novo, e
+  // registra a pasta nova na fila. Só roda quando pedido no corpo.
+  const pedido = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  if (pedido.acao === "mover_por_tipo") {
+    const limite = Math.min(120, Math.max(1, Number(pedido.limite ?? 60)));
+    const { data: enviados, error: erroLista } = await supabase
+      .from("sharepoint_dispatch_queue")
+      .select("id, file_name, mime_type, target_folder, sharepoint_item_id, module")
+      .eq("status", "SENT")
+      .in("module", ["NOTA_RECEBIDA", "NOTA_EMITIDA", "NOTA_FISCAL_DESPESA"])
+      .not("sharepoint_item_id", "is", null)
+      .neq("sharepoint_item_id", "")
+      .not("target_folder", "like", "%/PDF")
+      .not("target_folder", "like", "%/XML")
+      .order("created_at", { ascending: true })
+      .limit(limite);
+    if (erroLista) return json({ error: erroLista.message }, 500);
+    if (!enviados?.length) return json({ configured: true, movidos: 0, message: "Nada para mover." });
+    let token: string;
+    try {
+      token = await getGraphToken(tenantId, clientId, clientSecret);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    }
+    const cache = new Set<string>();
+    const idsDePasta = new Map<string, string>();
+    let movidos = 0;
+    let pulados = 0;
+    const erros: string[] = [];
+    for (const linha of enviados as { id: string; file_name: string; mime_type: string; target_folder: string; sharepoint_item_id: string }[]) {
+      const destino = pastaDoArquivo(linha.target_folder, linha.mime_type || linha.file_name);
+      if (destino === linha.target_folder) {
+        pulados += 1;
+        continue;
+      }
+      try {
+        const caminho = rootFolder ? `${rootFolder}/${destino}` : destino;
+        await ensureFolderPath(token, driveId, caminho, cache);
+        let idPasta = idsDePasta.get(caminho);
+        if (!idPasta) {
+          const r = await fetch(`${GRAPH_BASE}/drives/${driveId}/root:/${encodeDrivePath(caminho)}`, { headers: { Authorization: `Bearer ${token}` } });
+          if (!r.ok) throw new Error(`pasta "${caminho}" não encontrada (${r.status})`);
+          idPasta = String(((await r.json()) as { id?: string }).id ?? "");
+          if (!idPasta) throw new Error(`pasta "${caminho}" sem id`);
+          idsDePasta.set(caminho, idPasta);
+        }
+        const mv = await fetch(`${GRAPH_BASE}/drives/${driveId}/items/${linha.sharepoint_item_id}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ parentReference: { id: idPasta }, "@microsoft.graph.conflictBehavior": "replace" }),
+        });
+        if (!mv.ok) throw new Error(`mover falhou (${mv.status}): ${(await mv.text()).slice(0, 200)}`);
+        const item = (await mv.json()) as { webUrl?: string };
+        await supabase.from("sharepoint_dispatch_queue").update({ target_folder: destino, sharepoint_web_url: String(item.webUrl ?? "") }).eq("id", linha.id);
+        movidos += 1;
+      } catch (error) {
+        erros.push(`${linha.file_name}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 220));
+      }
+    }
+    return json({ configured: true, movidos, pulados, erros, restantes: enviados.length === limite });
   }
 
   const { data: pending, error: queueError } = await supabase

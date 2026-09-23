@@ -26,6 +26,7 @@
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
 import { quemChama } from "../_shared/claude.ts";
 import { baseUrl, cabecalhoFocus, nomeDoTokenFocus } from "../_shared/focus.ts";
+import { pastaDoArquivo } from "../_shared/pastaPorTipo.ts";
 import { candidatosDaNota, dadosDaChaveNfe, nomeDoArquivoRecebido, numeroCurto, pastaDoMes, resumoDaSincronizacao, vinculoAutomatico, type ContaParaCasar, type NfseSpImportada, type NotaRecebidaBase, type TipoDeNotaRecebida } from "../_shared/notasRecebidas.ts";
 
 type Entrada = { acao?: "sincronizar" | "vincular" | "ignorar" | "reabrir" | "importar_nfse_sp"; chave?: string; expenseRef?: string; notas?: NfseSpImportada[] };
@@ -449,7 +450,7 @@ Deno.serve(async (request) => {
         if (!error) {
           atualiza.storage_bucket = BUCKET;
           atualiza.storage_path_pdf = caminho;
-          fila.push({ module: "NOTA_RECEBIDA", entity_id: b.chave, storage_bucket: BUCKET, storage_path: caminho, file_name: nomeDoArquivoRecebido(b, "pdf"), mime_type: "application/pdf", target_folder: pastaSp });
+          fila.push({ module: "NOTA_RECEBIDA", entity_id: b.chave, storage_bucket: BUCKET, storage_path: caminho, file_name: nomeDoArquivoRecebido(b, "pdf"), mime_type: "application/pdf", target_folder: pastaDoArquivo(pastaSp, "pdf") });
         }
       }
       if (b.tipo === "NFE") {
@@ -461,7 +462,7 @@ Deno.serve(async (request) => {
           if (!error) {
             atualiza.storage_bucket = BUCKET;
             atualiza.storage_path_xml = caminho;
-            fila.push({ module: "NOTA_RECEBIDA", entity_id: b.chave, storage_bucket: BUCKET, storage_path: caminho, file_name: nomeDoArquivoRecebido(b, "xml"), mime_type: "application/xml", target_folder: pastaSp });
+            fila.push({ module: "NOTA_RECEBIDA", entity_id: b.chave, storage_bucket: BUCKET, storage_path: caminho, file_name: nomeDoArquivoRecebido(b, "xml"), mime_type: "application/xml", target_folder: pastaDoArquivo(pastaSp, "xml") });
           }
         }
       }

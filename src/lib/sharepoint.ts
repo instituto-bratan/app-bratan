@@ -1,3 +1,4 @@
+import { pastaDoArquivo } from "../../supabase/functions/_shared/pastaPorTipo";
 export type SharePointModule =
   | "COMPROVANTE"
   | "NOTA_FISCAL_DESPESA"
@@ -31,6 +32,13 @@ export const sharePointFolderMap: Record<SharePointModule, string> = {
 };
 
 const monthlyModules: SharePointModule[] = ["COMPROVANTE", "NOTA_FISCAL_DESPESA", "NOTA_RECEBIDA", "NOTA_EMITIDA", "ESTORNO"];
+
+/** Notas fiscais: dentro do mês, PDF numa pasta e XML na outra (pedido do Lucas, 23/09/2026). */
+export function sharePointTargetFolderForFile(module: SharePointModule, mimeOrName: string | null | undefined, reference = new Date()) {
+  const pasta = sharePointTargetFolder(module, reference);
+  if (module !== "NOTA_FISCAL_DESPESA" && module !== "NOTA_RECEBIDA" && module !== "NOTA_EMITIDA") return pasta;
+  return pastaDoArquivo(pasta, mimeOrName);
+}
 
 export function sharePointTargetFolder(module: SharePointModule, reference = new Date()) {
   const base = sharePointFolderMap[module] ?? sharePointFolderMap.OUTRO;

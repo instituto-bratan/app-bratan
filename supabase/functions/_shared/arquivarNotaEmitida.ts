@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
 import { baseUrl, cabecalhoFocus, notaAutorizada } from "./focus.ts";
 import { caminhoNoBucketEmitida, nomeDoArquivoEmitido, pastaDaNotaEmitida } from "./notaEmitida.ts";
+import { pastaDoArquivo } from "./pastaPorTipo.ts";
 
 export const BUCKET_EMITIDAS = "notas-fiscais-emitidas";
 
@@ -59,7 +60,7 @@ export async function arquivarNotaEmitida(client: SupabaseClient, config: Record
       if (error) erros.push(`PDF: ${error.message}`);
       else {
         atualiza.storage_path_pdf = caminho;
-        fila.push({ module: "NOTA_EMITIDA", entity_id: linha.ref, storage_bucket: BUCKET_EMITIDAS, storage_path: caminho, file_name: nomeDoArquivoEmitido(base, "pdf"), mime_type: "application/pdf", target_folder: pasta });
+        fila.push({ module: "NOTA_EMITIDA", entity_id: linha.ref, storage_bucket: BUCKET_EMITIDAS, storage_path: caminho, file_name: nomeDoArquivoEmitido(base, "pdf"), mime_type: "application/pdf", target_folder: pastaDoArquivo(pasta, "pdf") });
       }
     } else erros.push("PDF ainda não disponível na Focus");
   }
@@ -72,7 +73,7 @@ export async function arquivarNotaEmitida(client: SupabaseClient, config: Record
       if (error) erros.push(`XML: ${error.message}`);
       else {
         atualiza.storage_path_xml = caminho;
-        fila.push({ module: "NOTA_EMITIDA", entity_id: linha.ref, storage_bucket: BUCKET_EMITIDAS, storage_path: caminho, file_name: nomeDoArquivoEmitido(base, "xml"), mime_type: "application/xml", target_folder: pasta });
+        fila.push({ module: "NOTA_EMITIDA", entity_id: linha.ref, storage_bucket: BUCKET_EMITIDAS, storage_path: caminho, file_name: nomeDoArquivoEmitido(base, "xml"), mime_type: "application/xml", target_folder: pastaDoArquivo(pasta, "xml") });
       }
     } else erros.push("XML ainda não disponível na Focus");
   }
