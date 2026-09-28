@@ -13,9 +13,9 @@ test("nutricionista edita o módulo Nutrição", () => {
   assert.equal(access.moduleLevel({ cargo: "nutricionista", acessos: {} }, "nutricao"), "EDITAR");
 });
 
-test("Dr. Daniel e o Lucas (gestor financeiro, que cuida do módulo) só veem", () => {
+test("o Lucas (gestor financeiro, que cuida e testa o módulo) edita; o Dr. Daniel só vê", () => {
+  assert.equal(access.moduleLevel({ cargo: "gestor_financeiro", acessos: {} }, "nutricao"), "EDITAR");
   assert.equal(access.moduleLevel({ cargo: "dr_daniel", acessos: {} }, "nutricao"), "VER");
-  assert.equal(access.moduleLevel({ cargo: "gestor_financeiro", acessos: {} }, "nutricao"), "VER");
 });
 
 test("o resto da equipe não vê, nem a coordenação", () => {
