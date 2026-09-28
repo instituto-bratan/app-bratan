@@ -16,6 +16,7 @@ cd tools/estacao-nutri && npm install && npm start
 ```
 
 Na tela de entrada, "Prévia local" → cargo **Nutricionista** → menu **Nutrição**.
+O modo demonstração vem com pessoas fictícias. No APP BRATAN de verdade (com Supabase), a primeira abertura traz só as listas dela: nenhum paciente de exemplo se mistura aos reais.
 A estação também abre com dois cliques em `tools/estacao-nutri/Iniciar Estação.command`. Detalhes em `tools/estacao-nutri/README.md`.
 
 ## O que já funciona

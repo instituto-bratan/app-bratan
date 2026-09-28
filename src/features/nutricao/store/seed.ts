@@ -89,10 +89,19 @@ async function salvarTudo(pessoas: Pessoa[], itens: ItemUso[], atendimentos: Ate
   for (const p of planos) await gravar("planos", p, null);
 }
 
-export async function garantirSemente(): Promise<void> {
+/**
+ * Primeira abertura: as listas dela sempre; pessoas, consultas e agenda de
+ * exemplo só no modo demonstração. No APP BRATAN de verdade ela começa sem
+ * ninguém fictício misturado aos pacientes.
+ */
+export async function garantirSemente({ comExemplos }: { comExemplos: boolean }): Promise<void> {
   await repo.prepararBanco();
   if (await repo.jaSemeado()) return;
   await repo.semearBiblioteca();
+  if (!comExemplos) {
+    await repo.marcarSemeado();
+    return;
+  }
 
   const HOJE = repo.hoje();
   const agosto = diasAtras(33);
