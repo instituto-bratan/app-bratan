@@ -5,6 +5,7 @@
 // gravação; conflito com outra aba aparece como conflito, nunca como salvo.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { ConflitoDeVersao, ouvirMudancas, type NomeDaColecao } from "./db";
 import * as repo from "./repositorio";
 import { garantirSemente } from "./seed";
@@ -44,12 +45,13 @@ const PREFIXO_POR_COLECAO: Partial<Record<NomeDaColecao, readonly string[]>> = {
 
 const semTempo = { staleTime: Infinity } as const;
 
-// A semente (dados fictícios da primeira vez) roda uma vez só, e toda leitura
-// espera por ela: senão uma lista lida no mesmo instante ficaria vazia.
+// A semente (as listas e, no modo demonstração, os dados fictícios) roda uma vez
+// só, e toda leitura espera por ela: senão uma lista lida no mesmo instante ficaria vazia.
 let semente: Promise<void> | null = null;
 function depoisDaSemente(): Promise<void> {
   if (!semente) {
-    semente = garantirSemente().catch((erro) => {
+    // Sem Supabase (modo demonstração) vem com exemplos; no app de verdade, não.
+    semente = garantirSemente({ comExemplos: !isSupabaseConfigured }).catch((erro) => {
       semente = null;
       throw erro;
     });
