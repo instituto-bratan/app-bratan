@@ -71,7 +71,7 @@ export function imprimirNoNavegador(html: string) {
   else window.setTimeout(imprimir, 500);
 }
 
-export type PdfGerado = { blob: Blob; hash: string; pelaEstacao: true } | { pelaEstacao: false };
+export type PdfGerado = { blob: Blob; hash: string; pelaEstacao: true } | { pelaEstacao: false; motivo: string };
 
 export async function gerarPdf(documento: HTMLElement, titulo: string): Promise<PdfGerado> {
   const html = await htmlParaImpressao(documento, titulo);
@@ -79,11 +79,11 @@ export async function gerarPdf(documento: HTMLElement, titulo: string): Promise<
     const blob = await gerarPdfNaEstacao(html);
     return { blob, hash: await codigoDeVerificacao(blob), pelaEstacao: true };
   } catch (e) {
-    if (e instanceof EstacaoIndisponivel) {
-      imprimirNoNavegador(html);
-      return { pelaEstacao: false };
-    }
-    throw e;
+    // Estação desligada ou falhando (um Chrome mais novo do que ela conhece, por
+    // exemplo): o plano sai pela impressão do navegador, e ela não fica sem o PDF.
+    imprimirNoNavegador(html);
+    const motivo = e instanceof EstacaoIndisponivel ? "A estação local não respondeu" : `A estação não gerou o PDF (${e instanceof Error ? e.message : String(e)})`;
+    return { pelaEstacao: false, motivo };
   }
 }
 

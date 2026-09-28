@@ -2,13 +2,32 @@
 //
 // Mesmo motor da prévia na tela. Um único Chrome sem janela, aberto na primeira
 // vez e reaberto se cair. Cada PDF usa um contexto próprio, sem JavaScript
-// (a marcação chega pronta do app), fechado no fim.
+// (a marcação chega pronta do app), fechado no fim. Parado por alguns minutos,
+// o Chrome sem janela é fechado: não fica ocupando memória entre um plano e outro.
 import { chromium } from "playwright-core";
 import type { Browser } from "playwright-core";
 
+const OCIOSO_MS = 3 * 60 * 1000;
+
 let navegador: Promise<Browser> | null = null;
+let fechamento: NodeJS.Timeout | null = null;
+
+function cancelarFechamento(): void {
+  if (fechamento) clearTimeout(fechamento);
+  fechamento = null;
+}
+
+function agendarFechamento(): void {
+  cancelarFechamento();
+  fechamento = setTimeout(() => {
+    fechamento = null;
+    void fecharNavegador();
+  }, OCIOSO_MS);
+  fechamento.unref();
+}
 
 async function obterNavegador(): Promise<Browser> {
+  cancelarFechamento();
   if (navegador) {
     const aberto = await navegador.catch(() => null);
     if (aberto && aberto.isConnected()) return aberto;
@@ -45,10 +64,12 @@ export async function gerarPdf(html: string): Promise<Uint8Array> {
     }
   } finally {
     await contexto.close().catch(() => {});
+    agendarFechamento();
   }
 }
 
 export async function fecharNavegador(): Promise<void> {
+  cancelarFechamento();
   const atual = navegador;
   navegador = null;
   if (!atual) return;

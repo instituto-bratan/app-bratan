@@ -34,6 +34,9 @@ grep -hoE "from \"\.\./\.\./src/[^\"]+\"" "$ESTACAO"/*.ts | sed -E 's/^from "\.\
   fi
 done
 
+# Versão: o instalador mostra na tela, para saber qual pacote entrou no Mac dela.
+echo "$(date +%Y-%m-%d) $(git -C "$RAIZ" rev-parse --short HEAD 2>/dev/null || echo sem-git)" >"$PACOTE/app/VERSAO"
+
 cp "$AQUI/Instalar.command" "$AQUI/Desinstalar.command" "$AQUI/LEIA-ME.txt" "$PACOTE/"
 chmod +x "$PACOTE/Instalar.command" "$PACOTE/Desinstalar.command"
 

@@ -3,38 +3,80 @@ ESTAÇÃO NUTRIÇÃO · INSTITUTO BRATAN
 É a parte do APP BRATAN que roda no seu Mac: transcreve as consultas e gera o
 PDF do plano alimentar. O áudio não sai do computador e nada é cobrado.
 
+Precisa de um Mac com chip Apple (M1 ou mais novo) e macOS 15 ou mais novo.
+Guarde esta pasta (em Documentos, por exemplo): o desinstalador está nela.
 
-COMO INSTALAR (uma vez só, de 10 a 20 minutos, com internet)
+
+COMO INSTALAR (uma vez só, de 30 a 60 minutos, com internet)
+
+O melhor é receber esta pasta por pen drive: assim o Mac não bloqueia nada.
+Deixe o Mac na tomada.
 
 1. Dê dois cliques em "Instalar.command".
 
-   Se o Mac disser que não pode abrir porque é de um desenvolvedor não
-   identificado: abra Ajustes do Sistema > Privacidade e Segurança, desça até o
-   fim, clique em "Abrir Mesmo Assim" e confirme. Isso só acontece quando a
-   pasta chega pela internet ou por AirDrop; copiada de um pen drive, abre direto.
+   Se a pasta chegou pela internet ou por AirDrop, o Mac pode dizer que "a
+   Apple não pôde verificar" o Instalar.command (ou que é de um desenvolvedor
+   não identificado). Clique em Concluído (ou OK). NUNCA clique em "Mover
+   para o Lixo". Logo em seguida (o botão some depois de uma hora), abra
+   Ajustes do Sistema > Privacidade e Segurança, desça até "Segurança",
+   clique em "Abrir Mesmo Assim" e digite a senha do Mac. Quando o aviso
+   voltar, clique em "Abrir".
 
-2. Se o Mac perguntar se o Terminal pode acessar a pasta, clique em OK.
+2. Se o Mac perguntar se o Terminal pode acessar a pasta (Transferências,
+   Mesa ou o pen drive), clique em Permitir. Se você clicou em "Não
+   Permitir": Ajustes do Sistema > Privacidade e Segurança > Arquivos e
+   Pastas > Terminal, ligue a pasta e rode o instalador de novo.
 
-3. Se aparecer um pedido de senha, digite a senha do Mac (a mesma que você usa
-   para entrar nele). Enquanto você digita, nada aparece na tela. É normal.
-   Precisa ser um usuário administrador do Mac.
+3. Quando aparecer "Senha do Mac:", digite a senha que você usa para entrar
+   no Mac e aperte Enter. Enquanto você digita, nada aparece na tela. É
+   normal. Precisa ser um usuário administrador do Mac; se o seu não for, o
+   instalador explica o que fazer.
 
-4. Espere a mensagem "Pronto!". Na primeira vez ele baixa uns 600 MB.
+4. Depois disso, não digite nada. Vão passar textos em inglês: é o Homebrew
+   instalando os programas. Se abrir uma janela pedindo para instalar as
+   "ferramentas de linha de comando", clique em Instalar (não em "Obter
+   Xcode"), espere terminar e só então aperte uma tecla na janela preta.
+
+5. Espere a mensagem "Pronto!". Na primeira vez ele baixa até 2 GB.
+
+Se parar no meio, a janela diz em que passo parou. Tire um print e mande para
+o Lucas. Rodar o instalador de novo continua de onde parou.
 
 
 NO DIA A DIA
 
-- Abra "Nutrição Bratan" (procure no Spotlight, ou na pasta Aplicativos do seu
-  usuário) ou entre em https://app-bratan.vercel.app/nutricao pelo Google Chrome.
-  Use sempre o Chrome: os registros ficam guardados nele.
-- Na primeira consulta, o Chrome pergunta se o APP BRATAN pode acessar apps
-  deste computador e usar o microfone. Responda Permitir nas duas.
+- Abra "Nutrição Bratan" (procure no Spotlight, ou na pasta Aplicativos do
+  seu usuário) ou entre em https://app-bratan.vercel.app/nutricao pelo
+  Google Chrome. Use sempre o Chrome, no mesmo perfil: os prontuários ficam
+  guardados nele.
+- Ao abrir o módulo, o Chrome pergunta se o site pode acessar apps deste
+  computador: clique em Permitir. Na primeira gravação, escolha "Permitir ao
+  visitar o site" para o microfone e, se o Mac perguntar, clique em Permitir.
 - A estação liga sozinha quando o Mac liga. Não precisa abrir nada.
 - O Mac pode avisar que "node" virou um item de segundo plano: é a estação.
   Não desligue esse item em Ajustes do Sistema.
 
+CUIDADOS COM OS PRONTUÁRIOS
+
+Os prontuários ficam SÓ neste Chrome, neste perfil. Nunca use "Limpar dados
+de navegação" com "Cookies e outros dados de sites", não redefina o Chrome e
+não use janela anônima nem outro perfil para o APP BRATAN. Uma vez por
+semana, baixe a cópia de segurança (Nutrição > Biblioteca > Baixar cópia de
+segurança) e guarde fora do Mac, num lugar protegido.
+
+SE APARECER "ESTAÇÃO LOCAL DESLIGADA"
+
+1. Reinicie o Mac.
+2. Se continuar: no Chrome, clique no ícone à esquerda do endereço, abra
+   "Configurações do site" e deixe como Permitir o acesso a apps e serviços
+   deste dispositivo. Em Ajustes do Sistema > Geral > Itens de Início e
+   Extensões, deixe "node" ligado.
+3. Se ainda não funcionar, dê dois cliques de novo em "Instalar.command" (ele
+   religa a estação) ou fale com o Lucas.
+
 
 PARA TIRAR DO MAC
 
-Dê dois cliques em "Desinstalar.command". Ele pergunta antes de apagar as
-gravações e as transcrições.
+Dê dois cliques em "Desinstalar.command" (o Mac pode bloquear do mesmo jeito
+que no passo 1). Ele pergunta antes de mexer em qualquer coisa. Os prontuários
+que ficam no Chrome não são apagados por ele.

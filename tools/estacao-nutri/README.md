@@ -73,18 +73,20 @@ Estação local em http://127.0.0.1:8787 | transcrição: pronta (ggml-large-v3-
 
 `instalador/montar-pacote.sh` gera `instalador/dist/Estação Nutrição Bratan.zip` (fora do git). A pasta leva o `Instalar.command`, o `Desinstalar.command`, um `LEIA-ME.txt` e a estação, com os dois arquivos do app que ela importa (`roteiro.ts` e `esquemaOrganizacao.ts`) no mesmo caminho relativo.
 
-Com dois cliques, o instalador:
+Exige um Mac com chip Apple e macOS 15 ou mais novo: o instalador do Homebrew não aceita mais Mac Intel, e abaixo do macOS 15 não há programas prontos (tudo seria compilado por horas). Com dois cliques, o instalador:
 
-1. instala o que falta com o Homebrew: Node, ffmpeg, whisper-cpp e o Google Chrome;
-2. copia a estação para `~/Library/Application Support/EstacaoNutri/programa` e roda o `npm ci`;
-3. baixa o modelo (574 MB) do repositório do whisper.cpp no Hugging Face e confere o SHA-256. Se o download cair, ele continua de onde parou;
-4. escreve o `.env.local` com `ORIGENS_PERMITIDAS=https://app-bratan.vercel.app` e sem chave de IA. Ao rodar de novo, reescreve só as linhas dele;
-5. cria o início automático (`~/Library/LaunchAgents/br.com.institutobratan.estacao-nutri.plist`, com `KeepAlive`), com o registro em `~/Library/Logs/EstacaoNutri`;
-6. confere a estação pela rota `/saude` e cria o atalho `~/Applications/Nutrição Bratan.app`, que abre o módulo no Chrome.
+1. confere o chip, o macOS e o espaço em disco (calculado pelo que falta instalar) e pede a senha do Mac uma vez, só se o Homebrew ou o Chrome estiverem faltando;
+2. instala o que falta com o Homebrew (sem perguntas, `NONINTERACTIVE=1`): Node, ffmpeg, whisper-cpp e o Google Chrome;
+3. monta a versão nova em `~/Library/Application Support/EstacaoNutri/programa.novo` e roda o `npm ci` lá. Se falhar, a estação que já estava instalada não é tocada;
+4. baixa o modelo (574 MB) de um commit fixo do repositório do whisper.cpp no Hugging Face e confere o SHA-256. Se o download cair, ele continua de onde parou; se o servidor não aceitar continuar, recomeça;
+5. escreve o `.env.local` com `ORIGENS_PERMITIDAS=https://app-bratan.vercel.app` e sem chave de IA (ao rodar de novo, reescreve só as linhas dele) e marca a pasta de dados para ficar fora do Time Machine;
+6. troca a estação em uso pela nova e cria o início automático (`~/Library/LaunchAgents/br.com.institutobratan.estacao-nutri.plist`, com `KeepAlive` e `ProcessType` Interactive), com o registro em `…/EstacaoNutri/logs`;
+7. confere a estação de verdade: `/saude`, um PDF pelo Chrome e uma transcrição de 2 s de áudio gerado, com as versões que aquele Mac recebeu;
+8. cria o atalho `~/Applications/Nutrição Bratan.app`, que abre o módulo no Chrome sempre no mesmo perfil (o último usado na instalação: é nele que ficam os prontuários).
 
-Rodar o instalador de novo atualiza a estação sem baixar o modelo outra vez. O desinstalador remove o início automático, o programa e o atalho, e só apaga as gravações e o modelo se ela pedir.
+Uma execução por vez (`lockf`), Mac acordado enquanto instala (`caffeinate`), versão do pacote na tela (`app/VERSAO`, escrita pelo `montar-pacote.sh`). O desinstalador pergunta antes de mexer, remove o início automático, o programa, o atalho e as cópias de trabalho das consultas, e só apaga o modelo se ela pedir. O que está no Chrome não muda.
 
-`instalador/testar.sh` testa tudo isso neste Mac, de ponta a ponta. Ele usa uma pasta temporária, a porta 8788, um início automático próprio e um download interrompido 3 MB antes do fim. Não dá para testar a instalação do Homebrew e dos programas do zero num Mac que já tem tudo.
+`instalador/testar.sh` testa tudo isso neste Mac, de ponta a ponta: pacote, instalação com o download retomado, saúde, PDF, transcrição real e a limpeza no descarte, uma atualização que falha (a estação antiga continua), a reinstalação e a desinstalação. Usa uma pasta temporária, a porta 8788 e um início automático próprio. Não dá para testar a instalação do Homebrew e dos programas do zero num Mac que já tem tudo.
 
 ## Como conferir
 

@@ -5,7 +5,7 @@ import { Mic, MicOff, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { normalizarParaBusca } from "../dominio/extracao";
 import type { Pessoa, TipoAtendimento } from "../dominio/tipos";
-import { useEstacao } from "../estacao/cliente";
+import { useEstacao, COMO_RELIGAR_ESTACAO } from "../estacao/cliente";
 import { useAtualizarNutricao, usePessoas } from "../store/hooks";
 import * as repo from "../store/repositorio";
 import { Dialogo, SeloFicticio } from "./basicos";
@@ -141,9 +141,9 @@ export function SeloEstacao({ detalhado = false }: { detalhado?: boolean }) {
   if (carregando) return <span className="text-xs text-muted-foreground">Procurando a estação local…</span>;
   if (!saude) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Sem a estação, o registro continua à mão. Para gravar e transcrever, abra “Iniciar Estação” no Mac.">
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={`Sem a estação, o registro continua à mão. ${COMO_RELIGAR_ESTACAO}`}>
         <MicOff className="h-3.5 w-3.5" aria-hidden="true" />
-        Estação local desligada{detalhado ? ": abra “Iniciar Estação” no Mac para gravar, transcrever e gerar PDF" : ""}
+        Estação local desligada{detalhado ? `: ${COMO_RELIGAR_ESTACAO}` : ""}
       </span>
     );
   }
