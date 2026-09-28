@@ -41,6 +41,20 @@ test("próxima consulta é só a MARCADA — data prevista pelo plano nunca ocup
   assert.equal(realizada, null, "já realizada também não");
 });
 
+// 28/09/2026: o CI (em UTC) mostrava "17h" para a consulta das 14h. Dia, hora e
+// contagem saem no relógio da clínica, seja qual for o fuso do aparelho, e a
+// hora guardada em UTC (como o banco devolve) não escorrega para o dia seguinte.
+test("consulta guardada em UTC sai no dia e na hora da clínica", () => {
+  const noite = mod.proximaConsulta([{ id: "c4", em: "2026-09-27T01:30:00+00:00", profissional: "Dr. Daniel", tipo: "Consulta", local: "Instituto Bratan", status: "AGENDADA", origem: "AGENDA" }], [], hoje);
+  assert.equal(noite.titulo, "sábado, 26 de setembro");
+  assert.equal(noite.hora, "22h30");
+  assert.equal(noite.dias, 11);
+  assert.equal(mod.horaCurta("2026-09-26T17:00:00Z"), "14h");
+  assert.equal(mod.diaMes("2026-09-27T01:30:00Z"), "26 de set");
+  // sem hora, a data continua a mesma
+  assert.equal(mod.diaLongo("2026-09-26"), "sábado, 26 de setembro");
+});
+
 test("evolução: delta entre a primeira e a última medição, com frase de contexto", () => {
   const m = (dia, pesoKg, gorduraPct = null, massaMagraKg = null) => ({ id: dia, dia, pesoKg, gorduraPct, massaMagraKg, cinturaCm: null, origem: "ENFERMAGEM" });
   const r = mod.resumoEvolucao([m("2026-07-01", 92.4, 34.1, 55.2), m("2026-08-01", 90.1, 33.0, 55.4), m("2026-09-01", 88.0, 31.5, 55.6)], hoje);
