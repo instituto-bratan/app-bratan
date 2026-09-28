@@ -44,7 +44,7 @@ import { PortalDoPacienteCard } from "@/features/portal/PortalDoPacienteCard";
 import { CpfDoPacienteCard } from "./CpfDoPacienteCard";
 import { contactChannelsIssue, formatPhoneBR } from "./contactChannels";
 import { AccessGate } from "@/components/access/AccessGate";
-import { canCrmBratan } from "@/lib/access";
+import { canCrmBratan, canVerPortalPaciente } from "@/lib/access";
 
 // Contratos saiu do app (decisão do Lucas, 22/07): não existe fluxo de
 // contrato/SuperSign no CRM.
@@ -387,7 +387,8 @@ function CrmContactProfilePageConteudo() {
                   <CpfDoPacienteCard contactRef={contact.id} pessoaId={pessoa?.id ?? null} ativo={Boolean(pessoa)} />
                 </div>
               ) : null}
-              {useRemoteConsent ? (
+              {/* Só para quem a RLS entrega o portal (28/09/2026): limpeza e marketing não veem. */}
+              {useRemoteConsent && canVerPortalPaciente(pessoa) ? (
                 <div className="mt-4">
                   <PortalDoPacienteCard
                     contactRef={contact.id}
@@ -396,6 +397,7 @@ function CrmContactProfilePageConteudo() {
                     temPlanoAtivo={state.deals.some((deal) => deal.contactId === contact.id && deal.programPhase && !deal.programOutcome && (deal.status === "WON_FULL" || deal.status === "WON_PARTIAL"))}
                     pessoaId={pessoa?.id ?? null}
                     cargo={pessoa?.cargo}
+                    acessosDaPessoa={pessoa?.acessos}
                   />
                 </div>
               ) : null}

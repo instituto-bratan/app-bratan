@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { confirmar, toast } from "@/components/ui/avisos";
 import { todayISO } from "@/lib/localStore";
-import { isCoordenacao } from "@/lib/access";
+import { canGravarMedicoes, canGravarPortalPaciente, canVerMedicoes, isCoordenacao } from "@/lib/access";
 import {
   createRemotePacienteConsulta,
   createRemotePacienteMedicao,
@@ -39,11 +39,16 @@ function parseNum(texto: string) {
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
-export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPlanoAtivo, pessoaId, cargo }: { contactRef: string; nomePaciente: string; telefone: string; temPlanoAtivo: boolean; pessoaId: string | null; cargo: Cargo | null | undefined }) {
+export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPlanoAtivo, pessoaId, cargo, acessosDaPessoa }: { contactRef: string; nomePaciente: string; telefone: string; temPlanoAtivo: boolean; pessoaId: string | null; cargo: Cargo | null | undefined; acessosDaPessoa?: Record<string, string> | null }) {
   const queryClient = useQueryClient();
+  // Mesmas regras da RLS (28/09/2026): quem só lê não vê botão de gravar, e a
+  // bioimpedância fica com a equipe clínica.
+  const podeGravar = canGravarPortalPaciente({ cargo, acessos: acessosDaPessoa });
+  const podeVerMedicoes = canVerMedicoes({ cargo, acessos: acessosDaPessoa });
+  const podeGravarMedicoes = canGravarMedicoes({ cargo, acessos: acessosDaPessoa });
   const acessos = useQuery({ queryKey: ["portal-acessos", contactRef], queryFn: () => listRemotePacienteAcessos(contactRef), staleTime: 30_000 });
   const consultas = useQuery({ queryKey: ["portal-consultas", contactRef], queryFn: () => listRemotePacienteConsultas(contactRef), staleTime: 30_000 });
-  const medicoes = useQuery({ queryKey: ["portal-medicoes", contactRef], queryFn: () => listRemotePacienteMedicoes(contactRef), staleTime: 30_000 });
+  const medicoes = useQuery({ queryKey: ["portal-medicoes", contactRef], queryFn: () => listRemotePacienteMedicoes(contactRef), staleTime: 30_000, enabled: podeVerMedicoes });
   const eventos = useQuery({ queryKey: ["portal-eventos", contactRef], queryFn: () => listRemotePacientePortalEventos(contactRef), staleTime: 30_000, enabled: isCoordenacao(cargo) });
   const [link, setLink] = useState("");
   const [gerando, setGerando] = useState(false);
@@ -128,29 +133,31 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
       <CardContent className="grid gap-4 text-sm">
         {/* ---- link ---- */}
         <div className="grid gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" disabled={gerando || !temPlanoAtivo} onClick={() => void gerarLink()} title={temPlanoAtivo ? "" : "Por enquanto o portal é só para quem está em plano ativo"}>
-              <Link2 className="mr-1.5 h-4 w-4" aria-hidden="true" /> {acessoAtivo ? "Gerar novo link" : "Gerar link de acesso"}
-            </Button>
-            {!temPlanoAtivo ? <span className="text-xs text-muted-foreground">Só para pacientes em plano ativo (decisão do Lucas, 15/09).</span> : null}
-            {acessoAtivo ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="text-red-700"
-                onClick={async () => {
-                  if (!(await confirmar("Revogar o acesso deste paciente?", { corpo: "O link e a sessão no aparelho dele param de funcionar na hora.", destrutivo: true, confirmar: "Revogar" }))) return;
-                  await revogarRemotePacienteAcesso(acessoAtivo.id);
-                  setLink("");
-                  await invalidar("portal-acessos");
-                  toast("Acesso revogado.", { tom: "ok" });
-                }}
-              >
-                <ShieldOff className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Revogar
+          {podeGravar ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" disabled={gerando || !temPlanoAtivo} onClick={() => void gerarLink()} title={temPlanoAtivo ? "" : "Por enquanto o portal é só para quem está em plano ativo"}>
+                <Link2 className="mr-1.5 h-4 w-4" aria-hidden="true" /> {acessoAtivo ? "Gerar novo link" : "Gerar link de acesso"}
               </Button>
-            ) : null}
-          </div>
+              {!temPlanoAtivo ? <span className="text-xs text-muted-foreground">Só para pacientes em plano ativo (decisão do Lucas, 15/09).</span> : null}
+              {acessoAtivo ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-700"
+                  onClick={async () => {
+                    if (!(await confirmar("Revogar o acesso deste paciente?", { corpo: "O link e a sessão no aparelho dele param de funcionar na hora.", destrutivo: true, confirmar: "Revogar" }))) return;
+                    await revogarRemotePacienteAcesso(acessoAtivo.id);
+                    setLink("");
+                    await invalidar("portal-acessos");
+                    toast("Acesso revogado.", { tom: "ok" });
+                  }}
+                >
+                  <ShieldOff className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Revogar
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {link ? (
             <div className="rounded-md border border-brand-oliva/20 bg-white/80 p-2.5">
               <p className="break-all font-mono text-[11px] text-brand-tinta">{link}</p>
@@ -191,20 +198,22 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
             <CalendarPlus className="h-4 w-4 text-brand-oliva" aria-hidden="true" /> Próxima consulta
             <InfoTip title="Enquanto a agenda não está espelhada">Digite aqui a data marcada no Feegow ou iClinic. O paciente vê no portal e confirma com um toque; se pedir para remarcar, cai na Fila do dia da recepção. Quando a agenda espelhada for ligada, isto passa a vir sozinho.</InfoTip>
           </p>
-          <div className="grid gap-2 sm:grid-cols-[9.5rem_6rem_1fr_auto]">
-            <Input type="date" value={consulta.dia} onChange={(e) => setConsulta({ ...consulta, dia: e.target.value })} aria-label="Dia" className="h-9" />
-            <Input type="time" value={consulta.hora} onChange={(e) => setConsulta({ ...consulta, hora: e.target.value })} aria-label="Hora" className="h-9" />
-            <select value={consulta.profissional} onChange={(e) => setConsulta({ ...consulta, profissional: e.target.value })} className="h-9 rounded-md border border-brand-oliva/25 bg-white px-2 text-sm" aria-label="Profissional">
-              {["Dr. Daniel", "Enfermagem", "Nutrição", "Barbara", "Gessica", "Juliana"].map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            <Button type="button" size="sm" className="h-9" disabled={salvando} onClick={() => void salvarConsulta()}>
-              Registrar
-            </Button>
-          </div>
+          {podeGravar ? (
+            <div className="grid gap-2 sm:grid-cols-[9.5rem_6rem_1fr_auto]">
+              <Input type="date" value={consulta.dia} onChange={(e) => setConsulta({ ...consulta, dia: e.target.value })} aria-label="Dia" className="h-9" />
+              <Input type="time" value={consulta.hora} onChange={(e) => setConsulta({ ...consulta, hora: e.target.value })} aria-label="Hora" className="h-9" />
+              <select value={consulta.profissional} onChange={(e) => setConsulta({ ...consulta, profissional: e.target.value })} className="h-9 rounded-md border border-brand-oliva/25 bg-white px-2 text-sm" aria-label="Profissional">
+                {["Dr. Daniel", "Enfermagem", "Nutrição", "Barbara", "Gessica", "Juliana"].map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <Button type="button" size="sm" className="h-9" disabled={salvando} onClick={() => void salvarConsulta()}>
+                Registrar
+              </Button>
+            </div>
+          ) : null}
           {consultas.data?.length ? (
             <ul className="grid gap-1">
               {consultas.data.slice(0, 5).map((c) => (
@@ -215,7 +224,7 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
                       {c.status.toLowerCase()}
                     </Badge>
                   </span>
-                  {c.status === "AGENDADA" || c.status === "CONFIRMADA" || c.status === "REMARCAR" ? (
+                  {podeGravar && (c.status === "AGENDADA" || c.status === "CONFIRMADA" || c.status === "REMARCAR") ? (
                     <span className="flex gap-1">
                       <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => void updateRemotePacienteConsultaStatus(c.id, "REALIZADA")
                           .then(() => invalidar("portal-consultas"))
@@ -236,81 +245,89 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
         </div>
 
         {/* ---- medições ---- */}
-        <div className="grid gap-2 border-t border-brand-oliva/15 pt-3">
-          <p className="flex items-center gap-1.5 font-semibold text-brand-tinta">
-            <Scale className="h-4 w-4 text-brand-oliva" aria-hidden="true" /> Bioimpedância e peso
-            <InfoTip title="A curva do paciente">Lance aqui o resultado de cada bioimpedância. Vira a curva no portal e alimenta o semáforo de adesão. Vírgula para decimais.</InfoTip>
-          </p>
-          <div className="grid gap-2 sm:grid-cols-6">
-            <div className="sm:col-span-2">
-              <Label htmlFor={`med-dia-${contactRef}`} className="text-xs">Dia</Label>
-              <Input id={`med-dia-${contactRef}`} type="date" value={medicao.dia} onChange={(e) => setMedicao({ ...medicao, dia: e.target.value })} className="mt-1 h-9" />
-            </div>
-            {(
-              [
-                ["peso", "Peso (kg)"],
-                ["gordura", "Gordura (%)"],
-                ["massaMagra", "Massa magra (kg)"],
-                ["cintura", "Cintura (cm)"],
-              ] as const
-            ).map(([campo, rotulo]) => (
-              <div key={campo}>
-                <Label htmlFor={`med-${campo}-${contactRef}`} className="text-xs">{rotulo}</Label>
-                <Input id={`med-${campo}-${contactRef}`} inputMode="decimal" value={medicao[campo]} onChange={(e) => setMedicao({ ...medicao, [campo]: e.target.value })} className="mt-1 h-9" placeholder="—" />
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input value={medicao.obs} onChange={(e) => setMedicao({ ...medicao, obs: e.target.value })} placeholder="Observação (opcional)" className="h-9 flex-1 min-w-[12rem]" />
-            <Button type="button" size="sm" className="h-9" disabled={salvando} onClick={() => void salvarMedicao()}>
-              Lançar medição
-            </Button>
-          </div>
-          {medicoes.data?.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-muted-foreground">
-                    <th className="py-1 pr-3 font-medium">Dia</th>
-                    <th className="py-1 pr-3 text-right font-medium">Peso</th>
-                    <th className="py-1 pr-3 text-right font-medium">Gordura</th>
-                    <th className="py-1 pr-3 text-right font-medium">M. magra</th>
-                    <th className="py-1 pr-3 text-right font-medium">Cintura</th>
-                    <th className="py-1 pr-3 font-medium">Origem</th>
-                    <th className="py-1" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {medicoes.data.map((m) => (
-                    <tr key={m.id} className="border-t border-brand-oliva/10">
-                      <td className="py-1 pr-3 tabular-nums">{m.dia.slice(8, 10)}/{m.dia.slice(5, 7)}/{m.dia.slice(0, 4)}</td>
-                      <td className="py-1 pr-3 text-right tabular-nums">{m.pesoKg?.toLocaleString("pt-BR") ?? "—"}</td>
-                      <td className="py-1 pr-3 text-right tabular-nums">{m.gorduraPct?.toLocaleString("pt-BR") ?? "—"}</td>
-                      <td className="py-1 pr-3 text-right tabular-nums">{m.massaMagraKg?.toLocaleString("pt-BR") ?? "—"}</td>
-                      <td className="py-1 pr-3 text-right tabular-nums">{m.cinturaCm?.toLocaleString("pt-BR") ?? "—"}</td>
-                      <td className="py-1 pr-3">{m.origem === "PACIENTE" ? "paciente" : m.origem.toLowerCase()}</td>
-                      <td className="py-1 text-right">
-                        <button
-                          type="button"
-                          className="text-muted-foreground hover:text-red-700"
-                          onClick={async () => {
-                            if (!(await confirmar("Apagar esta medição?", { destrutivo: true, confirmar: "Apagar" }))) return;
-                            await deleteRemotePacienteMedicao(m.id);
-                            await invalidar("portal-medicoes");
-                          }}
-                        >
-                          apagar
-                        </button>
-                      </td>
-                    </tr>
+        {podeVerMedicoes ? (
+          <div className="grid gap-2 border-t border-brand-oliva/15 pt-3">
+            <p className="flex items-center gap-1.5 font-semibold text-brand-tinta">
+              <Scale className="h-4 w-4 text-brand-oliva" aria-hidden="true" /> Bioimpedância e peso
+              <InfoTip title="A curva do paciente">Lance aqui o resultado de cada bioimpedância. Vira a curva no portal e alimenta o semáforo de adesão. Vírgula para decimais.</InfoTip>
+            </p>
+            {podeGravarMedicoes ? (
+              <>
+                <div className="grid gap-2 sm:grid-cols-6">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor={`med-dia-${contactRef}`} className="text-xs">Dia</Label>
+                    <Input id={`med-dia-${contactRef}`} type="date" value={medicao.dia} onChange={(e) => setMedicao({ ...medicao, dia: e.target.value })} className="mt-1 h-9" />
+                  </div>
+                  {(
+                    [
+                      ["peso", "Peso (kg)"],
+                      ["gordura", "Gordura (%)"],
+                      ["massaMagra", "Massa magra (kg)"],
+                      ["cintura", "Cintura (cm)"],
+                    ] as const
+                  ).map(([campo, rotulo]) => (
+                    <div key={campo}>
+                      <Label htmlFor={`med-${campo}-${contactRef}`} className="text-xs">{rotulo}</Label>
+                      <Input id={`med-${campo}-${contactRef}`} inputMode="decimal" value={medicao[campo]} onChange={(e) => setMedicao({ ...medicao, [campo]: e.target.value })} className="mt-1 h-9" placeholder="—" />
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Nenhuma medição ainda. A curva do portal nasce na primeira.</p>
-          )}
-        </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input value={medicao.obs} onChange={(e) => setMedicao({ ...medicao, obs: e.target.value })} placeholder="Observação (opcional)" className="h-9 flex-1 min-w-[12rem]" />
+                  <Button type="button" size="sm" className="h-9" disabled={salvando} onClick={() => void salvarMedicao()}>
+                    Lançar medição
+                  </Button>
+                </div>
+              </>
+            ) : null}
+            {medicoes.data?.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-muted-foreground">
+                      <th className="py-1 pr-3 font-medium">Dia</th>
+                      <th className="py-1 pr-3 text-right font-medium">Peso</th>
+                      <th className="py-1 pr-3 text-right font-medium">Gordura</th>
+                      <th className="py-1 pr-3 text-right font-medium">M. magra</th>
+                      <th className="py-1 pr-3 text-right font-medium">Cintura</th>
+                      <th className="py-1 pr-3 font-medium">Origem</th>
+                      <th className="py-1" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {medicoes.data.map((m) => (
+                      <tr key={m.id} className="border-t border-brand-oliva/10">
+                        <td className="py-1 pr-3 tabular-nums">{m.dia.slice(8, 10)}/{m.dia.slice(5, 7)}/{m.dia.slice(0, 4)}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums">{m.pesoKg?.toLocaleString("pt-BR") ?? "—"}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums">{m.gorduraPct?.toLocaleString("pt-BR") ?? "—"}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums">{m.massaMagraKg?.toLocaleString("pt-BR") ?? "—"}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums">{m.cinturaCm?.toLocaleString("pt-BR") ?? "—"}</td>
+                        <td className="py-1 pr-3">{m.origem === "PACIENTE" ? "paciente" : m.origem.toLowerCase()}</td>
+                        <td className="py-1 text-right">
+                          {podeGravarMedicoes ? (
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-red-700"
+                              onClick={async () => {
+                                if (!(await confirmar("Apagar esta medição?", { destrutivo: true, confirmar: "Apagar" }))) return;
+                                await deleteRemotePacienteMedicao(m.id);
+                                await invalidar("portal-medicoes");
+                              }}
+                            >
+                              apagar
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Nenhuma medição ainda. A curva do portal nasce na primeira.</p>
+            )}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

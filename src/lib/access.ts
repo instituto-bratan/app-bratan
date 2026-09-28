@@ -359,6 +359,49 @@ export function canManageAcessos(cargo: Cargo | null | undefined) {
   return cargo === "dr_daniel" || cargo === "ceo" || cargo === "gestor_financeiro";
 }
 
+// ---------------------------------------------------------------------------
+// DADOS CLÍNICOS DO PACIENTE (28/09/2026)
+// Espelho da RLS de supabase/migrations/202609280002_rls_dados_clinicos.sql.
+// A tela esconde o que o banco não entrega, em vez de mostrar lista vazia ou
+// um "apagar" que não apaga. O override de Acessos só SOMA (como no banco):
+// não tira a enfermagem do dado clínico.
+// ---------------------------------------------------------------------------
+
+type PessoaComAcessos = { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined;
+
+const equipeClinicaCargos: Cargo[] = ["dr_daniel", "enfermeira", "nutricionista"];
+
+export function isEquipeClinica(cargo: Cargo | null | undefined) {
+  return isCoordenacao(cargo) || Boolean(cargo && equipeClinicaCargos.includes(cargo));
+}
+
+function liberadoEmAcessos(pessoa: PessoaComAcessos, module: ModuleKey, nivel: "VER" | "EDITAR") {
+  const override = pessoa?.acessos?.[module];
+  return nivel === "VER" ? override === "VER" || override === "EDITAR" : override === "EDITAR";
+}
+
+/** Bioimpedância/InBody (paciente_medicao): equipe clínica ou liberado na tela do Plano de Acompanhamento. */
+export function canVerMedicoes(pessoa: PessoaComAcessos) {
+  if (!pessoa?.cargo) return false;
+  return isEquipeClinica(pessoa.cargo) || liberadoEmAcessos(pessoa, "acompanhamento", "VER");
+}
+
+export function canGravarMedicoes(pessoa: PessoaComAcessos) {
+  if (!pessoa?.cargo) return false;
+  return isEquipeClinica(pessoa.cargo) || liberadoEmAcessos(pessoa, "acompanhamento", "EDITAR");
+}
+
+/** Link do portal e próxima consulta (paciente_acesso, paciente_consulta): equipe clínica, recepção ou liberado na tela do CRM. */
+export function canVerPortalPaciente(pessoa: PessoaComAcessos) {
+  if (!pessoa?.cargo) return false;
+  return isEquipeClinica(pessoa.cargo) || pessoa.cargo === "recepcionista" || liberadoEmAcessos(pessoa, "crm", "VER");
+}
+
+export function canGravarPortalPaciente(pessoa: PessoaComAcessos) {
+  if (!pessoa?.cargo) return false;
+  return isEquipeClinica(pessoa.cargo) || pessoa.cargo === "recepcionista" || liberadoEmAcessos(pessoa, "crm", "EDITAR");
+}
+
 export const accessLevelLabels: Record<AccessLevel, string> = {
   OCULTO: "Sem acesso",
   VER: "Só vê",
