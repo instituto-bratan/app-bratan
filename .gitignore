@@ -11,3 +11,8 @@ dist-single
 # artefatos de build do TypeScript
 tsconfig.tsbuildinfo
 tsconfig.node.tsbuildinfo
+
+# estação local da nutrição (tools/estacao-nutri)
+tools/estacao-nutri/node_modules
+tools/estacao-nutri/.env.local
+!tools/estacao-nutri/.env.example

@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
@@ -58,6 +58,21 @@ const PortalPacienteApp = lazyRoute("portal");
 const MarketingPage = lazyRoute("marketing");
 const Inteligencia360DashboardPage = lazyRoute("inteligencia360");
 const Inteligencia360ModulePage = lazyRoute("inteligencia360Module");
+const NutricaoHojePage = lazyRoute("nutricaoHoje");
+const NutricaoPessoasPage = lazyRoute("nutricaoPessoas");
+const NutricaoPessoaPage = lazyRoute("nutricaoPessoa");
+const NutricaoConsultaPage = lazyRoute("nutricaoConsulta");
+const NutricaoPlanoPage = lazyRoute("nutricaoPlano");
+const NutricaoBibliotecaPage = lazyRoute("nutricaoBiblioteca");
+
+// Nutrição (28/09/2026): dado clínico, a porta é o controle de Acessos (módulo "nutricao").
+function PortaNutricao({ children }: { children: ReactNode }) {
+  return (
+    <AccessGate allowed={() => false} module="nutricao" label="Nutrição">
+      {children}
+    </AccessGate>
+  );
+}
 
 function RouteFallback() {
   return (
@@ -141,6 +156,12 @@ export function App() {
               <Route path="/administracao/portal" element={<VozDoDoutorPage />} />
               <Route path="/administracao/compliance" element={<ComplianceCofrePage />} />
               <Route path="/marketing" element={<MarketingPage />} />
+              <Route path="/nutricao" element={<PortaNutricao><NutricaoHojePage /></PortaNutricao>} />
+              <Route path="/nutricao/pessoas" element={<PortaNutricao><NutricaoPessoasPage /></PortaNutricao>} />
+              <Route path="/nutricao/pessoas/:id" element={<PortaNutricao><NutricaoPessoaPage /></PortaNutricao>} />
+              <Route path="/nutricao/consultas/:id" element={<PortaNutricao><NutricaoConsultaPage /></PortaNutricao>} />
+              <Route path="/nutricao/planos/:id" element={<PortaNutricao><NutricaoPlanoPage /></PortaNutricao>} />
+              <Route path="/nutricao/biblioteca" element={<PortaNutricao><NutricaoBibliotecaPage /></PortaNutricao>} />
               <Route
                 path="/inteligencia-360"
                 element={

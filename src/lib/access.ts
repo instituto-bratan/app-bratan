@@ -252,7 +252,8 @@ export type ModuleKey =
   | "fin-extrato"
   | "fin-lucro"
   | "estoque"
-  | "concierge-nps";
+  | "concierge-nps"
+  | "nutricao";
 
 export const moduleLabels: Record<ModuleKey, string> = {
   hoje: "Hoje (tarefas, almoço, mural)",
@@ -279,6 +280,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-lucro": "Financeiro · Lucro Inteligente",
   estoque: "Estoque (Recepção & Enfermagem)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
+  nutricao: "Nutrição (prontuário e planos alimentares)",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
@@ -306,6 +308,11 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       // na RLS); a coordenação enxerga e edita os dois.
       if (cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista") return "EDITAR";
       return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
+    case "nutricao":
+      // Dado clínico da nutrição (28/09/2026): só a nutricionista edita e o
+      // Dr. Daniel acompanha; a coordenação não vê por padrão.
+      if (cargo === "nutricionista") return "EDITAR";
+      return cargo === "dr_daniel" ? "VER" : "OCULTO";
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
       return canInteligencia360(cargo) ? "VER" : "OCULTO";
