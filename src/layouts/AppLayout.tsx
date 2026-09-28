@@ -25,6 +25,8 @@ import {
   LogOut,
   Megaphone,
   Mic,
+  Salad,
+  BookOpen,
   MessageCircle,
   Moon,
   PiggyBank,
@@ -128,6 +130,20 @@ const flowGroups: FlowGroup[] = [
       { label: "Acompanhamento", shortLabel: "Plano", href: "/acompanhamento", icon: HeartPulse, allowed: canAcompanhamento, module: "acompanhamento" },
       { label: "Indicações", href: "/crm/indicacoes", icon: Gift, allowed: canCrmBratan, module: "crm" },
       { label: "NPS da Concierge", shortLabel: "NPS", href: "/concierge/nps", icon: HeartPulse, allowed: (cargo) => canAdministracao(cargo) || cargo === "secretaria_executiva", module: "concierge-nps" },
+    ],
+  },
+  {
+    // Nutrição (28/09/2026): consulta gravada, prontuário e plano alimentar.
+    // Só aparece para quem o controle de Acessos libera (nutricionista e Dr. Daniel).
+    label: "Nutrição",
+    detail: "consultas, prontuário e planos",
+    href: "/nutricao",
+    icon: Salad,
+    allowed: () => false,
+    entries: [
+      { label: "Hoje", href: "/nutricao", icon: Salad, allowed: () => false, module: "nutricao" },
+      { label: "Pessoas", href: "/nutricao/pessoas", icon: UsersRound, allowed: () => false, module: "nutricao" },
+      { label: "Biblioteca", href: "/nutricao/biblioteca", icon: BookOpen, allowed: () => false, module: "nutricao" },
     ],
   },
   {
@@ -659,8 +675,10 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // overflow-x-clip (não hidden): corta o que vaza para o lado sem virar área de
+  // rolagem, senão o position: sticky do cabeçalho e das colunas fixas não funciona (28/09/2026).
   return (
-    <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-hidden lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="mobile-app-shell isolate min-h-screen min-h-dvh overflow-x-clip lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="ios-glass-quiet hidden min-w-0 border-r px-5 py-6 lg:block">
         <Brand />
         <DesktopNav pessoa={pessoa} />

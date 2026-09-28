@@ -63,6 +63,12 @@ const routeLoaders = {
   marketing: namedPage(() => import("@/features/marketing/MarketingPage"), "MarketingPage"),
   inteligencia360: namedPage(() => import("@/features/inteligencia360/Inteligencia360Page"), "Inteligencia360DashboardPage"),
   inteligencia360Module: namedPage(() => import("@/features/inteligencia360/Inteligencia360Page"), "Inteligencia360ModulePage"),
+  nutricaoHoje: namedPage(() => import("@/features/nutricao/paginas/NutricaoHojePage"), "NutricaoHojePage"),
+  nutricaoPessoas: namedPage(() => import("@/features/nutricao/paginas/NutricaoPessoasPage"), "NutricaoPessoasPage"),
+  nutricaoPessoa: namedPage(() => import("@/features/nutricao/paginas/NutricaoPessoaPage"), "NutricaoPessoaPage"),
+  nutricaoConsulta: namedPage(() => import("@/features/nutricao/paginas/NutricaoConsultaPage"), "NutricaoConsultaPage"),
+  nutricaoPlano: namedPage(() => import("@/features/nutricao/paginas/NutricaoPlanoPage"), "NutricaoPlanoPage"),
+  nutricaoBiblioteca: namedPage(() => import("@/features/nutricao/paginas/NutricaoBibliotecaPage"), "NutricaoBibliotecaPage"),
 } as const;
 
 export type RoutePreloadKey = keyof typeof routeLoaders;
@@ -131,6 +137,12 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/marketing") return "marketing";
   if (pathname === "/inteligencia-360") return "inteligencia360";
   if (pathname.startsWith("/inteligencia-360/")) return "inteligencia360Module";
+  if (pathname === "/nutricao") return "nutricaoHoje";
+  if (pathname === "/nutricao/pessoas") return "nutricaoPessoas";
+  if (pathname.startsWith("/nutricao/pessoas/")) return "nutricaoPessoa";
+  if (pathname.startsWith("/nutricao/consultas/")) return "nutricaoConsulta";
+  if (pathname.startsWith("/nutricao/planos/")) return "nutricaoPlano";
+  if (pathname === "/nutricao/biblioteca") return "nutricaoBiblioteca";
 
   return null;
 }

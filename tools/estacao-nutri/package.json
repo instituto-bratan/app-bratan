@@ -1,0 +1,13 @@
+{
+  "name": "estacao-nutri",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "playwright-core": "^1.63.0"
+  }
+}

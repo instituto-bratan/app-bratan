@@ -1,0 +1,159 @@
+/* MÓDULO NUTRIÇÃO — estados, folha e gravação (28/09/2026).
+
+   A bolinha verde é o marcador que a Dra. Géssica pediu ao lado de cada
+   alimento do plano. No módulo ela vira o sistema de estado, sempre com a
+   mesma leitura:
+     cheia (Oliva)          confirmado
+     anel fino              vazio / não informado
+     anel Dourado           valor do atendimento anterior, aguardando confirmação
+     anel tracejado azul    sugestão da IA ainda não revisada
+     cheia vermelho-tijolo  gravando
+   As cores vêm dos tokens da marca; só o azul da IA e o tijolo da gravação são
+   próprios do módulo, e só aparecem nesses dois estados. */
+
+.nutri {
+  --n-ok: var(--bratan-oliva);
+  --n-anterior: var(--bratan-dourado);
+  --n-anterior-fundo: rgba(248, 237, 189, 0.55);
+  --n-ia: #4b5f86;
+  --n-ia-fundo: #edf0f7;
+  --n-grava: #b24a35;
+  --n-folha: #fffefa;
+  --n-folha-borda: rgba(77, 86, 59, 0.16);
+  --n-folha-linha: rgba(77, 86, 59, 0.07);
+  --n-suave: #6b705f;
+}
+
+.dark .nutri {
+  --n-anterior-fundo: rgba(214, 187, 119, 0.12);
+  --n-ia: #aebce2;
+  --n-ia-fundo: rgba(62, 78, 116, 0.28);
+  --n-grava: #f08a72;
+  --n-folha: #15271e;
+  --n-folha-borda: rgba(198, 232, 214, 0.14);
+  --n-folha-linha: rgba(198, 232, 214, 0.06);
+  --n-suave: #a3ae9f;
+}
+
+/* ---------------------------------------------------------------- bolinha */
+
+.nutri-bolinha {
+  display: inline-block;
+  width: 0.62rem;
+  height: 0.62rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1.5px solid rgba(77, 86, 59, 0.32);
+  background: transparent;
+}
+.dark .nutri-bolinha { border-color: rgba(198, 232, 214, 0.28); }
+.nutri-bolinha[data-estado="ok"] { background: var(--n-ok); border-color: var(--n-ok); }
+.nutri-bolinha[data-estado="anterior"] { border: 2px solid var(--n-anterior); background: var(--n-anterior-fundo); }
+.nutri-bolinha[data-estado="ia"] { border: 1.5px dashed var(--n-ia); background: var(--n-ia-fundo); }
+.nutri-bolinha[data-estado="incerto"] { border: 2px dashed var(--n-anterior); background: var(--n-anterior-fundo); }
+.nutri-bolinha[data-estado="grava"] { background: var(--n-grava); border-color: var(--n-grava); animation: nutri-pulso 1.6s ease-in-out infinite; }
+.nutri-bolinha[data-estado="pausa"] { background: transparent; border: 2px solid var(--n-grava); }
+
+@keyframes nutri-pulso {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(178, 74, 53, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(178, 74, 53, 0); }
+}
+
+/* ---------------------------------------------------------------- medidor de voz */
+
+.nutri-medidor { display: inline-flex; align-items: center; gap: 3px; }
+.nutri-medidor > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(77, 86, 59, 0.16);
+  transition: background-color 120ms ease;
+}
+.dark .nutri-medidor > span { background: rgba(198, 232, 214, 0.14); }
+.nutri-medidor > span[data-aceso="1"] { background: var(--n-ok); }
+
+/* ---------------------------------------------------------------- folha do prontuário */
+
+.nutri-folha {
+  background: var(--n-folha);
+  border: 1px solid var(--n-folha-borda);
+  border-radius: 16px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 18px 44px rgba(43, 46, 36, 0.08);
+}
+.nutri-folha-linhas {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.nutri-folha-linha {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--n-folha-linha);
+}
+.nutri-folha-linha .nutri-bolinha { width: 0.5rem; height: 0.5rem; transform: translateY(-1px); }
+.nutri-folha-linha[data-estado="nao_informado"] .nutri-folha-texto { color: var(--n-suave); }
+.nutri-folha-linha[data-estado="pendente"] .nutri-folha-texto { color: var(--n-suave); font-style: italic; }
+.nutri-folha-linha[data-estado="titulo"] { border-bottom: 0; padding-top: 6px; font-weight: 700; }
+.nutri-folha-linha[data-estado="vazia"] { border-bottom: 0; min-height: 0.8em; }
+.nutri-folha-linha.acendeu { animation: nutri-acende 900ms ease-out; }
+
+@keyframes nutri-acende {
+  from { background: rgba(122, 137, 94, 0.18); }
+  to { background: transparent; }
+}
+
+/* ---------------------------------------------------------------- fala de origem, sugestão, anterior */
+
+.nutri-fala { font-family: "Fraunces", Georgia, "Times New Roman", serif; font-style: italic; }
+.nutri-sugestao { border: 1px dashed var(--n-ia); background: var(--n-ia-fundo); border-radius: 12px; }
+.nutri-texto-ia { color: var(--n-ia); }
+.nutri-anterior { border: 1px solid rgba(198, 168, 98, 0.55); background: var(--n-anterior-fundo); border-radius: 12px; }
+.nutri-suave { color: var(--n-suave); }
+
+/* campo de texto de uma linha que cresce */
+.nutri-linha-edicao {
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.nutri-linha-edicao:hover { border-color: rgba(77, 86, 59, 0.14); }
+.nutri-linha-edicao:focus { outline: none; border-color: rgba(198, 168, 98, 0.7); background: rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 3px rgba(198, 168, 98, 0.18); }
+.dark .nutri-linha-edicao:focus { background: rgba(24, 47, 37, 0.7); }
+.nutri-linha-edicao::placeholder { color: var(--n-suave); opacity: 0.8; }
+
+.nutri-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(77, 86, 59, 0.16);
+  padding: 2px 9px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--n-suave);
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.nutri-chip:hover { background: rgba(122, 137, 94, 0.12); color: var(--bratan-musgo); }
+.nutri-chip[aria-pressed="true"] { background: var(--bratan-musgo); border-color: var(--bratan-musgo); color: var(--bratan-papel); }
+.dark .nutri-chip[aria-pressed="true"] { color: #102019; }
+.nutri-chip:focus-visible { outline: 2px solid var(--bratan-dourado); outline-offset: 2px; }
+
+/* barra de gravação */
+.nutri-gravacao { border: 1px solid rgba(178, 74, 53, 0.28); background: rgba(178, 74, 53, 0.05); border-radius: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nutri-bolinha[data-estado="grava"] { animation: none; }
+  .nutri-folha-linha.acendeu { animation: none; }
+}
