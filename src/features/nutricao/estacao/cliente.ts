@@ -5,6 +5,7 @@
 // computador, pede à IA a organização da consulta sem expor a chave e imprime
 // o PDF com o Chrome. Se a estação estiver desligada, o módulo continua
 // funcionando à mão; só essas três coisas ficam indisponíveis.
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { useEffect, useState } from "react";
 import type { RespostaOrganizacao } from "../dominio/esquemaOrganizacao";
 import type { SegmentoTranscricao } from "../dominio/tipos";
@@ -20,9 +21,17 @@ export type SaudeDaEstacao = {
   ia: { configurada: boolean; modelo: string };
 };
 
+/**
+ * O que fazer quando a estação não responde. No APP BRATAN publicado ela foi
+ * instalada pelo instalador e liga sozinha; no modo demonstração, abre-se à mão.
+ */
+export const COMO_RELIGAR_ESTACAO = isSupabaseConfigured
+  ? "Reinicie o Mac. Se continuar: no Chrome, clique no ícone à esquerda do endereço, abra “Configurações do site” e permita o acesso a apps deste computador; ou dê dois cliques de novo em “Instalar.command”. Se nada resolver, avise o Lucas."
+  : "Abra “Iniciar Estação” no Mac (tools/estacao-nutri) e tente de novo.";
+
 export class EstacaoIndisponivel extends Error {
   constructor() {
-    super("A estação local está desligada. Abra “Iniciar Estação” no Mac e tente de novo.");
+    super(`A estação local não respondeu. ${COMO_RELIGAR_ESTACAO}`);
     this.name = "EstacaoIndisponivel";
   }
 }

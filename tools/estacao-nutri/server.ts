@@ -48,6 +48,9 @@ type Job = {
 };
 
 const jobs = new Map<string, Job>();
+// Gravações descartadas pelo app enquanto a transcrição ainda rodava: o
+// resultado não é gravado em disco (o app já disse que apagou tudo).
+const descartadas = new Map<string, number>();
 // Uma transcrição por vez: o whisper já usa quase todos os núcleos.
 let fila: Promise<void> = Promise.resolve();
 let clienteIA: ClienteIA | null = null;
@@ -199,8 +202,13 @@ async function rodarJob(job: Job, arquivo: string): Promise<void> {
         job.progresso = percentual;
       },
     });
+    if (descartadas.has(job.gravacao)) {
+      await apagarComPrefixo(pastas.trabalho, job.gravacao);
+      throw new ErroEstacao("A gravação foi descartada antes de a transcrição terminar.", 410);
+    }
+    // O nome começa pela gravação: apagar a gravação leva a transcrição junto.
     await fs.promises.writeFile(
-      path.join(pastas.transcricoes, `${job.id}.json`),
+      path.join(pastas.transcricoes, `${job.gravacao}.${job.id}.json`),
       JSON.stringify({ jobId: job.id, gravacao: job.gravacao, geradaEm: new Date().toISOString(), ...resultado }),
       { mode: 0o600 },
     );
@@ -234,8 +242,11 @@ async function estadoDoJob(jobId: string) {
   // A estação foi reiniciada: o resultado gravado em disco ainda vale.
   if (/^[0-9a-f-]{36}$/.test(jobId)) {
     try {
-      const salvo = JSON.parse(await fs.promises.readFile(path.join(pastas.transcricoes, `${jobId}.json`), "utf8"));
-      return { estado: "pronta", progresso: 100, erro: null, resultado: { motor: salvo.motor, duracaoSeg: salvo.duracaoSeg, segmentos: salvo.segmentos } };
+      const nome = (await fs.promises.readdir(pastas.transcricoes)).find((n) => n.endsWith(`.${jobId}.json`));
+      if (nome) {
+        const salvo = JSON.parse(await fs.promises.readFile(path.join(pastas.transcricoes, nome), "utf8"));
+        return { estado: "pronta", progresso: 100, erro: null, resultado: { motor: salvo.motor, duracaoSeg: salvo.duracaoSeg, segmentos: salvo.segmentos } };
+      }
     } catch {
       // não existe (ou foi apagado pela retenção)
     }
@@ -252,16 +263,21 @@ async function apagarGravacao(bruto: string): Promise<void> {
   }
   const gravacao = sanitizarId(decodificado);
   if (!gravacao) throw new ErroEstacao("Informe a gravação a apagar.", 400);
-  for (const pasta of [pastas.audios, pastas.trabalho]) {
-    let nomes: string[] = [];
-    try {
-      nomes = await fs.promises.readdir(pasta);
-    } catch {
-      continue;
-    }
-    for (const nome of nomes) {
-      if (nome.startsWith(`${gravacao}.`)) await fs.promises.rm(path.join(pasta, nome), { force: true });
-    }
+  descartadas.set(gravacao, Date.now());
+  for (const [id, job] of jobs) if (job.gravacao === gravacao) jobs.delete(id);
+  // Áudio, arquivos de trabalho e a transcrição: nada dessa gravação fica no Mac.
+  for (const pasta of [pastas.audios, pastas.trabalho, pastas.transcricoes]) await apagarComPrefixo(pasta, gravacao);
+}
+
+async function apagarComPrefixo(pasta: string, gravacao: string): Promise<void> {
+  let nomes: string[] = [];
+  try {
+    nomes = await fs.promises.readdir(pasta);
+  } catch {
+    return;
+  }
+  for (const nome of nomes) {
+    if (nome.startsWith(`${gravacao}.`)) await fs.promises.rm(path.join(pasta, nome), { force: true });
   }
 }
 
@@ -368,6 +384,7 @@ async function limpar(): Promise<void> {
   for (const [id, job] of jobs) {
     if ((job.estado === "pronta" || job.estado === "erro") && job.criadoEm < umDiaAtras) jobs.delete(id);
   }
+  for (const [gravacao, em] of descartadas) if (em < umDiaAtras) descartadas.delete(gravacao);
 }
 
 async function iniciar(): Promise<void> {

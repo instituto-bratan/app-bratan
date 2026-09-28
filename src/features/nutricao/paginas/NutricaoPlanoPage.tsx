@@ -62,7 +62,7 @@ export function NutricaoPlanoPage() {
   const [revisaoAberta, setRevisaoAberta] = useState(false);
   const [comparacaoAberta, setComparacaoAberta] = useState(false);
   const [gerando, setGerando] = useState(false);
-  const [aguardandoImpressao, setAguardandoImpressao] = useState(false);
+  const [aguardandoImpressao, setAguardandoImpressao] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [zoom, setZoom] = useState(0.6);
   const [destinoAcordo, setDestinoAcordo] = useState<Record<string, string>>({});
@@ -169,7 +169,7 @@ export function NutricaoPlanoPage() {
         // Quem só vê pode baixar o PDF, mas não muda o registro.
         if (podeEditarModulo) await registrar("pdf_gerado", null, { pdf: { geradoEm: repo.agora(), hash: r.hash, paginas: paginacao?.paginas ?? 0 } });
       } else {
-        setAguardandoImpressao(true);
+        setAguardandoImpressao(r.motivo);
       }
     } catch (e) {
       setAviso(e instanceof Error ? e.message : String(e));
@@ -292,8 +292,8 @@ export function NutricaoPlanoPage() {
             </div>
             {aguardandoImpressao ? (
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                A estação local está desligada: abri a impressão do navegador com as mesmas páginas. Escolha “Salvar como PDF”.
-                <Button type="button" size="sm" variant="outline" disabled={!podeEditarModulo} onClick={() => { setAguardandoImpressao(false); void registrar("pdf_gerado", "impressão do navegador"); }}>
+                {aguardandoImpressao}: abri a impressão do navegador com as mesmas páginas. Escolha “Salvar como PDF”.
+                <Button type="button" size="sm" variant="outline" disabled={!podeEditarModulo} onClick={() => { setAguardandoImpressao(null); void registrar("pdf_gerado", "impressão do navegador"); }}>
                   Salvei o PDF
                 </Button>
               </div>

@@ -57,6 +57,13 @@ export function abrirBanco(): Promise<IDBDatabase> {
       reject(new Error("Este navegador não permite guardar dados localmente (IndexedDB indisponível)."));
       return;
     }
+    // Pede ao navegador para não despejar este banco quando faltar espaço em disco:
+    // no piloto os prontuários ficam só aqui. Sem resposta, nada muda.
+    try {
+      void navigator.storage?.persist?.().catch(() => undefined);
+    } catch {
+      // navegador sem a API
+    }
     const req = indexedDB.open(NOME_DO_BANCO, VERSAO_DO_BANCO);
     req.onupgradeneeded = () => {
       const db = req.result;
