@@ -309,10 +309,11 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       if (cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista") return "EDITAR";
       return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
     case "nutricao":
-      // Dado clínico da nutrição (28/09/2026): só a nutricionista edita e o
-      // Dr. Daniel acompanha; a coordenação não vê por padrão.
+      // Dado clínico da nutrição (28/09/2026): só a nutricionista edita; o
+      // Dr. Daniel e o Lucas (gestor financeiro, que cuida do módulo) só veem.
+      // O resto da coordenação não vê por padrão.
       if (cargo === "nutricionista") return "EDITAR";
-      return cargo === "dr_daniel" ? "VER" : "OCULTO";
+      return cargo === "dr_daniel" || cargo === "gestor_financeiro" ? "VER" : "OCULTO";
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
       return canInteligencia360(cargo) ? "VER" : "OCULTO";
