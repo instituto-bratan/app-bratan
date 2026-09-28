@@ -17,7 +17,7 @@ export const CONFIG_PADRAO: ConfigNutricao = {
   diasRetencaoAudio: 7,
   // Hipótese: percentuais pelos fatores 4, 4 e 9, para fecharem em 100 (a confirmar).
   caloriasPor: "macros",
-  // Sigla ouvida no áudio como "MGV" (a confirmar: MGV ou NGV).
-  siglaVisceral: "MGV",
+  // "NGV, nível de gordura visceral" (resposta dela, áudio de 28/09/2026).
+  siglaVisceral: "NGV",
   separadorBio: " | ",
 };

@@ -157,3 +157,41 @@
   .nutri-bolinha[data-estado="grava"] { animation: none; }
   .nutri-folha-linha.acendeu { animation: none; }
 }
+
+/* ---------------------------------------------------------------- passos da consulta (28/09) */
+
+.nutri-gravacao-ativa { border-color: rgba(178, 74, 53, 0.55); background: rgba(178, 74, 53, 0.09); }
+.nutri-botao-gravar { background: #b24a35; color: #fff; }
+.nutri-botao-gravar:hover:not(:disabled) { background: #9a3f2d; }
+.nutri-passos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.nutri-passos li { display: inline-flex; align-items: center; gap: 6px; color: var(--n-suave); }
+.nutri-passo-numero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+.nutri-passos li[data-estado="feito"] { color: var(--n-ok); }
+.nutri-passos li[data-estado="feito"] .nutri-passo-numero { background: var(--n-ok); border-color: var(--n-ok); color: var(--bratan-papel); }
+.dark .nutri-passos li[data-estado="feito"] .nutri-passo-numero { color: #102019; }
+.nutri-passos li[data-estado="atual"] { color: var(--bratan-musgo); font-weight: 700; }
+.dark .nutri-passos li[data-estado="atual"] { color: var(--bratan-creme); }
+.nutri-passos li[data-estado="atual"] .nutri-passo-numero { border-width: 2px; }
+
+/* trechos da gravação embaixo da linha do roteiro */
+.nutri-achados { border-left: 3px solid rgba(122, 137, 94, 0.55); background: rgba(122, 137, 94, 0.08); border-radius: 0 10px 10px 0; }
+.dark .nutri-achados { background: rgba(122, 137, 94, 0.14); }

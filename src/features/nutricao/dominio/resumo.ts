@@ -6,14 +6,14 @@
 import { CAMPO_IDS, TITULO_BLOCO_SUPLEMENTOS, rotuloDoCampo } from "./roteiro";
 import { conteudoDoCampo, linhaDoCampo } from "./campos";
 import { linhaDaConferencia } from "./suplementos";
-import { normalizarTexto } from "./texto";
+import { normalizarTexto, terminarComPonto } from "./texto";
 import type { Atendimento, CampoId, ConfigNutricao, DataISO, MomentoISO, Retificacao } from "./tipos";
 
 export type LinhaDaFolha = {
   campo: CampoId | null;
   rotulo: string;
   texto: string;
-  estado: "ok" | "nao_informado" | "pendente" | "plano" | "titulo" | "suplemento" | "vazia";
+  estado: "ok" | "nao_informado" | "pendente" | "conduta" | "plano" | "titulo" | "suplemento" | "vazia";
 };
 
 /** Linhas com estado, para a folha desenhar cada uma (a pendente aparece, marcada). */
@@ -29,6 +29,8 @@ export function linhasDaFolha(at: Atendimento, config: ConfigNutricao): LinhaDaF
     const conteudo = conteudoDoCampo(id, valor, config);
     linhas.push({ campo: id, rotulo, texto: conteudo || "não informado", estado: conteudo ? "ok" : "nao_informado" });
   }
+  // Resposta dela (28/09/2026): a conduta entra no resumo, antes da linha do plano.
+  if (at.conduta.trim()) linhas.push({ campo: null, rotulo: "Conduta", texto: linhaDaConduta(at.conduta), estado: "conduta" });
   if (at.linhaPlano.ativa && at.linhaPlano.texto.trim()) {
     linhas.push({ campo: null, rotulo: "", texto: normalizarTexto(at.linhaPlano.texto), estado: "plano" });
   }
@@ -42,6 +44,10 @@ export function linhasDaFolha(at: Atendimento, config: ConfigNutricao): LinhaDaF
   return linhas;
 }
 
+function linhaDaConduta(conduta: string): string {
+  return normalizarTexto(`Conduta: ${terminarComPonto(conduta.trim())}`);
+}
+
 /** Texto pronto para colar. Linha ainda pendente do anterior fica de fora. */
 export function textoDoProntuario(at: Atendimento, config: ConfigNutricao): string {
   const saida: string[] = [];
@@ -49,6 +55,7 @@ export function textoDoProntuario(at: Atendimento, config: ConfigNutricao): stri
     const linha = linhaDoCampo(id, at.campos[id], config);
     if (linha !== null) saida.push(linha);
   }
+  if (at.conduta.trim()) saida.push(linhaDaConduta(at.conduta));
   if (at.linhaPlano.ativa && at.linhaPlano.texto.trim()) saida.push(normalizarTexto(at.linhaPlano.texto));
   saida.push("");
   saida.push(TITULO_BLOCO_SUPLEMENTOS);

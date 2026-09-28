@@ -69,6 +69,7 @@ const routeLoaders = {
   nutricaoConsulta: namedPage(() => import("@/features/nutricao/paginas/NutricaoConsultaPage"), "NutricaoConsultaPage"),
   nutricaoPlano: namedPage(() => import("@/features/nutricao/paginas/NutricaoPlanoPage"), "NutricaoPlanoPage"),
   nutricaoBiblioteca: namedPage(() => import("@/features/nutricao/paginas/NutricaoBibliotecaPage"), "NutricaoBibliotecaPage"),
+  nutricaoGuia: namedPage(() => import("@/features/nutricao/paginas/NutricaoGuiaPage"), "NutricaoGuiaPage"),
 } as const;
 
 export type RoutePreloadKey = keyof typeof routeLoaders;
@@ -143,6 +144,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname.startsWith("/nutricao/consultas/")) return "nutricaoConsulta";
   if (pathname.startsWith("/nutricao/planos/")) return "nutricaoPlano";
   if (pathname === "/nutricao/biblioteca") return "nutricaoBiblioteca";
+  if (pathname === "/nutricao/guia") return "nutricaoGuia";
 
   return null;
 }

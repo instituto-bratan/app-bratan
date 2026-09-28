@@ -64,6 +64,7 @@ const NutricaoPessoaPage = lazyRoute("nutricaoPessoa");
 const NutricaoConsultaPage = lazyRoute("nutricaoConsulta");
 const NutricaoPlanoPage = lazyRoute("nutricaoPlano");
 const NutricaoBibliotecaPage = lazyRoute("nutricaoBiblioteca");
+const NutricaoGuiaPage = lazyRoute("nutricaoGuia");
 
 // Nutrição (28/09/2026): dado clínico, a porta é o controle de Acessos (módulo "nutricao").
 function PortaNutricao({ children }: { children: ReactNode }) {
@@ -162,6 +163,7 @@ export function App() {
               <Route path="/nutricao/consultas/:id" element={<PortaNutricao><NutricaoConsultaPage /></PortaNutricao>} />
               <Route path="/nutricao/planos/:id" element={<PortaNutricao><NutricaoPlanoPage /></PortaNutricao>} />
               <Route path="/nutricao/biblioteca" element={<PortaNutricao><NutricaoBibliotecaPage /></PortaNutricao>} />
+              <Route path="/nutricao/guia" element={<PortaNutricao><NutricaoGuiaPage /></PortaNutricao>} />
               <Route
                 path="/inteligencia-360"
                 element={

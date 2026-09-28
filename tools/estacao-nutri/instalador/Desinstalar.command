@@ -24,7 +24,7 @@ if [ -z "$confirma" ]; then
 fi
 if ! disse_sim "$confirma"; then
   echo "Nada foi mudado."
-  read -r -p "Aperte Enter para fechar. " _ </dev/tty 2>/dev/null || true
+  ( read -r -p "Aperte Enter para fechar. " _ </dev/tty ) 2>/dev/null || true
   exit 0
 fi
 
@@ -57,4 +57,4 @@ echo
 echo "Os prontuários, as gravações e as transcrições que ficam no Chrome, no módulo Nutrição, NÃO foram"
 echo "apagados por aqui. Para tirá-los deste Mac, fale com o Lucas."
 echo "O Node, o ffmpeg, o whisper e o Chrome continuam instalados (outros programas podem usar)."
-read -r -p "Aperte Enter para fechar. " _ </dev/tty 2>/dev/null || true
+( read -r -p "Aperte Enter para fechar. " _ </dev/tty ) 2>/dev/null || true
