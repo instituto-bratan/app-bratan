@@ -41,7 +41,8 @@ const REFEICOES_DO_DIA: RefeicaoModelo[] = [
 ];
 
 export function novaRefeicao(modelo: RefeicaoModelo, novoId: () => Id): Refeicao {
-  return { id: novoId(), nome: modelo.nome, tipo: modelo.tipo, horario: "", opcional: false, emoji: modelo.emoji, itens: [], observacao: "", azeitePreparo: null };
+  // Resposta dela (28/09/2026): "quanto menos emojis, melhor". A refeição nasce sem; ela põe se quiser.
+  return { id: novoId(), nome: modelo.nome, tipo: modelo.tipo, horario: "", opcional: false, emoji: "", itens: [], observacao: "", azeitePreparo: null };
 }
 
 export function novoItem(novoId: () => Id, parcial: Partial<ItemRefeicao> = {}): ItemRefeicao {

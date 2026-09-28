@@ -5,7 +5,7 @@
 // não terminaram e retornos a organizar.
 import { useMemo, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, CalendarPlus, FileText, Send, Stethoscope } from "lucide-react";
+import { ArrowRight, CalendarPlus, FileText, LifeBuoy, Send, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { montarPainel } from "../dominio/painel";
@@ -23,8 +23,8 @@ function Linha({ para, titulo, detalhe, selo, acao }: { para?: string; titulo: R
   const conteudo = (
     <>
       <div className="min-w-0">
-        <p className="truncate font-semibold text-brand-tinta">{titulo}</p>
-        {detalhe ? <p className="truncate text-xs text-muted-foreground">{detalhe}</p> : null}
+        <p className="font-semibold leading-snug text-brand-tinta">{titulo}</p>
+        {detalhe ? <p className="text-xs text-muted-foreground">{detalhe}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {selo}
@@ -106,9 +106,28 @@ export function NutricaoHojePage() {
       <CabecalhoDaPagina
         sobretitulo="Nutrição · Hoje"
         titulo={capitalizarPrimeira(dataLonga)}
-        detalhe={<SeloEstacao detalhado />}
+        detalhe={
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <SeloEstacao detalhado />
+            <Link to="/nutricao/guia" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-oliva hover:underline">
+              <LifeBuoy className="h-3.5 w-3.5" aria-hidden="true" /> Guia de uso
+            </Link>
+          </span>
+        }
         acoes={<BotaoNovaConsulta />}
       />
+      {pessoas.length === 0 ? (
+        <div className="mb-6 rounded-2xl border border-brand-dourado/50 bg-brand-creme/40 px-4 py-4">
+          <p className="text-[13px] font-bold uppercase tracking-[0.07em] text-brand-oliva">Primeiros passos</p>
+          <ol className="mt-2 grid gap-1.5 text-sm text-brand-tinta sm:grid-cols-2 lg:grid-cols-4">
+            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">01</span>Cadastre a pessoa em <Link to="/nutricao/pessoas" className="font-semibold text-brand-oliva hover:underline">Pessoas</Link>, com os suplementos dela.</li>
+            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">02</span>Abra a consulta pelo botão Nova consulta e ligue o consentimento.</li>
+            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">03</span>Grave, encerre e espere a transcrição.</li>
+            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">04</span>Leve as falas para as linhas, copie para o iClinic e finalize.</li>
+          </ol>
+          <p className="mt-2 text-xs text-muted-foreground">O passo a passo completo está no <Link to="/nutricao/guia" className="font-semibold text-brand-oliva hover:underline">Guia de uso</Link>.</p>
+        </div>
+      ) : null}
       {temFicticia ? (
         <p className="mb-5 rounded-xl border border-dashed border-brand-dourado/60 bg-brand-creme/40 px-3 py-2 text-xs text-brand-tinta">
           Piloto com pessoas fictícias. Nomes, falas e quantidades foram inventados para testar o módulo e não são orientação clínica.

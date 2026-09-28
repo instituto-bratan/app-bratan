@@ -10,11 +10,12 @@ import { ArrowLeft, CalendarClock, CheckCircle2, FileText, History, Lock, Rotate
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule } from "@/lib/access";
-import { aceitarSugestao, confirmarAnterior, editarBio, editarTexto, trazerDoAnterior, valorVazio } from "../dominio/campos";
+import { aceitarSugestao, confirmarAnterior, editarBio, editarTexto, trazerDoAnterior, valorVazio, usarTrechoDaTranscricao } from "../dominio/campos";
 import { CONFIG_PADRAO } from "../dominio/config";
 import { feriadosNacionais, prazoDoPlano } from "../dominio/prazos";
 import { aplicarRetificacao, finalizarAtendimento, pendenciasParaFinalizar, type ConteudoRetificavel } from "../dominio/resumo";
-import { ROTEIRO, rotuloDoCampo } from "../dominio/roteiro";
+import { ROTEIRO, rotuloDoCampo, CAMPO_IDS } from "../dominio/roteiro";
+import { achadosNaTranscricao } from "../dominio/achados";
 import { sincronizarPrescricoes } from "../dominio/suplementos";
 import { dataCurta, diaMes, normalizarTexto } from "../dominio/texto";
 import type { Atendimento, CampoId, ConferenciaUso } from "../dominio/tipos";
@@ -62,6 +63,11 @@ export function NutricaoConsultaPage() {
   const [gravacaoOcupada, setGravacaoOcupada] = useState(false);
 
   const anterior = useMemo(() => (at ? historico.find((a) => a.id !== at.id && a.estado === "finalizado" && a.data <= at.data) ?? null : null), [historico, at]);
+
+  // Sem IA paga: cada trecho da gravação vai para embaixo da linha de que fala.
+  const segmentosDaTranscricao = at?.transcricao?.segmentos;
+  const achados = useMemo(() => achadosNaTranscricao(segmentosDaTranscricao ?? []), [segmentosDaTranscricao]);
+  const trechosUsados = useMemo(() => new Set(at ? CAMPO_IDS.flatMap((c) => at.campos[c].evidencias.map((e) => e.segmento)) : []), [at]);
 
   const podeEditarModulo = canEditModule(usuario, "nutricao");
 
@@ -281,7 +287,18 @@ export function NutricaoConsultaPage() {
 
       {!finalizado ? (
         <div className="mb-4">
-          <PainelDaGravacao atendimento={at} pessoa={pessoa} itensUso={itensUso} anterior={anterior} config={config} editavel={editavel} alterar={alterarSeRascunho} aoMudarOcupado={setGravacaoOcupada} />
+          <PainelDaGravacao
+            atendimento={at}
+            pessoa={pessoa}
+            itensUso={itensUso}
+            anterior={anterior}
+            config={config}
+            editavel={editavel}
+            alterar={alterarSeRascunho}
+            aoMudarOcupado={setGravacaoOcupada}
+            trechosUsados={trechosUsados}
+            aoUsarTrechoEm={(campo, seg) => mudarCampo(campo, (v) => usarTrechoDaTranscricao(v, seg, repo.agora()))}
+          />
         </div>
       ) : null}
 
@@ -309,6 +326,7 @@ export function NutricaoConsultaPage() {
                   anterior={anterior ? { valor: anterior.campos[linha.id], data: anterior.data } : null}
                   sugestao={sugestaoDoCampo(linha.id)}
                   segmentos={at.transcricao?.segmentos ?? []}
+                  achados={editavel ? achados[linha.id].map((i) => (at.transcricao?.segmentos ?? [])[i]).filter(Boolean) : []}
                   config={config}
                   editavel={editavel}
                   permitirAnterior={!finalizado}
@@ -319,6 +337,7 @@ export function NutricaoConsultaPage() {
                   aoLimpar={() => mudarCampo(linha.id, () => valorVazio())}
                   aoAceitar={(textoEditado) => resolverSugestaoCampo(linha.id, textoEditado === undefined ? "aceita" : "editada", textoEditado)}
                   aoRecusar={() => resolverSugestaoCampo(linha.id, "recusada")}
+                  aoUsarTrecho={(seg) => mudarCampo(linha.id, (v) => usarTrechoDaTranscricao(v, seg, repo.agora()))}
                   aoProximo={focarProximoCampo}
                 />
               );
@@ -400,7 +419,7 @@ export function NutricaoConsultaPage() {
                 </div>
               ) : null}
               <label className="grid gap-1 text-sm" htmlFor="conduta">
-                <span className="font-semibold text-brand-musgo">Conduta e orientações (fica no módulo)</span>
+                <span className="font-semibold text-brand-musgo">Conduta e orientações (entra no prontuário)</span>
                 <LinhaQueCresce id="conduta" value={conteudo.conduta} disabled={!editavel} placeholder="O que ficou combinado hoje" onChange={(e) => mudarConteudo((c) => ({ ...c, conduta: e.target.value }))} className="border-brand-oliva/14" />
               </label>
               <div className="flex flex-wrap items-center gap-4">

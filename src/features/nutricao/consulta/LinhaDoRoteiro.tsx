@@ -5,14 +5,14 @@
 // do anterior aguardando confirmação (anel dourado) e a sugestão da IA com a
 // fala de origem (anel tracejado azul).
 import { useState, type KeyboardEvent } from "react";
-import { Check, CornerDownLeft, Pencil, RotateCcw, X } from "lucide-react";
+import { Check, CornerDownLeft, Mic, Pencil, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ATALHOS, acrescentarAtalho, conteudoDoCampo } from "../dominio/campos";
 import type { LinhaDoRoteiro as Linha } from "../dominio/roteiro";
 import { diaMes, formatarNumero } from "../dominio/texto";
 import type { ConfigNutricao, DadosBio, SegmentoTranscricao, SugestaoCampo, ValorCampo } from "../dominio/tipos";
 import { Bolinha, LinhaQueCresce, type EstadoBolinha } from "../ui/basicos";
-import { FalaDeOrigem } from "./FalaDeOrigem";
+import { FalaDeOrigem, minutoDe } from "./FalaDeOrigem";
 
 type Props = {
   linha: Linha;
@@ -20,6 +20,8 @@ type Props = {
   anterior: { valor: ValorCampo; data: string } | null;
   sugestao: SugestaoCampo | null;
   segmentos: SegmentoTranscricao[];
+  /** Trechos da gravação que falam deste tema (busca por palavras, sem IA). */
+  achados: SegmentoTranscricao[];
   config: ConfigNutricao;
   editavel: boolean;
   /** Na retificação não se traz nada do anterior: a correção é do registro daquele dia. */
@@ -32,6 +34,8 @@ type Props = {
   aoLimpar: () => void;
   aoAceitar: (textoEditado?: string) => void;
   aoRecusar: () => void;
+  /** Leva um trecho da gravação para esta linha. */
+  aoUsarTrecho: (segmento: SegmentoTranscricao) => void;
   aoProximo: (atual: HTMLElement) => void;
 };
 
@@ -46,6 +50,7 @@ const ORIGEM: Record<string, string> = {
   anterior_confirmado: "confirmado do anterior",
   ia_aceita: "da gravação, revisado",
   ia_editada: "da gravação, editado",
+  transcricao: "da gravação",
   importado: "importado",
 };
 
@@ -86,13 +91,19 @@ function CampoNumero({ id, rotulo, unidade, valor, casas, editavel, aoMudar }: {
 }
 
 export function LinhaDoRoteiro(props: Props) {
-  const { linha, valor, anterior, sugestao, segmentos, config, editavel } = props;
+  const { linha, valor, anterior, sugestao, segmentos, achados, config, editavel } = props;
   const [editandoSugestao, setEditandoSugestao] = useState<string | null>(null);
+  const [verTodosAchados, setVerTodosAchados] = useState(false);
   const idCampo = `campo-${linha.id}`;
   const bolinha = estadoDaBolinha(valor, sugestao);
   const pendente = valor.estado === "anterior_pendente";
   const sugestaoPendente = sugestao && sugestao.estado === "pendente" ? sugestao : null;
   const textoAnterior = anterior ? conteudoDoCampo(linha.id, anterior.valor, config) : "";
+  // Trechos ainda não usados nesta linha; sem IA, é por aqui que a gravação vira registro.
+  const usados = new Set(valor.evidencias.map((e) => e.segmento));
+  const achadosNovos = achados.filter((s) => !usados.has(s.i));
+  const achadosVisiveis = verTodosAchados ? achadosNovos : achadosNovos.slice(0, 3);
+  const temHora = segmentos.some((s) => s.inicio || s.fim);
 
   const aoTeclar = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // A linha dela é uma linha: Enter vai para o próximo tema.
@@ -156,6 +167,30 @@ export function LinhaDoRoteiro(props: Props) {
                 {atalho}
               </button>
             ))}
+          </div>
+        ) : null}
+
+        {editavel && !pendente && !sugestaoPendente && achadosNovos.length > 0 ? (
+          <div className="nutri-achados grid gap-1 px-3 py-2 text-sm">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
+              <Mic className="h-3 w-3" aria-hidden="true" /> na gravação
+            </span>
+            {achadosVisiveis.map((s) => (
+              <div key={s.i} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="min-w-0 flex-1 text-[13px] text-brand-tinta">
+                  <span className="mr-1.5 font-mono text-[11px] text-muted-foreground">{temHora ? minutoDe(s.inicio) : `#${s.i + 1}`}</span>
+                  {s.texto}
+                </span>
+                <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => props.aoUsarTrecho(s)}>
+                  <CornerDownLeft className="h-3 w-3" aria-hidden="true" /> Usar
+                </Button>
+              </div>
+            ))}
+            {achadosNovos.length > 3 && !verTodosAchados ? (
+              <button type="button" className="justify-self-start text-xs font-semibold text-brand-oliva hover:underline" onClick={() => setVerTodosAchados(true)}>
+                mais {achadosNovos.length - 3} trecho(s)
+              </button>
+            ) : null}
           </div>
         ) : null}
 

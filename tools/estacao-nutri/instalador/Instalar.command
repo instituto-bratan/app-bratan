@@ -55,7 +55,7 @@ mkdir -p "$BASE"
 if [ -z "${ESTACAO_TRAVADO:-}" ]; then
   if ! /usr/bin/lockf -s -t 0 "$BASE/.instalando" true; then
     echo "O instalador já está aberto em outra janela do Terminal. Use aquela janela."
-    read -r -p "Aperte Enter para fechar. " _ </dev/tty 2>/dev/null || true
+    ( read -r -p "Aperte Enter para fechar. " _ </dev/tty ) 2>/dev/null || true
     exit 1
   fi
   ESTACAO_TRAVADO=1 exec /usr/bin/lockf -s -t 0 "$BASE/.instalando" /bin/bash "$0" "$@"
@@ -77,7 +77,7 @@ parou() {
     echo "✗ A instalação parou em: $passo."
     echo "  Tire um print desta janela e mande para o Lucas."
   } >&2
-  read -r -p "Aperte Enter para fechar. " _ </dev/tty 2>/dev/null || true
+  ( read -r -p "Aperte Enter para fechar. " _ </dev/tty ) 2>/dev/null || true
 }
 trap parou ERR
 
@@ -397,4 +397,4 @@ echo "Na primeira gravação, escolha \"Permitir ao visitar o site\" para o micr
 echo "Os prontuários ficam neste Chrome, no perfil \"$PERFIL\". Uma vez por semana, baixe a cópia de segurança (Nutrição > Biblioteca)."
 if [ "$ABRIR_CHROME" = "sim" ]; then open -na "Google Chrome" --args "--profile-directory=$PERFIL" "$ORIGEM_APP/nutricao"; fi
 echo
-read -r -p "Aperte Enter para fechar esta janela. " _ </dev/tty 2>/dev/null || true
+( read -r -p "Aperte Enter para fechar esta janela. " _ </dev/tty ) 2>/dev/null || true

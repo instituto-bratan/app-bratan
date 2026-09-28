@@ -71,12 +71,12 @@ test("apagar o texto volta a ser 'não informado'", () => {
 
 test("bio monta peso, PGC e gordura visceral com as siglas dela", () => {
   const bio = campos.editarBio(campos.valorVazio(), { pesoKg: 71.2, pgc: 31.5, visceral: 7, fonte: "InBody 28/09 09h05" }, AGORA);
-  assert.equal(campos.linhaDoCampo("bio", bio, CONFIG_PADRAO), "Bio: Peso: 71,2 kg | PGC: 31,5% | MGV: 7");
+  assert.equal(campos.linhaDoCampo("bio", bio, CONFIG_PADRAO), "Bio: Peso: 71,2 kg | PGC: 31,5% | NGV: 7");
 });
 
 test("bio com número faltando diz qual não foi informado", () => {
   const bio = campos.editarBio(campos.valorVazio(), { pesoKg: 71.2, pgc: null, visceral: null, fonte: null }, AGORA);
-  assert.equal(campos.linhaDoCampo("bio", bio, CONFIG_PADRAO), "Bio: Peso: 71,2 kg | PGC: não informado | MGV: não informado");
+  assert.equal(campos.linhaDoCampo("bio", bio, CONFIG_PADRAO), "Bio: Peso: 71,2 kg | PGC: não informado | NGV: não informado");
 });
 
 test("bio sem número nenhum é 'não informado'", () => {
@@ -171,7 +171,7 @@ test("o texto do prontuário segue a ordem dela e termina no bloco de suplemento
   at.campos.treino = campos.editarTexto(at.campos.treino, "musculação 3x/sem", AGORA);
   at.suplementos = [b12];
   const linhas = resumo.textoDoProntuario(at, CONFIG_PADRAO).split("\n");
-  assert.equal(linhas[0], "Bio: Peso: 71,2 kg | PGC: 31,5% | MGV: 7");
+  assert.equal(linhas[0], "Bio: Peso: 71,2 kg | PGC: 31,5% | NGV: 7");
   assert.equal(linhas[1], "Treino: musculação 3x/sem");
   assert.equal(linhas[2], "Sono: não informado");
   assert.equal(linhas[13], "Finais de semana: não informado");
@@ -180,6 +180,17 @@ test("o texto do prontuário segue a ordem dela e termina no bloco de suplemento
   assert.equal(linhas[16], "Suplementos e Medicamentos");
   assert.equal(linhas[17], b12.nome + ": prescrição manhã e noite; relatou uso só pela manhã. Orientação em 28/09/2026: seguir a prescrição, manhã e noite.");
   assert.equal(linhas.length, 18);
+});
+
+// Resposta dela (áudio de 28/09/2026): "a conduta entra no resumo do prontuário".
+test("a conduta entra no texto do prontuário, antes da linha do plano; vazia, fica de fora", () => {
+  const at = atendimento();
+  at.conduta = "Reduzir o café da tarde & incluir fruta no lanche";
+  const linhas = resumo.textoDoProntuario(at, CONFIG_PADRAO).split("\n");
+  assert.equal(linhas[14], "Conduta: Reduzir o café da tarde e incluir fruta no lanche.");
+  assert.equal(linhas[15], "Plano será entregue em até 72 horas úteis.");
+  assert.equal(resumo.linhasDaFolha(at, CONFIG_PADRAO).find((l) => l.estado === "conduta").texto, "Conduta: Reduzir o café da tarde e incluir fruta no lanche.");
+  assert.ok(!resumo.textoDoProntuario(atendimento(), CONFIG_PADRAO).includes("Conduta"));
 });
 
 test("sem suplementos conferidos, o bloco diz 'não informado'", () => {
@@ -283,7 +294,7 @@ test("digitar num campo ainda pendente do anterior descarta o valor antigo intei
   assert.equal(comObservacao.bio, null);
   assert.equal(campos.linhaDoCampo("bio", comObservacao, CONFIG_PADRAO), "Bio: bioimpedância não realizada hoje");
   const soPeso = campos.editarBio(trazida, { pesoKg: 71.2, pgc: null, visceral: null, fonte: null }, AGORA);
-  assert.equal(campos.linhaDoCampo("bio", soPeso, CONFIG_PADRAO), "Bio: Peso: 71,2 kg | PGC: não informado | MGV: não informado");
+  assert.equal(campos.linhaDoCampo("bio", soPeso, CONFIG_PADRAO), "Bio: Peso: 71,2 kg | PGC: não informado | NGV: não informado");
 });
 
 // ------------------------------------------------------------ achados da revisão (28/09/2026)

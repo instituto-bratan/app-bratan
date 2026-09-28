@@ -9,7 +9,7 @@
 // - o que a IA sugeriu só vira valor quando ela aceita, e guarda a fala de origem.
 import { CAMPO_IDS, rotuloDoCampo } from "./roteiro";
 import { formatarNumero, normalizarTexto } from "./texto";
-import type { CampoId, ConfigNutricao, DadosBio, DataISO, MomentoISO, SugestaoCampo, ValorCampo } from "./tipos";
+import type { SegmentoTranscricao, CampoId, ConfigNutricao, DadosBio, DataISO, MomentoISO, SugestaoCampo, ValorCampo } from "./tipos";
 
 export const NAO_INFORMADO = "não informado";
 
@@ -132,6 +132,27 @@ export function aceitarSugestao(valor: ValorCampo, sugestao: SugestaoCampo, agor
 }
 
 /** Atalho clicado entra no fim do texto, separado por vírgula, sem repetir. */
+/**
+ * Leva um trecho da transcrição para a linha, sem IA: o texto entra depois do
+ * que já estava, e a fala de origem fica registrada. O mesmo trecho não entra
+ * duas vezes. Valor ainda pendente do anterior é descartado, como ao digitar.
+ */
+export function usarTrechoDaTranscricao(valor: ValorCampo, segmento: SegmentoTranscricao, agora: MomentoISO): ValorCampo {
+  const base = valor.estado === "anterior_pendente" ? valorVazio() : valor;
+  if (base.evidencias.some((e) => e.segmento === segmento.i)) return valor;
+  const trecho = segmento.texto.trim();
+  const atual = base.texto.trim();
+  const texto = !atual ? trecho : `${/[.!?…]$/.test(atual) ? atual : `${atual}.`} ${trecho}`;
+  return {
+    ...base,
+    texto,
+    estado: texto ? "preenchido" : "vazio",
+    origem: "transcricao",
+    evidencias: [...base.evidencias, { segmento: segmento.i, trecho, quem: "incerto" }],
+    confirmadoEm: agora,
+  };
+}
+
 export function acrescentarAtalho(texto: string, atalho: string): string {
   const atual = texto.trim();
   if (!atual) return atalho;

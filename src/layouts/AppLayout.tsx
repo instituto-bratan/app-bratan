@@ -37,6 +37,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
+  LifeBuoy,
   Sparkles,
   SunMedium,
   Target,
@@ -144,6 +145,7 @@ const flowGroups: FlowGroup[] = [
       { label: "Hoje", href: "/nutricao", icon: Salad, allowed: () => false, module: "nutricao" },
       { label: "Pessoas", href: "/nutricao/pessoas", icon: UsersRound, allowed: () => false, module: "nutricao" },
       { label: "Biblioteca", href: "/nutricao/biblioteca", icon: BookOpen, allowed: () => false, module: "nutricao" },
+      { label: "Guia", href: "/nutricao/guia", icon: LifeBuoy, allowed: () => false, module: "nutricao" },
     ],
   },
   {

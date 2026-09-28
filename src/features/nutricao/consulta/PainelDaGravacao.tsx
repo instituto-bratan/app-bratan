@@ -1,23 +1,27 @@
-// GRAVAR, TRANSCREVER E ORGANIZAR A CONSULTA (28/09/2026).
+// GRAVAR, TRANSCREVER E LEVAR A FALA PARA O ROTEIRO (28/09/2026).
 //
 // O fluxo que a Dra. Géssica pediu: "mediante a transcrição, a gravação da
-// consulta, o sistema coloque as seguintes informações". Aqui:
+// consulta, o sistema coloque as seguintes informações". Aqui, em cinco passos
+// que a tela mostra na ordem:
 // 1. consentimento registrado antes de gravar;
 // 2. gravação guardada neste computador em pedaços;
 // 3. transcrição na estação local (o áudio não sai do Mac);
-// 4. organização pela IA, conferida contra a transcrição (extracao.ts);
-// 5. as sugestões aparecem em cada linha para ela aceitar, editar ou recusar.
+// 4. as linhas do roteiro: cada trecho da gravação aparece embaixo do tema
+//    de que fala, para ela usar com um clique (sem IA paga; com a IA ligada,
+//    as sugestões aparecem prontas para aceitar);
+// 5. copiar para o iClinic.
 // Sem estação, a gravação fica guardada e o registro continua à mão.
 import { useEffect, useRef, useState } from "react";
-import { AudioLines, ClipboardPaste, FileAudio, Loader2, Mic, Pause, Play, RefreshCw, Sparkles, Square, Trash2 } from "lucide-react";
+import { AudioLines, Check, ClipboardPaste, FileAudio, Loader2, Mic, Pause, Play, RefreshCw, Sparkles, Square, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { conteudoDoCampo } from "../dominio/campos";
 import { conferirOrganizacao } from "../dominio/extracao";
-import { CAMPO_IDS } from "../dominio/roteiro";
+import { CAMPO_IDS, ROTEIRO, type CampoId } from "../dominio/roteiro";
 import { textoDaPrescricao } from "../dominio/suplementos";
 import { gravacaoPendente, juntarTranscricoes } from "../dominio/transcricao";
 import type { Atendimento, ConfigNutricao, ItemUso, OrganizacaoConsulta, Pessoa, SegmentoTranscricao, Transcricao } from "../dominio/tipos";
-import { aguardarTranscricao, apagarAudioNaEstacao, EstacaoIndisponivel, enviarAudio, organizar, useEstacao } from "../estacao/cliente";
+import { aguardarTranscricao, apagarAudioNaEstacao, COMO_RELIGAR_ESTACAO, EstacaoIndisponivel, enviarAudio, organizar, useEstacao } from "../estacao/cliente";
 import { audioGuardado, formatarDuracao, useGravador } from "../gravacao/useGravador";
 import { apagarPedacos } from "../store/db";
 import * as repo from "../store/repositorio";
@@ -42,6 +46,10 @@ type Props = {
   alterar: (mudanca: (a: Atendimento) => Atendimento) => void;
   /** Avisa a página quando gravação, transcrição ou organização estão em andamento. */
   aoMudarOcupado?: (ocupado: boolean) => void;
+  /** Leva um trecho da transcrição para uma linha do roteiro (escolhida na lista). */
+  aoUsarTrechoEm?: (campo: CampoId, segmento: SegmentoTranscricao) => void;
+  /** Índices dos trechos já usados em alguma linha. */
+  trechosUsados?: Set<number>;
 };
 
 function Medidor({ nivel }: { nivel: number }) {
@@ -64,13 +72,42 @@ export function segmentosDeTexto(texto: string): SegmentoTranscricao[] {
     .map((t, i) => ({ i, inicio: 0, fim: 0, texto: t }));
 }
 
-export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, config, editavel, alterar, aoMudarOcupado }: Props) {
+const PASSOS = ["Consentimento", "Gravar", "Transcrever", "Conferir as linhas", "Copiar para o iClinic"] as const;
+
+/** Em que passo ela está, para a régua no alto do painel. */
+export function passoAtual(a: Pick<Atendimento, "consentimentoGravacao" | "gravacaoId" | "transcricao" | "textoCopiadoEm">, gravando: boolean, transcrevendo: boolean): number {
+  if (a.textoCopiadoEm) return 5;
+  if (a.transcricao) return 4;
+  if (transcrevendo || (a.gravacaoId && !gravando)) return 3;
+  if (a.consentimentoGravacao) return 2;
+  return 1;
+}
+
+function Regua({ atual }: { atual: number }) {
+  return (
+    <ol className="nutri-passos" aria-label="Passos da consulta">
+      {PASSOS.map((nome, i) => {
+        const n = i + 1;
+        const estado = n < atual ? "feito" : n === atual ? "atual" : "depois";
+        return (
+          <li key={nome} data-estado={estado} aria-current={estado === "atual" ? "step" : undefined}>
+            <span className="nutri-passo-numero">{estado === "feito" ? <Check className="h-3 w-3" aria-hidden="true" /> : n}</span>
+            <span className="nutri-passo-nome">{nome}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, config, editavel, alterar, aoMudarOcupado, aoUsarTrechoEm, trechosUsados }: Props) {
   const gravador = useGravador();
   const { saude } = useEstacao();
   const [fase, setFase] = useState<Fase>({ tipo: "livre" });
   const [colarAberto, setColarAberto] = useState(false);
   const [textoColado, setTextoColado] = useState("");
   const [verTranscricao, setVerTranscricao] = useState(false);
+  const [filtro, setFiltro] = useState("");
   const arquivo = useRef<HTMLInputElement>(null);
 
   const consentiu = Boolean(atendimento.consentimentoGravacao);
@@ -80,18 +117,16 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
   // Gravação guardada que ainda não entrou na transcrição: primeiro transcrever (ou descartar).
   const pendenteId = gravacaoPendente(atendimento);
   const guardadaSemTranscricao = pendenteId !== null;
+  const passo = passoAtual(atendimento, gravando, fase.tipo === "enviando" || fase.tipo === "transcrevendo");
 
   useEffect(() => {
     aoMudarOcupado?.(gravando || ocupado);
   }, [gravando, ocupado, aoMudarOcupado]);
 
   const organizarAgora = async (segmentos: SegmentoTranscricao[]) => {
-    if (!saude) {
-      setFase({ tipo: "aviso", texto: "A transcrição está guardada. Ligue a estação local para a IA organizar." });
-      return;
-    }
-    if (!saude.ia.configurada) {
-      setFase({ tipo: "aviso", texto: "Transcrição pronta. A IA não está configurada na estação: preencha as linhas olhando a transcrição." });
+    if (!saude || !saude.ia.configurada) {
+      // Sem a IA paga (decisão do Lucas): os trechos vão para as linhas com um clique.
+      setFase({ tipo: "aviso", texto: "Transcrição pronta. Embaixo de cada linha do roteiro estão os trechos da gravação sobre o tema: clique em “Usar”." });
       return;
     }
     setFase({ tipo: "organizando" });
@@ -147,7 +182,7 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
       else setFase({ tipo: "livre" });
     } catch (e) {
       if (e instanceof EstacaoIndisponivel) {
-        setFase({ tipo: "aviso", texto: "Gravação guardada neste computador. Ligue a estação local e clique em “Transcrever”." });
+        setFase({ tipo: "aviso", texto: `Gravação guardada neste computador. A estação local não respondeu: ${COMO_RELIGAR_ESTACAO} Depois clique em “Transcrever”.` });
       } else {
         setFase({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
       }
@@ -214,28 +249,39 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
   };
 
   const segmentos = atendimento.transcricao?.segmentos ?? [];
+  const filtroLimpo = filtro.trim().toLowerCase();
+  const segmentosVisiveis = filtroLimpo ? segmentos.filter((s) => s.texto.toLowerCase().includes(filtroLimpo)) : segmentos;
+  const temHora = segmentos.some((s) => s.inicio || s.fim);
+
+  const situacao = gravando
+    ? null
+    : atendimento.transcricao
+      ? `Transcrição pronta · ${atendimento.transcricao.motor}${atendimento.transcricao.duracaoSeg ? ` · ${formatarDuracao(atendimento.transcricao.duracaoSeg)}` : ""}${guardadaSemTranscricao ? " · um trecho gravado ainda não entrou" : ""}`
+      : guardadaSemTranscricao
+        ? "Gravação guardada neste computador, ainda sem transcrição"
+        : consentiu
+          ? "Tudo pronto para gravar"
+          : "Antes de gravar, registre o consentimento";
 
   return (
-    <section className="nutri-gravacao grid gap-3 px-4 py-3" aria-label="Gravação da consulta">
+    <section className={cn("nutri-gravacao grid gap-3 px-4 py-3", gravando && "nutri-gravacao-ativa")} aria-label="Gravação da consulta">
+      <Regua atual={passo} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           {gravando ? (
             <>
               <Bolinha estado={gravador.estado === "pausado" ? "pausa" : "grava"} />
-              <span className="font-mono text-lg font-semibold tabular-nums text-brand-tinta" aria-live="polite">
+              <span className="font-mono text-2xl font-semibold tabular-nums text-brand-tinta" aria-live="polite">
                 {formatarDuracao(gravador.segundos)}
               </span>
               <Medidor nivel={gravador.nivel} />
-              <span className="text-xs text-muted-foreground">{gravador.estado === "pausado" ? "pausada" : "gravando · guardando neste computador a cada 5 s"}</span>
+              <span className="text-xs text-muted-foreground">{gravador.estado === "pausado" ? "pausada" : gravador.estado === "pedindo" ? "pedindo o microfone…" : "gravando · guardando neste computador a cada 5 s"}</span>
             </>
           ) : (
             <span className="inline-flex items-center gap-2 text-sm font-semibold text-brand-musgo">
               <AudioLines className="h-4 w-4" aria-hidden="true" />
-              {atendimento.transcricao
-                ? `Transcrição pronta · ${atendimento.transcricao.motor}${atendimento.transcricao.duracaoSeg ? ` · ${formatarDuracao(atendimento.transcricao.duracaoSeg)}` : ""}${guardadaSemTranscricao ? " · um trecho gravado ainda não entrou" : ""}`
-                : guardadaSemTranscricao
-                  ? "Gravação guardada neste computador"
-                  : "Consulta ainda não gravada"}
+              {situacao}
             </span>
           )}
         </div>
@@ -246,7 +292,7 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
               <>
                 {guardadaSemTranscricao ? (
                   <>
-                    <Button type="button" size="sm" className="gap-1.5" disabled={ocupado} onClick={() => void transcreverGuardada()}>
+                    <Button type="button" size="lg" className="gap-1.5" disabled={ocupado} onClick={() => void transcreverGuardada()}>
                       <RefreshCw className="h-4 w-4" aria-hidden="true" /> Transcrever
                     </Button>
                     <Button type="button" size="sm" variant="ghost" className="gap-1.5" disabled={ocupado} onClick={() => void descartarGuardada()}>
@@ -254,8 +300,16 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
                     </Button>
                   </>
                 ) : (
-                  <Button type="button" size="sm" className="gap-1.5" disabled={!consentiu || ocupado} onClick={() => void iniciarGravacao()} title={consentiu ? "Começar a gravar" : "Registre o consentimento antes de gravar"}>
-                    <Mic className="h-4 w-4" aria-hidden="true" /> {atendimento.transcricao ? "Gravar mais um trecho" : "Gravar consulta"}
+                  <Button
+                    type="button"
+                    size="lg"
+                    className={cn("gap-2", !atendimento.transcricao && "nutri-botao-gravar")}
+                    variant={atendimento.transcricao ? "outline" : "default"}
+                    disabled={!consentiu || ocupado}
+                    onClick={() => void iniciarGravacao()}
+                    title={consentiu ? "Começar a gravar" : "Registre o consentimento antes de gravar"}
+                  >
+                    <Mic className="h-5 w-5" aria-hidden="true" /> {atendimento.transcricao ? "Gravar mais um trecho" : "Gravar consulta"}
                   </Button>
                 )}
                 {atendimento.transcricao && iaPronta ? (
@@ -292,8 +346,8 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
                     <Pause className="h-4 w-4" aria-hidden="true" /> Pausar
                   </Button>
                 )}
-                <Button type="button" size="sm" className="gap-1.5" onClick={() => void encerrarGravacao()}>
-                  <Square className="h-3.5 w-3.5" aria-hidden="true" /> Encerrar e transcrever
+                <Button type="button" size="lg" className="gap-2" onClick={() => void encerrarGravacao()}>
+                  <Square className="h-4 w-4" aria-hidden="true" /> Encerrar e transcrever
                 </Button>
               </>
             )}
@@ -315,14 +369,14 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
 
       {gravador.erro ? <p className="text-sm text-red-800">{gravador.erro}</p> : null}
       {fase.tipo === "enviando" ? (
-        <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <p className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
           <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" /> Enviando o áudio para a estação local…
         </p>
       ) : null}
       {fase.tipo === "transcrevendo" ? (
         <div className="grid gap-1" role="status">
           <p className="text-sm text-muted-foreground">
-            {fase.etapa}… {fase.progresso}%
+            {fase.etapa}… {fase.progresso}% <span className="text-xs">(uma consulta de 1 hora leva uns 5 minutos)</span>
           </p>
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-brand-oliva transition-[width]" style={{ width: `${Math.max(3, fase.progresso)}%` }} />
@@ -338,18 +392,54 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
       {fase.tipo === "erro" ? <p className="text-sm text-red-800">{fase.texto}</p> : null}
 
       {segmentos.length ? (
-        <div>
-          <button type="button" className="text-xs font-semibold text-brand-oliva hover:underline" onClick={() => setVerTranscricao((v) => !v)} aria-expanded={verTranscricao}>
-            {verTranscricao ? "Esconder a transcrição" : `Ver a transcrição (${segmentos.length} trechos)`}
-          </button>
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className="text-xs font-semibold text-brand-oliva hover:underline" onClick={() => setVerTranscricao((v) => !v)} aria-expanded={verTranscricao}>
+              {verTranscricao ? "Esconder a transcrição" : `Ver a transcrição inteira (${segmentos.length} trechos)`}
+            </button>
+            {verTranscricao ? (
+              <input
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+                placeholder="procurar na transcrição"
+                aria-label="Procurar na transcrição"
+                className="h-8 w-56 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm focus:border-brand-dourado focus:outline-none focus:ring-2 focus:ring-brand-dourado/25"
+              />
+            ) : null}
+          </div>
           {verTranscricao ? (
-            <ol className="mt-2 grid max-h-72 gap-1 overflow-y-auto rounded-xl border border-brand-oliva/12 bg-white/60 p-3 text-sm">
-              {segmentos.map((s) => (
-                <li key={s.i} className="grid grid-cols-[52px_minmax(0,1fr)] gap-2">
-                  <span className="font-mono text-[11px] text-muted-foreground">{s.inicio || s.fim ? minutoDe(s.inicio) : `#${s.i + 1}`}</span>
-                  <span>{s.texto}</span>
-                </li>
-              ))}
+            <ol className="grid max-h-96 gap-1 overflow-y-auto rounded-xl border border-brand-oliva/12 bg-white/60 p-3 text-sm">
+              {segmentosVisiveis.map((s) => {
+                const usado = trechosUsados?.has(s.i) ?? false;
+                return (
+                  <li key={s.i} className={cn("grid grid-cols-[52px_minmax(0,1fr)_auto] items-start gap-2 rounded-lg px-1 py-0.5", usado && "opacity-60")}>
+                    <span className="font-mono text-[11px] text-muted-foreground">{temHora ? minutoDe(s.inicio) : `#${s.i + 1}`}</span>
+                    <span>{s.texto}</span>
+                    {editavel && aoUsarTrechoEm ? (
+                      usado ? (
+                        <span className="text-[11px] text-muted-foreground">usado</span>
+                      ) : (
+                        <select
+                          aria-label={`Usar o trecho ${s.i + 1} em`}
+                          className="h-7 rounded-lg border border-brand-oliva/20 bg-white/70 px-1 text-xs"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) aoUsarTrechoEm(e.target.value as CampoId, s);
+                          }}
+                        >
+                          <option value="">Usar em…</option>
+                          {ROTEIRO.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      )
+                    ) : null}
+                  </li>
+                );
+              })}
+              {segmentosVisiveis.length === 0 ? <li className="text-xs text-muted-foreground">Nenhum trecho com “{filtro}”.</li> : null}
             </ol>
           ) : null}
         </div>
@@ -372,7 +462,7 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
         }
       >
         <p className="text-muted-foreground">
-          O texto original fica guardado junto do atendimento{atendimento.transcricao ? ", depois da transcrição que já existe" : ""}. Cada sugestão vai citar o trecho de onde saiu.
+          O texto original fica guardado junto do atendimento{atendimento.transcricao ? ", depois da transcrição que já existe" : ""}. Cada parágrafo vira um trecho que você pode levar para uma linha.
         </p>
         <textarea
           value={textoColado}

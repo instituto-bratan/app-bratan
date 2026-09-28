@@ -237,3 +237,10 @@ test("alimentos congelados vêm do retrato do plano finalizado", () => {
   assert.equal(plain(plano.alimentosDoRetrato(final))[0].por100g.kcal, 300);
   assert.deepEqual(plain(plano.alimentosDoRetrato(planoDeAgosto())), []);
 });
+
+// Resposta dela (28/09/2026): "quanto menos emojis, melhor". Refeição nova nasce sem emoji.
+test("refeição nova nasce sem emoji", () => {
+  const r = plano.novaRefeicao({ nome: "Almoço", tipo: "almoco", emoji: "🍽️" }, () => "r1");
+  assert.equal(r.emoji, "");
+  assert.equal(r.tipo, "almoco");
+});

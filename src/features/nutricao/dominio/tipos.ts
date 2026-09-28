@@ -77,7 +77,7 @@ export type Transcricao = {
 
 // ---------------------------------------------------------------- checkpoint
 
-export type OrigemValor = "digitado" | "anterior_confirmado" | "ia_aceita" | "ia_editada" | "importado";
+export type OrigemValor = "digitado" | "anterior_confirmado" | "ia_aceita" | "ia_editada" | "transcricao" | "importado";
 
 export type EstadoValor = "vazio" | "preenchido" | "anterior_pendente";
 
