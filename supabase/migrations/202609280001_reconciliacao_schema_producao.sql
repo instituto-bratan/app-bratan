@@ -4,7 +4,7 @@
 -- Registra no repositório três objetos que JÁ EXISTEM em produção, criados
 -- direto no banco sem migration (achados no levantamento de 28/09/2026 para o
 -- módulo de nutrição). A fonte de cada definição é a mensagem do commit que
--- passou a usar o objeto; onde o commit não diz, está marcado CONFERIR.
+-- passou a usar o objeto; cada detalhe foi conferido em produção em 28/09/2026.
 --
 --   1. crm_deals.program_milestones_done   (commit 1b5695b, 21/07/2026)
 --   2. paciente_acesso.login, senha_hash, senha_criada_em, tentativas,
@@ -21,31 +21,31 @@
 -- produção tem, para as migrations seguintes e o app funcionarem.
 --
 -- ANTES DE APLICAR: rode docs/seguranca-2026-09-28/conferir-producao.sql no
--- SQL Editor e compare com os blocos CONFERIR abaixo. Se produção diferir,
+-- SQL Editor e compare com os blocos abaixo. Se produção diferir,
 -- corrija ESTE arquivo para ficar igual a produção (e não o contrário).
 -- ============================================================================
 
 -- 1. Marcos do Plano de Acompanhamento ---------------------------------------
 -- Commit 1b5695b: "crm_deals.program_milestones_done jsonb default []".
--- CONFERIR: se em produção a coluna é "not null".
+-- Conferido em produção (28/09/2026): not null default '[]'.
 alter table public.crm_deals
-  add column if not exists program_milestones_done jsonb default '[]'::jsonb;
+  add column if not exists program_milestones_done jsonb not null default '[]'::jsonb;
 
 -- 2. Login próprio do portal do paciente -------------------------------------
 -- Commit c345b68: "paciente_acesso ganha login, senha_hash, senha_criada_em,
 -- tentativas e bloqueado_ate, com índice único em lower(login) para acesso
 -- não revogado". O hash da senha é tratado em docs/seguranca-2026-09-28.
--- CONFERIR: "tentativas" not null/default 0 (a função lê com "?? 0").
+-- Conferido em produção (28/09/2026): tentativas smallint not null default 0.
 alter table public.paciente_acesso
   add column if not exists login text,
   add column if not exists senha_hash text,
   add column if not exists senha_criada_em timestamptz,
-  add column if not exists tentativas integer not null default 0,
+  add column if not exists tentativas smallint not null default 0,
   add column if not exists bloqueado_ate timestamptz;
 
--- O nome do índice de produção não está no repositório: por isso a checagem é
--- pela expressão, e não por "if not exists" (que olharia só o nome e criaria
--- um segundo índice igual em produção).
+-- Em produção o índice se chama paciente_acesso_login_unico (conferido em
+-- 28/09/2026); a checagem é pela expressão, e não por "if not exists" (que
+-- olharia só o nome e criaria um segundo índice igual em produção).
 do $$
 begin
   if not exists (
@@ -55,9 +55,9 @@ begin
       and tablename = 'paciente_acesso'
       and indexdef ilike '%lower(login)%'
   ) then
-    create unique index paciente_acesso_login_ativo_uidx
+    create unique index paciente_acesso_login_unico
       on public.paciente_acesso (lower(login))
-      where revogado_em is null;
+      where login is not null and revogado_em is null;
   end if;
 end
 $$;
@@ -67,8 +67,8 @@ $$;
 -- de Impostos & NFs, mais coordenação e financeiro. Quem precisar, o Lucas
 -- libera em Acessos". Colunas conforme src/lib/remote/compliance.ts
 -- (upsert com onConflict: contact_ref) e focus-nfse (lê cpf por contact_ref).
--- CONFERIR: chave primária (contact_ref ou id + unique), not null do cpf e o
--- texto exato das políticas (pg_policies) — aqui é a melhor leitura do commit.
+-- Conferido em produção (28/09/2026): chave primária contact_ref, cpf not
+-- null, e as duas políticas abaixo com este texto (para "public", sem "to").
 do $$
 begin
   if to_regclass('public.contato_documento') is null then
@@ -83,7 +83,7 @@ begin
     alter table public.contato_documento enable row level security;
 
     create policy contato_documento_select on public.contato_documento
-      for select to authenticated
+      for select
       using (
         public.is_coordenacao(auth.uid())
         or public.is_financeiro_full(auth.uid())
@@ -91,7 +91,7 @@ begin
       );
 
     create policy contato_documento_write on public.contato_documento
-      for all to authenticated
+      for all
       using (
         public.is_coordenacao(auth.uid())
         or public.is_financeiro_full(auth.uid())
