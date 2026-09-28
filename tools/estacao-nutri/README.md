@@ -69,6 +69,23 @@ Ao ligar, a estação escreve uma linha dizendo o endereço e o que está pronto
 Estação local em http://127.0.0.1:8787 | transcrição: pronta (ggml-large-v3-turbo-q5_0.bin) | PDF: Chrome ok | IA: sem chave | áudios apagados após 7 dias
 ```
 
+## Instalar no Mac da Géssica
+
+`instalador/montar-pacote.sh` gera `instalador/dist/Estação Nutrição Bratan.zip` (fora do git). A pasta leva o `Instalar.command`, o `Desinstalar.command`, um `LEIA-ME.txt` e a estação, com os dois arquivos do app que ela importa (`roteiro.ts` e `esquemaOrganizacao.ts`) no mesmo caminho relativo.
+
+Com dois cliques, o instalador:
+
+1. instala o que falta com o Homebrew: Node, ffmpeg, whisper-cpp e o Google Chrome;
+2. copia a estação para `~/Library/Application Support/EstacaoNutri/programa` e roda o `npm ci`;
+3. baixa o modelo (574 MB) do repositório do whisper.cpp no Hugging Face e confere o SHA-256. Se o download cair, ele continua de onde parou;
+4. escreve o `.env.local` com `ORIGENS_PERMITIDAS=https://app-bratan.vercel.app` e sem chave de IA. Ao rodar de novo, reescreve só as linhas dele;
+5. cria o início automático (`~/Library/LaunchAgents/br.com.institutobratan.estacao-nutri.plist`, com `KeepAlive`), com o registro em `~/Library/Logs/EstacaoNutri`;
+6. confere a estação pela rota `/saude` e cria o atalho `~/Applications/Nutrição Bratan.app`, que abre o módulo no Chrome.
+
+Rodar o instalador de novo atualiza a estação sem baixar o modelo outra vez. O desinstalador remove o início automático, o programa e o atalho, e só apaga as gravações e o modelo se ela pedir.
+
+`instalador/testar.sh` testa tudo isso neste Mac, de ponta a ponta. Ele usa uma pasta temporária, a porta 8788, um início automático próprio e um download interrompido 3 MB antes do fim. Não dá para testar a instalação do Homebrew e dos programas do zero num Mac que já tem tudo.
+
 ## Como conferir
 
 ```sh

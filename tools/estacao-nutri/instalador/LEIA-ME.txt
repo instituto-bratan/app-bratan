@@ -1,0 +1,40 @@
+ESTAÇÃO NUTRIÇÃO · INSTITUTO BRATAN
+
+É a parte do APP BRATAN que roda no seu Mac: transcreve as consultas e gera o
+PDF do plano alimentar. O áudio não sai do computador e nada é cobrado.
+
+
+COMO INSTALAR (uma vez só, de 10 a 20 minutos, com internet)
+
+1. Dê dois cliques em "Instalar.command".
+
+   Se o Mac disser que não pode abrir porque é de um desenvolvedor não
+   identificado: abra Ajustes do Sistema > Privacidade e Segurança, desça até o
+   fim, clique em "Abrir Mesmo Assim" e confirme. Isso só acontece quando a
+   pasta chega pela internet ou por AirDrop; copiada de um pen drive, abre direto.
+
+2. Se o Mac perguntar se o Terminal pode acessar a pasta, clique em OK.
+
+3. Se aparecer um pedido de senha, digite a senha do Mac (a mesma que você usa
+   para entrar nele). Enquanto você digita, nada aparece na tela. É normal.
+   Precisa ser um usuário administrador do Mac.
+
+4. Espere a mensagem "Pronto!". Na primeira vez ele baixa uns 600 MB.
+
+
+NO DIA A DIA
+
+- Abra "Nutrição Bratan" (procure no Spotlight, ou na pasta Aplicativos do seu
+  usuário) ou entre em https://app-bratan.vercel.app/nutricao pelo Google Chrome.
+  Use sempre o Chrome: os registros ficam guardados nele.
+- Na primeira consulta, o Chrome pergunta se o APP BRATAN pode acessar apps
+  deste computador e usar o microfone. Responda Permitir nas duas.
+- A estação liga sozinha quando o Mac liga. Não precisa abrir nada.
+- O Mac pode avisar que "node" virou um item de segundo plano: é a estação.
+  Não desligue esse item em Ajustes do Sistema.
+
+
+PARA TIRAR DO MAC
+
+Dê dois cliques em "Desinstalar.command". Ele pergunta antes de apagar as
+gravações e as transcrições.
