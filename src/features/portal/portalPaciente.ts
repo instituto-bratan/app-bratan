@@ -166,13 +166,30 @@ export function brlCentavos(valor: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor || 0);
 }
 
+// A consulta é às 14h no relógio da clínica (São Paulo), seja qual for o fuso
+// do aparelho de quem lê — e do servidor do CI, que roda em UTC.
+const RELOGIO_DA_CLINICA = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+  hourCycle: "h23",
+});
+
 function dataLocal(iso: string) {
   // Aceita "AAAA-MM-DD" ou ISO com hora; sem hora, meio-dia local para não escorregar de dia.
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
     const [a, m, d] = iso.split("-").map(Number);
     return new Date(a, m - 1, d, 12, 0, 0);
   }
-  return new Date(iso);
+  // Com hora: os campos locais da data passam a ser os do relógio da clínica.
+  const instante = new Date(iso);
+  if (Number.isNaN(instante.getTime())) return instante;
+  const p = Object.fromEntries(RELOGIO_DA_CLINICA.formatToParts(instante).map((parte) => [parte.type, parte.value]));
+  return new Date(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
 }
 
 export function diaLongo(iso: string) {
@@ -254,7 +271,7 @@ export function proximaConsulta(consultas: PortalConsulta[], _marcos: MarcoDoPla
     .sort((a, b) => a.em.localeCompare(b.em));
   const real = reais[0];
   if (real) {
-    const dias = diasEntre(hojeISO, real.em.slice(0, 10));
+    const dias = diasEntre(hojeISO, real.em);
     return { id: real.id, em: real.em, comHora: true, profissional: real.profissional, tipo: real.tipo, local: real.local, origem: real.origem, status: real.status, dias, quando: fraseDeDias(dias), titulo: diaLongo(real.em), hora: horaCurta(real.em), podeResponder: real.status !== "CONFIRMADA" && real.status !== "REMARCAR" && dias <= 14 };
   }
   return null;
