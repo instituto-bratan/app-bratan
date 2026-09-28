@@ -16,3 +16,4 @@ tsconfig.node.tsbuildinfo
 tools/estacao-nutri/node_modules
 tools/estacao-nutri/.env.local
 !tools/estacao-nutri/.env.example
+tools/estacao-nutri/instalador/dist/

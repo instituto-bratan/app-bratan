@@ -28,11 +28,11 @@ A estação também abre com dois cliques em `tools/estacao-nutri/Iniciar Estaç
 
 ## O que falta para usar com pacientes reais
 
-1. **IA**: criar `tools/estacao-nutri/.env.local` com `ANTHROPIC_API_KEY` de uma organização da Anthropic separada, com retenção zero de dados (regra da página "O que a IA fez" do próprio app). Sem a chave, tudo funciona à mão e a transcrição continua local.
+1. **IA (opcional e paga por uso)**: o "Organizar com IA" usa a API da Anthropic, que cobra por uso. Decisão do Lucas em 28/09/2026: fica desligado. Sem a chave nada é cobrado, a transcrição continua local e ela preenche as linhas olhando a transcrição. Se um dia for ligado, a chave deve ser de uma organização separada, com retenção zero de dados, em `tools/estacao-nutri/.env.local`.
 2. **Consentimento** de gravação e de uso de IA no termo de atendimento; RIPD do módulo no Cofre de compliance.
 3. **Onde os dados moram**: no piloto, no navegador do Mac dela (IndexedDB). Baixar a cópia de segurança com frequência (Biblioteca › Ajustes). A migração para o Supabase depende da correção das tabelas clínicas abertas, do segundo fator de login e da decisão sobre a região do banco.
 4. **Confirmações com a Géssica** (valores iniciais em `src/features/nutricao/dominio/config.ts`): sigla MGV ou NGV; "Es" = esvaziamento; 72 horas úteis = 3 dias úteis; calorias pelos fatores 4/4/9 ou pela tabela; como a lista de frutas e os legumes livres entram na conta; tabela de nutrientes no PDF ou só para ela.
-5. **Publicar na Vercel** (se for o caso): `vercel.json` já libera o microfone para o próprio app e a conexão com a estação; incluir a URL de produção em `ORIGENS_PERMITIDAS` no `.env.local` da estação.
+5. **Mac dela**: o módulo já está no ar em https://app-bratan.vercel.app/nutricao, para quem tem login com cargo nutricionista. A estação vai para o Mac dela com o instalador de dois cliques (`tools/estacao-nutri/instalador/montar-pacote.sh` gera o pacote; veja o `LEIA-ME.txt` e o README da estação). Use sempre o Chrome: os registros ficam guardados no navegador.
 
 ## Limites conhecidos do piloto
 
