@@ -36,6 +36,7 @@ import {
   crmRoleLabels,
   dealStageLabels,
   enrollContactInCadence,
+  inscreverNaCadencia,
   enrollmentStatusLabels,
   isCrmManagement,
   findOrCreateCrmContact,
@@ -94,19 +95,25 @@ function CrmCadencesPageConteudo() {
   const radarFaixas = useMemo(() => radarPorFaixa(radar), [radar]);
 
   function inscreverNoResgate(contactId: string, faixa: Exclude<FaixaDeResgate, "CHEGANDO">) {
-    persist((current) =>
-      enrollContactInCadence(current, {
-        cadenceId: cadenciaDaFaixa[faixa],
-        contactId,
-        dealId: "",
-        triggerSource: "radar de resgate",
-        triggerDate: todayISO(),
-        ownerUserId: cadenceOwnerSlug("CONCIERGE"),
-        ownerRole: "CONCIERGE",
-      }),
-    );
+    const valores = {
+      cadenceId: cadenciaDaFaixa[faixa],
+      contactId,
+      dealId: "",
+      triggerSource: "radar de resgate",
+      triggerDate: todayISO(),
+      ownerUserId: cadenceOwnerSlug("CONCIERGE"),
+      ownerRole: "CONCIERGE" as const,
+    };
     const contato = state.contacts.find((item) => item.id === contactId);
-    setFeedback(`${contactDisplayName(contato)} inscrito(a) no ${faixaLabels[faixa]} — as 5 tentativas da Aline já viraram tarefas.`);
+    // Confere no retrato da tela ANTES de anunciar (29/09/2026, auditoria B8c):
+    // com outra régua ativa a inscrição não nasce, e a tela dizia "inscrito".
+    const previa = inscreverNaCadencia(state, valores);
+    if (!previa.nasceu) {
+      setFeedback(`${contactDisplayName(contato)} NÃO foi inscrito(a) no ${faixaLabels[faixa]}: ${previa.motivo}.`);
+      return;
+    }
+    persist((current) => enrollContactInCadence(current, valores));
+    setFeedback(`${contactDisplayName(contato)} inscrito(a) no ${faixaLabels[faixa]} — a 1ª das 5 tentativas da Aline já virou tarefa (as outras nascem uma de cada vez).`);
   }
   const cadenceInvolvesMyRole = (cadenceId: string, ownerRole: string) =>
     myRole === ownerRole || state.cadenceSteps.some((step) => step.cadenceId === cadenceId && step.assignedToRole === myRole);

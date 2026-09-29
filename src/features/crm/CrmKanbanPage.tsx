@@ -136,7 +136,7 @@ import { usePanScroll } from "./usePanScroll";
 import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
 import { SenhaDeGestor } from "@/components/SenhaDeGestor";
 import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
-import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
+import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, iniciarRepescagemComResultado, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
 import { AccessGate } from "@/components/access/AccessGate";
 import { canCrmBratan } from "@/lib/access";
 
@@ -771,6 +771,13 @@ function CrmKanbanPageConteudo() {
   const quadroRepescagem = useMemo(() => buildQuadroRepescagem(state, financeiro.sales, todayISO()), [state, financeiro.sales]);
   const actorId = pessoa?.id ?? "preview";
   function iniciarRepescagemDe(candidato: CandidatoRepescagem) {
+    // Confere no retrato da tela ANTES de anunciar (29/09/2026, auditoria B8c):
+    // com outra régua ativa a inscrição não nasce, e a tela dizia "iniciada".
+    const previa = iniciarRepescagemComResultado(state, candidato, { userId: actorId, role: "CONCIERGE" }, todayISO());
+    if (!previa.nasceu) {
+      setFeedback(`Repescagem de ${contactDisplayName(candidato.contact)} NÃO foi iniciada: ${previa.motivo}.`);
+      return;
+    }
     persist((current) => iniciarRepescagem(current, candidato, { userId: actorId, role: "CONCIERGE" }, todayISO()));
     setFeedback(`Repescagem de ${contactDisplayName(candidato.contact)} iniciada: mande a isca pelo WhatsApp e marque "Isca enviada".`);
   }

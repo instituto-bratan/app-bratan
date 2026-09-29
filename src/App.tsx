@@ -4,7 +4,7 @@ import { AccessGate } from "@/components/access/AccessGate";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { LiquidGlassFilterDefs } from "@/components/ui/liquid-glass-button";
 import { AppLayout } from "@/layouts/AppLayout";
-import { canInteligencia360 } from "@/lib/access";
+import { canCrmBratan, canInteligencia360 } from "@/lib/access";
 import { lazyRoute } from "@/lib/routePreload";
 import { LoginPage } from "@/routes/LoginPage";
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
@@ -143,7 +143,16 @@ export function App() {
               <Route path="/crm/canais" element={<Navigate to="/crm/indicacoes" replace />} />
               <Route path="/crm/planilha" element={<CrmPlanilhaCadenciasPage />} />
               <Route path="/crm/coordenador" element={<CrmCoordenadorPage />} />
-              <Route path="/crm/checkin" element={<CrmCheckinSemanalPage />} />
+              {/* Porta de acesso (29/09/2026, auditoria B8d): era a única tela do CRM sem
+                  AccessGate — quem teve o CRM ocultado em Acessos (ou está sem cargo) abria pela URL. */}
+              <Route
+                path="/crm/checkin"
+                element={
+                  <AccessGate allowed={canCrmBratan} label="CRM · Check-in semanal" module="crm">
+                    <CrmCheckinSemanalPage />
+                  </AccessGate>
+                }
+              />
               <Route path="/administracao" element={<Navigate to="/administracao/colaboradores" replace />} />
               <Route path="/administracao/colaboradores" element={<ColaboradoresPage />} />
               <Route path="/administracao/colaboradores/:id" element={<ColaboradorPerfilPage />} />
