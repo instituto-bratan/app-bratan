@@ -40,6 +40,24 @@ export function sharePointTargetFolderForFile(module: SharePointModule, mimeOrNa
   return pastaDoArquivo(pasta, mimeOrName);
 }
 
+/**
+ * O MÊS DO DOCUMENTO, NÃO O DE HOJE (29/09/2026, auditoria B6): a nota do
+ * fornecedor anexada em outubro, mas emitida (ou com vencimento) em setembro,
+ * ia para a pasta de outubro — e o contador procurava em setembro. Recebe as
+ * datas candidatas em ordem de preferência (emissão, vencimento…) no formato
+ * AAAA-MM-DD e devolve a primeira válida ao meio-dia local (sem virar o dia
+ * por fuso); sem nenhuma, hoje.
+ */
+export function dataDeReferencia(...candidatas: (string | null | undefined)[]) {
+  for (const candidata of candidatas) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((candidata ?? "").trim());
+    if (!m) continue;
+    const data = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+    if (!Number.isNaN(data.getTime()) && data.getMonth() === Number(m[2]) - 1) return data;
+  }
+  return new Date();
+}
+
 export function sharePointTargetFolder(module: SharePointModule, reference = new Date()) {
   const base = sharePointFolderMap[module] ?? sharePointFolderMap.OUTRO;
   if (!monthlyModules.includes(module)) return base;

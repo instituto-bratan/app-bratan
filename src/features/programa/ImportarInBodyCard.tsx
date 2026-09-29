@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { lerAbasDeXlsx, lerLinhasDeCsv } from "@/lib/planilhaLeitor";
 import { createRemotePacienteMedicoesEmLote, invocarIntegracao, listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
 import { diasAtras, fraseDoAviso, pacientesParaAvisar } from "@/features/portal/pushDoPaciente";
+import { todayISO } from "@/lib/localStore";
 import { casarMedicoesComContatos, fraseDaImportacao, lerMedicoesDeAbas, nomesParaResolver, resumoPorPaciente, type Casamento, type Contato, type EscolhasDeNome, type MedicaoImportada } from "./inbodyImport";
 
 /** Cinco anos para trás: a primeira importação traz o histórico inteiro do aparelho. */
@@ -107,7 +108,8 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
       // traz anos de histórico e ninguém quer saber que "o exame de 2023
       // chegou". Um aviso por paciente. Se falhar, o exame já está salvo e a
       // pessoa só fica sem o aviso — por isso é fire-and-forget com toast.
-      const avisar = pacientesParaAvisar(prontas, diasAtras(new Date().toISOString().slice(0, 10), 7));
+      // dia LOCAL (29/09/2026, auditoria B7): toISOString() é UTC e depois das 21h em São Paulo já é "amanhã".
+      const avisar = pacientesParaAvisar(prontas, diasAtras(todayISO(), 7));
       if (avisar.length) {
         const diaMaisNovo = avisar.map((p) => p.dia).sort().at(-1);
         void invocarIntegracao<{ ok: boolean; pacientesAvisados?: number; semAssinatura?: number; error?: string }>("push-paciente", {

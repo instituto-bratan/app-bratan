@@ -17,6 +17,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, canFinanceiroFull } from "@/lib/access";
+import { todayISO } from "@/lib/localStore";
 import { listRemoteIaEventos, revisarRemoteIaEvento, type IaEventoRecord } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 
@@ -104,11 +105,18 @@ export function GovernancaIaPage() {
     onError: (error: Error) => toast(`Não consegui gravar: ${error.message}`, { tom: "erro" }),
   });
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  // dia LOCAL (29/09/2026, auditoria B7): toISOString() é UTC e depois das 21h em São Paulo já é "amanhã"; o
+  // carimbo do evento também é convertido para o dia local antes de comparar.
+  const hoje = todayISO();
   const mes = hoje.slice(0, 7);
   const resumo = useMemo(() => {
-    const doMes = eventos.filter((e) => e.createdAt.slice(0, 7) === mes);
-    const doDia = eventos.filter((e) => e.createdAt.slice(0, 10) === hoje);
+    const diaLocal = (carimbo: string) => {
+      const d = new Date(carimbo);
+      if (Number.isNaN(d.getTime())) return carimbo.slice(0, 10);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    const doMes = eventos.filter((e) => diaLocal(e.createdAt).slice(0, 7) === mes);
+    const doDia = eventos.filter((e) => diaLocal(e.createdAt) === hoje);
     const custoMes = doMes.reduce((s, e) => s + e.custoUsd, 0);
     const semRevisao = eventos.filter((e) => e.permissao === "PROPOSTA" && !e.decisao).length;
     const erros = doMes.filter((e) => e.permissao === "ERRO").length;

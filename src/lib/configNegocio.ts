@@ -9,6 +9,8 @@
 // Este módulo é PURO (sem Supabase): guarda um cache em memória que o hook
 // useConfigNegocio preenche ao entrar no app. Os motores chamam configAtual()
 // na hora de calcular — nos testes, sem cache, valem os padrões do código.
+import { todayISO } from "@/lib/localStore";
+
 export type ChaveConfig =
   | "salas.grade"
   | "transferencias.dias"
@@ -75,7 +77,8 @@ export function definicaoDaChave(chave: ChaveConfig) {
 
 /** Valor vigente de uma chave num dia (padrão: hoje), lendo o cache; sem linha, o padrão do código. */
 export function configAtual<T>(chave: ChaveConfig, dia?: string, linhas: LinhaConfig[] = cache): T {
-  const hoje = dia ?? new Date().toISOString().slice(0, 10);
+  // dia LOCAL (29/09/2026, auditoria B7): toISOString() é UTC e depois das 21h em São Paulo já é "amanhã".
+  const hoje = dia ?? todayISO();
   const vigente = linhas.find((linha) => linha.chave === chave && linha.vigenteDe <= hoje);
   if (vigente) return vigente.valor as T;
   const definicao = definicaoDaChave(chave);

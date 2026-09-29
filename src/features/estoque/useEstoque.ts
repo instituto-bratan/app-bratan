@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { readLocalValue, writeLocalValue } from "@/lib/localStore";
+import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import {
   createRemoteEstoqueMove,
   deleteRemoteEstoqueItem,
@@ -117,7 +117,8 @@ export function useEstoque() {
   }) {
     const compra: FinPurchase = {
       id: `fpur-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      purchaseDate: new Date().toISOString().slice(0, 10),
+      // dia LOCAL (29/09/2026, auditoria B7): toISOString() é UTC e depois das 21h em São Paulo já é "amanhã".
+      purchaseDate: todayISO(),
       description: entrada.item.nome,
       supplier: entrada.fornecedor,
       amount: entrada.valor,
