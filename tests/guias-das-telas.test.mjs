@@ -10,6 +10,7 @@ const mod = await loadTs("src/lib/pageGuides.ts");
 const telas = [
   "/inicio",
   "/tarefas",
+  "/agenda",
   "/acompanhamento",
   "/estoque",
   "/concierge/nps",

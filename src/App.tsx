@@ -65,6 +65,7 @@ const NutricaoConsultaPage = lazyRoute("nutricaoConsulta");
 const NutricaoPlanoPage = lazyRoute("nutricaoPlano");
 const NutricaoBibliotecaPage = lazyRoute("nutricaoBiblioteca");
 const NutricaoGuiaPage = lazyRoute("nutricaoGuia");
+const AgendaDoDiaPage = lazyRoute("agendaDoDia");
 
 // Nutrição (28/09/2026): dado clínico, a porta é o controle de Acessos (módulo "nutricao").
 function PortaNutricao({ children }: { children: ReactNode }) {
@@ -103,6 +104,15 @@ export function App() {
               <Route path="/meu-perfil" element={<MeuPerfilPage />} />
               <Route path="/tarefas" element={<ChecklistPage />} />
               <Route path="/almoco" element={<AlmocoPage />} />
+              {/* Agenda do dia do iClinic (29/09/2026): a porta é o módulo "agenda" do controle de Acessos. */}
+              <Route
+                path="/agenda"
+                element={
+                  <AccessGate allowed={() => false} module="agenda" label="Agenda do dia">
+                    <AgendaDoDiaPage />
+                  </AccessGate>
+                }
+              />
               <Route path="/mural" element={<MuralPage />} />
               <Route path="/pops-fluxos" element={<PopsFluxosPage />} />
               <Route path="/comprovantes" element={<ComprovantesPage />} />

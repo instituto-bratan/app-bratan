@@ -70,6 +70,7 @@ const routeLoaders = {
   nutricaoPlano: namedPage(() => import("@/features/nutricao/paginas/NutricaoPlanoPage"), "NutricaoPlanoPage"),
   nutricaoBiblioteca: namedPage(() => import("@/features/nutricao/paginas/NutricaoBibliotecaPage"), "NutricaoBibliotecaPage"),
   nutricaoGuia: namedPage(() => import("@/features/nutricao/paginas/NutricaoGuiaPage"), "NutricaoGuiaPage"),
+  agendaDoDia: namedPage(() => import("@/features/agenda/AgendaDoDiaPage"), "AgendaDoDiaPage"),
 } as const;
 
 export type RoutePreloadKey = keyof typeof routeLoaders;

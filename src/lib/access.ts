@@ -204,6 +204,11 @@ export function canMarketing(cargo: Cargo | null | undefined) {
   return cargo === "marketing" || isCoordenacao(cargo);
 }
 
+// Agenda do dia (29/09/2026) — espelho de public.can_agenda_read/_write.
+export function canAgenda(cargo: Cargo | null | undefined) {
+  return isCoordenacao(cargo) || cargo === "recepcionista" || cargo === "enfermeira";
+}
+
 export function canManageInteligencia360(cargo: Cargo | null | undefined) {
   return isCoordenacao(cargo);
 }
@@ -253,7 +258,8 @@ export type ModuleKey =
   | "fin-lucro"
   | "estoque"
   | "concierge-nps"
-  | "nutricao";
+  | "nutricao"
+  | "agenda";
 
 export const moduleLabels: Record<ModuleKey, string> = {
   hoje: "Hoje (tarefas, almoço, mural)",
@@ -281,6 +287,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   estoque: "Estoque (Recepção & Enfermagem)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
   nutricao: "Nutrição (prontuário e planos alimentares)",
+  agenda: "Agenda do dia (iClinic) e Veio/Faltou",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
@@ -314,6 +321,12 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       // O resto da coordenação não vê por padrão.
       if (cargo === "nutricionista" || cargo === "gestor_financeiro") return "EDITAR";
       return cargo === "dr_daniel" ? "VER" : "OCULTO";
+    case "agenda":
+      // Agenda do dia (29/09/2026): quem recebe o paciente (recepção,
+      // enfermagem) e a coordenação veem e marcam Veio/Faltou. Marketing,
+      // nutrição e limpeza não veem por padrão (nome e horário de paciente).
+      // Espelho da RLS: supabase/migrations/202609290001_agenda_do_dia.sql.
+      return canAgenda(cargo) ? "EDITAR" : "OCULTO";
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
       return canInteligencia360(cargo) ? "VER" : "OCULTO";

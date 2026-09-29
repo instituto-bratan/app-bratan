@@ -47,6 +47,26 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/agenda",
+    guide: {
+      title: "Agenda do dia",
+      whatIs:
+        "É a agenda do iClinic dentro do app: quem vem em cada dia, com qual profissional e em que horário, se é primeira consulta, se o paciente confirmou pelo portal e se tem ficha no CRM. A recepção marca aqui quem veio e quem faltou — é isso que forma o relatório semanal do médico (consultas feitas × faltas).",
+      steps: [
+        "Abra no começo do turno: a frase do topo diz quantas consultas o Dr. Daniel tem no dia, quantas são novas e quantas vagas sobram.",
+        "Use as setas para ver ontem ou amanhã e os botões de nome para ver um profissional só.",
+        "Quando o paciente chegar, toque em Veio. Se passou do horário e ele não apareceu, toque em Faltou. Tocou errado? Toque de novo no mesmo botão para desfazer.",
+        "Se a caixa está verde-água no iClinic e o app não mostra o selo, toque em “Marcar como primeira consulta”.",
+        "O nome em destaque abre a ficha do CRM; “sem ficha” quer dizer que o app não achou a pessoa com certeza — procure no CRM.",
+      ],
+      tips: [
+        "Marcar ou desmarcar consulta continua sendo no iClinic; aqui é um espelho lido de hora em hora. “Buscar agora no iClinic” lê na hora.",
+        "Se aparecer o aviso de mais de 2 horas sem atualizar, confira no próprio iClinic antes de confiar na lista.",
+        "Veio/Faltou só abre no dia da consulta (ou depois): falta marcada para amanhã seria engano.",
+      ],
+    },
+  },
+  {
     pattern: "/almoco",
     guide: {
       title: "Almoço e cobertura",

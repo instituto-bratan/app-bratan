@@ -7,6 +7,7 @@ import {
   Boxes,
   BrainCircuit,
   CalendarClock,
+  CalendarDays,
   CalendarRange,
   CheckSquare,
   CircleDollarSign,
@@ -105,6 +106,18 @@ const flowGroups: FlowGroup[] = [
       { label: "Tarefas", href: "/tarefas", icon: CheckSquare, allowed: canBaseModules, module: "hoje" },
       { label: "Almoço", href: "/almoco", icon: Utensils, allowed: canBaseModules, module: "hoje" },
       { label: "Mural", href: "/mural", icon: Bell, allowed: canBaseModules, module: "hoje" },
+    ],
+  },
+  {
+    // Agenda do dia do iClinic (29/09/2026): recepção, enfermagem e coordenação
+    // (módulo "agenda"; o Lucas libera outras pessoas em Acessos).
+    label: "Agenda",
+    detail: "consultas do dia no iClinic",
+    href: "/agenda",
+    icon: CalendarDays,
+    allowed: () => false,
+    entries: [
+      { label: "Agenda do dia", shortLabel: "Agenda", href: "/agenda", icon: CalendarDays, allowed: () => false, module: "agenda" },
     ],
   },
   {
@@ -505,6 +518,7 @@ function FlowLauncher({
       { palavras: ["ia", "inteligencia artificial", "governanca"], rotulo: "Governança de IA", href: "/administracao/ia" },
       { palavras: ["integracao", "whatsapp oficial", "nota fiscal", "nfse", "push", "feegow", "supersign"], rotulo: "Integrações", href: "/administracao/integracoes" },
       { palavras: ["lgpd", "compliance", "dpo", "consentimento", "incidente", "ripd"], rotulo: "Cofre de compliance", href: "/administracao/compliance" },
+      { palavras: ["agenda", "consulta do dia", "iclinic", "veio", "faltou", "falta", "paciente de hoje", "horario"], rotulo: "Agenda do dia (iClinic)", href: "/agenda" },
       { palavras: ["fila", "hoje", "home", "inicio"], rotulo: "Fila do dia (Home)", href: "/" },
     ];
     for (const comando of comandos) {

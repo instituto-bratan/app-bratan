@@ -13,6 +13,7 @@ import {
   Bell,
   BrainCircuit,
   CalendarClock,
+  CalendarDays,
   CheckSquare,
   CircleDollarSign,
   ClipboardList,
@@ -96,6 +97,7 @@ type Atalho = { title: string; href: string; icon: LucideIcon; action: string; a
 const modules: Atalho[] = [
   { title: "Tarefas do dia", href: "/tarefas", icon: CheckSquare, action: "Abrir checklist", allowed: canBaseModules, module: "hoje" },
   { title: "Almoço", href: "/almoco", icon: Utensils, action: "Ver cobertura", allowed: canBaseModules, module: "hoje" },
+  { title: "Agenda do dia", href: "/agenda", icon: CalendarDays, action: "Quem vem hoje", allowed: () => false, module: "agenda" },
   { title: "Mural de avisos", href: "/mural", icon: Bell, action: "Abrir mural", allowed: canBaseModules, module: "hoje" },
   { title: "Suas Estalecas", href: "/estalecas", icon: Coins, action: "Minha carteira", allowed: canBaseModules, module: "estalecas" },
   { title: "POPs & Fluxos", href: "/pops-fluxos", icon: FileText, action: "Biblioteca", allowed: canBaseModules, module: "pops" },
