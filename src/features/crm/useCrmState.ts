@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
-import { isCoordenacao } from "@/lib/access";
+import { canEditModule, isCoordenacao, type ModuleKey } from "@/lib/access";
+import { avisarSoVe } from "@/hooks/useNivelDaTela";
 import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState, subscribeRemoteCrmState } from "@/lib/remoteData";
 import {
   loadCrmState,
@@ -15,8 +16,15 @@ import {
 } from "./crmData";
 
 
-export function useCrmState() {
+/**
+ * `modulo` (29/09/2026, auditoria B9): a tela que usa o estado diz qual é ela.
+ * Quem está como "Só vê" nessa tela (Administração → Acessos) não grava: o
+ * persist/deleteLead devolvem false e a tela avisa. Sem `modulo`, nada muda
+ * (Lançar Dia, Home e Painel continuam com as regras próprias).
+ */
+export function useCrmState(opcoes?: { modulo?: ModuleKey }) {
   const { pessoa, session, isPreview } = useAuth();
+  const soVe = Boolean(opcoes?.modulo) && !canEditModule(pessoa, opcoes!.modulo!);
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
   // O catálogo (cadências, passos, mensagens) só pode ser gravado pela
@@ -130,6 +138,10 @@ export function useCrmState() {
   }, [useRemote]);
 
   function persist(updater: (current: CrmState) => CrmState): Promise<boolean> {
+    if (soVe) {
+      avisarSoVe();
+      return Promise.resolve(false);
+    }
     let promise: Promise<boolean> = Promise.resolve(true);
     setState((current) => {
       const next = sanitizeCrmState(updater(current), { curative });
@@ -150,6 +162,10 @@ export function useCrmState() {
   }
 
   function deleteLead(contactId: string): Promise<boolean> {
+    if (soVe) {
+      avisarSoVe();
+      return Promise.resolve(false);
+    }
     const { dealIds } = removeLeadFromCrm(state, contactId);
     const local = persist((current) => removeLeadFromCrm(current, contactId).state);
     if (!useRemote) return local;
@@ -206,6 +222,7 @@ export function useCrmState() {
   return {
     state,
     persist,
+    soVe,
     reset,
     retrySync,
     deleteLead,

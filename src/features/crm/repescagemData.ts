@@ -13,6 +13,7 @@ import {
   contactDisplayName,
   enrollContactInCadence,
   findOrCreateCrmContact,
+  inscreverNaCadencia,
   type CrmCadenceEnrollment,
   type CrmContact,
   type CrmRole,
@@ -107,7 +108,29 @@ export function faixaDoMotivo(triggerSource: string): { faixa: FaixaRepescagem; 
   return achado ? { faixa: achado[1] as FaixaRepescagem, ultimaVisita: achado[2] } : null;
 }
 
-/** Cria a inscrição na cadência de repescagem (nasce a tarefa da isca). */
+/**
+ * Cria a inscrição na cadência de repescagem (nasce a tarefa da isca).
+ * Devolve também se nasceu e o porquê quando não nasce (29/09/2026, auditoria
+ * B8c): a tela anunciava "iniciada" mesmo quando o paciente já estava em outra
+ * régua e nada acontecia.
+ */
+export function iniciarRepescagemComResultado(
+  state: CrmState,
+  candidato: CandidatoRepescagem,
+  actor: { userId: string; role: CrmRole },
+  hoje: string,
+) {
+  return inscreverNaCadencia(state, {
+    cadenceId: CADENCIA_REPESCAGEM,
+    contactId: candidato.contact.id,
+    dealId: "",
+    triggerSource: motivoRepescagem(candidato.faixa, candidato.ultimaVisita),
+    triggerDate: hoje,
+    ownerUserId: actor.userId,
+    ownerRole: actor.role,
+  });
+}
+
 export function iniciarRepescagem(
   state: CrmState,
   candidato: CandidatoRepescagem,

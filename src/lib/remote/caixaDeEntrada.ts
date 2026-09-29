@@ -2,7 +2,7 @@
 // Separado de remoteData.ts em 16/09/2026 (proposta 7.4); os imports do app não mudaram.
 import type { Colaborador } from "@/types/database";
 import type { EstalecaClaim } from "@/features/estalecas/estalecasData";
-import { sharePointTargetFolderForFile } from "@/lib/sharepoint";
+import { dataDeReferencia, sharePointTargetFolderForFile } from "@/lib/sharepoint";
 import { createRemoteEstalecaTransaction } from "@/lib/remoteData";
 import { requireSupabase, safeWriteRemoteAuditEvent, uuidOrNull , publicUrlSafeName } from "./base";
 import { todayISO } from "@/lib/localStore";
@@ -119,6 +119,8 @@ export async function uploadRemoteExpenseNota(values: {
   emitente?: string;
   valor?: number | null;
   emitidaEm?: string | null;
+  /** Vencimento da conta: usado para a pasta do mês quando a nota não tem data de emissão. */
+  vencimento?: string | null;
   observacao?: string;
 }) {
   const client = requireSupabase();
@@ -158,7 +160,9 @@ export async function uploadRemoteExpenseNota(values: {
     storage_path: storagePath,
     file_name: nomeNaPasta,
     mime_type: values.file.type || "application/octet-stream",
-    target_folder: sharePointTargetFolderForFile("NOTA_FISCAL_DESPESA", values.file.type || values.file.name),
+    // Pasta do mês da EMISSÃO/vencimento do documento, não a de hoje (29/09/2026, B6).
+    // A tela manda em `emitidaEm` a data da nota ou, sem ela, o vencimento da conta.
+    target_folder: sharePointTargetFolderForFile("NOTA_FISCAL_DESPESA", values.file.type || values.file.name, dataDeReferencia(values.emitidaEm, values.vencimento)),
     created_by: uuidOrNull(values.pessoaId),
   });
   if (dispatchError) console.warn("Nota salva, mas não entrou na fila do SharePoint.", dispatchError);

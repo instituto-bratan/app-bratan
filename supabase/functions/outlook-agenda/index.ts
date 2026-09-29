@@ -4,6 +4,7 @@
 // (MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET — o app precisa da permissão
 // Calendars.Read de aplicativo). Desligada por padrão.
 import { agoraBrasiliaISO, corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
+import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 const somaDias = (dia: string, n: number) => {
   const [a, m, d] = dia.split("-").map(Number);
@@ -21,6 +22,10 @@ async function tokenGraph() {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron das 5h30 ou a coordenação (botão em Integrações).
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: COORDENACAO, cron: true, automatico: true });
+  if (!acesso.ok) return acesso.resposta;
   const client = db();
   const integracao = await lerIntegracao(client, "outlook");
   if (!integracao.ligada) return respostaDesligada("outlook");

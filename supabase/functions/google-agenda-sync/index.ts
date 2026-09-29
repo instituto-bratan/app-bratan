@@ -15,6 +15,7 @@
 // contagens: procedimento, cor, descrição) — sem nome de paciente.
 import { agoraBrasiliaISO, corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
 import { censoDoCalendario, linhasParaOEspelho, parseICS, type EventoIcs } from "../_shared/agendaIcs.ts";
+import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 const esperar = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,6 +30,10 @@ async function baixar(url: string): Promise<string> {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron de hora em hora ou a coordenação (botão em Integrações).
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: COORDENACAO, cron: true, automatico: true });
+  if (!acesso.ok) return acesso.resposta;
   const client = db();
   const integracao = await lerIntegracao(client, "google_agenda");
   if (!integracao.ligada) return respostaDesligada("google_agenda");

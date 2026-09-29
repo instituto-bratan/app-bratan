@@ -1,4 +1,5 @@
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { canCrmBratan } from "@/lib/access";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -36,6 +37,7 @@ import {
   crmRoleLabels,
   dealStageLabels,
   enrollContactInCadence,
+  inscreverNaCadencia,
   enrollmentStatusLabels,
   isCrmManagement,
   findOrCreateCrmContact,
@@ -69,7 +71,10 @@ function statusTone(status: CrmCadenceStatus) {
 
 function CrmCadencesPageConteudo() {
   const { pessoa } = useAuth();
-  const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState();
+  // "Só vê" (29/09/2026, auditoria B9): sem EDITAR no CRM, nada grava e os botões de inscrever ficam desligados.
+  const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState({ modulo: "crm" });
+  const telaCrm = useNivelDaTela("crm");
+  const semEdicao = !telaCrm.podeEditar;
   // Sem default fixo: a régua abre na do PRÓPRIO papel (concierge → Concierge D+1),
   // para ninguém inscrever sem querer na cadência comercial (bug "coloco no D1 e
   // não vai" — a Comercial se chamava 'D1' e era o default).
@@ -94,19 +99,25 @@ function CrmCadencesPageConteudo() {
   const radarFaixas = useMemo(() => radarPorFaixa(radar), [radar]);
 
   function inscreverNoResgate(contactId: string, faixa: Exclude<FaixaDeResgate, "CHEGANDO">) {
-    persist((current) =>
-      enrollContactInCadence(current, {
-        cadenceId: cadenciaDaFaixa[faixa],
-        contactId,
-        dealId: "",
-        triggerSource: "radar de resgate",
-        triggerDate: todayISO(),
-        ownerUserId: cadenceOwnerSlug("CONCIERGE"),
-        ownerRole: "CONCIERGE",
-      }),
-    );
+    const valores = {
+      cadenceId: cadenciaDaFaixa[faixa],
+      contactId,
+      dealId: "",
+      triggerSource: "radar de resgate",
+      triggerDate: todayISO(),
+      ownerUserId: cadenceOwnerSlug("CONCIERGE"),
+      ownerRole: "CONCIERGE" as const,
+    };
     const contato = state.contacts.find((item) => item.id === contactId);
-    setFeedback(`${contactDisplayName(contato)} inscrito(a) no ${faixaLabels[faixa]} — as 5 tentativas da Aline já viraram tarefas.`);
+    // Confere no retrato da tela ANTES de anunciar (29/09/2026, auditoria B8c):
+    // com outra régua ativa a inscrição não nasce, e a tela dizia "inscrito".
+    const previa = inscreverNaCadencia(state, valores);
+    if (!previa.nasceu) {
+      setFeedback(`${contactDisplayName(contato)} NÃO foi inscrito(a) no ${faixaLabels[faixa]}: ${previa.motivo}.`);
+      return;
+    }
+    persist((current) => enrollContactInCadence(current, valores));
+    setFeedback(`${contactDisplayName(contato)} inscrito(a) no ${faixaLabels[faixa]} — a 1ª das 5 tentativas da Aline já virou tarefa (as outras nascem uma de cada vez).`);
   }
   const cadenceInvolvesMyRole = (cadenceId: string, ownerRole: string) =>
     myRole === ownerRole || state.cadenceSteps.some((step) => step.cadenceId === cadenceId && step.assignedToRole === myRole);
@@ -369,7 +380,7 @@ function CrmCadencesPageConteudo() {
             <Button asChild variant="outline">
               <Link to={crmModuleRoutes.tasks}>Minhas tarefas <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
-            <LiquidButton type="button" size="sm" onClick={() => persist((current) => generateCadenceTasks(current))}>
+            <LiquidButton type="button" size="sm" disabled={semEdicao} onClick={() => persist((current) => generateCadenceTasks(current))}>
               <RefreshCw className="h-4 w-4" />
               Gerar tarefas
             </LiquidButton>
@@ -469,6 +480,7 @@ function CrmCadencesPageConteudo() {
       ) : null}
 
       <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+      <AvisoSoVe soVe={telaCrm.soVe} />
 
       {forasDo31.length ? (
         <Card className="border-destructive/40 bg-destructive/5">
@@ -499,7 +511,7 @@ function CrmCadencesPageConteudo() {
                     className="h-9 w-40"
                     aria-label={`Data da consulta de ${contactDisplayName(contato)}`}
                   />
-                  <Button type="button" size="sm" onClick={() => corrigirFora31(deal.id, deal.contactId)}>
+                  <Button type="button" size="sm" disabled={semEdicao} onClick={() => corrigirFora31(deal.id, deal.contactId)}>
                     Colocar no 3·1
                   </Button>
                 </div>
@@ -635,7 +647,7 @@ function CrmCadencesPageConteudo() {
                   <Input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} className="mt-1" required />
                 </div>
               ) : null}
-              <Button type="submit">
+              <Button type="submit" disabled={semEdicao}>
                 <PlayCircle className="mr-2 h-4 w-4" />
                 {!contactId && contactQuery.trim().length >= 3 && !contactSuggestions.length
                   ? "Criar contato e inscrever"
@@ -710,7 +722,7 @@ function CrmCadencesPageConteudo() {
                             </span>
                           </div>
                           {faixa !== "CHEGANDO" ? (
-                            <Button type="button" size="sm" variant="outline" onClick={() => inscreverNoResgate(pessoa.contact.id, faixa)}>
+                            <Button type="button" size="sm" variant="outline" disabled={semEdicao} onClick={() => inscreverNoResgate(pessoa.contact.id, faixa)}>
                               Inscrever no resgate
                             </Button>
                           ) : null}
@@ -784,11 +796,11 @@ function CrmCadencesPageConteudo() {
                           </div>
                           <p className="mt-1 text-xs text-muted-foreground">Gatilho: {enrollment.triggerDate} - {enrollment.triggerSource}</p>
                           <div className="mt-2 flex flex-wrap gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={() => updateEnrollment(enrollment.id, "PAUSED")}>
+                            <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => updateEnrollment(enrollment.id, "PAUSED")}>
                               <PauseCircle className="mr-2 h-4 w-4" />
                               Pausar
                             </Button>
-                            <Button type="button" variant="outline" size="sm" onClick={() => updateEnrollment(enrollment.id, "ACTIVE")}>
+                            <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => updateEnrollment(enrollment.id, "ACTIVE")}>
                               <PlayCircle className="mr-2 h-4 w-4" />
                               Ativar
                             </Button>

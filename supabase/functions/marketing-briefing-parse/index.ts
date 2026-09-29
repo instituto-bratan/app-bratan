@@ -9,6 +9,7 @@
 // ERRO com orientação, sem quebrar o app.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
+import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-8";
@@ -154,6 +155,10 @@ async function extractPlan(apiKey: string, monthRef: string, mime: string, bytes
 }
 
 Deno.serve(async (request) => {
+  // Quem pode chamar (29/09/2026, auditoria S1): marketing e coordenação (mesma regra de canMarketing no app); o cron não chama.
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: ["marketing", ...COORDENACAO] });
+  if (!acesso.ok) return acesso.resposta;
   if (request.method !== "POST") return json({ error: "Use POST" }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");

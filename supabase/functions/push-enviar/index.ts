@@ -6,11 +6,16 @@
 // na config da integração para o navegador assinar).
 import webpush from "npm:web-push@3.6.7";
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
+import { COORDENACAO as CARGOS_COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 const COORDENACAO = new Set(["gestor_financeiro", "ceo", "dr_daniel", "gestor", "secretaria_executiva"]);
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron das 7h ou a coordenação (botão de teste em Integrações).
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: CARGOS_COORDENACAO, cron: true, automatico: true });
+  if (!acesso.ok) return acesso.resposta;
   const client = db();
   const integracao = await lerIntegracao(client, "push");
   if (!integracao.ligada) return respostaDesligada("push");

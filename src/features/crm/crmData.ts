@@ -1044,7 +1044,10 @@ const cadenceSteps: CrmCadenceStep[] = [
   assignedToRole: assignedToRole as CrmRole,
   messageTemplateId: messageTemplateId as string,
   required: true,
-  pauseIfContactResponded: true,
+  // O ciclo de retorno não pausa com resposta (29/09/2026, auditoria B8b): a
+  // confirmação no −3 não pode matar o lembrete do −1. O motor também garante
+  // isso (completeCrmTask), porque os passos de produção vêm do banco.
+  pauseIfContactResponded: cadenceId !== "cad-return-cycle",
   cancelIfStageChanged: true,
   active: true,
 }));
@@ -3183,12 +3186,24 @@ export function escalateExhaustedCadences(state: CrmState, reference = new Date(
     });
     if (!exhausted) continue;
     const now = new Date().toISOString();
+    // ESGOTADA *SEM RESPOSTA* (29/09/2026, auditoria B8b): o ciclo de retorno
+    // não pausa mais com a confirmação, então chega ao fim ACTIVE mesmo com o
+    // paciente tendo respondido. Quem respondeu em algum toque desta inscrição
+    // não sobe para as 5 ligações do gestor: a régua só é concluída.
+    const respondeu = next.tasks.some(
+      (item) =>
+        item.contactId === enrollment.contactId &&
+        item.cadenceId === enrollment.cadenceId &&
+        item.createdAt >= enrollment.createdAt &&
+        ["RESPONDED", "SCHEDULED", "RESCHEDULED", "SOLD"].includes(item.result),
+    );
     next = {
       ...next,
       cadenceEnrollments: next.cadenceEnrollments.map((item) =>
         item.id === enrollment.id ? { ...item, status: "COMPLETED" as CrmCadenceStatus, completedAt: now, updatedAt: now } : item,
       ),
     };
+    if (respondeu) continue;
     next = enrollContactInCadence(
       next,
       {
@@ -3672,6 +3687,34 @@ export function enrollContactInCadence(
   return generateCadenceTasks({ ...nextState, cadenceEnrollments: [enrollment, ...nextState.cadenceEnrollments] });
 }
 
+/**
+ * INSCREVER E DIZER A VERDADE (29/09/2026, auditoria B8c): enrollContactInCadence
+ * devolve o estado igual quando a inscrição não nasce (a regra "1 régua por
+ * paciente" ou a mesma régua já ativa), e as telas anunciavam "inscrito" mesmo
+ * assim. Esta versão devolve se nasceu e, se não, o porquê em português.
+ */
+export function inscreverNaCadencia(
+  state: CrmState,
+  values: Parameters<typeof enrollContactInCadence>[1],
+  options?: { replaceActive?: boolean },
+): { state: CrmState; nasceu: boolean; motivo: string } {
+  const ativasAntes = state.cadenceEnrollments.filter((item) => item.contactId === values.contactId && item.status === "ACTIVE");
+  const next = enrollContactInCadence(state, values, options);
+  const nasceu = next.cadenceEnrollments.some(
+    (item) =>
+      item.contactId === values.contactId &&
+      item.cadenceId === values.cadenceId &&
+      item.status === "ACTIVE" &&
+      !ativasAntes.some((antes) => antes.id === item.id),
+  );
+  if (nasceu) return { state: next, nasceu: true, motivo: "" };
+  const mesma = ativasAntes.find((item) => item.cadenceId === values.cadenceId);
+  if (mesma) return { state, nasceu: false, motivo: "já está nesta régua" };
+  const outra = ativasAntes[0];
+  const nomeDaOutra = outra ? state.cadences.find((item) => item.id === outra.cadenceId)?.name ?? outra.cadenceId : "";
+  return { state, nasceu: false, motivo: outra ? `já está na régua "${nomeDaOutra}" (1 régua por paciente — encerre a outra antes)` : "a régua não aceitou a inscrição" };
+}
+
 export function checkContactFatigue(state: CrmState, contactId: string, reference = new Date()) {
   const since = new Date(reference);
   since.setDate(reference.getDate() - 14);
@@ -3750,6 +3793,10 @@ export function completeCrmTask(
     if (!task.cadenceId || enrollment.cadenceId !== task.cadenceId) return enrollment;
     if (enrollment.contactId !== task.contactId || enrollment.status !== "ACTIVE") return enrollment;
     const step = state.cadenceSteps.find((item) => item.id === task.cadenceStepId);
+    // CICLO DE RETORNO NUNCA PAUSA (29/09/2026, auditoria B8b): o paciente
+    // confirmar no −3 pausava a régua e PULAVA o lembrete da véspera (−1). A
+    // confirmação é o objetivo do ciclo, não motivo para parar de lembrar.
+    if (enrollment.cadenceId === RETURN_CYCLE_CADENCE_ID) return enrollment;
     if (!step?.pauseIfContactResponded || !responseReceived) return enrollment;
     pausedThisCadence = true;
     return { ...enrollment, status: "PAUSED" as CrmCadenceStatus, updatedAt: now };
@@ -4393,15 +4440,31 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
     // A recepção marcou "consulta realizada" → a concierge recebe o D+1 no dia
     // seguinte. Assim a lista de quem passou com o Dr. aparece sozinha em Minhas
     // Tarefas da concierge, sem ela precisar caçar no Kanban.
-    nextState = enrollContactInCadence(nextState, {
-      cadenceId: "cad-pos-consulta-d1",
-      contactId: deal.contactId,
-      dealId: deal.id,
-      triggerSource: "consulta realizada (kanban)",
-      triggerDate: todayISO(),
-      ownerUserId: "concierge",
-      ownerRole: "CONCIERGE",
-    });
+    //
+    // replaceActive (29/09/2026, auditoria B8a): todo paciente agendado tem o
+    // Ciclo de retorno (cad-return-cycle) ativo, e a regra "1 cadência por
+    // paciente" fazia o D+1 NÃO nascer — enquanto a tela dizia que nasceu. A
+    // consulta aconteceu: o ciclo de retorno cumpriu o papel e o D+1 assume,
+    // igual ao que o agendamento e o não-fechou já fazem.
+    nextState = enrollContactInCadence(
+      nextState,
+      {
+        cadenceId: "cad-pos-consulta-d1",
+        contactId: deal.contactId,
+        dealId: deal.id,
+        triggerSource: "consulta realizada (kanban)",
+        triggerDate: todayISO(),
+        ownerUserId: "concierge",
+        ownerRole: "CONCIERGE",
+      },
+      { replaceActive: true },
+    );
+    const nasceu = nextState.cadenceEnrollments.some(
+      (item) => item.contactId === deal.contactId && item.cadenceId === "cad-pos-consulta-d1" && item.status === "ACTIVE",
+    );
+    if (!nasceu) {
+      return { state: nextState, ok: true, message: "Kanban atualizado, mas o D+1 da concierge NÃO foi criado — confira a régua do paciente em Cadências." };
+    }
   }
 
   return { state: nextState, ok: true, message: "Kanban atualizado e tarefas ligadas aos setores criadas." };

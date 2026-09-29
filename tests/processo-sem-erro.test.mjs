@@ -254,3 +254,22 @@ test("leitura: fala em português quantos casaram e quantos pontos olhar", () =>
   const comProblema = ex.conciliarExtrato(entradas, [], [], [], "2026-08-01", "2026-08-07");
   assert.match(ex.leituraDaConciliacao(comProblema), /ponto\(s\) para olhar/);
 });
+
+// 29/09/2026 (auditoria B5): o casamento carrega o id do que casou, para o
+// extrato gravar match_ref de verdade (antes gravava null para tudo).
+test("conciliação: cada casamento diz COM QUE comanda/conta casou (ref); rendimento/adiantamento não tem ref", () => {
+  const entradas = ex.lerExtratoDeTexto(EXTRATO_CSV);
+  const vendas = [venda("a", "2026-08-03", [{ method: "PIX", amount: 2000 }], "Elias Teodoro")];
+  const contas = [conta("e1", "2026-08-03", 18614.54, "DISTRIBUIÇÃO DE LUCRO")];
+  const balde = ex.conciliarExtrato(entradas, vendas, contas, [], "2026-08-01", "2026-08-07");
+  assert.equal(balde.casadas.find((c) => c.tipo === "COMANDA").ref, vendas[0].id);
+  assert.equal(balde.casadas.find((c) => c.tipo === "DESPESA").ref, contas[0].id);
+  const transferencia = balde.casadas.find((c) => /TRANSFER/i.test(c.entry.description));
+  assert.equal(transferencia.ref, null);
+
+  const csv = ["Data;Lançamento;Razão Social;CPF/CNPJ;Valor;Saldo", "03/08/2026;PIX ENVIADO;ESTEVAO FARINA;475.654.928-41;-4000,00;", "07/08/2026;PIX ENVIADO;ESTEVAO FARINA;475.654.928-41;-2292,72;"].join("\n");
+  const dividida = [conta("e2", "2026-08-07", 6292.72, "MENSAL GESTOR")];
+  const agrupado = ex.conciliarExtrato(ex.lerExtratoDeTexto(csv), [], dividida, [], "2026-08-01", "2026-08-07").casadasAgrupadas[0];
+  assert.equal(agrupado.ref, dividida[0].id);
+  assert.equal(agrupado.tipo, "DESPESA");
+});

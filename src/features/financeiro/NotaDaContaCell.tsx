@@ -59,6 +59,7 @@ export function NotaDaContaCell({
         emitente: expense.supplier ?? "",
         valor: expense.amount,
         emitidaEm: expense.dueDate || null,
+        vencimento: expense.dueDate || null,
       }),
     onSuccess: recarregar,
     onError: (falha: Error) => setErro(falha.message),

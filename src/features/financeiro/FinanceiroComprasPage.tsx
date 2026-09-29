@@ -16,6 +16,8 @@ import { parseMoneyBR } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import {
   createFinId,
+  finGroupLabels,
+  finGroupOrder,
   moneyFin,
   paymentMethodLabels,
   purchaseAccounting,
@@ -27,6 +29,7 @@ import {
 } from "./financeiroData";
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
+import { despesaDaCompraAVista, ehCompraAVista } from "./compraAVista";
 import { confirmar } from "@/components/ui/avisos";
 
 const purchaseMethods: FinPaymentMethod[] = ["CARTAO_CREDITO", "BOLETO", "PIX", "CARTAO_DEBITO", "DINHEIRO", "TRANSFERENCIA"];
@@ -61,10 +64,19 @@ export function FinanceiroComprasPage() {
   // ele vira "chegada pendente" para a dona do setor confirmar — a confirmação
   // dá a entrada no estoque e carimba o "Chegou" desta compra, num ato só.
   const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM">("");
+  // Categoria da P12 da compra à vista (29/09/2026): ela vira conta paga.
+  const [categoryRef, setCategoryRef] = useState("");
   const [feedback, setFeedback] = useState("");
 
   const isCredit = method === "CARTAO_CREDITO";
   const isCard = method === "CARTAO_CREDITO" || method === "CARTAO_DEBITO";
+  const aVista = ehCompraAVista(method);
+  const categoriesByGroup = useMemo(
+    () => finGroupOrder
+      .map((groupKey) => ({ groupKey, categories: financeiro.categories.filter((category) => category.groupKey === groupKey && category.active !== false) }))
+      .filter((group) => group.categories.length),
+    [financeiro.categories],
+  );
   const totals = useMemo(() => purchaseMonthTotals(financeiro.purchases, monthKey), [financeiro.purchases, monthKey]);
   const cardEntries = useMemo(
     () => (Array.from(totals.byCard.entries()) as [FinPurchaseCard, number][]).sort((a, b) => b[1] - a[1]),
@@ -80,6 +92,7 @@ export function FinanceiroComprasPage() {
     setNfNote("");
     setDeliveryEta("");
     setEstoqueSetor("");
+    setCategoryRef("");
   }
 
   function handleSubmit(event: FormEvent) {
@@ -89,12 +102,17 @@ export function FinanceiroComprasPage() {
     if (!description.trim()) return setFeedback("Falta a descrição da compra.");
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return setFeedback("Não entendi o valor — digite como 1.500,00.");
 
+    if (aVista && !categoryRef) return setFeedback("Escolha a categoria da P12 — a compra à vista já vira conta paga.");
+
     const parsedInstallments = Math.max(1, Number(installments) || 1);
 
-    // Compras é CONTROLE: nunca cria conta a pagar nem entra no P12 (evita
-    // duplicar). Crédito entra pela fatura do cartão; boleto você lança em
-    // Contas a Pagar; o resto é saída direta do caixa.
-    financeiro.addPurchase({
+    // Onde cada compra entra no P12 (29/09/2026, auditoria B3):
+    //   · crédito → só pela fatura do cartão (nunca cria conta aqui);
+    //   · boleto → você lança em Contas a Pagar (tem vencimento próprio);
+    //   · à vista (PIX, débito, dinheiro, transferência) → vira conta JÁ PAGA
+    //     aqui mesmo, ligada à compra por expenseRef. Antes a tela dizia "saída
+    //     direta do caixa" e a saída nunca era registrada em lugar nenhum.
+    const compra: FinPurchase = {
       id: createFinId("fbuy"),
       purchaseDate,
       description: description.trim(),
@@ -110,14 +128,17 @@ export function FinanceiroComprasPage() {
       notes: "",
       estoqueSetor: estoqueSetor || null,
       createdAt: new Date().toISOString(),
-    });
+    };
+    const conta = despesaDaCompraAVista(compra, categoryRef, financeiro.categories);
+    if (conta) financeiro.addExpense(conta);
+    financeiro.addPurchase({ ...compra, expenseRef: conta?.id ?? null });
 
     setFeedback(
       isCredit
         ? `Compra registrada (${moneyFin(parsedAmount)}). Ela entra no P12 só pela fatura do ${purchaseCardLabels[card]} — não lance de novo.`
         : method === "BOLETO"
           ? `Compra registrada no controle (${moneyFin(parsedAmount)}). Lembre de lançar o boleto em Contas a Pagar — é lá que entra no P12.`
-          : `Compra registrada no controle (${moneyFin(parsedAmount)}). Saída direta do caixa — não entra no P12 de novo.`,
+          : `Compra registrada e lançada como conta PAGA em ${shortDate(purchaseDate)} (${moneyFin(parsedAmount)}) — já entra no P12. Não lance de novo em Contas a Pagar.`,
     );
     resetForm();
   }
@@ -130,7 +151,7 @@ export function FinanceiroComprasPage() {
   async function removePurchase(purchase: FinPurchase) {
     // Compras antigas podem ter uma conta a pagar vinculada (modelo antigo) —
     // ao excluir, remove o vínculo para não deixar lançamento órfão.
-    const withExpense = purchase.expenseRef ? " A conta a pagar antiga vinculada também será excluída." : "";
+    const withExpense = purchase.expenseRef ? " A conta ligada a esta compra (em Contas a Pagar) também será excluída." : "";
     if (!(await confirmar(`Excluir a compra "${purchase.description}" (${moneyFin(purchase.amount)})?`, { corpo: withExpense.trim() || undefined, destrutivo: true, confirmar: "Excluir" }))) return;
     if (purchase.expenseRef) financeiro.removeExpense(purchase.expenseRef);
     financeiro.removePurchase(purchase.id);
@@ -154,8 +175,8 @@ export function FinanceiroComprasPage() {
                 Controle de Compras
                 <InfoTip title="Compras NÃO entra no P12">
                   Esta aba é o seu controle do que comprou e do que vai chegar — medicações, brindes, itens da clínica, tudo.
-                  Nada daqui entra no P12 sozinho, para não duplicar: compra no crédito entra só pela fatura do cartão (uma vez);
-                  boleto você lança em Contas a Pagar; débito/PIX/dinheiro é saída direta do caixa.
+                  Para não duplicar: compra no crédito entra só pela fatura do cartão (uma vez); boleto você lança em
+                  Contas a Pagar; débito/PIX/dinheiro/transferência vira, na hora, uma conta já paga em Contas a Pagar.
                 </InfoTip>
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -193,8 +214,9 @@ export function FinanceiroComprasPage() {
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm leading-6 text-sky-900">
             <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
-              <strong>Compras é controle — não entra no P12 sozinho.</strong> Crédito entra pela <strong>fatura do cartão</strong>;
-              boleto você lança em <strong>Contas a Pagar</strong>. Assim o valor nunca conta duas vezes.
+              <strong>Cada compra entra no P12 uma vez só.</strong> Crédito entra pela <strong>fatura do cartão</strong>;
+              boleto você lança em <strong>Contas a Pagar</strong>; à vista (PIX, débito, dinheiro, transferência) vira
+              <strong> conta já paga</strong> na hora, com a categoria que você escolher.
             </span>
           </div>
         </motion.section>
@@ -311,6 +333,25 @@ export function FinanceiroComprasPage() {
                     <div>
                       <Label>Parcelas</Label>
                       <Input value={installments} onChange={(event) => setInstallments(event.target.value)} inputMode="numeric" placeholder="1" />
+                    </div>
+                  ) : null}
+                  {aVista ? (
+                    <div className="md:col-span-2">
+                      <Label>Categoria P12 (obrigatória no à vista)</Label>
+                      <select
+                        value={categoryRef}
+                        onChange={(event) => setCategoryRef(event.target.value)}
+                        className="h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                      >
+                        <option value="">Selecione a categoria...</option>
+                        {categoriesByGroup.map((group) => (
+                          <optgroup key={group.groupKey} label={finGroupLabels[group.groupKey]}>
+                            {group.categories.map((category) => (
+                              <option key={category.id} value={category.id}>{category.name}{category.isCapex ? " · CAPEX" : ""}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
                     </div>
                   ) : null}
                   <div>

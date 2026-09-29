@@ -137,8 +137,9 @@ import { usePanScroll } from "./usePanScroll";
 import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
 import { SenhaDeGestor } from "@/components/SenhaDeGestor";
 import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
-import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
+import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, iniciarRepescagemComResultado, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { canCrmBratan } from "@/lib/access";
 
 const objectionOptions: CrmObjectionCategory[] = [
@@ -496,7 +497,10 @@ function ProgramCard({
 
 function CrmKanbanPageConteudo() {
   const { pessoa } = useAuth();
-  const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead } = useCrmState();
+  // "Só vê" vale aqui também (29/09/2026, auditoria B9): o useCrmState recusa a
+  // gravação e os botões que abrem o fechamento ficam desabilitados.
+  const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead } = useCrmState({ modulo: "crm" });
+  const telaCrm = useNivelDaTela("crm");
   const [sncrData, setSncrData] = useState("");
   // O fechamento aqui também lança a comanda do dia (pedido do Lucas, 14/08).
   const { pessoa: pessoaAuth, session, isPreview } = useAuth();
@@ -781,6 +785,13 @@ function CrmKanbanPageConteudo() {
   const quadroRepescagem = useMemo(() => buildQuadroRepescagem(state, financeiro.sales, todayISO()), [state, financeiro.sales]);
   const actorId = pessoa?.id ?? "preview";
   function iniciarRepescagemDe(candidato: CandidatoRepescagem) {
+    // Confere no retrato da tela ANTES de anunciar (29/09/2026, auditoria B8c):
+    // com outra régua ativa a inscrição não nasce, e a tela dizia "iniciada".
+    const previa = iniciarRepescagemComResultado(state, candidato, { userId: actorId, role: "CONCIERGE" }, todayISO());
+    if (!previa.nasceu) {
+      setFeedback(`Repescagem de ${contactDisplayName(candidato.contact)} NÃO foi iniciada: ${previa.motivo}.`);
+      return;
+    }
     persist((current) => iniciarRepescagem(current, candidato, { userId: actorId, role: "CONCIERGE" }, todayISO()));
     setFeedback(`Repescagem de ${contactDisplayName(candidato.contact)} iniciada: mande a isca pelo WhatsApp e marque "Isca enviada".`);
   }
@@ -1700,6 +1711,7 @@ function CrmKanbanPageConteudo() {
   // Registrar fechamento com o paciente já escolhido: um fechamento, um
   // formulário, uma comanda.
   function abrirFechamentoDoDeal(dealId: string) {
+    if (!telaCrm.podeEditar) return avisarSoVe();
     const deal = state.deals.find((item) => item.id === dealId);
     if (!deal) return;
     const contact = state.contacts.find((item) => item.id === deal.contactId);
@@ -1816,6 +1828,7 @@ function CrmKanbanPageConteudo() {
       )}
     >
       <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+      <AvisoSoVe soVe={telaCrm.soVe} />
       {/* CONFERÊNCIA DO FECHAMENTO (18/08/2026): fica aqui porque é aqui que o
           fechamento acontece. R$ 13.808 de um paciente foram dados como ganhos
           e nunca viraram comanda — o financeiro só descobriu comparando o
@@ -1846,11 +1859,11 @@ function CrmKanbanPageConteudo() {
           </InfoTip>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={() => { setFcFeedback(""); setFechamentoOpen(true); }}>
+          <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={!telaCrm.podeEditar} title={telaCrm.motivo || undefined} onClick={() => { setFcFeedback(""); setFechamentoOpen(true); }}>
             <Plus className="h-4 w-4" aria-hidden="true" />
             Registrar fechamento
           </LiquidButton>
-          <Button type="button" variant="outline" size="sm" onClick={() => setLeadModalOpen(true)}>
+          <Button type="button" variant="outline" size="sm" disabled={!telaCrm.podeEditar} title={telaCrm.motivo || undefined} onClick={() => setLeadModalOpen(true)}>
             <UserPlus className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Novo lead
           </Button>
@@ -2088,6 +2101,8 @@ function CrmKanbanPageConteudo() {
                       size="sm"
                       variant="outline"
                       className="mt-2"
+                      disabled={!telaCrm.podeEditar}
+                      title={telaCrm.motivo || undefined}
                       onClick={() => {
                         void invocarIntegracao<{ ok: boolean; error?: string; url?: string | null }>("supersign-enviar", { dealRef: selectedDeal.id, contactRef: selectedDeal.contactId, nome: contactDisplayName(selectedContact), solicitadoPor: pessoa?.id ?? null }).then((r) => {
                           if (r.ok) toast(`Contrato enviado para ${contactDisplayName(selectedContact)}.${r.url ? " O link de assinatura ficou registrado." : ""}`, { tom: "ok" });
@@ -2489,6 +2504,8 @@ function CrmKanbanPageConteudo() {
                               <Button
                                 type="button"
                                 size="sm"
+                                disabled={!telaCrm.podeEditar}
+                                title={telaCrm.motivo || undefined}
                                 onClick={() => {
                                   setFcPatient({ ref: deal.contactId, name: contactDisplayName(contact) });
                                   setFcFeedback("");

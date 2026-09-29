@@ -173,7 +173,10 @@ export async function lerExtratoDeXlsx(buffer: ArrayBuffer): Promise<BankEntry[]
 // ---------------------------------------------------------------------------
 export type BaldeConciliacao = {
   /** Entradas do banco que casaram com algo do app. */
-  casadas: { entry: BankEntry; comQue: string; tipo: "COMANDA" | "DESPESA" | "COFRE" }[];
+  // `ref` (29/09/2026, auditoria B5): o id do que casou no app — comanda
+  // (client_ref da venda), conta ou movimento do cofre. null quando a linha é
+  // reconhecida só pela descrição (rendimento, adiantamento da maquininha).
+  casadas: { entry: BankEntry; comQue: string; tipo: "COMANDA" | "DESPESA" | "COFRE"; ref: string | null }[];
   /**
    * Casou, mas o valor não é idêntico (ex.: SISPAG saiu 6.971,00 e a conta
    * estava 6.972,00). Fica visível de propósito: é diferença de centavo/real
@@ -181,7 +184,7 @@ export type BaldeConciliacao = {
    */
   casadasComDiferenca: { entry: BankEntry; comQue: string; diferenca: number }[];
   /** Uma conta do app que foi paga em DOIS lançamentos do banco (o app agrupou). */
-  casadasAgrupadas: { entries: BankEntry[]; comQue: string; total: number }[];
+  casadasAgrupadas: { entries: BankEntry[]; comQue: string; total: number; tipo: "COMANDA" | "DESPESA"; ref: string | null }[];
   /** Entrou no banco e não tem comanda → dinheiro sem registro. */
   entrouSemRegistro: BankEntry[];
   /** Saiu do banco e não tem conta lançada → pagou e não lançou. */
@@ -311,7 +314,7 @@ export function conciliarExtrato(
   const cofre = noPeriodo(savingsMoves, (move) => move.moveDate);
 
   // Candidatos do app: cada pagamento de comanda (entrada) e cada conta paga (saída).
-  type Candidato = { valor: number; dia: string; rotulo: string; tipo: "COMANDA" | "DESPESA" | "COFRE"; sale?: FinSale; expense?: FinExpense; forma?: string };
+  type Candidato = { valor: number; dia: string; rotulo: string; tipo: "COMANDA" | "DESPESA" | "COFRE"; sale?: FinSale; expense?: FinExpense; forma?: string; ref: string };
   const entradasApp: Candidato[] = [];
   for (const sale of comandas) {
     for (const payment of sale.payments) {
@@ -325,6 +328,7 @@ export function conciliarExtrato(
         tipo: "COMANDA",
         sale,
         forma: payment.method,
+        ref: sale.id,
       });
     }
   }
@@ -334,12 +338,14 @@ export function conciliarExtrato(
     rotulo: `${expense.description} (conta)`,
     tipo: "DESPESA",
     expense,
+    ref: expense.id,
   }));
   const cofreApp: Candidato[] = cofre.map((move) => ({
     valor: move.amount || 0,
     dia: move.moveDate,
     rotulo: `${move.reason || "movimento do cofre"} (cofre)`,
     tipo: "COFRE",
+    ref: move.id,
   }));
 
   const casadas: BaldeConciliacao["casadas"] = [];
@@ -383,7 +389,7 @@ export function conciliarExtrato(
       const noCofre = acharCandidato(restamCofre, entry);
       if (noCofre) {
         restamCofre.splice(restamCofre.indexOf(noCofre), 1);
-        casadas.push({ entry, comQue: noCofre.rotulo, tipo: "COFRE" });
+        casadas.push({ entry, comQue: noCofre.rotulo, tipo: "COFRE", ref: noCofre.ref });
       } else {
         casadas.push({
           entry,
@@ -393,6 +399,7 @@ export function conciliarExtrato(
               ? "movimento do CDB (obra/cofre)"
               : "adiantamento da maquininha (crédito da véspera)",
           tipo: "COFRE",
+          ref: null,
         });
       }
       continue;
@@ -401,13 +408,13 @@ export function conciliarExtrato(
       const achado = acharCandidato(restamEntradas, entry);
       if (achado) {
         restamEntradas.splice(restamEntradas.indexOf(achado), 1);
-        casadas.push({ entry, comQue: achado.rotulo, tipo: "COMANDA" });
+        casadas.push({ entry, comQue: achado.rotulo, tipo: "COMANDA", ref: achado.ref });
       } else entrouSemRegistro.push(entry);
     } else {
       const achado = acharCandidato(restamSaidas, entry);
       if (achado) {
         restamSaidas.splice(restamSaidas.indexOf(achado), 1);
-        casadas.push({ entry, comQue: achado.rotulo, tipo: "DESPESA" });
+        casadas.push({ entry, comQue: achado.rotulo, tipo: "DESPESA", ref: achado.ref });
       } else saiuSemRegistro.push(entry);
     }
   }
@@ -626,7 +633,7 @@ export function conciliarExtrato(
         }
       }
       if (par) {
-        casadasAgrupadas.push({ entries: par, comQue: candidato.rotulo, total: cents(candidato.valor) });
+        casadasAgrupadas.push({ entries: par, comQue: candidato.rotulo, total: cents(candidato.valor), tipo: candidato.tipo === "COMANDA" ? "COMANDA" : "DESPESA", ref: candidato.ref });
         for (const entry of par) {
           pendentesDoBanco.splice(pendentesDoBanco.indexOf(entry), 1);
           remover(entry);

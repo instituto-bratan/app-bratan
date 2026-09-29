@@ -15,6 +15,7 @@
 //   · contas acima do limite aguardando aprovação.
 // Achado que a rotina não encontra mais é fechado sozinho (resolvido_por nulo).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
+import { COORDENACAO as CARGOS_COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 type Achado = { chave: string; tipo: string; titulo: string; detalhe: string; valor?: number | null; href: string; urgencia: 0 | 1 | 2 | 3; cargos: string[]; quantidade?: number };
 
@@ -42,6 +43,10 @@ const ehDiaUtil = (d: string) => {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron das 6h ou a coordenação (botão "atualizar achados" da Home).
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: CARGOS_COORDENACAO, cron: true, automatico: true });
+  if (!acesso.ok) return acesso.resposta;
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceKey) return json({ error: "Supabase env ausente" }, 500);

@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CalendarRange, Check, ChevronLeft, ChevronRight, Minus, PhoneCall, Table2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useAuth } from "@/hooks/useAuth";
@@ -163,7 +164,10 @@ function periodLabel(periodo: Periodo, anchor: string) {
 
 export function CrmPlanilhaCadenciasPage() {
   const { pessoa } = useAuth();
-  const { state, persist, syncMode, syncFailed, syncErrorDetail, retrySync } = useCrmState();
+  // "Só vê" (29/09/2026, auditoria B9): sem EDITAR no CRM, a planilha fica só para leitura.
+  const { state, persist, syncMode, syncFailed, syncErrorDetail, retrySync } = useCrmState({ modulo: "crm" });
+  const telaCrm = useNivelDaTela("crm");
+  const semEdicao = !telaCrm.podeEditar;
   const sheet = useMemo(() => buildCadenceSheet(state), [state]);
 
   const myRole = cargoToCrmRole(pessoa?.cargo);
@@ -225,6 +229,7 @@ export function CrmPlanilhaCadenciasPage() {
       <input
         type="text"
         defaultValue={saved}
+        disabled={semEdicao}
         placeholder="Anotar..."
         onChange={(event) => setNotesDraft((prev) => ({ ...prev, [enrollmentId]: event.target.value }))}
         onBlur={() => saveNotes(enrollmentId, saved)}
@@ -254,6 +259,7 @@ export function CrmPlanilhaCadenciasPage() {
             <span className="text-[10px] font-medium uppercase tracking-wide text-brand-oliva">{shortDate(cell.date)}</span>
             <select
               defaultValue=""
+              disabled={semEdicao}
               onChange={(event) => {
                 if (event.target.value) registerD(taskId, event.target.value as CadenceSheetDStatus);
               }}
@@ -454,6 +460,7 @@ export function CrmPlanilhaCadenciasPage() {
                           <span className="text-[10px] font-medium uppercase tracking-wide text-brand-oliva">{shortDate(call.date)}</span>
                           <select
                             defaultValue=""
+                            disabled={semEdicao}
                             onChange={(event) => {
                               if (event.target.value && call.taskId) registerCall(call.taskId, event.target.value as GestorCallStatus);
                             }}
@@ -500,6 +507,7 @@ export function CrmPlanilhaCadenciasPage() {
                   ) : row.encerramentoActionable && row.encerramentoTaskId ? (
                     <button
                       type="button"
+                      disabled={semEdicao}
                       onClick={() => row.encerramentoTaskId && registerEncerramento(row.encerramentoTaskId)}
                       className="rounded-md border border-brand-dourado/60 bg-brand-creme/60 px-2 py-1 text-[11px] font-semibold text-brand-musgo shadow-sm transition hover:bg-brand-creme"
                     >
@@ -552,6 +560,7 @@ export function CrmPlanilhaCadenciasPage() {
         </motion.section>
 
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+        <AvisoSoVe soVe={telaCrm.soVe} />
 
         <details className="rounded-lg border border-brand-dourado/30 bg-brand-creme/25 backdrop-blur">
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-brand-musgo">

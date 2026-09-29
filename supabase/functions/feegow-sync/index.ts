@@ -4,6 +4,7 @@
 // (https://api.feegow.com/v1/api, cabeçalho x-access-token). Desligada por
 // padrão; precisa de FEEGOW_TOKEN. Roda pelo cron das 5h30 e pelo botão da tela.
 import { agoraBrasiliaISO, corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
+import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 const NOMES_PADRAO: Record<string, string> = { "1": "Dr. Daniel", "15": "Barbara", "16": "Gessica", "19": "Juliana" };
 const STATUS: Record<string, string> = { "1": "não confirmado", "7": "confirmado", "3": "atendido", "2": "em atendimento", "4": "aguardando", "208": "aguardando pagamento", "11": "desmarcado", "15": "remarcado", "22": "cancelado", "6": "faltou" };
@@ -24,6 +25,10 @@ function dataISO(bruta: string) {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron das 5h30 ou a coordenação (botão em Integrações).
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: COORDENACAO, cron: true, automatico: true });
+  if (!acesso.ok) return acesso.resposta;
   const client = db();
   const integracao = await lerIntegracao(client, "feegow");
   if (!integracao.ligada) return respostaDesligada("feegow");
