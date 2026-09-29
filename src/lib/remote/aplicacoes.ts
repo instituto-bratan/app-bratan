@@ -1,7 +1,7 @@
 // FICHA DE APLICAÇÃO DA ENFERMAGEM (29/09/2026).
 // Leitura direta da tabela (RLS can_aplicacao_read) e gravação SÓ pelas funções
 // registrar_aplicacao / estornar_aplicacao, que lançam o movimento do estoque
-// na mesma transação (202609290001_ficha_de_aplicacao.sql).
+// na mesma transação (202609290004_ficha_de_aplicacao.sql).
 //
 // Dado de saúde: nada de paciente, produto ou dose vai para console ou para a
 // auditoria — o evento de auditoria leva só o identificador da aplicação.

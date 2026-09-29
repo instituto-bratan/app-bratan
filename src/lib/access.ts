@@ -323,7 +323,7 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
     case "aplicacoes":
       // Ficha de aplicação (29/09/2026): a enfermeira registra; Dr. Daniel, CEO,
       // gestor e gestor financeiro acompanham. Recepção não vê (dado clínico).
-      // Mesma regra de supabase/migrations/202609290001_ficha_de_aplicacao.sql.
+      // Mesma regra de supabase/migrations/202609290004_ficha_de_aplicacao.sql.
       if (cargo === "enfermeira") return "EDITAR";
       return aplicacoesLeitoresCargos.includes(cargo) ? "VER" : "OCULTO";
     case "nutricao":

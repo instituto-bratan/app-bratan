@@ -20,7 +20,7 @@ const semComentario = (sql) => sql.replace(/--.*$/gm, "");
 const apl = loadTs("src/features/estoque/aplicacaoData.ts");
 const estoque = loadTs("src/features/estoque/estoqueData.ts");
 const access = loadTs("src/lib/access.ts");
-const MIGRATION = "supabase/migrations/202609290001_ficha_de_aplicacao.sql";
+const MIGRATION = "supabase/migrations/202609290004_ficha_de_aplicacao.sql";
 const sql = semComentario(ler(MIGRATION));
 
 // ---------------------------------------------------------------------------

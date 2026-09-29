@@ -5,7 +5,7 @@
 // em quem, e o estoque só baixava se alguém lembrasse de lançar a saída.
 //
 // Aqui mora a MESMA regra que o banco aplica em registrar_aplicacao()
-// (supabase/migrations/202609290001_ficha_de_aplicacao.sql). A tela usa estas
+// (supabase/migrations/202609290004_ficha_de_aplicacao.sql). A tela usa estas
 // funções para avisar ANTES de mandar — o banco confere de novo, porque é ele
 // quem garante que aplicação e saída do estoque nascem juntas.
 import type { CrmTask } from "@/features/crm/crmData";
