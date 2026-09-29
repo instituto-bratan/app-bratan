@@ -125,6 +125,8 @@ export type PortalPlano = {
 export type PortalDados = {
   /** Chave pública VAPID, para o navegador assinar os avisos. Ausente = avisos desligados. */
   pushPublicKey?: string | null;
+  /** WhatsApp da concierge (29/09/2026); null = não configurado, sem botão. */
+  contato?: { whatsapp: string; mensagem: string } | null;
   paciente: { nome: string; primeiroNome: string; contactRef: string; temSenha?: boolean; login?: string | null; temFaceId?: boolean };
   plano: PortalPlano | null;
   consultas: PortalConsulta[];
@@ -838,4 +840,12 @@ export function icsDaConsulta(consulta: Pick<ProximaConsulta, "em" | "comHora" |
     "END:VCALENDAR",
     "",
   ].join("\r\n");
+}
+
+
+/** O link do WhatsApp da concierge com a mensagem pronta (29/09/2026). */
+export function linkDaConcierge(contato: { whatsapp: string; mensagem: string } | null | undefined, primeiroNome: string) {
+  if (!contato?.whatsapp) return null;
+  const texto = (contato.mensagem || "Oi! Sou paciente do Instituto Bratan e queria falar com a concierge.").replace(/^Oi!/, `Oi! Aqui é ${primeiroNome}.`);
+  return `https://wa.me/${contato.whatsapp}?text=${encodeURIComponent(texto)}`;
 }

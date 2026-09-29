@@ -658,12 +658,20 @@ Deno.serve(async (request) => {
   }
 
   const { count: faceIds } = await client.from("paciente_passkey").select("id", { count: "exact", head: true }).eq("acesso_id", acesso.id).is("revogada_em", null);
+  // O WhatsApp da concierge (29/09/2026): vem das Configurações do negócio; sem
+  // número configurado, o portal não mostra o botão.
+  const hojeDaConfig = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const { data: linhaContato } = await client.from("app_config_vigencia").select("valor").eq("chave", "portal.contato").lte("vigente_de", hojeDaConfig).order("vigente_de", { ascending: false }).order("criado_em", { ascending: false }).limit(1).maybeSingle();
+  const contatoConfig = (linhaContato?.valor ?? {}) as { whatsapp?: string; mensagem?: string };
+  const whatsappDigitos = String(contatoConfig.whatsapp ?? "").replace(/\D/g, "");
+  const contatoDaConcierge = whatsappDigitos.length >= 10 ? { whatsapp: whatsappDigitos.startsWith("55") ? whatsappDigitos : `55${whatsappDigitos}`, mensagem: String(contatoConfig.mensagem ?? "").slice(0, 300) } : null;
   await log(contactRef, "LEITURA");
   return json({
     ok: true,
     dados: {
       pushPublicKey,
       vozDoDoutor,
+      contato: contatoDaConcierge,
       paciente: { nome, primeiroNome: nome.split(/\s+/)[0] || "paciente", contactRef, temSenha: Boolean(acesso.senha_hash), login: acesso.login ?? null, temFaceId: (faceIds ?? 0) > 0 },
       plano,
       consultas,

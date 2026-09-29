@@ -30,7 +30,7 @@ import { fraseDoCartao, opcoesDoCartao, textoDeCompartilhar, type OpcaoDoCartao 
 import { cartaoParaBlob, compartilharCartao, desenharCartao } from "./desenharCartao";
 import { Confete } from "@/components/ui/motion-confetti";
 import { CountUp } from "@/components/ui/count-up";
-import { ABAS, abaDaRota, brl, brlCentavos, diaCurto, diaMes, linhaDoTempo, medicoesAntesDoPlano, nomeDoPlano, pacienteDesde, pendenciasDasAbas, proximaConsulta, fraseDoDia, icsDaConsulta, oQueABalancaNaoMostra, resumoDaJornada, resumoDaSemana, resumoEvolucao, resumoFinanceiro, resumoInBody, rotaDaAba, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type AbaDoPortal, type EventoDaJornada, type MarcoDoPlano, type PassoDaTrilha, type PortalDados, type ResumoDaJornada } from "./portalPaciente";
+import { ABAS, abaDaRota, brl, brlCentavos, diaCurto, diaMes, linhaDoTempo, medicoesAntesDoPlano, nomeDoPlano, pacienteDesde, pendenciasDasAbas, proximaConsulta, fraseDoDia, icsDaConsulta, linkDaConcierge, oQueABalancaNaoMostra, resumoDaJornada, resumoDaSemana, resumoEvolucao, resumoFinanceiro, resumoInBody, rotaDaAba, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type AbaDoPortal, type EventoDaJornada, type MarcoDoPlano, type PassoDaTrilha, type PortalDados, type ResumoDaJornada } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
 const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o atendimento", TRATAMENTO: "termo do tratamento", IA: "apoio de inteligência artificial", IMAGEM: "uso de imagem", MARKETING: "mensagens e novidades" };
@@ -568,6 +568,11 @@ function MeuPortal() {
             ) : proxima.status === "REMARCAR" ? (
               <span className="p-pill" style={{ justifySelf: "start" }}>a recepção vai te chamar para remarcar</span>
             ) : null}
+            {proxima.status === "REMARCAR" && linkDaConcierge(dados?.contato, dados?.paciente.primeiroNome ?? "") ? (
+              <a className="p-btn plain" style={{ justifySelf: "start" }} href={linkDaConcierge(dados?.contato, dados?.paciente.primeiroNome ?? "") as string} target="_blank" rel="noreferrer">
+                Combinar a nova data pelo WhatsApp
+              </a>
+            ) : null}
             {proxima.origem !== "PREVISTA" ? (
               <button type="button" className="p-btn plain" style={{ justifySelf: "start" }} onClick={() => porNoCalendario(proxima)}>
                 <CalendarDays size={16} aria-hidden="true" /> Pôr no meu calendário
@@ -1015,7 +1020,12 @@ function MeuPortal() {
 
       <footer className="p-rodape p-anim wide">
         {dados.consentimentos.some((c) => c.aceito) ? <p className="t-foot t-3">Você autorizou: {dados.consentimentos.filter((c) => c.aceito).map((c) => CONSENT_LABEL[c.tipo] ?? c.tipo.toLowerCase()).join(", ")}.</p> : null}
-        <p className="t-foot t-3">Seus dados ficam só com o Instituto Bratan e aparecem aqui só para você. Para mudar algo, fale com a recepção.</p>
+        {linkDaConcierge(dados.contato, dados.paciente.primeiroNome) ? (
+          <a className="p-btn tonal" href={linkDaConcierge(dados.contato, dados.paciente.primeiroNome) as string} target="_blank" rel="noreferrer">
+            Falar com a concierge
+          </a>
+        ) : null}
+        <p className="t-foot t-3">Seus dados ficam só com o Instituto Bratan e aparecem aqui só para você. Para mudar algo, {dados.contato?.whatsapp ? "fale com a concierge pelo botão acima" : "fale com a recepção"}.</p>
         <button type="button" className="p-btn plain" onClick={() => void sair()}>
           Sair deste aparelho
         </button>

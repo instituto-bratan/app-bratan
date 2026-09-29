@@ -23,11 +23,12 @@ export type ChaveConfig =
   | "lucro.reserva_meta_meses"
   | "antecipacao.alternativas"
   | "rotina.hora"
-  | "ocupacao.meta";
+  | "ocupacao.meta"
+  | "portal.contato";
 
 export type DefinicaoConfig<T = unknown> = {
   chave: ChaveConfig;
-  grupo: "Salas e agenda" | "Lucro Inteligente" | "Contas a pagar" | "CRM e indicações" | "Rotinas";
+  grupo: "Salas e agenda" | "Lucro Inteligente" | "Contas a pagar" | "CRM e indicações" | "Rotinas" | "Portal do paciente";
   titulo: string;
   explicacao: string;
   padrao: T;
@@ -51,6 +52,9 @@ export const DEFINICOES_CONFIG: DefinicaoConfig[] = [
   { chave: "crm.sla_lead_minutos", grupo: "CRM e indicações", titulo: "SLA de resposta ao lead (minutos)", explicacao: "Tempo máximo entre o lead entrar e o primeiro toque. Responder em menos de 1 hora qualifica 7 vezes mais; a meta da casa é 5 minutos.", padrao: 5, tipo: "numero", unidade: "min" },
   { chave: "indicacao.voucher", grupo: "CRM e indicações", titulo: "Valor da cortesia por indicação", explicacao: "Valor do voucher/cortesia ao indicador.", padrao: 500, tipo: "numero", unidade: "R$" },
   { chave: "indicacao.modo", grupo: "CRM e indicações", titulo: "Como a cortesia é liberada", explicacao: "CONDICIONADO: libera quando o indicado passa em consulta (regra atual). CORTESIA: liberada ao indicar, sem condicionar a fechamento — leitura mais segura da CFM 2.336/2023 (art. 9º, VIII veda 'premiações'). Aguarda parecer (decisão D8).", padrao: "CONDICIONADO", tipo: "escolha", opcoes: [{ valor: "CONDICIONADO", rotulo: "Condicionado à consulta do indicado" }, { valor: "CORTESIA", rotulo: "Cortesia clínica não condicionada" }] },
+  // 29/09/2026: o botão "Falar com a concierge" do portal só aparece quando
+  // este número estiver preenchido — o app não inventa telefone.
+  { chave: "portal.contato", grupo: "Portal do paciente", titulo: "WhatsApp da concierge no portal", explicacao: "Número (com DDD) que o botão \"Falar com a concierge\" do Meu Bratan abre, com uma mensagem pronta. Vazio = o botão não aparece e o portal diz para falar com a recepção.", padrao: { whatsapp: "", mensagem: "Oi! Sou paciente do Instituto Bratan e queria falar com a concierge." }, tipo: "json" },
   { chave: "rotina.hora", grupo: "Rotinas", titulo: "Hora da rotina diária", explicacao: "Hora (Brasília) em que a rotina monta a fila e os achados do dia. Mudar aqui exige reagendar o cron no Supabase.", padrao: 6, tipo: "numero", unidade: "h" },
 ];
 
