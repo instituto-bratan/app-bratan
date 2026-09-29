@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/components/ui/avisos";
 import { motion } from "framer-motion";
 import { ClipboardCopy, FileDown, Target, Trophy } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
@@ -66,15 +67,21 @@ export function FinanceiroMetasPage() {
     },
     enabled: useRemote,
   });
+  const queryClient = useQueryClient();
   const saveMutation = useMutation({
     mutationFn: (next: MetasConfig) => saveRemoteFinMetasConfig(next as unknown as Record<string, unknown>),
+    // Painel, P12 e Lucro leem do servidor (29/09/2026): salvou, todos veem.
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["fin-metas-config"] }),
   });
 
   function persistConfig(next: MetasConfig) {
     setConfig(next);
     writeLocalValue(metasStorageKey, next);
     if (useRemote) {
-      void saveMutation.mutateAsync(next).catch((error) => console.warn("Config de metas não sincronizou.", error));
+      void saveMutation.mutateAsync(next).catch((error) => {
+        console.warn("Config de metas não sincronizou.", error);
+        toast(`As metas NÃO foram salvas no servidor (${(error as Error)?.message ?? "erro"}). Só este aparelho vê a mudança — tente de novo.`, { tom: "erro", duracaoMs: 9000 });
+      });
     }
   }
 

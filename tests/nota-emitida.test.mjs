@@ -28,3 +28,13 @@ test("uma nota cobre a outra: unificada fecha a comanda; parte emitida barra a u
   assert.equal(mod.notaExistenteCobre("CONSULTA", "TRATAMENTO"), false, "consulta e tratamento convivem (plano separado)");
   assert.equal(mod.notaExistenteCobre("BIOIMPEDANCIA", "CONSULTA"), false);
 });
+
+test("servidor: comanda só de sinal não emite nota; CPF confere pelos dígitos (29/09/2026)", () => {
+  assert.equal(mod.comandaSoDeSinal([{ item_type: "CONSULTA", amount: 500, description: "Sinal de consulta" }]), true);
+  assert.equal(mod.comandaSoDeSinal([{ item_type: "SINAL", amount: 500, description: "" }]), true);
+  assert.equal(mod.comandaSoDeSinal([{ item_type: "CONSULTA", amount: 1100, description: "Consulta Diamond — Pix" }]), false);
+  assert.equal(mod.comandaSoDeSinal([{ item_type: "CONSULTA", amount: 500, description: "Sinal de consulta" }, { item_type: "TRATAMENTO", amount: 3000, description: "Tirzepatida · frasco" }]), false);
+  assert.equal(mod.cpfConfere("529.982.247-25"), true);
+  assert.equal(mod.cpfConfere("111.111.111-11"), false);
+  assert.equal(mod.cpfConfere(""), false);
+});

@@ -249,7 +249,7 @@ export function NotaNoFechamentoCard({
         <div className="grid gap-1 rounded-md border border-amber-300/70 bg-amber-50/70 p-2.5">
           <Label htmlFor="nota-cpf-paciente" className="flex items-center gap-1.5 text-xs text-amber-900">
             <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-            O CPF deste paciente não está cadastrado — coloque aqui para a nota sair no nome dele
+            O CPF deste paciente não está cadastrado — é obrigatório para a nota sair
           </Label>
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -267,7 +267,7 @@ export function NotaNoFechamentoCard({
                 ? "Esse CPF não confere. Confira os números."
                 : cpfDigitadoOk
                   ? "Vai nesta nota e fica guardado na ficha."
-                  : "Sem CPF a nota sai, mas o paciente perde o bilhete da Nota do Milhão."}
+                  : "Obrigatório: sem CPF a nota não sai e o fechamento não salva."}
             </span>
           </div>
         </div>
@@ -276,7 +276,7 @@ export function NotaNoFechamentoCard({
       {nota.escolha !== "SEM_NOTA" && !ehSinal && onEmailChange ? (
         <div className="grid gap-1">
           <Label htmlFor="nota-email-paciente" className="text-xs">
-            E-mail do paciente <span className="font-normal text-muted-foreground">— a nota autorizada vai para ele</span>
+            E-mail do paciente <span className="font-normal text-muted-foreground">— obrigatório: a nota autorizada vai para ele</span>
           </Label>
           <Input
             id="nota-email-paciente"
@@ -291,10 +291,10 @@ export function NotaNoFechamentoCard({
         </div>
       ) : null}
 
-      {nota.escolha !== "SEM_NOTA" && plano.notas.length && faltaNoTomador.length ? (
-        <p className="text-[11px] leading-snug text-muted-foreground">
-          Para a nota sair completa ainda falta: <strong>{faltaNoTomador.map((item) => (item === "CPF" ? "CPF (guardar na ficha do paciente)" : item)).join(", ")}</strong>.
-          Dá para fechar assim — a nota sai sem esse dado{faltaNoTomador.includes("e-mail") ? " e não vai por e-mail" : ""}.
+      {nota.escolha !== "SEM_NOTA" && !ehSinal && faltaNoTomador.length ? (
+        <p className="text-[11px] leading-snug text-amber-900">
+          Para a nota sair ainda falta: <strong>{faltaNoTomador.join(", ")}</strong>. O fechamento só salva com esses dados — ou
+          escolha "Não emitir agora" e escreva o motivo.
         </p>
       ) : null}
     </div>

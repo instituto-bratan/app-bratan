@@ -1,5 +1,5 @@
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
-import { itemContaComoVenda } from "./naturezaItem";
+import { itemContaComoVenda, naturezaDoItem } from "./naturezaItem";
 
 export type FinCategoryGroup = "CUSTO_FIXO" | "MAO_DE_OBRA" | "CUSTO_VARIAVEL" | "POUPANCA";
 export type FinSaleItemType =
@@ -500,7 +500,7 @@ export function buildTicketMedio(sales: FinSale[], start: string, end: string): 
       // só de medicação avulsa / exame / outro profissional.
       if (saleTotal(sale) > 0) {
         const comValor = sale.items.filter((item) => (item.amount || 0) > 0);
-        if (comValor.every((item) => item.itemType === "SINAL")) ignoradas += 1;
+        if (comValor.every((item) => naturezaDoItem(item) === "SINAL")) ignoradas += 1;
         else ignoradasMedicacao += 1;
       }
       continue;
@@ -2020,7 +2020,12 @@ export function saleInvoiceBreakdown(sale: FinSale) {
     else if (item.itemType === "TRATAMENTO") tratamento += item.amount;
     else if (consultaLikeTypes.includes(item.itemType) || item.itemType === "OUTRO") {
       consulta += item.amount;
-      if (item.itemType === "SINAL") sinal += item.amount;
+      // SINAL PELA NATUREZA, NÃO PELO TIPO (29/09/2026). Desde 21/09 o sinal
+      // lança como CONSULTA "Sinal de consulta" — olhar só o tipo SINAL fazia a
+      // comanda de sinal parecer consulta comum e a nota sair na hora (e depois
+      // de novo, inteira, na consulta). Regra do Lucas: sinal nunca emite nota;
+      // ele soma na nota da consulta ou do tratamento.
+      if (naturezaDoItem(item) === "SINAL") sinal += item.amount;
     }
   }
   const total = bio + consulta + tratamento;

@@ -3,7 +3,7 @@
 // que preenche o campo "Nº" do plano de notas. O CPF do tomador, se digitado,
 // vai só no pedido e não é guardado.
 import { useEffect, useState } from "react";
-import { FileCheck2, RefreshCw } from "lucide-react";
+import { FileCheck2, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/avisos";
@@ -26,6 +26,10 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  // CANCELAR A NOTA (29/09/2026, pedido do Lucas). Motivo obrigatório: vai para
+  // a prefeitura e fica no controle de impostos, que tira a nota do mês.
+  const [cancelando, setCancelando] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState("");
   const ligada = integracaoLigada("focus_nfse");
 
   // Ao abrir a tela, recupera o que já foi enviado: sem isso, um F5 no meio do
@@ -106,11 +110,35 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
     }
   }
 
+  async function cancelar() {
+    if (!ref) return;
+    const motivo = motivoCancelamento.trim();
+    if (motivo.length < 15) return toast("Escreva o motivo do cancelamento (pelo menos 15 letras).", { tom: "atencao" });
+    setOcupado(true);
+    try {
+      const r = await invocarIntegracao<Resposta & { baixadas?: number }>("focus-nfse", { acao: "cancelar", ref, justificativa: motivo });
+      const st = String(r.dados?.status ?? r.status ?? "").toUpperCase();
+      if (/^CANCELAD/.test(st)) {
+        setStatus(st);
+        setCobertaPor((antes) => (antes ? { ...antes, status: st } : antes));
+        setCancelando(false);
+        setMotivoCancelamento("");
+        toast(`Nota cancelada na prefeitura.${r.baixadas ? " Saiu do controle de impostos do mês." : ""}`, { tom: "ok", duracaoMs: 7000 });
+      } else {
+        toast(r.error ?? `A prefeitura não cancelou (${st.toLowerCase() || "sem resposta"}). Veja o detalhe em Administração → Integrações.`, { tom: "erro", duracaoMs: 9000 });
+      }
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  const autorizada = Boolean(cobertaPor && cobertaPor.numero && /^autorizad/i.test(cobertaPor.status));
+
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {!ref ? (
         <>
-          <Input value={cpf} onChange={(event) => setCpf(event.target.value)} placeholder="CPF do tomador (opcional, não fica salvo)" className="h-8 w-56 text-xs" inputMode="numeric" />
+          <Input value={cpf} onChange={(event) => setCpf(event.target.value)} placeholder="CPF do tomador (obrigatório se a ficha não tiver)" className="h-8 w-56 text-xs" inputMode="numeric" />
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail do paciente (a nota vai para ele)" className="h-8 w-60 text-xs" type="email" inputMode="email" />
           <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado} onClick={() => void emitir()}>
             <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir na prefeitura (Focus)
@@ -126,11 +154,38 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
             </a>
           ) : null}
         </span>
+      ) : cobertaPor && /^cancelad/i.test(cobertaPor.status) ? (
+        <span className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-800">
+          <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          Nota {cobertaPor.numero ? `nº ${cobertaPor.numero} ` : ""}cancelada
+        </span>
       ) : (
         <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado} onClick={() => void consultar()}>
           <RefreshCw className={ocupado ? "mr-1 h-3.5 w-3.5 animate-spin" : "mr-1 h-3.5 w-3.5"} aria-hidden="true" /> Consultar ({cobertaPor && cobertaPor.tipo !== tipo ? `${rotuloDoTipoDeNota(cobertaPor.tipo)} ` : ""}{status.toLowerCase() || "enviada"})
         </Button>
       )}
+      {autorizada && !cancelando ? (
+        <Button type="button" size="sm" variant="ghost" className="h-8 text-xs text-red-700" disabled={ocupado} onClick={() => setCancelando(true)}>
+          <XCircle className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Cancelar nota
+        </Button>
+      ) : null}
+      {autorizada && cancelando ? (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <Input
+            value={motivoCancelamento}
+            onChange={(event) => setMotivoCancelamento(event.target.value)}
+            placeholder="Motivo (vai para a prefeitura)"
+            aria-label="Motivo do cancelamento da nota"
+            className="h-8 w-64 text-xs"
+          />
+          <Button type="button" size="sm" variant="outline" className="h-8 border-red-300 text-xs text-red-800" disabled={ocupado || motivoCancelamento.trim().length < 15} onClick={() => void cancelar()}>
+            {ocupado ? "Cancelando…" : "Confirmar cancelamento"}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" disabled={ocupado} onClick={() => { setCancelando(false); setMotivoCancelamento(""); }}>
+            Voltar
+          </Button>
+        </span>
+      ) : null}
     </span>
   );
 }

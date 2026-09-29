@@ -6,6 +6,7 @@
 // função da Focus só aceita pedido de quem está logado, por isso o clique é
 // de uma pessoa — e é aqui que ela clica.
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, FileCheck2, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,16 +15,22 @@ import { toast } from "@/components/ui/avisos";
 import { integracaoLigada } from "@/lib/integracoes";
 import { invocarIntegracao } from "@/lib/remoteData";
 import { atualizarRemoteNfseLoteItem, listRemoteNfseLote, prontidaoDoLote, type ProntidaoDoContato } from "@/lib/remote/nfseLote";
-import { moneyFin, type FinInvoice } from "./financeiroData";
-import { discriminacaoDoItem, invoicesDoItem, partesFecham, resumoDoLote, type ItemDoLote } from "./loteDeNotas";
+import { moneyFin } from "./financeiroData";
+import { discriminacaoDoItem, partesFecham, resumoDoLote, type ItemDoLote } from "./loteDeNotas";
 import { rotuloDoTipoDeNota } from "../../../supabase/functions/_shared/notaEmitida";
 
 type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; numero?: string | null; emailEnviado?: boolean; dados?: { numero?: string; status?: string } };
 
 const dataBR = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
 
-export function LoteDeNotasCard({ readOnly, onRegister }: { readOnly: boolean; onRegister: (invoices: FinInvoice[]) => void }) {
+// 29/09/2026: a linha do controle de impostos nasce no SERVIDOR quando a
+// prefeitura autoriza (inclusive a nota que cobre várias comandas, uma linha
+// por parte). O cartão só pede para a tela recarregar o controle — registrar
+// daqui também duplicava o imposto.
+export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
   const ligada = integracaoLigada("focus_nfse");
+  const queryClient = useQueryClient();
+  const recarregarControle = () => void queryClient.invalidateQueries({ queryKey: ["fin-invoices"] });
   const [itens, setItens] = useState<ItemDoLote[] | null>(null);
   const [prontidao, setProntidao] = useState<Record<string, ProntidaoDoContato>>({});
   const [emitindo, setEmitindo] = useState<string | null>(null);
@@ -81,7 +88,7 @@ export function LoteDeNotasCard({ readOnly, onRegister }: { readOnly: boolean; o
         const agora = new Date().toISOString();
         aplicar(item.id, { status: "AUTORIZADA", ref, numero: String(numero), erro: null, emitidaEm: agora });
         await atualizarRemoteNfseLoteItem(item.id, { status: "AUTORIZADA", ref, numero: String(numero), erro: null, emitidaEm: agora });
-        onRegister(invoicesDoItem(item, String(numero), agora.slice(0, 10)));
+        recarregarControle();
         return "autorizada";
       }
       aplicar(item.id, { status: "ENVIADA", ref, erro: null });
@@ -104,7 +111,7 @@ export function LoteDeNotasCard({ readOnly, onRegister }: { readOnly: boolean; o
         const agora = new Date().toISOString();
         aplicar(item.id, { status: "AUTORIZADA", numero: String(numero), emitidaEm: agora });
         await atualizarRemoteNfseLoteItem(item.id, { status: "AUTORIZADA", numero: String(numero), emitidaEm: agora });
-        onRegister(invoicesDoItem(item, String(numero), agora.slice(0, 10)));
+        recarregarControle();
         toast(`Nota autorizada: nº ${numero}.`, { tom: "ok" });
       } else if (/ERRO/.test(st)) {
         aplicar(item.id, { status: "ERRO", erro: `A prefeitura recusou (${st.toLowerCase()}). Veja o detalhe em Administração → Integrações.` });
@@ -157,7 +164,7 @@ export function LoteDeNotasCard({ readOnly, onRegister }: { readOnly: boolean; o
       <CardContent className="grid gap-3">
         {pendentes.length ? (
           <p className="text-xs text-muted-foreground">
-            {semCpf ? `${semCpf} ${semCpf === 1 ? "paciente ainda sem CPF na ficha (a nota sai sem tomador identificado)" : "pacientes ainda sem CPF na ficha (a nota sai sem tomador identificado)"}` : "Todos com CPF na ficha"}
+            {semCpf ? `${semCpf} ${semCpf === 1 ? "paciente ainda sem CPF na ficha (a nota dele não sai até guardar o CPF)" : "pacientes ainda sem CPF na ficha (a nota deles não sai até guardar o CPF)"}` : "Todos com CPF na ficha"}
             {" · "}
             {semEmail ? `${semEmail} sem e-mail (a nota não será enviada por e-mail)` : "todos com e-mail"}
             . A função lê CPF e e-mail da ficha na hora de emitir: preencha antes de clicar.

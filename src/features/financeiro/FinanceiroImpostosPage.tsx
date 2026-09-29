@@ -731,7 +731,7 @@ export function FinanceiroImpostosPage() {
         </Card>
 
         {/* O LOTE CONFERIDO (22/09/2026): as notas de setembro que faltavam, uma linha cada, emitidas pela Focus em sequência. */}
-        <LoteDeNotasCard readOnly={readOnly} onRegister={registerBatch} />
+        <LoteDeNotasCard readOnly={readOnly} />
 
         <Card>
           <CardHeader>

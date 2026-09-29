@@ -11,7 +11,7 @@ import type { QuandoNota } from "@/features/crm/recebimentoKanbanData";
 import type { DivisaoDaNota } from "@/features/crm/notaNoFechamento";
 import { saleInvoiceBreakdown, type FinPaymentMethod, type FinSale, type FinSaleItem, type FinSalePayment } from "./financeiroData";
 
-type ItemMinimo = Pick<FinSaleItem, "itemType" | "amount">;
+type ItemMinimo = Pick<FinSaleItem, "itemType" | "amount"> & { description?: string };
 
 /** Consulta, bio e tratamento somados pelos itens — o ponto de partida da nota repartida. */
 export function divisaoDosItens(items: ItemMinimo[]): DivisaoDaNota {

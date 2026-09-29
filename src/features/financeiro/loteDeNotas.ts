@@ -5,7 +5,7 @@
 // entre as comandas no controle de impostos — uma nota pode juntar mãe e
 // filho, ou somar um sinal pago antes). O texto da nota é o mesmo do
 // fechamento (notaNoFechamento.ts), para a nota do lote sair igual à do dia.
-import { createFinId, type FinInvoice, type FinInvoiceType } from "./financeiroData";
+import type { FinInvoiceType } from "./financeiroData";
 import { discriminacao as textoDaNota, type NaturezaDaNota } from "@/features/crm/notaNoFechamento";
 
 export type TipoDoLote = "CONSULTA" | "BIOIMPEDANCIA" | "TRATAMENTO" | "UNIFICADA";
@@ -42,22 +42,6 @@ export function discriminacaoDoItem(item: Pick<ItemDoLote, "tipo" | "dia" | "pag
 }
 
 /** As linhas do controle de impostos que a nota autorizada gera — uma por parte, todas com o mesmo número. */
-export function invoicesDoItem(item: ItemDoLote, numero: string, issueDate: string): FinInvoice[] {
-  const partes = item.partes.length ? item.partes : [{ saleRef: item.saleRef, invoiceType: naturezaDoItem(item.tipo), amount: item.valor, patientName: item.tomadorNome, comandaDate: item.dia }];
-  return partes.map((parte) => ({
-    id: createFinId("finv"),
-    saleRef: parte.saleRef,
-    invoiceType: parte.invoiceType,
-    invoiceNumber: numero,
-    issueDate,
-    comandaDate: parte.comandaDate,
-    patientName: parte.patientName,
-    amount: parte.amount,
-    notes: partes.length > 1 ? `Nota ${numero} emitida pela Focus no lote ${item.lote} em nome de ${item.tomadorNome}, cobrindo ${partes.length} comandas (esta parte: ${parte.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}).` : `Emitida pela Focus no lote ${item.lote}.`,
-    createdAt: new Date().toISOString(),
-  }));
-}
-
 /** As partes fecham com o valor da nota? Diferença de centavo é erro de imposto. */
 export function partesFecham(item: Pick<ItemDoLote, "valor" | "partes">) {
   if (!item.partes.length) return true;

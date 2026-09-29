@@ -80,7 +80,7 @@ export function comandaAderiuAoPlano(sale: FinSale) {
 /** A comanda é SÓ o sinal (pré-consulta)? */
 export function comandaEhSoSinal(sale: FinSale) {
   const comValor = sale.items.filter((item) => (item.amount || 0) > 0);
-  return comValor.length > 0 && comValor.every((item) => item.itemType === "SINAL");
+  return comValor.length > 0 && comValor.every((item) => naturezaDoItem(item) === "SINAL");
 }
 
 export function buildPdca(sales: FinSale[], month: string, marks: Map<string, FinPdcaMark>): PdcaResumo {

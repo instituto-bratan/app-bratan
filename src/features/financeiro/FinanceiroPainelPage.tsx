@@ -82,6 +82,7 @@ import { RelatoriosContabilidadeCard } from "./RelatoriosContabilidadeCard";
 import { useFinanceiro } from "./useFinanceiro";
 import { ResumoFechamentoCard } from "./ResumoFechamentoCard";
 import { fechamentoEscritoVazio, ultimosMeses, type FechamentoEscrito } from "./resumoFechamento";
+import { useMetasConfig } from "./useMetasConfig";
 
 const PDCA_CAMPOS: { key: string; titulo: string; ajuda: string }[] = [
   { key: "plan", titulo: "PLAN — Planejar", ajuda: "O que vamos fazer no próximo mês para melhorar o número que caiu?" },
@@ -91,7 +92,6 @@ const PDCA_CAMPOS: { key: string; titulo: string; ajuda: string }[] = [
 ];
 
 /** Mesma chave usada na P12 e nas Metas — a configuração é uma só. */
-const metasStorageKey = "app-bratan-fin-metas-config-v1";
 
 function formatarValor(valor: number, formato: GestaoIndicador["formato"]) {
   if (formato === "percentual") return `${valor.toFixed(2).replace(".", ",")}%`;
@@ -176,10 +176,8 @@ export function FinanceiroPainelPage() {
     return { 1: cofreObra, 2: cofreProvisoes, 4: obra } as Record<number, { dia?: string; label: string; valor: number }[]>;
   }, [financeiro.savingsMoves, financeiro.expenses, financeiro.categories, monthKey]);
 
-  const metasConfig = useMemo<MetasConfig>(
-    () => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }),
-    [],
-  );
+  // Metas do servidor, iguais para todo mundo (29/09/2026).
+  const metasConfig: MetasConfig = useMetasConfig();
   // MOMENTO DO MÊS (17/08/2026): a apresentação muda com o dia em que estamos.
   const momento = useMemo(() => momentoDoMes(monthKey, hoje), [monthKey, hoje]);
   const board = useMemo(() => buildMetasBoard(financeiro.sales, metasConfig, monthKey), [financeiro.sales, metasConfig, monthKey]);
@@ -966,53 +964,65 @@ export function FinanceiroPainelPage() {
             ))}
 
             {/* ---- comparativo com explicações (o trabalho do dia 5) ------- */}
-            <Card className="border-brand-oliva/20 bg-white/70">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-                  <ClipboardCheck className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-                  Comparativo com {monthKeyLabel(mesAnterior)} — e a explicação de cada número
-                  <InfoTip title="Como usar">
-                    Nenhum número é digitado: todos vêm dos lançamentos. Você escreve só a EXPLICAÇÃO de cada linha — é o
-                    que a reunião cobra. O texto fica salvo e todo mundo vê o mesmo.
-                  </InfoTip>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                {indicadores.map((indicador) => {
-                  const subiu = indicador.variacao > 0;
-                  return (
-                    <div key={indicador.key} className="rounded-lg border border-brand-oliva/16 bg-white/80 p-3">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="text-sm font-semibold text-brand-tinta">{indicador.label}</p>
-                        <p className="flex items-center gap-2 text-sm">
-                          <span className="text-muted-foreground">{formatarValor(indicador.anterior, indicador.formato)}</span>
-                          <span aria-hidden="true">→</span>
-                          <strong className="tabular-nums text-brand-musgo">{formatarValor(indicador.atual, indicador.formato)}</strong>
-                          {indicador.variacao !== 0 ? (
-                            <span className={cn("flex items-center gap-0.5 text-xs font-semibold", subiu ? "text-emerald-700" : "text-red-700")}>
-                              {subiu ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />}
-                              {formatarValor(Math.abs(indicador.variacao), indicador.formato)}
-                              {indicador.variacaoPercent !== null
-                                ? ` (${indicador.variacaoPercent > 0 ? "+" : ""}${indicador.variacaoPercent.toFixed(1).replace(".", ",")}%)`
-                                : ""}
-                            </span>
-                          ) : null}
-                        </p>
+            {/* NUNCA COMPARAR MÊS PARCIAL COM MÊS FECHADO (regra do Lucas). Até
+                29/09/2026 este card aparecia também com o mês em andamento. */}
+            {momento.emAndamento ? (
+              <Card className="border-brand-oliva/20 bg-white/70">
+                <CardContent className="flex items-start gap-2 p-4 text-sm text-muted-foreground">
+                  <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
+                  O comparativo com {monthKeyLabel(mesAnterior)} aparece quando {monthKeyLabel(monthKey)} fechar. Comparar um mês pela
+                  metade com um mês inteiro faz qualquer número parecer queda.
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-brand-oliva/20 bg-white/70">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+                    <ClipboardCheck className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
+                    Comparativo com {monthKeyLabel(mesAnterior)} — e a explicação de cada número
+                    <InfoTip title="Como usar">
+                      Nenhum número é digitado: todos vêm dos lançamentos. Você escreve só a EXPLICAÇÃO de cada linha — é o
+                      que a reunião cobra. O texto fica salvo e todo mundo vê o mesmo.
+                    </InfoTip>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-2">
+                  {indicadores.map((indicador) => {
+                    const subiu = indicador.variacao > 0;
+                    return (
+                      <div key={indicador.key} className="rounded-lg border border-brand-oliva/16 bg-white/80 p-3">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="text-sm font-semibold text-brand-tinta">{indicador.label}</p>
+                          <p className="flex items-center gap-2 text-sm">
+                            <span className="text-muted-foreground">{formatarValor(indicador.anterior, indicador.formato)}</span>
+                            <span aria-hidden="true">→</span>
+                            <strong className="tabular-nums text-brand-musgo">{formatarValor(indicador.atual, indicador.formato)}</strong>
+                            {indicador.variacao !== 0 ? (
+                              <span className={cn("flex items-center gap-0.5 text-xs font-semibold", subiu ? "text-emerald-700" : "text-red-700")}>
+                                {subiu ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />}
+                                {formatarValor(Math.abs(indicador.variacao), indicador.formato)}
+                                {indicador.variacaoPercent !== null
+                                  ? ` (${indicador.variacaoPercent > 0 ? "+" : ""}${indicador.variacaoPercent.toFixed(1).replace(".", ",")}%)`
+                                  : ""}
+                              </span>
+                            ) : null}
+                          </p>
+                        </div>
+                        <textarea
+                          value={explicacoes[indicador.key] ?? ""}
+                          onChange={(event) => setExplicacoes((atual) => ({ ...atual, [indicador.key]: event.target.value }))}
+                          onBlur={() => (readOnly ? undefined : salvar(false))}
+                          disabled={readOnly}
+                          rows={2}
+                          placeholder="Por que este número mudou?"
+                          className="mt-2 w-full rounded-md border border-input bg-white/72 px-3 py-2 text-sm"
+                        />
                       </div>
-                      <textarea
-                        value={explicacoes[indicador.key] ?? ""}
-                        onChange={(event) => setExplicacoes((atual) => ({ ...atual, [indicador.key]: event.target.value }))}
-                        onBlur={() => (readOnly ? undefined : salvar(false))}
-                        disabled={readOnly}
-                        rows={2}
-                        placeholder="Por que este número mudou?"
-                        className="mt-2 w-full rounded-md border border-input bg-white/72 px-3 py-2 text-sm"
-                      />
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
 
             {/* ---- PDCA --------------------------------------------------- */}
             <Card className="border-brand-dourado/40 bg-brand-creme/30">

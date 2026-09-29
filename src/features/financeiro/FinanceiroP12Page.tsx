@@ -28,8 +28,8 @@ import { useFinanceiro } from "./useFinanceiro";
 import { abaP12 } from "./exportContabilidade";
 import { abaContasAPagar } from "./contabilidadeXlsx";
 import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
+import { useMetasConfig } from "./useMetasConfig";
 
-const metasStorageKey = "app-bratan-fin-metas-config-v1";
 
 type CellSelection = { category: FinCategory | null; month: number; isRevenue: boolean };
 
@@ -115,10 +115,8 @@ export function FinanceiroP12Page() {
   // Metas vêm da mesma config do controle de Metas (salva localmente).
   const resumoMonthIdx = monthFilter ?? new Date().getMonth();
   const resumoMonthKey = `${year}-${String(resumoMonthIdx + 1).padStart(2, "0")}`;
-  const metasConfig = useMemo<MetasConfig>(
-    () => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }),
-    [],
-  );
+  // Metas do servidor, iguais para todo mundo (29/09/2026).
+  const metasConfig: MetasConfig = useMetasConfig();
 
   const selectionEntries = useMemo(() => {
     if (!selection) return [];

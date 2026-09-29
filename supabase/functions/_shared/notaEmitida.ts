@@ -59,3 +59,41 @@ export function rotuloDoTipoDeNota(tipo: string) {
   const r: Record<string, string> = { CONSULTA: "consulta", BIOIMPEDANCIA: "bioimpedância", TRATAMENTO: "tratamento", UNIFICADA: "unificada" };
   return r[tipo] ?? tipo.toLowerCase();
 }
+
+// ---------------------------------------------------------------------------
+// SINAL NÃO EMITE NOTA (29/09/2026) — a mesma regra da tela, no servidor.
+//
+// Regra do Lucas: "sinal de consulta não se emite nota fiscal, ele só se soma
+// depois quando o próprio paciente passar na consulta ou fechar o tratamento".
+// Desde 21/09 o sinal lança como item CONSULTA com a descrição "Sinal de
+// consulta", então olhar só o tipo SINAL deixava a nota passar. A tela já foi
+// corrigida; esta trava existe para que nenhum caminho (tela antiga em cache,
+// lote, chamada direta) emita documento fiscal de adiantamento.
+export type ItemDaComanda = { item_type: string; amount: number; description?: string | null };
+
+const PALAVRAS_SINAL = /\bsinal\b|\bentrada da consulta\b/i;
+const TIPOS_DE_CONSULTA = new Set(["CONSULTA", "RETORNO", "OUTRO"]);
+
+export function itemEhSinal(item: ItemDaComanda) {
+  if (item.item_type === "SINAL") return true;
+  return TIPOS_DE_CONSULTA.has(item.item_type) && PALAVRAS_SINAL.test(String(item.description ?? ""));
+}
+
+/** A comanda inteira é só sinal? Então não existe nota a emitir agora. */
+export function comandaSoDeSinal(itens: ItemDaComanda[]) {
+  const comValor = itens.filter((item) => Number(item.amount || 0) > 0);
+  return comValor.length > 0 && comValor.every(itemEhSinal);
+}
+
+/** CPF com os dois dígitos verificadores certos (mesma conta de src/lib/cpf.ts). */
+export function cpfConfere(bruto: string) {
+  const d = String(bruto ?? "").replace(/\D/g, "");
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  for (const posicao of [9, 10]) {
+    let soma = 0;
+    for (let i = 0; i < posicao; i += 1) soma += Number(d[i]) * (posicao + 1 - i);
+    const resto = (soma * 10) % 11;
+    if ((resto === 10 ? 0 : resto) !== Number(d[posicao])) return false;
+  }
+  return true;
+}

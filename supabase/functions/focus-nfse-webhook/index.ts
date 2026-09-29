@@ -13,6 +13,7 @@
 import { db, json, lerIntegracao, registrarEvento } from "../_shared/integracoes.ts";
 import { enviarEmailDaNota, notaAutorizada } from "../_shared/focus.ts";
 import { arquivarPorRef } from "../_shared/arquivarNotaEmitida.ts";
+import { baixarDoControle, registrarNoControle } from "../_shared/controleDeImpostos.ts";
 
 Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "use POST" }, 405);
@@ -50,6 +51,12 @@ Deno.serve(async (request) => {
     if (arquivo.erro && !arquivo.arquivos) {
       await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: ref, status: "ARQUIVO_PENDENTE", resumo: `Arquivo da nota ${ref} fica para o varredor: ${arquivo.erro}`.slice(0, 900) });
     }
+    // A linha do controle de impostos nasce aqui também (29/09/2026).
+    await registrarNoControle(client, ref);
+  }
+  if (/^cancelad/i.test(status)) {
+    const { data: cancelada } = await client.from("nfse_emissao").select("numero").eq("ref", ref).maybeSingle();
+    await baixarDoControle(client, String(cancelada?.numero ?? dados.numero ?? ""), "cancelada na prefeitura (aviso da Focus)");
   }
   return json({ ok: true, emailEnviado });
 });

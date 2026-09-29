@@ -66,6 +66,7 @@ import { updateContactChannels } from "@/features/crm/crmData";
 import { NotaNoFechamentoCard } from "@/features/crm/NotaNoFechamentoCard";
 import { emitirNotasDoFechamento } from "@/features/crm/emitirNotaDoFechamento";
 import { notaDoFechamentoVazia, planoDeNotas, resumoDaNota, travaDoFechamento, type NotaDoFechamento } from "@/features/crm/notaNoFechamento";
+import { travaDosDadosDaNota } from "@/features/crm/travasDoFechamento";
 import { NotaDaComandaDialog } from "./NotaDaComandaDialog";
 import { divisaoDosItens, ehSoSinal, estadoDaNota, parcelasDaComanda, quandoPadrao, valorFaturavel } from "./notaNaComandaDoDia";
 
@@ -154,7 +155,8 @@ export function FinanceiroLancarDiaPage() {
     [financeiro.sales, date],
   );
 
-  const itensDaNota = useMemo(() => items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount) })).filter((item) => item.amount > 0), [items]);
+  // A descrição VAI junto (29/09/2026): é ela que diz que um item CONSULTA é "Sinal de consulta".
+  const itensDaNota = useMemo(() => items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount), description: item.description })).filter((item) => item.amount > 0), [items]);
   const soSinal = ehSoSinal(itensDaNota);
   const valorDaNota = valorFaturavel(itensDaNota);
   const parcelasDaNota = useMemo(() => parcelasDaComanda(payments.map((p) => ({ method: p.method, installments: Math.max(1, Number(p.installments) || 1) }))), [payments]);
@@ -178,7 +180,17 @@ export function FinanceiroLancarDiaPage() {
   }, [patientRef, crmState.contacts]);
   const planoDaNota = planoDeNotas({ escolha: notaFiscal.escolha, valorRecebido: valorDaNota, divisao: notaFiscal.divisao, diaISO: date, parcelas: parcelasDaNota });
   const emiteAoLancar = focusLigada && !editingSaleId && notaQuando === "AGORA" && !soSinal && valorDaNota > 0;
-  const travaDaNota = emiteAoLancar ? travaDoFechamento({ nota: notaFiscal, valorRecebido: valorDaNota, ehSinal: soSinal, plano: planoDaNota }) : "";
+  // CPF, E-MAIL E PACIENTE LIGADO SÃO OBRIGATÓRIOS PARA "EMITIR: AGORA" (29/09/2026).
+  // Sem paciente ligado a nota não tinha para quem sair — e saía nada, calada.
+  const travaDosDadosDaNotaDoDia =
+    emiteAoLancar && notaFiscal.escolha !== "SEM_NOTA"
+      ? !patientRef
+        ? "Para emitir a nota agora, ligue a comanda ao paciente (campo Paciente) — sem isso a nota não tem para quem sair."
+        : travaDosDadosDaNota({ vaiTerNota: true, temCpfNaFicha: Boolean(cpfNaFicha.data?.cpf), cpfDigitado: cpfNota, email: emailNota }) ?? ""
+      : "";
+  const travaDaNota = emiteAoLancar
+    ? travaDoFechamento({ nota: notaFiscal, valorRecebido: valorDaNota, ehSinal: soSinal, plano: planoDaNota }) || travaDosDadosDaNotaDoDia
+    : "";
   const vaiEmitirNota = emiteAoLancar && notaFiscal.escolha !== "SEM_NOTA" && planoDaNota.notas.length > 0;
   // As notas já emitidas das comandas do dia: é o que diz "sem nota" ou "NF nº X" na lista.
   const emissoesDoDia = useQuery({

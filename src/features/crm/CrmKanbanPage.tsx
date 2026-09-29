@@ -31,7 +31,8 @@ import {
 import { formataValor, itensDaComanda, totalDosItensFechados, type ItemFechado } from "@/features/financeiro/catalogoPrecificacao";
 import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFechamentoCard";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
-import { createRemoteFinCashEntry, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, salvarRemoteCpfDoContato, uploadRemoteComprovante } from "@/lib/remoteData";
+import { createRemoteFinCashEntry, createRemotePagamento, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, salvarRemoteCpfDoContato, uploadRemoteComprovante } from "@/lib/remoteData";
+import { aReceberSugerido, fechamentoTemSaldo, fechamentoVaiTerNota, travaDoAReceber, travaDosDadosDaNota } from "./travasDoFechamento";
 import { cpfDigitos, cpfValido } from "@/lib/cpf";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
@@ -641,6 +642,41 @@ function CrmKanbanPageConteudo() {
   const fcTomador = { nome: fcPatient.name, cpf: fcCpfNaFicha.data?.cpf ? "na ficha" : "", email: fcEmailNota };
   // CPF digitado na hora, quando a ficha não tem (pedido do Lucas, 22/09/2026).
   const [fcCpfNota, setFcCpfNota] = useState("");
+  // O QUE FICOU PARA DEPOIS (29/09/2026). Fechou e não pagou tudo? A diferença
+  // vira Lembrete de pagamento no mesmo clique — nunca mais "fechou" sem
+  // comanda e sem cobrança (casos Wlamir e José Ferreira, 22–23/09).
+  const [fcAReceberTexto, setFcAReceberTexto] = useState("");
+  const [fcAReceberEditado, setFcAReceberEditado] = useState(false);
+  const [fcAReceberData, setFcAReceberData] = useState("");
+  const [fcAReceberObs, setFcAReceberObs] = useState("");
+  const fcVendidoNumero = parseFinAmount(fcSold);
+  const fcTemSaldo = fechamentoTemSaldo({ resultado: fcResultado, vendido: fcVendidoNumero, recebido: fcValorRecebido });
+  useEffect(() => {
+    if (fcAReceberEditado) return;
+    const falta = aReceberSugerido(fcVendidoNumero, fcValorRecebido);
+    setFcAReceberTexto(falta > 0.5 ? formataValor(falta) : "");
+  }, [fcVendidoNumero, fcValorRecebido, fcAReceberEditado]);
+  const fcTravaAReceber = travaDoAReceber({
+    resultado: fcResultado,
+    vendido: fcVendidoNumero,
+    recebido: fcValorRecebido,
+    aReceberValor: parseFinAmount(fcAReceberTexto),
+    aReceberData: fcAReceberData,
+    hojeISO: todayISO(),
+  });
+  // CPF E E-MAIL OBRIGATÓRIOS QUANDO VAI HAVER NOTA (29/09/2026).
+  const fcTravaDadosDaNota = travaDosDadosDaNota({
+    vaiTerNota: fechamentoVaiTerNota({
+      resultado: fcResultado,
+      recebido: fcValorRecebido,
+      ehSinal: fcTipo === "SINAL_CONSULTA",
+      semNota: fcNota.escolha === "SEM_NOTA",
+    }),
+    temCpfNaFicha: Boolean(fcCpfNaFicha.data?.cpf),
+    cpfDigitado: fcCpfNota,
+    email: fcEmailNota,
+  });
+  const fcTravaGeral = fcTravaDaNota || fcTravaAReceber || fcTravaDadosDaNota || "";
   const queryClientKanban = useQueryClient();
   // O TIPO DO ITEM SEGUE O QUE FOI VENDIDO (21/09/2026). Nascia fixo em
   // "Tratamento", então Plano e Consulta Black caíam como tratamento na comanda
@@ -1108,15 +1144,22 @@ function CrmKanbanPageConteudo() {
 
     // O comprovante nasce ligado a ESTA comanda (saleRef) — é assim que o
     // financeiro vê "R$ 5.000: 2.000 no PIX + 3.000 no cartão" com os prints.
-    void subirComprovantes({
-      arquivos: values.arquivos,
-      pacienteNome: values.pacienteNome,
-      contactRef: values.contactRef,
-      divisao: parcelasComanda.length ? parcelasComanda : divisaoBase,
-      valorTotal: valorComanda,
-      saleRef: saleId,
-      observacao: [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban",
-    }).catch((falha) => {
+    // 29/09/2026: o arquivo só sobe DEPOIS que a comanda existe no servidor.
+    // Antes subia junto, e quando a comanda falhava o comprovante ficava
+    // apontando para uma comanda que não existia.
+    void comandaGravada
+      .then((gravou) => (gravou || !podeSubirArquivo
+        ? subirComprovantes({
+            arquivos: values.arquivos,
+            pacienteNome: values.pacienteNome,
+            contactRef: values.contactRef,
+            divisao: parcelasComanda.length ? parcelasComanda : divisaoBase,
+            valorTotal: valorComanda,
+            saleRef: saleId,
+            observacao: [values.observacao.trim(), values.notaInstrucao.trim()].filter(Boolean).join(" · ") || "Lançado pelo Kanban",
+          })
+        : undefined))
+      .catch((falha) => {
       // O STATUS NÃO PODE MENTIR (18/08/2026). Antes a comanda nascia
       // "ANEXADO" e, se o upload falhasse, ela continuava dizendo que tinha
       // comprovante — o furo só aparecia na conferência, dias depois.
@@ -1299,6 +1342,10 @@ function CrmKanbanPageConteudo() {
       if (travaComprovante) return setFcFeedback(travaComprovante);
     }
     if (fcResultado !== "NAO_FECHOU" && !fcCompleto && !fcPartialReason.trim()) return setFcFeedback("Fechamento parcial: registre o motivo do parcial.");
+    // As três travas que decidem se o fechamento pode existir (29/09/2026).
+    if (fcTravaAReceber) return setFcFeedback(fcTravaAReceber);
+    if (fcTravaDadosDaNota) return setFcFeedback(fcTravaDadosDaNota);
+    if (fcTravaDaNota) return setFcFeedback(fcTravaDaNota);
 
     // Resolve o paciente ANTES de gravar: a comanda e o comprovante precisam do
     // ref para nascerem ligados. O id é determinístico, então resolver no
@@ -1311,6 +1358,67 @@ function CrmKanbanPageConteudo() {
     };
     const refDoPaciente =
       fcPatient.ref || findOrCreateCrmContact(state, valoresDoContato, pessoa?.id ?? "gestao").contact.id;
+
+    // A comanda leva o que ENTROU (valor recebido) — é isso que o fechamento
+    // diário e o extrato conferem. O valor vendido é o contrato, não o caixa.
+    // NÃO FECHOU TAMBÉM PAGA (25/08/2026): a consulta que o paciente pagou vira
+    // comanda igual, com o item e a régua do "não fechou".
+    let lancado: ReturnType<typeof lancarComandaEComprovante> = null;
+    if (receivedAmount > 0) {
+      const ehPlano = fcResultado === "PROGRAMA_ACOMPANHAMENTO" || fcResultado === "CLUBE_BRATAN";
+      lancado = lancarComandaEComprovante({
+        contactRef: refDoPaciente,
+        pacienteNome:
+          fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
+        valorRecebido: receivedAmount,
+        divisao: fcDivisao,
+        itemTipo: fcItemTipo,
+        itens: fcItens,
+        arquivos: fcArquivos,
+        mandaDepois: fcMandaDepois,
+        notaInstrucao: [resumoDaNota(fcNota, planoDeNotas({ escolha: fcNota.escolha, valorRecebido: receivedAmount, divisao: fcNota.divisao, diaISO: todayISO(), parcelas: fcDivisao })), fcNotaInstrucao.trim()]
+          .filter(Boolean)
+          .join(" · "),
+        descricaoPadrao: descricaoPadraoDoFechamento({ tipo: fcTipo, canal: fcResultado }),
+        notaQuando: fcNotaQuando,
+        tipo: fcTipo,
+        plano: ehPlano,
+        origem: `Fechamento no Kanban — ${
+          fcResultado === "NAO_FECHOU"
+            ? "não fechou o tratamento (pagou a consulta)"
+            : fcResultado === "AVULSA"
+              ? "consulta avulsa"
+              : ehContinuacao(fcResultado)
+                ? "tratamento de continuação (fora da consulta)"
+                : channelLabels[fcResultado as CrmAdhesionChannel]
+        }`,
+        observacao:
+          fcResultado === "NAO_FECHOU"
+            ? `não fechou: ${fcObjection.trim()}`
+            : fcCompleto
+              ? ""
+              : `parcial: ${fcPartialReason.trim()}`,
+        setor: "VENDAS",
+      });
+    }
+    const recadoDoDinheiro =
+      lancado && lancado.valorDinheiro > 0
+        ? lancado.valorComanda > 0
+          ? `Fechamento registrado: ${moneyFin(lancado.valorComanda)} na comanda do dia e ${moneyFin(lancado.valorDinheiro)} em dinheiro direto no caixa do crediário.`
+          : `Fechamento registrado e ${moneyFin(lancado.valorDinheiro)} em dinheiro lançados direto no caixa do crediário (dinheiro não vira comanda).`
+        : "";
+
+    // A COMANDA ANTES DO CARD (29/09/2026). Antes o card virava "fechou" e a
+    // comanda vinha depois — se ela falhasse, o negócio ficava ganho sem
+    // dinheiro nenhum lançado. Agora, com dinheiro entrando, o card só muda de
+    // coluna depois que a comanda existe no servidor.
+    if (lancado?.saleId && podeSubirArquivo) {
+      const gravou = await lancado.comandaGravada;
+      if (!gravou) {
+        setFcFeedback("A comanda não foi gravada no servidor, então o fechamento NÃO foi salvo. Confira a internet e tente de novo.");
+        return;
+      }
+    }
 
     persist((current) => {
       let working = current;
@@ -1376,52 +1484,28 @@ function CrmKanbanPageConteudo() {
       );
       return moved.state;
     });
-    // A comanda leva o que ENTROU (valor recebido) — é isso que o fechamento
-    // diário e o extrato conferem. O valor vendido é o contrato, não o caixa.
-    // NÃO FECHOU TAMBÉM PAGA (25/08/2026): a consulta que o paciente pagou vira
-    // comanda igual, com o item e a régua do "não fechou".
-    let lancado: ReturnType<typeof lancarComandaEComprovante> = null;
-    if (receivedAmount > 0) {
-      const ehPlano = fcResultado === "PROGRAMA_ACOMPANHAMENTO" || fcResultado === "CLUBE_BRATAN";
-      lancado = lancarComandaEComprovante({
-        contactRef: refDoPaciente,
-        pacienteNome:
-          fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
-        valorRecebido: receivedAmount,
-        divisao: fcDivisao,
-        itemTipo: fcItemTipo,
-        itens: fcItens,
-        arquivos: fcArquivos,
-        mandaDepois: fcMandaDepois,
-        notaInstrucao: [resumoDaNota(fcNota, planoDeNotas({ escolha: fcNota.escolha, valorRecebido: receivedAmount, divisao: fcNota.divisao, diaISO: todayISO(), parcelas: fcDivisao })), fcNotaInstrucao.trim()]
-          .filter(Boolean)
-          .join(" · "),
-        descricaoPadrao: descricaoPadraoDoFechamento({ tipo: fcTipo, canal: fcResultado }),
-        notaQuando: fcNotaQuando,
-        tipo: fcTipo,
-        plano: ehPlano,
-        origem: `Fechamento no Kanban — ${
-          fcResultado === "NAO_FECHOU"
-            ? "não fechou o tratamento (pagou a consulta)"
-            : fcResultado === "AVULSA"
-              ? "consulta avulsa"
-              : ehContinuacao(fcResultado)
-                ? "tratamento de continuação (fora da consulta)"
-                : channelLabels[fcResultado as CrmAdhesionChannel]
-        }`,
-        observacao:
-          fcResultado === "NAO_FECHOU"
-            ? `não fechou: ${fcObjection.trim()}`
-            : fcCompleto
-              ? ""
-              : `parcial: ${fcPartialReason.trim()}`,
-        setor: "VENDAS",
-      });
-      if (lancado && lancado.valorDinheiro > 0) {
+    if (recadoDoDinheiro) setFeedback(recadoDoDinheiro);
+
+    // O RESTO VIRA LEMBRETE (29/09/2026). Mesmo lugar onde a equipe já
+    // registrava "paga depois" — só que agora nasce sozinho, com o paciente
+    // ligado, e o fechamento não salva sem ele.
+    if (fcTemSaldo && pessoaAuth && podeSubirArquivo) {
+      const pacienteDoLembrete =
+        fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente";
+      try {
+        await createRemotePagamento({
+          pessoa: pessoaAuth,
+          pacienteNome: pacienteDoLembrete,
+          contato: fcChannels.phone.trim() || undefined,
+          crmContactRef: refDoPaciente,
+          valorPendente: parseFinAmount(fcAReceberTexto),
+          dataPrevista: fcAReceberData,
+          observacao: ["Fechamento no Kanban — restante do combinado", fcAReceberObs.trim()].filter(Boolean).join(" · "),
+        });
+        void queryClientKanban.invalidateQueries({ queryKey: ["pagamentos-lembretes"] });
+      } catch (falha) {
         setFeedback(
-          lancado.valorComanda > 0
-            ? `Fechamento registrado: ${moneyFin(lancado.valorComanda)} na comanda do dia e ${moneyFin(lancado.valorDinheiro)} em dinheiro direto no caixa do crediário.`
-            : `Fechamento registrado e ${moneyFin(lancado.valorDinheiro)} em dinheiro lançados direto no caixa do crediário (dinheiro não vira comanda).`,
+          `⚠️ O fechamento foi salvo, mas o Lembrete de ${moneyFin(parseFinAmount(fcAReceberTexto))} não foi criado (${(falha as Error).message}). Crie em Lembretes de pagamento para a cobrança não se perder.`,
         );
       }
     }
@@ -1494,6 +1578,10 @@ function CrmKanbanPageConteudo() {
     setFcNotaQuando("COM_A_CONSULTA");
     setFcArquivos([]);
     setFcMandaDepois(false);
+    setFcAReceberTexto("");
+    setFcAReceberEditado(false);
+    setFcAReceberData("");
+    setFcAReceberObs("");
   }
 
   function handleMoveDeal(event: FormEvent) {
@@ -2768,6 +2856,37 @@ function CrmKanbanPageConteudo() {
                       }
                     />
 
+                    {fcTemSaldo ? (
+                      <div className="grid gap-2 rounded-lg border border-brand-dourado/50 bg-brand-creme/40 p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">O que ficou para depois</p>
+                        <p className="text-xs leading-snug text-muted-foreground">
+                          Vendido {moneyFin(fcVendidoNumero)}, entrou {moneyFin(fcValorRecebido)} agora. A diferença vira um
+                          Lembrete de pagamento com o paciente ligado — o fechamento não salva sem ele.
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          <div>
+                            <Label htmlFor="fc-a-receber-valor">Vai pagar depois (R$)</Label>
+                            <Input
+                              id="fc-a-receber-valor"
+                              value={fcAReceberTexto}
+                              onChange={(event) => {
+                                setFcAReceberEditado(true);
+                                setFcAReceberTexto(event.target.value);
+                              }}
+                              inputMode="decimal"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="fc-a-receber-data">Combinou pagar em</Label>
+                            <Input id="fc-a-receber-data" type="date" min={todayISO()} value={fcAReceberData} onChange={(event) => setFcAReceberData(event.target.value)} />
+                          </div>
+                          <div>
+                            <Label htmlFor="fc-a-receber-obs">Como (opcional)</Label>
+                            <Input id="fc-a-receber-obs" value={fcAReceberObs} onChange={(event) => setFcAReceberObs(event.target.value)} placeholder="Ex.: Pix no dia 10, cartão 6x" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                     {!fcCompleto ? (
                       <div>
                         <Label>Motivo do parcial</Label>
@@ -2837,14 +2956,14 @@ function CrmKanbanPageConteudo() {
                     {fcFeedback}
                   </div>
                 ) : null}
-                {fcTravaDaNota ? (
+                {fcTravaGeral ? (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    {fcTravaDaNota}
+                    {fcTravaGeral}
                   </div>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2">
-                  <LiquidButton type="submit" className="h-10 px-5" disabled={Boolean(fcTravaDaNota) || fcEmitindo}>
+                  <LiquidButton type="submit" className="h-10 px-5" disabled={Boolean(fcTravaGeral) || fcEmitindo}>
                     {fcEmitindo
                       ? "Emitindo a nota…"
                       : fcVaiEmitirNota

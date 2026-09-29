@@ -19,7 +19,8 @@ import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, res
 import { quemChama } from "../_shared/claude.ts";
 import { baseUrl, cabecalhoFocus as cabecalho, emailValido, enviarEmailDaNota, nomeDoTokenFocus, notaAutorizada } from "../_shared/focus.ts";
 import { arquivarNotasPendentes, arquivarPorRef } from "../_shared/arquivarNotaEmitida.ts";
-import { notaExistenteCobre, rotuloDoTipoDeNota } from "../_shared/notaEmitida.ts";
+import { baixarDoControle, registrarNoControle, registrarPendentesNoControle } from "../_shared/controleDeImpostos.ts";
+import { comandaSoDeSinal, cpfConfere, notaExistenteCobre, rotuloDoTipoDeNota } from "../_shared/notaEmitida.ts";
 
 type Entrada = {
   acao: "emitir" | "consultar" | "cancelar" | "reenviar_email" | "arquivar_pendentes";
@@ -73,6 +74,10 @@ Deno.serve(async (request) => {
     const faltamSegredos = segredosFaltando([nomeDoTokenFocus(integracao.config)]);
     if (faltamSegredos.length) return respostaSemSegredos("focus_nfse", faltamSegredos);
     const r = await arquivarNotasPendentes(client, integracao.config);
+    // O varredor também põe no controle de impostos a nota autorizada que
+    // escapou do registro na hora (29/09/2026).
+    const noControle = await registrarPendentesNoControle(client).catch(() => 0);
+    if (noControle) await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "OK", resumo: `Controle de impostos: ${noControle} linha(s) de nota autorizada registradas pelo varredor` });
     if (r.notas) await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: r.erros.length ? "PARCIAL" : "OK", resumo: `Arquivo das notas emitidas: ${r.notas} nota(s) olhada(s), ${r.arquivos} arquivo(s) para o SharePoint${r.erros.length ? `. Atenção: ${r.erros.join(" | ")}` : ""}`.slice(0, 900) });
     return json({ ok: true, ...r });
   }
@@ -104,10 +109,16 @@ Deno.serve(async (request) => {
 
   if (entrada.acao === "consultar" || entrada.acao === "cancelar") {
     if (!entrada.ref) return json({ ok: false, error: "Informe a ref." }, 400);
+    // CANCELAR TEM MOTIVO (29/09/2026). A prefeitura exige a justificativa e o
+    // controle de impostos guarda o porquê da nota ter saído do mês.
+    const justificativa = String(entrada.justificativa ?? "").trim();
+    if (entrada.acao === "cancelar" && justificativa.length < 15) {
+      return json({ ok: false, error: "Escreva o motivo do cancelamento (pelo menos 15 letras). Ele vai para a prefeitura e fica no controle." }, 400);
+    }
     const resposta = await fetch(`${base}/v2/nfse/${encodeURIComponent(entrada.ref)}`, {
       method: entrada.acao === "cancelar" ? "DELETE" : "GET",
       headers: cabecalho(config),
-      body: entrada.acao === "cancelar" ? JSON.stringify({ justificativa: entrada.justificativa ?? "Cancelamento solicitado pelo Instituto Bratan" }) : undefined,
+      body: entrada.acao === "cancelar" ? JSON.stringify({ justificativa }) : undefined,
     });
     const dados = (await resposta.json().catch(() => ({}))) as Record<string, unknown>;
     const status = String(dados.status ?? (resposta.ok ? "ok" : `http_${resposta.status}`));
@@ -115,7 +126,13 @@ Deno.serve(async (request) => {
       .from("nfse_emissao")
       .update({ status: status.toUpperCase(), numero: (dados.numero as string) ?? undefined, url_pdf: (dados.url as string) ?? (dados.caminho_xml_nota_fiscal as string) ?? undefined, resposta: dados, erro: resposta.ok ? null : JSON.stringify(dados.erros ?? dados).slice(0, 500), atualizado_em: new Date().toISOString() })
       .eq("ref", entrada.ref);
-    await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: entrada.ref, status: status.toUpperCase(), resumo: `${entrada.acao} ${entrada.ref}` });
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: entrada.ref, status: status.toUpperCase(), resumo: `${entrada.acao} ${entrada.ref}${entrada.acao === "cancelar" ? ` — ${justificativa}` : ""}` });
+    // Cancelada na prefeitura → sai do controle de impostos (29/09/2026).
+    let baixadas = 0;
+    if (/^cancelad/i.test(status)) {
+      const { data: cancelada } = await client.from("nfse_emissao").select("numero").eq("ref", entrada.ref).maybeSingle();
+      baixadas = await baixarDoControle(client, String(cancelada?.numero ?? dados.numero ?? ""), justificativa || "cancelada na prefeitura");
+    }
     // Autorizou na consulta? Então é agora que o e-mail sai (uma vez só; a
     // função de envio confere status e repetição).
     let emailEnviado = false;
@@ -124,8 +141,9 @@ Deno.serve(async (request) => {
       const destino = linha?.email_para || (linha?.payload as { tomador?: { email?: string } } | null)?.tomador?.email || "";
       emailEnviado = (await enviarEmailDaNota(client, config, entrada.ref, destino)).enviado;
       await arquivarPorRef(client, config, entrada.ref);
+      await registrarNoControle(client, entrada.ref);
     }
-    return json({ ok: resposta.ok, status, dados, emailEnviado });
+    return json({ ok: resposta.ok, status, dados, emailEnviado, baixadas });
   }
 
   // ---- emitir -----------------------------------------------------------------
@@ -142,6 +160,10 @@ Deno.serve(async (request) => {
   const { data: sale } = await client.from("fin_sales").select("client_ref, sale_date, patient_name, crm_contact_ref, fin_sale_items(item_type, amount, description)").eq("client_ref", entrada.saleRef).is("deleted_at", null).maybeSingle();
   if (!sale) return json({ ok: false, error: "Comanda não encontrada." }, 404);
   const itens = (sale.fin_sale_items as { item_type: string; amount: number; description: string }[]) ?? [];
+  if (comandaSoDeSinal(itens)) {
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "RECUSADO", resumo: `Nota recusada: a comanda ${entrada.saleRef} é só sinal de consulta` });
+    return json({ ok: false, error: "Sinal de consulta não emite nota fiscal. Ele entra somado na nota da consulta ou do tratamento, quando o paciente passar." }, 400);
+  }
   const total = itens.reduce((s, i) => s + Number(i.amount || 0), 0);
   const valor = Number(entrada.valor ?? total);
   if (!(valor > 0)) return json({ ok: false, error: "Valor da nota precisa ser maior que zero." }, 400);
@@ -272,14 +294,21 @@ Deno.serve(async (request) => {
   }
   // CPF: o que veio no pedido manda; senão, o guardado na ficha (decisão do
   // Lucas em 17/09/2026). É ele que faz a nota sair identificada e o paciente
-  // ganhar o bilhete do sorteio. Sem CPF a nota continua saindo — só sem o
-  // tomador identificado. O número vai no pedido e NUNCA no que gravamos.
+  // ganhar o bilhete do sorteio. Desde 29/09 sem CPF a nota não sai (abaixo).
+  // O número vai no pedido e NUNCA no que gravamos.
   let cpfDoTomador = (entrada.tomador?.cpf ?? "").replace(/\D/g, "");
   if (!cpfDoTomador && sale.crm_contact_ref) {
     const { data: documento } = await client.from("contato_documento").select("cpf").eq("contact_ref", sale.crm_contact_ref).maybeSingle();
     cpfDoTomador = String(documento?.cpf ?? "").replace(/\D/g, "");
   }
-  if (cpfDoTomador && cpfDoTomador.length !== 11) cpfDoTomador = "";
+  // SEM CPF A NOTA NÃO SAI (29/09/2026, regra do Lucas: "tem que ser tudo
+  // emitido certinho"). Até aqui a nota saía sem tomador identificado; agora
+  // a falta do CPF para a emissão e diz o que preencher. Quem precisa fechar
+  // sem nota usa "Não emitir agora" com o motivo escrito.
+  if (!cpfConfere(cpfDoTomador)) {
+    await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "RECUSADO", resumo: `Nota recusada: ${sale.patient_name} sem CPF válido na ficha (comanda ${entrada.saleRef})` });
+    return json({ ok: false, faltaCpf: true, error: `Falta o CPF de ${sale.patient_name} para emitir a nota. Guarde o CPF na ficha do paciente (ou digite no fechamento) e emita de novo.` }, 400);
+  }
   const payload: Record<string, unknown> = {
     data_emissao: new Date().toISOString(),
     natureza_operacao: String(config.naturezaOperacao ?? "1"),
@@ -356,6 +385,8 @@ Deno.serve(async (request) => {
     emailEnviado = (await enviarEmailDaNota(client, config, ref, email)).enviado;
     // PDF e XML para o bucket e para a pasta do mês no SharePoint (22/09/2026).
     await arquivarPorRef(client, config, ref);
+    // E a linha de imposto, na hora (29/09/2026).
+    await registrarNoControle(client, ref);
   }
   return json({ ok: resposta.ok, ref, status, dados, numero: (dados.numero as string) ?? null, emailEnviado, emailPara: emailValido(email) || null });
 });

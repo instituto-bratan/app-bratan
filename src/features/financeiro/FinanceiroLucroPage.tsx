@@ -48,11 +48,11 @@ import { EnvelopesVisuais, transferenciasPrevistas } from "./EnvelopesVisuais";
 import { CaixaProjetadoCard } from "./CaixaProjetadoCard";
 import { configAtual } from "@/lib/configNegocio";
 import { perguntar } from "@/components/ui/avisos";
+import { useMetasConfig } from "./useMetasConfig";
 
 const configStorageKey = "app-bratan-fin-lucro-config";
 const marcasStorageKey = "app-bratan-fin-lucro-dias";
 /** Mesma chave da P12 e das Metas — a configuração é uma só. */
-const metasStorageKey = "app-bratan-fin-metas-config-v1";
 /** Piso do caixa projetado (por aparelho; vira configuração quando a proposta 7.3 for aprovada). */
 const pisoCaixaStorageKey = "app-bratan-fin-caixa-piso-v1";
 
@@ -327,7 +327,8 @@ export function FinanceiroLucroPage() {
   const diasComVenda = useMemo(() => planilha.linhas.filter((linha) => linha.total > 0.005).map((linha) => linha.dia), [planilha.linhas]);
 
   // ---- OS ENVELOPES EM UM OLHAR + CAIXA PROJETADO (14/09/2026, aprovados pelo Lucas).
-  const metasConfig = useMemo<MetasConfig>(() => ({ ...defaultMetasConfig, ...readLocalValue<Partial<MetasConfig>>(metasStorageKey, {}) }), []);
+  // Metas do servidor, iguais para todo mundo (29/09/2026).
+  const metasConfig: MetasConfig = useMetasConfig();
   const metasBoard = useMemo(() => buildMetasBoard(financeiro.sales, metasConfig, month), [financeiro.sales, metasConfig, month]);
   // O saldo do Itaú é digitado na Prova do dinheiro (P12) e reaproveitado aqui.
   // Vem do app desde 17/09/2026 (antes era localStorage, ou seja, de um aparelho só).
