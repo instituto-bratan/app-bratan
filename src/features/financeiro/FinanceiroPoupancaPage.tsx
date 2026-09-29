@@ -59,7 +59,7 @@ export function FinanceiroPoupancaPage() {
   const { pessoa } = useAuth();
   const readOnly = !canEditModule(pessoa, "fin-poupanca");
   const now = todayISO();
-  const financeiro = useFinanceiro(Number(now.slice(0, 4)));
+  const financeiro = useFinanceiro(Number(now.slice(0, 4)), { comAnoAnterior: true });
   const [kind, setKind] = useState<FinSavingsKind>("APORTE");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");

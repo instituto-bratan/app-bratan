@@ -58,6 +58,8 @@ import {
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { ConferenciaFechamentoCard } from "./ConferenciaFechamentoCard";
 import { useFinanceiro } from "./useFinanceiro";
+import { useMesesFechados } from "./useMesesFechados";
+import { avisoDoMesFechado } from "./mesFechado";
 import { confirmar, toast } from "@/components/ui/avisos";
 import { integracaoLigada } from "@/lib/integracoes";
 import { cpfDigitos, cpfValido } from "@/lib/cpf";
@@ -96,6 +98,11 @@ export function FinanceiroLancarDiaPage() {
   const { state: crmState, persist: persistCrm } = useCrmState();
   const [date, setDate] = useState(todayISO());
   const financeiro = useFinanceiro(Number(date.slice(0, 4)));
+  // Mês fechado (29/09/2026): a equipe não muda comanda de mês que já foi para a contabilidade.
+  const mesesFechados = useMesesFechados();
+  const podeCorrigirMesFechado = canFinanceiroFull(pessoa?.cargo ?? null);
+  const avisoMesFechado = avisoDoMesFechado(date, mesesFechados, podeCorrigirMesFechado);
+  const mesTravado = Boolean(avisoMesFechado) && !podeCorrigirMesFechado;
   const [patientName, setPatientName] = useState("");
   const [patientRef, setPatientRef] = useState("");
   // Telefone/e-mail do paciente novo (29/07): a comanda criava contato mudo.
@@ -328,6 +335,7 @@ export function FinanceiroLancarDiaPage() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setFeedback("");
+    if (mesTravado) return setFeedback(avisoMesFechado);
     if (travaDaNota) return setFeedback(travaDaNota);
     const validItems: FinSaleItem[] = items
       .filter((item) => parseAmount(item.amount) > 0)
@@ -608,6 +616,12 @@ export function FinanceiroLancarDiaPage() {
             </div>
           </div>
         </motion.section>
+
+        {avisoMesFechado ? (
+          <div role="status" className="rounded-lg border border-brand-dourado/50 bg-brand-dourado/10 px-4 py-3 text-sm font-semibold text-brand-tinta">
+            {avisoMesFechado}
+          </div>
+        ) : null}
 
         {feedback ? (
           <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
@@ -1037,6 +1051,10 @@ export function FinanceiroLancarDiaPage() {
                           size="icon"
                           aria-label={`Excluir lançamento de ${sale.patientName}`}
                           onClick={async () => {
+                            if (mesTravado) {
+                              toast(avisoMesFechado, { tom: "atencao", duracaoMs: 8000 });
+                              return;
+                            }
                             const trava = await travaDaNotaDaComanda(sale.id);
                             if (trava) {
                               toast(trava, { tom: "atencao", duracaoMs: 8000 });

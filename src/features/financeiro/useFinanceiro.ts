@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { erroEhMesFechado } from "./mesFechado";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { todayISO } from "@/lib/localStore";
 import { toast } from "@/components/ui/avisos";
@@ -73,7 +74,13 @@ import {
 } from "./financeiroData";
 import { explodirContasDeFatura } from "./faturaCartao";
 
-export function useFinanceiro(year = new Date().getFullYear()) {
+// VIRADA DE ANO (29/09/2026, auditoria): vendas e despesas são carregadas por
+// ano. Em janeiro o "mês anterior" (dezembro) ficava zerado, a evolução de 6
+// meses apagava o ano passado e a conta da obra perdia as despesas de dezembro.
+// Quem compara meses (Painel, Poupança) pede `comAnoAnterior` e recebe os dois
+// anos juntos; quem soma o ANO inteiro (P12, impostos, contas) continua com um.
+export function useFinanceiro(year = new Date().getFullYear(), opcoes: { comAnoAnterior?: boolean } = {}) {
+  const comAnoAnterior = Boolean(opcoes.comAnoAnterior);
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
@@ -94,14 +101,14 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     staleTime: 5 * 60_000,
   });
   const salesQuery = useQuery({
-    queryKey: ["fin-sales", year],
-    queryFn: () => listRemoteFinSales(year),
+    queryKey: comAnoAnterior ? ["fin-sales", year, "com-ano-anterior"] : ["fin-sales", year],
+    queryFn: () => (comAnoAnterior ? Promise.all([listRemoteFinSales(year), listRemoteFinSales(year - 1)]).then(([a, b]) => [...a, ...b]) : listRemoteFinSales(year)),
     enabled: useRemote,
     staleTime: 30_000,
   });
   const expensesQuery = useQuery({
-    queryKey: ["fin-expenses", year],
-    queryFn: () => listRemoteFinExpenses(year),
+    queryKey: comAnoAnterior ? ["fin-expenses", year, "com-ano-anterior"] : ["fin-expenses", year],
+    queryFn: () => (comAnoAnterior ? Promise.all([listRemoteFinExpenses(year - 1), listRemoteFinExpenses(year)]).then(([a, b]) => [...a, ...b]) : listRemoteFinExpenses(year)),
     enabled: useRemote,
     staleTime: 30_000,
   });
@@ -125,9 +132,9 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   // conta em si (Contas a Pagar, extrato, caixa) continua com `expenses`.
   // Sem a migration aplicada a função não existe: cai no comportamento de antes.
   const rateioQuery = useQuery({
-    queryKey: ["fin-fatura-rateio", year],
+    queryKey: ["fin-fatura-rateio", year, comAnoAnterior],
     queryFn: () =>
-      listRemoteRateioDasFaturas(year).catch((error) => {
+      (comAnoAnterior ? Promise.all([listRemoteRateioDasFaturas(year - 1), listRemoteRateioDasFaturas(year)]).then(([a, b]) => [...a, ...b]) : listRemoteRateioDasFaturas(year)).catch((error) => {
         console.warn("Rateio das faturas do cartão indisponível; a P12 mostra a fatura inteira.", error);
         return [];
       }),
@@ -306,6 +313,12 @@ export function useFinanceiro(year = new Date().getFullYear()) {
   function avisarFalhaNoServidor(oque: string, error: unknown) {
     console.warn(`${oque} não sincronizou.`, error);
     const detalhe = (error as { message?: unknown } | null)?.message;
+    if (erroEhMesFechado(detalhe)) {
+      // Mês fechado (29/09/2026): a mudança não entrou; recarrega para a tela voltar ao que vale.
+      toast(`${oque}: o mês desta comanda está fechado. Peça para a gestão financeira corrigir ou reabrir o mês.`, { tom: "atencao", duracaoMs: 9000 });
+      void queryClient.invalidateQueries({ queryKey: ["fin-sales"] });
+      return;
+    }
     toast(`${oque}: NÃO foi salvo no servidor — só este aparelho vê a mudança.${typeof detalhe === "string" && detalhe ? ` (${detalhe})` : ""}`, { tom: "erro", duracaoMs: 9000 });
   }
 
@@ -377,7 +390,9 @@ export function useFinanceiro(year = new Date().getFullYear()) {
       .then(() => true)
       .catch((error) => {
         console.warn("Venda não sincronizou.", error);
-        onFalha?.((error as Error)?.message ?? "erro desconhecido");
+        const mensagem = (error as Error)?.message ?? "erro desconhecido";
+        if (erroEhMesFechado(mensagem)) void queryClient.invalidateQueries({ queryKey: ["fin-sales"] });
+        onFalha?.(erroEhMesFechado(mensagem) ? "o mês desta comanda está fechado; peça para a gestão financeira lançar" : mensagem);
         return false;
       });
   }

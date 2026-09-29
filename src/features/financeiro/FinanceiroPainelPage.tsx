@@ -19,7 +19,11 @@
 // MODO APRESENTAÇÃO: um botão esconde a navegação, aumenta a tipografia e mostra
 // um bloco por vez com as setas — para apresentar do próprio app, sem PowerPoint.
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMesesFechados } from "./useMesesFechados";
+import { mesEstaFechado, mesPorExtenso, podeFecharOMes } from "./mesFechado";
+import { fecharRemoteMes } from "@/lib/remote/mesFechado";
+import { confirmar, toast } from "@/components/ui/avisos";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -42,7 +46,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Label } from "@/components/ui/label";
-import { canEditModule, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { readLocalValue, todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -118,13 +122,18 @@ export function FinanceiroPainelPage() {
   const { pessoa } = useAuth();
   const readOnly = !canEditModule(pessoa, "fin-gestao");
   const hoje = todayISO();
+  // MÊS FECHADO (29/09/2026): só a gestão financeira fecha e reabre.
+  const queryClient = useQueryClient();
+  const mesesFechados = useMesesFechados();
+  const podeFecharMeses = canFinanceiroFull(pessoa?.cargo ?? null);
+  const [fechandoMes, setFechandoMes] = useState(false);
   // Até o dia 5 a reunião é sobre o mês que FECHOU; depois, o mês corrente.
   const mesPadrao = Number(hoje.slice(8, 10)) <= 5 ? previousMonthKey(hoje.slice(0, 7)) : hoje.slice(0, 7);
   const [monthKey, setMonthKey] = useState(mesPadrao);
   const [apresentando, setApresentando] = useState(false);
   const [bloco, setBloco] = useState(0);
   const [degrauAberto, setDegrauAberto] = useState("");
-  const financeiro = useFinanceiro(Number(monthKey.slice(0, 4)));
+  const financeiro = useFinanceiro(Number(monthKey.slice(0, 4)), { comAnoAnterior: true });
   const mesAnterior = previousMonthKey(monthKey);
   const emAndamento = monthKey === hoje.slice(0, 7);
 
@@ -878,6 +887,36 @@ export function FinanceiroPainelPage() {
             <Button type="button" variant="outline" className="gap-2" onClick={copiarPontos}>
               <Copy className="h-4 w-4" aria-hidden="true" /> Copiar os pontos
             </Button>
+            {podeFecharMeses && (mesEstaFechado(monthKey, mesesFechados) || podeFecharOMes(monthKey, hoje)) ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={fechandoMes}
+                onClick={async () => {
+                  const fechado = mesEstaFechado(monthKey, mesesFechados);
+                  const nome = mesPorExtenso(monthKey);
+                  const ok = await confirmar(fechado ? `Reabrir ${nome}?` : `Fechar ${nome}?`, {
+                    corpo: fechado
+                      ? "A equipe volta a poder mudar as comandas desse mês. Se o número mudar, avise a contabilidade."
+                      : "Depois de fechado, só a gestão financeira muda comandas desse mês. Anexar comprovante continua liberado.",
+                    confirmar: fechado ? "Reabrir" : "Fechar o mês",
+                  });
+                  if (!ok) return;
+                  setFechandoMes(true);
+                  try {
+                    await fecharRemoteMes(monthKey, !fechado);
+                    await queryClient.invalidateQueries({ queryKey: ["fin-mes-fechado"] });
+                    toast(fechado ? `${nome} reaberto.` : `${nome} fechado. A equipe não muda mais as comandas desse mês.`, { tom: "ok" });
+                  } catch (erro) {
+                    toast(`Não deu para ${fechado ? "reabrir" : "fechar"} o mês: ${(erro as Error)?.message ?? "erro"}`, { tom: "erro", duracaoMs: 9000 });
+                  } finally {
+                    setFechandoMes(false);
+                  }
+                }}
+              >
+                {mesEstaFechado(monthKey, mesesFechados) ? "Reabrir o mês" : "Fechar o mês"}
+              </Button>
+            ) : null}
             {!readOnly ? (
               <>
                 <Button type="button" variant="outline" onClick={() => salvar(false)}>
@@ -890,6 +929,11 @@ export function FinanceiroPainelPage() {
             ) : null}
           </div>
           {feedback ? <p className="mt-3 text-sm font-semibold text-brand-musgo">{feedback}</p> : null}
+          {mesEstaFechado(monthKey, mesesFechados) ? (
+            <p className="mt-3 text-xs font-semibold text-brand-tinta/80">
+              {mesPorExtenso(monthKey)} está fechado: as comandas desse mês só mudam pela gestão financeira.
+            </p>
+          ) : null}
           {momento.emAndamento ? (
             <p className="mt-3 rounded-md border border-brand-dourado/40 bg-brand-creme/40 px-3 py-2 text-xs leading-snug text-brand-tinta">
               Estamos no <strong>{momento.faseLabel}</strong> ({momento.diasUteisPassados} de {momento.diasUteisTotais} dias
