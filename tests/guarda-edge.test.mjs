@@ -94,3 +94,13 @@ test("só as rotinas agendadas ganham o caminho automático; envio de mensagem n
     assert.doesNotMatch(ler(f), /automatico: true/, f);
   }
 });
+
+test("resumo de sexta: texto sem número clínico e só pelo caminho de corpo vazio", () => {
+  const f = fs.readFileSync(new URL("../supabase/functions/push-paciente/index.ts", import.meta.url), "utf8");
+  assert.match(f, /Seu resumo da semana chegou/);
+  assert.match(f, /diaDaSemana !== 5/);
+  assert.match(f, /entidade", "RESUMO_SEXTA"/, "uma vez por dia");
+  assert.match(f, /portal\.resumo_sexta/);
+  const texto = f.slice(f.indexOf('motivo === "RESUMO_SEXTA"'), f.indexOf('motivo === "TESTE"'));
+  assert.doesNotMatch(texto, /\d/, "o aviso não leva número");
+});

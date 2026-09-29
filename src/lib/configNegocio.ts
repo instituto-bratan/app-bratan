@@ -26,7 +26,8 @@ export type ChaveConfig =
   | "antecipacao.alternativas"
   | "rotina.hora"
   | "ocupacao.meta"
-  | "portal.contato";
+  | "portal.contato"
+  | "portal.resumo_sexta";
 
 export type DefinicaoConfig<T = unknown> = {
   chave: ChaveConfig;
@@ -57,6 +58,8 @@ export const DEFINICOES_CONFIG: DefinicaoConfig[] = [
   // 29/09/2026: o botão "Falar com a concierge" do portal só aparece quando
   // este número estiver preenchido — o app não inventa telefone.
   { chave: "portal.contato", grupo: "Portal do paciente", titulo: "WhatsApp da concierge no portal", explicacao: "Número (com DDD) que o botão \"Falar com a concierge\" do Meu Bratan abre, com uma mensagem pronta. Vazio = o botão não aparece e o portal diz para falar com a recepção.", padrao: { whatsapp: "", mensagem: "Oi! Sou paciente do Instituto Bratan e queria falar com a concierge." }, tipo: "json" },
+  // 29/09/2026: aviso de sexta no celular do paciente (só quem ativou os avisos no portal).
+  { chave: "portal.resumo_sexta", grupo: "Portal do paciente", titulo: "Aviso de sexta no celular do paciente", explicacao: "Toda sexta às 10h, quem ativou os avisos no Meu Bratan recebe \"Seu resumo da semana chegou\". O texto não leva número nenhum: peso e exames ficam dentro do portal. DESLIGADO = ninguém recebe.", padrao: "LIGADO", tipo: "escolha", opcoes: [{ valor: "LIGADO", rotulo: "Ligado" }, { valor: "DESLIGADO", rotulo: "Desligado" }] },
   { chave: "rotina.hora", grupo: "Rotinas", titulo: "Hora da rotina diária", explicacao: "Hora (Brasília) em que a rotina monta a fila e os achados do dia. Mudar aqui exige reagendar o cron no Supabase.", padrao: 6, tipo: "numero", unidade: "h" },
 ];
 
