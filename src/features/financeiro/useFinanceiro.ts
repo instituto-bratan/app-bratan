@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { todayISO } from "@/lib/localStore";
+import { toast } from "@/components/ui/avisos";
 
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -273,6 +274,29 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     onSuccess: () => invalidate("fin-expenses"),
   });
 
+  // GRAVAÇÃO QUE FALHA APARECE NA TELA (29/09/2026, auditoria B1). Antes só a
+  // comanda (addSale) avisava; conta, baixa, fechamento, poupança, NF e repasse
+  // davam console.warn e a tela mostrava sucesso — a mudança ficava só neste
+  // aparelho e ninguém sabia. Agora cada uma avisa e devolve Promise<boolean>
+  // (true = chegou ao servidor), igual à addSale. A promessa NUNCA rejeita,
+  // para não estourar nos chamadores que ignoram o retorno.
+  function avisarFalhaNoServidor(oque: string, error: unknown) {
+    console.warn(`${oque} não sincronizou.`, error);
+    const detalhe = (error as { message?: unknown } | null)?.message;
+    toast(`${oque}: NÃO foi salvo no servidor — só este aparelho vê a mudança.${typeof detalhe === "string" && detalhe ? ` (${detalhe})` : ""}`, { tom: "erro", duracaoMs: 9000 });
+  }
+
+  function gravarNoServidor(oque: string, tarefas: Array<() => Promise<unknown>>): Promise<boolean> {
+    if (!useRemote) return Promise.resolve(false);
+    return Promise.allSettled(tarefas.map((tarefa) => tarefa())).then((resultados) => {
+      const falha = resultados.find((resultado): resultado is PromiseRejectedResult => resultado.status === "rejected");
+      if (!falha) return true;
+      const falhas = resultados.filter((resultado) => resultado.status === "rejected").length;
+      avisarFalhaNoServidor(falhas > 1 ? `${oque} (${falhas} de ${resultados.length})` : oque, falha.reason);
+      return false;
+    });
+  }
+
   function addPurchase(purchase: FinPurchase) {
     setPurchases((current) => {
       const next = [purchase, ...current];
@@ -335,43 +359,37 @@ export function useFinanceiro(year = new Date().getFullYear()) {
       });
   }
 
-  function updateSale(sale: FinSale) {
+  function updateSale(sale: FinSale): Promise<boolean> {
     setSales((current) => {
       const next = current.map((existing) => (existing.id === sale.id ? sale : existing));
       saveLocalFinSales(next);
       return next;
     });
-    if (useRemote) {
-      void updateSaleMutation.mutateAsync(sale).catch((error) => console.warn("Edição da comanda não sincronizou.", error));
-    }
+    return gravarNoServidor("Edição da comanda", [() => updateSaleMutation.mutateAsync(sale)]);
   }
 
-  function removeSale(saleId: string) {
+  function removeSale(saleId: string): Promise<boolean> {
     setSales((current) => {
       const next = current.filter((sale) => sale.id !== saleId);
       saveLocalFinSales(next);
       return next;
     });
-    if (useRemote) {
-      void deleteSaleMutation.mutateAsync(saleId).catch((error) => console.warn("Exclusão não sincronizou.", error));
-    }
+    return gravarNoServidor("Exclusão da comanda", [() => deleteSaleMutation.mutateAsync(saleId)]);
   }
 
-  function addExpense(expense: FinExpense) {
+  function addExpense(expense: FinExpense): Promise<boolean> {
     setExpenses((current) => {
       const next = [...current, expense].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
       saveLocalFinExpenses(next);
       return next;
     });
-    if (useRemote) {
-      void createExpenseMutation.mutateAsync(expense).catch((error) => console.warn("Despesa não sincronizou.", error));
-    }
+    return gravarNoServidor("Conta nova", [() => createExpenseMutation.mutateAsync(expense)]);
   }
 
   // Lote de contas (parcelas de um boleto): um único save local + N no Supabase.
   // Ids determinísticos garantem que reenviar não duplica.
-  function addExpenses(list: FinExpense[]) {
-    if (!list.length) return;
+  function addExpenses(list: FinExpense[]): Promise<boolean> {
+    if (!list.length) return Promise.resolve(true);
     setExpenses((current) => {
       const existing = new Set(current.map((expense) => expense.id));
       const novas = list.filter((expense) => !existing.has(expense.id));
@@ -379,56 +397,43 @@ export function useFinanceiro(year = new Date().getFullYear()) {
       saveLocalFinExpenses(next);
       return next;
     });
-    if (useRemote) {
-      for (const expense of list) {
-        void createExpenseMutation.mutateAsync(expense).catch((error) => console.warn("Parcela não sincronizou.", error));
-      }
-    }
+    return gravarNoServidor("Parcelas novas", list.map((expense) => () => createExpenseMutation.mutateAsync(expense)));
   }
 
-  function updateExpenses(list: FinExpense[]) {
-    if (!list.length) return;
+  function updateExpenses(list: FinExpense[]): Promise<boolean> {
+    if (!list.length) return Promise.resolve(true);
     const byId = new Map(list.map((expense) => [expense.id, expense]));
     setExpenses((current) => {
       const next = current.map((expense) => byId.get(expense.id) ?? expense);
       saveLocalFinExpenses(next);
       return next;
     });
-    if (useRemote) {
-      for (const expense of list) {
-        void updateExpenseMutation.mutateAsync(expense).catch((error) => console.warn("Parcela não sincronizou.", error));
-      }
-    }
+    return gravarNoServidor("Edição das parcelas", list.map((expense) => () => updateExpenseMutation.mutateAsync(expense)));
   }
 
-  function removeExpenses(ids: string[]) {
-    if (!ids.length) return;
+  function removeExpenses(ids: string[]): Promise<boolean> {
+    if (!ids.length) return Promise.resolve(true);
     const alvo = new Set(ids);
     setExpenses((current) => {
       const next = current.filter((expense) => !alvo.has(expense.id));
       saveLocalFinExpenses(next);
       return next;
     });
-    if (useRemote) {
-      for (const id of ids) {
-        void deleteExpenseMutation.mutateAsync(id).catch((error) => console.warn("Parcela não removida no servidor.", error));
-      }
-    }
+    return gravarNoServidor("Exclusão das parcelas", ids.map((id) => () => deleteExpenseMutation.mutateAsync(id)));
   }
 
-  function setExpensePaid(expenseId: string, paidAt: string | null) {
+  function setExpensePaid(expenseId: string, paidAt: string | null): Promise<boolean> {
     setExpenses((current) => {
       const next = current.map((expense) => (expense.id === expenseId ? { ...expense, paidAt } : expense));
       saveLocalFinExpenses(next);
       return next;
     });
-    if (useRemote) {
-      void paidExpenseMutation.mutateAsync({ id: expenseId, paidAt }).catch((error) => console.warn("Baixa não sincronizou.", error));
-    }
+    const gravou = gravarNoServidor(paidAt ? "Baixa da conta" : "Desfazer a baixa", [() => paidExpenseMutation.mutateAsync({ id: expenseId, paidAt })]);
     // PROVISÃO PAGA = dinheiro guardado no cofre. A baixa da conta de provisão
     // gera (ou remove) a entrada correspondente na Poupança — assim o saldo do
     // cofre e o custo do mês nunca ficam contando histórias diferentes.
     syncProvisionSavings(expenseId, paidAt);
+    return gravou;
   }
 
   // Espelha a baixa de uma conta de provisão na aba Poupança.
@@ -450,22 +455,21 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     ]);
   }
 
-  function saveReconciliation(record: FinReconciliation) {
+  function saveReconciliation(record: FinReconciliation): Promise<boolean> {
     setReconciliations((current) => {
       const next = [record, ...current.filter((item) => item.id !== record.id)];
       saveLocalFinReconciliations(next);
       return next;
     });
-    if (useRemote) {
-      void upsertRemoteFinReconciliation(record, pessoa?.id ?? null)
-        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-reconciliations", year] }))
-        .catch((error) => console.warn("Fechamento não sincronizou.", error));
-    }
+    const gravou = gravarNoServidor("Fechamento do dia", [
+      () => upsertRemoteFinReconciliation(record, pessoa?.id ?? null).then(() => void queryClient.invalidateQueries({ queryKey: ["fin-reconciliations", year] })),
+    ]);
     // Taxa da maquininha SEMPRE ligada: ao conciliar um dia, a despesa da P12
     // (Tarifa bancária rede) é criada/atualizada para bater com a soma das taxas
     // do mês. Antes ela era lançada uma vez e congelava — Fechamento subia e
     // P12/Contas a Pagar ficavam defasados. Agora Fechamento = P12 = Contas a Pagar.
     syncMonthFeesExpense(record.day.slice(0, 7), [record, ...reconciliations.filter((item) => item.id !== record.id)]);
+    return gravou;
   }
 
   function syncMonthFeesExpense(month: string, recs: FinReconciliation[]) {
@@ -552,18 +556,16 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
-  function addSavingsMoves(moves: FinSavingsMove[]) {
+  function addSavingsMoves(moves: FinSavingsMove[]): Promise<boolean> {
     setSavingsMoves((current) => {
       const existing = new Set(current.map((move) => move.id));
       const next = [...moves.filter((move) => !existing.has(move.id)), ...current];
       saveLocalFinSavings(next);
       return next;
     });
-    if (useRemote) {
-      void createRemoteFinSavingsMoves(moves, pessoa?.id ?? null)
-        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-savings"] }))
-        .catch((error) => console.warn("Poupança não sincronizou.", error));
-    }
+    return gravarNoServidor("Movimento da poupança", [
+      () => createRemoteFinSavingsMoves(moves, pessoa?.id ?? null).then(() => void queryClient.invalidateQueries({ queryKey: ["fin-savings"] })),
+    ]);
   }
 
   function removeSavingsMove(moveId: string) {
@@ -577,17 +579,15 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
-  function addInvoice(invoice: FinInvoice) {
+  function addInvoice(invoice: FinInvoice): Promise<boolean> {
     setInvoices((current) => {
       const next = [invoice, ...current];
       saveLocalFinInvoices(next);
       return next;
     });
-    if (useRemote) {
-      void createRemoteFinInvoice(invoice, pessoa?.id ?? null)
-        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-invoices", year] }))
-        .catch((error) => console.warn("NF não sincronizou.", error));
-    }
+    return gravarNoServidor("Nota fiscal", [
+      () => createRemoteFinInvoice(invoice, pessoa?.id ?? null).then(() => void queryClient.invalidateQueries({ queryKey: ["fin-invoices", year] })),
+    ]);
   }
 
   function removeInvoice(invoiceId: string) {
@@ -601,13 +601,11 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
-  function addPartnerEntry(entry: FinPartnerEntry) {
+  function addPartnerEntry(entry: FinPartnerEntry): Promise<boolean> {
     setPartnerEntries((current) => (current.some((item) => item.id === entry.id) ? current : [entry, ...current]));
-    if (useRemote) {
-      void createRemoteFinPartnerEntry(entry, pessoa?.id ?? null)
-        .then(() => void queryClient.invalidateQueries({ queryKey: ["fin-partner-entries", year] }))
-        .catch((error) => console.warn("Repasse não sincronizou.", error));
-    }
+    return gravarNoServidor("Repasse", [
+      () => createRemoteFinPartnerEntry(entry, pessoa?.id ?? null).then(() => void queryClient.invalidateQueries({ queryKey: ["fin-partner-entries", year] })),
+    ]);
   }
 
   function removePartnerEntry(entryId: string) {
@@ -617,26 +615,22 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     }
   }
 
-  function updateExpense(expense: FinExpense) {
+  function updateExpense(expense: FinExpense): Promise<boolean> {
     setExpenses((current) => {
       const next = current.map((existing) => (existing.id === expense.id ? expense : existing)).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
       saveLocalFinExpenses(next);
       return next;
     });
-    if (useRemote) {
-      void updateExpenseMutation.mutateAsync(expense).catch((error) => console.warn("Edição da conta não sincronizou.", error));
-    }
+    return gravarNoServidor("Edição da conta", [() => updateExpenseMutation.mutateAsync(expense)]);
   }
 
-  function removeExpense(expenseId: string) {
+  function removeExpense(expenseId: string): Promise<boolean> {
     setExpenses((current) => {
       const next = current.filter((expense) => expense.id !== expenseId);
       saveLocalFinExpenses(next);
       return next;
     });
-    if (useRemote) {
-      void deleteExpenseMutation.mutateAsync(expenseId).catch((error) => console.warn("Exclusão não sincronizou.", error));
-    }
+    return gravarNoServidor("Exclusão da conta", [() => deleteExpenseMutation.mutateAsync(expenseId)]);
   }
 
   return {
