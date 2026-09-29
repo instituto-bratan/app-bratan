@@ -96,19 +96,25 @@ export async function listRemoteContratosDoDeal(dealRef: string): Promise<Contra
 
 export type NfseEmissao = { id: string; ref: string; saleRef: string; tipo: string; valor: number; status: string; numero: string | null; urlPdf: string | null; erro: string | null; criadoEm: string };
 
-/** As emissões de VÁRIAS comandas de uma vez (a lista do dia em Lançar Dia, 23/09/2026). */
-export async function listRemoteNfseDasComandas(saleRefs: string[]): Promise<NfseEmissao[]> {
+// ESTADO DA NOTA DA COMANDA (29/09/2026, auditoria S4): a tabela nfse_emissao
+// ficou só para quem cuida de nota (tem os dados do tomador no payload). Quem
+// fecha no Kanban e quem lança no Lançar Dia lê pela função
+// nfse_status_das_comandas, que devolve só o estado — sem payload, resposta nem
+// erro (por isso `erro` volta sempre null aqui; o detalhe fica em Integrações).
+async function lerStatusDasNotas(saleRefs: string[]): Promise<NfseEmissao[]> {
   const refs = [...new Set(saleRefs.filter(Boolean))];
   if (!refs.length) return [];
   const client = requireSupabase();
-  const { data, error } = await client.from("nfse_emissao").select("id, ref, sale_ref, tipo, valor, status, numero, url_pdf, erro, criado_em").in("sale_ref", refs).order("criado_em", { ascending: false });
+  const { data, error } = await client.rpc("nfse_status_das_comandas", { _sale_refs: refs });
   if (error) throw new Error(error.message);
-  return ((data ?? []) as any[]).map((row) => ({ id: row.id, ref: row.ref, saleRef: row.sale_ref, tipo: row.tipo, valor: Number(row.valor), status: row.status, numero: row.numero ?? null, urlPdf: row.url_pdf ?? null, erro: row.erro ?? null, criadoEm: row.criado_em }));
+  return ((data ?? []) as any[]).map((row) => ({ id: row.id, ref: row.ref, saleRef: row.sale_ref, tipo: row.tipo, valor: Number(row.valor), status: row.status, numero: row.numero ?? null, urlPdf: row.url_pdf ?? null, erro: null, criadoEm: row.criado_em }));
+}
+
+/** As emissões de VÁRIAS comandas de uma vez (a lista do dia em Lançar Dia, 23/09/2026). */
+export async function listRemoteNfseDasComandas(saleRefs: string[]): Promise<NfseEmissao[]> {
+  return lerStatusDasNotas(saleRefs);
 }
 
 export async function listRemoteNfseDaComanda(saleRef: string): Promise<NfseEmissao[]> {
-  const client = requireSupabase();
-  const { data, error } = await client.from("nfse_emissao").select("id, ref, sale_ref, tipo, valor, status, numero, url_pdf, erro, criado_em").eq("sale_ref", saleRef).order("criado_em", { ascending: false });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as any[]).map((row) => ({ id: row.id, ref: row.ref, saleRef: row.sale_ref, tipo: row.tipo, valor: Number(row.valor), status: row.status, numero: row.numero ?? null, urlPdf: row.url_pdf ?? null, erro: row.erro ?? null, criadoEm: row.criado_em }));
+  return lerStatusDasNotas([saleRef]);
 }

@@ -6,6 +6,7 @@
 // "Nome do profissional=URL"). Expande recorrências semanais/diárias dentro da
 // janela. Desligada por padrão; roda no cron das agendas e pelo botão da tela.
 import { agoraBrasiliaISO, corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
+import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 type Evento = { uid: string; inicio: Date; fim: Date; resumo: string; descricao: string; local: string; status: string; recurrenceId?: string };
 
@@ -111,6 +112,10 @@ export function parseICS(ics: string, de: Date, ate: Date): Evento[] {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron de hora em hora ou a coordenação (botão em Integrações).
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: COORDENACAO, cron: true });
+  if (!acesso.ok) return acesso.resposta;
   const client = db();
   const integracao = await lerIntegracao(client, "google_agenda");
   if (!integracao.ligada) return respostaDesligada("google_agenda");

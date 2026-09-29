@@ -12,6 +12,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
 import { pastaDoArquivo } from "../_shared/pastaPorTipo.ts";
+import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 const SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024;
@@ -170,6 +171,10 @@ async function uploadLargeFile(token: string, driveId: string, drivePath: string
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron de 15 min ou a coordenação.
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: COORDENACAO, cron: true });
+  if (!acesso.ok) return acesso.resposta;
   if (request.method !== "POST") return json({ error: "Use POST." }, 405);
 
   const tenantId = Deno.env.get("MS_TENANT_ID") ?? "";

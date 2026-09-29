@@ -68,13 +68,17 @@ export function SenhaDeGestor({
       }
       const certa = await conferirSenhaGestor(senha);
       if (!certa) {
-        setErro("Senha incorreta. Chame o gestor.");
+        // 29/09/2026: o banco conta os erros por login (5 seguidos travam 15 min).
+        setErro("Senha incorreta. Chame o gestor. Depois de 5 erros seguidos a senha trava por 15 minutos neste login.");
         setSenha("");
         return;
       }
       onConfirmado();
     } catch (error) {
-      setErro(error instanceof Error ? error.message : "Não consegui conferir a senha.");
+      // O erro do Supabase nem sempre é instanceof Error; a mensagem do banco
+      // (ex.: "travada por excesso de erros", "pelo menos 8 caracteres") tem que aparecer.
+      const mensagem = (error as { message?: unknown } | null)?.message;
+      setErro(typeof mensagem === "string" && mensagem ? mensagem : "Não consegui conferir a senha.");
     } finally {
       setOcupado(false);
     }
@@ -100,7 +104,7 @@ export function SenhaDeGestor({
 
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {criando
-            ? "Ainda não existe senha de gestor. Crie agora — ela protege as correções em qualquer computador, mesmo logado."
+            ? "Ainda não existe senha de gestor. Crie agora — ela protege as correções em qualquer computador, mesmo logado. Use pelo menos 8 caracteres; 5 erros seguidos travam a senha por 15 minutos."
             : `Esta ação muda um registro já fechado: ${acao}. Digite a senha do gestor para continuar.`}
         </p>
 
@@ -111,7 +115,7 @@ export function SenhaDeGestor({
         ) : (
           <div className="mt-3 flex flex-col gap-3">
             <div>
-              <Label htmlFor="senha-gestor">{criando ? "Nova senha (mínimo 4 caracteres)" : "Senha"}</Label>
+              <Label htmlFor="senha-gestor">{criando ? "Nova senha (mínimo 8 caracteres)" : "Senha"}</Label>
               <Input
                 id="senha-gestor"
                 type="password"
@@ -144,7 +148,7 @@ export function SenhaDeGestor({
           <Button type="button" variant="outline" onClick={onCancelar}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={ocupado || senha.length < 4 || existe === null || (criando && !podeDefinir)}>
+          <Button type="submit" disabled={ocupado || senha.length < (criando ? 8 : 4) || existe === null || (criando && !podeDefinir)}>
             {criando ? "Criar senha" : "Confirmar"}
           </Button>
         </div>

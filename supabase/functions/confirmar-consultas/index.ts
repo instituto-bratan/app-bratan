@@ -6,9 +6,14 @@
 // Só trabalha com as integrações whatsapp E (feegow ou outlook) ligadas e com o
 // template configurado em integracao.whatsapp.config.templateConfirmacao.
 import { db, json, lerIntegracao, mesmaPessoa, registrarEvento, respostaDesligada, telefoneE164 } from "../_shared/integracoes.ts";
+import { COORDENACAO, exigirAcesso, headerDoCron } from "../_shared/guarda.ts";
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): o cron de hora em hora ou a coordenação.
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: COORDENACAO, cron: true });
+  if (!acesso.ok) return acesso.resposta;
   const client = db();
   const whatsapp = await lerIntegracao(client, "whatsapp");
   if (!whatsapp.ligada) return respostaDesligada("whatsapp");
@@ -58,7 +63,8 @@ Deno.serve(async (request) => {
     const hora = quando.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
     const r = await fetch(`${supabaseUrl}/functions/v1/whatsapp-enviar`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}` },
+      // x-cron-secret (29/09/2026): a whatsapp-enviar não aceita mais só a chave anônima.
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, ...headerDoCron() },
       body: JSON.stringify({ telefone, template: { nome: template, parametros: [(item.paciente ?? "").split(" ")[0] || "paciente", dia, hora, item.profissional ?? "Instituto Bratan"] }, taskRef: `agenda:${item.id}` }),
     });
     const ok = (await r.json().catch(() => ({ ok: false }))).ok;

@@ -52,10 +52,11 @@ export const GUIA_ATIVACAO: Record<ChaveIntegracao, { passos: string[]; segredos
       "Criar o app no Meta for Developers (Business) e ligar o número oficial do Instituto ao WhatsApp Business Platform (Cloud API).",
       "Gerar um token permanente de sistema com permissão whatsapp_business_messaging e anotar o Phone Number ID.",
       "Cadastrar o webhook: URL da função whatsapp-webhook + o verify token que você escolher; assinar 'messages'.",
+      "Copiar o App Secret do app da Meta para o segredo WHATSAPP_APP_SECRET: sem ele o webhook recusa tudo (29/09/2026), para ninguém forjar respostas de paciente.",
       "Aprovar pelo menos um template (ex.: lembrete de consulta) — fora da janela de 24 h só template envia.",
       "Ligar aqui. As mensagens das cadências passam a sair pelo número oficial; o histórico fica em mensagem_whatsapp.",
     ],
-    segredos: ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET (opcional)"],
+    segredos: ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET"],
     funcoes: ["whatsapp-enviar", "whatsapp-webhook"],
   },
   focus_nfse: {

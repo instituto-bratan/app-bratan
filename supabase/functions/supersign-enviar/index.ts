@@ -6,11 +6,16 @@
 // API do SuperSign e ficam na config (endpointCriar, campoArquivo) para ajustar
 // sem publicar código. Desligada por padrão; precisa de SUPERSIGN_TOKEN.
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando, telefoneE164 } from "../_shared/integracoes.ts";
+import { OPERACAO_CRM, exigirAcesso } from "../_shared/guarda.ts";
 
 type Entrada = { dealRef: string; contactRef?: string; nome?: string; email?: string; telefone?: string; documentoUrl?: string; solicitadoPor?: string };
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): quem fecha no Kanban (todos do CRM menos a limpeza); o cron não chama.
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: OPERACAO_CRM });
+  if (!acesso.ok) return acesso.resposta;
   if (request.method !== "POST") return json({ error: "use POST" }, 405);
   const client = db();
   const integracao = await lerIntegracao(client, "supersign");

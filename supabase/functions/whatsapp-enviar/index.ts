@@ -4,6 +4,7 @@
 // aprovado — por isso o corpo aceita texto livre OU template.
 // Tudo que sai fica em mensagem_whatsapp (status, id do provedor, erro).
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando, telefoneE164 } from "../_shared/integracoes.ts";
+import { OPERACAO_CRM, exigirAcesso } from "../_shared/guarda.ts";
 
 type Entrada = {
   telefone: string;
@@ -16,6 +17,10 @@ type Entrada = {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
+  // Quem pode chamar (29/09/2026, auditoria S1): quem trabalha as tarefas do CRM (menos a limpeza) ou o cron, pela confirmar-consultas.
+  // A chave anônima do site NÃO basta mais — ver _shared/guarda.ts.
+  const acesso = await exigirAcesso(request, { cargos: OPERACAO_CRM, cron: true });
+  if (!acesso.ok) return acesso.resposta;
   if (request.method !== "POST") return json({ error: "use POST" }, 405);
   const client = db();
   const integracao = await lerIntegracao(client, "whatsapp");

@@ -1,13 +1,15 @@
 // whatsapp-webhook (15/09/2026): a Meta chama aqui. GET = verificação do
 // webhook (hub.verify_token); POST = status das mensagens enviadas e mensagens
 // recebidas. Publicar com --no-verify-jwt (a Meta não manda JWT do Supabase);
-// a segurança é o verify token + a assinatura X-Hub-Signature-256 quando
-// WHATSAPP_APP_SECRET estiver configurado.
+// a segurança é o verify token + a assinatura X-Hub-Signature-256.
+// 29/09/2026 (auditoria S2): sem WHATSAPP_APP_SECRET o POST é RECUSADO (503).
+// Antes aceitava qualquer POST, e qualquer um podia forjar "paciente confirmou"
+// ou mensagens recebidas. O GET (verificação da Meta) continua igual.
 import { db, json, registrarEvento } from "../_shared/integracoes.ts";
 
 async function assinaturaConfere(request: Request, bruto: string) {
-  const segredo = Deno.env.get("WHATSAPP_APP_SECRET");
-  if (!segredo) return true; // sem segredo do app, aceita (o verify token já protege a inscrição)
+  const segredo = Deno.env.get("WHATSAPP_APP_SECRET") ?? "";
+  if (!segredo) return false; // quem chama já recusou antes com 503; aqui nunca aceita sem segredo
   const header = request.headers.get("x-hub-signature-256") ?? "";
   const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(segredo), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const mac = await crypto.subtle.sign("HMAC", chave, new TextEncoder().encode(bruto));
@@ -26,6 +28,9 @@ Deno.serve(async (request) => {
   }
   if (request.method !== "POST") return json({ error: "use GET ou POST" }, 405);
 
+  if (!(Deno.env.get("WHATSAPP_APP_SECRET") ?? "").trim()) {
+    return json({ error: "Webhook do WhatsApp fechado: falta o segredo WHATSAPP_APP_SECRET (App Secret do app da Meta). Configure com supabase secrets set e a Meta passa a ser aceita." }, 503);
+  }
   const bruto = await request.text();
   if (!(await assinaturaConfere(request, bruto))) return json({ error: "assinatura inválida" }, 401);
   let body: { entry?: { changes?: { value?: Record<string, unknown> }[] }[] } = {};
