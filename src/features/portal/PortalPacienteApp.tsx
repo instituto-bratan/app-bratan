@@ -10,7 +10,7 @@
 // portal-paciente.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Activity, CalendarDays, Check, ChevronRight, FileText, Flag, Home, Pause, Play, Route as RouteIcon, Scale, Stethoscope, User } from "lucide-react";
+import { Activity, CalendarDays, Check, ChevronRight, FileText, Flag, Home, Pause, Play, Route as RouteIcon, Scale, ScanFace, Smartphone, Stethoscope, User } from "lucide-react";
 import LoadingState from "@/components/ui/loading-state";
 import { Avisos, toast } from "@/components/ui/avisos";
 import { todayISO } from "@/lib/localStore";
@@ -21,7 +21,8 @@ import "./portal.css";
 import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolucao";
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
-import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, responderConsulta, sairDoPortal, sairDoPush, enviarFoto, apagarFoto, marcarVozOuvida } from "./portalCliente";
+import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, desligarFaceId, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, listarAparelhos, responderConsulta, sairDeTodosOsAparelhos, sairDoPortal, sairDoPush, enviarFoto, apagarFoto, marcarVozOuvida, type AparelhosDoPortal } from "./portalCliente";
+import { ativarFaceId, entrarComFaceId, faceIdDisponivel, nomeDaBiometria } from "./faceId";
 import { chaveVapidParaBytes } from "./pushDoPaciente";
 import { ANGULOS, fraseDasFotos, paresPorAngulo, rotuloDoAngulo, validarFoto, type AnguloDaFoto, type PortalFoto } from "./fotosDoPaciente";
 import { reduzirFoto } from "./redimensionarFoto";
@@ -142,8 +143,8 @@ function EntrarPage() {
           {erro ? (
             <>
               <p className="t-body t-2">{erro}</p>
-              <p className="t-foot t-3">O link vale por uma semana. Se você já criou a sua senha, entre por aqui mesmo — senão, a recepção manda outro link na hora.</p>
-              <Link to="/meu" className="p-btn full">Entrar com a minha senha</Link>
+              <p className="t-foot t-3">Se você já ativou o Face ID ou criou a sua senha, entre por aqui mesmo. Senão, a recepção manda o link atualizado na hora.</p>
+              <Link to="/meu" className="p-btn full">Entrar com Face ID ou senha</Link>
             </>
           ) : (
             <div data-anima="carregando"><LoadingState label="Preparando" variant="Dots" showElapsed={false} /></div>
@@ -163,6 +164,37 @@ function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
   const [entrando, setEntrando] = useState(false);
+  // FACE ID PRIMEIRO (29/09/2026). Quem tem, entra sem digitar nada; quem não
+  // tem (ou nunca ativou) usa a senha logo abaixo.
+  const [temBiometria, setTemBiometria] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    void faceIdDisponivel().then((sim) => {
+      if (vivo) setTemBiometria(sim && !ambienteSemSupabase);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  async function entrarComBiometria() {
+    setErro("");
+    setEntrando(true);
+    try {
+      const r = await entrarComFaceId();
+      if (!r.ok) {
+        setErro(r.erro);
+        return;
+      }
+      if (r.sessao) {
+        guardarSessao(r.sessao);
+        aoEntrar(r.sessao);
+      }
+    } finally {
+      setEntrando(false);
+    }
+  }
 
   async function entrar(e: FormEvent) {
     e.preventDefault();
@@ -188,6 +220,19 @@ function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
           <img src={bratanMark} alt="" style={{ width: 56, height: 56, borderRadius: 14 }} />
           <h1 className="t-title2">Seu espaço no Instituto Bratan</h1>
           <p className="t-body t-2">Próxima consulta, sua evolução, seu plano e a pesagem da semana, num lugar só.</p>
+          {temBiometria ? (
+            <button type="button" className="p-btn full" disabled={entrando} onClick={() => void entrarComBiometria()}>
+              <ScanFace size={18} aria-hidden="true" /> {entrando && !mostrarSenha ? "Abrindo" : `Entrar com ${nomeDaBiometria()}`}
+            </button>
+          ) : null}
+          {temBiometria && !mostrarSenha ? (
+            <>
+              {erro ? <p className="t-foot" style={{ color: "var(--p-bad)" }}>{erro}</p> : null}
+              <button type="button" className="p-btn plain" onClick={() => { setErro(""); setMostrarSenha(true); }}>
+                Entrar com e-mail e senha
+              </button>
+            </>
+          ) : (
           <form className="p-form" onSubmit={entrar}>
             <label className="p-rotulo" htmlFor="portal-login">E-mail ou celular</label>
             <input
@@ -215,8 +260,9 @@ function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
               {entrando ? "Entrando" : "Entrar"}
             </button>
           </form>
+          )}
           <p className="t-foot t-3">
-            Primeira vez por aqui, ou esqueceu a senha? Abra o link que a recepção mandou no seu WhatsApp — lá dentro você cria a sua senha.
+            Primeira vez por aqui? Abra o link que a recepção mandou no seu WhatsApp — ele é o seu acesso e não vence. Lá dentro você ativa o {nomeDaBiometria()} ou cria uma senha.
           </p>
           {ambienteSemSupabase ? (
             <Link to="/meu/entrar" className="p-btn plain">
@@ -438,6 +484,13 @@ function MeuPortal() {
     }
   }
 
+  async function sairDeTodos() {
+    if (!previa && sessao) await sairDeTodosOsAparelhos(sessao).catch(() => undefined);
+    guardarSessao(null);
+    navigate("/meu", { replace: true });
+    window.location.reload();
+  }
+
   async function sair() {
     if (!previa && sessao) await sairDoPortal(sessao).catch(() => undefined);
     guardarSessao(null);
@@ -545,6 +598,7 @@ function MeuPortal() {
 
   const painelHoje = dados ? (
     <>
+      {!previa && dados.paciente.temFaceId === false && sessao ? <ConviteFaceId sessao={sessao} aoAtivar={() => void recarregar()} /> : null}
       <section className="p-sec p-anim wide" aria-label="Onde você está na jornada">
         <HeroDaJornada jornada={jornada} plano={dados.plano} proxima={proxima} evolucao={evolucao} aoAbrir={() => irPara("jornada")} />
       </section>
@@ -822,7 +876,6 @@ function MeuPortal() {
                     <li key={p.id} className="p-row">
                       <div className="p-cresce">
                         <p className="t-body">{diaCurto(p.prevista)}</p>
-                        {p.observacao ? <p className="t-foot t-2">{p.observacao}</p> : null}
                       </div>
                       <span className="p-valor">{brlCentavos(p.valor)}</span>
                     </li>
@@ -873,13 +926,15 @@ function MeuPortal() {
 
       <AvisosNoCelular sessao={sessao} previa={previa} chavePublica={dados.pushPublicKey ?? null} />
 
-      {/* SENHA PRÓPRIA (16/09/2026): enquanto o paciente não tem, o portal
-          oferece criar — é o que tira a dependência do link de 7 dias. */}
-      {!previa && dados.paciente.temSenha === false ? (
-        <section className="p-sec p-anim">
-          <span className="t-sec">Entrar quando quiser</span>
-          <div className="p-card">
-            {senhaAberta ? (
+      {!previa && sessao ? (
+        <ComoVoceEntra
+          sessao={sessao}
+          temSenha={Boolean(dados.paciente.temSenha)}
+          login={dados.paciente.login ?? null}
+          aoMudar={() => void recarregar()}
+          aoSairDeTodos={() => void sairDeTodos()}
+          formularioDeSenha={
+            senhaAberta ? (
               <form className="p-form" onSubmit={salvarSenha}>
                 <label className="p-rotulo" htmlFor="novo-login">Seu e-mail ou celular</label>
                 <input id="novo-login" className="p-entrada" type="text" inputMode="email" autoComplete="username" value={novoLogin} onChange={(e) => setNovoLogin(e.target.value)} placeholder="voce@email.com" />
@@ -887,20 +942,18 @@ function MeuPortal() {
                 <input id="nova-senha" className="p-entrada" type="password" autoComplete="new-password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="pelo menos 8 caracteres" />
                 <div className="p-botoes">
                   <button type="submit" className="p-btn full" disabled={salvandoSenha || !novoLogin.trim() || novaSenha.length < 8}>
-                    {salvandoSenha ? "Guardando" : "Guardar e usar daqui em diante"}
+                    {salvandoSenha ? "Guardando" : "Guardar a senha"}
                   </button>
                   <button type="button" className="p-btn plain" onClick={() => setSenhaAberta(false)}>Agora não</button>
                 </div>
               </form>
             ) : (
-              <>
-                <p className="t-headline">Crie uma senha e não dependa mais do link.</p>
-                <p className="t-sub t-2">Com e-mail e senha você abre o seu espaço de qualquer aparelho, na hora que quiser.</p>
-                <button type="button" className="p-btn tonal" onClick={() => setSenhaAberta(true)}>Criar minha senha</button>
-              </>
-            )}
-          </div>
-        </section>
+              <button type="button" className="p-btn tonal" onClick={() => setSenhaAberta(true)}>
+                {dados.paciente.temSenha ? "Trocar a senha" : "Criar uma senha (para aparelhos sem biometria)"}
+              </button>
+            )
+          }
+        />
       ) : null}
 
       <footer className="p-rodape p-anim wide">
@@ -996,7 +1049,7 @@ function Toque({ children, className, rotulo, aoTocar }: { children: ReactNode; 
  * anel genérico de porcentagem: o paciente vê a caminhada inteira e o ponto
  * em que está, sem ler número nenhum. Os segmentos entram um a um.
  */
-function AnelDaJornada({ segmentos, fracao, mesAtual }: { segmentos: PassoDaTrilha["estado"][]; fracao: number; mesAtual: number }) {
+function AnelDaJornada({ segmentos, preenchimentos, fracao, mesAtual }: { segmentos: PassoDaTrilha["estado"][]; preenchimentos?: number[]; fracao: number; mesAtual: number }) {
   const n = Math.max(1, segmentos.length);
   const r = 52;
   const C = 2 * Math.PI * r;
@@ -1007,7 +1060,9 @@ function AnelDaJornada({ segmentos, fracao, mesAtual }: { segmentos: PassoDaTril
       <svg viewBox="0 0 120 120" aria-hidden="true">
         {segmentos.map((estado, i) => {
           const offset = -(i * (L + gap));
-          const cheio = estado === "feito" ? L : estado === "agora" ? Math.max(L * fracao, 2) : 0;
+          // Cada mês enche pelo que foi cumprido nele (29/09/2026), não pelo calendário.
+          const parte = preenchimentos?.[i] ?? (estado === "feito" ? 1 : estado === "agora" ? fracao : 0);
+          const cheio = estado === "futuro" ? 0 : estado === "agora" ? Math.max(L * Math.min(1, Math.max(0, parte)), 2) : L * Math.min(1, Math.max(0, parte));
           return (
             <g key={i} className="p-anel-seg" style={{ animationDelay: `${0.06 * i}s` }}>
               <circle cx="60" cy="60" r={r} className="p-anel-trilho" strokeDasharray={`${L} ${C - L}`} strokeDashoffset={offset} />
@@ -1031,7 +1086,7 @@ function HeroDaJornada({ jornada, plano, proxima, evolucao, aoAbrir }: { jornada
     return (
       <div className="p-hero">
         <span className="p-hero-eyebrow">{nomeDoPlano(plano.canal)}</span>
-        <AnelDaJornada segmentos={jornada.segmentos} fracao={jornada.fracaoDoMes} mesAtual={jornada.mesAtual} />
+        <AnelDaJornada segmentos={jornada.segmentos} preenchimentos={jornada.preenchimentos} fracao={jornada.fracaoDoMes} mesAtual={jornada.mesAtual} />
         <div className="p-hero-texto">
           <p className="p-hero-titulo">{jornada.titulo}</p>
           <p className="p-hero-sub">{jornada.passos}</p>
@@ -1157,6 +1212,163 @@ function Esqueleto() {
       <div className="p-skel" style={{ height: 150 }} />
       <div className="p-skel" style={{ height: 120 }} />
     </div>
+  );
+}
+
+// ---- FACE ID (29/09/2026) ------------------------------------------------------------
+const CHAVE_CONVITE_RECUSADO = "meu-bratan-convite-faceid-recusado-v1";
+
+/** O convite no topo de Hoje: aparece uma vez por aparelho, até ativar ou dizer "agora não". */
+function ConviteFaceId({ sessao, aoAtivar }: { sessao: string; aoAtivar: () => void }) {
+  const [pode, setPode] = useState(false);
+  const [ativando, setAtivando] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    let recusou = false;
+    try {
+      recusou = window.localStorage.getItem(CHAVE_CONVITE_RECUSADO) === "1";
+    } catch {
+      /* sem armazenamento: mostra o convite */
+    }
+    if (recusou) return;
+    void faceIdDisponivel().then((sim) => {
+      if (vivo) setPode(sim);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  if (!pode) return null;
+  const biometria = nomeDaBiometria();
+  async function ativar() {
+    setAtivando(true);
+    try {
+      const r = await ativarFaceId(sessao);
+      if (!r.ok) {
+        toast(r.erro, { tom: "atencao" });
+        return;
+      }
+      toast(`Pronto. Da próxima vez, é só abrir e usar o ${biometria}.`, { tom: "ok", duracaoMs: 6000 });
+      setPode(false);
+      aoAtivar();
+    } finally {
+      setAtivando(false);
+    }
+  }
+  function agoraNao() {
+    try {
+      window.localStorage.setItem(CHAVE_CONVITE_RECUSADO, "1");
+    } catch {
+      /* sem armazenamento: o convite volta na próxima vez, sem prejuízo */
+    }
+    setPode(false);
+  }
+  return (
+    <section className="p-sec p-anim wide" aria-labelledby="t-faceid">
+      <div className="p-card">
+        <p className="t-headline" id="t-faceid" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ScanFace size={20} aria-hidden="true" /> Entre com {biometria} da próxima vez
+        </p>
+        <p className="t-sub t-2">Sem senha para lembrar. A sua biometria fica no celular — o Instituto nunca vê.</p>
+        <div className="p-botoes">
+          <button type="button" className="p-btn full" disabled={ativando} onClick={() => void ativar()}>
+            {ativando ? "Ativando" : `Ativar ${biometria}`}
+          </button>
+          <button type="button" className="p-btn plain" onClick={agoraNao}>Agora não</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Como você entra: Face ID por aparelho, senha de reserva e onde o portal está aberto. */
+function ComoVoceEntra({ sessao, temSenha, login, aoMudar, aoSairDeTodos, formularioDeSenha }: { sessao: string; temSenha: boolean; login: string | null; aoMudar: () => void; aoSairDeTodos: () => void; formularioDeSenha: ReactNode }) {
+  const [aparelhos, setAparelhos] = useState<AparelhosDoPortal | null>(null);
+  const [biometriaAqui, setBiometriaAqui] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const biometria = nomeDaBiometria();
+  const carregar = useCallback(async () => {
+    const r = await listarAparelhos(sessao);
+    if (r.ok) setAparelhos({ sessoes: r.sessoes ?? [], faceId: r.faceId ?? [] });
+  }, [sessao]);
+  useEffect(() => {
+    void carregar();
+    void faceIdDisponivel().then(setBiometriaAqui);
+  }, [carregar]);
+  async function ativar() {
+    setOcupado(true);
+    try {
+      const r = await ativarFaceId(sessao);
+      if (!r.ok) return toast(r.erro, { tom: "atencao" });
+      toast(`${biometria} ativado neste aparelho.`, { tom: "ok" });
+      await carregar();
+      aoMudar();
+    } finally {
+      setOcupado(false);
+    }
+  }
+  async function desligar(id: string) {
+    setOcupado(true);
+    try {
+      const r = await desligarFaceId(sessao, id);
+      if (!r.ok) return toast(r.error ?? "Não consegui desligar agora.", { tom: "erro" });
+      toast("Pronto. Esse aparelho não entra mais por biometria.", { tom: "ok" });
+      await carregar();
+      aoMudar();
+    } finally {
+      setOcupado(false);
+    }
+  }
+  const quando = (iso: string | null) => (iso ? diaCurto(iso.slice(0, 10)) : "—");
+  return (
+    <section id="acesso" className="p-sec p-anim" aria-labelledby="t-acesso">
+      <span className="t-sec" id="t-acesso">Como você entra</span>
+      <div className="p-card">
+        <p className="t-sub t-2">
+          O seu acesso não vence. Use o {biometria} onde tiver; a senha fica para aparelho sem biometria.{login ? ` Seu login: ${login}.` : ""}
+        </p>
+        {aparelhos?.faceId.length ? (
+          <ul className="p-lista">
+            {aparelhos.faceId.map((f) => (
+              <li key={f.id} className="p-row">
+                <ScanFace size={18} aria-hidden="true" />
+                <div className="p-cresce">
+                  <p className="t-body">{f.aparelho}</p>
+                  <p className="t-foot t-2">Biometria desde {quando(f.desde)}{f.ultimoUso ? ` · usada em ${quando(f.ultimoUso)}` : ""}</p>
+                </div>
+                <button type="button" className="p-btn plain" disabled={ocupado} onClick={() => void desligar(f.id)}>Desligar</button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {biometriaAqui ? (
+          <button type="button" className="p-btn tonal" disabled={ocupado} onClick={() => void ativar()}>
+            <ScanFace size={18} aria-hidden="true" /> {aparelhos?.faceId.length ? `Ativar ${biometria} também neste aparelho` : `Ativar ${biometria} neste aparelho`}
+          </button>
+        ) : null}
+        <p className="t-foot t-2">{temSenha ? "Você tem senha criada." : "Você ainda não tem senha."}</p>
+        {formularioDeSenha}
+        {aparelhos?.sessoes.length ? (
+          <>
+            <span className="t-sec" style={{ padding: 0 }}>Onde o portal está aberto</span>
+            <ul className="p-lista">
+              {aparelhos.sessoes.map((s) => (
+                <li key={s.id} className="p-row">
+                  <Smartphone size={18} aria-hidden="true" />
+                  <div className="p-cresce">
+                    <p className="t-body">{s.aparelho}{s.esteAparelho ? " · este aparelho" : ""}</p>
+                    <p className="t-foot t-2">Último uso em {quando(s.ultimoUso ?? s.desde)}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {aparelhos.sessoes.length > 1 ? (
+              <button type="button" className="p-btn plain" onClick={aoSairDeTodos}>Sair de todos os aparelhos</button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

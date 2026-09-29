@@ -91,7 +91,12 @@ self.addEventListener("push", (event) => {
   }
   event.waitUntil(
     (async () => {
-      await self.registration.showNotification(dados.title, { body: dados.body, icon: "/pwa-192x192.png", badge: "/pwa-192x192.png", data: { url: dados.url || "/" }, tag: dados.tag || "fila-do-dia", renotify: true });
+      // Aviso do PORTAL do paciente leva o ícone do Meu Bratan, não o do app da
+      // equipe (29/09/2026): no celular de quem é funcionária e paciente, o
+      // aviso tem que dizer de onde veio.
+      const doPortal = String(dados.url || "").startsWith("/meu");
+      const icone = doPortal ? "/meu-192x192.png" : "/pwa-192x192.png";
+      await self.registration.showNotification(dados.title, { body: dados.body, icon: icone, badge: icone, data: { url: dados.url || "/" }, tag: dados.tag || (doPortal ? "meu-bratan" : "fila-do-dia"), renotify: true });
       try {
         if (typeof dados.badge === "number" && "setAppBadge" in navigator) await navigator.setAppBadge(dados.badge);
       } catch {
@@ -107,7 +112,18 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     (async () => {
       const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // Só reaproveita a janela do MESMO lado: aviso do portal abre o portal, e
+      // aviso da equipe não cai dentro do portal do paciente (29/09/2026).
+      const querPortal = url.startsWith("/meu");
       for (const janela of janelas) {
+        const caminho = (() => {
+          try {
+            return new URL(janela.url).pathname;
+          } catch {
+            return "";
+          }
+        })();
+        if (caminho.startsWith("/meu") !== querPortal) continue;
         if ("focus" in janela) {
           await janela.focus();
           if ("navigate" in janela) await janela.navigate(url).catch(() => undefined);

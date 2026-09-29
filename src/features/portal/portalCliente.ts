@@ -34,7 +34,11 @@ async function chamar<T>(body: Record<string, unknown>): Promise<Resposta<T>> {
   if (!supabase) return { ok: false, error: "Portal indisponível neste ambiente." } as Resposta<T>;
   const { data, error } = await supabase.functions.invoke("portal-paciente", { body });
   if (error) {
-    let detalhe = error.message;
+    // O texto cru do navegador vem em inglês ("Failed to send a request to the
+    // Edge Function"); o paciente lê a frase dele (29/09/2026).
+    let detalhe = /failed to (send|fetch)|network|load failed/i.test(error.message)
+      ? "Sem conexão com o Instituto agora. Confira a internet e tente de novo."
+      : error.message;
     try {
       const ctx = (error as { context?: Response }).context;
       if (ctx && typeof ctx.json === "function") detalhe = ((await ctx.json()) as { error?: string }).error ?? detalhe;
@@ -91,4 +95,35 @@ export async function apagarFoto(sessao: string, id: string) {
 /** A voz do doutor (22/09/2026): o paciente terminou de ouvir a mensagem. */
 export async function marcarVozOuvida(sessao: string, mensagemId: string) {
   return chamar<Record<string, never>>({ acao: "voz_ouvida", sessao, mensagemId });
+}
+
+// ---- FACE ID / DIGITAL (29/09/2026) --------------------------------------------------
+// As opções e a verificação moram na função do portal; a biometria nunca sai do
+// aparelho — o que viaja é uma assinatura que só a chave daquele aparelho faz.
+export type OpcoesWebAuthn = Record<string, unknown>;
+
+export async function faceIdOpcoesDeEntrada() {
+  return chamar<{ desafioId?: string; opcoes?: OpcoesWebAuthn }>({ acao: "passkey_login_opcoes" });
+}
+export async function faceIdConfirmarEntrada(desafioId: string, resposta: unknown) {
+  return chamar<{ sessao?: string; expiraEm?: string }>({ acao: "passkey_login_verificar", desafioId, resposta_webauthn: resposta });
+}
+export async function faceIdOpcoesDeAtivar(sessao: string) {
+  return chamar<{ desafioId?: string; opcoes?: OpcoesWebAuthn }>({ acao: "passkey_registro_opcoes", sessao });
+}
+export async function faceIdConfirmarAtivar(sessao: string, desafioId: string, resposta: unknown) {
+  return chamar<Record<string, never>>({ acao: "passkey_registro_verificar", sessao, desafioId, resposta_webauthn: resposta });
+}
+export type AparelhosDoPortal = {
+  sessoes: { id: string; aparelho: string; comoEntrou: string; desde: string; ultimoUso: string | null; esteAparelho: boolean }[];
+  faceId: { id: string; aparelho: string; desde: string; ultimoUso: string | null }[];
+};
+export async function listarAparelhos(sessao: string) {
+  return chamar<Partial<AparelhosDoPortal>>({ acao: "aparelhos", sessao });
+}
+export async function desligarFaceId(sessao: string, passkeyId: string) {
+  return chamar<Record<string, never>>({ acao: "passkey_apagar", sessao, passkeyId });
+}
+export async function sairDeTodosOsAparelhos(sessao: string) {
+  return chamar<Record<string, never>>({ acao: "sair_de_todos", sessao });
 }

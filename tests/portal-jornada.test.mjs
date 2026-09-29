@@ -40,7 +40,9 @@ test("o anel: mês, semana, fração do mês e o próximo passo em uma frase", (
   assert.equal(r.semana, 15);
   assert.equal(r.mesAtual, 4);
   assert.equal(r.meses, 6);
-  assert.ok(r.fracaoDoMes > 0.3 && r.fracaoDoMes < 0.4, `100 dias = 10 dias dentro do 4º mês → ${r.fracaoDoMes}`);
+  // Mês de calendário desde 29/09/2026: o 4º mês começou em 14/09, e 22/09 é o 8º dia de 30.
+  assert.ok(r.fracaoDoMes > 0.25 && r.fracaoDoMes < 0.3, `8 dias dentro do 4º mês (14/09 a 14/10) → ${r.fracaoDoMes}`);
+  assert.equal(r.preenchimentos.length, 6);
   assert.equal(r.feitos, 5);
   assert.equal(r.total, 9);
   assert.equal(r.concluida, false);

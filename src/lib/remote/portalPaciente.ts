@@ -14,9 +14,17 @@ export async function listRemotePacienteAcessos(contactRef: string): Promise<Pac
   return ((data ?? []) as any[]).map((r) => ({ id: r.id, contactRef: r.contact_ref, expiraEm: r.expira_em, usadoEm: r.usado_em ?? null, ultimoAcessoEm: r.ultimo_acesso_em ?? null, aparelho: r.aparelho ?? null, criadoEm: r.criado_em, revogadoEm: r.revogado_em ?? null }));
 }
 
-export async function criarRemotePacienteAcesso(contactRef: string, tokenHash: string, diasValidade: number, criadoPor: string | null) {
+/**
+ * O ACESSO É PERMANENTE (29/09/2026). O link não vence mais. Quando a recepção
+ * gera um "novo link" para quem já tem acesso, só o LINK é trocado: a senha,
+ * o Face ID e os aparelhos conectados do paciente continuam valendo. Antes,
+ * gerar outro acesso obrigava o paciente a recomeçar do zero.
+ */
+export async function criarRemotePacienteAcesso(contactRef: string, tokenHash: string, _criadoPor: string | null) {
   const client = requireSupabase();
-  const { error } = await client.from("paciente_acesso").insert({ contact_ref: contactRef, token_hash: tokenHash, expira_em: new Date(Date.now() + diasValidade * 86_400_000).toISOString(), criado_por: uuidOrNull(criadoPor) });
+  // A função do banco confere a permissão, troca só o link de quem já tem
+  // acesso e cria o acesso de quem ainda não tem (29/09/2026).
+  const { error } = await client.rpc("portal_trocar_link", { p_contact_ref: contactRef, p_token_hash: tokenHash });
   if (error) throw new Error(error.message);
 }
 

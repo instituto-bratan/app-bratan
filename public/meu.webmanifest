@@ -4,7 +4,7 @@
   "description": "Seu espaço no Instituto Bratan: próxima consulta, evolução, plano e pesagem da semana.",
   "id": "/meu",
   "start_url": "/meu",
-  "scope": "/meu/",
+  "scope": "/meu",
   "display": "standalone",
   "display_override": [
     "standalone",

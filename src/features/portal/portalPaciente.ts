@@ -125,7 +125,7 @@ export type PortalPlano = {
 export type PortalDados = {
   /** Chave pública VAPID, para o navegador assinar os avisos. Ausente = avisos desligados. */
   pushPublicKey?: string | null;
-  paciente: { nome: string; primeiroNome: string; contactRef: string; temSenha?: boolean; login?: string | null };
+  paciente: { nome: string; primeiroNome: string; contactRef: string; temSenha?: boolean; login?: string | null; temFaceId?: boolean };
   plano: PortalPlano | null;
   consultas: PortalConsulta[];
   medicoes: PortalMedicao[];
@@ -478,6 +478,8 @@ export type PassoDaTrilha = {
   rotulo: string; // "Mês 1"
   estado: "feito" | "agora" | "futuro";
   marcos: (MarcoDoPlano & { quem: string })[];
+  /** Quanto do mês está cumprido, 0..1: pelos passos feitos quando o mês tem passos. */
+  preenchimento: number;
 };
 
 const QUEM: Record<MarcoDoPlano["type"], string> = { CHECK: "enfermagem", BIO: "enfermagem", MEDICO: "Dr. Daniel" };
@@ -490,12 +492,23 @@ const QUEM: Record<MarcoDoPlano["type"], string> = { CHECK: "enfermagem", BIO: "
  * cai dois meses depois da adesão, e dois meses podem ter 61 dias — com blocos
  * de 30 ele escorregava para o mês 3.
  */
-function mesDaData(inicioISO: string, dataISO: string) {
+function mesesCompletos(inicioISO: string, dataISO: string) {
   const [ai, mi, di] = inicioISO.slice(0, 10).split("-").map(Number);
   const [ad, md, dd] = dataISO.slice(0, 10).split("-").map(Number);
   let meses = (ad - ai) * 12 + (md - mi);
   if (dd < di) meses -= 1;
-  return Math.max(1, meses);
+  return Math.max(0, meses);
+}
+function mesDaData(inicioISO: string, dataISO: string) {
+  return Math.max(1, mesesCompletos(inicioISO, dataISO));
+}
+/** A data que fica `meses` meses de calendário depois do início (dia ajustado ao fim do mês). */
+function somaMeses(inicioISO: string, meses: number) {
+  const [a, m, d] = inicioISO.slice(0, 10).split("-").map(Number);
+  const alvo = new Date(Date.UTC(a, m - 1 + meses, 1));
+  const ultimo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+  alvo.setUTCDate(Math.min(d, ultimo));
+  return alvo.toISOString().slice(0, 10);
 }
 
 /**
@@ -515,13 +528,20 @@ function mesDaData(inicioISO: string, dataISO: string) {
 export function trilhaDoPlano(marcos: MarcoDoPlano[], inicioISO: string, hojeISO: string): { passos: PassoDaTrilha[]; mesAtual: number; feitos: number; total: number; meses: number; frase: string } | null {
   if (!marcos.length) return null;
   const meses = Math.max(...marcos.map((m) => mesDaData(inicioISO, m.expectedDate)));
-  const diasNoPlano = Math.max(0, diasEntre(inicioISO, hojeISO));
-  const mesAtual = Math.min(meses, Math.floor(diasNoPlano / 30) + 1);
+  // O MÊS DO PLANO É DE CALENDÁRIO, igual ao dos passos (29/09/2026). Antes o
+  // "agora" contava blocos de 30 dias e os passos, mês de calendário — e o anel
+  // enchia um mês que os passos ainda diziam estar aberto.
+  const mesAtual = Math.min(meses, mesesCompletos(inicioISO, hojeISO) + 1);
   const passos: PassoDaTrilha[] = [];
   for (let mes = 1; mes <= meses; mes += 1) {
     const doMes = marcos.filter((m) => mesDaData(inicioISO, m.expectedDate) === mes).map((m) => ({ ...m, quem: QUEM[m.type] }));
-    const todosFeitos = doMes.length > 0 && doMes.every((m) => m.done);
-    passos.push({ mes, rotulo: `Mês ${mes}`, estado: mes < mesAtual || todosFeitos ? "feito" : mes === mesAtual ? "agora" : "futuro", marcos: doMes });
+    const feitosNoMes = doMes.filter((m) => m.done).length;
+    const todosFeitos = doMes.length > 0 && feitosNoMes === doMes.length;
+    // Mês que já passou com passo aberto NÃO vira "feito": o anel mostra o que
+    // foi cumprido de verdade, e o passo que ficou para trás continua chamando.
+    const estado: PassoDaTrilha["estado"] = todosFeitos || (mes < mesAtual && !doMes.length) ? "feito" : mes <= mesAtual ? "agora" : "futuro";
+    const preenchimento = doMes.length ? feitosNoMes / doMes.length : mes < mesAtual ? 1 : 0;
+    passos.push({ mes, rotulo: `Mês ${mes}`, estado, marcos: doMes, preenchimento });
   }
   const feitos = marcos.filter((m) => m.done).length;
   const total = marcos.length;
@@ -599,6 +619,7 @@ export type ResumoDaJornada = {
   total: number;
   concluida: boolean;
   segmentos: PassoDaTrilha["estado"][];
+  preenchimentos: number[];
   titulo: string; // "Semana 14 do seu plano"
   passos: string; // "5 de 9 passos concluídos"
   proximo: string; // "Próximo passo: 2ª bioimpedância, com a enfermagem, em 19 de out."
@@ -611,8 +632,11 @@ export type ResumoDaJornada = {
 export function resumoDaJornada(trilha: TrilhaDoPlano, marcos: MarcoDoPlano[], inicioISO: string, hojeISO: string): ResumoDaJornada {
   const dias = Math.max(0, diasEntre(inicioISO, hojeISO));
   const semana = Math.floor(dias / 7) + 1;
-  const inicioDoMes = (trilha.mesAtual - 1) * 30;
-  const fracaoDoMes = dias >= trilha.meses * 30 ? 1 : Math.min(1, Math.max(0, (dias - inicioDoMes) / 30));
+  const inicioDoMes = somaMeses(inicioISO, trilha.mesAtual - 1);
+  const fimDoMes = somaMeses(inicioISO, trilha.mesAtual);
+  const fracaoDoMes = hojeISO >= somaMeses(inicioISO, trilha.meses)
+    ? 1
+    : Math.min(1, Math.max(0, diasEntre(inicioDoMes, hojeISO) / Math.max(1, diasEntre(inicioDoMes, fimDoMes))));
   const proximo = marcos.filter((m) => !m.done).sort((a, b) => a.expectedDate.localeCompare(b.expectedDate))[0] ?? null;
   const concluida = !proximo;
   return {
@@ -625,6 +649,9 @@ export function resumoDaJornada(trilha: TrilhaDoPlano, marcos: MarcoDoPlano[], i
     total: trilha.total,
     concluida,
     segmentos: trilha.passos.map((p) => p.estado),
+    // O quanto cada mês do anel enche: pelos passos feitos; o mês de agora sem
+    // passo enche com o tempo (29/09/2026).
+    preenchimentos: trilha.passos.map((p) => (p.marcos.length ? p.preenchimento : p.mes === trilha.mesAtual ? fracaoDoMes : p.preenchimento)),
     titulo: concluida ? "Você completou a caminhada" : `Semana ${semana} do seu plano`,
     passos: `${trilha.feitos} de ${trilha.total} passos concluídos`,
     proximo: proximo

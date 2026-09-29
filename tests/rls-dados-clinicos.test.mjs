@@ -188,11 +188,15 @@ test("a equipe lê do acesso só o que a tela mostra — sem hash e sem login", 
 
 test("gerar link e revogar gravam só colunas liberadas", () => {
   const chaves = (trecho) => [...trecho.matchAll(/(\w+):/g)].map((m) => m[1]);
-  const insert = remotoPortal.match(/from\("paciente_acesso"\)\.insert\(\{([^}]+)\}\)/)[1];
+  // 29/09/2026: gerar (ou trocar) o link passou para a função portal_trocar_link,
+  // que confere a permissão no banco e mantém senha e Face ID do paciente.
+  assert.match(remotoPortal, /rpc\("portal_trocar_link"/, "gerar link usa a função do banco");
+  const funcao = semComentario(migration("202609290001_portal_acesso_permanente.sql"));
+  assert.match(funcao, /security definer/i);
+  assert.match(funcao, /can_paciente_portal_write\(auth\.uid\(\)\)/, "a função confere a permissão de quem chama");
   const update = remotoPortal.match(/from\("paciente_acesso"\)\.update\(\{([^}]+)\}\)/)[1];
   const podeInserir = colunasConcedidas("insert");
   const podeAtualizar = colunasConcedidas("update");
-  for (const coluna of chaves(insert)) assert.ok(podeInserir.includes(coluna), `insert de ${coluna} sem grant`);
   for (const coluna of chaves(update)) assert.ok(podeAtualizar.includes(coluna), `update de ${coluna} sem grant`);
   assert.ok(!podeInserir.includes("sessao_hash"), "ninguém nasce com sessão pela mão da equipe");
 });

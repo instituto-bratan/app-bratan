@@ -32,7 +32,7 @@ export function loadTs(filePath) {
   };
   vm.runInNewContext(
     output,
-    { module, exports: module.exports, require: localRequire, console, Date, JSON, Object, String, Number, Math, Map, Set, Array, Intl, RegExp, Promise, crypto: globalThis.crypto },
+    { module, exports: module.exports, require: localRequire, console, Date, JSON, Object, String, Number, Math, Map, Set, Array, Intl, RegExp, Promise, crypto: globalThis.crypto, URL, btoa, atob, TextEncoder, TextDecoder },
     { filename: absolutePath },
   );
   return module.exports;

@@ -31,8 +31,7 @@ import type { Cargo } from "@/types/database";
 import { gerarTokenPortal, sha256Hex } from "./portalToken";
 import { montarLinkPortal } from "./portalPaciente";
 
-const DIAS_LINK = 7;
-const ACAO_LABEL: Record<string, string> = { ENTRADA: "entrou pelo link", LEITURA: "abriu o portal", PESAGEM: "mandou pesagem", RESPOSTA_CONSULTA: "respondeu à consulta", SAIDA: "saiu", ENTRADA_RECUSADA: "link recusado" };
+const ACAO_LABEL: Record<string, string> = { ENTRADA: "entrou pelo link", ENTRADA_SENHA: "entrou com a senha", ENTRADA_FACE_ID: "entrou com Face ID", LEITURA: "abriu o portal", PESAGEM: "mandou pesagem", RESPOSTA_CONSULTA: "respondeu à consulta", RESPOSTA_RECUSADA: "resposta recusada", SAIDA: "saiu deste aparelho", SAIDA_DE_TODOS: "saiu de todos os aparelhos", ENTRADA_RECUSADA: "entrada recusada", SENHA_CRIADA: "criou a senha", FACE_ID_LIGADO: "ativou o Face ID", FACE_ID_DESLIGADO: "desligou o Face ID", PUSH_LIGADO: "ligou os avisos", PUSH_DESLIGADO: "desligou os avisos", FOTO_ENVIADA: "mandou foto", FOTO_APAGADA: "apagou foto", VOZ_OUVIDA: "ouviu a mensagem do doutor", LEITURA_ENTRADA: "abriu o portal" };
 
 function parseNum(texto: string) {
   const v = Number(texto.replace(/\./g, "").replace(",", "."));
@@ -61,10 +60,10 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
     setGerando(true);
     try {
       const token = gerarTokenPortal();
-      await criarRemotePacienteAcesso(contactRef, await sha256Hex(token), DIAS_LINK, pessoaId);
+      await criarRemotePacienteAcesso(contactRef, await sha256Hex(token), pessoaId);
       setLink(montarLinkPortal(window.location.origin, token));
       await invalidar("portal-acessos");
-      toast(`Link gerado. Ele vale ${DIAS_LINK} dias e só aparece agora: copie e mande.`, { tom: "ok", duracaoMs: 6000 });
+      toast(acessoAtivo ? "Link novo gerado. O anterior parou de funcionar; o Face ID e a senha do paciente continuam. O link só aparece agora: copie e mande." : "Link gerado. Ele não vence e só aparece agora: copie e mande.", { tom: "ok", duracaoMs: 7000 });
     } catch (error) {
       toast(`Não consegui gerar: ${error instanceof Error ? error.message : String(error)}`, { tom: "erro" });
     } finally {
@@ -79,7 +78,7 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
       toast("Não consegui copiar; selecione o link e copie.", { tom: "atencao" });
     }
   }
-  const mensagemWhatsApp = `Oi, ${nomePaciente.split(" ")[0]}! Este é o seu espaço no Instituto Bratan: próxima consulta, sua evolução e seu plano. É só abrir: ${link}`;
+  const mensagemWhatsApp = `Oi, ${nomePaciente.split(" ")[0]}! Este é o seu espaço no Instituto Bratan: próxima consulta, sua evolução e seu plano. É só abrir (o link é seu e não vence; lá dentro você pode ativar o Face ID): ${link}`;
   const telefoneDigitos = telefone.replace(/\D/g, "");
 
   async function salvarConsulta() {
@@ -113,7 +112,8 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
     }
   }
 
-  const acessoAtivo = (acessos.data ?? []).find((a) => !a.revogadoEm && a.expiraEm > new Date().toISOString());
+  // O acesso não vence (29/09/2026): ativo é o que não foi revogado.
+  const acessoAtivo = (acessos.data ?? []).find((a) => !a.revogadoEm);
   const fmt = (iso: string | null) => (iso ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "—");
 
   return (
@@ -123,9 +123,10 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
           <Smartphone className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
           Portal do paciente
           <InfoTip title="Meu Bratan">
-            O paciente entra por um link, sem senha, e vê a próxima consulta, a curva de evolução, a trilha do plano, o que fechou e pagou, e manda a
-            pesagem da semana. O link vale {DIAS_LINK} dias e fica preso ao aparelho em que ele abriu; dá para revogar aqui. Ele só lê os próprios dados,
-            por uma função do servidor, nunca direto do banco. Cada acesso fica registrado.
+            O paciente abre pelo link e vê a próxima consulta, a curva de evolução, a trilha do plano, o que fechou e pagou, e manda a pesagem da
+            semana. O acesso é permanente: o link não vence, e lá dentro o paciente ativa o Face ID (ou cria uma senha, em aparelho sem biometria).
+            Gerar um novo link troca só o link — o Face ID e a senha dele continuam. Revogar desliga tudo na hora. Ele só lê os próprios dados, por
+            uma função do servidor, e cada acesso fica registrado.
           </InfoTip>
           {acessoAtivo ? <Badge className="bg-emerald-100 text-emerald-800">acesso ativo{acessoAtivo.ultimoAcessoEm ? ` · abriu ${fmt(acessoAtivo.ultimoAcessoEm)}` : " · ainda não abriu"}</Badge> : <Badge variant="muted">sem acesso</Badge>}
         </CardTitle>
@@ -146,7 +147,7 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
                   variant="ghost"
                   className="text-red-700"
                   onClick={async () => {
-                    if (!(await confirmar("Revogar o acesso deste paciente?", { corpo: "O link e a sessão no aparelho dele param de funcionar na hora.", destrutivo: true, confirmar: "Revogar" }))) return;
+                    if (!(await confirmar("Revogar o acesso deste paciente?", { corpo: "O link, o Face ID, a senha e o portal aberto nos aparelhos dele param de funcionar na hora.", destrutivo: true, confirmar: "Revogar" }))) return;
                     await revogarRemotePacienteAcesso(acessoAtivo.id);
                     setLink("");
                     await invalidar("portal-acessos");
