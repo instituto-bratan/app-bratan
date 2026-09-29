@@ -83,7 +83,7 @@ export function linhasDoControle(entrada: {
 export async function registrarNoControle(client: SupabaseClient, ref: string): Promise<{ registrada: number; motivo?: string }> {
   const { data: emissao } = await client
     .from("nfse_emissao")
-    .select("ref, sale_ref, tipo, valor, status, numero, criado_em, resposta")
+    .select("ref, sale_ref, tipo, valor, status, numero, criado_em, resposta, partes")
     .eq("ref", ref)
     .maybeSingle();
   if (!emissao) return { registrada: 0, motivo: "emissão não encontrada" };
@@ -102,6 +102,10 @@ export async function registrarNoControle(client: SupabaseClient, ref: string): 
     .limit(1)
     .maybeSingle();
   const resposta = (emissao.resposta ?? {}) as Record<string, unknown>;
+  // Nota que levou sinal junto (29/09/2026): as partes vêm da própria emissão.
+  const partesDaEmissao = Array.isArray(emissao.partes) && emissao.partes.length
+    ? (emissao.partes as { saleRef: string; amount: number; comandaDate: string; patientName: string }[]).map((p) => ({ ...p, invoiceType: classeDaNota(String(emissao.tipo ?? "TRATAMENTO")) }))
+    : null;
   const linhas = linhasDoControle({
     numero,
     tipo: String(emissao.tipo ?? "TRATAMENTO"),
@@ -110,7 +114,7 @@ export async function registrarNoControle(client: SupabaseClient, ref: string): 
     pacienteNome: String(itemDoLote?.tomador_nome ?? venda?.patient_name ?? "Paciente"),
     comandaDate: venda?.sale_date ?? null,
     diaEmissao: diaDaEmissao(resposta.data_emissao as string | undefined, String(emissao.criado_em)),
-    partesDoLote: Array.isArray(itemDoLote?.partes) ? (itemDoLote!.partes as Parte[]) : null,
+    partesDoLote: partesDaEmissao ?? (Array.isArray(itemDoLote?.partes) && itemDoLote!.partes.length ? (itemDoLote!.partes as Parte[]) : null),
     lote: itemDoLote?.lote ?? null,
   });
   const { error } = await client.from("fin_invoices").upsert(linhas, { onConflict: "client_ref", ignoreDuplicates: true });

@@ -23,6 +23,7 @@
 //    tratamento é recusada, quem fechou precisa saber exatamente isso — e não
 //    "deu erro". Cada nota volta com o seu resultado.
 import type { EscolhaDaNota, NaturezaDaNota, NotaParaEmitir } from "./notaNoFechamento";
+import { naturezaQueLevaOSinal } from "@/features/financeiro/sinaisDoPaciente";
 
 /** O tipo que a Edge Function e a tabela `nfse_emissao` entendem. */
 export type TipoDaNotaFiscal = "CONSULTA" | "BIOIMPEDANCIA" | "TRATAMENTO" | "UNIFICADA";
@@ -84,6 +85,12 @@ export type PedidoDeEmissao = {
   solicitadoPor: string | null;
   /** Resolve quando a comanda terminou de gravar no servidor. */
   comandaGravada: Promise<boolean>;
+  /**
+   * Sinais já pagos que entram somados (29/09/2026). O valor das notas do plano
+   * JÁ inclui a soma; aqui vai só quais comandas de sinal a nota cobre. Vão na
+   * nota de consulta, ou na primeira do plano quando não há consulta.
+   */
+  sinais?: { saleRef: string }[];
   invocar: (slug: string, body: Record<string, unknown>) => Promise<Resposta>;
 };
 
@@ -114,8 +121,10 @@ export async function emitirNotasDoFechamento(pedido: PedidoDeEmissao): Promise<
   }
 
   const resultados: ResultadoDeUmaNota[] = [];
+  const quemLevaOSinal = pedido.sinais?.length ? naturezaQueLevaOSinal(pedido.notas.map((nota) => nota.natureza)) : null;
   for (const nota of pedido.notas) {
     const tipo = tipoDaNota(pedido.escolha, nota.natureza);
+    const sinaisDestaNota = quemLevaOSinal && nota.natureza === quemLevaOSinal ? pedido.sinais ?? [] : [];
     try {
       const resposta = await pedido.invocar("focus-nfse", {
         acao: "emitir",
@@ -129,6 +138,7 @@ export async function emitirNotasDoFechamento(pedido: PedidoDeEmissao): Promise<
           ...((pedido.email ?? "").trim() ? { email: (pedido.email ?? "").trim() } : {}),
         },
         solicitadoPor: pedido.solicitadoPor,
+        ...(sinaisDestaNota.length ? { sinais: sinaisDestaNota.map((sinal) => ({ saleRef: sinal.saleRef })) } : {}),
       });
       resultados.push({
         tipo,

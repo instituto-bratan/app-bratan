@@ -42,6 +42,12 @@ type Entrada = {
   justificativa?: string;
   tomador?: { nome?: string; cpf?: string; email?: string };
   solicitadoPor?: string;
+  /**
+   * Sinais já pagos pelo mesmo paciente que entram somados nesta nota
+   * (29/09/2026, regra do Lucas). O valor da nota já vem com eles; aqui vai
+   * quais comandas de sinal ela cobre.
+   */
+  sinais?: { saleRef?: string }[];
 };
 
 // Servidor, token e cabeçalho da Focus moram em _shared/focus.ts (22/09/2026):
@@ -167,6 +173,26 @@ Deno.serve(async (request) => {
   const total = itens.reduce((s, i) => s + Number(i.amount || 0), 0);
   const valor = Number(entrada.valor ?? total);
   if (!(valor > 0)) return json({ ok: false, error: "Valor da nota precisa ser maior que zero." }, 400);
+  // OS SINAIS QUE ENTRAM JUNTO (29/09/2026). Cada um tem que ser do MESMO
+  // paciente, só de sinal, e ainda sem nota — senão a nota recusa, para o sinal
+  // nunca ser tributado duas vezes nem entrar na nota de outra pessoa.
+  const partesDosSinais: { saleRef: string; amount: number; comandaDate: string; patientName: string }[] = [];
+  for (const pedido of entrada.sinais ?? []) {
+    const ref = String(pedido?.saleRef ?? "").trim();
+    if (!ref || ref === entrada.saleRef || partesDosSinais.some((p) => p.saleRef === ref)) continue;
+    const { data: sinal } = await client.from("fin_sales").select("client_ref, sale_date, patient_name, crm_contact_ref, fin_sale_items(item_type, amount, description)").eq("client_ref", ref).is("deleted_at", null).maybeSingle();
+    const itensDoSinal = (sinal?.fin_sale_items as { item_type: string; amount: number; description: string }[] | undefined) ?? [];
+    if (!sinal || !sale.crm_contact_ref || sinal.crm_contact_ref !== sale.crm_contact_ref || !comandaSoDeSinal(itensDoSinal)) {
+      return json({ ok: false, error: "Um dos sinais somados não é deste paciente (ou não é só sinal). Recarregue a tela e confira." }, 400);
+    }
+    const { count: jaTemNota } = await client.from("fin_invoices").select("id", { count: "exact", head: true }).eq("sale_ref", ref).is("deleted_at", null);
+    if ((jaTemNota ?? 0) > 0) return json({ ok: false, error: `O sinal de ${String(sinal.sale_date).split("-").reverse().join("/")} já entrou em outra nota. Recarregue a tela.` }, 400);
+    partesDosSinais.push({ saleRef: ref, amount: Math.round(itensDoSinal.reduce((s, i) => s + Number(i.amount || 0), 0) * 100) / 100, comandaDate: String(sinal.sale_date), patientName: String(sinal.patient_name ?? sale.patient_name) });
+  }
+  const somaDosSinais = Math.round(partesDosSinais.reduce((s, p) => s + p.amount, 0) * 100) / 100;
+  if (somaDosSinais > 0 && valor - somaDosSinais < 0.005) {
+    return json({ ok: false, error: "O valor da nota tem que ser maior que o sinal somado — a nota é da consulta ou do tratamento, com o sinal junto." }, 400);
+  }
   // A UNIFICADA é uma nota de TRATAMENTO — é exatamente por isso que ela sai mais
   // barata. Então ela segue a alíquota e o código de tratamento, nunca os de consulta.
   const ehConsulta = entrada.tipo === "CONSULTA";
@@ -351,7 +377,22 @@ Deno.serve(async (request) => {
   // prefeitura sem ficar registrada aqui — dinheiro e ISS sem rastro no app.
   const { error: erroDoRegistro } = await client
     .from("nfse_emissao")
-    .insert({ ref, sale_ref: entrada.saleRef, tipo: entrada.tipo, valor, status: "ENVIANDO", payload: payloadGuardado, solicitado_por: pediu.pessoaId, email_para: emailValido(email) || null });
+    .insert({
+      ref,
+      sale_ref: entrada.saleRef,
+      tipo: entrada.tipo,
+      valor,
+      status: "ENVIANDO",
+      payload: payloadGuardado,
+      solicitado_por: pediu.pessoaId,
+      email_para: emailValido(email) || null,
+      partes: partesDosSinais.length
+        ? [
+            { saleRef: entrada.saleRef, amount: Math.round((valor - somaDosSinais) * 100) / 100, comandaDate: String(sale.sale_date), patientName: String(sale.patient_name) },
+            ...partesDosSinais,
+          ]
+        : null,
+    });
   if (erroDoRegistro) {
     await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "ERRO", resumo: `Não registrei a emissão ${ref} e por isso NÃO enviei à prefeitura: ${erroDoRegistro.message}` });
     return json({ ok: false, error: `Não consegui registrar a emissão no app, então não enviei à prefeitura. Detalhe: ${erroDoRegistro.message}` }, 500);

@@ -52,6 +52,7 @@ import {
   type TipoRecebimento,
 } from "./recebimentoKanbanData";
 import { NotaNoFechamentoCard } from "./NotaNoFechamentoCard";
+import type { SinalEmAberto } from "@/features/financeiro/sinaisDoPaciente";
 import type { NotaDoFechamento } from "./notaNoFechamento";
 import { todayISO } from "@/lib/localStore";
 
@@ -85,6 +86,10 @@ export function RecebimentoNoKanban({
   pacienteNovo,
   regua,
   titulo,
+  sinais,
+  somarSinais,
+  onSomarSinais,
+  valorDaNota,
 }: {
   valorTexto: string;
   onValorChange: (valor: string) => void;
@@ -133,6 +138,12 @@ export function RecebimentoNoKanban({
   pacienteNovo: boolean;
   regua: string;
   titulo: string;
+  /** Sinais já pagos que entram somados na nota (29/09/2026). */
+  sinais?: SinalEmAberto[];
+  somarSinais?: boolean;
+  onSomarSinais?: (somar: boolean) => void;
+  /** Valor da nota (recebido + sinais somados). Sem ele, a nota é o recebido. */
+  valorDaNota?: number;
 }) {
   const inputArquivo = useRef<HTMLInputElement>(null);
   // Tocar num produto adiciona a linha; tocar de novo soma mais um (duas doses).
@@ -577,7 +588,10 @@ export function RecebimentoNoKanban({
       <NotaNoFechamentoCard
         nota={nota}
         onNotaChange={onNotaChange}
-        valorRecebido={valor}
+        valorRecebido={valorDaNota ?? valor}
+        sinais={sinais}
+        somarSinais={somarSinais}
+        onSomarSinais={onSomarSinais}
         diaISO={todayISO()}
         parcelas={divisao}
         ehSinal={tipo === "SINAL_CONSULTA"}

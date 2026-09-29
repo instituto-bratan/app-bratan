@@ -65,6 +65,8 @@ import { isCoordenacao, canAcompanhamento, canAdministracao, canBaseModules, can
 } from "@/lib/access";
 import type { Pessoa } from "@/types/database";
 import { prefetchRoute } from "@/lib/routePreload";
+import { useQuery } from "@tanstack/react-query";
+import { buscarPacientes } from "@/lib/remote/buscaPaciente";
 import { cn } from "@/lib/utils";
 import { aplicarTema, ehEscuro, guardarTema, iniciarTema, lerTema, rotuloTema, type Tema } from "@/lib/tema";
 import type { Cargo } from "@/types/database";
@@ -453,6 +455,21 @@ function FlowLauncher({
   const groups = useMemo(() => visibleFlowGroups(pessoa), [pessoa]);
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+  const { session, isPreview } = useAuth();
+  // PACIENTES NO ⌘K (29/09/2026): a partir de três letras, os nomes do CRM.
+  const [termoPaciente, setTermoPaciente] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setTermoPaciente(query.trim()), 250);
+    return () => clearTimeout(id);
+  }, [query]);
+  const podeBuscarPaciente = Boolean(session && !isPreview && canCrmBratan(pessoa?.cargo) && pessoa?.cargo !== "limpeza");
+  const pacientes = useQuery({
+    queryKey: ["busca-paciente", termoPaciente],
+    queryFn: () => buscarPacientes(termoPaciente),
+    enabled: open && podeBuscarPaciente && termoPaciente.length >= 3 && !/^\d/.test(termoPaciente),
+    staleTime: 60_000,
+  });
+  const achados = open && podeBuscarPaciente && termoPaciente.length >= 3 ? pacientes.data ?? [] : [];
 
   // ⌘K "FAZER" (14/09/2026, proposta 4.2): além de achar telas, o atalho entende
   // um valor ("1234" → lançar conta de R$ 1.234) e verbos do dia a dia
@@ -549,7 +566,7 @@ function FlowLauncher({
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar tela, ou digitar um valor / verbo (ex.: 1250, comanda, toque)…"
+                  placeholder="Buscar paciente, tela, valor ou verbo (ex.: Simone, 1250, comanda)…"
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && acoes[0]) {
                       event.preventDefault();
@@ -588,7 +605,29 @@ function FlowLauncher({
                   </div>
                 </div>
               ) : null}
-              {filteredGroups.length === 0 && !acoes.length ? (
+              {achados.length ? (
+                <div className="mb-3 rounded-2xl border border-brand-oliva/18 bg-white/60 p-3">
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-brand-oliva">Pacientes</p>
+                  <div className="grid gap-1.5">
+                    {achados.map((paciente) => (
+                      <Button
+                        key={paciente.ref}
+                        type="button"
+                        variant="outline"
+                        className="justify-start"
+                        onClick={() => {
+                          onClose();
+                          prefetchRoute("/crm/contatos/:id");
+                          navigate(`/crm/contatos/${encodeURIComponent(paciente.ref)}`);
+                        }}
+                      >
+                        {paciente.nome || "Sem nome"} <span className="ml-auto text-[10px] opacity-70">abrir a ficha</span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {filteredGroups.length === 0 && !acoes.length && !achados.length ? (
                 <p className="px-1 py-8 text-center text-sm text-muted-foreground">
                   Nada encontrado para "{query.trim()}". Tente outro nome, como "tarefas" ou "kanban" — ou um valor, como "1250".
                 </p>

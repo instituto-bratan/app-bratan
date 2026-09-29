@@ -33,6 +33,7 @@ import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFech
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { createRemoteFinCashEntry, createRemotePagamento, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, salvarRemoteCpfDoContato, uploadRemoteComprovante } from "@/lib/remoteData";
 import { aReceberSugerido, fechamentoTemSaldo, fechamentoVaiTerNota, travaDoAReceber, travaDosDadosDaNota } from "./travasDoFechamento";
+import { sinaisEmAberto, somaDosSinais } from "@/features/financeiro/sinaisDoPaciente";
 import { cpfDigitos, cpfValido } from "@/lib/cpf";
 import { todayISO } from "@/lib/localStore";
 import { RecebimentoNoKanban } from "./RecebimentoNoKanban";
@@ -601,18 +602,27 @@ function CrmKanbanPageConteudo() {
   // tem que ter nf". Sinal de consulta e fechamento sem dinheiro passam —
   // são exceções da operação, e quem decide isso é a função, não a tela.
   const fcValorRecebido = parseFinAmount(fcReceived);
+  // O SINAL ENTRA SOMADO (29/09/2026): os sinais que este paciente já pagou e
+  // que ainda não entraram em nota vão junto na nota de hoje.
+  const [fcSomarSinais, setFcSomarSinais] = useState(true);
+  const fcSinais = useMemo(
+    () => (fcPatient.ref ? sinaisEmAberto({ sales: financeiro.sales, invoices: financeiro.invoices, contactRef: fcPatient.ref }) : []),
+    [fcPatient.ref, financeiro.sales, financeiro.invoices],
+  );
+  const fcSinaisNaNota = fcSomarSinais && fcTipo !== "SINAL_CONSULTA" && fcNota.escolha !== "SEM_NOTA" && fcValorRecebido > 0 ? fcSinais : [];
+  const fcValorDaNota = Math.round((fcValorRecebido + somaDosSinais(fcSinaisNaNota)) * 100) / 100;
   // O plano é calculado UMA vez: a trava, o rótulo do botão e a emissão têm que
   // falar da mesma coisa. Calculado em três lugares, um deles ia divergir.
   const fcPlanoDaNota = planoDeNotas({
     escolha: fcNota.escolha,
-    valorRecebido: fcValorRecebido,
+    valorRecebido: fcValorDaNota,
     divisao: fcNota.divisao,
     diaISO: todayISO(),
     parcelas: fcDivisao,
   });
   const fcTravaDaNota = travaDoFechamento({
     nota: fcNota,
-    valorRecebido: fcValorRecebido,
+    valorRecebido: fcValorDaNota,
     ehSinal: fcTipo === "SINAL_CONSULTA",
     plano: fcPlanoDaNota,
   });
@@ -1376,7 +1386,7 @@ function CrmKanbanPageConteudo() {
         itens: fcItens,
         arquivos: fcArquivos,
         mandaDepois: fcMandaDepois,
-        notaInstrucao: [resumoDaNota(fcNota, planoDeNotas({ escolha: fcNota.escolha, valorRecebido: receivedAmount, divisao: fcNota.divisao, diaISO: todayISO(), parcelas: fcDivisao })), fcNotaInstrucao.trim()]
+        notaInstrucao: [resumoDaNota(fcNota, fcPlanoDaNota), fcSinaisNaNota.length ? `inclui sinal já pago de ${moneyFin(somaDosSinais(fcSinaisNaNota))}` : "", fcNotaInstrucao.trim()]
           .filter(Boolean)
           .join(" · "),
         descricaoPadrao: descricaoPadraoDoFechamento({ tipo: fcTipo, canal: fcResultado }),
@@ -1541,6 +1551,7 @@ function CrmKanbanPageConteudo() {
           email: fcEmailNota,
           solicitadoPor: pessoaAuth?.id ?? null,
           comandaGravada: lancado.comandaGravada,
+          sinais: fcSinaisNaNota,
           invocar: (slug, body) => invocarIntegracao(slug, body),
         });
         if (emissao.recado) {
@@ -2818,6 +2829,10 @@ function CrmKanbanPageConteudo() {
                         lista de destinos se completando (17/08/2026). */}
                     <RecebimentoNoKanban
                       titulo="Recebimento — daqui saem a comanda e o comprovante"
+                      sinais={fcSinais}
+                      somarSinais={fcSomarSinais}
+                      onSomarSinais={setFcSomarSinais}
+                      valorDaNota={fcValorDaNota}
                       valorTexto={fcReceived}
                       onValorChange={setFcReceived}
                       valor={parseFinAmount(fcReceived)}
@@ -2918,6 +2933,10 @@ function CrmKanbanPageConteudo() {
                     <div className="sm:col-span-2">
                       <RecebimentoNoKanban
                         titulo="Pagou alguma coisa? (consulta, bioimpedância, sinal)"
+                        sinais={fcSinais}
+                        somarSinais={fcSomarSinais}
+                        onSomarSinais={setFcSomarSinais}
+                        valorDaNota={fcValorDaNota}
                         valorTexto={fcReceived}
                         onValorChange={setFcReceived}
                         valor={parseFinAmount(fcReceived)}

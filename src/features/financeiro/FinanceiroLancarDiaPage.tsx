@@ -67,6 +67,7 @@ import { NotaNoFechamentoCard } from "@/features/crm/NotaNoFechamentoCard";
 import { emitirNotasDoFechamento } from "@/features/crm/emitirNotaDoFechamento";
 import { notaDoFechamentoVazia, planoDeNotas, resumoDaNota, travaDoFechamento, type NotaDoFechamento } from "@/features/crm/notaNoFechamento";
 import { travaDosDadosDaNota } from "@/features/crm/travasDoFechamento";
+import { sinaisEmAberto, somaDosSinais } from "./sinaisDoPaciente";
 import { NotaDaComandaDialog } from "./NotaDaComandaDialog";
 import { divisaoDosItens, ehSoSinal, estadoDaNota, parcelasDaComanda, quandoPadrao, valorFaturavel } from "./notaNaComandaDoDia";
 
@@ -158,7 +159,15 @@ export function FinanceiroLancarDiaPage() {
   // A descrição VAI junto (29/09/2026): é ela que diz que um item CONSULTA é "Sinal de consulta".
   const itensDaNota = useMemo(() => items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount), description: item.description })).filter((item) => item.amount > 0), [items]);
   const soSinal = ehSoSinal(itensDaNota);
-  const valorDaNota = valorFaturavel(itensDaNota);
+  // O SINAL ENTRA SOMADO (29/09/2026): sinais já pagos por este paciente, sem
+  // nota ainda, vão junto na nota de hoje.
+  const [somarSinais, setSomarSinais] = useState(true);
+  const sinaisDoPaciente = useMemo(
+    () => (patientRef && !editingSaleId ? sinaisEmAberto({ sales: financeiro.sales, invoices: financeiro.invoices, contactRef: patientRef }) : []),
+    [patientRef, editingSaleId, financeiro.sales, financeiro.invoices],
+  );
+  const sinaisNaNota = somarSinais && !soSinal && notaFiscal.escolha !== "SEM_NOTA" ? sinaisDoPaciente : [];
+  const valorDaNota = Math.round((valorFaturavel(itensDaNota) + (valorFaturavel(itensDaNota) > 0 ? somaDosSinais(sinaisNaNota) : 0)) * 100) / 100;
   const parcelasDaNota = useMemo(() => parcelasDaComanda(payments.map((p) => ({ method: p.method, installments: Math.max(1, Number(p.installments) || 1) }))), [payments]);
   // A divisão acompanha os itens enquanto a pessoa digita; quem escolher "repartida" já encontra os valores certos.
   useEffect(() => {
@@ -482,6 +491,7 @@ export function FinanceiroLancarDiaPage() {
             email: emailNota,
             solicitadoPor: pessoa?.id ?? null,
             comandaGravada,
+            sinais: sinaisNaNota,
             invocar: (slug, body) => invocarIntegracao(slug, body),
           });
           if (emissao.recado) {
@@ -848,6 +858,9 @@ export function FinanceiroLancarDiaPage() {
                         onEmailChange={setEmailNota}
                         cpfRascunho={cpfNota}
                         onCpfChange={setCpfNota}
+                        sinais={sinaisDoPaciente}
+                        somarSinais={somarSinais}
+                        onSomarSinais={setSomarSinais}
                       />
                     ) : (
                       <p className="rounded-md border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-xs text-muted-foreground">

@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { cpfEnquantoDigita, cpfValido } from "@/lib/cpf";
 import { moneyFin, parseFinAmount, type FinPaymentMethod } from "@/features/financeiro/financeiroData";
+import { fraseDosSinais, somaDosSinais, type SinalEmAberto } from "@/features/financeiro/sinaisDoPaciente";
 import {
   economiaDaUnificada,
   escolhaDaNotaLabels,
@@ -81,6 +82,9 @@ export function NotaNoFechamentoCard({
   onEmailChange,
   cpfRascunho = "",
   onCpfChange,
+  sinais = [],
+  somarSinais = true,
+  onSomarSinais,
 }: {
   nota: NotaDoFechamento;
   onNotaChange: (nota: NotaDoFechamento) => void;
@@ -99,6 +103,13 @@ export function NotaNoFechamentoCard({
    */
   cpfRascunho?: string;
   onCpfChange?: (cpf: string) => void;
+  /**
+   * SINAIS JÁ PAGOS (29/09/2026). Entram somados nesta nota; `valorRecebido`
+   * que chega aqui já vem com a soma quando `somarSinais` está ligado.
+   */
+  sinais?: SinalEmAberto[];
+  somarSinais?: boolean;
+  onSomarSinais?: (somar: boolean) => void;
 }) {
   const [mostrarTexto, setMostrarTexto] = useState(false);
   const plano = planoDeNotas({ escolha: nota.escolha, valorRecebido, divisao: nota.divisao, diaISO, parcelas });
@@ -120,6 +131,21 @@ export function NotaNoFechamentoCard({
           Sinal de consulta é adiantamento: a nota sai inteira quando o paciente fechar o tratamento. Emitir agora sairia em
           duplicidade.
         </p>
+      ) : null}
+
+      {sinais.length && !ehSinal && nota.escolha !== "SEM_NOTA" ? (
+        <label className="flex items-start gap-2 rounded-md border border-brand-dourado/40 bg-white/70 p-2.5 text-xs leading-snug text-brand-tinta">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            checked={somarSinais}
+            onChange={(evento) => onSomarSinais?.(evento.target.checked)}
+            disabled={!onSomarSinais}
+          />
+          <span>
+            {fraseDosSinais(sinais)} {somarSinais ? `A nota sai com ${moneyFin(valorRecebido)} (${moneyFin(somaDosSinais(sinais))} do sinal + ${moneyFin(Math.max(0, valorRecebido - somaDosSinais(sinais)))} de hoje).` : "Desmarcado: o sinal fica para a próxima nota deste paciente."}
+          </span>
+        </label>
       ) : null}
 
       {/* A escolha é do PACIENTE. Fica gravada porque é decisão dele, não do operador. */}

@@ -33,6 +33,7 @@ import {
   suggestInvoicePlans,
   type FinExpense,
   type FinInvoice,
+  type FinSale,
   type FinInvoiceType,
   type PendingInvoiceSale,
 } from "./financeiroData";
@@ -43,6 +44,7 @@ import type { NfseEmissao } from "@/lib/remote/integracoes";
 import { fraseDasNotasFocus, linhasDasNotasFocus, notasFocusVivas } from "./notasEmitidasFocus";
 import { abaControleImpostos } from "./exportContabilidade";
 import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
+import { sinaisEsperandoAConsulta, somaDosSinais } from "./sinaisDoPaciente";
 
 const typeBadgeVariant: Record<FinInvoiceType, "gold" | "muted" | "outline"> = {
   CONSULTA: "gold",
@@ -732,6 +734,7 @@ export function FinanceiroImpostosPage() {
 
         {/* O LOTE CONFERIDO (22/09/2026): as notas de setembro que faltavam, uma linha cada, emitidas pela Focus em sequência. */}
         <LoteDeNotasCard readOnly={readOnly} />
+        <SinaisEsperandoCard sales={financeiro.sales} invoices={financeiro.invoices} />
 
         <Card>
           <CardHeader>
@@ -859,3 +862,45 @@ export function FinanceiroImpostosPage() {
 }
 
 export default FinanceiroImpostosPage;
+
+
+// OS SINAIS QUE ESPERAM A CONSULTA (29/09/2026). Sinal não emite nota; ele
+// entra somado na nota da consulta ou do tratamento — o fechamento e o Lançar
+// Dia já fazem isso sozinhos. Este cartão mostra o que ainda está esperando,
+// para nenhum sinal ficar sem nota para sempre.
+function SinaisEsperandoCard({ sales, invoices }: { sales: FinSale[]; invoices: FinInvoice[] }) {
+  const lista = sinaisEsperandoAConsulta(sales, invoices);
+  if (!lista.length) return null;
+  const hoje = todayISO();
+  const dias = (iso: string) => Math.max(0, Math.round((Date.parse(`${hoje}T12:00:00`) - Date.parse(`${iso}T12:00:00`)) / 86_400_000));
+  const antigos = lista.filter((s) => dias(s.dia) > 60).length;
+  return (
+    <Card className="border-brand-oliva/20 bg-white/70">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+          Sinais esperando a consulta
+          <InfoTip title="Por que o sinal não tem nota">
+            Sinal é adiantamento: não emite nota sozinho. Quando o paciente passa na consulta ou fecha o tratamento, o fechamento e o Lançar Dia somam o sinal na nota do dia, sem ninguém precisar lembrar.
+          </InfoTip>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-2 text-sm">
+        <p className="text-muted-foreground">
+          {lista.length} {lista.length === 1 ? "sinal" : "sinais"} ({moneyFin(somaDosSinais(lista))}) ainda sem nota. Eles entram somados na próxima nota de cada paciente
+          {antigos ? `; ${antigos} já passaram de 60 dias — vale ver com o comercial se a consulta aconteceu.` : "."}
+        </p>
+        <ul className="grid gap-1">
+          {lista.map((s) => (
+            <li key={s.saleRef} className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-brand-oliva/12 bg-white/80 px-3 py-1.5">
+              <span className="font-medium text-brand-tinta">{s.paciente}</span>
+              <span className="text-xs text-muted-foreground">
+                pago em {s.dia.split("-").reverse().join("/")} · há {dias(s.dia)} dias
+              </span>
+              <span className="font-semibold tabular-nums">{moneyFin(s.valor)}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
