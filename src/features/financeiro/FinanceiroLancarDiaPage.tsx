@@ -69,6 +69,7 @@ import { notaDoFechamentoVazia, planoDeNotas, resumoDaNota, travaDoFechamento, t
 import { travaDosDadosDaNota } from "@/features/crm/travasDoFechamento";
 import { NotaDaComandaDialog } from "./NotaDaComandaDialog";
 import { divisaoDosItens, ehSoSinal, estadoDaNota, parcelasDaComanda, quandoPadrao, valorFaturavel } from "./notaNaComandaDoDia";
+import { travaDaComandaComNota, valorDaComandaMudou } from "./notasEmitidasFocus";
 
 type DraftItem = { itemType: FinSaleItemType; amount: string; description: string };
 type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine
@@ -199,6 +200,18 @@ export function FinanceiroLancarDiaPage() {
     enabled: focusLigada && daySales.length > 0 && Boolean(session) && !isPreview,
     staleTime: 30_000,
   });
+  // TRAVA DA NOTA AUTORIZADA (29/09/2026, auditoria B4): antes de excluir ou de
+  // mudar o valor, confere NA HORA (não no cache da lista, que só existe com a
+  // Focus ligada) se a comanda tem NF autorizada. Se não der para conferir, não
+  // deixa seguir — melhor pedir de novo do que apagar comanda com nota.
+  async function travaDaNotaDaComanda(saleId: string): Promise<string | null> {
+    if (!useRemote) return null;
+    try {
+      return travaDaComandaComNota(await listRemoteNfseDasComandas([saleId]));
+    } catch (error) {
+      return `Não consegui conferir se esta comanda tem nota fiscal (${error instanceof Error ? error.message : String(error)}). Tente de novo.`;
+    }
+  }
   const dayZeroMark = useMemo(
     () => financeiro.reconciliations.find((rec) => rec.day === date && rec.divergenceNote === "Dia sem atendimentos (zerado)"),
     [financeiro.reconciliations, date],
@@ -360,6 +373,10 @@ export function FinanceiroLancarDiaPage() {
       aguardandoExplicacao: editingSale?.aguardandoExplicacao ?? false,
       createdAt: editingSale?.createdAt ?? new Date().toISOString(),
     };
+    if (editingSale && valorDaComandaMudou(editingSale, sale)) {
+      const trava = await travaDaNotaDaComanda(editingSale.id);
+      if (trava) return setFeedback(trava);
+    }
     // Paciente da comanda sempre existe no CRM: com o seletor, ou já vem
     // vinculado (ref), ou o app acha/cria o contato. O ref é resolvido de forma
     // SÍNCRONA aqui (antes do addSale) — assim ele nunca é gravado vazio na
@@ -1007,6 +1024,11 @@ export function FinanceiroLancarDiaPage() {
                           size="icon"
                           aria-label={`Excluir lançamento de ${sale.patientName}`}
                           onClick={async () => {
+                            const trava = await travaDaNotaDaComanda(sale.id);
+                            if (trava) {
+                              toast(trava, { tom: "atencao", duracaoMs: 8000 });
+                              return;
+                            }
                             if (!(await confirmar(`Excluir a comanda de ${sale.patientName} (${moneyFin(saleTotal(sale))})?`, { corpo: "Os totais e a P12 se ajustam sozinhos.", destrutivo: true, confirmar: "Excluir" }))) return;
                             if (editingSaleId === sale.id) resetForm();
                             financeiro.removeSale(sale.id);

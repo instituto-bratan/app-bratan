@@ -58,3 +58,34 @@ export function fraseDasNotasFocus(vivas: NfseEmissao[]) {
   });
   return `Emitida pela Focus: ${partes.join(" · ")}. ${vivas.every((e) => emissaoAutorizada(e.status) && e.numero) ? "Confira e registre no controle." : "Consulte para pegar o número."}`;
 }
+
+/**
+ * COMANDA COM NOTA AUTORIZADA NÃO MUDA DE VALOR NEM SOME (29/09/2026, auditoria B4).
+ * A nota já foi para a prefeitura com aquele valor; apagar ou mexer no valor da
+ * comanda deixava o faturamento e a nota contando histórias diferentes. Devolve
+ * a frase da trava, ou null quando pode seguir. Nota cancelada não trava.
+ */
+export function travaDaComandaComNota(emissoes: Pick<NfseEmissao, "status" | "numero">[]): string | null {
+  const autorizadas = emissoes.filter((e) => emissaoAutorizada(e.status));
+  if (!autorizadas.length) return null;
+  const numeros = [...new Set(autorizadas.map((e) => (e.numero ? String(e.numero) : "")).filter(Boolean))];
+  const qual = numeros.length > 1 ? `as NFs nº ${numeros.slice(0, -1).join(", ")} e ${numeros[numeros.length - 1]}` : numeros.length ? `a NF nº ${numeros[0]}` : "uma NF autorizada";
+  return `Esta comanda tem ${qual}. Cancele a nota antes em Impostos & NFs.`;
+}
+
+/** Mudou o valor que a nota usa? Total ou a soma por tipo de item (consulta × tratamento). */
+export function valorDaComandaMudou(
+  antes: { items: { itemType: string; amount: number }[] },
+  depois: { items: { itemType: string; amount: number }[] },
+) {
+  const somaPorTipo = (items: { itemType: string; amount: number }[]) => {
+    const mapa = new Map<string, number>();
+    for (const item of items) mapa.set(item.itemType, (mapa.get(item.itemType) ?? 0) + Math.round((Number(item.amount) || 0) * 100));
+    return mapa;
+  };
+  const a = somaPorTipo(antes.items);
+  const b = somaPorTipo(depois.items);
+  const tipos = new Set([...a.keys(), ...b.keys()]);
+  for (const tipo of tipos) if (Math.abs((a.get(tipo) ?? 0) - (b.get(tipo) ?? 0)) >= 1) return true;
+  return false;
+}

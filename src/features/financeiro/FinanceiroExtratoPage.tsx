@@ -104,18 +104,24 @@ export function FinanceiroExtratoPage() {
   // CONCILIAÇÃO GRAVADA (14/09/2026): o que casou sozinho fica salvo no banco,
   // linha a linha, em vez de ser recalculado a cada abertura. Só grava o que
   // ainda não tem match; o que a pessoa marcou (IGNORADO) não é tocado.
+  // COM A REFERÊNCIA (29/09/2026, auditoria B5): antes gravava match_ref null
+  // para tudo, e ninguém sabia depois COM QUE comanda/conta a linha casou. Agora
+  // grava o id do que casou; o que casou só pela descrição (rendimento,
+  // adiantamento da maquininha — não há registro no app) NÃO é gravado: é
+  // reconhecido de novo a cada abertura, pela mesma regra.
   const gravadosRef = useRef(new Set<string>());
   useEffect(() => {
     if (!useRemote || readOnly) return;
     const novos: { clientRef: string; matchKind: "COMANDA" | "DESPESA" | "COFRE"; matchRef: string | null; matchNote: string | null }[] = [];
     for (const casada of balde.casadas) {
-      if (casada.entry.matchKind || gravadosRef.current.has(casada.entry.clientRef)) continue;
-      novos.push({ clientRef: casada.entry.clientRef, matchKind: casada.tipo, matchRef: null, matchNote: casada.comQue });
+      if (!casada.ref || casada.entry.matchKind || gravadosRef.current.has(casada.entry.clientRef)) continue;
+      novos.push({ clientRef: casada.entry.clientRef, matchKind: casada.tipo, matchRef: casada.ref, matchNote: casada.comQue });
     }
     for (const grupo of balde.casadasAgrupadas) {
+      if (!grupo.ref) continue;
       for (const entry of grupo.entries) {
         if (entry.matchKind || gravadosRef.current.has(entry.clientRef)) continue;
-        novos.push({ clientRef: entry.clientRef, matchKind: "DESPESA", matchRef: null, matchNote: `${grupo.comQue} (pago em ${grupo.entries.length} lançamentos)` });
+        novos.push({ clientRef: entry.clientRef, matchKind: grupo.tipo, matchRef: grupo.ref, matchNote: `${grupo.comQue} (pago em ${grupo.entries.length} lançamentos)` });
       }
     }
     if (!novos.length) return;
