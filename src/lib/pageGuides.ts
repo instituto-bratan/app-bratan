@@ -686,6 +686,27 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    // Fatura do cartão linha a linha (29/09/2026).
+    pattern: "/financeiro/fatura-cartao",
+    guide: {
+      title: "Fatura do cartão",
+      whatIs:
+        "A fatura do Itaú (VISA da obra e Mastercard) aberta linha a linha: o que foi comprado, em qual categoria, e se a compra já estava lançada em Compras. Ao confirmar, a fatura vira UMA conta a pagar com o total do boleto — e a P12 passa a mostrar o gasto pela categoria de cada compra.",
+      steps: [
+        "Escolha o cartão e o mês do vencimento. Se já existe a conta de estimativa desse mês, o app mostra qual é.",
+        "No Itaú Empresas, baixe a fatura fechada em Excel (.xlsx) ou CSV e solte o arquivo aqui. Só tem o PDF? Solte o PDF — ou copie o texto dele e cole.",
+        "Confira o vencimento e o total do boleto, e revise as linhas marcadas em amarelo: categoria sem regra ou loja de tudo (Mercado Livre, Amazon).",
+        "Veja a frase do resumo: quantas compras já estavam em Compras e quantas não tinham registro. As sem registro são as que ninguém lançou.",
+        "Confirme. A conta de estimativa é atualizada com o valor real (ou uma conta nova é criada). A mesma fatura não entra duas vezes.",
+      ],
+      tips: [
+        "A conta da fatura continua sendo o pagamento; as linhas só explicam o gasto. Por isso nada é contado em dobro na P12.",
+        "Errou o arquivo? Desfaça a importação e importe de novo: a conta a pagar fica com o total que já tem.",
+        "O número do cartão nunca é guardado — só os quatro finais.",
+      ],
+    },
+  },
+  {
     pattern: "/estoque",
     guide: {
       title: "Estoque",

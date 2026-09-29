@@ -47,7 +47,7 @@ function PublicadorAtivo({ userId }: { userId: string | null }) {
     if (!config || !metasConfig || !financeiro.sales.length) return null;
     const planilha = buildPlanilhaLucro({
       sales: financeiro.sales,
-      expenses: financeiro.expenses,
+      expenses: financeiro.expensesPorCategoria,
       categories: financeiro.categories,
       reconciliations: financeiro.reconciliations,
       marcas: marcasQuery.data ?? [],
@@ -62,7 +62,7 @@ function PublicadorAtivo({ userId }: { userId: string | null }) {
     metasConfigQuery.data,
     marcasQuery.data,
     financeiro.sales,
-    financeiro.expenses,
+    financeiro.expensesPorCategoria,
     financeiro.categories,
     financeiro.reconciliations,
     financeiro.crediarioProfits,

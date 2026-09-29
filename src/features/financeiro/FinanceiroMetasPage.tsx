@@ -329,7 +329,7 @@ export function FinanceiroMetasPage() {
         <ResumoMesCard
           crediarioProfits={financeiro.crediarioProfits}
           sales={financeiro.sales}
-          expenses={financeiro.expenses}
+          expenses={financeiro.expensesPorCategoria}
           categories={financeiro.categories}
           savingsMoves={financeiro.savingsMoves}
           metas={config}

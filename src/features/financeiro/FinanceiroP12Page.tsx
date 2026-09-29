@@ -81,8 +81,8 @@ export function FinanceiroP12Page() {
   const [hideEmpty, setHideEmpty] = useState(true);
   const financeiro = useFinanceiro(year);
   const matrix = useMemo(
-    () => buildP12Matrix(financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits],
+    () => buildP12Matrix(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, year, financeiro.savingsMoves, financeiro.crediarioProfits],
   );
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const visibleMonths = monthFilter === null ? Array.from({ length: 12 }, (_, index) => index) : [monthFilter];
@@ -100,7 +100,7 @@ export function FinanceiroP12Page() {
       abaP12(matrix, { meses: [mesExport], soComValor: hideEmpty }),
       abaContasAPagar({
         sales: financeiro.sales,
-        expenses: financeiro.expenses,
+        expenses: financeiro.expensesPorCategoria,
         categories: financeiro.categories,
         savingsMoves: financeiro.savingsMoves,
         crediarioProfits: financeiro.crediarioProfits,
@@ -108,7 +108,7 @@ export function FinanceiroP12Page() {
         monthKey,
       }),
     ];
-  }, [matrix, mesExport, hideEmpty, year, financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.savingsMoves, financeiro.crediarioProfits, financeiro.purchases]);
+  }, [matrix, mesExport, hideEmpty, year, financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, financeiro.savingsMoves, financeiro.crediarioProfits, financeiro.purchases]);
   const arquivoP12 = mesExport === "ANO" ? `P12-${year}` : `P12-${year}-${String(mesExport + 1).padStart(2, "0")}-${p12MonthLabels[mesExport]}`;
 
   // Resumo do mês: usa o mês filtrado ou, no "Ano inteiro", o mês atual.
@@ -131,7 +131,7 @@ export function FinanceiroP12Page() {
           amount: saleTotal(sale),
         }));
     }
-    return financeiro.expenses
+    return financeiro.expensesPorCategoria
       .filter((expense) => {
         const reference = expense.dueDate || expense.paidAt || "";
         return (
@@ -152,7 +152,7 @@ export function FinanceiroP12Page() {
           .join(" · "),
         amount: expense.amount,
       }));
-  }, [selection, financeiro.sales, financeiro.expenses, year]);
+  }, [selection, financeiro.sales, financeiro.expensesPorCategoria, year]);
 
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · P12" module="fin-p12">
@@ -247,7 +247,7 @@ export function FinanceiroP12Page() {
             4 itens que se auto-somam no Faturamento Bruto; crediário fica FORA. */}
         <FechamentoContabilCard
           sales={financeiro.sales}
-          expenses={financeiro.expenses}
+          expenses={financeiro.expensesPorCategoria}
           savingsMoves={financeiro.savingsMoves}
           crediarioProfits={financeiro.crediarioProfits}
           monthKey={resumoMonthKey}
@@ -267,7 +267,7 @@ export function FinanceiroP12Page() {
         <ResumoMesCard
           crediarioProfits={financeiro.crediarioProfits}
           sales={financeiro.sales}
-          expenses={financeiro.expenses}
+          expenses={financeiro.expensesPorCategoria}
           categories={financeiro.categories}
           savingsMoves={financeiro.savingsMoves}
           metas={metasConfig}

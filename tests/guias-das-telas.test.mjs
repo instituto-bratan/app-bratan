@@ -19,6 +19,7 @@ const telas = [
   "/financeiro/extrato",
   "/financeiro/contas",
   "/financeiro/lucro",
+  "/financeiro/fatura-cartao",
   "/administracao/acessos",
   "/administracao/ia",
   "/administracao/configuracoes",

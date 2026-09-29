@@ -198,7 +198,8 @@ export function FinanceiroLucroPage() {
     () =>
       buildPlanilhaLucro({
         sales: financeiro.sales,
-        expenses: financeiro.expenses,
+        // Fatura do cartão pelo rateio (29/09/2026): a parte de obra sai do operacional.
+        expenses: financeiro.expensesPorCategoria,
         categories: financeiro.categories,
         reconciliations: financeiro.reconciliations,
         marcas,
@@ -206,7 +207,7 @@ export function FinanceiroLucroPage() {
         monthKey: month,
         hoje,
       }),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.reconciliations, marcas, config, month, hoje],
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, financeiro.reconciliations, marcas, config, month, hoje],
   );
 
   // Passo 1 da aula: os três meses fechados antes do mês escolhido. Meses de
@@ -214,8 +215,8 @@ export function FinanceiroLucroPage() {
   // ficam de fora em vez de aparecer zerados.
   const mesesAvaliados = useMemo(() => mesesAnteriores(month, 3).filter((m) => m.startsWith(`${year}-`)), [month, year]);
   const avaliacao = useMemo(
-    () => avaliacaoInstantanea(financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.crediarioProfits, mesesAvaliados),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.crediarioProfits, mesesAvaliados],
+    () => avaliacaoInstantanea(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, financeiro.crediarioProfits, mesesAvaliados),
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, financeiro.crediarioProfits, mesesAvaliados],
   );
 
   const reguaHoje = reguaNoDia(config, hoje);
