@@ -1,6 +1,6 @@
 // AGENDA DO DIA — QUEM VÊ E QUEM MARCA (29/09/2026).
 // O app (src/lib/access.ts, módulo "agenda") e o banco
-// (202609290001_agenda_do_dia.sql) têm que dizer a mesma coisa; a sync de hora
+// (202609290003_agenda_do_dia.sql) têm que dizer a mesma coisa; a sync de hora
 // em hora não pode tocar no que a recepção marcou; o espelho só ganha colunas.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import { loadTs } from "./helpers/load-ts.mjs";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ler = (relativo) => fs.readFileSync(path.join(repoRoot, relativo), "utf8");
 const access = loadTs("src/lib/access.ts");
-const migration = ler("supabase/migrations/202609290001_agenda_do_dia.sql");
+const migration = ler("supabase/migrations/202609290003_agenda_do_dia.sql");
 
 const veem = ["recepcionista", "secretaria_executiva", "enfermeira", "gestor", "gestor_financeiro", "ceo", "dr_daniel"];
 const naoVeem = ["marketing", "nutricionista", "limpeza"];

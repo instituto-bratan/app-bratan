@@ -325,7 +325,7 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       // Agenda do dia (29/09/2026): quem recebe o paciente (recepção,
       // enfermagem) e a coordenação veem e marcam Veio/Faltou. Marketing,
       // nutrição e limpeza não veem por padrão (nome e horário de paciente).
-      // Espelho da RLS: supabase/migrations/202609290001_agenda_do_dia.sql.
+      // Espelho da RLS: supabase/migrations/202609290003_agenda_do_dia.sql.
       return canAgenda(cargo) ? "EDITAR" : "OCULTO";
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
