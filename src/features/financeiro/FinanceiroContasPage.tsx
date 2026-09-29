@@ -1333,7 +1333,11 @@ export function FinanceiroContasPage() {
                                 <Badge className="bg-emerald-100 text-emerald-800">Paga {expense.paidAt.split("-").reverse().slice(0, 2).join("/")}</Badge>
                               </button>
                             ) : (
-                              <Button type="button" size="sm" variant="outline" onClick={() => financeiro.setExpensePaid(expense.id, now)}>
+                              // Mesma porta de pagarConta (29/09/2026, auditoria B2): antes este
+                              // botão chamava setExpensePaid direto e pagava conta acima do
+                              // limite sem aprovação, a regra que a Fila do dia e o "pagar
+                              // selecionadas" já respeitavam.
+                              <Button type="button" size="sm" variant="outline" onClick={() => pagarConta(expense)}>
                                 Marcar paga
                               </Button>
                             )}
