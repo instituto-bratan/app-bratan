@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { chaveDoCrediario } from "@/features/financeiro/dinheiroDaComanda";
+import { gravarRemoteDinheiroDaComanda } from "@/lib/remote/dinheiroDaComanda";
 import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,7 +33,7 @@ import {
 import { formataValor, itensDaComanda, totalDosItensFechados, type ItemFechado } from "@/features/financeiro/catalogoPrecificacao";
 import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFechamentoCard";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
-import { createRemoteFinCashEntry, createRemotePagamento, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, salvarRemoteCpfDoContato, uploadRemoteComprovante } from "@/lib/remoteData";
+import { createRemotePagamento, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, salvarRemoteCpfDoContato, uploadRemoteComprovante } from "@/lib/remoteData";
 import { aReceberSugerido, fechamentoTemSaldo, fechamentoVaiTerNota, travaDoAReceber, travaDosDadosDaNota } from "./travasDoFechamento";
 import { sinaisEmAberto, somaDosSinais } from "@/features/financeiro/sinaisDoPaciente";
 import { cpfDigitos, cpfValido } from "@/lib/cpf";
@@ -1067,17 +1069,21 @@ function CrmKanbanPageConteudo() {
     const valorDinheiro = Math.round(parcelasDinheiro.reduce((soma, parcela) => soma + valorDaParcela(parcela), 0) * 100) / 100;
     const valorComanda = Math.round((values.valorRecebido - valorDinheiro) * 100) / 100;
 
+    // O id da comanda nasce antes (29/09/2026): a entrada do crediário fica presa
+    // a ela, e a comanda mostra "R$ X em dinheiro no Crediário" no Lançar Dia.
+    const saleId = createFinId("fsale");
     if (valorDinheiro > 0) {
       const entradaNoCaixa = {
-        id: createFinId("fcash"),
-        entryDate: todayISO(),
-        direction: "ENTRADA" as const,
-        description: `Fechamento — ${values.pacienteNome} (dinheiro)`,
-        amount: valorDinheiro,
-        crmContactRef: values.contactRef,
+        id: chaveDoCrediario(saleId),
+        dia: todayISO(),
+        valor: valorDinheiro,
+        descricao: `Fechamento — ${values.pacienteNome} (dinheiro)`,
+        contactRef: values.contactRef || null,
+        saleRef: valorComanda > 0 ? saleId : null,
       };
       if (podeSubirArquivo) {
-        void createRemoteFinCashEntry(entradaNoCaixa, pessoaAuth?.id ?? null).catch((falha) => {
+        // Pela função do banco: quem fecha no Kanban nem sempre é da coordenação (dona do caixa).
+        void gravarRemoteDinheiroDaComanda(entradaNoCaixa).catch((falha) => {
           console.warn("Entrada do caixa não sincronizou.", falha);
           setFeedback(
             `⚠️ O DINHEIRO NÃO ENTROU NO CAIXA (${(falha as Error).message}). Lance a entrada na mão em Financeiro › Crediário para o cofre não ficar furado.`,
@@ -1106,7 +1112,6 @@ function CrmKanbanPageConteudo() {
       return { saleId: null, valorDinheiro, valorComanda: 0, comandaGravada: Promise.resolve(false) };
     }
 
-    const saleId = createFinId("fsale");
     const comanda: FinSale = {
       id: saleId,
       saleDate: todayISO(),

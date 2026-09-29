@@ -102,7 +102,7 @@ test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
   // REGRA 20/08/2026: dinheiro NÃO vira pagamento de comanda — vai direto pro
   // caixa do crediário, com o vínculo do paciente (é a regra da casa desde o
   // caso Guilherme R$ 8.000).
-  assert.ok(/parcelasDinheiro/.test(fonte) && /createRemoteFinCashEntry\(entradaNoCaixa/.test(fonte), "dinheiro vai pro caixa do crediário");
+  assert.ok(/parcelasDinheiro/.test(fonte) && /gravarRemoteDinheiroDaComanda\(entradaNoCaixa/.test(fonte), "dinheiro vai pro caixa do crediário");
   assert.ok(/parcelasComanda = divisaoBase\.filter\(\(parcela\) => parcela\.forma !== "DINHEIRO"\)/.test(fonte), "a comanda fica só com o que o banco confere");
 });
 

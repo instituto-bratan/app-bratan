@@ -59,6 +59,8 @@ import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { ConferenciaFechamentoCard } from "./ConferenciaFechamentoCard";
 import { useFinanceiro } from "./useFinanceiro";
 import { useMesesFechados } from "./useMesesFechados";
+import { chaveDoCrediario, descricaoDoCrediario, dinheiroSemComanda, fraseDoDinheiro, pacienteDaDescricao, separarDinheiro } from "./dinheiroDaComanda";
+import { gravarRemoteDinheiroDaComanda, listRemoteDinheiroDaComandaDoDia } from "@/lib/remote/dinheiroDaComanda";
 import { avisoDoMesFechado } from "./mesFechado";
 import { confirmar, toast } from "@/components/ui/avisos";
 import { integracaoLigada } from "@/lib/integracoes";
@@ -159,13 +161,31 @@ export function FinanceiroLancarDiaPage() {
   const [notaDaComanda, setNotaDaComanda] = useState<FinSale | null>(null);
 
   const summary = useMemo(() => buildDailyCardSummary(financeiro.sales, date), [financeiro.sales, date]);
+  // DINHEIRO NO CREDIÁRIO (29/09/2026): o que foi pago em dinheiro hoje, ligado a paciente/comanda.
+  const dinheiroDoDia = useQuery({
+    queryKey: ["crediario-da-comanda", date],
+    queryFn: () => listRemoteDinheiroDaComandaDoDia(date).catch(() => []),
+    enabled: useRemote,
+    staleTime: 30_000,
+  });
+  const entradasDoDia = dinheiroDoDia.data ?? [];
+  const dinheiroNoCrediarioDoDia = Math.round(entradasDoDia.reduce((soma, entrada) => soma + entrada.valor, 0) * 100) / 100;
   const daySales = useMemo(
     () => financeiro.sales.filter((sale) => sale.saleDate === date),
     [financeiro.sales, date],
   );
 
   // A descrição VAI junto (29/09/2026): é ela que diz que um item CONSULTA é "Sinal de consulta".
-  const itensDaNota = useMemo(() => items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount), description: item.description })).filter((item) => item.amount > 0), [items]);
+  // A nota é só do que entra no faturamento (29/09/2026): a parte em dinheiro vai para o Crediário e não emite nota.
+  const divisaoDoRascunho = useMemo(
+    () =>
+      separarDinheiro(
+        items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount), description: item.description })).filter((item) => item.amount > 0),
+        payments.map((payment) => ({ method: payment.method, amount: parseAmount(payment.amount) })),
+      ),
+    [items, payments],
+  );
+  const itensDaNota = divisaoDoRascunho.itensDaComanda;
   const soSinal = ehSoSinal(itensDaNota);
   // O SINAL ENTRA SOMADO (29/09/2026): sinais já pagos por este paciente, sem
   // nota ainda, vão junto na nota de hoje.
@@ -368,14 +388,19 @@ export function FinanceiroLancarDiaPage() {
       );
 
     const editingSale = editingSaleId ? financeiro.sales.find((existing) => existing.id === editingSaleId) : null;
+    // DINHEIRO SAI DA COMANDA E VAI PARA O CREDIÁRIO (29/09/2026) — mesma regra do Kanban.
+    const divisao = separarDinheiro(validItems, validPayments);
+    if (editingSale && divisao.soDinheiro) {
+      return setFeedback("Esta comanda ficou toda em dinheiro. Exclua a comanda e lance de novo: o dinheiro vai inteiro para o Crediário, fora do faturamento.");
+    }
     const sale: FinSale = {
       id: editingSale?.id ?? createFinId("fsale"),
       saleDate: date,
       patientName: patientName.trim(),
       crmContactRef: patientRef,
       notes: notes.trim(),
-      items: validItems,
-      payments: validPayments,
+      items: divisao.itensDaComanda,
+      payments: divisao.pagamentosDaComanda,
       adhesion,
       // O CAMINHO DAS PEDRAS NÃO PODE SE PERDER NA EDIÇÃO (25/08/2026): estes
       // campos nascem no fechamento do Kanban e eram TODOS zerados quando
@@ -445,7 +470,8 @@ export function FinanceiroLancarDiaPage() {
               forma: "OUTRO",
               novoPendente: item.novoPendente,
               recebidoPor: pessoa?.id ?? null,
-              saleRef: sale.id,
+              // Tudo em dinheiro: não há comanda; o dinheiro está no Crediário (forma OUTRO não entra de novo no caixa).
+              saleRef: divisao.soDinheiro ? null : sale.id,
             })
             .catch((error) => {
               console.warn("Não consegui abater o lembrete com esta comanda.", error);
@@ -488,12 +514,42 @@ export function FinanceiroLancarDiaPage() {
       lembreteNote = ` Abatido dos Lembretes: ${moneyFin(encaixe.totalAbatido)}${quitados ? ` (${quitados} quitado${quitados > 1 ? "s" : ""})` : ""} — sem duplicar.`;
     }
 
+    let dinheiroNote = "";
+    if (divisao.dinheiro > 0) {
+      const entrada = {
+        id: chaveDoCrediario(sale.id),
+        dia: date,
+        valor: divisao.dinheiro,
+        descricao: descricaoDoCrediario(sale.patientName, divisao.resumoDosItens),
+        contactRef: sale.crmContactRef || null,
+        saleRef: divisao.soDinheiro ? null : sale.id,
+      };
+      dinheiroNote = ` ${moneyFin(divisao.dinheiro)} em dinheiro foi para o Crediário, fora do faturamento.`;
+      if (useRemote) {
+        void gravarRemoteDinheiroDaComanda(entrada)
+          .then(() => void queryClient.invalidateQueries({ queryKey: ["crediario-da-comanda"] }))
+          .catch((falha) => {
+            console.warn("Dinheiro não entrou no Crediário.", falha);
+            toast(`O DINHEIRO NÃO ENTROU NO CREDIÁRIO (${(falha as Error).message}). Lance a entrada na mão em Financeiro › Crediário para o cofre não ficar furado.`, { tom: "erro", duracaoMs: 12000 });
+          });
+      }
+    }
+    if (divisao.soDinheiro) {
+      // Tudo em dinheiro: não nasce comanda (seria R$ 0 no faturamento). O registro é o Crediário, e ele aparece na lista do dia.
+      setFeedback(`Lançado no Crediário: ${sale.patientName} · ${moneyFin(divisao.dinheiro)} em dinheiro, fora do faturamento.${crmNote}${lembreteNote}`);
+      resetForm();
+      setNotaFiscal(notaDoFechamentoVazia);
+      setCpfNota("");
+      setAbaterLembrete(true);
+      return;
+    }
+
     if (editingSale) {
       financeiro.updateSale(sale);
-      setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.${crmNote}`);
+      setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.${crmNote}${dinheiroNote}`);
     } else {
       const comandaGravada = financeiro.addSale(sale);
-      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))}.${crmNote}${lembreteNote} Pode adicionar o próximo paciente.`);
+      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))} no faturamento.${dinheiroNote}${crmNote}${lembreteNote} Pode adicionar o próximo paciente.`);
       // A NOTA SAI AQUI (23/09/2026), depois da comanda existir — igual ao Kanban.
       if (vaiEmitirNota && sale.crmContactRef) {
         setEmitindoNota(true);
@@ -976,6 +1032,18 @@ export function FinanceiroLancarDiaPage() {
                       Itens {moneyFin(itemsTotal)} · Pagamentos {moneyFin(paymentsTotal)}
                       {totalsMatch ? " ✓" : " — não fecham"}
                     </span>
+                    {divisaoDoRascunho.dinheiro > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-brand-dourado/45 bg-brand-creme/50 px-2 py-1 text-xs font-semibold text-brand-tinta">
+                        <Wallet className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" />
+                        {divisaoDoRascunho.soDinheiro
+                          ? `Tudo em dinheiro: ${moneyFin(divisaoDoRascunho.dinheiro)} vai para o Crediário, fora do faturamento`
+                          : `${moneyFin(divisaoDoRascunho.dinheiro)} em dinheiro vai para o Crediário · no faturamento fica ${moneyFin(divisaoDoRascunho.resto)}`}
+                        <InfoTip title="Dinheiro vai para o Crediário">
+                          Regra da casa: a comanda é o que o banco confere (PIX e cartão). A parte em dinheiro entra no caixa do Crediário,
+                          ligada a este paciente, e só vira lucro quando o mês é somado. Ela continua aparecendo nesta comanda, marcada.
+                        </InfoTip>
+                      </span>
+                    ) : null}
                     {/* VALOR FORA DA GRADE (10/09/2026): o app não recusa mais — acerta em um toque. */}
                     {!totalsMatch && itemsTotal > 0 && paymentsTotal > 0 ? (
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -997,6 +1065,20 @@ export function FinanceiroLancarDiaPage() {
                 <CardTitle className="text-lg">Lançamentos de {date.split("-").reverse().join("/")}</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-2">
+                {/* SÓ DINHEIRO (29/09/2026): pagamento todo em dinheiro não vira comanda, mas aparece aqui, marcado. */}
+                {dinheiroSemComanda(entradasDoDia, daySales.map((sale) => sale.id)).map((entrada) => (
+                  <div key={entrada.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-brand-dourado/55 bg-brand-creme/40 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-brand-tinta">{pacienteDaDescricao(entrada.descricao)}</p>
+                      <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-tinta">
+                        <Wallet className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" />
+                        {fraseDoDinheiro(entrada.valor, moneyFin)}
+                      </p>
+                      {entrada.descricao.includes(" · ") ? <p className="text-xs text-muted-foreground">{entrada.descricao.split(" · ").slice(1).join(" · ")}</p> : null}
+                    </div>
+                    <span className="text-sm font-bold text-brand-oliva">{moneyFin(entrada.valor)}</span>
+                  </div>
+                ))}
                 {daySales.length ? (
                   daySales.map((sale) => (
                     <div key={sale.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
@@ -1006,6 +1088,14 @@ export function FinanceiroLancarDiaPage() {
                           {sale.items.map((item) => `${saleItemTypeLabels[item.itemType]} ${moneyFin(item.amount)}`).join(" · ")}
                           {sale.notes ? ` — ${sale.notes}` : ""}
                         </p>
+                        {(() => {
+                          const dinheiro = entradasDoDia.filter((entrada) => entrada.saleRef === sale.id).reduce((soma, entrada) => soma + entrada.valor, 0);
+                          return dinheiro > 0 ? (
+                            <p className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-brand-dourado/45 bg-brand-creme/50 px-2 py-1 text-xs font-semibold text-brand-tinta">
+                              <Wallet className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" />+ {fraseDoDinheiro(dinheiro, moneyFin)}
+                            </p>
+                          ) : null;
+                        })()}
                         {/* COMO EMITIR A NOTA (25/08/2026). O fechamento do
                             Kanban já gravava isto, mas NENHUMA tela mostrava —
                             então quem emite a nota não tinha como saber o que
@@ -1060,7 +1150,11 @@ export function FinanceiroLancarDiaPage() {
                               toast(trava, { tom: "atencao", duracaoMs: 8000 });
                               return;
                             }
-                            if (!(await confirmar(`Excluir a comanda de ${sale.patientName} (${moneyFin(saleTotal(sale))})?`, { corpo: "Os totais e a P12 se ajustam sozinhos.", destrutivo: true, confirmar: "Excluir" }))) return;
+                            const dinheiroLigado = entradasDoDia.filter((entrada) => entrada.saleRef === sale.id).reduce((soma, entrada) => soma + entrada.valor, 0);
+                            const corpoExcluir = dinheiroLigado > 0
+                              ? `Os totais e a P12 se ajustam sozinhos. Os ${moneyFin(dinheiroLigado)} em dinheiro continuam no Crediário: se o lançamento foi engano, peça para a gestão apagar lá também.`
+                              : "Os totais e a P12 se ajustam sozinhos.";
+                            if (!(await confirmar(`Excluir a comanda de ${sale.patientName} (${moneyFin(saleTotal(sale))})?`, { corpo: corpoExcluir, destrutivo: true, confirmar: "Excluir" }))) return;
                             if (editingSaleId === sale.id) resetForm();
                             financeiro.removeSale(sale.id);
                           }}
@@ -1070,7 +1164,7 @@ export function FinanceiroLancarDiaPage() {
                       </div>
                     </div>
                   ))
-                ) : dayZeroMark ? (
+                ) : entradasDoDia.length ? null : dayZeroMark ? (
                   <div className="rounded-lg border border-brand-musgo/25 bg-[#f2f5ec] px-4 py-4 text-center">
                     <p className="text-sm font-bold text-brand-musgo">Dia zerado ✓</p>
                     <p className="mt-1 text-sm text-muted-foreground">Nenhum atendimento neste dia — R$ 0,00 recebido, confirmado no fechamento.</p>
@@ -1124,7 +1218,8 @@ export function FinanceiroLancarDiaPage() {
               <SummaryLine label="PIX" value={summary.byMethod.PIX} />
               <SummaryLine label="Crédito" value={summary.byMethod.CARTAO_CREDITO} />
               <SummaryLine label="Débito" value={summary.byMethod.CARTAO_DEBITO} />
-              <SummaryLine label="Dinheiro" value={summary.byMethod.DINHEIRO} />
+              {summary.byMethod.DINHEIRO ? <SummaryLine label="Dinheiro (comandas antigas)" value={summary.byMethod.DINHEIRO} /> : null}
+              <SummaryLine label="Dinheiro no Crediário · fora do faturamento" value={dinheiroNoCrediarioDoDia} />
               {summary.byMethod.CHEQUE ? <SummaryLine label="Cheque" value={summary.byMethod.CHEQUE} /> : null}
               {summary.byMethod.TRANSFERENCIA ? <SummaryLine label="Transferência" value={summary.byMethod.TRANSFERENCIA} /> : null}
               <p className="mt-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Maquininhas (conferir com o extrato)</p>

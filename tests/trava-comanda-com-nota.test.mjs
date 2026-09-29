@@ -24,6 +24,6 @@ test("valor mudou = total ou soma por tipo; só trocar a descrição/ordem não 
 
 test("Lançar Dia confere a nota antes de excluir e antes de salvar valor novo", () => {
   const src = fs.readFileSync("src/features/financeiro/FinanceiroLancarDiaPage.tsx", "utf8");
-  assert.match(src, /const trava = await travaDaNotaDaComanda\(sale\.id\);[\s\S]{0,200}return;[\s\S]{0,200}Excluir a comanda/);
+  assert.match(src, /const trava = await travaDaNotaDaComanda\(sale\.id\);[\s\S]{0,200}return;[\s\S]{0,700}Excluir a comanda/);
   assert.match(src, /valorDaComandaMudou\(editingSale, sale\)[\s\S]{0,120}travaDaNotaDaComanda\(editingSale\.id\)/);
 });
