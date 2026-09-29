@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Scale, Stethoscope, UserPlus, XCircle } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,8 +106,13 @@ function MilestoneChip({ milestone, onToggle }: { milestone: ProgramMilestone; o
 }
 
 export function ProgramaAcompanhamentoPage() {
-  const { state, persist, syncMode, isSyncing, syncError } = useCrmState();
+  const { state, persist, syncMode, isSyncing, syncError } = useCrmState({ modulo: "acompanhamento" });
   const { pessoa } = useAuth();
+  // "Só vê" (29/09/2026, auditoria B9): sem EDITAR no Plano de Acompanhamento,
+  // não marca marco, não inscreve e não cria resgate. A importação do InBody
+  // segue a regra própria do dado clínico (canGravarMedicoes), de propósito.
+  const telaAcomp = useNivelDaTela("acompanhamento");
+  const semEdicao = !telaAcomp.podeEditar;
   const hoje = todayISO();
   const [search, setSearch] = useState("");
   const [phaseFilter, setPhaseFilter] = useState<CrmProgramPhase | "TODAS">("TODAS");
@@ -176,6 +182,7 @@ export function ProgramaAcompanhamentoPage() {
   const phasesInUse = useMemo(() => [...new Set(board.map((card) => card.phase))], [board]);
 
   function toggle(dealId: string, key: string) {
+    if (semEdicao) return avisarSoVe();
     void persist((current) => toggleProgramMilestone(current, dealId, key));
   }
 
@@ -219,6 +226,7 @@ export function ProgramaAcompanhamentoPage() {
   return (
     <AccessGate allowed={canAcompanhamento} label="Acompanhamento" module="acompanhamento">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+        <AvisoSoVe soVe={telaAcomp.soVe} />
         <motion.section
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -489,13 +497,13 @@ export function ProgramaAcompanhamentoPage() {
             <FileText className="h-3.5 w-3.5" aria-hidden="true" />
             Relatório p/ Performance
           </Button>
-          <Button type="button" variant={enrollOpen ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setEnrollOpen((value) => !value)}>
+          <Button type="button" variant={enrollOpen ? "default" : "outline"} size="sm" className="gap-1.5" disabled={semEdicao} onClick={() => setEnrollOpen((value) => !value)}>
             <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
             Adicionar paciente ao plano
           </Button>
         </section>
 
-        {enrollOpen ? (
+        {enrollOpen && !semEdicao ? (
           <EnrollPanel
             state={state}
             hoje={hoje}
@@ -514,7 +522,7 @@ export function ProgramaAcompanhamentoPage() {
               <span className="hidden sm:inline">check · bio · dr. · próximo passo</span>
             </div>
             {filtered.map((card) => (
-              <PatientCard key={card.dealId} card={card} onToggle={(key) => toggle(card.dealId, key)} onResgate={(c) => { void persist((current) => criarTarefaDeResgatePorRisco(current, c.dealId, c.risco.motivos, pessoa?.id ?? "coordenacao", hoje)); setCopyFeedback(`Tarefa de resgate criada para ${c.patientName} (enfermagem liga hoje).`); }} />
+              <PatientCard key={card.dealId} card={card} onToggle={(key) => toggle(card.dealId, key)} onResgate={semEdicao ? undefined : (c) => { void persist((current) => criarTarefaDeResgatePorRisco(current, c.dealId, c.risco.motivos, pessoa?.id ?? "coordenacao", hoje)); setCopyFeedback(`Tarefa de resgate criada para ${c.patientName} (enfermagem liga hoje).`); }} />
             ))}
           </div>
         ) : (

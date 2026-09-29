@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { useAuth } from "@/hooks/useAuth";
 import { canCrmBratan } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
@@ -59,7 +60,9 @@ const select = "h-8 w-full rounded-none border-0 bg-transparent px-0.5 text-sm f
 export function CrmCoordenadorPage() {
   const { pessoa, session, isPreview } = useAuth();
   const usaRemoto = Boolean(pessoa && session && !isPreview);
-  const { state, syncFailed, syncErrorDetail, retrySync } = useCrmState();
+  const { state, syncFailed, syncErrorDetail, retrySync } = useCrmState({ modulo: "crm" });
+  // "Só vê" (29/09/2026, auditoria B9): toda digitação desta tela passa por grava().
+  const telaCrm = useNivelDaTela("crm");
   const hoje = todayISO();
   const [monthKey, setMonthKey] = useState(hoje.slice(0, 7));
   const [aba, setAba] = useState<Aba>("registro");
@@ -79,6 +82,7 @@ export function CrmCoordenadorPage() {
   const [salvo, setSalvo] = useState<"" | "salvando" | "ok" | "erro">("");
   const timer = useRef<number | null>(null);
   function grava(proximo: CoordenadorMes) {
+    if (!telaCrm.podeEditar) return avisarSoVe();
     setMes(proximo);
     if (!usaRemoto) return;
     setSalvo("salvando");
@@ -107,6 +111,7 @@ export function CrmCoordenadorPage() {
     <AccessGate allowed={canCrmBratan} label="CRM · Gestão do Coordenador de Vendas" module="crm">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={() => void retrySync()} />
+        <AvisoSoVe soVe={telaCrm.soVe} />
 
         {/* Barra de cima: nome da planilha, mês e estado de gravação */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2.5 shadow-sm">

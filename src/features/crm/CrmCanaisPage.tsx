@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, CircleDollarSign, Gift, UserPlus, Users } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -56,7 +57,9 @@ const statusTones: Record<ReferralRewardStatus, string> = {
 
 export function CrmCanaisPage() {
   const { pessoa } = useAuth();
-  const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState();
+  // "Só vê" (29/09/2026, auditoria B9): sem EDITAR no CRM, não registra indicação nem marca voucher.
+  const { state, persist, syncFailed, syncErrorDetail, retrySync } = useCrmState({ modulo: "crm" });
+  const telaCrm = useNivelDaTela("crm");
   const financeiro = useFinanceiro(Number(todayISO().slice(0, 4)));
   const canPay = isCoordenacao(pessoa?.cargo);
   const [feedback, setFeedback] = useState("");
@@ -185,6 +188,7 @@ export function CrmCanaisPage() {
     <AccessGate allowed={canCrmBratan} label="CRM · Indicações" module="crm">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+        <AvisoSoVe soVe={telaCrm.soVe} />
         <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
           <div className="flex items-center gap-2">
             <Gift className="h-6 w-6 text-brand-musgo" aria-hidden="true" />
@@ -319,7 +323,7 @@ export function CrmCanaisPage() {
                   bare
                   note="Contato de quem foi indicado (se for pessoa nova, ou se o cadastro estiver sem número)."
                 />
-                <LiquidButton type="submit" size="sm" className="mt-1 w-full">
+                <LiquidButton type="submit" size="sm" className="mt-1 w-full" disabled={!telaCrm.podeEditar}>
                   Registrar indicação
                 </LiquidButton>
                 {formError ? (
@@ -395,6 +399,7 @@ export function CrmCanaisPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
+                                  disabled={!telaCrm.podeEditar}
                                   onClick={() => handleMarkPaid(reward.referred.id, contactDisplayName(reward.referred))}
                                 >
                                   Voucher entregue

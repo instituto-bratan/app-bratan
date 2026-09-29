@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { FileText, ImageIcon, RotateCcw, Search, UploadCloud, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,7 +82,10 @@ export function ComprovantesPage() {
   const [patientRef, setPatientRef] = useState("");
   // Telefone/e-mail de quem entra pelo comprovante (29/07): antes nascia mudo.
   const [patientChannels, setPatientChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
-  const { state: crmState, persist: persistCrm } = useCrmState();
+  const { state: crmState, persist: persistCrm } = useCrmState({ modulo: "comprovantes" });
+  // "Só vê" (29/09/2026, auditoria B9): sem EDITAR em Comprovantes, não anexa, não estorna nem oculta.
+  const telaComp = useNivelDaTela("comprovantes");
+  const semEdicao = !telaComp.podeEditar;
   const [pagamentoLembreteId, setPagamentoLembreteId] = useState("");
   const [alimentarRecebiveis360, setAlimentarRecebiveis360] = useState(true);
   const [valor, setValor] = useState("");
@@ -203,6 +207,7 @@ export function ComprovantesPage() {
   }
 
   async function attach(files: FileList | File[]) {
+    if (semEdicao) return avisarSoVe();
     const nextFiles = Array.from(files);
     const acceptedFiles = nextFiles.filter(isAcceptedComprovante);
 
@@ -298,6 +303,7 @@ export function ComprovantesPage() {
   }
 
   async function createEstorno(record: ComprovanteRecord) {
+    if (semEdicao) return avisarSoVe();
     const confirmed = await confirmar(`Criar um registro de estorno para "${record.arquivoNome}"?`, { corpo: "O comprovante original é mantido sem alterações.", confirmar: "Criar estorno" });
 
     if (!confirmed) return;
@@ -346,6 +352,7 @@ export function ComprovantesPage() {
   }
 
   async function softDelete(record: ComprovanteRecord) {
+    if (semEdicao) return avisarSoVe();
     const confirmed = await confirmar(`Ocultar "${record.arquivoNome}" da lista?`, { corpo: "O registro não é apagado; só sai da lista.", confirmar: "Ocultar" });
 
     if (!confirmed) return;
@@ -361,6 +368,7 @@ export function ComprovantesPage() {
   }
 
   async function hardDelete(record: ComprovanteRecord) {
+    if (semEdicao) return avisarSoVe();
     const sharepointNote =
       record.sharePoint.status === "pendente"
         ? " Ele ainda não subiu para o SharePoint e será removido da fila."
@@ -381,6 +389,7 @@ export function ComprovantesPage() {
   return (
     <AccessGate allowed={canComprovantes} label="Comprovantes" module="comprovantes">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <AvisoSoVe soVe={telaComp.soVe} />
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -445,7 +454,7 @@ export function ComprovantesPage() {
                       if (event.target.files) void attach(event.target.files);
                     }}
                   />
-                  <MetalButton type="button" variant="gold" onClick={() => inputRef.current?.click()}>
+                  <MetalButton type="button" variant="gold" disabled={semEdicao} onClick={() => inputRef.current?.click()}>
                     {uploadMutation.isPending ? "Anexando..." : "Anexar comprovante"}
                   </MetalButton>
                 </div>
@@ -761,13 +770,13 @@ export function ComprovantesPage() {
                     </div>
                     <div className="flex flex-wrap gap-2 md:justify-end">
                       {record.tipo === "entrada" ? (
-                        <Button type="button" variant="outline" size="sm" onClick={() => createEstorno(record)}>
+                        <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => createEstorno(record)}>
                           <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
                           Estornar
                         </Button>
                       ) : null}
                       {podeOcultar ? (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => softDelete(record)}>
+                        <Button type="button" variant="ghost" size="sm" disabled={semEdicao} onClick={() => softDelete(record)}>
                           Ocultar
                         </Button>
                       ) : null}
@@ -777,6 +786,7 @@ export function ComprovantesPage() {
                           variant="ghost"
                           size="sm"
                           className="text-destructive hover:bg-red-50 hover:text-destructive"
+                          disabled={semEdicao}
                           onClick={() => hardDelete(record)}
                         >
                           Excluir de vez

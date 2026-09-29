@@ -17,6 +17,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -240,6 +241,9 @@ export function MarketingPage() {
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
   const useRemote = Boolean(pessoa && session && !isPreview);
+  // "Só vê" (29/09/2026, auditoria B9): sem EDITAR no Marketing, não envia, não muda nem exclui.
+  const telaMkt = useNivelDaTela("marketing");
+  const semEdicao = !telaMkt.podeEditar;
 
   const [localBriefings, setLocalBriefings] = useState<MarketingBriefing[]>(() => readLocalValue(marketingStorageKey, []));
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -277,6 +281,7 @@ export function MarketingPage() {
 
   async function handleUpload(event: FormEvent) {
     event.preventDefault();
+    if (semEdicao) return avisarSoVe();
     setFeedback("");
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
@@ -326,6 +331,7 @@ export function MarketingPage() {
   }
 
   async function retryParse(briefing: MarketingBriefing) {
+    if (semEdicao) return avisarSoVe();
     setFeedback("Pedi para a IA tentar de novo…");
     try {
       const result = await invokeRemoteMarketingBriefingParse(briefing.id);
@@ -339,6 +345,7 @@ export function MarketingPage() {
   }
 
   async function savePlan(briefing: MarketingBriefing, nextPlan: MarketingPlan) {
+    if (semEdicao) return avisarSoVe();
     if (useRemote) {
       // Atualização otimista do cache: cliques seguidos ("Adicionar" duas vezes,
       // mudar status de várias peças) passam a ler o plano JÁ atualizado. Antes o
@@ -393,6 +400,7 @@ export function MarketingPage() {
   }
 
   async function removeBriefing(briefing: MarketingBriefing) {
+    if (semEdicao) return avisarSoVe();
     if (!(await confirmar(`Excluir o briefing de ${monthLabelFromRef(briefing.monthRef)}?`, { corpo: "O plano do mês vai junto.", destrutivo: true, confirmar: "Excluir" }))) return;
     if (useRemote) {
       try {
@@ -451,6 +459,8 @@ export function MarketingPage() {
           </p>
         </motion.header>
 
+        <AvisoSoVe soVe={telaMkt.soVe} />
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -471,7 +481,7 @@ export function MarketingPage() {
                 <Label htmlFor="marketing-file">Foto ou documento</Label>
                 <Input id="marketing-file" ref={fileInputRef} type="file" accept="image/*,application/pdf,.txt,.md,.html" />
               </div>
-              <LiquidButton type="submit" disabled={uploading} className="sm:mb-0.5">
+              <LiquidButton type="submit" disabled={uploading || semEdicao} className="sm:mb-0.5">
                 <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
                 {uploading ? "Enviando…" : "Preencher com IA"}
               </LiquidButton>
@@ -526,11 +536,11 @@ export function MarketingPage() {
                 </Button>
               ) : null}
               {selected.status === "ERRO" && useRemote ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => void retryParse(selected)}>
+                <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => void retryParse(selected)}>
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Tentar com a IA de novo
                 </Button>
               ) : null}
-              <Button type="button" variant="outline" size="sm" onClick={() => void removeBriefing(selected)}>
+              <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => void removeBriefing(selected)}>
                 <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Excluir
               </Button>
             </div>
@@ -866,6 +876,7 @@ export function MarketingPage() {
                               </div>
                               <button
                                 type="button"
+                                disabled={semEdicao}
                                 onClick={() => cyclePieceStatus(piece)}
                                 className={cn(
                                   "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-80",
@@ -876,6 +887,7 @@ export function MarketingPage() {
                               </button>
                               <button
                                 type="button"
+                                disabled={semEdicao}
                                 onClick={() => removePiece(piece)}
                                 className="shrink-0 rounded-full p-1.5 text-muted-foreground transition hover:bg-red-50 hover:text-red-600"
                                 aria-label={`Excluir ${piece.title}`}
@@ -916,7 +928,7 @@ export function MarketingPage() {
                             placeholder="Ex.: Carrossel — mitos do GLP-1"
                           />
                         </div>
-                        <Button type="submit" variant="outline">
+                        <Button type="submit" variant="outline" disabled={semEdicao}>
                           <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Adicionar
                         </Button>
                       </form>

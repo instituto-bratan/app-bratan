@@ -55,6 +55,7 @@ import { toast } from "@/components/ui/avisos";
 import { integracaoLigada } from "@/lib/integracoes";
 import { invocarIntegracao } from "@/lib/remoteData";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { canCrmBratan } from "@/lib/access";
 
 type TaskTab = "hoje" | "atrasadas" | "proximos" | "concluidas" | "todas";
@@ -135,7 +136,10 @@ function useFilteredTasks(tasks: CrmTask[], tab: TaskTab, query: string, type: s
 
 function CrmTasksPageConteudo() {
   const { pessoa } = useAuth();
-  const { state, persist, syncMode, syncFailed, syncErrorDetail, retrySync } = useCrmState();
+  // "Só vê" (29/09/2026, auditoria B9): sem EDITAR no CRM, nada grava e os botões de registrar ficam desligados.
+  const { state, persist, syncMode, syncFailed, syncErrorDetail, retrySync } = useCrmState({ modulo: "crm" });
+  const telaCrm = useNivelDaTela("crm");
+  const semEdicao = !telaCrm.podeEditar;
   const role = cargoToCrmRole(pessoa?.cargo);
   const isManagement = isCrmManagement(pessoa?.cargo);
   // Regra do Lucas (14/07/2026): cada um vê as SUAS tarefas. A coordenação
@@ -239,6 +243,7 @@ function CrmTasksPageConteudo() {
   const whatsappOficial = integracaoLigada("whatsapp");
   const [enviandoOficial, setEnviandoOficial] = useState("");
   async function enviarPeloOficial(task: CrmTask) {
+    if (semEdicao) return avisarSoVe();
     const contact = contactsById.get(task.contactId);
     const telefone = contact ? (contact.whatsapp || contact.phone || "").replace(/\D/g, "") : "";
     const texto = messageForTask(task);
@@ -292,6 +297,7 @@ function CrmTasksPageConteudo() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
+        <AvisoSoVe soVe={telaCrm.soVe} />
         {(() => {
           const roleExplainer = roleRuleExplainers[cargoToCrmRole(pessoa?.cargo) ?? "ADMINISTRATIVO"];
           if (!roleExplainer) return null;
@@ -464,7 +470,7 @@ function CrmTasksPageConteudo() {
               </label>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" onClick={completeSelected}>
+              <Button type="button" disabled={semEdicao} onClick={completeSelected}>
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 Salvar e concluir
               </Button>
@@ -547,7 +553,7 @@ function CrmTasksPageConteudo() {
                         <p className="rounded-lg border border-emerald-300 bg-emerald-50/70 p-2 text-xs leading-5 text-emerald-900">
                           Abri o WhatsApp com a mensagem pronta. Já mandou? Confirme para tirar da sua lista.
                         </p>
-                        <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => confirmSent(task)}>
+                        <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={semEdicao} onClick={() => confirmSent(task)}>
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Confirmar envio ✓
                         </Button>
@@ -568,12 +574,12 @@ function CrmTasksPageConteudo() {
                           </Button>
                         </div>
                         {whatsappOficial && task.taskType === "WHATSAPP" ? (
-                          <Button type="button" size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" disabled={enviandoOficial === task.id} onClick={() => void enviarPeloOficial(task)} title="Sai pelo número oficial do Instituto e já conclui a tarefa">
+                          <Button type="button" size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" disabled={semEdicao || enviandoOficial === task.id} onClick={() => void enviarPeloOficial(task)} title="Sai pelo número oficial do Instituto e já conclui a tarefa">
                             <MessageCircle className="mr-2 h-4 w-4" />
                             {enviandoOficial === task.id ? "Enviando…" : "Enviar pelo número oficial"}
                           </Button>
                         ) : null}
-                        <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => confirmSent(task)}>
+                        <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={semEdicao} onClick={() => confirmSent(task)}>
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                           Enviei ✓
                         </Button>
@@ -581,11 +587,11 @@ function CrmTasksPageConteudo() {
                           <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-2">
                             <p className="text-xs font-semibold leading-5 text-amber-900">Já agendou ou foi atendida? Tire do resgate:</p>
                             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                              <Button type="button" variant="outline" size="sm" className="border-amber-300 text-amber-900 hover:bg-amber-100" onClick={() => resolveRescue(task, "CONSULTA_AGENDADA")}>
+                              <Button type="button" variant="outline" size="sm" className="border-amber-300 text-amber-900 hover:bg-amber-100" disabled={semEdicao} onClick={() => resolveRescue(task, "CONSULTA_AGENDADA")}>
                                 <CalendarClock className="mr-1 h-3.5 w-3.5" />
                                 Vai ser atendida
                               </Button>
-                              <Button type="button" variant="outline" size="sm" className="border-amber-300 text-amber-900 hover:bg-amber-100" onClick={() => resolveRescue(task, "CONSULTA_REALIZADA")}>
+                              <Button type="button" variant="outline" size="sm" className="border-amber-300 text-amber-900 hover:bg-amber-100" disabled={semEdicao} onClick={() => resolveRescue(task, "CONSULTA_REALIZADA")}>
                                 Já foi atendida
                               </Button>
                             </div>
@@ -612,7 +618,7 @@ function CrmTasksPageConteudo() {
                       <MessageCircle className="mr-2 h-4 w-4" />
                       2 · Enviar no WhatsApp
                     </Button>
-                    <Button type="button" size="sm" onClick={() => setSelectedTaskId(task.id)}>
+                    <Button type="button" size="sm" disabled={semEdicao} onClick={() => setSelectedTaskId(task.id)}>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
                       3 · Registrar o que aconteceu
                     </Button>
@@ -621,7 +627,7 @@ function CrmTasksPageConteudo() {
                         Ver perfil da pessoa <ArrowRight className="ml-2 h-4 w-4" />
                       </Link>
                     </Button>
-                    <Button type="button" variant="subtle" size="sm" onClick={() => createNextTask(task)}>
+                    <Button type="button" variant="subtle" size="sm" disabled={semEdicao} onClick={() => createNextTask(task)}>
                       <Plus className="mr-2 h-4 w-4" />
                       Criar tarefa para amanhã
                     </Button>

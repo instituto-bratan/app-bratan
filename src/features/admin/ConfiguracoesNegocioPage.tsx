@@ -2,7 +2,7 @@
 // As constantes que antes exigiam deploy — grade de salas, dias de
 // transferência, limite de aprovação, SLA de lead, voucher — viram chaves com
 // histórico e data de vigência. Só quem gerencia acessos (Lucas, Dr. Daniel,
-// CEO) edita; todo mundo lê. Nunca se apaga o passado: salvar cria uma linha
+// CEO) edita e, desde 29/09/2026, também só eles abrem a tela. Nunca se apaga o passado: salvar cria uma linha
 // nova que passa a valer a partir da data escolhida.
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -132,7 +132,10 @@ export function ConfiguracoesNegocioPage() {
   }, []);
 
   return (
-    <AccessGate allowed={() => true} label="Administração · Configurações do negócio">
+    // Porta fechada (29/09/2026, auditoria B9): era allowed={() => true} — qualquer
+    // pessoa logada abria pela URL. Agora é a mesma regra do menu: quem gerencia
+    // acessos (Lucas, Dr. Daniel, CEO).
+    <AccessGate allowed={canManageAcessos} label="Administração · Configurações do negócio">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
         <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6">
           <div className="flex flex-wrap items-center gap-2">

@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { deriveInteligencia360FromCrm, loadCrmState } from "@/features/crm/crmData";
 import { useAuth } from "@/hooks/useAuth";
+import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { exportBrandedPdf } from "@/lib/brandedPdf";
 import { readLocalValue, todayISO } from "@/lib/localStore";
 import { buildMetaDoDiaMessage, buildMetasBoard, defaultMetasConfig, type MetasConfig } from "@/features/financeiro/metasData";
@@ -1647,6 +1648,9 @@ function NpsTotemCard() {
 }
 
 function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: Inteligencia360State; persist: ReturnType<typeof useInteligenciaState>["persist"] }) {
+  // "Só vê" nas metas (29/09/2026, auditoria B9): quem está como VER na
+  // Inteligência 360 não salva as metas e limites do motor.
+  const tela360 = useNivelDaTela("inteligencia360");
   if (slug === "ticket-medio") return <TicketModule state={state} persist={persist} />;
 
   if (slug === "precificacao") {
@@ -2089,8 +2093,10 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
       <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur">
         <CardHeader><CardTitle>Metas e limites do motor 360</CardTitle></CardHeader>
         <CardContent>
+          <AvisoSoVe soVe={tela360.soVe} />
           <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={(event) => {
             event.preventDefault();
+            if (!tela360.podeEditar) return avisarSoVe();
             persist((current) => ({ ...current, settings: form }));
           }}>
             <Field label="Meta mensal" value={String(form.monthlyRevenueTarget)} onChange={(value) => setForm({ ...form, monthlyRevenueTarget: parseNumber360(value) })} />
@@ -2101,7 +2107,7 @@ function SimpleModuleForms({ slug, state, persist }: { slug: ModuleSlug; state: 
             <Field label="Conversão mínima %" value={String(form.prescriptionConversionMin)} onChange={(value) => setForm({ ...form, prescriptionConversionMin: parseNumber360(value) })} />
             <Field label="Conversão máxima %" value={String(form.prescriptionConversionMax)} onChange={(value) => setForm({ ...form, prescriptionConversionMax: parseNumber360(value) })} />
             <Field label="Mensagens/ciclo" value={String(form.maxMessagesPerCycle)} onChange={(value) => setForm({ ...form, maxMessagesPerCycle: parseNumber360(value) })} />
-            <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg">Salvar configurações</LiquidButton></div>
+            <div className="md:col-span-2 xl:col-span-4"><LiquidButton type="submit" size="lg" disabled={!tela360.podeEditar} title={tela360.motivo || undefined}>Salvar configurações</LiquidButton></div>
           </form>
         </CardContent>
       </Card>
