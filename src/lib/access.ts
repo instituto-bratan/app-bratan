@@ -256,6 +256,7 @@ export type ModuleKey =
   | "fin-gestao"
   | "fin-extrato"
   | "fin-lucro"
+  | "fin-fatura"
   | "estoque"
   | "aplicacoes"
   | "concierge-nps"
@@ -285,6 +286,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-gestao": "Financeiro · Painel do Mês (Reunião de Líderes)",
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-lucro": "Financeiro · Lucro Inteligente",
+  "fin-fatura": "Financeiro · Fatura do cartão (linha a linha)",
   estoque: "Estoque (Recepção & Enfermagem)",
   aplicacoes: "Aplicações da enfermagem (ficha do paciente, dado clínico)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
@@ -341,6 +343,11 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
       return canInteligencia360(cargo) ? "VER" : "OCULTO";
+    case "fin-fatura":
+      // Fatura do cartão linha a linha (29/09/2026): só o financeiro completo.
+      // O gestor e a concierge veem o resultado na P12 (rateio por categoria),
+      // não os estabelecimentos. Espelho da RLS em 202609290005_fatura_do_cartao.sql.
+      return canFinanceiroFull(cargo) ? "EDITAR" : "OCULTO";
     case "fin-lancar-dia":
       if (canFinanceiroFull(cargo) || cargo === "recepcionista") return "EDITAR";
       return canFinanceiroView(cargo) ? "VER" : "OCULTO";

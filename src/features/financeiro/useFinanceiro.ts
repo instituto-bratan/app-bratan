@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { todayISO } from "@/lib/localStore";
 
@@ -32,6 +32,7 @@ import {
   listRemoteFinPurchases,
   listRemoteFinSales,
   listRemoteFinSavings,
+  listRemoteRateioDasFaturas,
   markRemoteFinExpensePaid,
   updateRemoteFinExpense,
   saveRemoteFinGestaoMensal,
@@ -69,6 +70,7 @@ import {
   type FinSale,
   type FinSavingsMove,
 } from "./financeiroData";
+import { explodirContasDeFatura } from "./faturaCartao";
 
 export function useFinanceiro(year = new Date().getFullYear()) {
   const { pessoa, session, isPreview } = useAuth();
@@ -114,6 +116,27 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     setExpenses(expensesQuery.data);
     saveLocalFinExpenses(expensesQuery.data);
   }, [expensesQuery.data]);
+
+  // FATURA DO CARTÃO (29/09/2026): a soma dos itens por categoria de cada conta
+  // de fatura importada. Quem lê despesa POR CATEGORIA (P12, Painel, Lucro) usa
+  // `expensesPorCategoria`, em que a conta da fatura é TROCADA pelos pedaços do
+  // rateio (nunca somada ao lado — ver explodirContasDeFatura). Quem lida com a
+  // conta em si (Contas a Pagar, extrato, caixa) continua com `expenses`.
+  // Sem a migration aplicada a função não existe: cai no comportamento de antes.
+  const rateioQuery = useQuery({
+    queryKey: ["fin-fatura-rateio", year],
+    queryFn: () =>
+      listRemoteRateioDasFaturas(year).catch((error) => {
+        console.warn("Rateio das faturas do cartão indisponível; a P12 mostra a fatura inteira.", error);
+        return [];
+      }),
+    enabled: useRemote,
+    staleTime: 60_000,
+  });
+  const expensesPorCategoria = useMemo(
+    () => explodirContasDeFatura(expenses, rateioQuery.data ?? []),
+    [expenses, rateioQuery.data],
+  );
 
   // Contas recorrentes: materializa as ocorrências que faltam (até o mês que
   // vem). `attemptedRecRefs` impede loop: uma cópia excluída de propósito não
@@ -643,6 +666,7 @@ export function useFinanceiro(year = new Date().getFullYear()) {
     year,
     sales,
     expenses,
+    expensesPorCategoria,
     reconciliations,
     savingsMoves,
     crediarioProfits,

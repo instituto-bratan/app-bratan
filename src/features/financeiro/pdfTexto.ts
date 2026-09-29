@@ -13,7 +13,7 @@ type PdfJs = {
 };
 type PdfDocumento = {
   numPages: number;
-  getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: Array<{ str?: string }> }> }>;
+  getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: Array<{ str?: string; hasEOL?: boolean; transform?: number[] }> }> }>;
 };
 
 let carregando: Promise<PdfJs> | null = null;
@@ -45,6 +45,44 @@ export async function extrairTextoPdf(file: File, maxPaginas = 6): Promise<strin
     paginas.push(content.items.map((item) => item.str ?? "").join(" "));
   }
   return paginas.join("\n").replace(/[ \t]{2,}/g, " ").trim();
+}
+
+/**
+ * Texto do PDF COM as quebras de linha (29/09/2026, fatura do cartão).
+ *
+ * `extrairTextoPdf` junta cada página numa linha só — bom para achar o valor
+ * de um boleto, ruim para uma fatura, em que cada linha é uma compra. Aqui a
+ * linha termina quando o pdf.js marca fim de linha ou quando a altura (y) do
+ * texto muda. Duas colunas na mesma altura ficam na mesma linha; o leitor da
+ * fatura já sabe achar várias compras numa linha.
+ */
+export async function extrairLinhasPdf(file: File, maxPaginas = 20): Promise<string> {
+  const pdfjs = await carregarPdfJs();
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const linhas: string[] = [];
+  const total = Math.min(doc.numPages, maxPaginas);
+  for (let n = 1; n <= total; n += 1) {
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
+    let atual = "";
+    let yAnterior: number | null = null;
+    for (const item of content.items) {
+      const y = item.transform?.[5];
+      if (yAnterior !== null && typeof y === "number" && Math.abs(y - yAnterior) > 2 && atual.trim()) {
+        linhas.push(atual.trim());
+        atual = "";
+      }
+      const pedaco = item.str ?? "";
+      atual += atual && pedaco && !atual.endsWith(" ") ? ` ${pedaco}` : pedaco;
+      if (typeof y === "number") yAnterior = y;
+      if (item.hasEOL && atual.trim()) {
+        linhas.push(atual.trim());
+        atual = "";
+      }
+    }
+    if (atual.trim()) linhas.push(atual.trim());
+  }
+  return linhas.map((linha) => linha.replace(/[ \t]{2,}/g, " ")).join("\n");
 }
 
 /** Texto de um arquivo que a pessoa soltou: PDF pelo pdf.js; .txt/.eml direto. */

@@ -3283,3 +3283,4 @@ export * from "./remote/rotinaDiaria";
 export * from "./remote/integracoes";
 export * from "./remote/compliance";
 export * from "./remote/portalPaciente";
+export * from "./remote/faturaCartao";

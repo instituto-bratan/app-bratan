@@ -130,21 +130,21 @@ export function FinanceiroPainelPage() {
 
   // ---- números -------------------------------------------------------------
   const atual = useMemo(
-    () => buildGestaoMensal(financeiro.sales, financeiro.expenses, financeiro.categories, monthKey, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, monthKey, financeiro.crediarioProfits],
+    () => buildGestaoMensal(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits],
   );
   const anterior = useMemo(
-    () => buildGestaoMensal(financeiro.sales, financeiro.expenses, financeiro.categories, mesAnterior, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, mesAnterior, financeiro.crediarioProfits],
+    () => buildGestaoMensal(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, mesAnterior, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, mesAnterior, financeiro.crediarioProfits],
   );
   const indicadores = useMemo(() => buildGestaoComparativo(anterior, atual), [anterior, atual]);
   const evolucao = useMemo(
-    () => buildEvolucaoMeses(financeiro.sales, financeiro.expenses, financeiro.categories, monthKey, 6, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, monthKey, financeiro.crediarioProfits],
+    () => buildEvolucaoMeses(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, 6, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits],
   );
   const fechamento = useMemo(
-    () => buildFechamentoContabil(financeiro.sales, financeiro.expenses, financeiro.savingsMoves, monthKey, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expenses, financeiro.savingsMoves, monthKey, financeiro.crediarioProfits],
+    () => buildFechamentoContabil(financeiro.sales, financeiro.expensesPorCategoria, financeiro.savingsMoves, monthKey, financeiro.crediarioProfits),
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.savingsMoves, monthKey, financeiro.crediarioProfits],
   );
 
   // O saldo do banco é digitado na P12 (Prova do dinheiro) e reaproveitado aqui.
@@ -169,12 +169,12 @@ export function FinanceiroPainelPage() {
     const cofreProvisoes = financeiro.savingsMoves
       .filter((move) => doMes(move.moveDate) && move.direction === "SAIDA" && move.kind !== "USO_OBRA" && move.kind !== "DEVOLUCAO" && move.kind !== "RENDIMENTO")
       .map((move) => ({ dia: move.moveDate, label: move.reason || "Saída do cofre", valor: move.amount || 0 }));
-    const obra = financeiro.expenses
+    const obra = financeiro.expensesPorCategoria
       .filter((expense) => doMes(expense.dueDate || expense.paidAt || "") && expenseEhCapex(expense, categoriaPorId.get(expense.categoryRef)))
       .map((expense) => ({ dia: expense.dueDate, label: `${expense.description}${expense.supplier ? ` · ${expense.supplier}` : ""}`, valor: expense.amount || 0 }))
       .sort((a, b) => b.valor - a.valor);
     return { 1: cofreObra, 2: cofreProvisoes, 4: obra } as Record<number, { dia?: string; label: string; valor: number }[]>;
-  }, [financeiro.savingsMoves, financeiro.expenses, financeiro.categories, monthKey]);
+  }, [financeiro.savingsMoves, financeiro.expensesPorCategoria, financeiro.categories, monthKey]);
 
   // Metas do servidor, iguais para todo mundo (29/09/2026).
   const metasConfig: MetasConfig = useMetasConfig();
@@ -188,7 +188,7 @@ export function FinanceiroPainelPage() {
     () =>
       buildPontosDaReuniao({
         sales: financeiro.sales,
-        expenses: financeiro.expenses,
+        expenses: financeiro.expensesPorCategoria,
         categories: financeiro.categories,
         savingsMoves: financeiro.savingsMoves,
         crediarioProfits: financeiro.crediarioProfits,
@@ -197,7 +197,7 @@ export function FinanceiroPainelPage() {
         saldoBanco: lucroRealCaixa,
         hoje,
       }),
-    [financeiro.sales, financeiro.expenses, financeiro.categories, financeiro.savingsMoves, financeiro.crediarioProfits, monthKey, metasConfig, lucroRealCaixa, hoje],
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, financeiro.savingsMoves, financeiro.crediarioProfits, monthKey, metasConfig, lucroRealCaixa, hoje],
   );
 
   // ---- gráficos ------------------------------------------------------------
@@ -206,12 +206,12 @@ export function FinanceiroPainelPage() {
   const pagamentoDonut = useMemo(() => buildPaymentDonut(financeiro.sales, range), [financeiro.sales, range]);
   const itemDonut = useMemo(() => buildItemTypeDonut(financeiro.sales, range), [financeiro.sales, range]);
   const grupoDonut = useMemo(
-    () => buildExpenseGroupDonut(financeiro.expenses, financeiro.categories, monthKey),
-    [financeiro.expenses, financeiro.categories, monthKey],
+    () => buildExpenseGroupDonut(financeiro.expensesPorCategoria, financeiro.categories, monthKey),
+    [financeiro.expensesPorCategoria, financeiro.categories, monthKey],
   );
   const categoriaRank = useMemo(
-    () => buildExpenseCategoryRank(financeiro.expenses, financeiro.categories, monthKey),
-    [financeiro.expenses, financeiro.categories, monthKey],
+    () => buildExpenseCategoryRank(financeiro.expensesPorCategoria, financeiro.categories, monthKey),
+    [financeiro.expensesPorCategoria, financeiro.categories, monthKey],
   );
   const semana = useMemo(() => buildWeekdayStrength(financeiro.sales, range), [financeiro.sales, range]);
   const ticket = useMemo(
@@ -1050,7 +1050,7 @@ export function FinanceiroPainelPage() {
             {/* ---- resumo de fechamento (a folha da reunião) --------------- */}
             <ResumoFechamentoCard
               sales={financeiro.sales}
-              expenses={financeiro.expenses}
+              expenses={financeiro.expensesPorCategoria}
               categories={financeiro.categories}
               provisionRules={financeiro.provisionRules}
               monthKey={monthKey}
@@ -1067,7 +1067,7 @@ export function FinanceiroPainelPage() {
             {/* ---- arquivos para a contabilidade -------------------------- */}
             <RelatoriosContabilidadeCard
               sales={financeiro.sales}
-              expenses={financeiro.expenses}
+              expenses={financeiro.expensesPorCategoria}
               categories={financeiro.categories}
               savingsMoves={financeiro.savingsMoves}
               crediarioProfits={financeiro.crediarioProfits}
