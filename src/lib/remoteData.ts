@@ -3267,6 +3267,7 @@ export async function upsertRemoteFinReconciliation(record: FinReconciliation, c
 export * from "./remote/marketing";
 export * from "./remote/gamificacao";
 export * from "./remote/estoque";
+export * from "./remote/aplicacoes";
 export * from "./remote/extrato";
 export * from "./remote/crediario";
 export * from "./remote/gestaoMensal";

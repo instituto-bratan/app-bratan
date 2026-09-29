@@ -44,6 +44,7 @@ import { PortalDoPacienteCard } from "@/features/portal/PortalDoPacienteCard";
 import { CpfDoPacienteCard } from "./CpfDoPacienteCard";
 import { contactChannelsIssue, formatPhoneBR } from "./contactChannels";
 import { AccessGate } from "@/components/access/AccessGate";
+import { AplicacoesDoPacienteCard } from "@/features/estoque/AplicacoesDoPacienteCard";
 import { canCrmBratan, canVerPortalPaciente } from "@/lib/access";
 
 // Contratos saiu do app (decisão do Lucas, 22/07): não existe fluxo de
@@ -405,6 +406,8 @@ function CrmContactProfilePageConteudo() {
           </Card>
 
           <div className="grid gap-4">
+            {/* Ficha de aplicação (29/09/2026): só para enfermagem e gestão — o card some para os demais. */}
+            <AplicacoesDoPacienteCard contactRef={contact.id} nomePaciente={contactDisplayName(contact)} />
             <Card>
               <CardHeader>
                 <CardTitle>Próxima ação</CardTitle>

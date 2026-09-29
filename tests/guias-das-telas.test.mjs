@@ -13,6 +13,7 @@ const telas = [
   "/agenda",
   "/acompanhamento",
   "/estoque",
+  "/estoque/aplicacoes",
   "/concierge/nps",
   "/crm/vendas",
   "/crm/indicacoes",

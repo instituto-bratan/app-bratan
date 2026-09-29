@@ -257,6 +257,7 @@ export type ModuleKey =
   | "fin-extrato"
   | "fin-lucro"
   | "estoque"
+  | "aplicacoes"
   | "concierge-nps"
   | "nutricao"
   | "agenda";
@@ -285,12 +286,16 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-lucro": "Financeiro · Lucro Inteligente",
   estoque: "Estoque (Recepção & Enfermagem)",
+  aplicacoes: "Aplicações da enfermagem (ficha do paciente, dado clínico)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
   nutricao: "Nutrição (prontuário e planos alimentares)",
   agenda: "Agenda do dia (iClinic) e Veio/Faltou",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
+
+// Quem acompanha a ficha de aplicação sem registrar (29/09/2026).
+const aplicacoesLeitoresCargos: Cargo[] = ["dr_daniel", "ceo", "gestor", "gestor_financeiro"];
 
 // Padrão do CARGO por tela (as mesmas regras que já valiam, agora nomeadas).
 function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): AccessLevel {
@@ -315,6 +320,12 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       // na RLS); a coordenação enxerga e edita os dois.
       if (cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista") return "EDITAR";
       return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
+    case "aplicacoes":
+      // Ficha de aplicação (29/09/2026): a enfermeira registra; Dr. Daniel, CEO,
+      // gestor e gestor financeiro acompanham. Recepção não vê (dado clínico).
+      // Mesma regra de supabase/migrations/202609290001_ficha_de_aplicacao.sql.
+      if (cargo === "enfermeira") return "EDITAR";
+      return aplicacoesLeitoresCargos.includes(cargo) ? "VER" : "OCULTO";
     case "nutricao":
       // Dado clínico da nutrição (28/09/2026): a nutricionista e o Lucas (gestor
       // financeiro, que cuida e testa o módulo) editam; o Dr. Daniel só vê.
@@ -414,6 +425,27 @@ export function canVerPortalPaciente(pessoa: PessoaComAcessos) {
 export function canGravarPortalPaciente(pessoa: PessoaComAcessos) {
   if (!pessoa?.cargo) return false;
   return isEquipeClinica(pessoa.cargo) || pessoa.cargo === "recepcionista" || liberadoEmAcessos(pessoa, "crm", "EDITAR");
+}
+
+/**
+ * Ficha de aplicação da enfermagem (enfermagem_aplicacao, 29/09/2026). Espelho
+ * de can_aplicacao_read / can_aplicacao_write da migration 202609290001: lê a
+ * enfermeira e a gestão (Dr. Daniel, CEO, gestor, gestor financeiro); grava só
+ * a enfermeira. O override de Acessos na tela "aplicacoes" só SOMA, como no banco.
+ */
+export function canVerAplicacoes(pessoa: PessoaComAcessos) {
+  if (!pessoa?.cargo) return false;
+  return pessoa.cargo === "enfermeira" || aplicacoesLeitoresCargos.includes(pessoa.cargo) || liberadoEmAcessos(pessoa, "aplicacoes", "VER");
+}
+
+export function canRegistrarAplicacao(pessoa: PessoaComAcessos) {
+  if (!pessoa?.cargo) return false;
+  return pessoa.cargo === "enfermeira" || liberadoEmAcessos(pessoa, "aplicacoes", "EDITAR");
+}
+
+/** Quem libera "estoque desatualizado" estando logado (is_gestao_aplicacao no banco). */
+export function isGestaoAplicacao(cargo: Cargo | null | undefined) {
+  return Boolean(cargo && aplicacoesLeitoresCargos.includes(cargo));
 }
 
 export const accessLevelLabels: Record<AccessLevel, string> = {

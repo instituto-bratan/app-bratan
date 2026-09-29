@@ -41,6 +41,7 @@ import {
   LifeBuoy,
   Sparkles,
   SunMedium,
+  Syringe,
   Target,
   UserRound,
   UserRoundCheck,
@@ -82,6 +83,8 @@ type NavEntry = {
   /** Tela do controle de Acessos por pessoa: quando presente, a exceção
    *  gravada vence a regra de cargo (inclusive para MOSTRAR a mais). */
   module?: ModuleKey;
+  /** Só fica "ativa" no endereço exato — o Estoque tem a tela filha Aplicações. */
+  end?: boolean;
 };
 
 type FlowGroup = {
@@ -165,13 +168,15 @@ const flowGroups: FlowGroup[] = [
   },
   {
     label: "Estoque",
-    detail: "recepção e enfermagem",
+    detail: "recepção, enfermagem e aplicações",
     href: "/estoque",
     icon: Boxes,
     // Donas dos setores + coordenação; a exceção por pessoa (Acessos) vence.
     allowed: (cargo) => cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista" || canFinanceiroView(cargo) || canAdministracao(cargo),
     entries: [
-      { label: "Estoque", href: "/estoque", icon: Boxes, allowed: () => true, module: "estoque" },
+      { label: "Estoque", href: "/estoque", icon: Boxes, allowed: () => true, module: "estoque", end: true },
+      // Ficha de aplicação (29/09/2026): enfermeira registra; gestão acompanha. Recepção não vê.
+      { label: "Aplicações", href: "/estoque/aplicacoes", icon: Syringe, allowed: () => false, module: "aplicacoes" },
     ],
   },
   {
@@ -263,6 +268,7 @@ const flowGroups: FlowGroup[] = [
 
 function isEntryActive(pathname: string, entry: NavEntry) {
   if (entry.href === "/") return pathname === "/" || pathname === "/inicio";
+  if (entry.end) return pathname === entry.href;
   return pathname === entry.href || pathname.startsWith(`${entry.href}/`);
 }
 
@@ -386,6 +392,7 @@ function DesktopNav({ pessoa }: { pessoa: Pessoa | null | undefined }) {
                       <NavLink
                         key={entry.href}
                         to={entry.href}
+                        end={entry.end}
                         {...preloadRouteProps(entry.href)}
                         className={({ isActive }) =>
                           cn(
@@ -513,6 +520,7 @@ function FlowLauncher({
       { palavras: ["lucro", "envelope", "transferir", "repasse"], rotulo: "Lucro Inteligente (envelopes)", href: "/financeiro/lucro" },
       { palavras: ["painel", "reuniao", "apresentar", "mes"], rotulo: "Painel do Mês", href: "/financeiro/painel" },
       { palavras: ["estoque", "contar", "compra", "pedido"], rotulo: "Estoque e compras", href: "/estoque" },
+      { palavras: ["aplicacao", "aplicar", "dose", "lote", "injecao", "implante", "pellet"], rotulo: "Registrar aplicação (enfermagem)", href: "/estoque/aplicacoes" },
       { palavras: ["nps", "pesquisa", "satisfacao"], rotulo: "NPS da Concierge", href: "/concierge/nps" },
       { palavras: ["configuracao", "limite", "regra", "vigencia"], rotulo: "Configurações do negócio", href: "/administracao/configuracoes" },
       { palavras: ["ia", "inteligencia artificial", "governanca"], rotulo: "Governança de IA", href: "/administracao/ia" },

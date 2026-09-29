@@ -19,8 +19,10 @@ import {
   PackageCheck,
   Plus,
   Printer,
+  Syringe,
   Trash2,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -519,7 +521,15 @@ export function EstoquePage() {
                 {setorLabels[chave]}
               </button>
             ))}
-            <span className="ml-auto flex gap-2">
+            <span className="ml-auto flex flex-wrap gap-2">
+              {/* Ficha de aplicação (29/09/2026): a saída de medicação aplicada nasce lá, com paciente e lote. */}
+              {setor === "ENFERMAGEM" && canSeeModule(pessoa, "aplicacoes") ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/estoque/aplicacoes">
+                    <Syringe className="mr-1.5 h-4 w-4" aria-hidden="true" /> Aplicações
+                  </Link>
+                </Button>
+              ) : null}
               <Button type="button" variant="outline" size="sm" onClick={imprimirPosicao}>
                 <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir posição
               </Button>

@@ -33,6 +33,7 @@ export function PatientPicker({
   id,
   channels,
   onChannelsChange,
+  somenteVincular = false,
 }: {
   contacts: CrmContact[];
   value: PatientPickerValue;
@@ -46,6 +47,10 @@ export function PatientPicker({
   // vinculado está sem número. Sem isso a pessoa nascia muda no CRM.
   channels?: ContactChannelsDraft;
   onChannelsChange?: (next: ContactChannelsDraft) => void;
+  // Ficha de aplicação (29/09/2026): a enfermagem só VINCULA quem já está no
+  // CRM — dado clínico não pode nascer num cadastro novo digitado às pressas
+  // (é assim que nasce o paciente duplicado). Some o "será cadastrado".
+  somenteVincular?: boolean;
 }) {
   const [query, setQuery] = useState(value.name);
   const [open, setOpen] = useState(false);
@@ -83,7 +88,7 @@ export function PatientPicker({
     () => contacts.some((contact) => norm(contactDisplayName(contact)) === norm(query) || norm(contact.fullName) === norm(query)),
     [contacts, query],
   );
-  const canCreate = query.trim().length >= 2 && !exactMatch;
+  const canCreate = !somenteVincular && query.trim().length >= 2 && !exactMatch;
 
   function handleType(next: string) {
     setQuery(next);
@@ -152,6 +157,10 @@ export function PatientPicker({
       {linked ? (
         <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-emerald-700">
           <Check className="h-3.5 w-3.5" aria-hidden="true" /> Vinculado ao cadastro do CRM
+        </p>
+      ) : query.trim() && somenteVincular ? (
+        <p className="mt-1 text-xs font-semibold text-amber-800">
+          Escolha o paciente na lista. Se ele não aparece, a recepção cadastra no CRM primeiro.
         </p>
       ) : query.trim() ? (
         <p className="mt-1 flex items-center gap-1 text-xs text-amber-700">

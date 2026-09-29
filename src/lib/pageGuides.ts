@@ -714,12 +714,34 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       steps: [
         "Escolha o setor no topo. Cada setor tem a sua lista e o seu mínimo.",
         "Confirme as chegadas que vieram das Compras — elas esperam no topo até alguém dizer que o produto chegou.",
-        "Lance a saída sempre que usar: é a saída que faz a conta bater.",
+        "Lance a saída sempre que usar: é a saída que faz a conta bater. Medicação aplicada em paciente sai pela tela Aplicações, que lança a saída sozinha.",
         "O que ficar abaixo do mínimo entra em COMPRAR e vira lista de compras na hora de pedir.",
       ],
       tips: [
         "A ordem de uso é do vencimento mais próximo para o mais distante — o app já mostra nessa ordem.",
         "Dá para imprimir a posição do setor e a lista de compras pelos botões do topo.",
+      ],
+    },
+  },
+  {
+    // Ficha de aplicação da enfermagem (29/09/2026).
+    pattern: "/estoque/aplicacoes",
+    guide: {
+      title: "Aplicações da enfermagem",
+      whatIs:
+        "A ficha de cada aplicação: paciente, produto, lote, validade, dose, via, local, hora e quem aplicou. Salvar já lança a saída no estoque da enfermagem — não precisa lançar de novo no Estoque.",
+      steps: [
+        "Logo depois de aplicar, toque em \"Registrar aplicação\" e escolha o paciente na lista (ele precisa estar no CRM).",
+        "Escolha o produto. O lote que vence primeiro já vem marcado; se o da caixa for outro, troque ou digite o lote e a validade da caixa.",
+        "Confira a quantidade que sai do estoque, a dose, a via e o local. Se a tarefa da régua do paciente estiver aberta, ela vem marcada para concluir junto.",
+        "Salve. Se o estoque não bater (lote sem saldo), nada é salvo: confira a caixa ou chame a gestão para liberar com um motivo.",
+        "Registrou errado? Use \"Estornar\" com o motivo — a aplicação fica no histórico, riscada, e o estoque volta.",
+      ],
+      tips: [
+        "Lote vencido nunca salva. Se a caixa diz outra validade, digite a validade da caixa.",
+        "Dose de um frasco que já saiu do estoque (ex.: tirzepatida) é \"Dose de frasco já aberto\": registra o lote sem baixar de novo.",
+        "No implante, o trocarter já vem como insumo junto — tire se não usou.",
+        "O histórico de cada paciente aparece na ficha dele no CRM, no bloco Aplicações.",
       ],
     },
   },
