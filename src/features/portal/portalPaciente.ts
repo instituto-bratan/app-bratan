@@ -741,3 +741,101 @@ export function pacienteDesde(dados: Pick<PortalDados, "plano" | "comandas" | "m
   const dias = [...dados.comandas.map((c) => c.dia), ...dados.medicoes.map((m) => m.dia)].filter(Boolean).sort();
   return dias[0] ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// O RESUMO DE SEXTA (29/09/2026, ideia aprovada pelo Lucas: "Resumo de sexta,
+// gostei"). No fim da semana o portal abre com um cartão só: se a pesagem da
+// semana chegou, o quanto mudou desde a anterior, e o que vem. Usa só o que o
+// paciente já tem — nada de dado novo, nada de número clínico no aviso do
+// celular (o número fica aqui dentro).
+// ---------------------------------------------------------------------------
+
+export type ResumoDaSemana = {
+  /** Aparece de sexta a domingo. */
+  mostrar: boolean;
+  /** "22 a 28 de set" */
+  periodo: string;
+  pesouNaSemana: boolean;
+  ultimoPeso: number | null;
+  /** negativo = perdeu; null = sem base para comparar. */
+  variacaoKg: number | null;
+  frasePeso: string;
+  fraseProximo: string;
+};
+
+export function resumoDaSemana(entrada: {
+  hojeISO: string;
+  medicoes: PortalMedicao[];
+  proxima: ProximaConsulta | null;
+  trilha: { frase: string } | null;
+}): ResumoDaSemana {
+  const { hojeISO } = entrada;
+  const diaDaSemana = dataLocal(hojeISO).getDay(); // 0 domingo … 5 sexta, 6 sábado
+  const mostrar = diaDaSemana === 5 || diaDaSemana === 6 || diaDaSemana === 0;
+  // A semana do resumo vai de sábado passado até esta sexta (ou hoje, no fim de semana).
+  const recuo = diaDaSemana === 0 ? 8 : diaDaSemana === 6 ? 7 : 6;
+  const inicio = somaDiasISO(hojeISO, -recuo);
+  const comPeso = entrada.medicoes.filter((m) => m.pesoKg !== null && m.pesoKg > 0).sort((a, b) => a.dia.localeCompare(b.dia));
+  const daSemana = comPeso.filter((m) => m.dia >= inicio && m.dia <= hojeISO);
+  const antes = comPeso.filter((m) => m.dia < inicio);
+  const ultima = daSemana.at(-1) ?? null;
+  const base = antes.at(-1) ?? null;
+  const variacaoKg = ultima && base ? Math.round(((ultima.pesoKg as number) - (base.pesoKg as number)) * 10) / 10 : null;
+  const kg = (n: number) => `${n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`;
+  let frasePeso: string;
+  if (!ultima) frasePeso = "A pesagem desta semana ainda não chegou. Leva dez segundos e ajuda a enfermagem a acompanhar você.";
+  else if (variacaoKg === null) frasePeso = `Pesagem da semana: ${kg(ultima.pesoKg as number)}. Na próxima, a gente já mostra quanto mudou.`;
+  else if (variacaoKg < 0) frasePeso = `Pesagem da semana: ${kg(ultima.pesoKg as number)}, ${kg(Math.abs(variacaoKg))} a menos que na medição anterior.`;
+  else if (variacaoKg > 0) frasePeso = `Pesagem da semana: ${kg(ultima.pesoKg as number)}, ${kg(variacaoKg)} a mais que na anterior. Oscilar faz parte — o que conta é a curva.`;
+  else frasePeso = `Pesagem da semana: ${kg(ultima.pesoKg as number)}, igual à anterior.`;
+  const fraseProximo = entrada.proxima
+    ? `Próxima consulta ${entrada.proxima.quando}.`
+    : entrada.trilha?.frase ?? "Quando a próxima consulta for marcada, ela aparece aqui.";
+  const fim = diaDaSemana === 5 ? hojeISO : somaDiasISO(inicio, 6);
+  return { mostrar, periodo: `${diaMes(inicio).split(" de ")[0]} a ${diaMes(fim)}`, pesouNaSemana: Boolean(ultima), ultimoPeso: ultima?.pesoKg ?? null, variacaoKg, frasePeso, fraseProximo };
+}
+
+function somaDiasISO(iso: string, dias: number) {
+  const d = dataLocal(iso);
+  d.setDate(d.getDate() + dias);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ---------------------------------------------------------------------------
+// "PÔR NO MEU CALENDÁRIO" (29/09/2026). O "cartão da consulta na Wallet" do
+// iPhone exige conta de desenvolvedor da Apple e um certificado; o arquivo de
+// calendário (.ics) faz o essencial de graça: a consulta entra na agenda do
+// celular com o lembrete da véspera, e o iPhone e o Android abrem direto.
+// ---------------------------------------------------------------------------
+export function icsDaConsulta(consulta: Pick<ProximaConsulta, "em" | "comHora" | "profissional" | "tipo" | "local" | "id">, agoraISO: string) {
+  const inicio = new Date(consulta.em);
+  const fim = new Date(inicio.getTime() + 60 * 60_000);
+  const utc = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const dia = (d: Date) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const limpa = (s: string) => String(s ?? "").replace(/[\\,;]/g, (c) => `\\${c}`).replace(/\r?\n/g, " ");
+  const quando = consulta.comHora
+    ? [`DTSTART:${utc(inicio)}`, `DTEND:${utc(fim)}`]
+    : [`DTSTART;VALUE=DATE:${dia(inicio)}`, `DTEND;VALUE=DATE:${dia(new Date(inicio.getTime() + 86_400_000))}`];
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Instituto Bratan//Meu Bratan//PT-BR",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${limpa(consulta.id ?? consulta.em)}@meu.bratan`,
+    `DTSTAMP:${utc(new Date(agoraISO))}`,
+    ...quando,
+    `SUMMARY:${limpa(`${consulta.tipo} · Instituto Bratan`)}`,
+    `DESCRIPTION:${limpa(`${consulta.tipo} com ${consulta.profissional}. Para remarcar, use o Meu Bratan ou fale com a recepção.`)}`,
+    `LOCATION:${limpa(consulta.local || "Instituto Bratan")}`,
+    "BEGIN:VALARM",
+    "ACTION:DISPLAY",
+    "DESCRIPTION:Consulta amanhã no Instituto Bratan",
+    "TRIGGER:-P1D",
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+    "",
+  ].join("\r\n");
+}

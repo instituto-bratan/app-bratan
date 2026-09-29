@@ -140,3 +140,32 @@ test("paciente desde: plano, senão a primeira comanda ou medição", () => {
   assert.equal(mod.pacienteDesde({ plano: null, comandas: [{ dia: "2026-07-01" }], medicoes: [{ dia: "2026-06-20" }] }), "2026-06-20");
   assert.equal(mod.pacienteDesde({ plano: null, comandas: [], medicoes: [] }), null);
 });
+
+test("resumo de sexta: pesagem da semana, a diferença e o próximo passo (29/09/2026)", () => {
+  const medicoes = [
+    { id: "1", dia: "2026-09-19", pesoKg: 83.0, gorduraPct: null, massaMagraKg: null, cinturaCm: null, origem: "PACIENTE" },
+    { id: "2", dia: "2026-10-01", pesoKg: 82.4, gorduraPct: null, massaMagraKg: null, cinturaCm: null, origem: "PACIENTE" },
+  ];
+  const sexta = mod.resumoDaSemana({ hojeISO: "2026-10-02", medicoes, proxima: null, trilha: { frase: "Próximo passo: 4ª bioimpedância." } });
+  assert.equal(sexta.mostrar, true);
+  assert.equal(sexta.pesouNaSemana, true);
+  assert.equal(sexta.variacaoKg, -0.6);
+  assert.match(sexta.frasePeso, /82,4 kg, 0,6 kg a menos/);
+  assert.match(sexta.fraseProximo, /4ª bioimpedância/);
+  const quarta = mod.resumoDaSemana({ hojeISO: "2026-09-30", medicoes, proxima: null, trilha: null });
+  assert.equal(quarta.mostrar, false, "no meio da semana o cartão não aparece");
+  const semPesagem = mod.resumoDaSemana({ hojeISO: "2026-10-10", medicoes, proxima: null, trilha: null });
+  assert.equal(semPesagem.pesouNaSemana, false);
+  assert.match(semPesagem.frasePeso, /ainda não chegou/);
+});
+
+test("o arquivo de calendário da consulta tem hora, local e o lembrete da véspera", () => {
+  const ics = mod.icsDaConsulta({ id: "ag-1", em: "2026-10-06T17:00:00.000Z", comHora: true, profissional: "Dr. Daniel", tipo: "Consulta de acompanhamento", local: "Instituto Bratan" }, "2026-09-29T12:00:00.000Z");
+  assert.match(ics, /BEGIN:VCALENDAR\r\n/);
+  assert.match(ics, /DTSTART:20261006T170000Z/);
+  assert.match(ics, /DTEND:20261006T180000Z/);
+  assert.match(ics, /TRIGGER:-P1D/);
+  assert.match(ics, /LOCATION:Instituto Bratan/);
+  const semHora = mod.icsDaConsulta({ id: null, em: "2026-10-06T15:00:00.000Z", comHora: false, profissional: "Dr. Daniel", tipo: "Consulta", local: "" }, "2026-09-29T12:00:00.000Z");
+  assert.match(semHora, /DTSTART;VALUE=DATE:20261006/);
+});

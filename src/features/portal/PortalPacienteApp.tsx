@@ -30,7 +30,7 @@ import { fraseDoCartao, opcoesDoCartao, textoDeCompartilhar, type OpcaoDoCartao 
 import { cartaoParaBlob, compartilharCartao, desenharCartao } from "./desenharCartao";
 import { Confete } from "@/components/ui/motion-confetti";
 import { CountUp } from "@/components/ui/count-up";
-import { ABAS, abaDaRota, brl, brlCentavos, diaCurto, diaMes, linhaDoTempo, medicoesAntesDoPlano, nomeDoPlano, pacienteDesde, pendenciasDasAbas, proximaConsulta, fraseDoDia, oQueABalancaNaoMostra, resumoDaJornada, resumoEvolucao, resumoFinanceiro, resumoInBody, rotaDaAba, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type AbaDoPortal, type EventoDaJornada, type MarcoDoPlano, type PassoDaTrilha, type PortalDados, type ResumoDaJornada } from "./portalPaciente";
+import { ABAS, abaDaRota, brl, brlCentavos, diaCurto, diaMes, linhaDoTempo, medicoesAntesDoPlano, nomeDoPlano, pacienteDesde, pendenciasDasAbas, proximaConsulta, fraseDoDia, icsDaConsulta, oQueABalancaNaoMostra, resumoDaJornada, resumoDaSemana, resumoEvolucao, resumoFinanceiro, resumoInBody, rotaDaAba, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type AbaDoPortal, type EventoDaJornada, type MarcoDoPlano, type PassoDaTrilha, type PortalDados, type ResumoDaJornada } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
 const CONSENT_LABEL: Record<string, string> = { LGPD: "uso dos seus dados para o atendimento", TRATAMENTO: "termo do tratamento", IA: "apoio de inteligência artificial", IMAGEM: "uso de imagem", MARKETING: "mensagens e novidades" };
@@ -420,6 +420,8 @@ function MeuPortal() {
   const inbody = dados ? resumoInBody(dados.medicoes, verHistoricoTodo ? undefined : inicioDoPlano ?? undefined) : null;
   // A FRASE DO DIA e O QUE A BALANÇA NÃO MOSTRA (21/09/2026, passo 2).
   const fraseTopo = dados ? fraseDoDia({ hojeISO: hoje, inbody, evolucao, proxima, trilha }) : "";
+  // O resumo de sexta (29/09/2026): de sexta a domingo, no topo de Hoje.
+  const semana = resumoDaSemana({ hojeISO: hoje, medicoes: dados?.medicoes ?? [], proxima, trilha });
   const balanca = oQueABalancaNaoMostra(evolucao);
   // CARTÃO COMPARTILHÁVEL (21/09/2026, passo 5): só notícia boa; vazio = some.
   const opcoesDeCartao = opcoesDoCartao(evolucao, inbody);
@@ -481,6 +483,23 @@ function MeuPortal() {
       await recarregar();
     } finally {
       setRespondendo(false);
+    }
+  }
+
+  /** O arquivo de calendário da consulta (29/09/2026): o celular abre e oferece guardar. */
+  function porNoCalendario(consulta: NonNullable<typeof proxima>) {
+    try {
+      const blob = new Blob([icsDaConsulta(consulta, new Date().toISOString())], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "consulta-instituto-bratan.ics";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch {
+      toast("Não consegui abrir o calendário deste aparelho.", { tom: "atencao" });
     }
   }
 
@@ -549,6 +568,11 @@ function MeuPortal() {
             ) : proxima.status === "REMARCAR" ? (
               <span className="p-pill" style={{ justifySelf: "start" }}>a recepção vai te chamar para remarcar</span>
             ) : null}
+            {proxima.origem !== "PREVISTA" ? (
+              <button type="button" className="p-btn plain" style={{ justifySelf: "start" }} onClick={() => porNoCalendario(proxima)}>
+                <CalendarDays size={16} aria-hidden="true" /> Pôr no meu calendário
+              </button>
+            ) : null}
             {proxima.podeResponder ? (
               <div className="p-botoes">
                 <button type="button" className="p-btn full" disabled={respondendo} onClick={() => void responder("CONFIRMO")}>
@@ -599,6 +623,22 @@ function MeuPortal() {
   const painelHoje = dados ? (
     <>
       {!previa && dados.paciente.temFaceId === false && sessao ? <ConviteFaceId sessao={sessao} aoAtivar={() => void recarregar()} /> : null}
+      {semana.mostrar ? (
+        <section className="p-sec p-anim wide" aria-labelledby="t-semana">
+          <span className="t-sec" id="t-semana">Sua semana · {semana.periodo}</span>
+          <div className="p-card">
+            <p className="t-body">{semana.frasePeso}</p>
+            <p className="t-sub t-2">{semana.fraseProximo}</p>
+            {!semana.pesouNaSemana ? (
+              <div className="p-botoes">
+                <button type="button" className="p-btn tonal" onClick={() => irPara("corpo", "pesagem")}>
+                  <Scale size={16} aria-hidden="true" /> Mandar a pesagem
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       <section className="p-sec p-anim wide" aria-label="Onde você está na jornada">
         <HeroDaJornada jornada={jornada} plano={dados.plano} proxima={proxima} evolucao={evolucao} aoAbrir={() => irPara("jornada")} />
       </section>
