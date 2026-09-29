@@ -726,6 +726,23 @@ function MeuPortal() {
                 <span className="t-foot t-2">no mesmo exame</span>
               </div>
             </div>
+            {/* O QUE CADA NÚMERO QUER DIZER (29/09/2026): três linhas por
+                medida, na língua de quem lê o próprio exame. Fecha sozinho. */}
+            <details className="p-explica">
+              <summary className="t-foot">O que cada número quer dizer</summary>
+              <dl>
+                <dt>InBody Score</dt>
+                <dd>Uma nota de 0 a 100 que junta músculo e gordura. Acima de 80 é uma composição forte; o que importa é a nota subir de um exame para o outro.</dd>
+                <dt>Gordura visceral</dt>
+                <dd>A gordura entre os órgãos, a que mais pesa na saúde do coração e do açúcar no sangue. O nível ideal vai até {VISCERAL_LIMITE_NORMAL}; ela costuma cair antes do peso.</dd>
+                <dt>Massa muscular</dt>
+                <dd>O músculo que move o corpo. Manter ou ganhar músculo enquanto o peso cai é o sinal de que você está perdendo gordura, não força.</dd>
+                <dt>Metabolismo basal</dt>
+                <dd>Quanto o corpo gasta por dia em repouso. Mais músculo, metabolismo mais alto — é por isso que a enfermagem acompanha os dois juntos.</dd>
+                <dt>Gordura corporal</dt>
+                <dd>A parte do seu peso que é gordura. Serve para comparar você com você: a curva de um exame para o outro diz mais que o número sozinho.</dd>
+              </dl>
+            </details>
           </div>
         </section>
       ) : null}
@@ -1548,6 +1565,8 @@ function AvisosNoCelular({ sessao, previa, chavePublica }: { sessao: string | nu
  * recebe 200 KB, não 5 MB.
  */
 function FotosDeEvolucao({ sessao, previa, fotosIniciais }: { sessao: string | null; previa: boolean; fotosIniciais: PortalFoto[] }) {
+  const [sobrepor, setSobrepor] = useState(false);
+  const [corte, setCorte] = useState(50);
   const [fotos, setFotos] = useState<PortalFoto[]>(fotosIniciais);
   const [angulo, setAngulo] = useState<AnguloDaFoto>("FRENTE");
   const [ocupado, setOcupado] = useState(false);
@@ -1617,10 +1636,35 @@ function FotosDeEvolucao({ sessao, previa, fotosIniciais }: { sessao: string | n
             </button>
           ))}
         </div>
-        <div className="p-fotos-par">
-          <Quadro foto={par.primeira} rotulo={previa ? "A primeira foto fica aqui" : "Tire a primeira"} />
-          <Quadro foto={par.ultima} rotulo={par.primeira ? "A próxima aparece aqui" : "E a mais recente, aqui"} />
-        </div>
+        {par.primeira && par.ultima && par.primeira.id !== par.ultima.id ? (
+          <div className="p-seletor" role="group" aria-label="Como comparar">
+            <button type="button" aria-pressed={!sobrepor} onClick={() => setSobrepor(false)}>Lado a lado</button>
+            <button type="button" aria-pressed={sobrepor} onClick={() => setSobrepor(true)}>Deslizar</button>
+          </div>
+        ) : null}
+        {sobrepor && par.primeira && par.ultima && par.primeira.id !== par.ultima.id ? (
+          // ANTES E DEPOIS DESLIZANDO (29/09/2026): as duas fotos no mesmo
+          // quadro; o dedo arrasta a divisa e o corpo muda na frente dos olhos.
+          <div className="p-foto p-foto-desliza" style={{ ["--corte" as string]: `${corte}%` } as CSSProperties}>
+            <img src={par.primeira.url} alt={`Primeira foto, ${diaCurto(par.primeira.dia)}`} />
+            <img className="p-foto-depois" src={par.ultima.url} alt={`Foto mais recente, ${diaCurto(par.ultima.dia)}`} />
+            <span className="p-foto-data" style={{ left: 8 }}>{diaCurto(par.primeira.dia)}</span>
+            <span className="p-foto-data" style={{ left: "auto", right: 8 }}>{diaCurto(par.ultima.dia)}</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={corte}
+              onChange={(e) => setCorte(Number(e.target.value))}
+              aria-label="Arraste para comparar a primeira e a mais recente"
+            />
+          </div>
+        ) : (
+          <div className="p-fotos-par">
+            <Quadro foto={par.primeira} rotulo={previa ? "A primeira foto fica aqui" : "Tire a primeira"} />
+            <Quadro foto={par.ultima} rotulo={par.primeira ? "A próxima aparece aqui" : "E a mais recente, aqui"} />
+          </div>
+        )}
         {par.todas.length > 2 ? (
           <p className="t-foot t-2">
             Mais {par.todas.length - 2} {par.todas.length - 2 === 1 ? "foto" : "fotos"} deste ângulo entre a primeira e a mais recente.

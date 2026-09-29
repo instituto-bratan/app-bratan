@@ -299,7 +299,15 @@
 .portal .p-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .portal .p-foto .p-foto-data { position: absolute; left: 8px; bottom: 8px; padding: 3px 8px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; font-weight: 600; letter-spacing: -.01em; }
 .portal .p-foto .p-foto-vazia { font-size: 13px; line-height: 17px; text-align: center; padding: 0 12px; color: var(--p-2); }
-.portal .p-foto-apagar { position: absolute; right: 8px; top: 8px; width: 28px; height: 28px; border-radius: 999px; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 16px; line-height: 28px; text-align: center; cursor: pointer; }
+.portal .p-foto-apagar { position: absolute; right: 6px; top: 6px; width: 40px; height: 40px; border-radius: 999px; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 18px; line-height: 40px; text-align: center; cursor: pointer; }
+/* Antes e depois deslizando (29/09/2026): a foto mais recente fica por cima,
+   recortada pela variável --corte; o range invisível cobre o quadro inteiro. */
+.portal .p-foto-desliza { place-items: stretch; }
+.portal .p-foto-desliza img { position: absolute; inset: 0; }
+.portal .p-foto-desliza .p-foto-depois { clip-path: inset(0 0 0 var(--corte, 50%)); }
+.portal .p-foto-desliza::after { content: ""; position: absolute; top: 0; bottom: 0; left: var(--corte, 50%); width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.18); pointer-events: none; }
+.portal .p-foto-desliza input[type="range"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; touch-action: pan-y; }
+.portal .p-foto-desliza input[type="range"]:focus-visible { opacity: .01; outline: 2px solid var(--p-tint); outline-offset: 2px; }
 .portal .p-fotos-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .portal .p-fotos-acoes label.p-btn { cursor: pointer; }
 .portal .p-fotos-acoes input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -478,3 +486,14 @@
 @media (min-width: 1200px) {
   .portal .p-wrap { padding: 52px 64px 80px; }
 }
+
+/* O que cada número quer dizer (29/09/2026) */
+.portal .p-explica { border-top: 1px solid var(--p-sep); padding-top: 10px; }
+.portal .p-explica summary { cursor: pointer; color: var(--p-tint); font-weight: 600; list-style: none; min-height: 32px; display: flex; align-items: center; }
+.portal .p-explica summary::-webkit-details-marker { display: none; }
+.portal .p-explica summary::after { content: "›"; margin-left: 6px; transition: transform .2s; }
+.portal .p-explica[open] summary::after { transform: rotate(90deg); }
+.portal .p-explica dl { display: grid; gap: 4px 0; margin: 8px 0 0; }
+.portal .p-explica dt { font-weight: 600; font-size: 14px; margin-top: 6px; }
+.portal .p-explica dd { margin: 0; font-size: 14px; line-height: 20px; color: var(--p-label-2); }
+@media (prefers-reduced-motion: reduce) { .portal .p-explica summary::after { transition: none; } }
