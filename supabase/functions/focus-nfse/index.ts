@@ -20,7 +20,7 @@ import { quemChama } from "../_shared/claude.ts";
 import { baseUrl, cabecalhoFocus as cabecalho, emailValido, enviarEmailDaNota, nomeDoTokenFocus, notaAutorizada } from "../_shared/focus.ts";
 import { arquivarNotasPendentes, arquivarPorRef } from "../_shared/arquivarNotaEmitida.ts";
 import { baixarDoControle, registrarNoControle, registrarPendentesNoControle } from "../_shared/controleDeImpostos.ts";
-import { comandaSoDeSinal, cpfConfere, notaExistenteCobre, rotuloDoTipoDeNota } from "../_shared/notaEmitida.ts";
+import { comandaSoDeSinal, cpfConfere, dataDeEmissaoBrasilia, notaExistenteCobre, rotuloDoTipoDeNota } from "../_shared/notaEmitida.ts";
 
 type Entrada = {
   acao: "emitir" | "consultar" | "cancelar" | "reenviar_email" | "arquivar_pendentes";
@@ -240,9 +240,16 @@ Deno.serve(async (request) => {
   //   123012200 → procedimentos médicos
   //   123011100 → serviços cirúrgicos (guardado em `codigoNbsCirurgia`; a
   //               clínica não emite cirurgia hoje, então nada aqui usa)
-  // E o indicador da operação é 100301 dentro do país (100302 seria exterior,
-  // que não é o nosso caso). Até 21/09 estes campos eram um palpite que passava
-  // no schema — passar no schema não é estar certo.
+  // O INDICADOR DA OPERAÇÃO É 030101 (30/09/2026). O contador indicou 100301
+  // em 22/09 ("demais serviços", imposto no domicílio de quem compra). A
+  // prefeitura passou a recusar essa combinação na noite de 29/09 com o erro
+  // 651 ("a localidade de incidência do IBS deve ser um endereço nacional").
+  // Testado na homologação da Focus em 30/09: 100301 + cClassTrib 200029 é
+  // recusado em TODAS as combinações, até com o endereço completo do paciente,
+  // com destinatário e com o município da prestação. O 030101 ("serviço
+  // presencial sobre a pessoa, no estabelecimento do fornecedor", imposto no
+  // endereço da clínica) é autorizado com ou sem endereço. O valor mora na
+  // configuração da integração (codigoIndicadorOperacao), não no código.
   const fiscaisDaReforma: [string, string][] = [
     ["ibsCbsClassificacaoTributaria", "o código de classificação tributária do IBS/CBS (cClassTrib)"],
     ["codigoNbsConsulta", "o código NBS da consulta"],
@@ -336,7 +343,7 @@ Deno.serve(async (request) => {
     return json({ ok: false, faltaCpf: true, error: `Falta o CPF de ${sale.patient_name} para emitir a nota. Guarde o CPF na ficha do paciente (ou digite no fechamento) e emita de novo.` }, 400);
   }
   const payload: Record<string, unknown> = {
-    data_emissao: new Date().toISOString(),
+    data_emissao: dataDeEmissaoBrasilia(),
     natureza_operacao: String(config.naturezaOperacao ?? "1"),
     optante_simples_nacional: Boolean(config.optanteSimplesNacional),
     // Reforma Tributária, obrigatórios na raiz. Os três zeros não são chute:

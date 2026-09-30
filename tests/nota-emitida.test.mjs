@@ -2,6 +2,7 @@
 // mês, caminho no bucket e a regra "uma nota cobre a outra".
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { loadTs } from "./helpers/load-ts.mjs";
 
 const mod = await loadTs("supabase/functions/_shared/notaEmitida.ts");
@@ -37,4 +38,13 @@ test("servidor: comanda só de sinal não emite nota; CPF confere pelos dígitos
   assert.equal(mod.cpfConfere("529.982.247-25"), true);
   assert.equal(mod.cpfConfere("111.111.111-11"), false);
   assert.equal(mod.cpfConfere(""), false);
+});
+
+test("data de emissão sai no horário de Brasília, nunca no dia seguinte depois das 21h (30/09/2026)", async () => {
+  const n = await loadTs("supabase/functions/_shared/notaEmitida.ts");
+  // 22h14 de 29/09 em São Paulo = 01h14 de 30/09 em UTC.
+  assert.equal(n.dataDeEmissaoBrasilia(new Date("2026-09-30T01:14:57.443Z")), "2026-09-29T22:14:57-03:00");
+  assert.equal(n.dataDeEmissaoBrasilia(new Date("2026-09-29T12:00:00.000Z")), "2026-09-29T09:00:00-03:00");
+  const f = fs.readFileSync(new URL("../supabase/functions/focus-nfse/index.ts", import.meta.url), "utf8");
+  assert.match(f, /data_emissao: dataDeEmissaoBrasilia\(\)/);
 });

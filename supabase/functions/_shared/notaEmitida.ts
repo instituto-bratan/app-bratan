@@ -97,3 +97,15 @@ export function cpfConfere(bruto: string) {
   }
   return true;
 }
+
+/**
+ * DATA DE EMISSÃO NO HORÁRIO DE BRASÍLIA (30/09/2026).
+ *
+ * A nota ia com `new Date().toISOString()`, que é o horário de Londres (UTC).
+ * Depois das 21h em São Paulo, o UTC já é o dia seguinte, e a prefeitura
+ * recusava a nota por estar "no futuro" (erros 313 e 107). Foi o que derrubou
+ * a nota do Nestor pedida às 22h14 de 29/09. Brasília é UTC−3 o ano inteiro.
+ */
+export function dataDeEmissaoBrasilia(agora: Date = new Date()) {
+  return new Date(agora.getTime() - 3 * 3600_000).toISOString().replace(/\.\d{3}Z$/, "-03:00");
+}
