@@ -887,7 +887,7 @@ export type FinPurchase = {
    * item de estoque (boleto, serviço, obra). Preenchido = aparece como chegada
    * pendente para a dona do setor dar a entrada.
    */
-  estoqueSetor?: "RECEPCAO" | "ENFERMAGEM" | null;
+  estoqueSetor?: "RECEPCAO" | "ENFERMAGEM" | "PACIENTES" | null;
   /**
    * De QUAL item do estoque esta compra é (21/09/2026).
    *

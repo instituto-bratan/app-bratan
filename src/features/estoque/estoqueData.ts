@@ -15,18 +15,35 @@
 //     pendente; confirmar a chegada dá a entrada E carimba o "Chegou".
 import type { FinPurchase } from "@/features/financeiro/financeiroData";
 
-export type EstoqueSetor = "RECEPCAO" | "ENFERMAGEM";
+// PACIENTES (30/09/2026, pedido da CEO): cortesias da sala de espera e itens
+// dos banheiros. Todo mundo vê; só a Aline (secretaria executiva) e a CEO mexem.
+export type EstoqueSetor = "RECEPCAO" | "ENFERMAGEM" | "PACIENTES";
 
 export const setorLabels: Record<EstoqueSetor, string> = {
   RECEPCAO: "Recepção (administrativo)",
   ENFERMAGEM: "Enfermagem (medicações & saúde)",
+  PACIENTES: "Pacientes (cortesias & banheiros)",
 };
 
 /** Quem cuida de cada setor — aparece na tela e guia o acesso. */
 export const setorDona: Record<EstoqueSetor, string> = {
   RECEPCAO: "recepcionista",
   ENFERMAGEM: "enfermeira",
+  PACIENTES: "secretaria_executiva",
 };
+
+/** Quem pode MEXER em cada setor (a mesma regra da função estoque_pode do banco). */
+export function podeMexerNoSetor(cargo: string | null | undefined, setor: EstoqueSetor, ehCoordenacao: boolean) {
+  if (setor === "PACIENTES") return cargo === "secretaria_executiva" || cargo === "ceo";
+  if (ehCoordenacao) return true;
+  if (setor === "RECEPCAO") return cargo === "recepcionista";
+  return cargo === "enfermeira" || cargo === "nutricionista";
+}
+
+/** Quais setores a pessoa enxerga: PACIENTES é de todos; os outros, de quem mexe. */
+export function setoresVisiveis(cargo: string | null | undefined, ehCoordenacao: boolean): EstoqueSetor[] {
+  return (Object.keys(setorLabels) as EstoqueSetor[]).filter((setor) => setor === "PACIENTES" || podeMexerNoSetor(cargo, setor, ehCoordenacao));
+}
 
 export type EstoqueItem = {
   id: string;

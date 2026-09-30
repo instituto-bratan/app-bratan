@@ -287,7 +287,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-lucro": "Financeiro · Lucro Inteligente",
   "fin-fatura": "Financeiro · Fatura do cartão (linha a linha)",
-  estoque: "Estoque (Recepção & Enfermagem)",
+  estoque: "Estoque (Recepção, Enfermagem & Pacientes)",
   aplicacoes: "Aplicações da enfermagem (ficha do paciente, dado clínico)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
   nutricao: "Nutrição (prontuário e planos alimentares)",
@@ -321,7 +321,9 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       // Cada dona edita o próprio setor (a divisão por setor é feita na tela e
       // na RLS); a coordenação enxerga e edita os dois.
       if (cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista") return "EDITAR";
-      return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
+      // 30/09/2026: o setor PACIENTES é de todos para VER; a Aline e a CEO editam.
+      if (cargo === "secretaria_executiva" || cargo === "ceo") return "EDITAR";
+      return isCoordenacao(cargo) ? "EDITAR" : "VER";
     case "aplicacoes":
       // Ficha de aplicação (29/09/2026): a enfermeira registra; Dr. Daniel, CEO,
       // gestor e gestor financeiro acompanham. Recepção não vê (dado clínico).

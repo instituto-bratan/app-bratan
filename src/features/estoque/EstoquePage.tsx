@@ -53,7 +53,9 @@ import {
   parseGs1,
   posicaoDoSetor,
   relatorioPosicao,
+  podeMexerNoSetor,
   setorLabels,
+  setoresVisiveis,
   type EstoqueItem,
   type EstoqueMovTipo,
   type EstoqueMovimento,
@@ -76,6 +78,7 @@ const statusChip = {
 const categoriasSugeridas: Record<EstoqueSetor, string[]> = {
   RECEPCAO: ["Escritório", "Limpeza", "Copa/Cozinha", "Impressos", "Presentes"],
   ENFERMAGEM: ["Medicação", "Injetáveis", "Descartáveis", "Curativo", "Coleta/Exames"],
+  PACIENTES: ["Alimentos", "Bebidas", "Banheiros", "Presentes"],
 };
 
 /**
@@ -179,11 +182,14 @@ export function EstoquePage() {
   // Cada dona cai direto no próprio setor; a coordenação alterna entre os dois.
   const cargo = pessoa?.cargo ?? null;
   const donaDe: EstoqueSetor | null =
-    cargo === "recepcionista" ? "RECEPCAO" : cargo === "enfermeira" || cargo === "nutricionista" ? "ENFERMAGEM" : null;
+    cargo === "recepcionista" ? "RECEPCAO" : cargo === "enfermeira" || cargo === "nutricionista" ? "ENFERMAGEM" : cargo === "secretaria_executiva" || cargo === "ceo" ? "PACIENTES" : null;
   const veAmbos = isCoordenacao(cargo);
-  const [setor, setSetor] = useState<EstoqueSetor>(donaDe ?? "ENFERMAGEM");
+  // PACIENTES (30/09/2026): todo mundo vê; só a Aline e a CEO mexem. Quem não
+  // cuida de setor nenhum cai direto nele.
+  const setores = setoresVisiveis(cargo, veAmbos);
+  const [setor, setSetor] = useState<EstoqueSetor>(donaDe ?? (veAmbos ? "ENFERMAGEM" : "PACIENTES"));
   const podeEditarModulo = canEditModule(pessoa, "estoque");
-  const podeEditar = podeEditarModulo && (veAmbos || donaDe === setor);
+  const podeEditar = podeEditarModulo && podeMexerNoSetor(cargo, setor, veAmbos);
 
   const [feedback, setFeedback] = useState("");
   const [erro, setErro] = useState("");
@@ -505,7 +511,7 @@ export function EstoquePage() {
 
           {/* Troca de setor */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            {(Object.keys(setorLabels) as EstoqueSetor[]).map((chave) => (
+            {setores.map((chave) => (
               <button
                 key={chave}
                 type="button"

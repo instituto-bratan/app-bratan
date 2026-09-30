@@ -170,7 +170,7 @@ export function FinanceiroContasPage() {
   // segundo lugar para digitar — era isso que fazia a medicação não ser anotada.
   const [ehCompra, setEhCompra] = useState(false);
   const [deliveryEta, setDeliveryEta] = useState("");
-  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM">("");
+  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES">("");
   // De onde esta conta está nascendo: uma compra sem conta ("Virar conta a pagar")
   // ou um item da caixa de entrada — para ligar/marcar ao salvar.
   const [compraOrigemId, setCompraOrigemId] = useState<string | null>(null);
@@ -978,11 +978,12 @@ export function FinanceiroContasPage() {
                         <Label>Estoque</Label>
                         <select
                           value={estoqueSetor}
-                          onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM")}
+                          onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES")}
                           className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
                         >
                           <option value="">Não é item de estoque</option>
                           <option value="ENFERMAGEM">Enfermagem</option>
+                          <option value="PACIENTES">Pacientes (cortesias & banheiros)</option>
                           <option value="RECEPCAO">Recepção</option>
                         </select>
                       </span>

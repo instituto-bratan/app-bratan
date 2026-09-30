@@ -226,3 +226,16 @@ test("lista de compras: só quem precisa, com sugestão de reposição (2× mín
   const zerado = lista.find((linha) => linha.item.nome === "Zerado");
   assert.equal(zerado.comprar, 1, "sem mínimo definido, pelo menos 1");
 });
+
+test("setor PACIENTES (30/09/2026): todo mundo vê, só a Aline e a CEO mexem", async () => {
+  const d = loadTsModule(path.join(repoRoot, "src/features/estoque/estoqueData.ts"));
+  assert.equal(d.podeMexerNoSetor("secretaria_executiva", "PACIENTES", true), true);
+  assert.equal(d.podeMexerNoSetor("ceo", "PACIENTES", true), true);
+  assert.equal(d.podeMexerNoSetor("gestor_financeiro", "PACIENTES", true), false, "coordenação não mexe no setor dos pacientes");
+  assert.equal(d.podeMexerNoSetor("recepcionista", "PACIENTES", false), false);
+  assert.equal(d.podeMexerNoSetor("recepcionista", "RECEPCAO", false), true);
+  assert.equal(d.podeMexerNoSetor("enfermeira", "ENFERMAGEM", false), true);
+  assert.deepEqual(d.setoresVisiveis("limpeza", false), ["PACIENTES"]);
+  assert.deepEqual(d.setoresVisiveis("recepcionista", false), ["RECEPCAO", "PACIENTES"]);
+  assert.deepEqual(d.setoresVisiveis("gestor_financeiro", true), ["RECEPCAO", "ENFERMAGEM", "PACIENTES"]);
+});

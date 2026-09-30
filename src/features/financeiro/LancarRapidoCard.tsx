@@ -16,7 +16,7 @@ export type PresetFornecedor = {
   fornecedor: string;
   categoryRef: string;
   descricaoPadrao: string;
-  estoqueSetor: "RECEPCAO" | "ENFERMAGEM" | null;
+  estoqueSetor: "RECEPCAO" | "ENFERMAGEM" | "PACIENTES" | null;
   ehCompra: boolean;
   metodo: "BOLETO" | "PIX";
 };

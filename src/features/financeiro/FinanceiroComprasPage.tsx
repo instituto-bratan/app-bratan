@@ -63,7 +63,7 @@ export function FinanceiroComprasPage() {
   // ESTOQUE (19/08/2026): para onde este item vai quando chegar. Marcado aqui,
   // ele vira "chegada pendente" para a dona do setor confirmar — a confirmação
   // dá a entrada no estoque e carimba o "Chegou" desta compra, num ato só.
-  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM">("");
+  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES">("");
   // Categoria da P12 da compra à vista (29/09/2026): ela vira conta paga.
   const [categoryRef, setCategoryRef] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -377,11 +377,12 @@ export function FinanceiroComprasPage() {
                     </Label>
                     <select
                       value={estoqueSetor}
-                      onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM")}
+                      onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES")}
                       className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm"
                     >
                       <option value="">Não (serviço, obra, conta)</option>
                       <option value="ENFERMAGEM">Sim — Enfermagem (medicações & saúde)</option>
+                      <option value="PACIENTES">Sim — Pacientes (cortesias & banheiros)</option>
                       <option value="RECEPCAO">Sim — Recepção (administrativo)</option>
                     </select>
                   </div>
@@ -425,7 +426,7 @@ export function FinanceiroComprasPage() {
                       {purchase.description}
                       {purchase.estoqueSetor ? (
                         <span className="ml-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
-                          → Estoque {purchase.estoqueSetor === "ENFERMAGEM" ? "Enfermagem" : "Recepção"}
+                          → Estoque {purchase.estoqueSetor === "ENFERMAGEM" ? "Enfermagem" : purchase.estoqueSetor === "PACIENTES" ? "Pacientes" : "Recepção"}
                         </span>
                       ) : null}
                     </p>
