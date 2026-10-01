@@ -18,3 +18,7 @@ tools/estacao-nutri/node_modules
 tools/estacao-nutri/.env.local
 !tools/estacao-nutri/.env.example
 tools/estacao-nutri/instalador/dist/
+
+# o tsc -b gera estes ao lado das configs: não são código
+/vite*.config.js
+/vite*.config.d.ts
