@@ -18,6 +18,7 @@
 import { corpo, db, json, telefoneE164 } from "../_shared/integracoes.ts";
 import { FASE_INFO, faseDoPaciente, mensagemParaFase } from "../_shared/vozDoDoutor.ts";
 import { deBase64Url, linhasDoPaciente, nomeDoAparelho, origemPermitida, paraBase64Url } from "../_shared/portalAcesso.ts";
+import { ehContaDeRevisao } from "../_shared/contaDoPortal.ts";
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "npm:@simplewebauthn/server@13.3.3";
 import bcrypt from "npm:bcryptjs@3.0.3";
 
@@ -96,7 +97,10 @@ type Entrada = {
     | "passkey_login_opcoes"
     | "passkey_login_verificar"
     | "aparelhos"
-    | "passkey_apagar";
+    | "passkey_apagar"
+    | "apagar_conta";
+  /** Apagar a conta (01/10/2026): só vale com a confirmação explícita da tela. */
+  confirmo?: boolean;
   /** Face ID (29/09/2026): o desafio de uso único e a resposta do aparelho. */
   desafioId?: string;
   resposta_webauthn?: Record<string, unknown>;
@@ -192,6 +196,13 @@ Deno.serve(async (request) => {
     const login = normalizarLogin(String(entrada.login ?? ""));
     const senha = String(entrada.senha ?? "");
     if (!login || senha.length < 8) return json({ ok: false, error: "Confira o e-mail ou celular e a senha (mínimo de 8 caracteres)." });
+    // CONTA DO REVISOR DA APPLE (01/10/2026, Diretriz 2.1): abre o portal com os
+    // dados de exemplo, a mesma "prévia" da recepção, sem tocar em paciente nenhum.
+    // O login e a senha moram nos segredos do servidor, nunca no código.
+    if (ehContaDeRevisao(String(entrada.login ?? ""), senha, { login: Deno.env.get("PORTAL_REVISAO_LOGIN"), senha: Deno.env.get("PORTAL_REVISAO_SENHA") })) {
+      await log(null, "ENTRADA_REVISAO");
+      return json({ ok: true, sessao: "previa", revisao: true });
+    }
     if (await ipBloqueado()) {
       await log(null, "ENTRADA_RECUSADA", { motivo: "muitas tentativas deste aparelho" });
       return json({ ok: false, error: `Muitas tentativas deste aparelho. Espere ${BLOQUEIO_MIN} minutos e tente de novo.` });
@@ -403,6 +414,30 @@ Deno.serve(async (request) => {
     if (sessaoId) await client.from("paciente_sessao").update({ revogada_em: agora() }).eq("id", sessaoId);
     await client.from("paciente_acesso").update({ sessao_hash: null, sessao_expira_em: null }).eq("id", acesso.id).eq("sessao_hash", hashDaSessao);
     await log(contactRef, "SAIDA");
+    return json({ ok: true });
+  }
+
+  // ---- APAGAR A CONTA (01/10/2026, Diretriz 5.1.1(v) da Apple) -------------------
+  // Some de verdade: login, senha, Face ID e sessões de todos os aparelhos (o
+  // apagar de paciente_acesso leva junto, em cascata, paciente_sessao,
+  // paciente_passkey e paciente_webauthn_desafio), as fotos (arquivo e linha),
+  // as pesagens que o próprio paciente mandou e os avisos no celular.
+  // Fica o que a lei manda guardar: prontuário e exames do Instituto, notas e
+  // pagamentos, e o registro de acesso ao portal (6 meses, Marco Civil).
+  if (entrada.acao === "apagar_conta") {
+    if (entrada.confirmo !== true) return json({ ok: false, error: "Confirme na tela que quer apagar a conta." });
+    const { data: fotos } = await client.from("paciente_foto").select("id, caminho").eq("contact_ref", contactRef);
+    const caminhos = ((fotos ?? []) as { caminho: string }[]).map((foto) => foto.caminho).filter(Boolean);
+    if (caminhos.length) {
+      const { error: erroDoArquivo } = await client.storage.from(FOTO_BUCKET).remove(caminhos);
+      if (erroDoArquivo) return json({ ok: false, error: "Não consegui apagar as suas fotos agora. Nada foi apagado; tente de novo." });
+    }
+    await client.from("paciente_foto").delete().eq("contact_ref", contactRef);
+    await client.from("paciente_push_assinatura").delete().eq("contact_ref", contactRef);
+    const { count: pesagens } = await client.from("paciente_medicao").delete({ count: "exact" }).eq("contact_ref", contactRef).eq("origem", "PACIENTE");
+    const { error: erroDoAcesso } = await client.from("paciente_acesso").delete().eq("contact_ref", contactRef);
+    if (erroDoAcesso) return json({ ok: false, error: "As fotos e as pesagens foram apagadas, mas o login não. Tente de novo para terminar." });
+    await log(contactRef, "CONTA_APAGADA", { fotos: caminhos.length, pesagens: pesagens ?? 0 });
     return json({ ok: true });
   }
 

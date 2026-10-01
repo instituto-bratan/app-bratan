@@ -497,3 +497,17 @@
 .portal .p-explica dt { font-weight: 600; font-size: 14px; margin-top: 6px; }
 .portal .p-explica dd { margin: 0; font-size: 14px; line-height: 20px; color: var(--p-label-2); }
 @media (prefers-reduced-motion: reduce) { .portal .p-explica summary::after { transition: none; } }
+
+/* ---- Conta e privacidade (01/10/2026, exigências da App Store) ------------------ */
+.portal .p-btn.perigo { color: var(--p-bad-fg); }
+.portal .p-btn.perigo-cheio { background: var(--p-bad); border-color: var(--p-bad); color: #fff; }
+.portal .p-apagar { border: 1px solid var(--p-bad-bg); text-align: left; }
+/* lista de texto com marcador (política, apagar a conta); a .p-lista é a de linhas */
+.portal .p-itens { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 15px; line-height: 1.45; color: var(--p-label); list-style: disc; text-align: left; }
+.portal .p-itens li::marker { color: var(--p-label-2); }
+.portal .p-politica { padding-top: calc(24px + env(safe-area-inset-top)); }
+.portal .p-politica .p-cabeca { justify-items: start; gap: 8px; }
+.portal .p-politica .p-card { gap: 10px; }
+.portal .p-politica a, .portal .p-apagar a { color: var(--p-tint); }
+.portal .p-nota-saude { margin: 0; }
+.portal .p-link-politica { justify-self: center; color: var(--p-label-2); font-size: 13px; text-decoration: underline; text-underline-offset: 2px; }

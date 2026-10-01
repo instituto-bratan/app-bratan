@@ -18,11 +18,14 @@ import { buildMilestones } from "@/features/programa/programaData";
 import type { CrmDeal } from "@/features/crm/crmData";
 import bratanMark from "@/assets/bratan-mark.png";
 import "./portal.css";
+import { ApagarConta, CHAVE_AVISO_DE_ENTRADA } from "./ApagarConta";
+import { PoliticaDePrivacidade } from "./PoliticaDePrivacidade";
 import { CurvaEsperando, CurvaEvolucao, type MetricaDaCurva } from "./CurvaEvolucao";
 import { InterruptorDoPortal } from "./InterruptorDoPortal";
 import { dadosDemo, dadosDemoNovo } from "./portalDemo";
 import { SESSAO_DEMO, ambienteSemSupabase, assinarPush, carregarDados, criarSenhaDoPortal, desligarFaceId, emPrevia, entrarComSenha, entrarComToken, enviarPesagem, guardarSessao, lerSessao, listarAparelhos, responderConsulta, sairDeTodosOsAparelhos, sairDoPortal, sairDoPush, enviarFoto, apagarFoto, marcarVozOuvida, type AparelhosDoPortal } from "./portalCliente";
 import { ativarFaceId, entrarComFaceId, faceIdDisponivel, nomeDaBiometria } from "./faceId";
+import { dentroDoAppDaLoja } from "./appDaLoja";
 import { chaveVapidParaBytes } from "./pushDoPaciente";
 import { ANGULOS, fraseDasFotos, paresPorAngulo, rotuloDoAngulo, validarFoto, type AnguloDaFoto, type PortalFoto } from "./fotosDoPaciente";
 import { reduzirFoto } from "./redimensionarFoto";
@@ -168,6 +171,16 @@ function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
   // tem (ou nunca ativou) usa a senha logo abaixo.
   const [temBiometria, setTemBiometria] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
+  // Depois de apagar a conta a página recarrega; o aviso vem guardado na sessão do navegador.
+  const [avisoDeEntrada] = useState(() => {
+    try {
+      const texto = sessionStorage.getItem(CHAVE_AVISO_DE_ENTRADA);
+      if (texto) sessionStorage.removeItem(CHAVE_AVISO_DE_ENTRADA);
+      return texto ?? "";
+    } catch {
+      return "";
+    }
+  });
   useEffect(() => {
     let vivo = true;
     void faceIdDisponivel().then((sim) => {
@@ -220,6 +233,7 @@ function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
           <img src={bratanMark} alt="" style={{ width: 56, height: 56, borderRadius: 14 }} />
           <h1 className="t-title2">Seu espaço no Instituto Bratan</h1>
           <p className="t-body t-2">Próxima consulta, sua evolução, seu plano e a pesagem da semana, num lugar só.</p>
+          {avisoDeEntrada ? <p className="t-foot" role="status" style={{ color: "var(--p-tint)" }}>{avisoDeEntrada}</p> : null}
           {temBiometria ? (
             <button type="button" className="p-btn full" disabled={entrando} onClick={() => void entrarComBiometria()}>
               <ScanFace size={18} aria-hidden="true" /> {entrando && !mostrarSenha ? "Abrindo" : `Entrar com ${nomeDaBiometria()}`}
@@ -269,6 +283,7 @@ function SemSessao({ aoEntrar }: { aoEntrar: (sessao: string) => void }) {
               Ver com dados de exemplo
             </Link>
           ) : null}
+          <Link to="/meu/privacidade" className="p-link-politica">Política de privacidade</Link>
         </div>
       </div>
     </div>
@@ -841,6 +856,12 @@ function MeuPortal() {
       ) : null}
 
       <FotosDeEvolucao sessao={sessao} previa={previa} fotosIniciais={dados.fotos ?? []} />
+
+      {/* De onde vem cada número (01/10/2026, Diretriz 1.4.1 da Apple para app de saúde). */}
+      <p className="p-nota-saude t-foot t-3 wide">
+        De onde vêm os números: a bioimpedância é o exame feito no aparelho InBody do Instituto, e o peso da semana é o que você informa. O
+        portal acompanha a sua evolução e não faz diagnóstico. Em dúvida sobre o tratamento, fale com o seu médico.
+      </p>
     </>
   ) : null;
 
@@ -986,7 +1007,7 @@ function MeuPortal() {
         </div>
       </section>
 
-      <AvisosNoCelular sessao={sessao} previa={previa} chavePublica={dados.pushPublicKey ?? null} />
+      {dentroDoAppDaLoja() ? null : <AvisosNoCelular sessao={sessao} previa={previa} chavePublica={dados.pushPublicKey ?? null} />}
 
       {!previa && sessao ? (
         <ComoVoceEntra
@@ -1029,6 +1050,15 @@ function MeuPortal() {
         <button type="button" className="p-btn plain" onClick={() => void sair()}>
           Sair deste aparelho
         </button>
+        <Link to="/meu/privacidade" className="p-link-politica">Política de privacidade</Link>
+        <ApagarConta
+          sessao={sessao}
+          previa={previa}
+          aoTerminar={() => {
+            navigate("/meu", { replace: true });
+            window.location.reload();
+          }}
+        />
       </footer>
     </>
   ) : null;
@@ -1443,6 +1473,8 @@ export function PortalPacienteApp() {
   return (
     <Routes>
       <Route path="entrar" element={<EntrarPage />} />
+      {/* Política de privacidade (01/10/2026): aberta sem login, é o endereço da ficha da App Store. */}
+      <Route path="privacidade" element={<PoliticaDePrivacidade />} />
       <Route path="*" element={<MeuPortal />} />
     </Routes>
   );

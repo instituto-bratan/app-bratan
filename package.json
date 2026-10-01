@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build && node scripts/gen-version.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/*.test.mjs",
-    "dev:demo": "VITE_SUPABASE_URL= VITE_SUPABASE_ANON_KEY= vite --host 127.0.0.1 --port 5174"
+    "dev:demo": "VITE_SUPABASE_URL= VITE_SUPABASE_ANON_KEY= vite --host 127.0.0.1 --port 5174",
+    "build:portal": "vite build --config vite.portal.config.ts && node scripts/conferir-pacote-do-portal.mjs",
+    "preview:portal": "vite preview --config vite.portal.config.ts --port 5180 --strictPort"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.3.0",

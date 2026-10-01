@@ -127,3 +127,12 @@ export async function desligarFaceId(sessao: string, passkeyId: string) {
 export async function sairDeTodosOsAparelhos(sessao: string) {
   return chamar<Record<string, never>>({ acao: "sair_de_todos", sessao });
 }
+
+/**
+ * Apagar a conta do portal (01/10/2026, Diretriz 5.1.1(v) da Apple): some o login,
+ * o Face ID, as fotos, as pesagens enviadas e os avisos. O servidor só aceita com
+ * a confirmação explícita da tela.
+ */
+export async function apagarContaDoPortal(sessao: string) {
+  return chamar<Record<string, never>>({ acao: "apagar_conta", sessao, confirmo: true });
+}

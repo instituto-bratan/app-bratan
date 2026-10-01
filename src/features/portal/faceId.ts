@@ -7,10 +7,13 @@
 // no app instalado na tela de início — que é justamente onde a sessão antiga
 // se perdia no iPhone.
 import { browserSupportsWebAuthn, platformAuthenticatorIsAvailable, startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import { dentroDoAppDaLoja } from "./appDaLoja";
 import { faceIdConfirmarAtivar, faceIdConfirmarEntrada, faceIdOpcoesDeAtivar, faceIdOpcoesDeEntrada } from "./portalCliente";
 
 /** Este aparelho tem Face ID / digital utilizável pelo navegador? */
 export async function faceIdDisponivel() {
+  // No app da loja a chave do site não vale: lá o Face ID vai ser o nativo.
+  if (dentroDoAppDaLoja()) return false;
   try {
     if (!browserSupportsWebAuthn()) return false;
     return await platformAuthenticatorIsAvailable();
