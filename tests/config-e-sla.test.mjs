@@ -34,7 +34,8 @@ const sla = loadTsModule("src/features/crm/slaLead.ts");
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
 test("config: sem linha vale o padrão do código; com linhas, vale a última vigente até o dia", () => {
-  assert.equal(cfg.configAtual("aprovacao.limite"), 5000);
+  // 01/10/2026: aprovação desligada por padrão (pedido do Lucas no fechamento de setembro).
+  assert.equal(cfg.configAtual("aprovacao.limite"), 0);
   assert.deepEqual(plain(cfg.configAtual("transferencias.dias")), [10, 25]);
   const linhas = [
     { chave: "aprovacao.limite", valor: 8000, vigenteDe: "2026-10-01", criadoEm: "2026-09-15T10:00:00Z", observacao: "" },
@@ -44,7 +45,7 @@ test("config: sem linha vale o padrão do código; com linhas, vale a última vi
   cfg.definirCacheConfig(linhas);
   assert.equal(cfg.configAtual("aprovacao.limite", "2026-09-15"), 3500, "mesma vigência: vale a linha criada por último");
   assert.equal(cfg.configAtual("aprovacao.limite", "2026-10-02"), 8000, "a linha futura passa a valer no dia");
-  assert.equal(cfg.configAtual("aprovacao.limite", "2026-08-15"), 5000, "antes de qualquer linha, o padrão");
+  assert.equal(cfg.configAtual("aprovacao.limite", "2026-08-15"), 0, "antes de qualquer linha, o padrão (desligado)");
   assert.equal(cfg.historicoDaChave("aprovacao.limite").length, 3);
   assert.equal(cfg.cacheConfigCarregado(), true);
   cfg.definirCacheConfig([]);

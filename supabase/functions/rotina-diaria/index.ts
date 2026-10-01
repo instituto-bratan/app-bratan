@@ -60,7 +60,9 @@ Deno.serve(async (request) => {
   const erros: string[] = [];
 
   // ---- configurações com vigência (limite de aprovação, SLA) -----------------
-  let limiteAprovacao = 5000;
+  // 01/10/2026: aprovação desligada por padrão (pedido do Lucas). Só volta se
+  // alguém gravar um limite maior que zero nas Configurações do negócio.
+  let limiteAprovacao = 0;
   let slaMinutos = 5;
   try {
     const { data } = await db.from("app_config_vigencia").select("chave, valor, vigente_de, criado_em").in("chave", ["aprovacao.limite", "crm.sla_lead_minutos"]).lte("vigente_de", hoje).order("vigente_de", { ascending: false }).order("criado_em", { ascending: false });

@@ -135,6 +135,34 @@ export function lerLinhasDoExtrato(matriz: string[][]): BankEntry[] {
   return entradas;
 }
 
+/**
+ * Só as linhas do arquivo que AINDA NÃO estão no app. O id da linha leva o
+ * CPF/CNPJ, e o Itaú às vezes exporta o mesmo lançamento com o documento
+ * mascarado ou sem a coluna: o id muda e a importação duplicava a linha
+ * (fechamento de setembro, 01/10/2026: 16 linhas de 29–30/09 viriam em dobro).
+ * Agora a linha também é reconhecida pelo dia + valor: se o app já tem N linhas
+ * daquele dia com aquele valor, as N primeiras do arquivo são as mesmas.
+ */
+export function linhasNovasDoExtrato(
+  lidas: BankEntry[],
+  existentes: Array<Pick<BankEntry, "clientRef" | "entryDate" | "amount">>,
+): BankEntry[] {
+  const ids = new Set(existentes.map((linha) => linha.clientRef));
+  const noApp = new Map<string, number>();
+  for (const linha of existentes) {
+    const chave = `${linha.entryDate}|${Number(linha.amount).toFixed(2)}`;
+    noApp.set(chave, (noApp.get(chave) ?? 0) + 1);
+  }
+  const vistas = new Map<string, number>();
+  return lidas.filter((linha) => {
+    const chave = `${linha.entryDate}|${linha.amount.toFixed(2)}`;
+    const ordem = (vistas.get(chave) ?? 0) + 1;
+    vistas.set(chave, ordem);
+    if (ids.has(linha.clientRef)) return false;
+    return ordem > (noApp.get(chave) ?? 0);
+  });
+}
+
 /** CSV/TSV colado ou baixado. */
 export function lerExtratoDeTexto(texto: string): BankEntry[] {
   const separador = texto.includes(";") ? ";" : texto.includes("\t") ? "\t" : ",";

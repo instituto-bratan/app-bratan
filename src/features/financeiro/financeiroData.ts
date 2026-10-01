@@ -2289,9 +2289,16 @@ export function buildGestaoMensal(
     const category = grupoPorRef.get(expense.categoryRef);
     const valor = expense.amount || 0;
     if (!category) continue;
+    // Distribuição de lucro aos sócios fica FORA do lucro operacional pela
+    // categoria, com ou sem a marca de capex. Fechamento de setembro (01/10/2026):
+    // "Lucro Inteligente — sócios" não é capex no banco e as transferências
+    // (R$ 21.417,38) entravam como provisão, derrubando o lucro da operação.
+    if (CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has(category.id)) {
+      distribuicaoSocios += valor;
+      continue;
+    }
     if (expenseEhCapex(expense, category)) {
-      if (CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has(category.id)) distribuicaoSocios += valor;
-      else obra += valor;
+      obra += valor;
       continue;
     }
     if (category.groupKey === "CUSTO_FIXO") custosFixos += valor;
@@ -2578,6 +2585,16 @@ export function buildPonteLucro(gestao: GestaoMensal, fechamento: FechamentoCont
       tipo: "menos",
       explicacao: "Investimento na obra. Fica fora do lucro operacional porque é patrimônio, não custo de atender paciente — mas a contabilidade abate.",
     },
+    ...(gestao.distribuicaoSocios
+      ? [
+          {
+            label: "− Lucro distribuído aos sócios",
+            valor: gestao.distribuicaoSocios,
+            tipo: "menos" as const,
+            explicacao: "Transferências de lucro aos sócios (Lucro Inteligente e distribuição). Ficam fora do lucro operacional porque não são custo de atender paciente, mas saem do resultado que vai para a contabilidade.",
+          },
+        ]
+      : []),
     {
       label: "= Lucro contábil (vai para a contabilidade)",
       valor: fechamento.faturamentoBruto - fechamento.custosDoMes,

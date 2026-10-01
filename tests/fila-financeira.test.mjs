@@ -54,13 +54,14 @@ test("fila do dia: vencidas · hoje · semana, boleto sem arquivo marcado, resum
     conta("paga", 500, "2026-09-02", { paidAt: "2026-09-01" }),
     conta("longe", 700, "2026-09-20"),
   ];
-  const f = fila.buildFilaFinanceira({ expenses, purchases: [], hoje });
+  // 01/10/2026: o padrão agora é SEM aprovação; o teste liga o limite de R$ 5.000 de propósito.
+  const f = fila.buildFilaFinanceira({ expenses, purchases: [], hoje, limiteAprovacao: 5000 });
   assert.deepEqual(f.vencidas.map((i) => i.titulo), ["energia"], "vencida dentro de 90 dias; a de maio ficou de fora");
   assert.deepEqual(f.vencemHoje.map((i) => i.titulo), ["stin"], "paga não aparece");
   assert.deepEqual(f.semana.map((i) => i.titulo), ["aluguel"], "20/09 está fora dos 7 dias");
   assert.equal(f.vencemHoje[0].alerta, "SEM_ARQUIVO", "boleto sem documento e sem nota anexada");
   assert.equal(f.vencidas[0].alerta, undefined, "energia tem o arquivo anotado");
-  // APROVAÇÃO (14/09/2026, proposta 1.7): o aluguel (20.883) passa do limite padrão de R$ 5.000 → aguarda aprovação.
+  // APROVAÇÃO (14/09/2026, proposta 1.7): com o limite de R$ 5.000 ligado, o aluguel (20.883) aguarda aprovação.
   assert.equal(f.semana[0].alerta, "AGUARDA_APROVACAO", "acima do limite e sem aprovação registrada");
   assert.equal(f.semana[0].aguardaAprovacao, true);
   assert.equal(f.limiteAprovacao, 5000);
@@ -70,7 +71,10 @@ test("fila do dia: vencidas · hoje · semana, boleto sem arquivo marcado, resum
   assert.match(f.resumo, /^hoje vencem 1 \(R\$\s?1\.580\) · 1 vencida \(R\$\s?1\.341\) · 1 nos próximos 7 dias \(R\$\s?20\.883\) · 1 boleto sem arquivo · 1 aguardando aprovação$/);
   const semAprovacao = fila.buildFilaFinanceira({ expenses, purchases: [], hoje, limiteAprovacao: 0 });
   assert.equal(semAprovacao.semana[0].alerta, undefined, "com o limite zerado, débito em conta não pede nada");
-  const aprovada = fila.buildFilaFinanceira({ expenses: expenses.map((e) => (e.id === "aluguel" ? { ...e, aprovacaoStatus: "APROVADA" } : e)), purchases: [], hoje });
+  const padrao = fila.buildFilaFinanceira({ expenses, purchases: [], hoje });
+  assert.equal(padrao.limiteAprovacao, 0, "sem configuração, a aprovação fica desligada (01/10/2026)");
+  assert.equal(padrao.semana[0].alerta, undefined, "sem configuração, conta acima de 5 mil pode ser paga direto");
+  const aprovada = fila.buildFilaFinanceira({ expenses: expenses.map((e) => (e.id === "aluguel" ? { ...e, aprovacaoStatus: "APROVADA" } : e)), purchases: [], hoje, limiteAprovacao: 5000 });
   assert.equal(aprovada.semana[0].alerta, undefined, "aprovada: pode pagar");
   assert.equal(fila.precisaAprovacao({ amount: 5000 }, 5000), true, "igual ao limite já pede");
   assert.equal(fila.precisaAprovacao({ amount: 4999.99 }, 5000), false);

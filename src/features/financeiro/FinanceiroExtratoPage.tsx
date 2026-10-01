@@ -25,7 +25,7 @@ import {
   updateRemoteFinBankEntry,
 } from "@/lib/remoteData";
 import { moneyFin, monthKeyLabel } from "./financeiroData";
-import { conciliarExtrato, leituraDaConciliacao, lerExtratoDeTexto, lerExtratoDeXlsx, type BankEntry } from "./extratoBanco";
+import { conciliarExtrato, leituraDaConciliacao, lerExtratoDeTexto, lerExtratoDeXlsx, linhasNovasDoExtrato, type BankEntry } from "./extratoBanco";
 import { agendaRecebiveis, faturamentoRede, saldoRecebiveis } from "./recebiveisRede";
 import { useFinanceiro } from "./useFinanceiro";
 
@@ -159,7 +159,15 @@ export function FinanceiroExtratoPage() {
         setFeedback(`Li ${lidas.length} lançamento(s) — mas neste modo (sem login) nada é salvo.`);
         return;
       }
-      await importar.mutateAsync(lidas);
+      // Confere contra o que JÁ está no app (lido agora, não do cache): o mesmo
+      // lançamento pode vir com outro id quando o Itaú muda o formato do arquivo.
+      const noApp = (await entriesQuery.refetch()).data ?? [];
+      const novas = linhasNovasDoExtrato(lidas, noApp);
+      if (!novas.length) {
+        setFeedback(`Li ${lidas.length} lançamento(s) e todos já estavam no app. Nada foi duplicado.`);
+        return;
+      }
+      await importar.mutateAsync(novas);
     } catch (falha) {
       setErro(`Não consegui ler o arquivo: ${(falha as Error).message}`);
     } finally {
