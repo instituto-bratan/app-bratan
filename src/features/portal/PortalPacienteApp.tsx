@@ -1469,12 +1469,18 @@ function ComoVoceEntra({ sessao, temSenha, login, aoMudar, aoSairDeTodos, formul
   );
 }
 
+/** A política com a cara do portal (título, ícone e cor), como as outras telas do /meu. */
+function PoliticaDoPortal() {
+  useIdentidadeDoPortal();
+  return <PoliticaDePrivacidade />;
+}
+
 export function PortalPacienteApp() {
   return (
     <Routes>
       <Route path="entrar" element={<EntrarPage />} />
       {/* Política de privacidade (01/10/2026): aberta sem login, é o endereço da ficha da App Store. */}
-      <Route path="privacidade" element={<PoliticaDePrivacidade />} />
+      <Route path="privacidade" element={<PoliticaDoPortal />} />
       <Route path="*" element={<MeuPortal />} />
     </Routes>
   );
