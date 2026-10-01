@@ -268,6 +268,8 @@ export type CompromissosDoMes = {
   executor: {
     /** Custo do mês (competência): o envelope inteiro do mês. */
     doMes: number;
+    /** Parcelas de meses anteriores que venceram e não foram pagas inteiras. */
+    atrasadas: ParcelaDoExecutor[];
     /** Parcelas que vencem neste mês: a 2ª do mês anterior e a 1ª deste. */
     vencemNoMes: ParcelaDoExecutor[];
     devidoNoMes: number;
@@ -302,7 +304,7 @@ export function compromissosDoMes(input: { sales: FinSale[]; expenses: FinExpens
   const vazio: CompromissosDoMes = {
     mes: monthKey,
     ativo,
-    executor: { doMes: 0, vencemNoMes: [], devidoNoMes: 0, faltaNoMes: 0, pagamentosNoMes: [], pagoNoMes: 0, proximas: [], adiantado: 0 },
+    executor: { doMes: 0, atrasadas: [], vencemNoMes: [], devidoNoMes: 0, faltaNoMes: 0, pagamentosNoMes: [], pagoNoMes: 0, proximas: [], adiantado: 0 },
     socios: { total: 0, porSocio: [], devido: 0, falta: 0, pagoNoMes: 0 },
   };
   if (!ativo) return vazio;
@@ -313,6 +315,7 @@ export function compromissosDoMes(input: { sales: FinSale[]; expenses: FinExpens
   const totalPagoExecutor = pagamentosExecutor.reduce((soma, pagamento) => soma + pagamento.valor, 0);
   const adiantadoExecutor = abater(parcelas, totalPagoExecutor);
   const vencemNoMes = parcelas.filter((parcela) => parcela.vence.slice(0, 7) === monthKey);
+  const atrasadas = parcelas.filter((parcela) => parcela.vence.slice(0, 7) < monthKey && parcela.falta > 0.005);
   const proximas = parcelas.filter((parcela) => parcela.mesDoTrabalho === monthKey && parcela.vence.slice(0, 7) > monthKey);
   const pagamentosNoMes = pagamentosExecutor.filter((pagamento) => pagamento.dia.slice(0, 7) === monthKey);
 
@@ -344,6 +347,7 @@ export function compromissosDoMes(input: { sales: FinSale[]; expenses: FinExpens
     ativo,
     executor: {
       doMes: executorDoMes(input.sales, monthKey, cfg),
+      atrasadas,
       vencemNoMes,
       devidoNoMes: round2(vencemNoMes.reduce((soma, parcela) => soma + parcela.valor, 0)),
       faltaNoMes: round2(parcelas.filter((parcela) => parcela.vence.slice(0, 7) <= monthKey).reduce((soma, parcela) => soma + parcela.falta, 0)),

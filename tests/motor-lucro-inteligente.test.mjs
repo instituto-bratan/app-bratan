@@ -106,6 +106,8 @@ test("pagamento abate o que vence primeiro e sobra vira falta do mês seguinte",
   const faltaP1Set = r2(p1Set.valor - 1500);
   assert.equal(out.executor.vencemNoMes.length, 2, "em outubro vencem duas parcelas");
   assert.equal(out.executor.faltaNoMes, r2(faltaP1Set + out.executor.devidoNoMes), "a falta de outubro carrega o que ficou de setembro");
+  assert.equal(out.executor.atrasadas.length, 1, "a 1ª de setembro, não paga inteira, aparece como atrasada em outubro");
+  assert.equal(out.executor.atrasadas[0].falta, faltaP1Set);
 });
 
 test("lucro dos sócios: 25 mil da Andrya, 15 mil do Dr. Daniel, cada pagamento no sócio certo", () => {

@@ -23,19 +23,29 @@ const parseValor = (texto: string) => Number(String(texto).replace(/\./g, "").re
 
 type Destino = "executor" | SocioDoMotor;
 
-function LinhaDaParcela({ parcela, futura }: { parcela: ParcelaDoExecutor; futura?: boolean }) {
-  const quitada = parcela.falta <= 0.005;
+function LinhaDaParcela({ parcela, futura, atrasada }: { parcela: ParcelaDoExecutor; futura?: boolean; atrasada?: boolean }) {
+  const semValor = parcela.valor <= 0.005;
+  const quitada = !semValor && parcela.falta <= 0.005;
   return (
-    <div className={cn("grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-0.5 rounded-lg border px-3 py-2", futura ? "border-dashed border-brand-oliva/30 bg-white/50" : quitada ? "border-emerald-300 bg-emerald-50/60" : "border-brand-dourado/40 bg-white/80")}>
+    <div
+      className={cn(
+        "grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-0.5 rounded-lg border px-3 py-2",
+        futura ? "border-dashed border-brand-oliva/30 bg-white/50" : atrasada ? "border-red-300 bg-red-50/70" : quitada ? "border-emerald-300 bg-emerald-50/60" : "border-brand-dourado/40 bg-white/80",
+      )}
+    >
       <p className="text-sm font-semibold text-brand-tinta">
-        {parcela.numero}ª parcela de {nomeDoMes(parcela.mesDoTrabalho)}
-        <span className="ml-1.5 text-xs font-normal text-muted-foreground">vence {diaCurto(parcela.vence)}{futura ? " · mês que vem" : ""}</span>
+        {parcela.numero}ª parcela de {nomeDoMes(parcela.mesDoTrabalho)}{" "}
+        <span className={cn("text-xs font-normal", atrasada ? "text-red-800" : "text-muted-foreground")}>
+          {atrasada ? `venceu ${diaCurto(parcela.vence)} · atrasada` : `vence ${diaCurto(parcela.vence)}${futura ? " · mês que vem" : ""}`}
+        </span>
       </p>
       <p className="text-right text-sm font-bold tabular-nums text-brand-musgo">{moneyFin(parcela.valor)}</p>
       {futura ? (
         <p className="col-span-2 text-xs text-muted-foreground">Ainda não vence: entra no caixa do mês seguinte, junto com a 1ª parcela daquele mês.</p>
+      ) : semValor ? (
+        <p className="col-span-2 text-xs text-muted-foreground">Ainda sem venda neste mês: a parcela cresce a cada comanda.</p>
       ) : (
-        <p className={cn("col-span-2 text-xs", quitada ? "text-emerald-800" : "text-brand-tinta")}>
+        <p className={cn("col-span-2 text-xs", quitada ? "text-emerald-800" : atrasada ? "text-red-800" : "text-brand-tinta")}>
           {quitada ? "Paga." : `Pago ${moneyFin(parcela.pago)} · falta ${moneyFin(parcela.falta)}`}
         </p>
       )}
@@ -127,8 +137,13 @@ export function CompromissosLucroCard({
               Médico executor · Dr. Daniel
             </p>
             <p className="text-sm text-brand-tinta">
-              O trabalho de {mes} vale <strong className="tabular-nums">{moneyFin(executor.doMes)}</strong>, pago em duas parcelas.
+              O trabalho de {mes}
+              {hoje.slice(0, 7) === compromissos.mes ? " até hoje" : ""} vale <strong className="tabular-nums">{moneyFin(executor.doMes)}</strong>, pago em
+              duas parcelas.
             </p>
+            {executor.atrasadas.map((parcela) => (
+              <LinhaDaParcela key={parcela.id} parcela={parcela} atrasada />
+            ))}
             {executor.vencemNoMes.length ? (
               executor.vencemNoMes.map((parcela) => <LinhaDaParcela key={parcela.id} parcela={parcela} />)
             ) : (

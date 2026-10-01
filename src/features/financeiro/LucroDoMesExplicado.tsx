@@ -104,6 +104,14 @@ export function LucroDoMesExplicado({
 
       <div className="grid gap-1.5 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2.5">
         <p className="text-sm font-bold text-brand-musgo">No caixa de {mes}: as parcelas do executor</p>
+        {executor.atrasadas.map((parcela) => (
+          <p key={parcela.id} className="flex flex-wrap justify-between gap-2 text-sm text-red-800">
+            <span>
+              {parcela.numero}ª parcela de {nomeDoMes(parcela.mesDoTrabalho)} · venceu {diaCurto(parcela.vence)} e está atrasada
+            </span>
+            <span className="tabular-nums">falta {moneyFin(parcela.falta)}</span>
+          </p>
+        ))}
         {executor.vencemNoMes.length ? (
           executor.vencemNoMes.map((parcela) => (
             <p key={parcela.id} className="flex flex-wrap justify-between gap-2 text-sm text-brand-tinta">
