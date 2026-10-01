@@ -992,24 +992,56 @@ export function fraseDoRepasse(resumo: ResumoRepasse, formata: (valor: number) =
   return `${base}${dividas} → em dia: transferido bate com o provisionado.`;
 }
 
-/** Monta a conta paga que registra a transferência (mesmo dinheiro em Contas a Pagar, P12 e aqui). */
-export function novaTransferencia(input: { para: Beneficiario; dia: string; valor: number; comprovante?: string; observacao?: string }): FinExpense {
-  const quem = input.para === "medicoExecutor" ? "Dr. Daniel Bratan" : "Sócios";
+/**
+ * Monta a conta paga que registra o pagamento (mesmo dinheiro em Contas a Pagar,
+ * P12 e aqui). Desde 01/10/2026 (motor das parcelas) ela diz DE QUEM é o lucro
+ * — o motor abate o compromisso da Andrya ou do Dr. Daniel pelo nome — e COMO
+ * foi pago: transferência do Itaú ou PIX de paciente que caiu direto na conta
+ * do sócio (esse não passa pelo extrato, e é isso que explica o PIX da comanda
+ * que nunca entrou no Itaú).
+ */
+export function novaTransferencia(input: {
+  para: Beneficiario;
+  dia: string;
+  valor: number;
+  comprovante?: string;
+  observacao?: string;
+  socio?: "andrya" | "daniel";
+  forma?: "ITAU" | "PIX_PACIENTE";
+}): FinExpense {
   const [ano, mes, dia] = input.dia.split("-");
+  const data = `${dia}/${mes}/${ano}`;
+  const executor = input.para === "medicoExecutor";
+  const socio = executor ? "daniel" : input.socio;
+  const quem = executor || socio === "daniel" ? "Dr. Daniel Bratan" : socio === "andrya" ? "Andrya Bratan (sócia)" : "Sócios";
+  const descricao = executor
+    ? `Pagamento ao médico executor — Dr. Daniel — ${data}`
+    : socio === "daniel"
+      ? `Lucro Inteligente — sócio Dr. Daniel — ${data}`
+      : socio === "andrya"
+        ? `Lucro Inteligente — sócia Andrya — ${data}`
+        : `Transferência de lucro aos sócios — ${data}`;
+  const pixDoPaciente = input.forma === "PIX_PACIENTE";
   return {
     id: createFinId("fexp"),
-    description: `Transferência ${input.para === "medicoExecutor" ? "ao médico executor" : "de lucro aos sócios"} — ${dia}/${mes}/${ano}`,
+    description: descricao,
     categoryRef: CATEGORIA_TRANSFERENCIA[input.para],
     amount: round2(input.valor),
     dueDate: input.dia,
     paidAt: input.dia,
-    method: "TRANSFERENCIA",
+    method: pixDoPaciente ? "PIX" : "TRANSFERENCIA",
     supplier: quem,
     installmentNum: null,
     installmentTotal: null,
     documentNote: (input.comprovante || "").trim(),
     isCapex: false,
-    notes: [`Registrada no Lucro Inteligente (envelope ${input.para === "medicoExecutor" ? "do médico executor" : "do lucro"}).`, (input.observacao || "").trim()].filter(Boolean).join(" "),
+    notes: [
+      `Registrada no Lucro Inteligente (${executor ? "parcela do médico executor" : "lucro dos sócios"}).`,
+      pixDoPaciente ? "PIX de paciente que caiu direto na conta do sócio: não passou pelo Itaú." : "",
+      (input.observacao || "").trim(),
+    ]
+      .filter(Boolean)
+      .join(" "),
     createdAt: new Date().toISOString(),
     // Transferência a sócio/médico não tem nota fiscal de fornecedor.
     notaStatus: "SEM_NOTA",

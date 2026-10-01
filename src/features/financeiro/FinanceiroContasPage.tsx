@@ -24,6 +24,9 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { NotaDaContaCell } from "./NotaDaContaCell";
 import { FilaDoDiaCard, linhaDigitavelDaConta } from "./FilaDoDiaCard";
+import { CompromissosLucroCard } from "./CompromissosLucroCard";
+import { compromissosDoMes } from "./motorLucroInteligente";
+import { useVersaoDoMotor } from "@/lib/useConfigDoMotor";
 import { LancarRapidoCard, type PresetFornecedor } from "./LancarRapidoCard";
 import { CaixaEntradaCard } from "./CaixaEntradaCard";
 import { NotasRecebidasCard } from "./NotasRecebidasCard";
@@ -142,7 +145,8 @@ export function FinanceiroContasPage() {
   const readOnly = !canEditModule(pessoa, "fin-contas");
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
-  const financeiro = useFinanceiro(Number(month.slice(0, 4)));
+  // Com o ano anterior (01/10/2026): em janeiro, a 2ª parcela do executor de dezembro vence no mês.
+  const financeiro = useFinanceiro(Number(month.slice(0, 4)), { comAnoAnterior: true });
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   // ⌘K "FAZER" (14/09/2026, proposta 4.2): /financeiro/contas?valor=1234,56 abre o
@@ -261,6 +265,13 @@ export function FinanceiroContasPage() {
   );
   const notasAnexadasSet = useMemo(() => new Set(notasDaContas.map((nota) => nota.expenseRef)), [notasDaContas]);
   // FILA DO DIA: derivada das contas (sem provisões) e das compras.
+  // LUCRO INTELIGENTE (01/10/2026): parcelas do executor e lucro dos sócios do mês.
+  const versaoDoMotor = useVersaoDoMotor();
+  const compromissosLucro = useMemo(
+    () => compromissosDoMes({ sales: financeiro.sales, expenses: financeiro.expenses, monthKey: month, desde: `${Number(month.slice(0, 4)) - 1}-01` }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.sales, financeiro.expenses, month, versaoDoMotor],
+  );
   const fila = useMemo(
     () =>
       buildFilaFinanceira({
@@ -811,6 +822,12 @@ export function FinanceiroContasPage() {
           onChegou={compraChegou}
           onVirarConta={compraVirarConta}
           onAnotarNf={anotarNfDaCompra}
+        />
+        <CompromissosLucroCard
+          compromissos={compromissosLucro}
+          readOnly={readOnly}
+          hoje={now}
+          onRegistrar={(conta) => financeiro.addExpense(conta)}
         />
         {semNotaNoMes.length ? (
           <p className="rounded-lg border border-brand-dourado/40 bg-brand-creme/40 px-4 py-2 text-xs text-brand-tinta">

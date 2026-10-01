@@ -72,12 +72,15 @@ test("transferência do Lucro Inteligente aos sócios não é provisão nem cust
   assert.equal(g.distribuicaoSocios, 13084.06, "as duas categorias de lucro aos sócios");
   assert.equal(g.provisoes, 2063, "provisão é só provisão");
   assert.equal(g.obra, 7000);
-  assert.equal(g.lucroLiquido, 100000 - 14307.76 - 2063, "lucro da operação sem distribuição e sem obra");
+  // Setembro já está no motor do Lucro Inteligente: o médico executor do mês é custo.
+  assert.ok(g.motorAtivo);
+  assert.ok(g.medicoExecutor > 0, "a venda de tratamento gera parte do médico executor");
+  assert.equal(g.lucroLiquido, Math.round((100000 - 14307.76 - 2063 - g.medicoExecutor) * 100) / 100, "lucro da operação sem distribuição e sem obra, com o executor");
   const c = fin.buildFechamentoContabil([venda(100000)], [conta("lucro-socia", 8084.06, "cat-lucro-inteligente-socios"), conta("lucro-dr", 4000, "cat-lucro-inteligente-socios"), conta("distrib", 1000, "cat-distribuicao-lucro-socios"), conta("prov", 2063, "cat-provisao"), conta("aluguel", 14307.76, "cat-fixo"), conta("obra", 7000, "cat-compras-variaveis-obras-2026")], [], "2026-09", []);
   const ponte = fin.buildPonteLucro(g, c, null);
-  const passo = ponte.find((p) => p.label.startsWith("− Lucro distribuído"));
-  assert.ok(passo, "a ponte mostra o lucro distribuído");
-  assert.equal(passo.valor, 13084.06);
+  const passo = ponte.find((p) => p.label.startsWith("− Lucro dos sócios do mês"));
+  assert.ok(passo, "a ponte mostra o lucro dos sócios do mês (o compromisso da régua)");
+  assert.equal(passo.valor, 40000);
   const soma = ponte.filter((p) => p.tipo !== "total").reduce((s, p) => s + (p.tipo === "menos" ? -p.valor : p.valor), 0);
   const total = ponte.find((p) => p.label.startsWith("= Lucro contábil"));
   assert.ok(Math.abs(soma - total.valor) < 0.01, "a ponte fecha: os passos somam o lucro contábil");

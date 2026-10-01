@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowRightLeft, CheckCircle2, Landmark, PiggyBank, Scale, ShieldAlert, SlidersHorizontal, TrendingUp, Wallet, Stethoscope, Trophy } from "lucide-react";
+import { CheckCircle2, Landmark, PiggyBank, Scale, ShieldAlert, SlidersHorizontal, TrendingUp, Wallet, Stethoscope, Trophy } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,10 @@ import {
   type ReguaLucro,
 } from "./lucroInteligente";
 import { taxaAntecipacaoMensal } from "./recebiveisRede";
-import { beneficiarioLabels, fraseDoRepasse, novaTransferencia, resumoDosRepasses, type Beneficiario } from "./lucroInteligente";
+import { resumoDosRepasses } from "./lucroInteligente";
+import { CompromissosLucroCard } from "./CompromissosLucroCard";
+import { compromissosDoMes, definirConfigDoMotor } from "./motorLucroInteligente";
+import { useVersaoDoMotor } from "@/lib/useConfigDoMotor";
 import { useFinanceiro } from "./useFinanceiro";
 import { buildMetasBoard, defaultMetasConfig, type MetasConfig } from "./metasData";
 import { parseFinAmount } from "./financeiroData";
@@ -106,7 +109,8 @@ export function FinanceiroLucroPage() {
   const hoje = todayISO();
   const [month, setMonth] = useState(hoje.slice(0, 7));
   const year = Number(month.slice(0, 4));
-  const financeiro = useFinanceiro(year);
+  // Com o ano anterior (01/10/2026): em janeiro vence a 2ª parcela do executor de dezembro.
+  const financeiro = useFinanceiro(year, { comAnoAnterior: true });
   const [showConfig, setShowConfig] = useState(false);
   const [feedback, setFeedback] = useState("");
 
@@ -297,23 +301,29 @@ export function FinanceiroLucroPage() {
   // registro do repasse — que vira conta paga na categoria certa (Contas a Pagar
   // e P12 contam o mesmo dinheiro).
   const repasses = useMemo(() => resumoDosRepasses(planilha, financeiro.expenses), [planilha, financeiro.expenses]);
-  const [formRepasse, setFormRepasse] = useState<{ para: Beneficiario; dia: string; valor: string; comprovante: string } | null>(null);
-  function registrarTransferencia() {
-    if (!canEdit || !formRepasse) return;
-    const valor = parseNumero(formRepasse.valor);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      setFeedback("Informe o valor transferido.");
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(formRepasse.dia)) {
-      setFeedback("Informe a data da transferência.");
-      return;
-    }
-    const conta = novaTransferencia({ para: formRepasse.para, dia: formRepasse.dia, valor, comprovante: formRepasse.comprovante });
-    financeiro.addExpense(conta);
-    setFeedback(`Transferência de ${moneyFin(valor)} ${formRepasse.para === "medicoExecutor" ? "ao Dr. Daniel" : "aos sócios"} registrada em ${diaCurto(formRepasse.dia)}. Ela já aparece em Contas a Pagar (paga) e na P12.`);
-    setFormRepasse(null);
-  }
+  // MOTOR DAS PARCELAS (01/10/2026): a régua desta tela também alimenta o lucro do
+  // mês de todas as telas; e os compromissos do mês saem do mesmo motor.
+  useEffect(() => {
+    definirConfigDoMotor(config);
+  }, [config]);
+  const versaoDoMotor = useVersaoDoMotor();
+  const compromissosLucro = useMemo(
+    () => compromissosDoMes({ sales: financeiro.sales, expenses: financeiro.expenses, monthKey: month, desde: `${Number(month.slice(0, 4)) - 1}-01` }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.sales, financeiro.expenses, month, versaoDoMotor],
+  );
+  // Com o motor, "falta" vira o compromisso do mês: as parcelas do executor que
+  // vencem e o lucro de cada sócio — o mesmo número do Contas a Pagar.
+  const repassesDaTela = useMemo(
+    () =>
+      compromissosLucro.ativo
+        ? {
+            medicoExecutor: { ...repasses.medicoExecutor, provisionado: compromissosLucro.executor.devidoNoMes, transferido: compromissosLucro.executor.pagoNoMes, dividasPagas: 0, falta: compromissosLucro.executor.faltaNoMes },
+            socios: { ...repasses.socios, provisionado: compromissosLucro.socios.devido, transferido: compromissosLucro.socios.pagoNoMes, dividasPagas: 0, falta: compromissosLucro.socios.falta },
+          }
+        : repasses,
+    [compromissosLucro, repasses],
+  );
   // ---- PLANILHA SIMPLES POR PADRÃO (10/09, Lucas: "está muita informação").
   const [detalhado, setDetalhado] = useState(false);
   // A CONTA DO MÉDICO ABERTA (10/09/2026, Lucas: "pras minhas contas está um pouco
@@ -348,7 +358,7 @@ export function FinanceiroLucroPage() {
         piso: pisoCaixa,
         comAntecipacao,
         selicAnual: selicDaConfig(config),
-        transferenciasPrevistas: transferenciasPrevistas(hoje, repasses),
+        transferenciasPrevistas: transferenciasPrevistas(hoje, repassesDaTela),
       }),
     [financeiro.sales, financeiro.expenses, hoje, saldoItau, pisoCaixa, comAntecipacao, config, repasses],
   );
@@ -691,110 +701,13 @@ export function FinanceiroLucroPage() {
 
         {/* OS ENVELOPES EM UM OLHAR (14/09/2026): a planilha desenhada — barra por dia,
             uma frase por envelope, agenda das transferências (10 e 25). */}
-        <EnvelopesVisuais planilha={planilha} board={metasBoard} repasses={repasses} reguaHoje={reguaHoje} hoje={hoje} />
+        <EnvelopesVisuais planilha={planilha} board={metasBoard} repasses={repassesDaTela} reguaHoje={reguaHoje} hoje={hoje} motor={compromissosLucro} />
 
-        {/* TRANSFERÊNCIAS — o que já saiu e o que falta (10/09/2026, Lucas: "foi
-            provisionado tantos mil para o médico executor, porém só foi
-            transferido tantos mil, falta isso para bater com o dia de hoje"). */}
-        <section className="rounded-lg border border-brand-oliva/14 bg-white/60 p-4 backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 text-lg font-bold text-brand-musgo">
-              <ArrowRightLeft className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-              Transferências — o que já saiu e o que falta
-              <InfoTip title="Como este bloco é calculado">
-                <strong>Provisionado</strong> é o que a régua separou do dia 1 até hoje (o médico pela coluna S de cada
-                produto vendido; os sócios pela cota fixa de cada dia útil). <strong>Transferido</strong> são só as transferências
-                registradas aqui (categorias próprias do Lucro Inteligente) e a distribuição de lucro. O salário fixo do Dr. Daniel, o
-                salário da CEO e o pró-labore são contas fixas do Contas a Pagar e NÃO entram: o Lucro Inteligente é o que vai a mais.{" "}
-                <strong>Falta</strong> é a diferença. Registrar aqui cria a conta paga na categoria certa — Contas a Pagar e
-                P12 mostram o mesmo número. Para anexar o comprovante em arquivo, use a célula de nota da conta em Contas a Pagar.
-              </InfoTip>
-            </h2>
-            <p className="text-xs text-muted-foreground">atualiza sozinho: a régua provisiona todo dia útil e cada transferência registrada abate</p>
-          </div>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            {(["medicoExecutor", "socios"] as Beneficiario[]).map((para) => {
-              const r = repasses[para];
-              const pctTransferido = r.provisionado > 0.005 ? Math.min(100, Math.round((r.transferido / r.provisionado) * 100)) : 0;
-              const emDia = Math.abs(r.falta) <= 0.005;
-              const aMais = r.falta < -0.005;
-              return (
-                <div
-                  key={para}
-                  className={cn(
-                    "rounded-xl border-2 p-4",
-                    para === "medicoExecutor" ? "border-brand-dourado/50 bg-brand-creme/30" : "border-brand-musgo/40 bg-brand-musgo/5",
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-brand-musgo">
-                      {para === "medicoExecutor" ? <Stethoscope className="h-4 w-4" aria-hidden="true" /> : <Trophy className="h-4 w-4" aria-hidden="true" />}
-                      {beneficiarioLabels[para]}
-                    </p>
-                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-brand-tinta">até {diaCurto(r.ateDia)}</span>
-                  </div>
-                  <p className={cn("mt-2 text-3xl font-extrabold tabular-nums leading-none sm:text-4xl", aMais ? "text-red-700" : emDia ? "text-emerald-700" : "text-brand-tinta")}>
-                    {emDia ? "Em dia" : aMais ? `${moneyFin(-r.falta)} a mais` : moneyFin(r.falta)}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-brand-musgo">
-                    {emDia ? "transferido bate com o provisionado" : aMais ? "saiu mais do que a régua separou até hoje" : "falta transferir para bater com hoje"}
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                    <div className="rounded-lg bg-white/70 px-3 py-2">
-                      <p className="text-[11px] font-semibold uppercase text-brand-oliva">Provisionado até hoje</p>
-                      <p className="text-lg font-bold tabular-nums text-brand-tinta">{moneyFin(r.provisionado)}</p>
-                    </div>
-                    <div className="rounded-lg bg-white/70 px-3 py-2">
-                      <p className="text-[11px] font-semibold uppercase text-brand-oliva">Já transferido</p>
-                      <p className="text-lg font-bold tabular-nums text-brand-tinta">{moneyFin(r.transferido)}</p>
-                      {r.dividasPagas > 0.005 ? <p className="text-[11px] text-muted-foreground">+ dívidas pagas com o envelope: {moneyFin(r.dividasPagas)}</p> : null}
-                    </div>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/80">
-                    <div className={cn("h-full rounded-full transition-all", aMais ? "bg-red-400" : "bg-brand-dourado")} style={{ width: `${pctTransferido}%` }} />
-                  </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{pctTransferido}% do provisionado já transferido</p>
-
-                  {r.transferencias.length ? (
-                    <ul className="mt-3 divide-y divide-brand-oliva/10 rounded-lg border border-brand-oliva/14 bg-white/70 text-sm">
-                      {r.transferencias.slice(0, 6).map((t) => (
-                        <li key={t.id} className="flex items-center justify-between gap-2 px-3 py-1.5">
-                          <span className="truncate text-brand-tinta">
-                            {diaCurto(t.dia)} · {t.descricao}
-                            {t.comprovante ? <span className="ml-1 text-[11px] text-muted-foreground">· comprov. {t.comprovante}</span> : null}
-                          </span>
-                          <span className="font-semibold tabular-nums text-brand-musgo">{moneyFin(t.valor)}</span>
-                        </li>
-                      ))}
-                      {r.transferencias.length > 6 ? <li className="px-3 py-1.5 text-[11px] text-muted-foreground">+ {r.transferencias.length - 6} transferência(s) — veja todas em Contas a Pagar</li> : null}
-                    </ul>
-                  ) : (
-                    <p className="mt-3 text-xs text-muted-foreground">Nenhuma transferência registrada neste mês.</p>
-                  )}
-
-                  {canEdit ? (
-                    formRepasse?.para === para ? (
-                      <div className="mt-3 grid gap-2 rounded-lg border border-brand-oliva/20 bg-white/80 p-3 sm:grid-cols-[1fr_1fr_1.4fr_auto]">
-                        <Input type="date" value={formRepasse.dia} onChange={(e) => setFormRepasse({ ...formRepasse, dia: e.target.value })} aria-label="Data da transferência" />
-                        <Input value={formRepasse.valor} onChange={(e) => setFormRepasse({ ...formRepasse, valor: e.target.value })} placeholder="Valor (R$)" inputMode="decimal" aria-label="Valor transferido" />
-                        <Input value={formRepasse.comprovante} onChange={(e) => setFormRepasse({ ...formRepasse, comprovante: e.target.value })} placeholder="Comprovante (nº/ref., opcional)" aria-label="Comprovante" />
-                        <div className="flex gap-1.5">
-                          <Button type="button" size="sm" onClick={registrarTransferencia}>Salvar</Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => setFormRepasse(null)}>Cancelar</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => setFormRepasse({ para, dia: hoje, valor: r.falta > 0.005 ? r.falta.toFixed(2).replace(".", ",") : "", comprovante: "" })}>
-                        <ArrowRightLeft className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                        Registrar transferência {para === "medicoExecutor" ? "ao Dr. Daniel" : "aos sócios"}
-                      </Button>
-                    )
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        {/* COMPROMISSOS DO LUCRO INTELIGENTE (01/10/2026): o que o mês deve ao médico
+            executor (duas parcelas) e a cada sócio, o que já foi pago e o que falta.
+            Substitui o bloco de transferências de 10/09: lá o executor aparecia
+            inteiro como "falta", sem a regra das duas parcelas. */}
+        <CompromissosLucroCard compromissos={compromissosLucro} readOnly={!canEdit} hoje={hoje} onRegistrar={(conta) => financeiro.addExpense(conta)} />
 
         {/* CAIXA PROJETADO (14/09/2026): as próximas 6 semanas, com pontos de aperto e o custo de antecipar. */}
         {month === hoje.slice(0, 7) ? (

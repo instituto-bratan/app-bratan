@@ -262,14 +262,26 @@ export function abaResumo(dados: DadosContabilidade): XlsxSheet {
     ["  Folha e meritocracias", g.folhaMeritocracia, ""],
     ["  Custos variáveis", g.custosVariaveis, ""],
     ["  Provisões (13º, férias, impostos)", g.provisoes, ""],
+    ...(g.motorAtivo
+      ? [
+          ["  Médico executor do mês (50% do lucro bruto dos produtos vendidos no mês)", g.medicoExecutor, "tela LUCRO INTELIGENTE"],
+          ["    parcelas do executor que vencem no mês (1ª deste mês + 2ª do mês anterior)", g.medicoExecutorParcelasDoMes, "Contas a Pagar — compromissos"],
+        ]
+      : []),
     ["Obra / CAPEX (investimento, fora do lucro)", g.obra, "aba CONTAS A PAGAR — tipo OBRA"],
-    ["Distribuição de lucro aos sócios (fora do lucro, não é obra)", g.distribuicaoSocios, "aba CONTAS A PAGAR"],
+    ...(g.motorAtivo
+      ? [
+          ["Lucro dos sócios do mês (régua: Andrya 25 mil · Dr. Daniel 15 mil)", g.lucroSociosDoMes, "sai como distribuição de lucro"],
+          ["  já transferido aos sócios no mês", g.distribuicaoSocios, "aba CONTAS A PAGAR"],
+        ]
+      : [["Distribuição de lucro aos sócios (fora do lucro, não é obra)", g.distribuicaoSocios, "aba CONTAS A PAGAR"]]),
     ["Saiu do cofre / poupança", cents(saiuCofre), "aba POUPANÇA (COFRE)"],
     ["Total efetivamente pago no mês (caixa)", pagoNoMesCents, "aba CONTAS A PAGAR — data de pagamento"],
     ["", "", ""],
     ["RESULTADO", "", ""],
     ["Lucro operacional (faturamento − custos operacionais)", g.lucroLiquido, ""],
     ["Margem sobre o faturamento (%)", g.margem, "em percentual"],
+    ...(g.motorAtivo ? [["Lucro depois do lucro dos sócios", g.resultadoDepoisDosSocios, "o que a empresa guarda no mês"]] : []),
     ["", "", ""],
     ["CONTROLE INTERNO — NÃO ENTRA NA CONTABILIDADE", "", ""],
     ["Crediário reconhecido no mês (caixa físico)", g.crediario, "somente conferência interna"],

@@ -485,7 +485,14 @@ test("registrar transferência cria a conta PAGA na categoria certa (mesmo dinhe
   assert.equal(medico.method, "TRANSFERENCIA");
   assert.equal(medico.documentNote, "PIX 8841");
   assert.equal(medico.notaStatus, "SEM_NOTA", "sócio/médico não emite nota de fornecedor");
-  assert.match(medico.description, /Transferência ao médico executor — 10\/09\/2026/);
+  assert.match(medico.description, /médico executor — Dr\. Daniel — 10\/09\/2026/);
+  // 01/10/2026: o pagamento diz de quem é o lucro e se veio de PIX de paciente.
+  const daAndrya = li.novaTransferencia({ para: "socios", dia: "2026-09-30", valor: 8084.06, socio: "andrya" });
+  assert.match(daAndrya.description, /sócia Andrya/);
+  const pixNoDaniel = li.novaTransferencia({ para: "socios", dia: "2026-09-17", valor: 7320, socio: "daniel", forma: "PIX_PACIENTE", observacao: "Kaique Pacheco" });
+  assert.equal(pixNoDaniel.method, "PIX");
+  assert.match(pixNoDaniel.description, /Dr\. Daniel/);
+  assert.match(pixNoDaniel.notes, /não passou pelo Itaú/);
   const socios = li.novaTransferencia({ para: "socios", dia: "2026-09-10", valor: 700 });
   assert.equal(socios.categoryRef, "cat-lucro-inteligente-socios", "categoria própria — não mistura com pró-labore/salário CEO");
   assert.equal(li.envelopeDaConta(socios), "lucro", "cai no envelope do lucro");

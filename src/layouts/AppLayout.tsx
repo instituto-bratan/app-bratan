@@ -60,6 +60,7 @@ import { BalaoDoDia } from "@/components/BalaoDoDia";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Avisos } from "@/components/ui/avisos";
 import { useConfigNegocio } from "@/lib/useConfigNegocio";
+import { useCarregarConfigDoMotor } from "@/lib/useConfigDoMotor";
 import { useIntegracoes } from "@/lib/useIntegracoes";
 import { PublicadorDoResumo } from "@/features/financeiro/PublicadorDoResumo";
 import { useAvatar } from "@/features/perfil/avatarStore";
@@ -708,6 +709,8 @@ export function AppLayout() {
   const { pessoa, isPreview, signOut } = useAuth();
   // CONFIGURAÇÕES COM VIGÊNCIA (14/09/2026): carrega uma vez e enche o cache dos motores.
   useConfigNegocio();
+  // Motor do Lucro Inteligente (01/10/2026): a régua chega para todas as telas do lucro.
+  useCarregarConfigDoMotor();
   // INTEGRAÇÕES (15/09/2026): o que está ligado (WhatsApp oficial, NFS-e, contrato, agendas, push).
   useIntegracoes();
   const location = useLocation();

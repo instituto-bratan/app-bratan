@@ -73,6 +73,9 @@ import {
   previousMonthKey,
   type GestaoIndicador,
 } from "./financeiroData";
+import { LucroDoMesExplicado } from "./LucroDoMesExplicado";
+import { compromissosDoMes } from "./motorLucroInteligente";
+import { useVersaoDoMotor } from "@/lib/useConfigDoMotor";
 import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, metasForMonth, type MetasConfig } from "./metasData";
 import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMes";
 import { buildOcupacaoMes, formatHoras, heatDaOcupacao } from "./ocupacaoSala";
@@ -138,22 +141,34 @@ export function FinanceiroPainelPage() {
   const emAndamento = monthKey === hoje.slice(0, 7);
 
   // ---- números -------------------------------------------------------------
+  // A régua do motor do Lucro Inteligente chega do servidor: quando muda, refaz.
+  const versaoDoMotor = useVersaoDoMotor();
   const atual = useMemo(
     () => buildGestaoMensal(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits, versaoDoMotor],
   );
   const anterior = useMemo(
     () => buildGestaoMensal(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, mesAnterior, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, mesAnterior, financeiro.crediarioProfits],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, mesAnterior, financeiro.crediarioProfits, versaoDoMotor],
+  );
+  // O que o mês deve ao executor (parcelas) e aos sócios — para a explicação do lucro.
+  const compromissos = useMemo(
+    () => compromissosDoMes({ sales: financeiro.sales, expenses: financeiro.expenses, monthKey, desde: `${Number(monthKey.slice(0, 4)) - 1}-01` }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.sales, financeiro.expenses, monthKey, versaoDoMotor],
   );
   const indicadores = useMemo(() => buildGestaoComparativo(anterior, atual), [anterior, atual]);
   const evolucao = useMemo(
     () => buildEvolucaoMeses(financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, 6, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.categories, monthKey, financeiro.crediarioProfits, versaoDoMotor],
   );
   const fechamento = useMemo(
     () => buildFechamentoContabil(financeiro.sales, financeiro.expensesPorCategoria, financeiro.savingsMoves, monthKey, financeiro.crediarioProfits),
-    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.savingsMoves, monthKey, financeiro.crediarioProfits],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financeiro.sales, financeiro.expensesPorCategoria, financeiro.savingsMoves, monthKey, financeiro.crediarioProfits, versaoDoMotor],
   );
 
   // O saldo do banco é digitado na P12 (Prova do dinheiro) e reaproveitado aqui.
@@ -585,6 +600,8 @@ export function FinanceiroPainelPage() {
             A pergunta que sempre aparece: "então quanto a gente ganhou?". Os três números estão certos — medem coisas
             diferentes.
           </p>
+          {/* O LUCRO DO MÊS EXPLICADO (01/10/2026): a conta linha a linha antes da ponte. */}
+          <LucroDoMesExplicado gestao={atual} compromissos={compromissos} apresentando={apresentando} />
           {/* A CASCATA (14/09/2026): o mesmo caminho em barras, clicável. */}
           <PonteWaterfall passos={ponte} detalhes={detalhesPonte} apresentando={apresentando} />
           {ponte.map((passo) => (

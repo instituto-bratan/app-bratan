@@ -15,6 +15,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { moneyFin } from "./financeiroData";
 import type { MetasBoard } from "./metasData";
 import type { Beneficiario, PlanilhaLucro, ReguaLucro, ResumoRepasse } from "./lucroInteligente";
+import type { CompromissosDoMes } from "./motorLucroInteligente";
 import { ajustaParaDiaUtil } from "./recebiveisRede";
 import type { TransferenciaPrevista } from "./caixaProjetado";
 import { configAtual } from "@/lib/configNegocio";
@@ -68,12 +69,15 @@ export function EnvelopesVisuais({
   repasses,
   reguaHoje,
   hoje,
+  motor,
 }: {
   planilha: PlanilhaLucro;
   board: MetasBoard | null;
   repasses: Record<Beneficiario, ResumoRepasse>;
   reguaHoje: ReguaLucro;
   hoje: string;
+  /** Motor das parcelas (01/10/2026): quando ativo, sócios e executor falam em compromisso do mês. */
+  motor?: CompromissosDoMes | null;
 }) {
   const [diaAberto, setDiaAberto] = useState<string | null>(null);
   const linhas = planilha.linhas;
@@ -112,19 +116,23 @@ export function EnvelopesVisuais({
       chave: "lucro",
       titulo: "Sócios (lucro)",
       cor: CORES_ENVELOPES.lucro,
-      frase: `Cota de ${moneyFin(planilha.cotaLucroDiaUtil)} por dia útil · separados até agora ${moneyFin(t.reservado.lucro)} de ${moneyFin(reguaHoje.lucroMensal)} no mês · transferidos ${moneyFin(repasses.socios.transferido)}${repasses.socios.dividasPagas > 0.005 ? ` (+ ${moneyFin(repasses.socios.dividasPagas)} em dívidas pagas com o envelope)` : ""} → ${repasses.socios.falta > 0.005 ? `falta transferir ${moneyFin(repasses.socios.falta)}` : repasses.socios.falta < -0.005 ? `saiu ${moneyFin(-repasses.socios.falta)} a mais` : "em dia"}.`,
+      frase: motor?.ativo
+        ? `Lucro do mês ${moneyFin(motor.socios.total)} (${motor.socios.porSocio.map((socio) => `${socio.nome} ${moneyFin(socio.valor)}`).join(" · ")}) · cota de ${moneyFin(planilha.cotaLucroDiaUtil)} por dia útil, separados até agora ${moneyFin(t.reservado.lucro)} · pago no mês ${moneyFin(motor.socios.pagoNoMes)} → ${motor.socios.falta > 0.005 ? `falta pagar ${moneyFin(motor.socios.falta)}` : "em dia"}.`
+        : `Cota de ${moneyFin(planilha.cotaLucroDiaUtil)} por dia útil · separados até agora ${moneyFin(t.reservado.lucro)} de ${moneyFin(reguaHoje.lucroMensal)} no mês · transferidos ${moneyFin(repasses.socios.transferido)}${repasses.socios.dividasPagas > 0.005 ? ` (+ ${moneyFin(repasses.socios.dividasPagas)} em dívidas pagas com o envelope)` : ""} → ${repasses.socios.falta > 0.005 ? `falta transferir ${moneyFin(repasses.socios.falta)}` : repasses.socios.falta < -0.005 ? `saiu ${moneyFin(-repasses.socios.falta)} a mais` : "em dia"}.`,
       realizado: t.reservado.lucro,
       referencia: reguaHoje.lucroMensal,
-      marcador: repasses.socios.transferido + repasses.socios.dividasPagas,
+      marcador: motor?.ativo ? motor.socios.pagoNoMes : repasses.socios.transferido + repasses.socios.dividasPagas,
       rotuloBarra: "separado ÷ lucro do mês · traço = transferido",
     },
     {
       chave: "medico",
       titulo: "Dr. Daniel (médico executor)",
       cor: CORES_ENVELOPES.medicoExecutor,
-      frase: `Separados ${moneyFin(t.reservado.medicoExecutor)} (${reguaHoje.medicoExecutor.toLocaleString("pt-BR")}% do lucro bruto de ${moneyFin(t.lucroBrutoProdutos)} nos produtos) · transferidos ${moneyFin(repasses.medicoExecutor.transferido)} → ${repasses.medicoExecutor.falta > 0.005 ? `falta transferir ${moneyFin(repasses.medicoExecutor.falta)}` : repasses.medicoExecutor.falta < -0.005 ? `saiu ${moneyFin(-repasses.medicoExecutor.falta)} a mais` : "em dia"}.`,
-      realizado: repasses.medicoExecutor.transferido,
-      referencia: t.reservado.medicoExecutor,
+      frase: motor?.ativo
+        ? `Trabalho do mês ${moneyFin(motor.executor.doMes)} (${reguaHoje.medicoExecutor.toLocaleString("pt-BR")}% do lucro bruto de ${moneyFin(t.lucroBrutoProdutos)} nos produtos), pago em duas parcelas · vencem neste mês ${moneyFin(motor.executor.devidoNoMes)} (a 2ª do mês anterior e a 1ª deste) · pago ${moneyFin(motor.executor.pagoNoMes)} → ${motor.executor.faltaNoMes > 0.005 ? `falta ${moneyFin(motor.executor.faltaNoMes)}` : "em dia"}.`
+        : `Separados ${moneyFin(t.reservado.medicoExecutor)} (${reguaHoje.medicoExecutor.toLocaleString("pt-BR")}% do lucro bruto de ${moneyFin(t.lucroBrutoProdutos)} nos produtos) · transferidos ${moneyFin(repasses.medicoExecutor.transferido)} → ${repasses.medicoExecutor.falta > 0.005 ? `falta transferir ${moneyFin(repasses.medicoExecutor.falta)}` : repasses.medicoExecutor.falta < -0.005 ? `saiu ${moneyFin(-repasses.medicoExecutor.falta)} a mais` : "em dia"}.`,
+      realizado: motor?.ativo ? motor.executor.pagoNoMes : repasses.medicoExecutor.transferido,
+      referencia: motor?.ativo ? motor.executor.devidoNoMes || motor.executor.doMes : t.reservado.medicoExecutor,
       rotuloBarra: "transferido ÷ separado",
     },
     {

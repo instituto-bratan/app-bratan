@@ -1,5 +1,15 @@
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { itemContaComoVenda, naturezaDoItem } from "./naturezaItem";
+import {
+  CATEGORIA_PAGAMENTO_EXECUTOR,
+  CATEGORIAS_PAGAMENTO_SOCIOS,
+  CATEGORIAS_SALARIO_ANTIGO_DOS_SOCIOS,
+  compromissosDoMes,
+  executorDoMes,
+  lucroSociosDoMes,
+  motorValeNoMes,
+  parcelasQueVencemNoMes,
+} from "./motorLucroInteligente";
 
 export type FinCategoryGroup = "CUSTO_FIXO" | "MAO_DE_OBRA" | "CUSTO_VARIAVEL" | "POUPANCA";
 export type FinSaleItemType =
@@ -613,7 +623,21 @@ export type P12Matrix = {
   // operacionais (sem obra, sem aportes).
   profitMonths: number[];
   profitYear: number;
+  // ---- MOTOR DO LUCRO INTELIGENTE (01/10/2026) ---------------------------------
+  /** Mês já no motor (a partir de set/2026). */
+  motorMonths: boolean[];
+  /** Custo do médico executor do mês (competência) — está na linha própria do grupo da folha. */
+  executorMotorMonths: number[];
+  /** Pagamentos ao executor no mês: baixa das parcelas, fora do custo (senão contaria duas vezes). */
+  executorPagoMonths: number[];
+  /** Lucro dos sócios do mês pela régua (fora do custo da operação). */
+  lucroSociosMonths: number[];
+  /** Lucro do mês depois de separar o lucro dos sócios. */
+  resultadoDepoisDosSociosMonths: number[];
 };
+
+/** Linha da P12 que o motor calcula (não é conta do Contas a Pagar). */
+export const LINHA_MOTOR_EXECUTOR_ID = "motor-medico-executor";
 
 function monthIndex(dateString: string) {
   const month = Number(dateString.slice(5, 7));
@@ -671,6 +695,7 @@ export function buildP12Matrix(
     yearTotal: 0,
   };
 
+  const executorPagoMonths = Array.from({ length: 12 }, () => 0);
   for (const expense of expenses) {
     // Competência mensal: o mês da despesa é o do vencimento, não o do pagamento.
     // Vale para TODAS as categorias, inclusive a provisão de impostos: o valor
@@ -684,16 +709,39 @@ export function buildP12Matrix(
     if (month < 0) continue;
     const categoryRow = rowByRef.get(expense.categoryRef);
     if (!categoryRow) continue;
+    // MOTOR: pagamento ao médico executor é baixa da parcela; o custo é a linha do motor.
+    if (expense.categoryRef === CATEGORIA_PAGAMENTO_EXECUTOR && motorValeNoMes(`${year}-${String(month + 1).padStart(2, "0")}`)) {
+      executorPagoMonths[month] += expense.amount || 0;
+      continue;
+    }
     const row = !categoryRow.category.isCapex && expenseEhCapex(expense, categoryRow.category) ? obraNoLancamentoRow : categoryRow;
     row.months[month].total += expense.amount || 0;
     row.months[month].count += 1;
     row.yearTotal += expense.amount || 0;
   }
 
+  const motorMonths = Array.from({ length: 12 }, (_, index) => motorValeNoMes(`${year}-${String(index + 1).padStart(2, "0")}`));
+  const executorMotorMonths = motorMonths.map((ativo, index) => (ativo ? executorDoMes(sales, `${year}-${String(index + 1).padStart(2, "0")}`) : 0));
+  const linhaDoMotor: P12Row = {
+    category: {
+      id: LINHA_MOTOR_EXECUTOR_ID,
+      groupKey: "MAO_DE_OBRA",
+      name: "Médico executor do mês (50% do lucro bruto, motor do Lucro Inteligente)",
+      sortOrder: 9998,
+      isCapex: false,
+      active: true,
+    },
+    months: executorMotorMonths.map((total) => ({ total, count: total > 0.005 ? 1 : 0 })),
+    yearTotal: executorMotorMonths.reduce((soma, valor) => soma + valor, 0),
+  };
   const groups: P12Group[] = finGroupOrder.map((groupKey) => {
     // Categorias CAPEX (obra) saem dos grupos: são investimento pago pelo cofre,
     // não custo operacional — não podem pesar no lucro do mês.
-    const rows = orderedCategories.filter((category) => category.groupKey === groupKey && !category.isCapex).map((category) => rowByRef.get(category.id)!);
+    const rows = orderedCategories
+      .filter((category) => category.groupKey === groupKey && !category.isCapex && !CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has(category.id))
+      .map((category) => rowByRef.get(category.id)!);
+    // MOTOR: o médico executor do mês entra como linha própria da folha.
+    if (groupKey === "MAO_DE_OBRA" && linhaDoMotor.yearTotal > 0.005) rows.push(linhaDoMotor);
     const months = emptyCells();
     let yearTotal = 0;
     for (const row of rows) {
@@ -707,7 +755,10 @@ export function buildP12Matrix(
   });
 
   // OBRA / investimento (CAPEX): consolidado à parte, fora do lucro operacional.
-  const capexRows = orderedCategories.filter((category) => category.isCapex).map((category) => rowByRef.get(category.id)!);
+  // Distribuição de lucro aos sócios fica aqui também (fora do lucro), com ou sem a marca de capex.
+  const capexRows = orderedCategories
+    .filter((category) => category.isCapex || CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has(category.id))
+    .map((category) => rowByRef.get(category.id)!);
   if (obraNoLancamentoRow.yearTotal > 0.005) capexRows.push(obraNoLancamentoRow);
   const capexMonths = Array.from({ length: 12 }, (_, index) =>
     capexRows.reduce((sum, row) => sum + row.months[index].total, 0),
@@ -751,6 +802,7 @@ export function buildP12Matrix(
       revenueMonths[index].total + financialIncomeMonths[index] + crediarioMonths[index] - expensesTotal,
   );
 
+  const lucroSociosMonths = motorMonths.map((ativo, index) => (ativo ? lucroSociosDoMes(`${year}-${String(index + 1).padStart(2, "0")}`).total : 0));
   return {
     year,
     revenueMonths,
@@ -769,6 +821,11 @@ export function buildP12Matrix(
     crediarioYear,
     profitMonths,
     profitYear: revenueYear + financialIncomeYear + crediarioYear - totalExpensesYear,
+    motorMonths,
+    executorMotorMonths,
+    executorPagoMonths,
+    lucroSociosMonths,
+    resultadoDepoisDosSociosMonths: profitMonths.map((lucro, index) => (motorMonths[index] ? lucro - lucroSociosMonths[index] : lucro)),
   };
 }
 
@@ -824,10 +881,21 @@ export function buildResumoMes(
   // "A pagar" tem que somar exatamente a mesma base do custo operacional da P12:
   // só categorias conhecidas e não-CAPEX, competência pelo vencimento. Assim
   // jaPago = custos − aPagar nunca fica negativo por causa de categoria órfã.
-  const operationalRefs = new Set(categories.filter((category) => !category.isCapex).map((category) => category.id));
-  const aPagar = expenses
+  const operationalRefs = new Set(
+    categories.filter((category) => !category.isCapex && !CATEGORIAS_FORA_DO_LUCRO_NAO_OBRA.has(category.id)).map((category) => category.id),
+  );
+  // MOTOR: o executor do mês está nos custos pela competência; o que ainda não
+  // foi pago dele (as duas parcelas deste mês) entra no "a pagar".
+  const motor = motorValeNoMes(monthKey) ? compromissosDoMes({ sales, expenses, monthKey, desde: `${year - 1}-01` }) : null;
+  const executorAPagar = motor
+    ? [...motor.executor.vencemNoMes, ...motor.executor.proximas]
+        .filter((parcela) => parcela.mesDoTrabalho === monthKey)
+        .reduce((soma, parcela) => soma + parcela.falta, 0)
+    : 0;
+  const aPagar = executorAPagar + expenses
     .filter((expense) => {
       if (!operationalRefs.has(expense.categoryRef) || expense.paidAt) return false;
+      if (motor && expense.categoryRef === CATEGORIA_PAGAMENTO_EXECUTOR) return false;
       // Lançamento marcado como obra em categoria comum já saiu do custo do
       // mês na matriz; tem que sair do "a pagar" também, ou o "já pago" quebra.
       if (expense.isCapex) return false;
@@ -1316,6 +1384,10 @@ export type FechamentoContabil = {
   lucroContabil: number;
   /** Só visão interna: NUNCA somar nem enviar à contabilidade. */
   crediarioInterno: number;
+  /** Motor do Lucro Inteligente: o lucro dos sócios e as parcelas do executor que vencem no mês entram nos custos no lugar das transferências. */
+  motorAtivo: boolean;
+  lucroSociosDoMes: number;
+  medicoExecutorParcelasDoMes: number;
 };
 
 export function buildFechamentoContabil(
@@ -1363,9 +1435,20 @@ export function buildFechamentoContabil(
   // Lucro p/ contabilidade (Lucas, 03/08/2026): Faturamento Bruto − TODAS as
   // despesas do mês (obra e provisão de impostos do próprio mês incluídas).
   // Crediário fica fora dos dois lados — é só visão interna.
-  const custosDoMes = expenses
-    .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey)
-    .reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  // MOTOR (01/10/2026): o compromisso do mês entra no lugar do pagamento. O
+  // lucro dos sócios (40 mil) e as parcelas do executor que vencem no mês são
+  // a "conta do mês"; as transferências que pagam esses compromissos não somam
+  // de novo — antes o salário fixo E a transferência contavam o mesmo dinheiro.
+  const motorAtivo = motorValeNoMes(monthKey);
+  const lucroSociosMes = motorAtivo ? lucroSociosDoMes(monthKey).total : 0;
+  const parcelasExecutorMes = motorAtivo ? parcelasQueVencemNoMes(sales, monthKey) : 0;
+  const custosDoMes =
+    expenses
+      .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey)
+      .filter((expense) => !motorAtivo || (expense.categoryRef !== CATEGORIA_PAGAMENTO_EXECUTOR && !CATEGORIAS_PAGAMENTO_SOCIOS.has(expense.categoryRef)))
+      .reduce((sum, expense) => sum + (expense.amount || 0), 0) +
+    lucroSociosMes +
+    parcelasExecutorMes;
   const lucroContabil = Math.round((faturamentoBruto - custosDoMes) * 100) / 100;
 
   return {
@@ -1378,6 +1461,9 @@ export function buildFechamentoContabil(
     custosDoMes: Math.round(custosDoMes * 100) / 100,
     lucroContabil,
     crediarioInterno: crediarioProfitOfMonth(crediarioProfits, monthKey),
+    motorAtivo,
+    lucroSociosDoMes: Math.round(lucroSociosMes * 100) / 100,
+    medicoExecutorParcelasDoMes: parcelasExecutorMes,
   };
 }
 
@@ -2251,6 +2337,21 @@ export type GestaoMensal = {
   distribuicaoSocios: number; // fora do lucro também, mas não é obra
   lucroLiquido: number; // faturamento − custos operacionais
   margem: number; // % do faturamento
+  // ---- MOTOR DO LUCRO INTELIGENTE (01/10/2026, a partir de set/2026) ----------
+  /** true quando o mês já segue o motor (lucro dos sócios da régua + executor em duas parcelas). */
+  motorAtivo: boolean;
+  /** Custo do médico executor no mês (competência): 50% do lucro bruto dos produtos vendidos. Já está em custosTotais. */
+  medicoExecutor: number;
+  /** Parcelas do executor que VENCEM no mês: a 2ª do mês anterior + a 1ª do mês. É o que sai do caixa. */
+  medicoExecutorParcelasDoMes: number;
+  /** Pagamentos ao executor registrados no mês (abatem as parcelas; não são custo de novo). */
+  medicoExecutorPago: number;
+  /** Lucro dos sócios do mês pela régua (40.000: Andrya 25.000 · Dr. Daniel 15.000). Fora do custo da operação. */
+  lucroSociosDoMes: number;
+  /** Lucro da empresa depois de separar o lucro dos sócios. */
+  resultadoDepoisDosSocios: number;
+  /** Contas de salário fixo dos sócios do modelo antigo que ainda aparecem no mês (deveriam ser zero). */
+  contasAntigasDosSocios: number;
   crediario: number; // visão interna, NUNCA na contabilidade
   comandas: number;
   ticketMedio: number;
@@ -2284,11 +2385,24 @@ export function buildGestaoMensal(
   let provisoes = 0;
   let obra = 0;
   let distribuicaoSocios = 0;
+  // MOTOR DO LUCRO INTELIGENTE (01/10/2026): a partir de set/2026 o lucro dos
+  // sócios sai da régua (40 mil) e o médico executor entra pelo envelope do mês
+  // (competência). Os pagamentos ao executor são baixa das parcelas, não custo.
+  const motorAtivo = motorValeNoMes(monthKey);
+  let medicoExecutorPago = 0;
+  let contasAntigasDosSocios = 0;
   for (const expense of expenses) {
     if ((expense.dueDate || expense.paidAt || "").slice(0, 7) !== monthKey) continue;
     const category = grupoPorRef.get(expense.categoryRef);
     const valor = expense.amount || 0;
     if (!category) continue;
+    if (motorAtivo && expense.categoryRef === CATEGORIA_PAGAMENTO_EXECUTOR) {
+      medicoExecutorPago += valor;
+      continue;
+    }
+    // Salário fixo dos sócios do modelo antigo: continua contando (não some em
+    // silêncio), mas o painel avisa que ele duplica o motor.
+    if (motorAtivo && CATEGORIAS_SALARIO_ANTIGO_DOS_SOCIOS.has(expense.categoryRef)) contasAntigasDosSocios += valor;
     // Distribuição de lucro aos sócios fica FORA do lucro operacional pela
     // categoria, com ou sem a marca de capex. Fechamento de setembro (01/10/2026):
     // "Lucro Inteligente — sócios" não é capex no banco e as transferências
@@ -2306,7 +2420,9 @@ export function buildGestaoMensal(
     else if (category.groupKey === "CUSTO_VARIAVEL") custosVariaveis += valor;
     else if (category.groupKey === "POUPANCA") provisoes += valor;
   }
-  const custosTotais = custosFixos + folhaMeritocracia + custosVariaveis + provisoes;
+  const medicoExecutor = motorAtivo ? executorDoMes(sales, monthKey) : 0;
+  const lucroSociosMes = motorAtivo ? lucroSociosDoMes(monthKey).total : 0;
+  const custosTotais = custosFixos + folhaMeritocracia + custosVariaveis + provisoes + medicoExecutor;
   const lucroLiquido = faturamento - custosTotais;
   const cents = (valor: number) => Math.round(valor * 100) / 100;
   return {
@@ -2324,6 +2440,13 @@ export function buildGestaoMensal(
     distribuicaoSocios: cents(distribuicaoSocios),
     lucroLiquido: cents(lucroLiquido),
     margem: faturamento > 0 ? Math.round((lucroLiquido / faturamento) * 10000) / 100 : 0,
+    motorAtivo,
+    medicoExecutor: cents(medicoExecutor),
+    medicoExecutorParcelasDoMes: motorAtivo ? parcelasQueVencemNoMes(sales, monthKey) : 0,
+    medicoExecutorPago: cents(medicoExecutorPago),
+    lucroSociosDoMes: cents(lucroSociosMes),
+    resultadoDepoisDosSocios: cents(lucroLiquido - lucroSociosMes),
+    contasAntigasDosSocios: cents(contasAntigasDosSocios),
     crediario: crediarioProfitOfMonth(crediarioProfits, monthKey),
     comandas: doMes.length,
     // Ticket médio pela regra da casa: sem os sinais (ver buildTicketMedio).
@@ -2513,11 +2636,18 @@ export function buildResumoContabilCsv(gestao: GestaoMensal, fechamento: Fechame
     ["Folha + meritocracias", gestao.folhaMeritocracia],
     ["Custos variáveis", gestao.custosVariaveis],
     ["Provisões (13º, férias, impostos)", gestao.provisoes],
+    ...(gestao.motorAtivo ? [["Médico executor do mês (competência, motor do Lucro Inteligente)", gestao.medicoExecutor]] : []),
     ["TOTAL DOS CUSTOS OPERACIONAIS", gestao.custosTotais],
     [],
     ["RESULTADO"],
     ["Lucro líquido (faturamento − custos operacionais)", gestao.lucroLiquido],
     ["Margem de lucro (%)", gestao.margem],
+    ...(gestao.motorAtivo
+      ? [
+          ["Lucro dos sócios do mês (régua do Lucro Inteligente)", gestao.lucroSociosDoMes],
+          ["Lucro depois do lucro dos sócios", gestao.resultadoDepoisDosSocios],
+        ]
+      : []),
     lucroReal !== null ? ["Lucro REAL do mês (sobrou no banco, sem crediário)", lucroReal] : [],
     [],
     ["INVESTIMENTO — FORA DO LUCRO (pago pelo cofre/CDB)"],
@@ -2585,16 +2715,41 @@ export function buildPonteLucro(gestao: GestaoMensal, fechamento: FechamentoCont
       tipo: "menos",
       explicacao: "Investimento na obra. Fica fora do lucro operacional porque é patrimônio, não custo de atender paciente — mas a contabilidade abate.",
     },
-    ...(gestao.distribuicaoSocios
+    // MOTOR (01/10/2026): o lucro dos sócios do mês é o compromisso da régua, e
+    // a contabilidade conta as parcelas do executor que VENCEM no mês, enquanto o
+    // lucro do mês conta o executor INTEIRO do mês do trabalho.
+    ...(gestao.motorAtivo
       ? [
           {
-            label: "− Lucro distribuído aos sócios",
-            valor: gestao.distribuicaoSocios,
+            label: "− Lucro dos sócios do mês",
+            valor: gestao.lucroSociosDoMes,
             tipo: "menos" as const,
-            explicacao: "Transferências de lucro aos sócios (Lucro Inteligente e distribuição). Ficam fora do lucro operacional porque não são custo de atender paciente, mas saem do resultado que vai para a contabilidade.",
+            explicacao: "Os 40 mil da régua do Lucro Inteligente (Andrya 25 mil, Dr. Daniel 15 mil). Ficam fora do lucro da operação porque são a divisão do lucro, e saem do resultado que vai para a contabilidade.",
           },
+          ...(Math.abs(gestao.medicoExecutor - gestao.medicoExecutorParcelasDoMes) > 0.005
+            ? [
+                {
+                  label:
+                    gestao.medicoExecutor >= gestao.medicoExecutorParcelasDoMes
+                      ? "+ Médico executor: parcela deste mês que vence no mês seguinte"
+                      : "− Médico executor: parcela do mês anterior que vence neste mês",
+                  valor: Math.round(Math.abs(gestao.medicoExecutor - gestao.medicoExecutorParcelasDoMes) * 100) / 100,
+                  tipo: gestao.medicoExecutor >= gestao.medicoExecutorParcelasDoMes ? ("mais" as const) : ("menos" as const),
+                  explicacao: `O lucro do mês conta o executor inteiro do mês do trabalho (${moneyFin(gestao.medicoExecutor)}). A contabilidade conta só as parcelas que vencem no mês (${moneyFin(gestao.medicoExecutorParcelasDoMes)}): a 1ª deste mês e a 2ª do mês anterior.`,
+                },
+              ]
+            : []),
         ]
-      : []),
+      : gestao.distribuicaoSocios
+        ? [
+            {
+              label: "− Lucro distribuído aos sócios",
+              valor: gestao.distribuicaoSocios,
+              tipo: "menos" as const,
+              explicacao: "Transferências de lucro aos sócios (Lucro Inteligente e distribuição). Ficam fora do lucro operacional porque não são custo de atender paciente, mas saem do resultado que vai para a contabilidade.",
+            },
+          ]
+        : []),
     {
       label: "= Lucro contábil (vai para a contabilidade)",
       valor: fechamento.faturamentoBruto - fechamento.custosDoMes,

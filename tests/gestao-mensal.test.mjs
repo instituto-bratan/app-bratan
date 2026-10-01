@@ -131,10 +131,12 @@ test("margem e crediário: crediário aparece separado e NÃO entra no lucro", (
   ]);
   assert.equal(g.crediario, 31250, "visível como controle interno");
   assert.equal(g.lucroLiquido, -18500, "o lucro do indicador NÃO muda com o crediário");
+  // Agosto: antes do motor do Lucro Inteligente (que começa em setembro e
+  // desconta o médico executor) — aqui o teste é só da margem.
   const positivo = fin.buildGestaoMensal(
-    [venda("2026-09-01", [{ tipo: "TRATAMENTO", valor: 100000 }], [{ metodo: "PIX", valor: 100000 }])],
-    [despesa("2026-09-10", 60000, "cat-aluguel")],
-    CATS, "2026-09", [],
+    [venda("2026-08-01", [{ tipo: "TRATAMENTO", valor: 100000 }], [{ metodo: "PIX", valor: 100000 }])],
+    [despesa("2026-08-10", 60000, "cat-aluguel")],
+    CATS, "2026-08", [],
   );
   assert.equal(positivo.lucroLiquido, 40000);
   assert.equal(positivo.margem, 40, "40% de margem");

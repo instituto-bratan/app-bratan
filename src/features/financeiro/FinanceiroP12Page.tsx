@@ -361,6 +361,38 @@ export function FinanceiroP12Page() {
                   ))}
                   <td className={cn("px-4 py-3", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>
                 </tr>
+                {/* MOTOR DO LUCRO INTELIGENTE (01/10/2026): o lucro acima já conta o médico
+                    executor do mês inteiro (linha própria na folha); aqui sai o lucro dos sócios. */}
+                {matrix.motorMonths.some(Boolean) ? (
+                  <>
+                    <tr className="bg-white/70 text-brand-tinta">
+                      <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-white px-4 py-2.5 text-left">
+                        Lucro dos sócios do mês
+                        <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                          (régua do Lucro Inteligente: Andrya 25 mil · Dr. Daniel 15 mil; é divisão do lucro, não custo)
+                        </span>
+                      </td>
+                      {visibleMonths.map((month) => (
+                        <td key={month} className="px-2.5 py-2.5">{matrix.motorMonths[month] ? `(${moneyFin(matrix.lucroSociosMonths[month])})` : "—"}</td>
+                      ))}
+                      <td className="px-4 py-2.5">({moneyFin(matrix.lucroSociosMonths.reduce((soma, valor) => soma + valor, 0))})</td>
+                    </tr>
+                    <tr className="bg-brand-creme/50 font-bold">
+                      <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme px-4 py-2.5 text-left text-brand-musgo">
+                        O QUE A EMPRESA GUARDA
+                        <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(lucro do mês − lucro dos sócios)</span>
+                      </td>
+                      {visibleMonths.map((month) => (
+                        <td key={month} className={cn("px-2.5 py-2.5", matrix.resultadoDepoisDosSociosMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
+                          {matrix.motorMonths[month] ? moneyFin(matrix.resultadoDepoisDosSociosMonths[month]) : "—"}
+                        </td>
+                      ))}
+                      <td className="px-4 py-2.5">
+                        {moneyFin(matrix.motorMonths.reduce((soma, ativo, index) => soma + (ativo ? matrix.resultadoDepoisDosSociosMonths[index] : 0), 0))}
+                      </td>
+                    </tr>
+                  </>
+                ) : null}
                 {matrix.capexYear ? (
                   <tr className="border-t border-brand-dourado/30 bg-brand-papel/70 text-brand-oliva">
                     <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-2.5 text-left">
