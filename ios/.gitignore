@@ -11,3 +11,6 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# estado de build do Swift Package Manager
+App/CapApp-SPM/.swiftpm
