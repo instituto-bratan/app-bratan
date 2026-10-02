@@ -1,43 +1,39 @@
 #!/usr/bin/env bash
-# COMPILA O MEU BRATAN PARA O SIMULADOR DE IPHONE (01/10/2026).
-#   bash scripts/compilar-ios.sh            # compila, instala e abre no iPhone 18 Pro
+# COMPILA O MEU BRATAN PARA O SIMULADOR DE IPHONE.
+#   bash scripts/compilar-ios.sh              # compila, instala e abre no iPhone 18 Pro
 #   bash scripts/compilar-ios.sh so-compilar
+#   APARELHO="iPhone 18 Pro Max" bash scripts/compilar-ios.sh
 #
-# Por que compilar de uma CÓPIA fora do projeto: a pasta Documents/Codex fica no
-# iCloud Drive e o xcodebuild TRAVA ao abrir um projeto dentro do iCloud (fica
-# preso carregando o .xcodeproj, sem erro nenhum). Fora do iCloud o mesmo
-# projeto compila em minutos. A cópia é descartável; o ios/ do repositório é o
-# que vale e o Package.resolved volta para lá no fim.
+# Desde 02/10/2026 o projeto mora em ~/Projetos/Codex, fora do iCloud. Dentro do
+# iCloud Drive o xcodebuild TRAVA ao abrir o projeto (sem erro nenhum), por isso
+# este script se recusa a rodar a partir da cópia antiga em ~/Documents/Codex.
+# O Xcode 27 não tem mais o app Simulator: o iPhone aparece no DeviceHub.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-RAIZ="$PWD"
-COPIA="$HOME/Library/Caches/MeuBratan-ios"
+RAIZ="$(pwd -P)"
+case "$RAIZ" in
+  */Documents/Codex/*|*/Mobile\ Documents/*)
+    echo "✗ Esta é a cópia que ficou no iCloud. Rode a partir de ~/Projetos/Codex/2026-06-24/files-mentioned-by-the-user-eu/work/app-bratan"
+    exit 1 ;;
+esac
 APARELHO="${APARELHO:-iPhone 18 Pro}"
+SAIDA="$HOME/Library/Caches/MeuBratan-ios"
+mkdir -p "$SAIDA"
 
 npm run app:ios
 
-rm -rf "$COPIA/ios"
-mkdir -p "$COPIA"
-cp -R "$RAIZ/ios" "$COPIA/ios"
-
-echo "→ compilando para '$APARELHO' em $COPIA (fora do iCloud)"
-xcodebuild -project "$COPIA/ios/App/App.xcodeproj" -scheme App -configuration Debug \
+echo "→ compilando para '$APARELHO'"
+xcodebuild -project "$RAIZ/ios/App/App.xcodeproj" -scheme App -configuration Debug \
   -destination "platform=iOS Simulator,name=$APARELHO" \
-  -derivedDataPath "$COPIA/DerivedData" -skipMacroValidation build \
-  > "$COPIA/xcodebuild.log" 2>&1 || { grep -E "error:" "$COPIA/xcodebuild.log" | grep -v "xpc\|Logging" | head -20; echo "✗ falhou; log em $COPIA/xcodebuild.log"; exit 1; }
+  -derivedDataPath "$SAIDA/DerivedData" -skipMacroValidation build \
+  > "$SAIDA/xcodebuild.log" 2>&1 || { grep -E "error:" "$SAIDA/xcodebuild.log" | grep -v "xpc\|Logging" | head -20; echo "✗ falhou; log em $SAIDA/xcodebuild.log"; exit 1; }
 
-RESOLVIDO="App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
-if [ -f "$COPIA/ios/$RESOLVIDO" ]; then
-  mkdir -p "$(dirname "$RAIZ/ios/$RESOLVIDO")"
-  cp "$COPIA/ios/$RESOLVIDO" "$RAIZ/ios/$RESOLVIDO"
-fi
-
-APP="$COPIA/DerivedData/Build/Products/Debug-iphonesimulator/App.app"
+APP="$SAIDA/DerivedData/Build/Products/Debug-iphonesimulator/App.app"
 echo "✓ compilado: $APP"
 [ "${1:-}" = "so-compilar" ] && exit 0
 
 xcrun simctl boot "$APARELHO" 2>/dev/null || true
-open -b com.apple.dt.DeviceHub 2>/dev/null || open "/Applications/Xcode.app/Contents/Applications/DeviceHub.app" 2>/dev/null || true
+open "/Applications/Xcode.app/Contents/Applications/DeviceHub.app" 2>/dev/null || true
 xcrun simctl install booted "$APP"
 xcrun simctl launch booted br.com.institutobratan.meubratan
 echo "✓ Meu Bratan aberto no simulador"
