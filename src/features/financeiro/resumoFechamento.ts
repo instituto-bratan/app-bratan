@@ -180,7 +180,10 @@ export function buildResumoFechamento(values: {
   const lucroDoMes = cents(gestao.lucroLiquido);
 
   const digitado = numero(values.escrito.lucroDistribuido);
-  const lucroDistribuido = values.escrito.lucroDistribuido.trim() ? cents(digitado) : lucroDoMes;
+  // Mês no vermelho não distribui lucro (Lucas, 05/10/2026: "se for negativo,
+  // então é zero"). O lucro do mês continua negativo na linha dele; só a
+  // distribuição e a divisão 80/20 param no zero.
+  const lucroDistribuido = values.escrito.lucroDistribuido.trim() ? cents(digitado) : Math.max(0, lucroDoMes);
 
   return {
     monthKey: values.monthKey,

@@ -205,3 +205,16 @@ test("IMPOSTOS saem das notas do mês: consulta × procedimento, mensal × trime
   const semNotas = rf.buildResumoFechamento({ ...base, escrito: rf.fechamentoEscritoVazio, invoices: [] });
   assert.equal(semNotas.impostosProvisionados, 16813.07, "sem nota registrada, vale a provisão lançada");
 });
+
+test("mês no vermelho: a distribuição de lucro é zero, não negativa (05/10/2026)", () => {
+  const r = rf.buildResumoFechamento({
+    ...base,
+    sales: [venda("2026-07-10", 50000)],
+    expenses: [conta("2026-07-05", 100000, "cat-fixo")],
+    escrito: rf.fechamentoEscritoVazio,
+  });
+  assert.ok(r.lucroDoMes < 0, "o lucro do mês continua negativo na linha dele");
+  assert.equal(r.lucroDistribuido, 0);
+  assert.equal(r.divisao.andrya, 0);
+  assert.equal(r.divisao.daniel, 0);
+});
