@@ -5,8 +5,11 @@
 // de 01/09): quem escolhe é o PACIENTE — nota UNIFICADA (tudo junto, imposto
 // menor) ou notas SEPARADAS. E o código de serviço do município muda com a
 // natureza da nota:
-//   04197 "Clínicas e casas de saúde"  → CONSULTA
-//   04030 "Medicina e biomedicina"     → BIOIMPEDÂNCIA, TRATAMENTO e UNIFICADA
+//   04030 "Medicina e biomedicina"     → CONSULTA
+//   04197 "Clínicas e casas de saúde"  → BIOIMPEDÂNCIA, TRATAMENTO e UNIFICADA
+// (orientação da contabilidade de 05/10/2026 para a NFS-e com IBS/CBS; até
+// 04/10 era o contrário, copiado das notas manuais de setembro — as antigas
+// ficam como estão, só daqui para a frente muda).
 // Errar esse código é errar imposto, então ele sai da configuração por tipo e
 // nunca de um campo único.
 //
@@ -155,8 +158,8 @@ Deno.serve(async (request) => {
   // ---- emitir -----------------------------------------------------------------
   if (!entrada.saleRef || !entrada.tipo) return json({ ok: false, error: "Informe saleRef e tipo." }, 400);
   // O código do serviço do município MUDA com a natureza da nota:
-  //   04197 "Clínicas e casas de saúde"  → CONSULTA
-  //   04030 "Medicina e biomedicina"     → BIOIMPEDÂNCIA, TRATAMENTO e UNIFICADA
+  //   04030 "Medicina e biomedicina"     → CONSULTA (contabilidade, 05/10/2026)
+  //   04197 "Clínicas e casas de saúde"  → BIOIMPEDÂNCIA, TRATAMENTO e UNIFICADA
   // Até 18/09/2026 isto vinha de um campo único (`codigoServico`) e as duas notas
   // saíam com o MESMO código — o oposto do que o cabeçalho deste arquivo manda.
   // Agora é um campo por tipo, e faltando qualquer um a nota não sai.
@@ -237,9 +240,12 @@ Deno.serve(async (request) => {
   // O NBS segue a mesma regra do código do município: muda com a natureza da
   // nota. Os três códigos vieram do contador em 22/09/2026:
   //   123012100 → consultas
-  //   123012200 → procedimentos médicos
-  //   123011100 → serviços cirúrgicos (guardado em `codigoNbsCirurgia`; a
-  //               clínica não emite cirurgia hoje, então nada aqui usa)
+  //   123011100 → procedimentos (bioimpedância, aplicações, tratamento): é o
+  //               código que a contabilidade mandou em 05/10/2026 para a
+  //               NFS-e com IBS/CBS; até 04/10 ia 123012200
+  // O CST do IBS/CBS (200, alíquota reduzida) vai em `ibsCbsSituacaoTributaria`
+  // quando configurado — a contabilidade pediu em 05/10; a redução de 60% não
+  // tem campo e vai embutida no cClassTrib 200029.
   // O INDICADOR DA OPERAÇÃO É 030101 (30/09/2026). O contador indicou 100301
   // em 22/09 ("demais serviços", imposto no domicílio de quem compra). A
   // prefeitura passou a recusar essa combinação na noite de 29/09 com o erro
@@ -270,7 +276,7 @@ Deno.serve(async (request) => {
   //
   // "Informar sempre em discriminação de serviços se é consulta ou
   // procedimento" — é o texto que amarra a nota ao código do serviço do
-  // município (04197 consulta × 04030 procedimento) e ao NBS. Uma nota de
+  // município (04030 consulta × 04197 procedimento) e ao NBS. Uma nota de
   // procedimento com discriminação genérica ("serviços de saúde") é exatamente
   // o tipo de divergência que a prefeitura cobra depois.
   //
@@ -369,6 +375,7 @@ Deno.serve(async (request) => {
       codigo_nbs: String(ehConsulta ? config.codigoNbsConsulta : config.codigoNbsTratamento),
       codigo_indicador_operacao: String(config.codigoIndicadorOperacao),
       ibs_cbs_classificacao_tributaria: String(config.ibsCbsClassificacaoTributaria),
+      ...(String(config.ibsCbsSituacaoTributaria ?? "").trim() ? { ibs_cbs_situacao_tributaria: String(config.ibsCbsSituacaoTributaria) } : {}),
       ...(String(config.ibsCbsClassificacaoTributariaRegular ?? "").trim()
         ? { ibs_cbs_classificacao_tributaria_regular: String(config.ibsCbsClassificacaoTributariaRegular) }
         : {}),

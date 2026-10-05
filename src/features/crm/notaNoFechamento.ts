@@ -33,17 +33,21 @@ export const escolhaDaNotaLabels: Record<EscolhaDaNota, string> = {
 /**
  * Código do serviço da Prefeitura de São Paulo, por natureza.
  *
- * Conferido nas notas reais: 6205 (consulta) traz 04197; 6204 (bio) e 6203
- * (tratamento) trazem 04030. A unificada É uma nota de tratamento — é
- * exatamente por isso que ela sai mais barata —, então usa 04030.
+ * 05/10/2026, orientação da contabilidade para a NFS-e com IBS/CBS (vale
+ * daqui para a frente, sem reemitir as antigas):
+ *   04030 "Medicina e biomedicina"     → CONSULTA
+ *   04197 "Clínicas e casas de saúde"  → PROCEDIMENTO: bioimpedância, aplicações,
+ *                                        tratamento e a UNIFICADA (que é nota de
+ *                                        tratamento)
+ * Até 04/10 era o contrário (copiado das notas manuais 6203–6205 de setembro).
  *
  * Vai como 5 dígitos, com o zero à esquerda e sem ponto: é o formato próprio de
  * São Paulo, não o item da LC 116.
  */
 export const CODIGO_DO_SERVICO: Record<NaturezaDaNota, string> = {
-  CONSULTA: "04197", // Clínicas e casas de saúde
-  BIOIMPEDANCIA: "04030", // Medicina e biomedicina
-  TRATAMENTO: "04030", // Medicina e biomedicina
+  CONSULTA: "04030", // Medicina e biomedicina
+  BIOIMPEDANCIA: "04197", // Clínicas e casas de saúde (procedimento)
+  TRATAMENTO: "04197", // Clínicas e casas de saúde (procedimento)
 };
 
 export const naturezaLabels: Record<NaturezaDaNota, string> = {
@@ -124,9 +128,9 @@ export function comoFoiPago(parcelas: { forma: FinPaymentMethod; parcelas?: numb
  *
  * 22/09/2026, exigência do contador: "informar sempre em discriminação de
  * serviços se é consulta ou procedimento". É o texto que amarra a nota ao
- * código do serviço (04197 consulta × 04030 procedimento). A da consulta e a
+ * código do serviço (04030 consulta × 04197 procedimento). A da consulta e a
  * de tratamento já diziam; a de bioimpedância dizia só "EXAME", e por isso
- * ganhou o prefixo — ela é cobrada como procedimento (04030).
+ * ganhou o prefixo — ela é cobrada como procedimento (04197).
  */
 export function discriminacao(natureza: NaturezaDaNota, diaISO: string, pagamento: string) {
   const dia = dataBR(diaISO);

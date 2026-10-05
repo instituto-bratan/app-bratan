@@ -16,15 +16,15 @@ const mod = await loadTs("src/features/crm/notaNoFechamento.ts");
 const DIA = "2026-09-01";
 const PIX = [{ forma: "PIX" }];
 
-test("os códigos são os das notas reais, e a unificada usa o de tratamento", () => {
-  assert.equal(mod.CODIGO_DO_SERVICO.CONSULTA, "04197", "nota 6205: Clínicas e casas de saúde");
-  assert.equal(mod.CODIGO_DO_SERVICO.BIOIMPEDANCIA, "04030", "nota 6204: Medicina e biomedicina");
-  assert.equal(mod.CODIGO_DO_SERVICO.TRATAMENTO, "04030", "nota 6203: Medicina e biomedicina");
+test("os códigos são os da contabilidade (05/10/2026), e a unificada usa o de procedimento", () => {
+  assert.equal(mod.CODIGO_DO_SERVICO.CONSULTA, "04030", "consulta: Medicina e biomedicina");
+  assert.equal(mod.CODIGO_DO_SERVICO.BIOIMPEDANCIA, "04197", "bioimpedância é procedimento: Clínicas e casas de saúde");
+  assert.equal(mod.CODIGO_DO_SERVICO.TRATAMENTO, "04197", "tratamento é procedimento: Clínicas e casas de saúde");
 
   const unificada = mod.planoDeNotas({ escolha: "UNIFICADA", valorRecebido: 6619, divisao: mod.divisaoVazia, diaISO: DIA, parcelas: PIX });
   assert.equal(unificada.notas.length, 1);
   assert.equal(unificada.notas[0].natureza, "TRATAMENTO");
-  assert.equal(unificada.notas[0].codigoServico, "04030", "a unificada É uma nota de tratamento");
+  assert.equal(unificada.notas[0].codigoServico, "04197", "a unificada É uma nota de tratamento (procedimento)");
 });
 
 test("o texto da nota de consulta é igual ao da nota 6205", () => {
@@ -34,7 +34,7 @@ test("o texto da nota de consulta é igual ao da nota 6205", () => {
 
 test("o texto da nota de bioimpedância é igual ao da nota 6204", () => {
   // 22/09/2026: o contador exige a palavra "procedimento" na discriminação —
-  // é ela que amarra o texto ao código 04030.
+  // é ela que amarra o texto ao código 04197.
   const esperado = "PROCEDIMENTO MÉDICO: EXAME DE BIOIMPEDÂNCIA REALIZADO NO DIA 01/09/2026, SOLICITADO PELO MÉDICO DANIEL BRATAN DE OLIVEIRA, CRM/SP: 168.649.";
   assert.equal(mod.discriminacao("BIOIMPEDANCIA", DIA, "PIX"), esperado);
 });
@@ -66,7 +66,7 @@ test("a divisão reproduz o atendimento real da Rosana: três notas, três códi
   assert.equal(plano.impedimento, "", "soma fecha: pode emitir");
   assert.equal(plano.notas.length, 3);
   assert.deepEqual(plano.notas.map((n) => `${n.natureza}:${n.valor}:${n.codigoServico}`).join(" | "),
-    "CONSULTA:1000:04197 | BIOIMPEDANCIA:500:04030 | TRATAMENTO:5119:04030");
+    "CONSULTA:1000:04030 | BIOIMPEDANCIA:500:04197 | TRATAMENTO:5119:04197");
   assert.equal(plano.somaDasNotas, 6619);
   assert.equal(plano.diferenca, 0);
 });
@@ -187,8 +187,8 @@ test("o resumo leva os códigos, porque é o que quem emite lê", () => {
   const unificada = mod.planoDeNotas({ escolha: "UNIFICADA", valorRecebido: 6619, divisao: mod.divisaoVazia, diaISO: DIA, parcelas: PIX });
   const resumoUnificado = mod.resumoDaNota({ escolha: "UNIFICADA", divisao: mod.divisaoVazia, motivoSemNota: "" }, unificada);
   assert.match(resumoUnificado, /NF unificada/);
-  assert.match(resumoUnificado, /04030/);
-  assert.doesNotMatch(resumoUnificado, /04197/, "a unificada é nota de tratamento, nunca de consulta");
+  assert.match(resumoUnificado, /04197/);
+  assert.doesNotMatch(resumoUnificado, /04030/, "a unificada é nota de tratamento, nunca de consulta");
 });
 
 test("sem nota, o resumo carrega o motivo — a decisão fica registrada", () => {

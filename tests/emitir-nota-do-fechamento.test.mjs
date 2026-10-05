@@ -14,9 +14,9 @@ import { loadTs } from "./helpers/load-ts.mjs";
 
 const mod = await loadTs("src/features/crm/emitirNotaDoFechamento.ts");
 
-const NOTA_CONSULTA = { natureza: "CONSULTA", valor: 1000, codigoServico: "04197", discriminacao: "CONSULTA MÉDICA REALIZADA NO DIA 01/09/2026", impostoEstimado: 133.3 };
-const NOTA_BIO = { natureza: "BIOIMPEDANCIA", valor: 500, codigoServico: "04030", discriminacao: "EXAME DE BIOIMPEDÂNCIA", impostoEstimado: 39.65 };
-const NOTA_TRAT = { natureza: "TRATAMENTO", valor: 5119, codigoServico: "04030", discriminacao: "REALIZAÇÃO DE PROCEDIMENTOS MÉDICOS", impostoEstimado: 405.94 };
+const NOTA_CONSULTA = { natureza: "CONSULTA", valor: 1000, codigoServico: "04030", discriminacao: "CONSULTA MÉDICA REALIZADA NO DIA 01/09/2026", impostoEstimado: 133.3 };
+const NOTA_BIO = { natureza: "BIOIMPEDANCIA", valor: 500, codigoServico: "04197", discriminacao: "EXAME DE BIOIMPEDÂNCIA", impostoEstimado: 39.65 };
+const NOTA_TRAT = { natureza: "TRATAMENTO", valor: 5119, codigoServico: "04197", discriminacao: "REALIZAÇÃO DE PROCEDIMENTOS MÉDICOS", impostoEstimado: 405.94 };
 
 /** Uma Focus de mentira que anota o que recebeu e responde o combinado. */
 function focusFalsa(respostas) {
