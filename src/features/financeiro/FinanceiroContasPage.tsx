@@ -854,21 +854,6 @@ export function FinanceiroContasPage() {
             />
           </div>
         )}
-        {usaRemoto && focusLigada ? (
-          <NotasRecebidasCard
-            itens={notasRecebidasQuery.data ?? []}
-            contas={financeiro.expenses}
-            carregando={notasRecebidasQuery.isLoading}
-            ultimaBusca={ultimaBuscaFocus}
-            readOnly={readOnly}
-            onBuscar={notasRecebidasBuscar}
-            onVincular={notasRecebidasVincular}
-            onIgnorar={notasRecebidasIgnorar}
-            onAbrir={notasRecebidasAbrir}
-            onBaixarZip={notasRecebidasZip}
-            onImportarCsv={notasRecebidasImportarCsv}
-          />
-        ) : null}
 
         {feedback ? (
           <div className="flex flex-wrap items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
@@ -1495,6 +1480,22 @@ export function FinanceiroContasPage() {
             {provisionFeedback ? <p className="mt-3 text-sm font-medium text-brand-musgo">{provisionFeedback}</p> : null}
           </CardContent>
         </Card>
+        {/* As notas contra o Instituto ficam por último (05/10/2026, Lucas: "a lista é muito longa"). */}
+        {usaRemoto && focusLigada ? (
+          <NotasRecebidasCard
+            itens={notasRecebidasQuery.data ?? []}
+            contas={financeiro.expenses}
+            carregando={notasRecebidasQuery.isLoading}
+            ultimaBusca={ultimaBuscaFocus}
+            readOnly={readOnly}
+            onBuscar={notasRecebidasBuscar}
+            onVincular={notasRecebidasVincular}
+            onIgnorar={notasRecebidasIgnorar}
+            onAbrir={notasRecebidasAbrir}
+            onBaixarZip={notasRecebidasZip}
+            onImportarCsv={notasRecebidasImportarCsv}
+          />
+        ) : null}
       </div>
     </AccessGate>
   );
