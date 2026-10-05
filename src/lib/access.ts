@@ -261,7 +261,8 @@ export type ModuleKey =
   | "aplicacoes"
   | "concierge-nps"
   | "nutricao"
-  | "agenda";
+  | "agenda"
+  | "pacientes";
 
 export const moduleLabels: Record<ModuleKey, string> = {
   hoje: "Hoje (tarefas, almoço, mural)",
@@ -292,6 +293,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
   nutricao: "Nutrição (prontuário e planos alimentares)",
   agenda: "Agenda do dia (iClinic) e Veio/Faltou",
+  pacientes: "Pacientes (busca, ficha e CPF)",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
@@ -309,6 +311,11 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       return "EDITAR"; // básicos: todo mundo usa
     case "crm":
     case "acompanhamento":
+      return canCrmBratan(cargo) ? "EDITAR" : "OCULTO";
+    case "pacientes":
+      // Aba Pacientes (05/10/2026): a lista com busca é de todo mundo que usa o
+      // CRM; o CPF dentro dela segue a regra da tela Impostos & NFs (RLS de
+      // contato_documento), não a desta tela.
       return canCrmBratan(cargo) ? "EDITAR" : "OCULTO";
     case "comprovantes":
       return canComprovantes(cargo) ? "EDITAR" : "OCULTO";

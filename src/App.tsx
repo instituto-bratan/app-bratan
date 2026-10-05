@@ -36,6 +36,7 @@ const FinanceiroFaturaCartaoPage = lazyRoute("finFaturaCartao");
 const EstoquePage = lazyRoute("estoque");
 const AplicacoesPage = lazyRoute("estoqueAplicacoes");
 const ConciergeNpsPage = lazyRoute("conciergeNps");
+const PacientesPage = lazyRoute("pacientes");
 const CrmTasksPage = lazyRoute("crmTasks");
 const CrmKanbanPage = lazyRoute("crmKanban");
 const CrmContactProfilePage = lazyRoute("crmContact");
@@ -124,6 +125,8 @@ export function App() {
               {/* Ficha de aplicação da enfermagem (29/09/2026): a porta (AccessGate, módulo "aplicacoes") fica na própria tela. */}
               <Route path="/estoque/aplicacoes" element={<AplicacoesPage />} />
               <Route path="/concierge/nps" element={<ConciergeNpsPage />} />
+              {/* Aba Pacientes (05/10/2026): busca, ficha e CPF; a porta é o módulo "pacientes". */}
+              <Route path="/pacientes" element={<PacientesPage />} />
               <Route path="/financeiro" element={<Navigate to="/financeiro/lancar-dia" replace />} />
               <Route path="/financeiro/lancar-dia" element={<FinanceiroLancarDiaPage />} />
               <Route path="/financeiro/contas" element={<FinanceiroContasPage />} />

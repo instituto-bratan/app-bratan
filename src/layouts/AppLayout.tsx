@@ -136,6 +136,18 @@ const flowGroups: FlowGroup[] = [
     ],
   },
   {
+    // Aba Pacientes (05/10/2026): a lista de todo mundo com busca, a ficha e o
+    // CPF à mão — antes só se chegava na ficha por um cartão do Kanban.
+    label: "Pacientes",
+    detail: "busca, ficha e CPF",
+    href: "/pacientes",
+    icon: UsersRound,
+    allowed: canCrmBratan,
+    entries: [
+      { label: "Pacientes", href: "/pacientes", icon: UsersRound, allowed: canCrmBratan, module: "pacientes" },
+    ],
+  },
+  {
     label: "CRM",
     detail: "tarefas, vendas e cadências",
     href: "/crm/minhas-tarefas",

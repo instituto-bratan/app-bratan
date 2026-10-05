@@ -3271,6 +3271,7 @@ export * from "./remote/aplicacoes";
 export * from "./remote/extrato";
 export * from "./remote/crediario";
 export * from "./remote/gestaoMensal";
+export * from "./remote/pacientes";
 export * from "./remote/estalecas";
 export * from "./remote/nps";
 export * from "./remote/notaFiscalConta";
