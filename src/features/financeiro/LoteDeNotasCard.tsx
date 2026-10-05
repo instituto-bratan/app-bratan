@@ -75,6 +75,10 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
         valor: item.valor,
         discriminacao: discriminacaoDoItem(item),
         tomador: { nome: item.tomadorNome },
+        // Os sinais do mesmo paciente entram somados na nota (regra do Lucas,
+        // 29/09): as partes de OUTRAS comandas vão como `sinais`, e a função
+        // confere se cada uma é mesmo só sinal e do mesmo paciente.
+        sinais: item.partes.filter((p) => p.saleRef && p.saleRef !== item.saleRef).map((p) => ({ saleRef: p.saleRef })),
       });
       if (!r.ok) {
         const erro = r.error ?? `A Focus recusou: ${r.status ?? ""}`;
