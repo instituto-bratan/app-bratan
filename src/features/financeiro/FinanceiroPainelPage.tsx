@@ -1114,6 +1114,7 @@ export function FinanceiroPainelPage() {
               expenses={financeiro.expensesPorCategoria}
               categories={financeiro.categories}
               provisionRules={financeiro.provisionRules}
+              invoices={financeiro.invoices}
               monthKey={monthKey}
               meta={metaDoMes}
               escrito={escrito}

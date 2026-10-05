@@ -186,3 +186,22 @@ test("julho/2026 de verdade: os números do documento saem dos lançamentos", ()
   assert.equal(r.divisao.andrya, 6887.01);
   assert.equal(r.divisao.daniel, 1721.75);
 });
+
+test("IMPOSTOS saem das notas do mês: consulta × procedimento, mensal × trimestral (05/10/2026)", () => {
+  const notas = [
+    { id: "n1", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-14", comandaDate: "2026-07-01", patientName: "A", amount: 10950, notes: "", createdAt: "" },
+    { id: "n2", invoiceType: "TRATAMENTO", invoiceNumber: "2", issueDate: "2026-07-14", comandaDate: "2026-07-01", patientName: "B", amount: 193612, notes: "", createdAt: "" },
+    { id: "n3", invoiceType: "TRATAMENTO", invoiceNumber: "3", issueDate: "2026-08-02", comandaDate: "2026-07-30", patientName: "C", amount: 1000, notes: "", createdAt: "" },
+  ];
+  const r = rf.buildResumoFechamento({ ...base, escrito: rf.fechamentoEscritoVazio, invoices: notas });
+  assert.equal(r.impostosNotas.notas, 2, "só as notas emitidas no mês");
+  assert.equal(r.impostosNotas.consulta.mensal, 618.68, "o papel de julho: consulta mensal");
+  assert.equal(r.impostosNotas.consulta.trimestral, 840.96);
+  assert.equal(r.impostosNotas.procedimento.mensal, 10939.08);
+  assert.equal(r.impostosNotas.procedimento.trimestral, 4414.35);
+  assert.equal(r.impostosNotas.total, 16813.07, "o total do papel de julho");
+  assert.equal(r.impostosProvisionados, 16813.07, "a linha IMPOSTOS é o que as notas devem");
+  assert.equal(r.impostosLancados, 16813.07, "a provisão lançada continua visível à parte");
+  const semNotas = rf.buildResumoFechamento({ ...base, escrito: rf.fechamentoEscritoVazio, invoices: [] });
+  assert.equal(semNotas.impostosProvisionados, 16813.07, "sem nota registrada, vale a provisão lançada");
+});

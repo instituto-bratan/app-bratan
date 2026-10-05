@@ -10,7 +10,7 @@
 //     é controle interno (dinheiro em espécie no cofre) e NÃO entra aqui.
 //  2. "no final da página o lucro sempre vai ser dividido pra Andrya 80% e pro
 //     Daniel 20%, só por questões judiciais" — a divisão é fixa e calculada.
-import { buildGestaoMensal, type FinCategory, type FinExpense, type FinSale, type GestaoMensal } from "./financeiroData";
+import { buildGestaoMensal, monthInvoiceTotals, type FinCategory, type FinExpense, type FinInvoice, type FinSale, type GestaoMensal } from "./financeiroData";
 import type { FinProvisionRule } from "./financeiroData";
 
 /** A parte ESCRITA por gente — o que o app não tem como saber. */
@@ -72,7 +72,27 @@ export type ResumoFechamento = {
   /** Quanto falta (positivo) ou passou (negativo) da meta. */
   faltaParaMeta: number;
   bateuMeta: boolean;
-  /** Provisões: impostos do mês + as regras fixas (13º, férias, urgências…). */
+  /**
+   * IMPOSTOS DO MÊS PELAS NOTAS FISCAIS (05/10/2026, Lucas: "você mesmo devia
+   * preencher isso conforme a gente vai emitindo"). É a tabela IMP MENSAL /
+   * IMP TRIMES do papel: consulta e procedimento, pelas alíquotas da aba
+   * Impostos & NFs (mensal = ISS + PIS + COFINS; trimestral = IRPJ + CSLL),
+   * sobre as notas EMITIDAS no mês. Zero quando não há nota registrada.
+   */
+  impostosNotas: {
+    notas: number;
+    consulta: { mensal: number; trimestral: number };
+    procedimento: { mensal: number; trimestral: number };
+    mensal: number;
+    trimestral: number;
+    total: number;
+  };
+  /** A conta "IMPOSTOS - PROVISIONADO" lançada no mês (o que foi separado de fato). */
+  impostosLancados: number;
+  /**
+   * A linha IMPOSTOS do papel: o que as notas do mês devem. Quando não há nota
+   * registrada no mês, cai para a provisão lançada, para o papel não sair zerado.
+   */
   impostosProvisionados: number;
   provisoesFixas: LinhaProvisao[];
   totalProvisoes: number;
@@ -103,6 +123,8 @@ export function buildResumoFechamento(values: {
   escrito: FechamentoEscrito;
   /** Categoria da provisão de impostos, para separar dos outros custos. */
   categoriaImpostos: string;
+  /** As notas fiscais registradas (manuais e da Focus): é delas que saem os impostos. */
+  invoices?: FinInvoice[];
 }): ResumoFechamento {
   // CREDIÁRIO FORA: buildGestaoMensal recebe [] de propósito — o documento do
   // fechamento não leva o crediário (regra do Lucas).
@@ -114,7 +136,7 @@ export function buildResumoFechamento(values: {
     [],
   );
 
-  const impostosProvisionados = cents(
+  const impostosLancados = cents(
     values.expenses
       .filter(
         (expense) =>
@@ -123,6 +145,19 @@ export function buildResumoFechamento(values: {
       )
       .reduce((soma, expense) => soma + (expense.amount || 0), 0),
   );
+  const totaisNotas = monthInvoiceTotals(values.invoices ?? [], values.monthKey);
+  // Meio centavo sobe, como na planilha da contabilidade: 10.950 × 5,65% =
+  // 618,675 tem que dar 618,68 — em ponto flutuante vira 618,67499… e cairia.
+  const fiscal = (valor: number) => Math.round((valor + 1e-9) * 100) / 100;
+  const impostosNotas = {
+    notas: totaisNotas.count,
+    consulta: { mensal: fiscal(totaisNotas.byClass.CONSULTA.mensal), trimestral: fiscal(totaisNotas.byClass.CONSULTA.trimestral) },
+    procedimento: { mensal: fiscal(totaisNotas.byClass.PROCEDIMENTO.mensal), trimestral: fiscal(totaisNotas.byClass.PROCEDIMENTO.trimestral) },
+    mensal: fiscal(totaisNotas.mensal),
+    trimestral: fiscal(totaisNotas.trimestral),
+    total: fiscal(totaisNotas.mensal + totaisNotas.trimestral),
+  };
+  const impostosProvisionados = impostosNotas.notas > 0 ? impostosNotas.total : impostosLancados;
 
   const provisoesFixas = values.provisionRules
     .filter((regra) => regra.active)
@@ -156,6 +191,8 @@ export function buildResumoFechamento(values: {
     meta: cents(values.meta),
     faltaParaMeta: cents(values.meta - entradaSemImpostos),
     bateuMeta: entradaSemImpostos >= values.meta,
+    impostosNotas,
+    impostosLancados,
     impostosProvisionados,
     provisoesFixas,
     totalProvisoes,

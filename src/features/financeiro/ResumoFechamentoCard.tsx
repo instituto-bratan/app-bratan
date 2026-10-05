@@ -19,7 +19,7 @@ import {
   monthKeyLabel,
   type FinCategory,
   type FinExpense,
-  type FinProvisionRule,
+  type FinInvoice, type FinProvisionRule,
   type FinSale,
 } from "./financeiroData";
 import {
@@ -35,6 +35,7 @@ export function ResumoFechamentoCard({
   expenses,
   categories,
   provisionRules,
+  invoices = [],
   monthKey,
   meta,
   escrito,
@@ -46,6 +47,7 @@ export function ResumoFechamentoCard({
   expenses: FinExpense[];
   categories: FinCategory[];
   provisionRules: FinProvisionRule[];
+  invoices?: FinInvoice[];
   monthKey: string;
   meta: number;
   escrito: FechamentoEscrito;
@@ -60,12 +62,13 @@ export function ResumoFechamentoCard({
         expenses,
         categories,
         provisionRules,
+        invoices,
         monthKey,
         meta,
         escrito,
         categoriaImpostos: CATEGORIA_IMPOSTOS_PROVISAO,
       }),
-    [sales, expenses, categories, provisionRules, monthKey, meta, escrito],
+    [sales, expenses, categories, provisionRules, invoices, monthKey, meta, escrito],
   );
 
   const anotacao = (chave: keyof FechamentoEscrito) => ({
@@ -132,6 +135,13 @@ export function ResumoFechamentoCard({
         <tr><td><strong>IMPOSTOS</strong></td><td class="num"><strong>${moneyFin(resumo.impostosProvisionados)}</strong></td></tr>
         ${linhaProv}
       </table>
+      <table>
+        <tr><td></td><td class="num"><strong>IMP MENSAL</strong></td><td class="num"><strong>IMP TRIMES</strong></td></tr>
+        <tr><td>Consulta</td><td class="num">${moneyFin(resumo.impostosNotas.consulta.mensal)}</td><td class="num">${moneyFin(resumo.impostosNotas.consulta.trimestral)}</td></tr>
+        <tr><td>Procedimento</td><td class="num">${moneyFin(resumo.impostosNotas.procedimento.mensal)}</td><td class="num">${moneyFin(resumo.impostosNotas.procedimento.trimestral)}</td></tr>
+        <tr><td><strong>Soma</strong></td><td class="num"><strong>${moneyFin(resumo.impostosNotas.mensal)}</strong></td><td class="num"><strong>${moneyFin(resumo.impostosNotas.trimestral)}</strong></td></tr>
+      </table>
+      <div class="linha"><span>${resumo.impostosNotas.notas} nota(s) emitida(s) no mês · provisão lançada ${moneyFin(resumo.impostosLancados)}</span><strong>${moneyFin(resumo.impostosNotas.total)}</strong></div>
       <div class="destaque"><span>TOTAL A PROVISIONAR</span><span>${moneyFin(resumo.totalProvisoes)}</span></div>
 
       <h2>Anotações da reunião — ficou acordado o provisionamento apenas do:</h2>
@@ -241,11 +251,34 @@ export function ResumoFechamentoCard({
           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-oliva">
             Poupança — impostos e afins
             <InfoTip title="De onde vem">
-              Os impostos são a provisão lançada no mês; as outras linhas vêm das regras de provisão cadastradas (13º,
-              férias, rescisão, urgências, início de ano, confraternização). Mudou a regra, muda aqui sozinho.
+              Os impostos saem das notas fiscais emitidas no mês (alíquotas da aba Impostos &amp; NFs: mensal = ISS +
+              PIS + COFINS, trimestral = IRPJ + CSLL); sem nota registrada, vale a provisão lançada. As outras linhas vêm
+              das regras de provisão cadastradas (13º, férias, rescisão, urgências, início de ano, confraternização).
             </InfoTip>
           </p>
           <Derivado rotulo="IMPOSTOS" valor={moneyFin(resumo.impostosProvisionados)} />
+          {/* IMP MENSAL / IMP TRIMES pelas notas do mês (05/10/2026): o papel pede
+              consulta × procedimento, mensal × trimestral — sai sozinho das notas. */}
+          <table className="mb-2 w-full text-xs tabular-nums">
+            <thead>
+              <tr className="text-muted-foreground">
+                <th className="py-1 text-left font-semibold">Pelas notas do mês</th>
+                <th className="py-1 text-right font-semibold">Imp. mensal</th>
+                <th className="py-1 text-right font-semibold">Imp. trimestral</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td className="py-0.5">Consulta</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.consulta.mensal)}</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.consulta.trimestral)}</td></tr>
+              <tr><td className="py-0.5">Procedimento</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.procedimento.mensal)}</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.procedimento.trimestral)}</td></tr>
+              <tr className="font-bold text-brand-tinta"><td className="py-0.5">Soma</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.mensal)}</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.trimestral)}</td></tr>
+            </tbody>
+          </table>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            {resumo.impostosNotas.notas} nota(s) emitida(s) no mês.
+            {Math.abs(resumo.impostosLancados - resumo.impostosProvisionados) >= 0.01
+              ? ` A provisão lançada em Contas a Pagar está em ${moneyFin(resumo.impostosLancados)}; ajuste-a para ${moneyFin(resumo.impostosProvisionados)}.`
+              : " A provisão lançada bate com as notas."}
+          </p>
           {resumo.provisoesFixas.map((linha) => (
             <Derivado key={linha.nome} rotulo={linha.nome} valor={moneyFin(linha.valor)} />
           ))}
