@@ -32,6 +32,7 @@ import {
   type FinSavingsMove,
   type P12Matrix,
   mesDoImposto,
+  impostosDaNota,
 } from "./financeiroData";
 import { naturezaDoItem } from "./naturezaItem";
 import { PLANO_VALOR_MINIMO, valorTratamento, type PdcaResumo, type PdcaStatus } from "./pdcaData";
@@ -177,10 +178,11 @@ export function abaControleImpostos(invoices: FinInvoice[], classe: FinInvoiceTa
     .filter((invoice) => mesDoImposto(invoice) === monthKey && invoiceTaxClass(invoice.invoiceType) === classe)
     .sort((a, b) => a.issueDate.localeCompare(b.issueDate) || a.invoiceNumber.localeCompare(b.invoiceNumber, "pt-BR", { numeric: true }));
   const linhas = doMes.map((invoice) => {
-    const imposto = invoiceTaxes(invoice.invoiceType, invoice.amount);
     // Cada tributo arredondado em centavos e o total = soma das colunas, para a
-    // planilha fechar linha a linha (como o contador confere).
-    const partes = [imposto.iss, imposto.pis, imposto.cofins, imposto.irpj, imposto.csll].map(cents);
+    // planilha fechar linha a linha (como o contador confere). 07/10/2026: pela
+    // mesma função do total do mês (impostosDaNota, meio centavo sobe).
+    const imposto = impostosDaNota(invoice.invoiceType, invoice.amount);
+    const partes = [imposto.iss, imposto.pis, imposto.cofins, imposto.irpj, imposto.csll];
     return [invoice.issueDate, invoice.comandaDate || "", invoice.invoiceNumber, cents(invoice.amount), ...partes, soma(partes)];
   });
   const col = (indice: number) => soma(linhas.map((linha) => Number(linha[indice])));

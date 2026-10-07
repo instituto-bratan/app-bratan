@@ -2066,6 +2066,34 @@ export type MonthInvoiceTotals = {
 };
 
 /**
+ * CENTAVO FISCAL (07/10/2026): meio centavo SOBE, como na planilha do contador.
+ * Em ponto flutuante 0,575 vira 0,57499… e cairia para baixo — o epsilon evita.
+ */
+export function centavoFiscal(valor: number) {
+  return Math.round((valor + (valor >= 0 ? 1e-9 : -1e-9)) * 100) / 100;
+}
+
+/**
+ * OS TRIBUTOS DE UMA NOTA, COMO O CONTADOR CONFERE (07/10/2026): cada tributo
+ * arredondado no centavo, e mensal/trimestral = soma dos arredondados. Antes o
+ * total do mês arredondava só no fim e a tela dizia R$ 11.278,87 enquanto a
+ * planilha do contador, na mesma tela, somava R$ 11.278,93 — "tem que bater".
+ * Usado pelo total do mês (Impostos & NFs, Painel, resumo de fechamento) e pela
+ * planilha do contador (exportContabilidade), para nunca darem números diferentes.
+ */
+export function impostosDaNota(invoiceType: FinInvoiceType, amount: number): InvoiceTaxes {
+  const bruto = invoiceTaxes(invoiceType, amount);
+  const iss = centavoFiscal(bruto.iss);
+  const pis = centavoFiscal(bruto.pis);
+  const cofins = centavoFiscal(bruto.cofins);
+  const irpj = centavoFiscal(bruto.irpj);
+  const csll = centavoFiscal(bruto.csll);
+  const mensal = centavoFiscal(iss + pis + cofins);
+  const trimestral = centavoFiscal(irpj + csll);
+  return { iss, pis, cofins, irpj, csll, mensal, trimestral, total: centavoFiscal(mensal + trimestral) };
+}
+
+/**
  * O MÊS DO IMPOSTO É O MÊS DA COMANDA (07/10/2026, regra do Lucas): "a gente
  * sempre contabiliza os impostos do mês da comanda, não do mês que a nota foi
  * emitida". Nota de comanda de setembro emitida em outubro conta em setembro.
@@ -2093,7 +2121,9 @@ export function monthInvoiceTotals(invoices: FinInvoice[], month: string): Month
   };
   for (const invoice of invoices) {
     if (mesDoImposto(invoice) !== month) continue;
-    const taxes = invoiceTaxes(invoice.invoiceType, invoice.amount);
+    // 07/10/2026: nota a nota, cada tributo no centavo (impostosDaNota) — o
+    // mesmo número da planilha do contador.
+    const taxes = impostosDaNota(invoice.invoiceType, invoice.amount);
     totals.count += 1;
     totals.amount += invoice.amount;
     totals.mensal += taxes.mensal;
@@ -2105,6 +2135,15 @@ export function monthInvoiceTotals(invoices: FinInvoice[], month: string): Month
     totals.byClass[klass].amount += invoice.amount;
     totals.byClass[klass].mensal += taxes.mensal;
     totals.byClass[klass].trimestral += taxes.trimestral;
+  }
+  // Somas de centavos exatos: tira o ruído do ponto flutuante.
+  totals.amount = centavoFiscal(totals.amount);
+  totals.mensal = centavoFiscal(totals.mensal);
+  totals.trimestral = centavoFiscal(totals.trimestral);
+  for (const klass of ["CONSULTA", "PROCEDIMENTO"] as const) {
+    totals.byClass[klass].amount = centavoFiscal(totals.byClass[klass].amount);
+    totals.byClass[klass].mensal = centavoFiscal(totals.byClass[klass].mensal);
+    totals.byClass[klass].trimestral = centavoFiscal(totals.byClass[klass].trimestral);
   }
   return totals;
 }
