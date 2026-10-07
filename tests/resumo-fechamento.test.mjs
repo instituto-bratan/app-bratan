@@ -191,10 +191,10 @@ test("IMPOSTOS saem das notas do mês: consulta × procedimento, mensal × trime
   const notas = [
     { id: "n1", invoiceType: "CONSULTA", invoiceNumber: "1", issueDate: "2026-07-14", comandaDate: "2026-07-01", patientName: "A", amount: 10950, notes: "", createdAt: "" },
     { id: "n2", invoiceType: "TRATAMENTO", invoiceNumber: "2", issueDate: "2026-07-14", comandaDate: "2026-07-01", patientName: "B", amount: 193612, notes: "", createdAt: "" },
-    { id: "n3", invoiceType: "TRATAMENTO", invoiceNumber: "3", issueDate: "2026-08-02", comandaDate: "2026-07-30", patientName: "C", amount: 1000, notes: "", createdAt: "" },
+    { id: "n3", invoiceType: "TRATAMENTO", invoiceNumber: "3", issueDate: "2026-08-02", comandaDate: "2026-08-01", patientName: "C", amount: 1000, notes: "", createdAt: "" },
   ];
   const r = rf.buildResumoFechamento({ ...base, escrito: rf.fechamentoEscritoVazio, invoices: notas });
-  assert.equal(r.impostosNotas.notas, 2, "só as notas emitidas no mês");
+  assert.equal(r.impostosNotas.notas, 2, "só as notas de comandas do mês");
   assert.equal(r.impostosNotas.consulta.mensal, 618.68, "o papel de julho: consulta mensal");
   assert.equal(r.impostosNotas.consulta.trimestral, 840.96);
   assert.equal(r.impostosNotas.procedimento.mensal, 10939.08);
@@ -204,6 +204,20 @@ test("IMPOSTOS saem das notas do mês: consulta × procedimento, mensal × trime
   assert.equal(r.impostosLancados, 16813.07, "a provisão lançada continua visível à parte");
   const semNotas = rf.buildResumoFechamento({ ...base, escrito: rf.fechamentoEscritoVazio, invoices: [] });
   assert.equal(semNotas.impostosProvisionados, 16813.07, "sem nota registrada, vale a provisão lançada");
+});
+
+// 07/10/2026 (regra do Lucas): "a gente sempre contabiliza os impostos do mês
+// da comanda, não do mês que ela foi emitida".
+test("nota de comanda de setembro emitida em outubro conta o imposto em SETEMBRO; sem comanda, vale a emissão", () => {
+  const notas = [
+    { id: "a", invoiceType: "TRATAMENTO", invoiceNumber: "6238", issueDate: "2026-10-07", comandaDate: "2026-09-15", patientName: "L", amount: 3218, notes: "", createdAt: "" },
+    { id: "b", invoiceType: "CONSULTA", invoiceNumber: "6243", issueDate: "2026-10-07", comandaDate: "2026-10-07", patientName: "J", amount: 1000, notes: "", createdAt: "" },
+    { id: "c", invoiceType: "TRATAMENTO", invoiceNumber: "6234", issueDate: "2026-10-05", comandaDate: null, patientName: "F", amount: 350, notes: "", createdAt: "" },
+  ];
+  const set = rf.buildResumoFechamento({ ...base, monthKey: "2026-09", escrito: rf.fechamentoEscritoVazio, invoices: notas });
+  const out = rf.buildResumoFechamento({ ...base, monthKey: "2026-10", escrito: rf.fechamentoEscritoVazio, invoices: notas });
+  assert.equal(set.impostosNotas.notas, 1, "a 6238 (comanda 15/09) entra em setembro");
+  assert.equal(out.impostosNotas.notas, 2, "outubro: a comanda de outubro e a nota sem comanda");
 });
 
 test("mês no vermelho: a distribuição de lucro é zero, não negativa (05/10/2026)", () => {

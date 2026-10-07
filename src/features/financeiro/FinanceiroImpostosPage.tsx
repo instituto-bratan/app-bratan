@@ -42,6 +42,7 @@ import {
   type FinSale,
   type FinInvoiceType,
   type PendingInvoiceSale,
+  mesDoImposto,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
 import { integracaoLigada } from "@/lib/integracoes";
@@ -569,7 +570,8 @@ export function FinanceiroImpostosPage() {
   const monthInvoices = useMemo(
     () =>
       financeiro.invoices
-        .filter((invoice) => invoice.issueDate.slice(0, 7) === month)
+        // 07/10/2026: o mês da COMANDA, não o da emissão (mesDoImposto).
+        .filter((invoice) => mesDoImposto(invoice) === month)
         .sort((a, b) => (a.issueDate === b.issueDate ? a.invoiceNumber.localeCompare(b.invoiceNumber, "pt-BR", { numeric: true }) : a.issueDate.localeCompare(b.issueDate))),
     [financeiro.invoices, month],
   );

@@ -31,6 +31,7 @@ import {
   type FinSale,
   type FinSavingsMove,
   type P12Matrix,
+  mesDoImposto,
 } from "./financeiroData";
 import { naturezaDoItem } from "./naturezaItem";
 import { PLANO_VALOR_MINIMO, valorTratamento, type PdcaResumo, type PdcaStatus } from "./pdcaData";
@@ -172,7 +173,8 @@ export const rotuloClasseImposto: Record<FinInvoiceTaxClass, string> = {
 export function abaControleImpostos(invoices: FinInvoice[], classe: FinInvoiceTaxClass, monthKey: string): XlsxSheet {
   const taxas = classe === "CONSULTA" ? finTaxRates.CONSULTA : finTaxRates.TRATAMENTO;
   const doMes = invoices
-    .filter((invoice) => invoice.issueDate.slice(0, 7) === monthKey && invoiceTaxClass(invoice.invoiceType) === classe)
+    // 07/10/2026: imposto conta no mês da COMANDA (mesDoImposto), não no da emissão.
+    .filter((invoice) => mesDoImposto(invoice) === monthKey && invoiceTaxClass(invoice.invoiceType) === classe)
     .sort((a, b) => a.issueDate.localeCompare(b.issueDate) || a.invoiceNumber.localeCompare(b.invoiceNumber, "pt-BR", { numeric: true }));
   const linhas = doMes.map((invoice) => {
     const imposto = invoiceTaxes(invoice.invoiceType, invoice.amount);

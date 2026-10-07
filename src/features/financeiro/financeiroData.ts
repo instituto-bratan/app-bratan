@@ -2065,6 +2065,16 @@ export type MonthInvoiceTotals = {
   byClass: Record<FinInvoiceTaxClass, { count: number; amount: number; mensal: number; trimestral: number }>;
 };
 
+/**
+ * O MÊS DO IMPOSTO É O MÊS DA COMANDA (07/10/2026, regra do Lucas): "a gente
+ * sempre contabiliza os impostos do mês da comanda, não do mês que a nota foi
+ * emitida". Nota de comanda de setembro emitida em outubro conta em setembro.
+ * Nota sem comanda ligada (lançada à mão) cai no mês da emissão.
+ */
+export function mesDoImposto(invoice: Pick<FinInvoice, "issueDate" | "comandaDate">) {
+  return String(invoice.comandaDate || invoice.issueDate || "").slice(0, 7);
+}
+
 export function monthInvoiceTotals(invoices: FinInvoice[], month: string): MonthInvoiceTotals {
   const totals: MonthInvoiceTotals = {
     count: 0,
@@ -2082,7 +2092,7 @@ export function monthInvoiceTotals(invoices: FinInvoice[], month: string): Month
     },
   };
   for (const invoice of invoices) {
-    if (invoice.issueDate.slice(0, 7) !== month) continue;
+    if (mesDoImposto(invoice) !== month) continue;
     const taxes = invoiceTaxes(invoice.invoiceType, invoice.amount);
     totals.count += 1;
     totals.amount += invoice.amount;
