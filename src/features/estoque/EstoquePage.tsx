@@ -5,7 +5,15 @@
 // A tela é a posição do setor (o que tem, o que falta, o que vence), com as
 // chegadas das Compras esperando confirmação em cima — porque a pendência que
 // ninguém vê é a que ninguém resolve.
-import { useMemo, useState, type FormEvent } from "react";
+//
+// PEDIDOS DE COMPRA (06/10/2026). Lucas: *"cada usuário, que é cada setor, vai
+// cuidar do seu próprio estoque… e eu vou aprovar isso"*. Cada cargo virou um
+// setor (10 ao todo), então: a pessoa abre no setor DELA e os outros ficam num
+// seletor compacto; item em falta ganha "Pedir compra" (abre o pedido já
+// preenchido em /compras); o "Já comprei" ficou só para o financeiro completo,
+// que é quem o banco deixa gravar compra — para a enfermagem e a recepção ele
+// dava erro de permissão.
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -19,10 +27,11 @@ import {
   PackageCheck,
   Plus,
   Printer,
+  ShoppingCart,
   Syringe,
   Trash2,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,11 +41,34 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canEditModule, canSeeModule, isCoordenacao } from "@/lib/access";
+import { canEditModule, canFinanceiroFull, canSeeModule, isCoordenacao } from "@/lib/access";
+import { useCompras } from "@/features/compras/useCompras";
+import {
+  ehDoSetor,
+  numeroDoPedido,
+  pedidoStatusClasses,
+  pedidoStatusLabels,
+  podePedirPara,
+  podeReceber,
+  type PedidoCompra,
+} from "@/features/compras/comprasData";
+import {
+  fraseDoPedidoNoItem,
+  linkDoPedido,
+  linkPedirCompra,
+  pedidosAbertosDoSetor,
+  recusaDoItem,
+  pedirTudoQueFalta,
+  quandoChega,
+  quemCuidaDoSetor,
+  setorInicialDoEstoque,
+  setoresDaTelaDeEstoque,
+} from "@/features/compras/estoquePedidos";
 import { salvarArquivo } from "@/lib/salvarArquivo";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
-import { parseFinAmount, type FinPurchase } from "@/features/financeiro/financeiroData";
+import { type FinPurchase } from "@/features/financeiro/financeiroData";
+import { JaCompreiGaveta } from "@/features/compras/RegistrarCompraForm";
 import {
   acharPorCodigo,
   saldoDoItem,
@@ -53,9 +85,11 @@ import {
   parseGs1,
   posicaoDoSetor,
   relatorioPosicao,
+  resumoDaFalta,
   podeMexerNoSetor,
+  ehEstoqueSetor,
   setorLabels,
-  setoresVisiveis,
+  setorNomes,
   type EstoqueItem,
   type EstoqueMovTipo,
   type EstoqueMovimento,
@@ -71,6 +105,11 @@ const statusChip = {
   ZERADO: { rotulo: "ZEROU", classe: "border-rose-300 bg-rose-100 text-rose-900" },
   COMPRAR: { rotulo: "COMPRAR", classe: "border-amber-300 bg-amber-100 text-amber-900" },
   OK: { rotulo: "OK", classe: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+  // 06/10/2026: o setor já pediu; o pedido espera aprovação ou compra.
+  // 07/10/2026: era violeta (fora da marca, e o tema escuro não remapeia o
+  // violet-100). Âmbar já é o COMPRAR; o "já pedido" usa o creme/dourado da
+  // marca, o mesmo da faixa do pedido no detalhe do item.
+  PEDIDO: { rotulo: "PEDIDO FEITO", classe: "border-brand-dourado/60 bg-brand-creme text-brand-musgo" },
   A_CAMINHO: { rotulo: "A CAMINHO", classe: "border-sky-300 bg-sky-100 text-sky-900" },
 } as const;
 
@@ -79,117 +118,163 @@ const categoriasSugeridas: Record<EstoqueSetor, string[]> = {
   RECEPCAO: ["Escritório", "Limpeza", "Copa/Cozinha", "Impressos", "Presentes"],
   ENFERMAGEM: ["Medicação", "Injetáveis", "Descartáveis", "Curativo", "Coleta/Exames"],
   PACIENTES: ["Alimentos", "Bebidas", "Banheiros", "Presentes"],
+  // Setores de 06/10/2026 (cada cargo é um setor): sugestões mínimas, só para o datalist.
+  COMERCIAL: ["Material de vendas", "Impressos", "Brindes", "Escritório"],
+  FINANCEIRO: ["Escritório", "Impressos", "Arquivo"],
+  DIRETORIA: ["Escritório", "Presentes", "Eventos"],
+  CONSULTORIO: ["Material médico", "Descartáveis", "Escritório"],
+  NUTRICAO: ["Material de consulta", "Impressos", "Alimentos"],
+  MARKETING: ["Brindes", "Impressos", "Eventos", "Equipamento"],
+  LIMPEZA: ["Produtos de limpeza", "Descartáveis", "Utensílios"],
 };
 
 /**
- * "JÁ COMPREI" — o elo que faltava (21/09/2026).
- *
- * Lucas: *"tenho dificuldade de anotar quando eu compro e aí me perco no
- * controle se está chegando, se eu já comprei ou não."*
- *
- * O registro mora AQUI, na linha onde a falta é vista, e não numa tela de
- * Financeiro do outro lado do app: anotar tem que custar menos do que não
- * anotar, senão ninguém anota — e sem o registro o item fica gritando COMPRAR
- * para sempre.
+ * A COMPRA DO ITEM, no detalhe da linha (06/10/2026): uma decisão só, na ordem
+ *   1. já tem compra a caminho → diz de quem e quando chega;
+ *   2. já tem pedido aberto → diz em que pé está (não deixa comprar duas vezes);
+ *   3. em falta, para o financeiro completo → "Já comprei" (ele grava compra);
+ *   4. em falta, para o setor → "Pedir compra" (vai para aprovação).
  */
-function JaCompreiForm({
+function CompraDoItem({
   linha,
-  onRegistrar,
+  pedidoCompleto,
+  ajustaOPedido,
+  recusa,
+  podeRegistrar,
+  podePedir,
+  onPedir,
+  onJaComprei,
 }: {
   linha: ReturnType<typeof posicaoDoSetor>[number];
-  onRegistrar: (entrada: { item: EstoqueItem; fornecedor: string; valor: number; previsao: string | null; observacao: string }) => Promise<void>;
+  /** O pedido aberto inteiro (motivo da devolução) — 07/10/2026. */
+  pedidoCompleto: PedidoCompra | null;
+  /** A pessoa é do setor do pedido (ajusta o devolvido). */
+  ajustaOPedido: boolean;
+  /** A última palavra sobre o item foi uma recusa (07/10/2026). */
+  recusa: ReturnType<typeof recusaDoItem>;
+  podeRegistrar: boolean;
+  podePedir: boolean;
+  onPedir: () => void;
+  /** Abre a gaveta "Já comprei" (a mesma regra de compra do pedido aprovado). */
+  onJaComprei: () => void;
 }) {
-  const [fornecedor, setFornecedor] = useState("");
-  const [valor, setValor] = useState("");
-  const [previsao, setPrevisao] = useState("");
-  const [salvando, setSalvando] = useState(false);
-
   if (linha.compraAberta) {
+    // 07/10/2026: text-sky-700 (era sky-900) — o tema escuro só clareia o 700;
+    // com o 900 a confirmação do "Já comprei" ficava azul-escuro no fundo escuro.
     return (
-      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
         <strong>Já comprei.</strong> {linha.compraAberta.supplier || "Fornecedor não anotado"} em {diaBR(linha.compraAberta.purchaseDate)}
         {linha.compraAberta.deliveryEta ? `, previsto para ${diaBR(linha.compraAberta.deliveryEta)}` : ""}.
         {" "}Some daqui quando alguém der a entrada da caixa.
       </div>
     );
   }
-  if (linha.status === "OK") return null;
-
-  return (
-    <form
-      className="grid gap-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3 md:grid-cols-[1fr_0.7fr_0.8fr_auto]"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        setSalvando(true);
-        try {
-          await onRegistrar({
-            item: linha.item,
-            fornecedor: fornecedor.trim(),
-            valor: parseFinAmount(valor),
-            previsao: previsao || null,
-            observacao: "",
-          });
-          setFornecedor("");
-          setValor("");
-          setPrevisao("");
-        } finally {
-          setSalvando(false);
-        }
-      }}
-    >
-      <div>
-        <Label>Comprei de quem</Label>
-        <Input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} placeholder="Stin, Biòs…" />
-      </div>
-      <div>
-        <Label>Quanto</Label>
-        <Input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" placeholder="0,00" />
-      </div>
-      <div>
-        <Label>Chega quando</Label>
-        <Input type="date" value={previsao} onChange={(e) => setPrevisao(e.target.value)} />
-      </div>
-      <div className="flex items-end">
-        <Button type="submit" variant="outline" disabled={salvando} className="h-10">
-          {salvando ? "Anotando…" : "Já comprei"}
+  if (linha.pedidoAberto?.status === "DEVOLVIDO") {
+    // 07/10/2026: o devolvido NÃO vai chegar — está parado esperando o setor.
+    // A frase de antes ("quando chegar, a entrada é dada pelo pedido") fazia a
+    // pessoa esperar uma entrega que nunca vinha.
+    const motivo = pedidoCompleto?.decisaoNota ?? "";
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <span className="[overflow-wrap:anywhere]">
+          <strong>{fraseDoPedidoNoItem(linha.pedidoAberto)}.</strong>{" "}
+          {ajustaOPedido ? "Falta você ajustar e reenviar" : "Falta o setor ajustar e reenviar"}
+          {motivo ? `: ${motivo}` : "."}
+        </span>
+        <Button asChild type="button" size="sm" variant="outline">
+          <Link to={linkDoPedido(linha.pedidoAberto.id, ajustaOPedido ? "ajustar" : undefined)}>{ajustaOPedido ? "Ajustar e reenviar" : "Ver o pedido"}</Link>
         </Button>
       </div>
-    </form>
+    );
+  }
+  if (linha.pedidoAberto) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/20 bg-white/80 px-3 py-2 text-sm text-brand-tinta">
+        <span>
+          <strong>{fraseDoPedidoNoItem(linha.pedidoAberto)}.</strong> Não precisa pedir de novo: quando chegar, a entrada é dada pelo
+          pedido.
+        </span>
+        <Button asChild type="button" size="sm" variant="outline">
+          <Link to={linkDoPedido(linha.pedidoAberto.id)}>Ver o pedido</Link>
+        </Button>
+      </div>
+    );
+  }
+  if (linha.status === "OK") return null;
+  // 07/10/2026: a última palavra sobre o item foi uma recusa — o motivo vem
+  // ANTES do "Pedir compra", para ninguém pedir de novo sem saber por quê.
+  const avisoDaRecusa = recusa ? (
+    <span className="block text-rose-700 [overflow-wrap:anywhere]">
+      <strong>Pedido {recusa.numero} foi recusado</strong>
+      {recusa.motivo ? `: ${recusa.motivo}` : "."} Se ainda precisar, peça de novo explicando.
+    </span>
+  ) : null;
+  if (podeRegistrar) {
+    // 07/10/2026: o formulário curto (fornecedor, valor, data) gravava PIX fixo,
+    // sem conta paga nem categoria. Agora o botão abre a gaveta de compra
+    // completa (JaCompreiGaveta): forma de pagamento e, no à vista, a categoria da P12.
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-sm text-brand-tinta">
+        <span>Está em falta. Já comprou? Anote a compra: ela entra no Financeiro e o item fica "a caminho".</span>
+        <Button type="button" size="sm" onClick={onJaComprei}>
+          <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" /> Já comprei
+        </Button>
+      </div>
+    );
+  }
+  if (!podePedir) {
+    return avisoDaRecusa ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm">{avisoDaRecusa}</div> : null;
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-sm text-brand-tinta">
+      <span className="min-w-0 flex-1">
+        {avisoDaRecusa}
+        Está em falta. Peça a compra: o Gestor Financeiro aprova e o Financeiro compra.
+      </span>
+      <Button type="button" size="sm" onClick={onPedir}>
+        <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" /> Pedir compra
+      </Button>
+    </div>
   );
 }
 
 export function EstoquePage() {
   const { pessoa } = useAuth();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
   const estoque = useEstoque();
+  // Os pedidos de compra que a pessoa enxerga (06/10/2026): dizem quais itens
+  // já foram pedidos ("Pedido feito") e quais estão a caminho pelo pedido.
+  const { pedidos } = useCompras();
 
-  /** Registra a compra do item e avisa — é o que faz o status virar "a caminho". */
-  async function registrarCompraDoItem(entrada: {
-    item: EstoqueItem;
-    fornecedor: string;
-    valor: number;
-    previsao: string | null;
-    observacao: string;
-  }) {
-    try {
-      await estoque.registrarCompra({ ...entrada, criadoPor: pessoa?.id ?? null });
-      setFeedback(`Anotado: ${entrada.item.nome} foi comprado. Ele sai da lista de comprar e fica "a caminho" até alguém dar a entrada.`);
-    } catch (falha) {
-      setFeedback(`Não consegui anotar a compra: ${(falha as Error).message}`);
-    }
-  }
+  // "JÁ COMPREI" (21/09/2026; 07/10/2026 pela regra única de compra): o item
+  // cuja compra o Financeiro está anotando — abre a gaveta JaCompreiGaveta.
+  const [jaCompreiItem, setJaCompreiItem] = useState<EstoqueItem | null>(null);
   const hoje = todayISO();
 
-  // Cada dona cai direto no próprio setor; a coordenação alterna entre os dois.
+  // QUAL SETOR (06/10/2026): cada pessoa abre no setor DELA (o que tem itens,
+  // o principal primeiro); a coordenação, com o próprio vazio, cai na
+  // Enfermagem como antes. A Home manda ?setor= e a tela obedece.
+  // PACIENTES (30/09/2026) continua de todos para ver; só a Aline e a CEO mexem.
   const cargo = pessoa?.cargo ?? null;
-  const donaDe: EstoqueSetor | null =
-    cargo === "recepcionista" ? "RECEPCAO" : cargo === "enfermeira" || cargo === "nutricionista" ? "ENFERMAGEM" : cargo === "secretaria_executiva" || cargo === "ceo" ? "PACIENTES" : null;
-  const veAmbos = isCoordenacao(cargo);
-  // PACIENTES (30/09/2026): todo mundo vê; só a Aline e a CEO mexem. Quem não
-  // cuida de setor nenhum cai direto nele.
-  const setores = setoresVisiveis(cargo, veAmbos);
-  const [setor, setSetor] = useState<EstoqueSetor>(donaDe ?? (veAmbos ? "ENFERMAGEM" : "PACIENTES"));
+  const ehCoordenacao = isCoordenacao(cargo);
+  const telaSetores = useMemo(() => setoresDaTelaDeEstoque(cargo, ehCoordenacao), [cargo, ehCoordenacao]);
+  const setorDaUrl = params.get("setor");
+  const [setorEscolhido, setSetorEscolhido] = useState<EstoqueSetor | null>(null);
+  useEffect(() => {
+    if (setorDaUrl && ehEstoqueSetor(setorDaUrl) && telaSetores.visiveis.includes(setorDaUrl)) setSetorEscolhido(setorDaUrl);
+  }, [setorDaUrl, telaSetores]);
+  const setor: EstoqueSetor =
+    setorEscolhido && telaSetores.visiveis.includes(setorEscolhido)
+      ? setorEscolhido
+      : setorInicialDoEstoque(cargo, ehCoordenacao, estoque.items, setorDaUrl);
+  const setSetor = (proximo: EstoqueSetor) => setSetorEscolhido(proximo);
   const podeEditarModulo = canEditModule(pessoa, "estoque");
-  const podeEditar = podeEditarModulo && podeMexerNoSetor(cargo, setor, veAmbos);
+  const podeEditar = podeEditarModulo && podeMexerNoSetor(cargo, setor, ehCoordenacao);
+  // Pedir compra é do módulo de pedidos (todo mundo, para o próprio setor) — não
+  // depende de editar o estoque: o marketing e a limpeza só VEEM o estoque, mas pedem.
+  const podePedir = canEditModule(pessoa, "compras") && podePedirPara(pessoa, setor);
+  const podeConfirmarChegada = podeReceber(pessoa, setor);
 
   const [feedback, setFeedback] = useState("");
   const [erro, setErro] = useState("");
@@ -199,20 +284,40 @@ export function EstoquePage() {
   // AS COMPRAS ENTRAM NA CONTA (21/09/2026): sem elas, um item já comprado
   // continuava marcado COMPRAR até a caixa chegar — e era isso que fazia o
   // Lucas perder o controle de "já comprei ou não".
+  // E OS PEDIDOS TAMBÉM (06/10/2026): item pedido vira "Pedido feito" e, depois
+  // de comprado pelo pedido, "a caminho" — não grita COMPRAR de novo.
   const posicao = useMemo(
-    () => posicaoDoSetor(estoque.items, estoque.moves, setor, estoque.compras),
-    [estoque.items, estoque.moves, setor, estoque.compras],
+    () => posicaoDoSetor(estoque.items, estoque.moves, setor, estoque.compras, pedidos),
+    [estoque.items, estoque.moves, setor, estoque.compras, pedidos],
   );
   const alertas = useMemo(
     () => alertasDeValidade(estoque.items.filter((item) => item.setor === setor), estoque.moves, hoje),
     [estoque.items, estoque.moves, setor, hoje],
   );
-  const chegadas = useMemo(() => chegadasPendentes(estoque.compras, estoque.moves, setor), [estoque.compras, estoque.moves, setor]);
-  // "Para comprar" é o que AINDA falta comprar — item já comprado (a caminho)
-  // saiu da conta, senão o card continua cobrando uma tarefa que já foi feita,
-  // que é o problema que o status A_CAMINHO veio resolver. Zerado fica: falta hoje.
-  const precisaComprar = posicao.filter((linha) => linha.status === "COMPRAR" || linha.status === "ZERADO");
-  const aCaminho = posicao.filter((linha) => linha.status === "A_CAMINHO");
+  // A compra de um pedido se recebe pelo pedido — não aparece aqui de novo.
+  const chegadas = useMemo(
+    () => chegadasPendentes(estoque.compras, estoque.moves, setor, pedidos),
+    [estoque.compras, estoque.moves, setor, pedidos],
+  );
+  // "Para comprar" é o que AINDA é tarefa — item já comprado (a caminho) saiu
+  // da conta, senão o card continua cobrando uma tarefa que já foi feita, que é
+  // o problema que o status A_CAMINHO veio resolver. Desde 06/10/2026 o mesmo
+  // vale para o item já pedido, inclusive o zerado: a falta dele continua
+  // gritando na tabela (ZEROU), mas pedir de novo seria comprar duas vezes.
+  const falta = useMemo(() => resumoDaFalta(posicao), [posicao]);
+  const pedirTudo = useMemo(() => pedirTudoQueFalta(setor, posicao, pedidos), [setor, posicao, pedidos]);
+  const pedidosDoSetor = useMemo(() => pedidosAbertosDoSetor(pedidos, setor), [pedidos, setor]);
+  // A última recusa de cada item em falta (07/10/2026): o motivo aparece antes do "Pedir compra".
+  const recusas = useMemo(() => {
+    const mapa = new Map<string, NonNullable<ReturnType<typeof recusaDoItem>>>();
+    for (const linha of posicao) {
+      if (linha.status !== "COMPRAR" && linha.status !== "ZERADO") continue;
+      if (linha.pedidoAberto || linha.compraAberta) continue;
+      const recusa = recusaDoItem(linha.item.id, pedidos);
+      if (recusa) mapa.set(linha.item.id, recusa);
+    }
+    return mapa;
+  }, [posicao, pedidos]);
 
   // ---------------- novo item ----------------
   const [nome, setNome] = useState("");
@@ -244,7 +349,8 @@ export function EstoquePage() {
     setCategoria("");
     setMinimo("");
     setCodigoBarras("");
-    setFeedback(`Item "${item.nome}" criado no estoque da ${setorLabels[setor]}.`);
+    // 07/10/2026: setorNomes — "estoque da Marketing" não soa bem; com 10 setores vale o nome curto.
+    setFeedback(`Item "${item.nome}" criado no estoque: ${setorNomes[setor]}.`);
   }
 
   // ---------------- movimento ----------------
@@ -413,7 +519,7 @@ export function EstoquePage() {
 
   // ---------------- relatórios ----------------
   function imprimirPosicao() {
-    const relatorio = relatorioPosicao(estoque.items, estoque.moves, setor, hoje);
+    const relatorio = relatorioPosicao(estoque.items, estoque.moves, setor, hoje, estoque.compras, pedidos);
     const linhas = relatorio.linhas
       .map(
         (linha) =>
@@ -444,7 +550,7 @@ export function EstoquePage() {
   }
 
   function imprimirListaDeCompra() {
-    const lista = listaDeCompra(estoque.items, estoque.moves, setor, estoque.compras);
+    const lista = listaDeCompra(estoque.items, estoque.moves, setor, estoque.compras, pedidos);
     if (!lista.length) {
       setFeedback("Nada para comprar: nenhum item zerado ou abaixo do mínimo. 👌");
       return;
@@ -452,7 +558,8 @@ export function EstoquePage() {
     const linhas = lista
       .map(
         (linha) =>
-          `<tr><td>${linha.item.nome}</td><td>${linha.item.categoria || "—"}</td><td class="num">${linha.saldo.toLocaleString("pt-BR")} ${linha.item.unidade}</td><td class="num"><strong>${linha.comprar.toLocaleString("pt-BR")} ${linha.item.unidade}</strong></td></tr>`,
+          // Zerado já pedido ou comprado continua na lista (falta hoje), com o aviso — para ninguém comprar de novo.
+          `<tr><td>${linha.item.nome}${linha.jaPedido ? ` <em>(já pedido ${numeroDoPedido(linha.jaPedido.numero)})</em>` : linha.jaComprado ? " <em>(já comprado)</em>" : ""}</td><td>${linha.item.categoria || "—"}</td><td class="num">${linha.saldo.toLocaleString("pt-BR")} ${linha.item.unidade}</td><td class="num"><strong>${linha.comprar.toLocaleString("pt-BR")} ${linha.item.unidade}</strong></td></tr>`,
       )
       .join("");
     const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Lista de compras — ${setorLabels[setor]}</title>
@@ -500,33 +607,63 @@ export function EstoquePage() {
             <InfoTip title="Como este estoque funciona">
               Toda mudança é um movimento (entrada, saída, ajuste ou contagem) — o saldo é sempre a soma deles, nunca um
               número digitado. Cada item tem um mínimo: abaixo dele, a tela acusa COMPRAR. Medicação entra com lote e
-              validade, e a saída sugere sempre o lote que vence primeiro. Compra marcada "vai para o estoque" aparece
+              validade, e a saída sugere sempre o lote que vence primeiro. Item em falta: &quot;Pedir compra&quot; abre o
+              pedido já preenchido; o Gestor Financeiro aprova, o Financeiro compra e, quando a caixa chega, confirmar o
+              recebimento do pedido dá a entrada aqui. Compra marcada &quot;vai para o estoque&quot; no Financeiro aparece
               aqui em cima até alguém confirmar a chegada.
             </InfoTip>
           </h1>
+          {/* 06/10/2026: o texto "Dois estoques" ficou para trás — cada cargo virou um setor. */}
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Dois estoques, cada um com a sua dona: a <strong>recepção</strong> cuida do administrativo e a{" "}
-            <strong>enfermagem</strong> cuida de medicações e insumos. As compras do Financeiro chegam aqui sozinhas.
+            Cada setor cuida do próprio estoque: o que tem, o que falta e o que vence. Quando falta, o setor pede a compra
+            aqui mesmo; o Gestor Financeiro aprova e a entrada cai no estoque ao confirmar a chegada.
+          </p>
+          <p className="mt-1 text-sm text-brand-tinta">
+            <strong>{setorNomes[setor]}</strong> · quem cuida: {quemCuidaDoSetor(setor)}
           </p>
 
-          {/* Troca de setor */}
+          {/* Troca de setor (06/10/2026): os setores da pessoa como botões; com
+              muitos setores (a coordenação vê os 10), o resto vai para um
+              seletor compacto em vez de uma fileira de abas. */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            {setores.map((chave) => (
+            {telaSetores.botoes.map((chave) => (
               <button
                 key={chave}
                 type="button"
                 onClick={() => setSetor(chave)}
-                disabled={!veAmbos && donaDe !== null && donaDe !== chave}
+                aria-pressed={setor === chave}
                 className={cn(
-                  "rounded-full border px-4 py-1.5 text-sm font-semibold transition",
+                  "min-h-9 rounded-full border px-4 py-1.5 text-sm font-semibold transition",
                   setor === chave
                     ? "border-brand-musgo bg-brand-musgo text-brand-papel"
-                    : "border-brand-oliva/25 bg-white/60 text-brand-oliva hover:text-brand-musgo disabled:opacity-40",
+                    : "border-brand-oliva/25 bg-white/60 text-brand-oliva hover:text-brand-musgo",
                 )}
               >
                 {setorLabels[chave]}
               </button>
             ))}
+            {telaSetores.noSeletor.length ? (
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="sr-only">Ver outro setor</span>
+                <select
+                  value={telaSetores.noSeletor.includes(setor) ? setor : ""}
+                  onChange={(event) => {
+                    if (ehEstoqueSetor(event.target.value)) setSetor(event.target.value);
+                  }}
+                  className={cn(
+                    "h-9 rounded-full border bg-white/70 px-3 text-sm font-semibold",
+                    telaSetores.noSeletor.includes(setor) ? "border-brand-musgo text-brand-musgo" : "border-brand-oliva/25 text-brand-oliva",
+                  )}
+                >
+                  <option value="">Outros setores ({telaSetores.noSeletor.length})…</option>
+                  {telaSetores.noSeletor.map((chave) => (
+                    <option key={chave} value={chave}>
+                      {setorNomes[chave]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <span className="ml-auto flex flex-wrap gap-2">
               {/* Ficha de aplicação (29/09/2026): a saída de medicação aplicada nasce lá, com paciente e lote. */}
               {setor === "ENFERMAGEM" && canSeeModule(pessoa, "aplicacoes") ? (
@@ -661,9 +798,16 @@ export function EstoquePage() {
             { label: "Itens no setor", value: String(posicao.length), hint: setorLabels[setor] },
             {
               label: "Para comprar",
-              value: String(precisaComprar.length),
-              hint: aCaminho.length ? `zerados ou abaixo do mínimo · ${aCaminho.length} já comprado(s)` : "zerados ou abaixo do mínimo",
-              alerta: precisaComprar.length > 0,
+              value: String(falta.semPedido),
+              // 06/10/2026: o que já foi pedido ou está a caminho não conta como tarefa — só aparece na frase.
+              hint: [
+                "em falta e ainda sem pedido",
+                falta.jaPedidos ? `${falta.jaPedidos} já ${falta.jaPedidos === 1 ? "pedido" : "pedidos"}` : "",
+                falta.aCaminho ? `${falta.aCaminho} a caminho` : "",
+              ]
+                .filter(Boolean)
+                .join(" · "),
+              alerta: falta.semPedido > 0,
             },
             { label: "Vencendo (60 dias)", value: String(alertas.length), hint: "lotes com validade próxima", alerta: alertas.length > 0 },
             { label: "Chegadas a confirmar", value: String(chegadas.length), hint: "compras esperando entrada", alerta: chegadas.length > 0 },
@@ -677,6 +821,80 @@ export function EstoquePage() {
             </Card>
           ))}
         </section>
+
+        {/* PEDIR TUDO O QUE ESTÁ EM FALTA (06/10/2026): um pedido só com todos os
+            itens zerados ou abaixo do mínimo que ninguém pediu nem comprou. */}
+        {podePedir && pedirTudo.itens.length ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50/70 px-4 py-3">
+            <ShoppingCart className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+            <p className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
+              <strong>
+                {pedirTudo.itens.length} {pedirTudo.itens.length === 1 ? "item em falta" : "itens em falta"} e sem pedido
+              </strong>{" "}
+              em {setorNomes[setor]}. Um pedido só leva todos, com a quantidade sugerida (repõe até 2× o mínimo); dá para
+              ajustar antes de enviar.
+              {pedirTudo.deFora ? ` Os outros ${pedirTudo.deFora} ficam para um segundo pedido (o limite é 50 itens).` : ""}
+            </p>
+            <Button type="button" className="min-h-10" onClick={() => navigate(pedirTudo.href)}>
+              Pedir tudo o que está em falta
+            </Button>
+          </div>
+        ) : null}
+
+        {/* Os pedidos de compra deste setor que ainda não chegaram (06/10/2026):
+            o devolvido para ajustar e o comprado para confirmar vêm primeiro. */}
+        {pedidosDoSetor.length ? (
+          <Card className="border-brand-oliva/20 bg-white/70 shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ShoppingCart className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
+                Pedidos de compra deste setor
+                <InfoTip title="De onde vem esta lista">
+                  São os pedidos de {setorNomes[setor]} que ainda não chegaram. O pedido devolvido volta para o setor ajustar e
+                  reenviar; o comprado espera alguém confirmar o recebimento, e é essa confirmação que dá a entrada no estoque.
+                </InfoTip>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {pedidosDoSetor.map((pedido) => (
+                <div key={pedido.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/15 bg-white/80 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-brand-tinta">
+                      <span className="tabular-nums">{numeroDoPedido(pedido.numero)}</span>
+                      <span className="min-w-0 truncate">{pedido.titulo}</span>
+                      <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold", pedidoStatusClasses[pedido.status])}>
+                        {pedidoStatusLabels[pedido.status]}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {pedido.status === "DEVOLVIDO" && pedido.decisaoNota
+                        ? `Motivo: ${pedido.decisaoNota}`
+                        : pedido.status === "COMPRADO"
+                          ? [pedido.fornecedor, quandoChega(pedido)].filter(Boolean).join(" · ")
+                          : `Pedido por ${pedido.solicitanteNome || "alguém do setor"}`}
+                    </p>
+                  </div>
+                  {/* ?pedido= abre o pedido certo na tela de pedidos (pedidoTela.lerPedidoDaUrl);
+                      &acao= (07/10/2026) já abre a gaveta do botão — antes caía na lista
+                      sem nada aberto e parecia que o toque não tinha feito nada. */}
+                  {pedido.status === "COMPRADO" && podeConfirmarChegada ? (
+                    <Button type="button" size="sm" onClick={() => navigate(linkDoPedido(pedido.id, "receber"))}>
+                      <PackageCheck className="mr-1.5 h-4 w-4" aria-hidden="true" /> Chegou? Confirmar recebimento
+                    </Button>
+                  ) : pedido.status === "DEVOLVIDO" && podePedir && ehDoSetor(pessoa, pedido) ? (
+                    <Button type="button" size="sm" onClick={() => navigate(linkDoPedido(pedido.id, "ajustar"))}>
+                      Ajustar e reenviar
+                    </Button>
+                  ) : (
+                    <Button asChild type="button" size="sm" variant="outline">
+                      <Link to={linkDoPedido(pedido.id)}>Ver o pedido</Link>
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Chegadas das Compras */}
         {chegadas.length ? (
@@ -827,7 +1045,24 @@ export function EstoquePage() {
           <CardContent>
             {posicao.length === 0 ? (
               <p className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-6 text-center text-sm text-muted-foreground">
-                Nenhum item ainda. Crie o primeiro em "Novo item" — ou marque uma compra como "vai para o estoque" no Financeiro.
+                {/* 07/10/2026: a parte do Financeiro só para quem entra nele — o
+                    marketing e a limpeza editam o próprio estoque, mas não veem o Financeiro. */}
+                {podeEditar
+                  ? canFinanceiroFull(cargo)
+                    ? 'Nenhum item ainda. Crie o primeiro em "Novo item" — ou marque uma compra como "vai para o estoque" no Financeiro.'
+                    : 'Nenhum item ainda. Crie o primeiro em "Novo item".'
+                  : `Nenhum item cadastrado em ${setorNomes[setor]} ainda.`}
+                {/* 06/10/2026: setor novo começa vazio, mas já pode pedir compra (item escrito à mão no pedido). */}
+                {podePedir ? (
+                  <>
+                    {" "}
+                    Precisa comprar algo?{" "}
+                    <Link to={linkPedirCompra(setor)} className="font-semibold text-brand-musgo underline underline-offset-2">
+                      Fazer um pedido de compra
+                    </Link>
+                    .
+                  </>
+                ) : null}
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -876,7 +1111,28 @@ export function EstoquePage() {
                             await estoque.deleteItem(linha.item.id);
                             setFeedback(`Item "${linha.item.nome}" removido (o histórico de movimentos fica guardado).`);
                           }}
-                          formCompra={<JaCompreiForm linha={linha} onRegistrar={registrarCompraDoItem} />}
+                          podePedir={podePedir}
+                          recusa={recusas.get(linha.item.id) ?? null}
+                          onPedir={() => navigate(linkPedirCompra(setor, [linha.item.id]))}
+                          formCompra={
+                            <CompraDoItem
+                              linha={linha}
+                              pedidoCompleto={linha.pedidoAberto ? (pedidos.find((pedido) => pedido.id === linha.pedidoAberto?.id) ?? null) : null}
+                              ajustaOPedido={
+                                podePedir &&
+                                Boolean(linha.pedidoAberto) &&
+                                ehDoSetor(pessoa, {
+                                  setor,
+                                  solicitanteId: pedidos.find((pedido) => pedido.id === linha.pedidoAberto?.id)?.solicitanteId ?? null,
+                                })
+                              }
+                              recusa={recusas.get(linha.item.id) ?? null}
+                              podeRegistrar={estoque.podeRegistrarCompra}
+                              podePedir={podePedir}
+                              onPedir={() => navigate(linkPedirCompra(setor, [linha.item.id]))}
+                              onJaComprei={() => setJaCompreiItem(linha.item)}
+                            />
+                          }
                           formMovimento={
                             <form className="grid gap-3 md:grid-cols-[0.8fr_0.6fr_0.7fr_0.8fr_1fr_auto]" onSubmit={(event) => lancarMovimento(linha.item, event)}>
                               <div>
@@ -919,6 +1175,17 @@ export function EstoquePage() {
           </CardContent>
         </Card>
       </div>
+
+      {estoque.podeRegistrarCompra ? (
+        <JaCompreiGaveta
+          item={jaCompreiItem}
+          onFechar={() => setJaCompreiItem(null)}
+          onRegistrada={(compra) => {
+            estoque.aposRegistrarCompra(compra);
+            setFeedback(`Anotado: ${compra.description} foi comprado. Ele sai da lista de comprar e fica "a caminho" até alguém dar a entrada.`);
+          }}
+        />
+      ) : null}
     </AccessGate>
   );
 }
@@ -934,6 +1201,9 @@ function FragmentoItem({
   kardex,
   sugestaoLote,
   podeEditar,
+  podePedir,
+  recusa,
+  onPedir,
   onToggle,
   onExcluir,
   formMovimento,
@@ -947,12 +1217,22 @@ function FragmentoItem({
   kardex: EstoqueMovimento[];
   sugestaoLote: string;
   podeEditar: boolean;
+  /** Pode pedir compra para este setor (06/10/2026). */
+  podePedir: boolean;
+  /** O último pedido do item foi recusado (07/10/2026): a linha diz antes do botão. */
+  recusa: ReturnType<typeof recusaDoItem>;
+  onPedir: () => void;
   onToggle: () => void;
   onExcluir: () => void;
   formMovimento: React.ReactNode;
   formCompra: React.ReactNode;
 }) {
   const chip = statusChip[linha.status];
+  // "Pedir compra" na própria linha: só o que falta e ninguém pediu nem comprou.
+  // 07/10/2026: com o item aberto, o detalhe (CompraDoItem) já tem o "Pedir
+  // compra" — dois botões iguais, um embaixo do outro, confundiam.
+  const mostrarPedir =
+    podePedir && !aberto && (linha.status === "COMPRAR" || linha.status === "ZERADO") && !linha.compraAberta && !linha.pedidoAberto;
   return (
     <>
       <tr className="cursor-pointer border-b border-brand-oliva/10 hover:bg-brand-creme/30" onClick={onToggle}>
@@ -978,10 +1258,30 @@ function FragmentoItem({
           {/* DESDE QUANDO (21/09/2026): "a caminho" sem data vira desculpa
               eterna. Com a data, a compra esquecida aparece sozinha. */}
           {linha.compraAberta ? (
-            <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">
+            <span className="mt-0.5 block text-xs leading-tight text-muted-foreground">
               comprei {diaBR(linha.compraAberta.purchaseDate)}
               {linha.compraAberta.deliveryEta ? ` · chega ${diaBR(linha.compraAberta.deliveryEta)}` : ""}
             </span>
+          ) : linha.pedidoAberto ? (
+            // 06/10/2026: o pedido diz em que pé está — ninguém pede de novo.
+            <span className="mt-0.5 block text-xs leading-tight text-muted-foreground">{fraseDoPedidoNoItem(linha.pedidoAberto)}</span>
+          ) : recusa ? (
+            // 07/10/2026: a recusa (com o motivo no detalhe) antes do "Pedir compra".
+            <span className="mt-0.5 block text-xs leading-tight text-rose-700">pedido {recusa.numero} recusado</span>
+          ) : null}
+          {mostrarPedir ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1 h-8 px-2.5 text-xs"
+              onClick={(event) => {
+                event.stopPropagation();
+                onPedir();
+              }}
+            >
+              <ShoppingCart className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Pedir compra
+            </Button>
           ) : null}
         </td>
         <td className="py-2 text-muted-foreground">{diaBR(linha.ultimoMovimento)}</td>
@@ -991,7 +1291,9 @@ function FragmentoItem({
           <td colSpan={7} className="px-3 py-3">
             <div className="grid gap-4">
               {podeEditar ? formMovimento : null}
-              {podeEditar ? formCompra : null}
+              {/* 06/10/2026: a compra do item não depende de editar o estoque —
+                  o componente decide (já comprado, já pedido, Já comprei, Pedir compra). */}
+              {formCompra}
               {lotes.length ? (
                 <div className="text-xs">
                   <p className="mb-1 font-semibold uppercase tracking-wide text-brand-oliva">Lotes na prateleira (o que vence antes, primeiro)</p>

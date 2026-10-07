@@ -333,37 +333,40 @@ export function useFinanceiro(year = new Date().getFullYear(), opcoes: { comAnoA
     });
   }
 
-  function addPurchase(purchase: FinPurchase) {
+  // COMPRAS TAMBÉM AVISAM (06/10/2026): criar, editar e excluir compra davam só
+  // console.warn — a regra de 29/09 (gravação que falha aparece na tela) não
+  // tinha chegado aqui. Agora a compra de um PEDIDO pode ser recusada pelo banco
+  // (pedido que deixou de estar aprovado), e quem registra precisa saber: as
+  // três devolvem Promise<boolean> (true = chegou ao servidor) e avisam.
+  function addPurchase(purchase: FinPurchase): Promise<boolean> {
     setPurchases((current) => {
       const next = [purchase, ...current];
       saveLocalFinPurchases(next);
       return next;
     });
-    if (useRemote) {
-      void createPurchaseMutation.mutateAsync(purchase).catch((error) => console.warn("Compra não sincronizou.", error));
-    }
+    return gravarNoServidor("Compra nova", [() => createPurchaseMutation.mutateAsync(purchase)]).then((ok) => {
+      // Recusada no servidor: a lista volta ao que vale (sem a compra fantasma).
+      if (!ok && useRemote) invalidate("fin-purchases");
+      return ok;
+    });
   }
 
-  function updatePurchase(purchase: FinPurchase) {
+  function updatePurchase(purchase: FinPurchase): Promise<boolean> {
     setPurchases((current) => {
       const next = current.map((existing) => (existing.id === purchase.id ? purchase : existing));
       saveLocalFinPurchases(next);
       return next;
     });
-    if (useRemote) {
-      void updatePurchaseMutation.mutateAsync(purchase).catch((error) => console.warn("Edição da compra não sincronizou.", error));
-    }
+    return gravarNoServidor("Edição da compra", [() => updatePurchaseMutation.mutateAsync(purchase)]);
   }
 
-  function removePurchase(purchaseId: string) {
+  function removePurchase(purchaseId: string): Promise<boolean> {
     setPurchases((current) => {
       const next = current.filter((purchase) => purchase.id !== purchaseId);
       saveLocalFinPurchases(next);
       return next;
     });
-    if (useRemote) {
-      void deletePurchaseMutation.mutateAsync(purchaseId).catch((error) => console.warn("Exclusão da compra não sincronizou.", error));
-    }
+    return gravarNoServidor("Exclusão da compra", [() => deletePurchaseMutation.mutateAsync(purchaseId)]);
   }
 
   /**
@@ -709,6 +712,8 @@ export function useFinanceiro(year = new Date().getFullYear(), opcoes: { comAnoA
     addPartnerEntry,
     removePartnerEntry,
     syncMode: useRemote ? "Supabase + local" : "Somente local",
+    /** true = grava no servidor; false = modo prévia/local (06/10/2026, para gravarCompra). */
+    remoto: useRemote,
     isSyncing: salesQuery.isFetching || expensesQuery.isFetching,
   };
 }

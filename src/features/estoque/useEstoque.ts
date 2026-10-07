@@ -3,11 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
+import { canFinanceiroFull } from "@/lib/access";
+import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import {
   createRemoteEstoqueMove,
   deleteRemoteEstoqueItem,
-  createRemoteFinPurchase,
   listRemoteComprasParaEstoque,
   listRemoteEstoqueItems,
   listRemoteEstoqueMoves,
@@ -60,6 +60,8 @@ export function useEstoque() {
     readLocalValue<FinPurchase[]>(comprasKey, []).filter((compra) => compra.estoqueSetor),
   );
   const compras: FinPurchase[] = useRemote ? (comprasQuery.data ?? []) : localCompras;
+  // "Já comprei" é do financeiro completo (06/10/2026); os outros pedem a compra.
+  const podeRegistrarCompra = canFinanceiroFull(pessoa?.cargo ?? null);
 
   async function upsertItem(item: EstoqueItem) {
     if (useRemote) {
@@ -100,61 +102,36 @@ export function useEstoque() {
   }
 
   /**
-   * REGISTRAR A COMPRA DE UM ITEM (21/09/2026).
+   * DEPOIS DO "JÁ COMPREI" (07/10/2026).
    *
-   * É o elo que faltava. O status "a caminho" depende de a compra apontar para
-   * o item, e ninguém ia preencher esse vínculo numa tela de Financeiro do
-   * outro lado do app — então o registro nasce aqui, na lista onde a falta é
-   * vista. Sem isto, o "já comprei ou não" continuaria sem resposta.
+   * O registro da compra do item (21/09) nasceu aqui, na lista onde a falta é
+   * vista: sem ele o item ficava gritando COMPRAR até a caixa chegar. Mas esta
+   * função montava a compra na mão — PIX fixo, sem conta paga, sem categoria
+   * da P12 —, então a compra no cartão aparecia como PIX e a do PIX não entrava
+   * no P12. Agora a compra é montada e gravada pela regra única
+   * (registrarCompra.ts, via JaCompreiGaveta, a mesma do pedido aprovado) e
+   * aqui só fica o que é do Estoque: fazer o item virar "a caminho" na hora.
+   * No servidor, recarrega as compras do estoque; na prévia, a compra já foi
+   * guardada no aparelho pelo useFinanceiro e só entra na lista daqui.
+   *
+   * Continua só do financeiro completo (06/10/2026): é quem o banco deixa gravar
+   * compra; os outros pedem a compra (Pedidos de compra). A trava mora na gaveta.
    */
-  async function registrarCompra(entrada: {
-    item: EstoqueItem;
-    fornecedor: string;
-    valor: number;
-    previsao: string | null;
-    observacao: string;
-    criadoPor: string | null;
-  }) {
-    const compra: FinPurchase = {
-      id: `fpur-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      // dia LOCAL (29/09/2026, auditoria B7): toISOString() é UTC e depois das 21h em São Paulo já é "amanhã".
-      purchaseDate: todayISO(),
-      description: entrada.item.nome,
-      supplier: entrada.fornecedor,
-      amount: entrada.valor,
-      method: "PIX",
-      card: null,
-      installments: 1,
-      nfNote: "",
-      deliveryEta: entrada.previsao,
-      receivedAt: null,
-      expenseRef: null,
-      notes: entrada.observacao,
-      estoqueSetor: entrada.item.setor,
-      estoqueItemRef: entrada.item.id,
-      createdAt: new Date().toISOString(),
-    };
+  function aposRegistrarCompra(compra: FinPurchase) {
     if (useRemote) {
-      await createRemoteFinPurchase(compra, entrada.criadoPor);
       invalidate();
-    } else {
-      // Sem servidor a compra ainda precisa existir, senão o botão "Já comprei"
-      // fica mudo e o item continua gritando COMPRAR — que é justamente o
-      // problema que ele veio resolver.
-      setLocalCompras((atual) => {
-        const proximas = [compra, ...atual];
-        writeLocalValue(comprasKey, [...readLocalValue<FinPurchase[]>(comprasKey, []), compra]);
-        return proximas;
-      });
+      return;
     }
-    return compra;
+    if (!compra.estoqueSetor) return;
+    setLocalCompras((atual) => (atual.some((existente) => existente.id === compra.id) ? atual : [compra, ...atual]));
   }
 
   return {
     items,
     moves,
     compras,
-    registrarCompra,
+    aposRegistrarCompra,
+    podeRegistrarCompra,
     loading: useRemote && (itemsQuery.isLoading || movesQuery.isLoading),
     syncMode: useRemote ? "Supabase" : "Somente local",
     upsertItem,

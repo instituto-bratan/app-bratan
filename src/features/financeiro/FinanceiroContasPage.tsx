@@ -44,6 +44,7 @@ import { diasEntre } from "./recebiveisRede";
 import { extrairTextoArquivo } from "./pdfTexto";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
+import { setorNomes, setoresEmOrdem, type EstoqueSetor } from "@/features/estoque/estoqueData";
 import { ControleDensidade, TabelaRolavel, cabecalhoGrudado, rodapeGrudado, useDensidade } from "@/components/ui/tabela-densa";
 import {
   buildProvisionExpenses,
@@ -174,7 +175,7 @@ export function FinanceiroContasPage() {
   // segundo lugar para digitar — era isso que fazia a medicação não ser anotada.
   const [ehCompra, setEhCompra] = useState(false);
   const [deliveryEta, setDeliveryEta] = useState("");
-  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES">("");
+  const [estoqueSetor, setEstoqueSetor] = useState<"" | EstoqueSetor>("");
   // De onde esta conta está nascendo: uma compra sem conta ("Virar conta a pagar")
   // ou um item da caixa de entrada — para ligar/marcar ao salvar.
   const [compraOrigemId, setCompraOrigemId] = useState<string | null>(null);
@@ -980,13 +981,16 @@ export function FinanceiroContasPage() {
                         <Label>Estoque</Label>
                         <select
                           value={estoqueSetor}
-                          onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES")}
+                          onChange={(event) => setEstoqueSetor(event.target.value as "" | EstoqueSetor)}
                           className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
                         >
                           <option value="">Não é item de estoque</option>
-                          <option value="ENFERMAGEM">Enfermagem</option>
-                          <option value="PACIENTES">Pacientes (cortesias & banheiros)</option>
-                          <option value="RECEPCAO">Recepção</option>
+                          {/* 06/10/2026: todos os setores da tabela `setor` (cada cargo é um setor). */}
+                          {setoresEmOrdem.map((chave) => (
+                            <option key={chave} value={chave}>
+                              {setorNomes[chave]}
+                            </option>
+                          ))}
                         </select>
                       </span>
                     </span>
@@ -1236,7 +1240,7 @@ export function FinanceiroContasPage() {
                               {compraPorConta.get(expense.id) ? (
                                 <Badge
                                   className={cn("text-brand-tinta", compraPorConta.get(expense.id)!.receivedAt ? "bg-emerald-100 text-emerald-800" : "bg-brand-creme")}
-                                  title={compraPorConta.get(expense.id)!.estoqueSetor ? `estoque: ${compraPorConta.get(expense.id)!.estoqueSetor}` : undefined}
+                                  title={compraPorConta.get(expense.id)!.estoqueSetor ? `estoque: ${setorNomes[compraPorConta.get(expense.id)!.estoqueSetor!] ?? compraPorConta.get(expense.id)!.estoqueSetor}` : undefined}
                                 >
                                   <Package className="mr-1 h-3 w-3" aria-hidden="true" />
                                   {compraPorConta.get(expense.id)!.receivedAt ? "compra · chegou" : "compra · a caminho"}

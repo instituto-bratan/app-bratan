@@ -37,6 +37,7 @@ const EstoquePage = lazyRoute("estoque");
 const AplicacoesPage = lazyRoute("estoqueAplicacoes");
 const ConciergeNpsPage = lazyRoute("conciergeNps");
 const PacientesPage = lazyRoute("pacientes");
+const PedidosDeCompraPage = lazyRoute("compras");
 const CrmTasksPage = lazyRoute("crmTasks");
 const CrmKanbanPage = lazyRoute("crmKanban");
 const CrmContactProfilePage = lazyRoute("crmContact");
@@ -121,6 +122,8 @@ export function App() {
               <Route path="/comprovantes" element={<ComprovantesPage />} />
               <Route path="/estalecas" element={<EstalecasPage />} />
               <Route path="/lembretes-pagamento" element={<PagamentosPage />} />
+              {/* Pedidos de compra por setor (06/10/2026): a porta é o módulo "compras" (AccessGate na própria tela). */}
+              <Route path="/compras" element={<PedidosDeCompraPage />} />
               <Route path="/estoque" element={<EstoquePage />} />
               {/* Ficha de aplicação da enfermagem (29/09/2026): a porta (AccessGate, módulo "aplicacoes") fica na própria tela. */}
               <Route path="/estoque/aplicacoes" element={<AplicacoesPage />} />

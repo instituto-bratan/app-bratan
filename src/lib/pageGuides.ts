@@ -366,6 +366,7 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
       tips: [
         "O selo 'P12 OK' mostra que a conta vinculada existe; 'Via fatura' significa que entra pela fatura do cartão.",
         "Excluir uma compra também exclui a conta a pagar que ela criou.",
+        "Compra de um pedido de compra se registra no próprio pedido (Compras e estoque → Pedidos de compra) e aparece aqui sozinha. Excluir aqui devolve o pedido para \"aprovado\" enquanto ele ainda está a caminho; pedido já recebido continua recebido.",
       ],
     },
   },
@@ -723,6 +724,28 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
         "A conta da fatura continua sendo o pagamento; as linhas só explicam o gasto. Por isso nada é contado em dobro na P12.",
         "Errou o arquivo? Desfaça a importação e importe de novo: a conta a pagar fica com o total que já tem.",
         "O número do cartão nunca é guardado — só os quatro finais.",
+      ],
+    },
+  },
+  {
+    // Pedidos de compra por setor (06/10/2026, fluxograma POP-COMP-001).
+    pattern: "/compras",
+    guide: {
+      title: "Pedidos de compra",
+      whatIs:
+        "É onde cada setor pede o que falta e o Gestor Financeiro aprova. O pedido anda pelas etapas do fluxograma — aguardando aprovação, aprovado, comprado · a caminho, recebido — e, quando o setor confirma que chegou, a entrada no estoque do setor é feita na hora.",
+      steps: [
+        "Falta algo? Toque em Novo pedido: escolha os itens no estoque do setor (ou escreva um item novo), a quantidade, para quando e por quê. Enviar manda para aprovação.",
+        "Quem aprova vê o pedido em “Esperam sua decisão”, com o que tem no estoque de cada item. Aprovar é um toque (dá para desfazer por 5 segundos); Devolver e Recusar pedem o motivo.",
+        "Pedido devolvido volta para quem pediu, com o que mudar: toque em Ajustar e reenviar.",
+        "O Financeiro registra a compra no pedido aprovado (fornecedor, valor, como pagou e previsão). Ela entra em Financeiro → Compras com a mesma regra do P12, e o setor vê “a caminho”.",
+        "Chegou? Toque em Confirmar recebimento e confira a quantidade (na Enfermagem, também lote e validade). Se chegou diferente do pedido, conte o que não bateu — é obrigatório, e o Financeiro vê.",
+      ],
+      tips: [
+        "Os números do topo filtram a lista; toque de novo no mesmo número para ver tudo.",
+        "Pedido urgente vai para o topo da aprovação. O prazo de resposta é 1 dia útil; urgente, no mesmo dia.",
+        "Cada passo fica na linha do tempo do pedido: quem pediu, quem aprovou, quem comprou e quem recebeu.",
+        "O fluxograma completo abre em Como funciona (e está em POPs & Fluxos).",
       ],
     },
   },

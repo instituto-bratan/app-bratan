@@ -43,7 +43,11 @@ test("sem categoria não cria conta (a tela exige a categoria antes)", () => {
 });
 
 test("a tela de Compras usa a regra e liga a compra à conta criada", () => {
+  // 06/10/2026: a montagem saiu da tela para registrarCompra.ts, que a tela
+  // Compras e o "Registrar compra" dos pedidos de compra usam (uma regra só).
   const src = fs.readFileSync("src/features/financeiro/FinanceiroComprasPage.tsx", "utf8");
-  assert.match(src, /despesaDaCompraAVista\(/);
-  assert.match(src, /expenseRef: conta\?\.id \?\? null/);
+  assert.match(src, /montarCompra\(/);
+  const regra = fs.readFileSync("src/features/financeiro/registrarCompra.ts", "utf8");
+  assert.match(regra, /despesaDaCompraAVista\(/);
+  assert.match(regra, /expenseRef: conta\?\.id \?\? null/);
 });

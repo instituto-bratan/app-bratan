@@ -133,3 +133,29 @@ test("fechamento pendente: ontem útil com comanda e sem conferência", () => {
   // Depois do feriado de 07/09 (segunda), o dia útil anterior de terça 08/09 é sexta 04/09.
   assert.equal(home.fechamentoPendente([venda("2026-09-04", 1000)], [], "2026-09-08").dia, "2026-09-04");
 });
+
+test("pedidos de compra (06/10/2026) entram na mesma régua: atrasado, hoje, semana — e o estoque já pedido sai da cobrança", () => {
+  const f = home.buildFilaDoDia({
+    hoje: HOJE,
+    pedidos: {
+      aprovar: { quantidade: 2, valor: 900, urgentes: 0, atrasados: 1, maisAntigoDias: 2, desde: "2026-09-10" },
+      comprar: { quantidade: 1, valor: 300, urgentes: 0, vencidos: 0, maisAntigoDias: 0, desde: HOJE },
+      devolvidos: [{ id: "cped-1", numero: "#0003", titulo: "Papel A4", motivo: "Falta o link.", dia: "2026-09-13" }],
+      chegou: [{ id: "cped-2", numero: "#0004", titulo: "Luvas", fornecedor: "Stin", previsao: "2026-09-12", dia: "2026-09-09", atrasado: true }],
+    },
+    estoque: [
+      { setor: "ENFERMAGEM", rotulo: "Enfermagem", itens: 0, zerados: 0, jaPedidos: 3, aCaminho: 1 },
+      { setor: "RECEPCAO", rotulo: "Recepção", itens: 2, zerados: 0, jaPedidos: 1 },
+    ],
+  });
+  const porChave = Object.fromEntries(f.itens.map((i) => [i.chave, i]));
+  assert.equal(porChave["pedido:aprovar"].urgencia, 0);
+  assert.equal(porChave["pedido:chegou:cped-2"].urgencia, 0);
+  assert.equal(porChave["pedido:devolvido:cped-1"].urgencia, 1);
+  assert.equal(porChave["pedido:comprar"].urgencia, 2);
+  // Atrasados por data: o pedido esperando desde 10/09 antes do chegou de 12/09.
+  assert.deepEqual(plain(f.itens.filter((i) => i.urgencia === 0).map((i) => i.chave)), ["pedido:aprovar", "pedido:chegou:cped-2"]);
+  assert.equal(porChave["estoque:ENFERMAGEM"], undefined, "tudo já pedido ou a caminho: nada a cobrar");
+  assert.equal(porChave["estoque:RECEPCAO"].detalhe, "abaixo do mínimo — peça a compra pelo Estoque · 1 já pedido");
+  assert.equal(f.porOrigem.PEDIDO, 5, "2 para aprovar + 1 para comprar + 1 devolvido + 1 chegou");
+});

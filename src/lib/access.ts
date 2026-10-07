@@ -262,6 +262,8 @@ export type ModuleKey =
   | "concierge-nps"
   | "nutricao"
   | "agenda"
+  | "compras"
+  | "compras-aprovacao"
   | "pacientes";
 
 export const moduleLabels: Record<ModuleKey, string> = {
@@ -288,12 +290,15 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-extrato": "Financeiro · Extrato do banco",
   "fin-lucro": "Financeiro · Lucro Inteligente",
   "fin-fatura": "Financeiro · Fatura do cartão (linha a linha)",
-  estoque: "Estoque (Recepção, Enfermagem & Pacientes)",
+  // 07/10/2026: eram 3 estoques; desde os pedidos de compra cada cargo é um setor (10).
+  estoque: "Estoque por setor (cada setor cuida do seu)",
   aplicacoes: "Aplicações da enfermagem (ficha do paciente, dado clínico)",
   "concierge-nps": "NPS da Concierge (Experiência do Paciente)",
   nutricao: "Nutrição (prontuário e planos alimentares)",
   agenda: "Agenda do dia (iClinic) e Veio/Faltou",
   pacientes: "Pacientes (busca, ficha e CPF)",
+  compras: "Pedidos de compra",
+  "compras-aprovacao": "Aprovar pedidos de compra",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
@@ -317,6 +322,17 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       // CRM; o CPF dentro dela segue a regra da tela Impostos & NFs (RLS de
       // contato_documento), não a desta tela.
       return canCrmBratan(cargo) ? "EDITAR" : "OCULTO";
+    case "compras":
+      // Pedidos de compra (06/10/2026): qualquer pessoa pede para o PRÓPRIO
+      // setor (cada cargo é um setor); a divisão por setor é da RLS
+      // (compra_pode_pedir = estoque_pode) e da tela.
+      return "EDITAR";
+    case "compras-aprovacao":
+      // Quem aprova é o Gestor Financeiro (Lucas: "eu vou autorizar e levar
+      // para frente"). Acessos pode liberar outra pessoa ou tirar dele — o
+      // banco honra a exceção nas duas direções (compra_pode_aprovar em
+      // 202610060001_pedidos_de_compra.sql).
+      return cargo === "gestor_financeiro" ? "EDITAR" : "OCULTO";
     case "comprovantes":
       return canComprovantes(cargo) ? "EDITAR" : "OCULTO";
     case "marketing":
@@ -326,10 +342,19 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
     case "estoque":
       // Cada dona edita o próprio setor (a divisão por setor é feita na tela e
-      // na RLS); a coordenação enxerga e edita os dois.
+      // na RLS); a coordenação enxerga e edita os dela.
       if (cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista") return "EDITAR";
       // 30/09/2026: o setor PACIENTES é de todos para VER; a Aline e a CEO editam.
       if (cargo === "secretaria_executiva" || cargo === "ceo") return "EDITAR";
+      // 07/10/2026 — "cada setor cuida do seu estoque" (Lucas, 06/10): o
+      // marketing e a limpeza ganharam setor próprio (MARKETING, LIMPEZA) e
+      // passaram de VER para EDITAR. Antes pediam a compra, mas não conseguiam
+      // cadastrar item nem dar entrada/saída no próprio estoque, embora o banco
+      // já deixasse (estoque_pode lê setor.cargos, 202610060001). EDITAR aqui
+      // NÃO abre os outros setores: QUAL setor cada um mexe continua sendo
+      // podeMexerNoSetor (tela) e estoque_pode (RLS) — Pacientes segue só da
+      // Aline e da CEO.
+      if (cargo === "marketing" || cargo === "limpeza") return "EDITAR";
       return isCoordenacao(cargo) ? "EDITAR" : "VER";
     case "aplicacoes":
       // Ficha de aplicação (29/09/2026): a enfermeira registra; Dr. Daniel, CEO,

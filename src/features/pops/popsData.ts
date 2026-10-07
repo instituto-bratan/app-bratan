@@ -559,6 +559,39 @@ export const fluxogramas: FluxogramaDocumento[] = [
     assetPath: fluxogramaPath("Fluxograma — Compras Institucionais via Conta Pessoal de Sócios.png"),
   },
   {
+    // PEDIDO DE COMPRA POR SETOR (06/10/2026, POP-COMP-001). Lucas: "cada setor
+    // vai fazer o seu pedido de compra e eu vou autorizar e levar para frente".
+    // É o mesmo fluxo da tela /compras — o botão "Como funciona" abre este PNG.
+    id: "pedido-compra-por-setor",
+    areaId: "financeiro_administrativo",
+    titulo: "Pedido de Compra por Setor",
+    setor: "Todos os setores · aprovação do Gestor Financeiro",
+    responsavel: "Setor solicitante + Gestor Financeiro (Lucas)",
+    categoria: "Compras e estoque",
+    resumo: "Do pedido no app à entrada no estoque do setor — com aprovação do Gestor Financeiro e cada etapa registrada.",
+    etapas: [
+      "Abrir o pedido no app: item, quantidade, para quando e por quê",
+      "Informar link ou fornecedor e valor estimado, se souber (medicação: lista validada pelo Dr. Daniel)",
+      "Enviar: o pedido fica aguardando aprovação",
+      "Gestor Financeiro confere e decide: aprovar, devolver para ajuste ou recusar com o motivo",
+      "Cotar e comprar: fornecedor, valor final, forma de pagamento e previsão de entrega",
+      "Registrar a compra no pedido: o setor vê “a caminho”",
+      "Conferir a entrega: quantidade, lote, validade e nota fiscal",
+      "Confirmar o recebimento: a entrada no estoque do setor é feita na hora",
+      "Anexar a nota do fornecedor e dar baixa em Contas a Pagar",
+      "A nota segue para o SharePoint, na pasta do mês",
+    ],
+    tarefasSugeridas: [
+      "Setor: pedir pelo app tudo o que faltar (Compras e estoque → Pedidos de compra) — sem pedido, sem compra.",
+      "Gestor Financeiro: decidir os pedidos aguardando em até 1 dia útil; urgente, no mesmo dia.",
+      "Financeiro: registrar a compra no pedido aprovado e, com a nota do fornecedor, dar baixa em Contas a Pagar.",
+      "Setor: confirmar o recebimento assim que a mercadoria chegar, anotando o que não bateu.",
+    ],
+    tags: ["compras", "pedido", "aprovação", "estoque", "setores"],
+    fileName: "Fluxograma — Pedido de Compra por Setor.png",
+    assetPath: fluxogramaPath("Fluxograma — Pedido de Compra por Setor.png"),
+  },
+  {
     id: "contratos-supersign",
     areaId: "recepcao_comercial",
     titulo: "Contratos no SuperSign - Passo a Passo",

@@ -1,4 +1,5 @@
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
+import type { EstoqueSetor } from "@/features/estoque/estoqueData";
 import { itemContaComoVenda, naturezaDoItem } from "./naturezaItem";
 import {
   CATEGORIA_PAGAMENTO_EXECUTOR,
@@ -953,9 +954,10 @@ export type FinPurchase = {
   /**
    * ESTOQUE (19/08/2026): para onde este item vai quando chegar. null = não é
    * item de estoque (boleto, serviço, obra). Preenchido = aparece como chegada
-   * pendente para a dona do setor dar a entrada.
+   * pendente para a dona do setor dar a entrada. 06/10/2026: qualquer setor
+   * da tabela `setor` (cada cargo é um setor), não mais só os três primeiros.
    */
-  estoqueSetor?: "RECEPCAO" | "ENFERMAGEM" | "PACIENTES" | null;
+  estoqueSetor?: EstoqueSetor | null;
   /**
    * De QUAL item do estoque esta compra é (21/09/2026).
    *
@@ -964,6 +966,12 @@ export type FinPurchase = {
    * e era isso que fazia o Lucas perder o controle de "já comprei ou não".
    */
   estoqueItemRef?: string | null;
+  /**
+   * Pedido de compra de origem (cped-…, 06/10/2026). Gravar a compra com ele
+   * muda o pedido para "comprado" (gatilho no banco); excluir a compra devolve
+   * o pedido para "aprovado". Não se troca depois de gravado.
+   */
+  pedidoRef?: string | null;
   createdAt: string;
 };
 

@@ -7,6 +7,7 @@ import { Camera, FileText, Sparkles, Upload, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
+import type { EstoqueSetor } from "@/features/estoque/estoqueData";
 import { lerDocumento, linhaDigitavelDoCodigoDeBarras, type LeituraDocumento } from "./leitorDocumento";
 import { extrairTextoArquivo } from "./pdfTexto";
 
@@ -16,7 +17,7 @@ export type PresetFornecedor = {
   fornecedor: string;
   categoryRef: string;
   descricaoPadrao: string;
-  estoqueSetor: "RECEPCAO" | "ENFERMAGEM" | "PACIENTES" | null;
+  estoqueSetor: EstoqueSetor | null;
   ehCompra: boolean;
   metodo: "BOLETO" | "PIX";
 };

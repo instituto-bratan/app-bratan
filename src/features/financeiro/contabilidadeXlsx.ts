@@ -8,6 +8,7 @@
 //
 // Tudo derivado dos lançamentos. Nada digitado, nada inventado.
 import type { XlsxSheet } from "@/lib/xlsxWriter";
+import { setorNomes } from "@/features/estoque/estoqueData";
 import {
   buildGestaoMensal,
   consultaLikeTypes,
@@ -327,7 +328,8 @@ export function abaCompras(dados: DadosContabilidade): XlsxSheet {
     compra.method === "CARTAO_CREDITO" ? `CRÉDITO${compra.card ? ` (${compra.card})` : ""}` : compra.method,
     compra.installments > 1 ? `${compra.installments}x` : "1x",
     compra.amount || 0,
-    compra.estoqueSetor === "ENFERMAGEM" ? "Enfermagem" : compra.estoqueSetor === "RECEPCAO" ? "Recepção" : "—",
+    // 06/10/2026: o nome vem da lista de setores (antes Pacientes e os setores novos saíam "—").
+    compra.estoqueSetor ? (setorNomes[compra.estoqueSetor] ?? "—") : "—",
     compra.receivedAt ? "chegou" : compra.deliveryEta ? `previsto ${compra.deliveryEta}` : "a caminho",
     compra.nfNote || "",
     compra.notes || "",

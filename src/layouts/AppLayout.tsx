@@ -64,7 +64,7 @@ import { useCarregarConfigDoMotor } from "@/lib/useConfigDoMotor";
 import { useIntegracoes } from "@/lib/useIntegracoes";
 import { PublicadorDoResumo } from "@/features/financeiro/PublicadorDoResumo";
 import { useAvatar } from "@/features/perfil/avatarStore";
-import { isCoordenacao, canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey,
+import { isCoordenacao, canAcompanhamento, canAdministracao, canBaseModules, canComprovantes, canCrmBratan, canEditModule, canFinanceiroView, canInteligencia360, canLancarDia, canLembretesPagamento, canManageAcessos, canMarketing, canSeeModule, cargoGroup, cargoLabels, type ModuleKey,
   canFinanceiroFull,
 } from "@/lib/access";
 import type { Pessoa } from "@/types/database";
@@ -181,13 +181,19 @@ const flowGroups: FlowGroup[] = [
     ],
   },
   {
-    label: "Estoque",
-    detail: "recepção, enfermagem e aplicações",
-    href: "/estoque",
+    // COMPRAS E ESTOQUE (06/10/2026): o grupo Estoque virou a casa dos pedidos
+    // de compra por setor — cada setor pede, o Gestor Financeiro aprova, o
+    // setor recebe no próprio estoque. "Pedidos de compra" vem primeiro porque é
+    // o que todo mundo usa; a Compras do Financeiro (o registro financeiro)
+    // continua no grupo Financeiro, sem mudar de endereço.
+    label: "Compras e estoque",
+    detail: "pedidos, estoque por setor e aplicações",
+    href: "/compras",
     icon: Boxes,
-    // Donas dos setores + coordenação; a exceção por pessoa (Acessos) vence.
-    allowed: (cargo) => cargo === "recepcionista" || cargo === "enfermeira" || cargo === "nutricionista" || canFinanceiroView(cargo) || canAdministracao(cargo),
+    // Quem vê cada tela é o controle de Acessos (módulos compras, estoque, aplicacoes).
+    allowed: () => true,
     entries: [
+      { label: "Pedidos de compra", shortLabel: "Pedidos", href: "/compras", icon: ClipboardCheck, allowed: () => true, module: "compras" },
       { label: "Estoque", href: "/estoque", icon: Boxes, allowed: () => true, module: "estoque", end: true },
       // Ficha de aplicação (29/09/2026): enfermeira registra; gestão acompanha. Recepção não vê.
       { label: "Aplicações", href: "/estoque/aplicacoes", icon: Syringe, allowed: () => false, module: "aplicacoes" },
@@ -526,7 +532,7 @@ function FlowLauncher({
         if (podeIr("/financeiro/lancar-dia")) lista.push({ chave: "comanda", rotulo: `Lançar comanda de ${fmt}`, href: "/financeiro/lancar-dia" });
       }
     }
-    const comandos: { palavras: string[]; rotulo: string; href: string }[] = [
+    const comandos: { palavras: string[]; rotulo: string; href: string; so?: boolean }[] = [
       { palavras: ["conta", "boleto", "pagar", "lancar conta", "despesa"], rotulo: "Lançar conta a pagar", href: "/financeiro/contas" },
       { palavras: ["comanda", "venda", "lancar dia", "recebi"], rotulo: "Lançar comanda do dia", href: "/financeiro/lancar-dia" },
       { palavras: ["fechamento", "fechar", "registrar fechamento", "aderiu"], rotulo: "Registrar fechamento (Kanban)", href: "/crm/vendas" },
@@ -536,7 +542,15 @@ function FlowLauncher({
       { palavras: ["fatura", "cartao", "cartao de credito", "visa", "master"], rotulo: "Importar fatura do cartão", href: "/financeiro/fatura-cartao" },
       { palavras: ["lucro", "envelope", "transferir", "repasse"], rotulo: "Lucro Inteligente (envelopes)", href: "/financeiro/lucro" },
       { palavras: ["painel", "reuniao", "apresentar", "mes"], rotulo: "Painel do Mês", href: "/financeiro/painel" },
-      { palavras: ["estoque", "contar", "compra", "pedido"], rotulo: "Estoque e compras", href: "/estoque" },
+      // Pedidos de compra (06/10/2026): pedir é de todo mundo; aprovar só aparece para quem aprova.
+      { palavras: ["pedir", "pedido", "pedido de compra", "comprar", "requisicao", "solicitar compra", "falta"], rotulo: "Novo pedido de compra", href: "/compras?novo=1" },
+      {
+        palavras: ["aprovar", "aprovacao", "aprovar compra", "autorizar"],
+        rotulo: "Aprovar pedidos de compra",
+        href: "/compras?filtro=AGUARDANDO",
+        so: canEditModule(pessoa, "compras-aprovacao"),
+      },
+      { palavras: ["estoque", "contar", "saldo", "validade"], rotulo: "Estoque do setor", href: "/estoque" },
       { palavras: ["aplicacao", "aplicar", "dose", "lote", "injecao", "implante", "pellet"], rotulo: "Registrar aplicação (enfermagem)", href: "/estoque/aplicacoes" },
       { palavras: ["nps", "pesquisa", "satisfacao"], rotulo: "NPS da Concierge", href: "/concierge/nps" },
       { palavras: ["configuracao", "limite", "regra", "vigencia"], rotulo: "Configurações do negócio", href: "/administracao/configuracoes" },
@@ -547,13 +561,13 @@ function FlowLauncher({
       { palavras: ["fila", "hoje", "home", "inicio"], rotulo: "Fila do dia (Home)", href: "/" },
     ];
     for (const comando of comandos) {
-      if (!podeIr(comando.href)) continue;
+      if (!podeIr(comando.href) || comando.so === false) continue;
       if (comando.palavras.some((palavra) => normalizeSearch(palavra).includes(term) || term.includes(normalizeSearch(palavra)))) {
         if (!lista.some((item) => item.href === comando.href)) lista.push({ chave: comando.href, rotulo: comando.rotulo, href: comando.href });
       }
     }
     return lista.slice(0, 5);
-  }, [query, groups]);
+  }, [query, groups, pessoa]);
 
   useEffect(() => {
     if (!open) setQuery("");

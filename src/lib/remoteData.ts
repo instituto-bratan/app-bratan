@@ -2537,15 +2537,27 @@ export async function listRemoteFinCategories(): Promise<FinCategory[]> {
   }));
 }
 
+// PEDIDO DE ORIGEM DA COMPRA (06/10/2026): fin_purchases.pedido_ref vem da
+// migração 202610060001. Se o app for publicado antes dela, pedir a coluna
+// derruba a lista de compras inteira (erro 42703) — então lê de novo sem ela.
+const colunasDaCompra =
+  "client_ref, purchase_date, description, supplier, amount, method, card, installments, nf_note, delivery_eta, received_at, expense_ref, notes, estoque_setor, estoque_item_ref, created_at";
+export function faltaColunaPedidoRef(error: { code?: string; message?: string } | null | undefined) {
+  return Boolean(error && (error.code === "42703" || /pedido_ref/.test(error.message ?? "")));
+}
+
 export async function listRemoteFinPurchases(year: number): Promise<FinPurchase[]> {
   const client = requireSupabase();
-  const { data, error } = await client
-    .from("fin_purchases")
-    .select("client_ref, purchase_date, description, supplier, amount, method, card, installments, nf_note, delivery_eta, received_at, expense_ref, notes, estoque_setor, estoque_item_ref, created_at")
-    .gte("purchase_date", `${year}-01-01`)
-    .lte("purchase_date", `${year}-12-31`)
-    .is("deleted_at", null)
-    .order("purchase_date", { ascending: false });
+  const buscar = (colunas: string) =>
+    client
+      .from("fin_purchases")
+      .select(colunas)
+      .gte("purchase_date", `${year}-01-01`)
+      .lte("purchase_date", `${year}-12-31`)
+      .is("deleted_at", null)
+      .order("purchase_date", { ascending: false });
+  let { data, error } = await buscar(`${colunasDaCompra}, pedido_ref`);
+  if (faltaColunaPedidoRef(error)) ({ data, error } = await buscar(colunasDaCompra));
   if (error) throw error;
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
     id: String(row.client_ref),
@@ -2563,6 +2575,7 @@ export async function listRemoteFinPurchases(year: number): Promise<FinPurchase[
     notes: String(row.notes ?? ""),
     estoqueSetor: (row.estoque_setor as FinPurchase["estoqueSetor"]) ?? null,
     estoqueItemRef: (row.estoque_item_ref as string | null) ?? null,
+    pedidoRef: (row.pedido_ref as string | null) ?? null,
     createdAt: String(row.created_at ?? new Date().toISOString()),
   }));
 }
@@ -2585,6 +2598,10 @@ export async function createRemoteFinPurchase(purchase: FinPurchase, createdBy: 
     notes: purchase.notes,
     estoque_setor: purchase.estoqueSetor ?? null,
     estoque_item_ref: purchase.estoqueItemRef ?? null,
+    // Só vai quando existe: compra comum continua gravando mesmo antes da
+    // migração de 06/10 (pedido_ref) chegar ao banco. Fica fora do update de
+    // propósito — o banco recusa trocar o pedido de uma compra já gravada.
+    ...(purchase.pedidoRef ? { pedido_ref: purchase.pedidoRef } : {}),
     created_by: uuidOrNull(createdBy),
   });
   if (error) throw error;
@@ -3285,3 +3302,4 @@ export * from "./remote/integracoes";
 export * from "./remote/compliance";
 export * from "./remote/portalPaciente";
 export * from "./remote/faturaCartao";
+export * from "./remote/compras";

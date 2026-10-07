@@ -41,6 +41,7 @@ import {
   canBaseModules,
   canComprovantes,
   canCrmBratan,
+  canEditModule,
   canFinanceiroFull,
   canFinanceiroView,
   canInteligencia360,
@@ -82,7 +83,9 @@ import { buildOcupacaoMes, formatHoras } from "@/features/financeiro/ocupacaoSal
 import { canUserAccessTask, cargoToCrmRole, contactDisplayName, isCrmManagement } from "@/features/crm/crmData";
 import { useCrmState } from "@/features/crm/useCrmState";
 import { useEstoque } from "@/features/estoque/useEstoque";
-import { posicaoDoSetor, setorLabels, type EstoqueSetor } from "@/features/estoque/estoqueData";
+import { useCompras } from "@/features/compras/useCompras";
+import { podeAprovar, podeComprar } from "@/features/compras/comprasData";
+import { estoqueParaAFila, pedidosParaAFila } from "@/features/compras/estoquePedidos";
 import { filaDeContatos } from "@/features/concierge/npsData";
 import { buildFilaDoDia, fechamentoPendente, limparSilenciados, type TarefaCrmDaFila } from "./filaDoDia";
 import { FilaDoDiaHome } from "./FilaDoDiaHome";
@@ -240,16 +243,39 @@ export function HomePage() {
       .map((task) => ({ id: task.id, title: task.title, dueAt: task.dueAt, status: task.status, contato: contactDisplayName(contatos.get(task.contactId)), taskType: task.taskType }));
   }, [veCrm, pessoa, cargo, crm.state.contacts, crm.state.tasks]);
 
-  // ---- Estoque: só os setores que a pessoa cuida ------------------------------------------
+  // ---- Estoque: os setores DA pessoa ------------------------------------------------------
+  // 06/10/2026 (pedidos de compra): cada cargo é um setor. Antes a lista era
+  // fixa (Recepção e Enfermagem para quase todos, sem Pacientes) e cobrava
+  // "abaixo do mínimo" até de item já comprado. Agora: só os setores da pessoa,
+  // contando como tarefa o que falta e ninguém pediu; pedido feito e "a caminho"
+  // vão só para a frase. A coordenação vê os outros setores como "para saber".
   const estoque = useEstoque();
+  const compras = useCompras();
   const estoqueFila = useMemo(() => {
     if (!veEstoque) return [];
-    const setores: EstoqueSetor[] = cargo === "recepcionista" ? ["RECEPCAO"] : cargo === "enfermeira" || cargo === "nutricionista" ? ["ENFERMAGEM"] : ["RECEPCAO", "ENFERMAGEM"];
-    return setores.map((setor) => {
-      const posicao = posicaoDoSetor(estoque.items, estoque.moves, setor).filter((linha) => linha.status !== "OK");
-      return { setor, rotulo: setorLabels[setor].split(" (")[0], itens: posicao.length, zerados: posicao.filter((linha) => linha.status === "ZERADO").length };
+    return estoqueParaAFila({
+      items: estoque.items,
+      moves: estoque.moves,
+      purchases: estoque.compras,
+      pedidos: compras.pedidos,
+      cargo,
+      ehCoordenacao: isCoordenacao(cargo),
+      // 07/10/2026: quem pode pedir vai do cartão direto ao pedido preenchido.
+      podePedir: canEditModule(pessoa, "compras"),
     });
-  }, [veEstoque, cargo, estoque.items, estoque.moves]);
+  }, [veEstoque, cargo, pessoa, estoque.items, estoque.moves, estoque.compras, compras.pedidos]);
+
+  // ---- Pedidos de compra: a vez de cada papel (POP-COMP-001) ------------------------------
+  // Quem aprova vê os que esperam decisão; o financeiro completo, os aprovados
+  // para comprar; o setor (e quem pediu), o devolvido e o que já devia ter chegado.
+  const pedidosFila = useMemo(() => {
+    if (!pessoa) return null;
+    return pedidosParaAFila(
+      compras.pedidos,
+      { id: pessoa.id, cargo, aprova: podeAprovar(pessoa), compra: podeComprar(pessoa), pede: canSeeModule(pessoa, "compras") },
+      hoje,
+    );
+  }, [pessoa, cargo, compras.pedidos, hoje]);
 
   // ---- NPS da concierge: quem passou e não recebeu o contato -------------------------------
   const npsQuery = useQuery({ queryKey: ["nps-contatos", "home"], queryFn: listRemoteNpsContatos, enabled: useRemote && veNps, staleTime: 60_000 });
@@ -333,6 +359,7 @@ export function HomePage() {
             }
           : null,
         estoque: estoqueFila,
+        pedidos: pedidosFila,
         npsFila,
         checklist: { pendentes: checklist.pendingCount, proxima: checklist.nextItem?.descricao ?? null },
         fechamentoPendente: fechamento,
@@ -340,7 +367,7 @@ export function HomePage() {
         achados: achadosComRisco,
         silenciados,
       }),
-    [hoje, filaFinanceira, comprovantesPendentes, comandasSemNota, crmTasks, pagamentos, estoqueFila, npsFila, checklist, fechamento, avisos, achadosComRisco, silenciados],
+    [hoje, filaFinanceira, comprovantesPendentes, comandasSemNota, crmTasks, pagamentos, estoqueFila, pedidosFila, npsFila, checklist, fechamento, avisos, achadosComRisco, silenciados],
   );
   const carregando = useRemote && (finExpensesQuery.isLoading || finSalesQuery.isLoading || checklistQuery.isLoading || (veCrm && crm.isSyncing && crm.state.tasks.length === 0));
 

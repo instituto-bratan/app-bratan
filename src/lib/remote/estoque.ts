@@ -103,20 +103,33 @@ export async function createRemoteEstoqueMove(move: EstoqueMovimento, createdBy:
   });
 }
 
+const colunasDaCompraDoEstoque =
+  "client_ref, purchase_date, description, supplier, amount, method, card, installments, nf_note, delivery_eta, received_at, expense_ref, notes, estoque_setor, estoque_item_ref, created_at";
+
 /**
  * Compras marcadas para estoque — a versão que a ENFERMEIRA consegue ler.
  * A RLS de fin_purchases abre só as linhas com estoque_setor para quem cuida do
  * setor; o financeiro completo continua vendo tudo pela listagem normal.
+ *
+ * pedido_ref (07/10/2026): a compra de um PEDIDO se recebe pelo pedido, não
+ * pelo "Chegou — dar entrada" daqui. Sem a coluna, o Estoque só sabia disso
+ * pela lista de pedidos (compraEhDePedido por compraRef) — e, com ela falhando,
+ * desatualizada ou além dos 500 mais recentes, a mesma caixa podia entrar duas
+ * vezes. Antes da migração 202610060001 a coluna não existe (erro 42703): lê
+ * de novo sem ela, como listRemoteFinPurchases.
  */
 export async function listRemoteComprasParaEstoque(): Promise<FinPurchase[]> {
   const client = requireSupabase();
-  const { data, error } = await client
-    .from("fin_purchases")
-    .select("client_ref, purchase_date, description, supplier, amount, method, card, installments, nf_note, delivery_eta, received_at, expense_ref, notes, estoque_setor, estoque_item_ref, created_at")
-    .not("estoque_setor", "is", null)
-    .is("deleted_at", null)
-    .order("purchase_date", { ascending: false })
-    .limit(400);
+  const buscar = (colunas: string) =>
+    client
+      .from("fin_purchases")
+      .select(colunas)
+      .not("estoque_setor", "is", null)
+      .is("deleted_at", null)
+      .order("purchase_date", { ascending: false })
+      .limit(400);
+  let { data, error } = await buscar(`${colunasDaCompraDoEstoque}, pedido_ref`);
+  if (error && (error.code === "42703" || /pedido_ref/.test(error.message ?? ""))) ({ data, error } = await buscar(colunasDaCompraDoEstoque));
   if (error) throw error;
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
     id: String(row.client_ref),
@@ -134,6 +147,7 @@ export async function listRemoteComprasParaEstoque(): Promise<FinPurchase[]> {
     notes: String(row.notes ?? ""),
     estoqueSetor: (row.estoque_setor as FinPurchase["estoqueSetor"]) ?? null,
     estoqueItemRef: (row.estoque_item_ref as string | null) ?? null,
+    pedidoRef: (row.pedido_ref as string | null) ?? null,
     createdAt: String(row.created_at ?? new Date().toISOString()),
   }));
 }

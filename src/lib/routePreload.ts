@@ -38,6 +38,7 @@ const routeLoaders = {
   finExtrato: namedPage(() => import("@/features/financeiro/FinanceiroExtratoPage"), "FinanceiroExtratoPage"),
   finLucro: namedPage(() => import("@/features/financeiro/FinanceiroLucroPage"), "FinanceiroLucroPage"),
   finFaturaCartao: namedPage(() => import("@/features/financeiro/FinanceiroFaturaCartaoPage"), "FinanceiroFaturaCartaoPage"),
+  compras: namedPage(() => import("@/features/compras/PedidosDeCompraPage"), "PedidosDeCompraPage"),
   estoque: namedPage(() => import("@/features/estoque/EstoquePage"), "EstoquePage"),
   estoqueAplicacoes: namedPage(() => import("@/features/estoque/AplicacoesPage"), "AplicacoesPage"),
   conciergeNps: namedPage(() => import("@/features/concierge/ConciergeNpsPage"), "ConciergeNpsPage"),
@@ -117,6 +118,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/financeiro/extrato") return "finExtrato";
   if (pathname === "/financeiro/lucro") return "finLucro";
   if (pathname === "/financeiro/fatura-cartao") return "finFaturaCartao";
+  if (pathname === "/compras") return "compras";
   if (pathname === "/estoque") return "estoque";
   if (pathname === "/estoque/aplicacoes") return "estoqueAplicacoes";
   if (pathname === "/concierge/nps") return "conciergeNps";

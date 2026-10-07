@@ -12,10 +12,8 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
-import { parseMoneyBR } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import {
-  createFinId,
   finGroupLabels,
   finGroupOrder,
   moneyFin,
@@ -29,10 +27,16 @@ import {
 } from "./financeiroData";
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
-import { despesaDaCompraAVista, ehCompraAVista } from "./compraAVista";
+import { ehCompraAVista } from "./compraAVista";
+import { FORMAS_DE_COMPRA, gravarCompra, montarCompra, ondeEntraNoP12 } from "./registrarCompra";
 import { confirmar } from "@/components/ui/avisos";
+import { setorLabels, setorNomes, setoresEmOrdem, type EstoqueSetor } from "@/features/estoque/estoqueData";
+import { useCompras } from "@/features/compras/useCompras";
+import { numeroDoPedido, statusNaFrase } from "@/features/compras/comprasData";
 
-const purchaseMethods: FinPaymentMethod[] = ["CARTAO_CREDITO", "BOLETO", "PIX", "CARTAO_DEBITO", "DINHEIRO", "TRANSFERENCIA"];
+// 06/10/2026: a lista de formas e a montagem da compra moram em registrarCompra.ts
+// (a mesma regra serve o "Registrar compra" dos pedidos de compra).
+const purchaseMethods: FinPaymentMethod[] = FORMAS_DE_COMPRA;
 
 // Cor do selo "onde entra na contabilidade".
 const accountingTone: Record<"credito" | "boleto" | "caixa", string> = {
@@ -50,6 +54,9 @@ export function FinanceiroComprasPage() {
   const readOnly = !canEditModule(pessoa, "fin-compras");
   const [monthKey, setMonthKey] = useState(() => todayISO().slice(0, 7));
   const financeiro = useFinanceiro(Number(monthKey.slice(0, 4)));
+  // Os pedidos de compra (07/10/2026): o aviso de excluir diz o que acontece
+  // com o pedido de verdade, e na prévia faz o papel do gatilho do banco.
+  const compras = useCompras();
 
   const [purchaseDate, setPurchaseDate] = useState(todayISO());
   const [description, setDescription] = useState("");
@@ -63,12 +70,12 @@ export function FinanceiroComprasPage() {
   // ESTOQUE (19/08/2026): para onde este item vai quando chegar. Marcado aqui,
   // ele vira "chegada pendente" para a dona do setor confirmar — a confirmação
   // dá a entrada no estoque e carimba o "Chegou" desta compra, num ato só.
-  const [estoqueSetor, setEstoqueSetor] = useState<"" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES">("");
+  const [estoqueSetor, setEstoqueSetor] = useState<"" | EstoqueSetor>("");
   // Categoria da P12 da compra à vista (29/09/2026): ela vira conta paga.
   const [categoryRef, setCategoryRef] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  const isCredit = method === "CARTAO_CREDITO";
   const isCard = method === "CARTAO_CREDITO" || method === "CARTAO_DEBITO";
   const aVista = ehCompraAVista(method);
   const categoriesByGroup = useMemo(
@@ -95,50 +102,29 @@ export function FinanceiroComprasPage() {
     setCategoryRef("");
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (salvando) return;
     setFeedback("");
-    const parsedAmount = parseMoneyBR(amount);
-    if (!description.trim()) return setFeedback("Falta a descrição da compra.");
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return setFeedback("Não entendi o valor — digite como 1.500,00.");
-
-    if (aVista && !categoryRef) return setFeedback("Escolha a categoria da P12 — a compra à vista já vira conta paga.");
-
-    const parsedInstallments = Math.max(1, Number(installments) || 1);
-
-    // Onde cada compra entra no P12 (29/09/2026, auditoria B3):
-    //   · crédito → só pela fatura do cartão (nunca cria conta aqui);
-    //   · boleto → você lança em Contas a Pagar (tem vencimento próprio);
-    //   · à vista (PIX, débito, dinheiro, transferência) → vira conta JÁ PAGA
-    //     aqui mesmo, ligada à compra por expenseRef. Antes a tela dizia "saída
-    //     direta do caixa" e a saída nunca era registrada em lugar nenhum.
-    const compra: FinPurchase = {
-      id: createFinId("fbuy"),
-      purchaseDate,
-      description: description.trim(),
-      supplier: supplier.trim(),
-      amount: Math.round(parsedAmount * 100) / 100,
-      method,
-      card: isCard ? card : null,
-      installments: parsedInstallments,
-      nfNote: nfNote.trim(),
-      deliveryEta: deliveryEta || null,
-      receivedAt: null,
-      expenseRef: null,
-      notes: "",
-      estoqueSetor: estoqueSetor || null,
-      createdAt: new Date().toISOString(),
-    };
-    const conta = despesaDaCompraAVista(compra, categoryRef, financeiro.categories);
-    if (conta) financeiro.addExpense(conta);
-    financeiro.addPurchase({ ...compra, expenseRef: conta?.id ?? null });
-
+    // Onde cada compra entra no P12 (29/09/2026, auditoria B3) e as travas do
+    // formulário: registrarCompra.ts (06/10/2026, compartilhado com os pedidos).
+    const montada = montarCompra(
+      { purchaseDate, description, supplier, amount, method, card, installments, nfNote, deliveryEta, estoqueSetor, categoryRef },
+      { categorias: financeiro.categories },
+    );
+    if (!montada.ok) return setFeedback(montada.erro);
+    // A compra vai primeiro e a conta paga depois; falha no servidor já aparece num aviso.
+    setSalvando(true);
+    const gravacao = await gravarCompra(financeiro, montada, financeiro.remoto).finally(() => setSalvando(false));
+    if (!gravacao.compraGravada) {
+      // O formulário fica como estava, para tentar de novo.
+      setFeedback("A compra NÃO foi gravada no servidor — veja o aviso no canto da tela e tente de novo.");
+      return;
+    }
     setFeedback(
-      isCredit
-        ? `Compra registrada (${moneyFin(parsedAmount)}). Ela entra no P12 só pela fatura do ${purchaseCardLabels[card]} — não lance de novo.`
-        : method === "BOLETO"
-          ? `Compra registrada no controle (${moneyFin(parsedAmount)}). Lembre de lançar o boleto em Contas a Pagar — é lá que entra no P12.`
-          : `Compra registrada e lançada como conta PAGA em ${shortDate(purchaseDate)} (${moneyFin(parsedAmount)}) — já entra no P12. Não lance de novo em Contas a Pagar.`,
+      gravacao.contaGravada === false
+        ? `${montada.aviso} Atenção: a conta paga não foi gravada — lance em Contas a Pagar.`
+        : montada.aviso,
     );
     resetForm();
   }
@@ -148,13 +134,42 @@ export function FinanceiroComprasPage() {
     financeiro.updatePurchase({ ...purchase, receivedAt: purchase.receivedAt ? null : todayISO() });
   }
 
+  /**
+   * O que acontece com o pedido de compra ao excluir esta compra (07/10/2026).
+   * O gatilho do banco só devolve para "aprovado" o pedido que AINDA está
+   * comprado com esta compra; o recebido continua recebido (e a entrada no
+   * estoque fica). Antes o aviso prometia a volta em qualquer caso.
+   */
+  function oQueAconteceComOPedido(purchase: FinPurchase): string {
+    const pedido = compras.pedidos.find(
+      (candidato) => (purchase.pedidoRef && candidato.id === purchase.pedidoRef) || candidato.compraRef === purchase.id,
+    );
+    if (!pedido) {
+      return purchase.pedidoRef ? ' Esta compra veio de um pedido de compra: se ele ainda estiver "comprado", volta para "aprovado" e pode ser comprado de novo.' : "";
+    }
+    const numero = numeroDoPedido(pedido.numero);
+    if (pedido.status === "COMPRADO" && pedido.compraRef === purchase.id) {
+      return ` O pedido de compra ${numero} volta para "aprovado" e pode ser comprado de novo.`;
+    }
+    if (pedido.status === "RECEBIDO") {
+      return ` O pedido de compra ${numero} já foi recebido: ele continua "recebido" e a entrada no estoque fica.`;
+    }
+    return ` O pedido de compra ${numero} está "${statusNaFrase(pedido.status)}" e não muda.`;
+  }
+
   async function removePurchase(purchase: FinPurchase) {
     // Compras antigas podem ter uma conta a pagar vinculada (modelo antigo) —
     // ao excluir, remove o vínculo para não deixar lançamento órfão.
     const withExpense = purchase.expenseRef ? " A conta ligada a esta compra (em Contas a Pagar) também será excluída." : "";
-    if (!(await confirmar(`Excluir a compra "${purchase.description}" (${moneyFin(purchase.amount)})?`, { corpo: withExpense.trim() || undefined, destrutivo: true, confirmar: "Excluir" }))) return;
+    // Compra de um pedido de compra (06/10/2026; texto conforme o pedido em 07/10/2026).
+    const doPedido = oQueAconteceComOPedido(purchase);
+    const corpo = `${withExpense}${doPedido}`.trim();
+    if (!(await confirmar(`Excluir a compra "${purchase.description}" (${moneyFin(purchase.amount)})?`, { corpo: corpo || undefined, destrutivo: true, confirmar: "Excluir" }))) return;
     if (purchase.expenseRef) financeiro.removeExpense(purchase.expenseRef);
-    financeiro.removePurchase(purchase.id);
+    const gravou = await financeiro.removePurchase(purchase.id);
+    // No banco o gatilho já mexeu no pedido (aqui só recarrega); na prévia
+    // (sem servidor, gravou = false) o useCompras faz o papel do gatilho.
+    if (gravou || !financeiro.remoto) compras.aposExcluirCompra(purchase);
   }
 
   return (
@@ -377,13 +392,16 @@ export function FinanceiroComprasPage() {
                     </Label>
                     <select
                       value={estoqueSetor}
-                      onChange={(event) => setEstoqueSetor(event.target.value as "" | "RECEPCAO" | "ENFERMAGEM" | "PACIENTES")}
+                      onChange={(event) => setEstoqueSetor(event.target.value as "" | EstoqueSetor)}
                       className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm"
                     >
                       <option value="">Não (serviço, obra, conta)</option>
-                      <option value="ENFERMAGEM">Sim — Enfermagem (medicações & saúde)</option>
-                      <option value="PACIENTES">Sim — Pacientes (cortesias & banheiros)</option>
-                      <option value="RECEPCAO">Sim — Recepção (administrativo)</option>
+                      {/* 06/10/2026: todos os setores da tabela `setor` (cada cargo é um setor). */}
+                      {setoresEmOrdem.map((chave) => (
+                        <option key={chave} value={chave}>
+                          Sim — {setorLabels[chave]}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -391,15 +409,11 @@ export function FinanceiroComprasPage() {
                 {/* Onde vai entrar — clareza antes de salvar */}
                 <div className={cn("flex items-center gap-2 rounded-lg px-3 py-2 text-sm", accountingTone[purchaseAccounting({ method, card: isCard ? card : null }).tone])}>
                   <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {isCredit
-                    ? `Entra no P12 só pela fatura do ${purchaseCardLabels[card]} — não precisa lançar em outro lugar.`
-                    : method === "BOLETO"
-                      ? "Depois de salvar, lance o boleto em Contas a Pagar (é lá que entra no P12)."
-                      : "Saída direta do caixa — fica só no controle, não entra no P12 de novo."}
+                  {ondeEntraNoP12(method, isCard ? card : null)}
                 </div>
 
                 <div>
-                  <LiquidButton type="submit" size="sm">
+                  <LiquidButton type="submit" size="sm" disabled={salvando}>
                     <ShoppingCart className="h-4 w-4" aria-hidden="true" />
                     Registrar compra
                   </LiquidButton>
@@ -426,7 +440,7 @@ export function FinanceiroComprasPage() {
                       {purchase.description}
                       {purchase.estoqueSetor ? (
                         <span className="ml-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
-                          → Estoque {purchase.estoqueSetor === "ENFERMAGEM" ? "Enfermagem" : purchase.estoqueSetor === "PACIENTES" ? "Pacientes" : "Recepção"}
+                          → Estoque {setorNomes[purchase.estoqueSetor] ?? purchase.estoqueSetor}
                         </span>
                       ) : null}
                     </p>

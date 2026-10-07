@@ -26,6 +26,8 @@ const TELAS = [
   ["src/features/comprovantes/ComprovantesPage.tsx", "comprovantes", true],
   ["src/features/programa/ProgramaAcompanhamentoPage.tsx", "acompanhamento", true],
   ["src/features/inteligencia360/Inteligencia360Page.tsx", "inteligencia360", false],
+  // Pedidos de compra (06/10/2026): quem só vê não pede, não recebe, não ajusta nem cancela.
+  ["src/features/compras/PedidosDeCompraPage.tsx", "compras", false],
 ];
 
 test("cada tela usa o gancho único com a sua chave, e o estado do CRM recusa gravar para quem só vê", () => {

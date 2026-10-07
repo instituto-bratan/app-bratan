@@ -128,6 +128,12 @@ test("chegadas pendentes: compra marcada aparece até dar entrada — mesmo se j
   // stin-1 já entrou; stin-2 ainda deve entrada; papel é da recepção; obra não é estoque.
   assert.equal(pendentes.map((p) => p.id).join("|"), "stin-2");
   assert.equal(es.chegadasPendentes(compras, moves, "RECEPCAO").map((p) => p.id).join("|"), "papel");
+  // PEDIDOS DE COMPRA (06/10/2026): a compra de um pedido se recebe pelo pedido,
+  // item a item — não volta aqui como "chegou — dar entrada".
+  const doPedido = { ...compra("stin-3", "ENFERMAGEM"), pedidoRef: "cped-00000000-0000-4000-8000-000000000001" };
+  assert.equal(es.chegadasPendentes([...compras, doPedido], moves, "ENFERMAGEM").map((p) => p.id).join("|"), "stin-2");
+  const pedido = { id: "cped-x", numero: 2, status: "COMPRADO", compraRef: "stin-2", itens: [] };
+  assert.equal(es.chegadasPendentes(compras, moves, "ENFERMAGEM", [pedido]).length, 0, "o pedido aponta a compra: mesma coisa");
 });
 
 test("relatório de posição resume zerados, comprar e vencendo", () => {
@@ -235,7 +241,20 @@ test("setor PACIENTES (30/09/2026): todo mundo vê, só a Aline e a CEO mexem", 
   assert.equal(d.podeMexerNoSetor("recepcionista", "PACIENTES", false), false);
   assert.equal(d.podeMexerNoSetor("recepcionista", "RECEPCAO", false), true);
   assert.equal(d.podeMexerNoSetor("enfermeira", "ENFERMAGEM", false), true);
-  assert.deepEqual(d.setoresVisiveis("limpeza", false), ["PACIENTES"]);
-  assert.deepEqual(d.setoresVisiveis("recepcionista", false), ["RECEPCAO", "PACIENTES"]);
-  assert.deepEqual(d.setoresVisiveis("gestor_financeiro", true), ["RECEPCAO", "ENFERMAGEM", "PACIENTES"]);
+  // 06/10/2026: cada cargo virou um setor — a limpeza ganhou o seu (LIMPEZA) e a
+  // coordenação enxerga todos. Nos três setores antigos a regra não mudou
+  // (tests/compras-pedidos.test.mjs compara com a regra de antes, cargo a cargo).
+  assert.deepEqual([...d.setoresVisiveis("limpeza", false)], ["PACIENTES", "LIMPEZA"]);
+  assert.deepEqual([...d.setoresVisiveis("recepcionista", false)], ["RECEPCAO", "PACIENTES"]);
+  assert.deepEqual([...d.setoresVisiveis("gestor_financeiro", true)], [
+    "RECEPCAO", "ENFERMAGEM", "PACIENTES", "COMERCIAL", "FINANCEIRO", "DIRETORIA", "CONSULTORIO", "NUTRICAO", "MARKETING", "LIMPEZA",
+  ]);
+});
+
+test("setores do cargo (06/10/2026): o setor DA pessoa, não todos em que a coordenação mexe", () => {
+  assert.deepEqual([...es.setoresDoCargo("gestor_financeiro")], ["FINANCEIRO"], "o Lucas mexe em quase todos, mas o dele é o Financeiro");
+  assert.deepEqual([...es.setoresDoCargo("ceo")], ["PACIENTES", "DIRETORIA"]);
+  assert.deepEqual([...es.setoresDoCargo("nutricionista")], ["ENFERMAGEM", "NUTRICAO"]);
+  assert.deepEqual([...es.setoresDoCargo("recepcionista")], ["RECEPCAO"]);
+  assert.deepEqual([...es.setoresDoCargo(null)], []);
 });

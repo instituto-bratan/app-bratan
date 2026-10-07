@@ -1,7 +1,8 @@
 // ESTOQUE (19/08/2026) — o motor, sem React, para poder ser testado.
 //
-// Dois estoques num módulo só: RECEPCAO (administrativo, da recepcionista) e
-// ENFERMAGEM (medicações e insumos, da enfermeira). As práticas clássicas de
+// Começou com dois estoques: RECEPCAO (administrativo, da recepcionista) e
+// ENFERMAGEM (medicações e insumos, da enfermeira); PACIENTES entrou em 30/09
+// e, em 06/10/2026, cada cargo virou um setor (lista abaixo). As práticas clássicas de
 // gestão de estoque, na menor forma que funciona numa clínica:
 //
 //   · KARDEX — toda mudança é um movimento; o saldo é sempre derivado, nunca
@@ -13,36 +14,138 @@
 //     passa a valer o número contado e a divergência fica registrada.
 //   · ELO COM AS COMPRAS — compra marcada "vai para o estoque" vira chegada
 //     pendente; confirmar a chegada dá a entrada E carimba o "Chegou".
+//   · ELO COM OS PEDIDOS DE COMPRA (06/10/2026) — item com pedido aberto vira
+//     "Pedido feito" (esperando aprovação ou compra) e, depois de comprado,
+//     "a caminho". A compra de um pedido se recebe PELO PEDIDO, então ela não
+//     aparece de novo como "chegada pendente".
 import type { FinPurchase } from "@/features/financeiro/financeiroData";
 
 // PACIENTES (30/09/2026, pedido da CEO): cortesias da sala de espera e itens
 // dos banheiros. Todo mundo vê; só a Aline (secretaria executiva) e a CEO mexem.
-export type EstoqueSetor = "RECEPCAO" | "ENFERMAGEM" | "PACIENTES";
+//
+// CADA CARGO É UM SETOR (06/10/2026, pedidos de compra). Lucas: *"cada usuário,
+// que é cada setor (enfermagem, recepção, comercial, eu/financeiro, a CEO…),
+// vai cuidar do seu próprio estoque"*. Os setores novos não criam cargo novo
+// (cargo novo quebra CRM, is_coordenacao e Acessos): cada setor diz quais
+// cargos cuidam dele. É a MESMA lista da tabela `setor` do banco
+// (202610060001_pedidos_de_compra.sql) — tests/compras-pedidos.test.mjs lê o
+// seed da migração e confere código por código, cargo por cargo.
+export type EstoqueSetor =
+  | "RECEPCAO"
+  | "ENFERMAGEM"
+  | "PACIENTES"
+  | "COMERCIAL"
+  | "FINANCEIRO"
+  | "DIRETORIA"
+  | "CONSULTORIO"
+  | "NUTRICAO"
+  | "MARKETING"
+  | "LIMPEZA";
 
+/** Os setores na ordem da tabela `setor` (coluna ordem). */
+export const setoresEmOrdem: EstoqueSetor[] = [
+  "RECEPCAO",
+  "ENFERMAGEM",
+  "PACIENTES",
+  "COMERCIAL",
+  "FINANCEIRO",
+  "DIRETORIA",
+  "CONSULTORIO",
+  "NUTRICAO",
+  "MARKETING",
+  "LIMPEZA",
+];
+
+/** Rótulo longo, o que a tela de Estoque já mostrava (os três antigos não mudaram). */
 export const setorLabels: Record<EstoqueSetor, string> = {
   RECEPCAO: "Recepção (administrativo)",
   ENFERMAGEM: "Enfermagem (medicações & saúde)",
   PACIENTES: "Pacientes (cortesias & banheiros)",
+  COMERCIAL: "Comercial",
+  FINANCEIRO: "Financeiro",
+  DIRETORIA: "Diretoria (CEO)",
+  CONSULTORIO: "Consultório (Dr. Daniel)",
+  NUTRICAO: "Nutrição",
+  MARKETING: "Marketing",
+  LIMPEZA: "Limpeza",
 };
 
-/** Quem cuida de cada setor — aparece na tela e guia o acesso. */
+/** Nome curto do setor — igual à coluna `nome` da tabela `setor` (listas, pedidos, planilhas). */
+export const setorNomes: Record<EstoqueSetor, string> = {
+  RECEPCAO: "Recepção",
+  ENFERMAGEM: "Enfermagem",
+  PACIENTES: "Pacientes (Concierge)",
+  COMERCIAL: "Comercial",
+  FINANCEIRO: "Financeiro",
+  DIRETORIA: "Diretoria (CEO)",
+  CONSULTORIO: "Consultório (Dr. Daniel)",
+  NUTRICAO: "Nutrição",
+  MARKETING: "Marketing",
+  LIMPEZA: "Limpeza",
+};
+
+/**
+ * Os cargos que pertencem a cada setor — coluna `cargos` da tabela `setor`.
+ * ENFERMAGEM mantém a nutricionista (regra de 19/08); PACIENTES continua da
+ * Aline e da CEO (regra de 30/09).
+ */
+export const setorCargos: Record<EstoqueSetor, string[]> = {
+  RECEPCAO: ["recepcionista"],
+  ENFERMAGEM: ["enfermeira", "nutricionista"],
+  PACIENTES: ["secretaria_executiva", "ceo"],
+  COMERCIAL: ["gestor"],
+  FINANCEIRO: ["gestor_financeiro"],
+  DIRETORIA: ["ceo"],
+  CONSULTORIO: ["dr_daniel"],
+  NUTRICAO: ["nutricionista"],
+  MARKETING: ["marketing"],
+  LIMPEZA: ["limpeza"],
+};
+
+/** Quem cuida de cada setor (o cargo principal) — aparece na tela e guia o acesso. */
 export const setorDona: Record<EstoqueSetor, string> = {
   RECEPCAO: "recepcionista",
   ENFERMAGEM: "enfermeira",
   PACIENTES: "secretaria_executiva",
+  COMERCIAL: "gestor",
+  FINANCEIRO: "gestor_financeiro",
+  DIRETORIA: "ceo",
+  CONSULTORIO: "dr_daniel",
+  NUTRICAO: "nutricionista",
+  MARKETING: "marketing",
+  LIMPEZA: "limpeza",
 };
 
-/** Quem pode MEXER em cada setor (a mesma regra da função estoque_pode do banco). */
+export function ehEstoqueSetor(valor: unknown): valor is EstoqueSetor {
+  return typeof valor === "string" && (setoresEmOrdem as string[]).includes(valor);
+}
+
+/**
+ * Quem pode MEXER em cada setor — a mesma regra da função estoque_pode do banco:
+ *   · PACIENTES: só os cargos do setor (Aline e CEO) — nem a coordenação;
+ *   · os demais: a coordenação, ou os cargos do setor.
+ * Nos três setores antigos o resultado é exatamente o de antes de 06/10.
+ */
 export function podeMexerNoSetor(cargo: string | null | undefined, setor: EstoqueSetor, ehCoordenacao: boolean) {
-  if (setor === "PACIENTES") return cargo === "secretaria_executiva" || cargo === "ceo";
-  if (ehCoordenacao) return true;
-  if (setor === "RECEPCAO") return cargo === "recepcionista";
-  return cargo === "enfermeira" || cargo === "nutricionista";
+  const doSetor = Boolean(cargo && (setorCargos[setor] ?? []).includes(cargo));
+  if (setor === "PACIENTES") return doSetor;
+  return ehCoordenacao || doSetor;
 }
 
 /** Quais setores a pessoa enxerga: PACIENTES é de todos; os outros, de quem mexe. */
 export function setoresVisiveis(cargo: string | null | undefined, ehCoordenacao: boolean): EstoqueSetor[] {
-  return (Object.keys(setorLabels) as EstoqueSetor[]).filter((setor) => setor === "PACIENTES" || podeMexerNoSetor(cargo, setor, ehCoordenacao));
+  return setoresEmOrdem.filter((setor) => setor === "PACIENTES" || podeMexerNoSetor(cargo, setor, ehCoordenacao));
+}
+
+/**
+ * Os setores que SÃO da pessoa — o cargo dela está na lista do setor (06/10/2026).
+ * Diferente de podeMexerNoSetor: a coordenação mexe em quase todos, mas o
+ * setor DELA é um só (o Lucas é do Financeiro). É o que a tela de Estoque
+ * mostra primeiro e o que a Home cobra como "em falta".
+ */
+export function setoresDoCargo(cargo: string | null | undefined): EstoqueSetor[] {
+  if (!cargo) return [];
+  return setoresEmOrdem.filter((setor) => (setorCargos[setor] ?? []).includes(cargo));
 }
 
 export type EstoqueItem = {
@@ -113,14 +216,81 @@ export function saldoDoItem(moves: EstoqueMovimento[], itemRef: string) {
   return Math.round(saldo * 100) / 100;
 }
 
-export type EstoqueStatus = "OK" | "COMPRAR" | "ZERADO" | "A_CAMINHO";
+export type EstoqueStatus = "OK" | "COMPRAR" | "ZERADO" | "PEDIDO" | "A_CAMINHO";
 
 export const estoqueStatusLabels: Record<EstoqueStatus, string> = {
   OK: "OK",
   COMPRAR: "Comprar",
   ZERADO: "Zerado",
+  PEDIDO: "Pedido feito",
   A_CAMINHO: "Já comprei — a caminho",
 };
+
+// ---------------------------------------------------------------------------
+// Pedidos de compra (06/10/2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * O que o estoque precisa saber de um PEDIDO DE COMPRA. É um tipo mínimo de
+ * propósito: o módulo de compras (src/features/compras/comprasData.ts) importa
+ * ESTE arquivo, então este não importa aquele — e o PedidoCompra de lá cabe
+ * aqui direto, sem conversão.
+ */
+export type PedidoDoEstoque = {
+  id: string;
+  numero: number | null;
+  status: string;
+  compraRef?: string | null;
+  previsaoEntrega?: string | null;
+  itens: Array<{ estoqueItemRef: string | null }>;
+};
+
+/** Pedido feito e ainda não comprado: esperando aprovação, aprovado, ou devolvido para ajuste. */
+export const STATUS_PEDIDO_FEITO = ["ENVIADO", "DEVOLVIDO", "APROVADO"] as const;
+/** Pedido já comprado e ainda não recebido. */
+export const STATUS_PEDIDO_A_CAMINHO = ["COMPRADO"] as const;
+
+export function pedidoEstaFeito(pedido: Pick<PedidoDoEstoque, "status"> | null | undefined) {
+  return Boolean(pedido && (STATUS_PEDIDO_FEITO as readonly string[]).includes(pedido.status));
+}
+
+export function pedidoEstaACaminho(pedido: Pick<PedidoDoEstoque, "status"> | null | undefined) {
+  return Boolean(pedido && (STATUS_PEDIDO_A_CAMINHO as readonly string[]).includes(pedido.status));
+}
+
+/**
+ * O pedido aberto de um item (o que responde "já pediram isso?").
+ *
+ * Se houver mais de um (não devia: "Pedir tudo" não repete item com pedido
+ * aberto), vale o que está mais adiante no caminho — comprado, depois
+ * aprovado, aguardando, devolvido — e, empatando, o de número maior (o mais novo).
+ * Recusado, cancelado e recebido não seguram o item: ele volta a pedir compra.
+ */
+export function pedidoAbertoDoItem(itemId: string, pedidos: PedidoDoEstoque[] = []): PedidoDoEstoque | null {
+  const peso: Record<string, number> = { COMPRADO: 0, APROVADO: 1, ENVIADO: 2, DEVOLVIDO: 3 };
+  const abertos = pedidos
+    .filter((pedido) => pedido.status in peso && pedido.itens.some((linha) => linha.estoqueItemRef === itemId))
+    .sort((a, b) => peso[a.status] - peso[b.status] || (b.numero ?? 0) - (a.numero ?? 0));
+  return abertos[0] ?? null;
+}
+
+/**
+ * A compra pertence a um pedido de compra? Essas se recebem pelo pedido
+ * ("Chegou? Confirmar recebimento"), que dá a entrada de cada item de uma vez —
+ * não pela "chegada pendente" do estoque, senão a mesma caixa entraria duas vezes.
+ *
+ * Duas formas de saber, porque nem toda listagem de compras traz a coluna
+ * fin_purchases.pedido_ref (a do estoque, listRemoteComprasParaEstoque, não
+ * traz; e antes da migração de 06/10 ela nem existe):
+ *   · a compra tem pedidoRef;
+ *   · algum pedido aponta para ela em compraRef (o gatilho do banco preenche).
+ * Quem enxerga a compra do setor enxerga os pedidos do setor (as duas regras
+ * saem de estoque_pode), então a segunda forma basta sozinha.
+ */
+export function compraEhDePedido(compra: FinPurchase, pedidos: PedidoDoEstoque[] = []): boolean {
+  if (compra.pedidoRef) return true;
+  return pedidos.some((pedido) => Boolean(pedido.compraRef) && pedido.compraRef === compra.id);
+}
 
 /**
  * A COMPRA ABERTA DE UM ITEM (21/09/2026).
@@ -150,10 +320,16 @@ export function compraAbertaDoItem(
  * para uma medicação que já estava vindo — e o Lucas comprar de novo, ou travar
  * na dúvida. Zerado continua zerado mesmo com compra a caminho: o paciente de
  * hoje não pode esperar a transportadora.
+ *
+ * `temPedidoFeito` (06/10/2026): o setor já pediu e o pedido ainda não virou
+ * compra (aguardando aprovação, aprovado ou devolvido para ajuste). O item
+ * deixa de gritar COMPRAR — a tarefa do setor já foi feita — e vira "Pedido
+ * feito". Compra registrada vence o pedido: se as duas coisas existem, é
+ * "a caminho". Zerado continua zerado aqui também, pelo mesmo motivo.
  */
-export function statusDoItem(saldo: number, minimo: number, temCompraAberta = false): EstoqueStatus {
+export function statusDoItem(saldo: number, minimo: number, temCompraAberta = false, temPedidoFeito = false): EstoqueStatus {
   if (saldo <= 0) return "ZERADO";
-  if (minimo > 0 && saldo <= minimo) return temCompraAberta ? "A_CAMINHO" : "COMPRAR";
+  if (minimo > 0 && saldo <= minimo) return temCompraAberta ? "A_CAMINHO" : temPedidoFeito ? "PEDIDO" : "COMPRAR";
   return "OK";
 }
 
@@ -164,14 +340,21 @@ export type PosicaoItem = {
   ultimoMovimento: string | null;
   /** A compra já feita e ainda não recebida. É o que responde "já comprei?". */
   compraAberta: FinPurchase | null;
+  /** O pedido de compra aberto do item (06/10/2026). É o que responde "já pediram?". */
+  pedidoAberto: PedidoDoEstoque | null;
 };
 
-/** A posição de um setor inteiro, pronta para a tabela e para o relatório. */
+/**
+ * A posição de um setor inteiro, pronta para a tabela e para o relatório.
+ * `pedidos` (06/10/2026): os pedidos de compra que a pessoa enxerga — sem eles,
+ * o comportamento é exatamente o de antes.
+ */
 export function posicaoDoSetor(
   items: EstoqueItem[],
   moves: EstoqueMovimento[],
   setor: EstoqueSetor,
   purchases: FinPurchase[] = [],
+  pedidos: PedidoDoEstoque[] = [],
 ): PosicaoItem[] {
   return items
     .filter((item) => item.setor === setor)
@@ -180,18 +363,23 @@ export function posicaoDoSetor(
       const ultimo = doItem.length ? doItem.reduce((a, b) => (ordemCronologica(a, b) >= 0 ? a : b)) : null;
       const saldo = saldoDoItem(moves, item.id);
       const compraAberta = compraAbertaDoItem(item.id, purchases, moves);
+      const pedidoAberto = pedidoAbertoDoItem(item.id, pedidos);
       return {
         item,
         saldo,
-        status: statusDoItem(saldo, item.minimo, Boolean(compraAberta)),
+        // Pedido já comprado conta como compra a caminho, mesmo quando a
+        // compra não aponta o item (um pedido costuma ter vários itens).
+        status: statusDoItem(saldo, item.minimo, Boolean(compraAberta) || pedidoEstaACaminho(pedidoAberto), pedidoEstaFeito(pedidoAberto)),
         ultimoMovimento: ultimo?.movDate ?? null,
         compraAberta,
+        pedidoAberto,
       };
     })
     .sort((a, b) => {
-      // Quem precisa de atenção primeiro: zerado, comprar, a caminho, OK. O que
-      // já foi comprado desce — não é mais tarefa de ninguém até chegar.
-      const peso = { ZERADO: 0, COMPRAR: 1, A_CAMINHO: 2, OK: 3 } as const;
+      // Quem precisa de atenção primeiro: zerado, comprar, pedido feito, a
+      // caminho, OK. O que já foi pedido ou comprado desce — não é mais tarefa
+      // do setor até chegar (o pedido feito ainda espera alguém decidir).
+      const peso = { ZERADO: 0, COMPRAR: 1, PEDIDO: 2, A_CAMINHO: 3, OK: 4 } as const;
       if (peso[a.status] !== peso[b.status]) return peso[a.status] - peso[b.status];
       return a.item.nome.localeCompare(b.item.nome, "pt-BR");
     });
@@ -282,11 +470,19 @@ export function alertasDeValidade(
  * A régua é o movimento (compraRef), não o "Chegou" da compra: uma compra pode
  * ser carimbada como recebida no Financeiro sem ninguém ter dado a entrada — e
  * é exatamente esse esquecimento que a pendência existe para pegar.
+ *
+ * Compra de PEDIDO DE COMPRA fica de fora (06/10/2026): ela se recebe pelo
+ * pedido, item a item — veja compraEhDePedido.
  */
-export function chegadasPendentes(purchases: FinPurchase[], moves: EstoqueMovimento[], setor: EstoqueSetor): FinPurchase[] {
+export function chegadasPendentes(
+  purchases: FinPurchase[],
+  moves: EstoqueMovimento[],
+  setor: EstoqueSetor,
+  pedidos: PedidoDoEstoque[] = [],
+): FinPurchase[] {
   const jaDeuEntrada = new Set(moves.filter((mov) => mov.compraRef).map((mov) => mov.compraRef));
   return purchases
-    .filter((purchase) => purchase.estoqueSetor === setor && !jaDeuEntrada.has(purchase.id))
+    .filter((purchase) => purchase.estoqueSetor === setor && !jaDeuEntrada.has(purchase.id) && !compraEhDePedido(purchase, pedidos))
     .sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
 }
 
@@ -309,8 +505,12 @@ export function relatorioPosicao(
   moves: EstoqueMovimento[],
   setor: EstoqueSetor,
   todayISO: string,
+  // 06/10/2026: com compras e pedidos, o papel impresso diz "a caminho" e
+  // "pedido feito" igual à tela (sem eles, igual a antes).
+  purchases: FinPurchase[] = [],
+  pedidos: PedidoDoEstoque[] = [],
 ): RelatorioPosicao {
-  const posicao = posicaoDoSetor(items, moves, setor);
+  const posicao = posicaoDoSetor(items, moves, setor, purchases, pedidos);
   const vencendo = alertasDeValidade(items.filter((item) => item.setor === setor), moves, todayISO).length;
   return {
     titulo: `Posição de estoque — ${setorLabels[setor]}`,
@@ -481,6 +681,8 @@ export type ItemDaListaDeCompra = {
   comprar: number;
   /** Compra já registrada e não recebida. Só aparece em item ZERADO, que fica na lista mesmo assim. */
   jaComprado?: FinPurchase | null;
+  /** Pedido de compra aberto (06/10/2026). Também só em item ZERADO, pelo mesmo motivo. */
+  jaPedido?: PedidoDoEstoque | null;
 };
 
 /**
@@ -493,19 +695,60 @@ export function listaDeCompra(
   moves: EstoqueMovimento[],
   setor: EstoqueSetor,
   purchases: FinPurchase[] = [],
+  pedidos: PedidoDoEstoque[] = [],
 ): ItemDaListaDeCompra[] {
-  return posicaoDoSetor(items, moves, setor, purchases)
+  return posicaoDoSetor(items, moves, setor, purchases, pedidos)
     // O que já foi comprado sai da lista de comprar — é o ponto inteiro: a
     // lista tem que responder "o que falta COMPRAR", não "o que está baixo".
     // Item ZERADO fica mesmo com compra a caminho: falta hoje, e quem atende
-    // hoje precisa saber.
+    // hoje precisa saber. O mesmo vale para o pedido feito (06/10/2026): sai
+    // da lista (status PEDIDO), menos o zerado, que fica marcado "já pedido".
     .filter((linha) => linha.status === "ZERADO" || linha.status === "COMPRAR")
     .map((linha) => ({
       item: linha.item,
       saldo: linha.saldo,
       comprar: Math.max(Math.ceil(linha.item.minimo * 2 - linha.saldo), 1),
       jaComprado: linha.compraAberta,
+      jaPedido: linha.pedidoAberto,
     }));
+}
+
+/**
+ * EM FALTA E SEM PEDIDO (06/10/2026): o que ainda é tarefa do setor — item
+ * zerado ou abaixo do mínimo que ninguém pediu nem comprou. É o número que a
+ * Home cobra e o que o botão "Pedir tudo o que está em falta" leva.
+ */
+export function emFaltaSemPedido(posicao: PosicaoItem[]): PosicaoItem[] {
+  return posicao.filter(
+    (linha) => (linha.status === "COMPRAR" || linha.status === "ZERADO") && !linha.compraAberta && !linha.pedidoAberto,
+  );
+}
+
+export type ResumoDaFalta = {
+  /** Em falta (zerado ou abaixo do mínimo) e sem pedido nem compra — a tarefa. */
+  semPedido: number;
+  /** Desses, quantos estão zerados (é o que torna a tarefa "para hoje"). */
+  zeradosSemPedido: number;
+  /** Em falta, com pedido feito que ainda não virou compra. */
+  jaPedidos: number;
+  /** Em falta, já comprados (pela compra ou pelo pedido) e ainda não recebidos. */
+  aCaminho: number;
+};
+
+/** Os números da falta de um setor, já separando o que é tarefa do que já anda. */
+export function resumoDaFalta(posicao: PosicaoItem[]): ResumoDaFalta {
+  const emFalta = posicao.filter((linha) => linha.status !== "OK");
+  const semPedido = emFaltaSemPedido(posicao);
+  const aCaminho = emFalta.filter((linha) => linha.compraAberta || pedidoEstaACaminho(linha.pedidoAberto));
+  const jaPedidos = emFalta.filter(
+    (linha) => !linha.compraAberta && pedidoEstaFeito(linha.pedidoAberto),
+  );
+  return {
+    semPedido: semPedido.length,
+    zeradosSemPedido: semPedido.filter((linha) => linha.status === "ZERADO").length,
+    jaPedidos: jaPedidos.length,
+    aCaminho: aCaminho.length,
+  };
 }
 
 /**

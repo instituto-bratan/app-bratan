@@ -90,9 +90,9 @@ export function FilaDoDiaHome({
             <Clock3 className="h-5 w-5" aria-hidden="true" />
             Fila do dia
             <InfoTip title="O que é isto">
-              Tudo que precisa de uma ação sua, numa lista só, ordenada por urgência: contas e compras, pagamentos sem comprovante,
-              notas a emitir, toques do CRM, lembretes, estoque abaixo do mínimo, pacientes esperando o contato de NPS, o checklist e
-              o fechamento de ontem. Cada pessoa vê só o que o seu cargo cuida. Nada é digitado aqui — o botão leva para a tela
+              Tudo que precisa de uma ação sua, numa lista só, ordenada por urgência: contas e compras, pedidos de compra (aprovar,
+              comprar, ajustar ou confirmar a chegada), pagamentos sem comprovante, notas a emitir, toques do CRM, lembretes, estoque
+              em falta e sem pedido, pacientes esperando o contato de NPS, o checklist e o fechamento de ontem. Cada pessoa vê só o que o seu cargo cuida. Nada é digitado aqui — o botão leva para a tela
               onde a ação acontece e, feita a ação, o item sai sozinho. &quot;Silenciar&quot; esconde por um dia ou por uma semana só
               neste aparelho. No computador: setas andam pela lista; 1 abre, 2 silencia até amanhã, 3 silencia por 7 dias.
             </InfoTip>

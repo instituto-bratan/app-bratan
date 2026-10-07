@@ -16,7 +16,7 @@ import type { FilaFinanceira } from "@/features/financeiro/filaFinanceira";
 import { saleTotal, type FinReconciliation, type FinSale } from "@/features/financeiro/financeiroData";
 import { diaUtilAnterior } from "@/features/financeiro/recebiveisRede";
 
-export type OrigemFila = "CONTA" | "COMPRA" | "COMPROVANTE" | "NOTA" | "CRM" | "LEMBRETE" | "ESTOQUE" | "NPS" | "CHECKLIST" | "FECHAMENTO" | "AVISO" | "ACHADO";
+export type OrigemFila = "CONTA" | "COMPRA" | "PEDIDO" | "COMPROVANTE" | "NOTA" | "CRM" | "LEMBRETE" | "ESTOQUE" | "NPS" | "CHECKLIST" | "FECHAMENTO" | "AVISO" | "ACHADO";
 
 /** 0 = atrasado · 1 = hoje · 2 = esta semana · 3 = para saber. */
 export type Urgencia = 0 | 1 | 2 | 3;
@@ -71,8 +71,14 @@ export type EntradasDaFila = {
   /** Tarefas do CRM já filtradas para a pessoa (o motor classifica pela data). */
   crmTasks?: TarefaCrmDaFila[];
   lembretes?: { vencidos: { id: string; nome: string; valor: number; data: string }[]; hoje: { id: string; nome: string; valor: number; data: string }[] } | null;
-  /** Itens abaixo do mínimo por setor do estoque. */
-  estoque?: { setor: string; rotulo: string; itens: number; zerados: number }[];
+  /**
+   * Itens em falta por setor do estoque. Desde 06/10/2026 (pedidos de compra),
+   * `itens` e `zerados` contam só o que AINDA não tem pedido nem compra — é a
+   * tarefa; o que já foi pedido ou está a caminho vem à parte, só na frase.
+   */
+  estoque?: EntradaEstoqueDaFila[];
+  /** Pedidos de compra (06/10/2026): o que espera a pessoa, conforme o papel dela no fluxo. */
+  pedidos?: EntradaPedidosDaFila | null;
   /** Pacientes que passaram e ainda não receberam o contato de NPS. */
   npsFila?: { quantidade: number; maisAntigoDias: number } | null;
   checklist?: { pendentes: number; proxima: string | null } | null;
@@ -85,6 +91,69 @@ export type EntradasDaFila = {
   achados?: { id: string; chave: string; tipo: string; dia: string; titulo: string; detalhe: string; valor: number | null; href: string; urgencia: Urgencia; quantidade: number }[];
   /** chave → ISO do dia até o qual o item fica escondido. */
   silenciados?: Record<string, string>;
+};
+
+export type EntradaEstoqueDaFila = {
+  setor: string;
+  rotulo: string;
+  /** Em falta (zerado ou abaixo do mínimo) e sem pedido nem compra. */
+  itens: number;
+  /** Desses, quantos estão zerados. */
+  zerados: number;
+  /** Em falta, mas já pedidos (esperando aprovação ou compra). */
+  jaPedidos?: number;
+  /** Em falta, mas já comprados e a caminho. */
+  aCaminho?: number;
+  /** Para onde o botão leva (padrão: /estoque). */
+  href?: string;
+  /**
+   * O verbo do botão (07/10/2026): "Pedir compra" só quando o href abre o
+   * pedido já preenchido; "Ver no estoque" quando leva ao Estoque.
+   */
+  acao?: string;
+  /** Resumo de setores que não são da pessoa (coordenação): entra como "para saber". */
+  paraSaber?: boolean;
+  /** Frase pronta (o resumo dos outros setores diz quais são). */
+  detalhe?: string;
+};
+
+/**
+ * PEDIDOS DE COMPRA NA FILA (06/10/2026, POP-COMP-001). Cada papel do fluxo
+ * vê só a sua vez: quem aprova, os que esperam decisão; o Financeiro, os
+ * aprovados que falta comprar; o setor (ou quem pediu), o devolvido para
+ * ajustar e o comprado que já devia ter chegado.
+ */
+export type EntradaPedidosDaFila = {
+  aprovar?: {
+    quantidade: number;
+    valor: number;
+    urgentes: number;
+    /** Passaram do prazo de resposta (1 dia útil; urgente, no mesmo dia — estaAtrasado). */
+    atrasados: number;
+    /** Dias úteis do mais antigo. */
+    maisAntigoDias: number;
+    /** Dia (ISO) em que o mais antigo foi enviado. */
+    desde: string;
+  } | null;
+  comprar?: {
+    quantidade: number;
+    valor: number;
+    urgentes: number;
+    /** Com "para quando" já vencido. */
+    vencidos: number;
+    /** Dias úteis desde a aprovação do mais antigo. */
+    maisAntigoDias: number;
+    desde: string;
+  } | null;
+  devolvidos?: { id: string; numero: string; titulo: string; motivo: string; dia: string }[];
+  chegou?: { id: string; numero: string; titulo: string; fornecedor: string; previsao: string | null; dia: string; atrasado: boolean }[];
+  /**
+   * Recusado, ou cancelado por outra pessoa, nos últimos 7 dias (07/10/2026):
+   * o setor e quem pediu ficam sabendo, com o motivo ("para saber").
+   */
+  parados?: { id: string; numero: string; titulo: string; status: "RECUSADO" | "CANCELADO"; por: string; motivo: string; dia: string }[];
+  /** Recebido diferente do pedido nos últimos 7 dias: quem compra confere a nota e cobra o fornecedor (07/10/2026). */
+  divergencias?: { id: string; numero: string; titulo: string; setor: string; texto: string; dia: string }[];
 };
 
 const brl = (valor: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(valor || 0);
@@ -203,10 +272,89 @@ export function buildFilaDoDia(entrada: EntradasDaFila): FilaDoDia {
     }
   }
 
+  // ---- pedidos de compra (06/10/2026) --------------------------------------------
+  // Os links usam o que a tela /compras lê da URL (pedidoTela.lerPedidoDaUrl):
+  // ?filtro= abre a lista certa e ?pedido= abre o pedido da vez.
+  const ped = entrada.pedidos;
+  // &acao= (07/10/2026): "Ajustar" e "Confirmar" abrem a gaveta certa, não só a lista.
+  const linkDoPedido = (id: string, acao?: "receber" | "ajustar") => `/compras?pedido=${encodeURIComponent(id)}${acao ? `&acao=${acao}` : ""}`;
+  if (ped?.aprovar && ped.aprovar.quantidade > 0) {
+    const a = ped.aprovar;
+    const partes = [
+      a.urgentes ? `${a.urgentes} ${plural(a.urgentes, "urgente", "urgentes")}` : "",
+      a.maisAntigoDias > 0 ? `o mais antigo espera há ${a.maisAntigoDias} ${plural(a.maisAntigoDias, "dia útil", "dias úteis")}` : "chegou hoje",
+    ].filter(Boolean);
+    // Passou do prazo de resposta (1 dia útil; urgente, no mesmo dia) já é
+    // atraso — a mesma régua da tela de pedidos (estaAtrasado, 07/10/2026).
+    itens.push({ chave: "pedido:aprovar", origem: "PEDIDO", titulo: `${a.quantidade} ${plural(a.quantidade, "pedido de compra espera", "pedidos de compra esperam")} sua aprovação`, detalhe: partes.join(" · "), quando: a.desde || hoje, urgencia: a.atrasados ? 0 : 1, valor: a.valor > 0 ? a.valor : undefined, href: "/compras?filtro=AGUARDANDO", acao: "Decidir", quantidade: a.quantidade });
+  }
+  if (ped?.comprar && ped.comprar.quantidade > 0) {
+    const c = ped.comprar;
+    const partes = [
+      c.vencidos ? `${c.vencidos} já ${plural(c.vencidos, "passou", "passaram")} do "para quando"` : "",
+      c.urgentes ? `${c.urgentes} ${plural(c.urgentes, "urgente", "urgentes")}` : "",
+      c.maisAntigoDias > 0 ? `o mais antigo foi aprovado há ${c.maisAntigoDias} ${plural(c.maisAntigoDias, "dia útil", "dias úteis")}` : "aprovado hoje",
+    ].filter(Boolean);
+    const urgencia: Urgencia = c.vencidos ? 0 : c.urgentes || c.maisAntigoDias >= 2 ? 1 : 2;
+    itens.push({ chave: "pedido:comprar", origem: "PEDIDO", titulo: `${c.quantidade} ${plural(c.quantidade, "pedido aprovado", "pedidos aprovados")} para comprar`, detalhe: partes.join(" · "), quando: c.desde || hoje, urgencia, valor: c.valor > 0 ? c.valor : undefined, href: "/compras?filtro=APROVADOS", acao: "Registrar compra", quantidade: c.quantidade });
+  }
+  const devolvidos = ped?.devolvidos ?? [];
+  for (const d of devolvidos.slice(0, 5)) {
+    itens.push({ chave: `pedido:devolvido:${d.id}`, origem: "PEDIDO", titulo: `Pedido ${d.numero} devolvido: ajuste e reenvie`, detalhe: `${d.titulo}${d.motivo ? ` · motivo: ${d.motivo}` : ""}`, quando: d.dia || hoje, urgencia: 1, href: linkDoPedido(d.id, "ajustar"), acao: "Ajustar", quantidade: 1 });
+  }
+  if (devolvidos.length > 5) {
+    itens.push({ chave: "pedido:devolvidos-resto", origem: "PEDIDO", titulo: `+${devolvidos.length - 5} pedidos devolvidos para ajuste`, detalhe: "em Pedidos de compra", quando: hoje, urgencia: 1, href: "/compras?filtro=DEVOLVIDOS", acao: "Ver todos", quantidade: devolvidos.length - 5 });
+  }
+  const chegou = ped?.chegou ?? [];
+  for (const p of chegou.slice(0, 5)) {
+    const quando = p.previsao ? (p.atrasado ? `era para ${diaCurto(p.previsao)}` : "previsto para hoje") : `comprado em ${diaCurto(p.dia)}`;
+    itens.push({ chave: `pedido:chegou:${p.id}`, origem: "PEDIDO", titulo: `Pedido ${p.numero} chegou? Confirme o recebimento`, detalhe: [p.titulo, p.fornecedor, quando].filter(Boolean).join(" · "), quando: p.previsao || p.dia || hoje, urgencia: p.atrasado ? 0 : 1, href: linkDoPedido(p.id, "receber"), acao: "Confirmar", quantidade: 1 });
+  }
+  if (chegou.length > 5) {
+    itens.push({ chave: "pedido:chegou-resto", origem: "PEDIDO", titulo: `+${chegou.length - 5} pedidos comprados esperando a confirmação da chegada`, detalhe: "em Pedidos de compra", quando: hoje, urgencia: 1, href: "/compras?filtro=A_CAMINHO", acao: "Ver todos", quantidade: chegou.length - 5 });
+  }
+  // Recusado / cancelado por outra pessoa (07/10/2026): "para saber", com o
+  // motivo — antes a tela dizia "o setor é avisado" e nada avisava.
+  for (const p of (ped?.parados ?? []).slice(0, 5)) {
+    const titulo =
+      p.status === "RECUSADO"
+        ? `Pedido ${p.numero} recusado${p.motivo ? `: ${p.motivo}` : ""}`
+        : `Pedido ${p.numero} cancelado${p.por ? ` por ${p.por}` : ""}${p.motivo ? `: ${p.motivo}` : ""}`;
+    itens.push({ chave: `pedido:parado:${p.id}`, origem: "PEDIDO", titulo, detalhe: `${p.titulo} · se ainda precisar, faça um pedido novo explicando`, quando: p.dia || hoje, urgencia: 3, href: linkDoPedido(p.id), acao: "Ver o pedido", quantidade: 1 });
+  }
+  // Chegou diferente do pedido (07/10/2026; fluxograma, passo 7): o Financeiro confere a nota e cobra o fornecedor.
+  for (const d of (ped?.divergencias ?? []).slice(0, 5)) {
+    itens.push({ chave: `pedido:divergencia:${d.id}`, origem: "PEDIDO", titulo: `Pedido ${d.numero} chegou diferente do pedido`, detalhe: `${d.setor} · ${d.texto}`, quando: d.dia || hoje, urgencia: 2, href: linkDoPedido(d.id), acao: "Conferir", quantidade: 1 });
+  }
+
   // ---- estoque, NPS, checklist, fechamento, avisos -------------------------------
   for (const setor of entrada.estoque ?? []) {
     if (setor.itens <= 0) continue;
-    itens.push({ chave: `estoque:${setor.setor}`, origem: "ESTOQUE", titulo: `${setor.itens} ${plural(setor.itens, "item", "itens")} abaixo do mínimo · ${setor.rotulo}`, detalhe: setor.zerados ? `${setor.zerados} ${plural(setor.zerados, "zerado", "zerados")} — comprar antes que falte` : "lista de compra pronta no Estoque", quando: hoje, urgencia: setor.zerados ? 1 : 2, href: "/estoque", acao: "Ver lista", quantidade: setor.itens });
+    // O que já foi pedido ou está a caminho não é tarefa (06/10/2026): só entra
+    // na frase, para ninguém pedir de novo.
+    const andando = [
+      setor.jaPedidos ? `${setor.jaPedidos} já ${plural(setor.jaPedidos, "pedido", "pedidos")}` : "",
+      setor.aCaminho ? `${setor.aCaminho} a caminho` : "",
+    ].filter(Boolean);
+    const detalhe = setor.detalhe ?? [
+      setor.zerados ? `${setor.zerados} ${plural(setor.zerados, "zerado", "zerados")} — peça a compra antes que falte` : "abaixo do mínimo — peça a compra pelo Estoque",
+      ...andando,
+    ].join(" · ");
+    itens.push({
+      chave: `estoque:${setor.setor}`,
+      origem: "ESTOQUE",
+      titulo: setor.paraSaber
+        ? `${setor.itens} ${plural(setor.itens, "item", "itens")} em falta e sem pedido · ${setor.rotulo}`
+        : `${setor.itens} ${plural(setor.itens, "item", "itens")} em falta · ${setor.rotulo}`,
+      detalhe,
+      quando: hoje,
+      urgencia: setor.paraSaber ? 3 : setor.zerados ? 1 : 2,
+      href: setor.href ?? "/estoque",
+      // 07/10/2026: o verbo diz para onde o botão leva ("Pedir compra" só
+      // quando abre o pedido preenchido; senão "Ver no estoque").
+      acao: setor.acao ?? (setor.paraSaber ? "Ver" : "Ver no estoque"),
+      quantidade: setor.itens,
+    });
   }
   if (entrada.npsFila && entrada.npsFila.quantidade > 0) {
     const n = entrada.npsFila;
@@ -259,6 +407,7 @@ export function buildFilaDoDia(entrada: EntradasDaFila): FilaDoDia {
 export const origemLabels: Record<OrigemFila, string> = {
   CONTA: "conta a pagar",
   COMPRA: "compra",
+  PEDIDO: "pedido de compra",
   COMPROVANTE: "comprovante",
   NOTA: "nota fiscal",
   CRM: "toque do CRM",
