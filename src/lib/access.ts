@@ -264,6 +264,8 @@ export type ModuleKey =
   | "agenda"
   | "compras"
   | "compras-aprovacao"
+  // 07/10/2026: emitir nota fiscal virou permissão própria (só o Estevão, por padrão).
+  | "nf-emitir"
   | "pacientes";
 
 export const moduleLabels: Record<ModuleKey, string> = {
@@ -284,6 +286,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   "fin-p12": "Financeiro · P12",
   "fin-metas": "Financeiro · Metas do Mês",
   "fin-impostos": "Financeiro · Impostos & NF",
+  "nf-emitir": "Emitir nota fiscal (fechamento, lote e Impostos & NFs)",
   "fin-repasses": "Financeiro · Repasses",
   "fin-pdca": "Financeiro · PDCA",
   "fin-gestao": "Financeiro · Painel do Mês (Reunião de Líderes)",
@@ -377,6 +380,15 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
       return canInteligencia360(cargo) ? "VER" : "OCULTO";
+    case "nf-emitir":
+      // EMITIR NOTA FISCAL (07/10/2026). Lucas: "quero que apenas o Estevão
+      // emita as notas no fechamento, ninguém mais, e que isso dê para a gente
+      // controlar o acesso". Por isso o padrão é SÓ o cargo gestor (Estevão);
+      // todos os outros — inclusive gestor financeiro, CEO e Dr. Daniel — ficam
+      // sem, e a tela Acessos libera (EDITAR) quem precisar. VER não emite.
+      // Espelho de pode_emitir_nota() (202610070001_notas_sem_duplicar.sql),
+      // que a função focus-nfse consulta antes de pedir a nota à prefeitura.
+      return cargo === "gestor" ? "EDITAR" : "OCULTO";
     case "fin-fatura":
       // Fatura do cartão linha a linha (29/09/2026): só o financeiro completo.
       // O gestor e a concierge veem o resultado na P12 (rateio por categoria),
@@ -414,6 +426,28 @@ export function canSeeModule(pessoa: { cargo?: Cargo | null; acessos?: Record<st
 export function canEditModule(pessoa: { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined, module: ModuleKey) {
   return moduleLevel(pessoa, module) === "EDITAR";
 }
+
+/**
+ * Quem pode EMITIR nota fiscal (07/10/2026): o fechamento do Kanban, o Lançar
+ * Dia, o diálogo da comanda, o lote e Impostos & NFs só pedem a nota à
+ * prefeitura quando isto é verdade. A exceção de Acessos vence nas duas
+ * direções (EDITAR libera; OCULTO ou VER tiram) — a mesma regra que o servidor
+ * aplica, então a tela não oferece um botão que a função focus-nfse recusaria.
+ */
+export function podeEmitirNota(pessoa: { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined) {
+  return moduleLevel(pessoa, "nf-emitir") === "EDITAR";
+}
+
+/** O que aparece no lugar do botão de emitir para quem não pode (07/10/2026). */
+export const avisoQuemEmiteNota = "Quem emite nota fiscal é o Estevão (Administração › Acessos › Emitir nota fiscal)";
+
+/**
+ * O recado depois de salvar, para quem não emite (07/10/2026): a comanda foi
+ * gravada normalmente e ficou sem nota — é ela que aparece em "Comandas
+ * aguardando NF" (Impostos & NFs) e com "sem nota fiscal" no Lançar Dia, onde
+ * quem emite pega.
+ */
+export const recadoNotaNaFila = "Nota fiscal: quem emite é o Estevão. A comanda ficou na fila de notas.";
 
 export function cargoDefaultLevelFor(cargo: Cargo | null | undefined, module: ModuleKey) {
   return cargoDefaultLevel(cargo, module);

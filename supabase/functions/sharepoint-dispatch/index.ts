@@ -13,6 +13,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
 import { pastaDoArquivo } from "../_shared/pastaPorTipo.ts";
 import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
+import { CORS } from "../_shared/integracoes.ts";
+import { marcarNotaCanceladaNoSharePoint } from "../_shared/sharepointGraph.ts";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 const SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024;
@@ -35,7 +37,9 @@ type QueueRow = {
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    // CORS (07/10/2026): a coordenação chama as ações de limpeza pelo app; quem
+    // pode chamar continua decidido pelo exigirAcesso, não pelo navegador.
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...CORS },
   });
 }
 
@@ -112,9 +116,9 @@ async function ensureFolderPath(token: string, driveId: string, folderPath: stri
   }
 }
 
-async function uploadSmallFile(token: string, driveId: string, drivePath: string, bytes: Uint8Array, mimeType: string) {
+async function uploadSmallFile(token: string, driveId: string, drivePath: string, bytes: Uint8Array, mimeType: string, conflito = "rename") {
   const response = await fetch(
-    `${GRAPH_BASE}/drives/${driveId}/root:/${encodeDrivePath(drivePath)}:/content?@microsoft.graph.conflictBehavior=rename`,
+    `${GRAPH_BASE}/drives/${driveId}/root:/${encodeDrivePath(drivePath)}:/content?@microsoft.graph.conflictBehavior=${conflito}`,
     {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": mimeType || "application/octet-stream" },
@@ -128,13 +132,13 @@ async function uploadSmallFile(token: string, driveId: string, drivePath: string
   return response.json();
 }
 
-async function uploadLargeFile(token: string, driveId: string, drivePath: string, bytes: Uint8Array) {
+async function uploadLargeFile(token: string, driveId: string, drivePath: string, bytes: Uint8Array, conflito = "rename") {
   const sessionResponse = await fetch(
     `${GRAPH_BASE}/drives/${driveId}/root:/${encodeDrivePath(drivePath)}:/createUploadSession`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "rename" } }),
+      body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": conflito } }),
     },
   );
 
@@ -202,6 +206,59 @@ Deno.serve(async (request) => {
   // SharePoint (PATCH parentReference), sem baixar nem subir de novo, e
   // registra a pasta nova na fila. Só roda quando pedido no corpo.
   const pedido = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  // LIMPEZA DAS NOTAS DUPLICADAS (07/10/2026): apaga do SharePoint o item extra
+  // das linhas que a migração 202610070001 marcou como DUPLICADA (o mesmo
+  // arquivo subiu duas vezes). DELETE no Graph manda para a lixeira do site —
+  // dá para recuperar. A linha fica na fila como histórico, sem o item.
+  if (pedido.acao === "remover_duplicadas") {
+    const { data: extras, error: erroExtras } = await supabase
+      .from("sharepoint_dispatch_queue")
+      .select("id, file_name, sharepoint_item_id, last_error")
+      .eq("module", "NOTA_EMITIDA")
+      .eq("status", "SKIPPED")
+      .like("last_error", "DUPLICADA%")
+      .not("sharepoint_item_id", "is", null)
+      .neq("sharepoint_item_id", "")
+      .limit(100);
+    if (erroExtras) return json({ error: erroExtras.message }, 500);
+    if (!extras?.length) return json({ configured: true, removidos: 0, message: "Nenhuma cópia duplicada para remover." });
+    let token: string;
+    try {
+      token = await getGraphToken(tenantId, clientId, clientSecret);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    }
+    let removidos = 0;
+    const erros: string[] = [];
+    for (const linha of extras as { id: string; file_name: string; sharepoint_item_id: string; last_error: string }[]) {
+      const r = await fetch(`${GRAPH_BASE}/drives/${driveId}/items/${linha.sharepoint_item_id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok || r.status === 404) {
+        await supabase.from("sharepoint_dispatch_queue").update({ sharepoint_item_id: "", sharepoint_web_url: "", last_error: `${linha.last_error} Removida do SharePoint (lixeira) em ${new Date().toISOString().slice(0, 16)}.`.slice(0, 900) }).eq("id", linha.id);
+        removidos += 1;
+      } else {
+        erros.push(`${linha.file_name}: ${r.status} ${(await r.text()).slice(0, 160)}`);
+      }
+    }
+    return json({ configured: true, removidos, erros });
+  }
+
+  // CANCELADAS COM O NOME (07/10/2026): toda nota emitida que está CANCELADA no
+  // registro (nfse_emissao) tem os arquivos renomeados para "… - CANCELADA".
+  // Daqui para a frente a focus-nfse faz isso na hora do cancelamento; esta ação
+  // acerta as que foram canceladas antes.
+  if (pedido.acao === "marcar_canceladas") {
+    const { data: canceladas, error: erroCanc } = await supabase.from("nfse_emissao").select("ref, numero").ilike("status", "cancelad%");
+    if (erroCanc) return json({ error: erroCanc.message }, 500);
+    let renomeados = 0;
+    const erros: string[] = [];
+    for (const nota of (canceladas ?? []) as { ref: string; numero: string | null }[]) {
+      const r = await marcarNotaCanceladaNoSharePoint(supabase, nota.ref);
+      renomeados += r.renomeados;
+      erros.push(...r.erros.map((e) => `${nota.numero ?? nota.ref}: ${e}`));
+    }
+    return json({ configured: true, notas: (canceladas ?? []).length, renomeados, erros });
+  }
+
   if (pedido.acao === "mover_por_tipo") {
     const limite = Math.min(120, Math.max(1, Number(pedido.limite ?? 60)));
     const { data: enviados, error: erroLista } = await supabase
@@ -302,10 +359,15 @@ Deno.serve(async (request) => {
 
       await ensureFolderPath(token, driveId, folder, folderCache);
 
+      // NOTA EMITIDA SUBSTITUI, NÃO DUPLICA (07/10/2026): o nome do arquivo já
+      // é a identidade da nota ("NF 6209 - … - R$ 1.280,00.pdf"). Com "rename",
+      // uma segunda subida virava "… 1.pdf" e parecia outra nota. Para os
+      // demais módulos (comprovantes, notas recebidas) o "rename" continua.
+      const conflito = row.module === "NOTA_EMITIDA" ? "replace" : "rename";
       const item =
         bytes.length <= SIMPLE_UPLOAD_LIMIT
-          ? await uploadSmallFile(token, driveId, drivePath, bytes, row.mime_type)
-          : await uploadLargeFile(token, driveId, drivePath, bytes);
+          ? await uploadSmallFile(token, driveId, drivePath, bytes, row.mime_type, conflito)
+          : await uploadLargeFile(token, driveId, drivePath, bytes, conflito);
 
       await supabase
         .from("sharepoint_dispatch_queue")

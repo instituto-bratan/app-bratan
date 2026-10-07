@@ -24,6 +24,7 @@
 //    "deu erro". Cada nota volta com o seu resultado.
 import type { EscolhaDaNota, NaturezaDaNota, NotaParaEmitir } from "./notaNoFechamento";
 import { naturezaQueLevaOSinal } from "@/features/financeiro/sinaisDoPaciente";
+import { recadoNotaNaFila } from "@/lib/access";
 
 /** O tipo que a Edge Function e a tabela `nfse_emissao` entendem. */
 export type TipoDaNotaFiscal = "CONSULTA" | "BIOIMPEDANCIA" | "TRATAMENTO" | "UNIFICADA";
@@ -92,6 +93,12 @@ export type PedidoDeEmissao = {
    */
   sinais?: { saleRef: string }[];
   invocar: (slug: string, body: Record<string, unknown>) => Promise<Resposta>;
+  /**
+   * Quem pediu tem a permissão "Emitir nota fiscal" (podeEmitirNota, 07/10/2026)?
+   * Obrigatório de propósito: um chamador novo não consegue esquecer a regra.
+   * Sem ela, nada vai à prefeitura e a comanda fica na fila de notas.
+   */
+  podeEmitir: boolean;
 };
 
 function so(texto: unknown) {
@@ -108,6 +115,13 @@ function so(texto: unknown) {
 export async function emitirNotasDoFechamento(pedido: PedidoDeEmissao): Promise<ResultadoDaEmissao> {
   if (!pedido.notas.length) {
     return { notas: [], recado: "", tudoCerto: true };
+  }
+  // SÓ QUEM TEM A PERMISSÃO EMITE (07/10/2026, pedido do Lucas: "apenas o
+  // Estevão emite as notas no fechamento"). As telas já não chamam isto para
+  // quem não pode; a trava aqui é a segunda chave, antes de esperar a comanda
+  // e antes de qualquer chamada — o servidor recusaria do mesmo jeito.
+  if (pedido.podeEmitir !== true) {
+    return { notas: [], tudoCerto: false, recado: recadoNotaNaFila };
   }
   // A comanda é a chave do pedido: sem ela gravada, a Focus devolve "comanda
   // não encontrada" e a pessoa acha que a nota falhou quando só chegou cedo.

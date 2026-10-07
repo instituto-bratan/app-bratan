@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { avisoQuemEmiteNota, canEditModule, canFinanceiroFull, canFinanceiroView, podeEmitirNota } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -69,10 +69,16 @@ function EmissaoCard({
   entry,
   allInvoices,
   onRegister,
+  podeRegistrar,
 }: {
   entry: PendingInvoiceSale;
   allInvoices: FinInvoice[];
   onRegister: (invoices: FinInvoice[]) => void;
+  /**
+   * 07/10/2026: quem só VÊ a tela mas emite (o Estevão) usa o cartão para
+   * emitir pela Focus; registrar à mão no controle continua de quem edita.
+   */
+  podeRegistrar: boolean;
 }) {
   const { sale, breakdown, invoiced, remaining } = entry;
   const plans = useMemo(() => suggestInvoicePlans(sale, allInvoices), [sale, allInvoices]);
@@ -155,7 +161,7 @@ function EmissaoCard({
   const diffFromRemaining = linesTotal - remaining;
 
   function register() {
-    if (!parsedLines.length) return;
+    if (!podeRegistrar || !parsedLines.length) return;
     for (const line of parsedLines) {
       if (!line.numberText.trim()) return setError("Preencha o nº de todas as notas (o nº que a prefeitura emitiu).");
       if (!(line.amount > 0)) return setError("Toda nota precisa de um valor maior que zero.");
@@ -345,13 +351,17 @@ function EmissaoCard({
         >
           <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> nota
         </Button>
-        <label className="flex items-center gap-1">
-          <span className="text-[10px] font-semibold uppercase text-brand-oliva">Emissão</span>
-          <Input type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} className="h-9 w-36" />
-        </label>
-        <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={register}>
-          {vivasFocus.length ? "Registrar no controle" : "Registrar"} {parsedLines.length} nota{parsedLines.length > 1 ? "s" : ""} · {moneyFin(linesTotal)}
-        </LiquidButton>
+        {podeRegistrar ? (
+          <>
+            <label className="flex items-center gap-1">
+              <span className="text-[10px] font-semibold uppercase text-brand-oliva">Emissão</span>
+              <Input type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} className="h-9 w-36" />
+            </label>
+            <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={register}>
+              {vivasFocus.length ? "Registrar no controle" : "Registrar"} {parsedLines.length} nota{parsedLines.length > 1 ? "s" : ""} · {moneyFin(linesTotal)}
+            </LiquidButton>
+          </>
+        ) : null}
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs">
@@ -504,6 +514,9 @@ function LivroClasse({
 export function FinanceiroImpostosPage() {
   const { pessoa } = useAuth();
   const readOnly = !canEditModule(pessoa, "fin-impostos");
+  // 07/10/2026: emitir nota é permissão própria (podeEmitirNota), separada de
+  // editar esta tela. O Estevão só vê Impostos & NFs e é quem emite.
+  const podeEmitir = podeEmitirNota(pessoa);
   const now = todayISO();
   const [month, setMonth] = useState(now.slice(0, 7));
   const financeiro = useFinanceiro(Number(month.slice(0, 4)));
@@ -744,15 +757,15 @@ export function FinanceiroImpostosPage() {
           </CardHeader>
           <CardContent className="grid gap-3">
             {pending.length ? (
-              readOnly ? (
+              readOnly && !podeEmitir ? (
                 <p className="py-2 text-sm text-muted-foreground">
-                  {pending.length} comanda{pending.length > 1 ? "s" : ""} aguardando NF (emissão restrita ao financeiro).
+                  {pending.length} comanda{pending.length > 1 ? "s" : ""} aguardando NF. {avisoQuemEmiteNota}.
                 </p>
               ) : (
                 pending.map((entry) => (
                   // key inclui o valor já emitido: registrar uma nota parcial
                   // remonta o cartão e o plano sugerido recalcula do zero.
-                  <EmissaoCard key={`${entry.sale.id}:${entry.invoiced.toFixed(2)}`} entry={entry} allInvoices={financeiro.invoices} onRegister={registerBatch} />
+                  <EmissaoCard key={`${entry.sale.id}:${entry.invoiced.toFixed(2)}`} entry={entry} allInvoices={financeiro.invoices} onRegister={registerBatch} podeRegistrar={!readOnly} />
                 ))
               )
             ) : (

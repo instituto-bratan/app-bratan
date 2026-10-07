@@ -5,12 +5,17 @@
 // sem nota, este diálogo abre o MESMO cartão do fechamento — unificada ou
 // repartida, texto à vista, CPF e e-mail — e emite pela Focus na hora. É o
 // "se não emitiu no Kanban, emite na comanda diária" que o Lucas pediu.
+//
+// 07/10/2026: só emite quem tem a permissão "Emitir nota fiscal"
+// (podeEmitirNota — por padrão, só o Estevão). Quem não tem vê o cartão, mas
+// no lugar do botão lê quem emite; a comanda continua na fila de notas.
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
+import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
 import { cpfDigitos, cpfValido } from "@/lib/cpf";
 import { invocarIntegracao, lerRemoteCpfDoContato, salvarRemoteCpfDoContato } from "@/lib/remoteData";
 import { NotaNoFechamentoCard } from "@/features/crm/NotaNoFechamentoCard";
@@ -39,7 +44,8 @@ export function NotaDaComandaDialog({ sale, emailInicial, onFechar, onEmitida, o
   const parcelas = parcelasDaComanda(sale.payments);
   const plano = planoDeNotas({ escolha: nota.escolha, valorRecebido: valor, divisao: nota.divisao, diaISO: sale.saleDate, parcelas });
   const trava = travaDoFechamento({ nota, valorRecebido: valor, ehSinal: sinal, plano });
-  const podeEmitir = !sinal && nota.escolha !== "SEM_NOTA" && valor > 0 && plano.notas.length > 0 && !trava && !emitindo;
+  const temPermissao = podeEmitirNota(pessoa);
+  const podeEmitir = temPermissao && !sinal && nota.escolha !== "SEM_NOTA" && valor > 0 && plano.notas.length > 0 && !trava && !emitindo;
 
   async function emitir() {
     if (!podeEmitir) return;
@@ -64,6 +70,7 @@ export function NotaDaComandaDialog({ sale, emailInicial, onFechar, onEmitida, o
         solicitadoPor: pessoa?.id ?? null,
         comandaGravada: Promise.resolve(true),
         invocar: (slug, body) => invocarIntegracao(slug, body),
+        podeEmitir: temPermissao,
       });
       if (emissao.recado) toast(emissao.recado, { tom: emissao.tudoCerto ? "ok" : "atencao", duracaoMs: emissao.tudoCerto ? 6000 : 12000 });
       const emailLimpo = email.trim().toLowerCase();
@@ -99,10 +106,14 @@ export function NotaDaComandaDialog({ sale, emailInicial, onFechar, onEmitida, o
         </div>
         {trava ? <p className="mt-2 text-sm font-semibold text-amber-700">{trava}</p> : null}
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onFechar} disabled={emitindo}>Agora não</Button>
-          <LiquidButton type="button" size="sm" className="h-10 px-4" disabled={!podeEmitir} onClick={() => void emitir()}>
-            {emitindo ? "Emitindo na prefeitura…" : plano.notas.length > 1 ? `Emitir ${plano.notas.length} notas` : "Emitir a nota"}
-          </LiquidButton>
+          <Button type="button" variant="ghost" onClick={onFechar} disabled={emitindo}>{temPermissao ? "Agora não" : "Fechar"}</Button>
+          {temPermissao ? (
+            <LiquidButton type="button" size="sm" className="h-10 px-4" disabled={!podeEmitir} onClick={() => void emitir()}>
+              {emitindo ? "Emitindo na prefeitura…" : plano.notas.length > 1 ? `Emitir ${plano.notas.length} notas` : "Emitir a nota"}
+            </LiquidButton>
+          ) : (
+            <p className="text-sm text-muted-foreground">{avisoQuemEmiteNota}</p>
+          )}
         </div>
       </div>
     </div>

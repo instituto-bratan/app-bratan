@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { parseMoneyBR } from "@/lib/money";
-import { canFinanceiroFull, canLancarDia } from "@/lib/access";
+import { canFinanceiroFull, canLancarDia, podeEmitirNota, recadoNotaNaFila } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { applyContactChannels, findOrCreateCrmContact } from "@/features/crm/crmData";
@@ -154,6 +154,12 @@ export function FinanceiroLancarDiaPage() {
   // o mesmo do fechamento; a divisão nasce dos itens; sinal de consulta não
   // emite; e "Emitir: agora" é o padrão quando não é sinal.
   const focusLigada = integracaoLigada("focus_nfse");
+  // SÓ O ESTEVÃO EMITE (07/10/2026). Lucas: "quero que apenas o Estevão emita
+  // as notas no fechamento, ninguém mais, e que isso dê para a gente controlar
+  // o acesso". Quem não tem a permissão "Emitir nota fiscal" lança a comanda
+  // igual; ela nasce sem nota e fica na fila (o mesmo caminho do "depois":
+  // "sem nota fiscal" na lista do dia e Comandas aguardando NF em Impostos).
+  const podeEmitir = podeEmitirNota(pessoa);
   const [notaFiscal, setNotaFiscal] = useState<NotaDoFechamento>(notaDoFechamentoVazia);
   const [emailNota, setEmailNota] = useState("");
   const [cpfNota, setCpfNota] = useState("");
@@ -216,7 +222,9 @@ export function FinanceiroLancarDiaPage() {
     setEmailNota(crmState.contacts.find((item) => item.id === patientRef)?.email ?? "");
   }, [patientRef, crmState.contacts]);
   const planoDaNota = planoDeNotas({ escolha: notaFiscal.escolha, valorRecebido: valorDaNota, divisao: notaFiscal.divisao, diaISO: date, parcelas: parcelasDaNota });
-  const emiteAoLancar = focusLigada && !editingSaleId && notaQuando === "AGORA" && !soSinal && valorDaNota > 0;
+  const emiteAoLancar = focusLigada && podeEmitir && !editingSaleId && notaQuando === "AGORA" && !soSinal && valorDaNota > 0;
+  // A comanda que teria nota e vai para a fila porque quem lança não emite (07/10/2026).
+  const notaVaiParaFila = focusLigada && !podeEmitir && !editingSaleId && !soSinal && valorDaNota > 0;
   // CPF, E-MAIL E PACIENTE LIGADO SÃO OBRIGATÓRIOS PARA "EMITIR: AGORA" (29/09/2026).
   // Sem paciente ligado a nota não tinha para quem sair — e saía nada, calada.
   const travaDosDadosDaNotaDoDia =
@@ -549,7 +557,7 @@ export function FinanceiroLancarDiaPage() {
       setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.${crmNote}${dinheiroNote}`);
     } else {
       const comandaGravada = financeiro.addSale(sale);
-      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))} no faturamento.${dinheiroNote}${crmNote}${lembreteNote} Pode adicionar o próximo paciente.`);
+      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))} no faturamento.${dinheiroNote}${crmNote}${lembreteNote} Pode adicionar o próximo paciente.${notaVaiParaFila ? ` ${recadoNotaNaFila}` : ""}`);
       // A NOTA SAI AQUI (23/09/2026), depois da comanda existir — igual ao Kanban.
       if (vaiEmitirNota && sale.crmContactRef) {
         setEmitindoNota(true);
@@ -574,6 +582,7 @@ export function FinanceiroLancarDiaPage() {
             comandaGravada,
             sinais: sinaisNaNota,
             invocar: (slug, body) => invocarIntegracao(slug, body),
+            podeEmitir,
           });
           if (emissao.recado) {
             toast(emissao.recado, { tom: emissao.tudoCerto ? "ok" : "atencao", duracaoMs: emissao.tudoCerto ? 6000 : 12000 });
@@ -933,7 +942,12 @@ export function FinanceiroLancarDiaPage() {
                       fechamento do Kanban. Aparece quando a Focus está ligada, há
                       valor a faturar e "Emitir" está em "agora". */}
                   {focusLigada && !editingSaleId && valorDaNota > 0 && !soSinal ? (
-                    notaQuando === "AGORA" ? (
+                    !podeEmitir ? (
+                      // 07/10/2026: quem não emite fica sabendo ANTES de salvar.
+                      <p className="rounded-md border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-xs text-muted-foreground">
+                        Nota fiscal: quem emite é o Estevão. Ao salvar, a comanda fica na fila de notas (sem nota fiscal na lista do dia e em Impostos &amp; NF).
+                      </p>
+                    ) : notaQuando === "AGORA" ? (
                       <NotaNoFechamentoCard
                         nota={notaFiscal}
                         onNotaChange={setNotaFiscal}
@@ -1121,10 +1135,13 @@ export function FinanceiroLancarDiaPage() {
                             <p className={cn("mt-1 inline-flex flex-wrap items-center gap-1.5 text-xs", estado.estado === "AUTORIZADA" ? "font-semibold text-brand-musgo" : pedeEmissao ? "font-semibold text-amber-700" : "text-muted-foreground")}>
                               {estado.estado === "AUTORIZADA" ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : pedeEmissao ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : null}
                               {estado.rotulo}
-                              {pedeEmissao && !isPreview ? (
+                              {pedeEmissao && !isPreview && podeEmitir ? (
                                 <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setNotaDaComanda(sale)}>
                                   <FileText className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir nota
                                 </Button>
+                              ) : pedeEmissao && !isPreview ? (
+                                // 07/10/2026: sem a permissão, não há botão — só quem emite.
+                                <span className="font-normal text-muted-foreground">· quem emite é o Estevão</span>
                               ) : null}
                             </p>
                           );

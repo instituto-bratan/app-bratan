@@ -78,9 +78,17 @@ export async function arquivarNotaEmitida(client: SupabaseClient, config: Record
     } else erros.push("XML ainda não disponível na Focus");
   }
   if (!fila.length) return { arquivos: 0, erro: erros.join(" · ") };
+  // DUPLICADO NO SHAREPOINT (07/10/2026): a emissão e o webhook da Focus chegam
+  // aqui ao mesmo tempo; os dois viam "ainda sem arquivo" e os dois punham PDF e
+  // XML na fila — 11 notas ficaram com uma cópia "… 1.pdf". Agora o banco tem um
+  // índice único por arquivo (202610070001): a segunda gravação é recusada
+  // (23505) e isso quer dizer "o outro já pôs na fila" — não é erro, e nada sobe
+  // de novo.
   const { error: erroFila } = await client.from("sharepoint_dispatch_queue").insert(fila);
-  if (erroFila) erros.push(`SharePoint: ${erroFila.message}`);
-  else atualiza.sharepoint_enviado_em = new Date().toISOString();
+  const jaNaFila = erroFila?.code === "23505";
+  if (erroFila && !jaNaFila) erros.push(`SharePoint: ${erroFila.message}`);
+  else if (!jaNaFila) atualiza.sharepoint_enviado_em = new Date().toISOString();
+  if (jaNaFila) return { arquivos: 0, erro: erros.length ? erros.join(" · ") : undefined };
   atualiza.storage_bucket = BUCKET_EMITIDAS;
   if (atualiza.storage_path_pdf && (atualiza.storage_path_xml || linha.storage_path_xml)) atualiza.arquivada_em = new Date().toISOString();
   atualiza.atualizado_em = new Date().toISOString();

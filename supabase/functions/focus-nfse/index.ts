@@ -22,6 +22,7 @@ import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, res
 import { quemChama } from "../_shared/claude.ts";
 import { baseUrl, cabecalhoFocus as cabecalho, emailValido, enviarEmailDaNota, nomeDoTokenFocus, notaAutorizada } from "../_shared/focus.ts";
 import { arquivarNotasPendentes, arquivarPorRef } from "../_shared/arquivarNotaEmitida.ts";
+import { marcarNotaCanceladaNoSharePoint } from "../_shared/sharepointGraph.ts";
 import { baixarDoControle, registrarNoControle, registrarPendentesNoControle } from "../_shared/controleDeImpostos.ts";
 import { comandaSoDeSinal, cpfConfere, dataDeEmissaoBrasilia, notaExistenteCobre, rotuloDoTipoDeNota } from "../_shared/notaEmitida.ts";
 
@@ -93,7 +94,9 @@ Deno.serve(async (request) => {
   if (!pediu?.pessoaId) {
     return json({ ok: false, error: "Entre com a sua conta para emitir nota fiscal." }, 401);
   }
-  if (!CARGOS_QUE_EMITEM.has(pediu.cargo)) {
+  // Na EMISSÃO quem decide é pode_emitir_nota (abaixo), que honra a tela Acessos;
+  // as outras ações (consultar, cancelar, reenviar e-mail) seguem por cargo.
+  if (entrada.acao !== "emitir" && !CARGOS_QUE_EMITEM.has(pediu.cargo)) {
     await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "RECUSADO", resumo: `${pediu.nome || pediu.pessoaId} tentou ${entradaAcaoSegura(request)} sem acesso a Impostos & NFs` });
     return json({ ok: false, error: "O seu acesso não inclui emitir nota fiscal. Fale com a coordenação." }, 403);
   }
@@ -141,6 +144,10 @@ Deno.serve(async (request) => {
     if (/^cancelad/i.test(status)) {
       const { data: cancelada } = await client.from("nfse_emissao").select("numero").eq("ref", entrada.ref).maybeSingle();
       baixadas = await baixarDoControle(client, String(cancelada?.numero ?? dados.numero ?? ""), justificativa || "cancelada na prefeitura");
+      // Cancelada → os arquivos dela no SharePoint ganham "- CANCELADA" no nome
+      // (07/10/2026, pedido do Lucas: a cancelada parecia duplicata da reemitida).
+      const marcados = await marcarNotaCanceladaNoSharePoint(client, entrada.ref).catch((falha) => ({ renomeados: 0, erros: [String(falha)] }));
+      if (marcados.erros.length) await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", entidade: "nfse_emissao", entityRef: entrada.ref, status: "PARCIAL", resumo: `Nota cancelada, mas o arquivo não foi marcado no SharePoint: ${marcados.erros.join(" | ")}`.slice(0, 900) });
     }
     // Autorizou na consulta? Então é agora que o e-mail sai (uma vez só; a
     // função de envio confere status e repetição).
@@ -156,6 +163,18 @@ Deno.serve(async (request) => {
   }
 
   // ---- emitir -----------------------------------------------------------------
+  // SÓ O ESTEVÃO EMITE (07/10/2026, pedido do Lucas: "apenas o Estevão emite as
+  // notas no fechamento, ninguém mais, e que dê para controlar o acesso"). A
+  // regra mora no banco (pode_emitir_nota): cargo gestor, ou quem a tela Acessos
+  // liberar no módulo 'nf-emitir'. Consultar, cancelar e reenviar e-mail seguem
+  // com os cargos acima.
+  {
+    const { data: pode } = await client.rpc("pode_emitir_nota", { _user: pediu.authId });
+    if (pode !== true) {
+      await registrarEvento(client, { chave: "focus_nfse", direcao: "SAIDA", status: "RECUSADO", resumo: `${pediu.nome || pediu.pessoaId} tentou emitir nota sem a permissão "Emitir nota fiscal"` });
+      return json({ ok: false, error: "Quem emite nota fiscal é o Estevão. A comanda fica na fila de notas." }, 403);
+    }
+  }
   if (!entrada.saleRef || !entrada.tipo) return json({ ok: false, error: "Informe saleRef e tipo." }, 400);
   // O código do serviço do município MUDA com a natureza da nota:
   //   04030 "Medicina e biomedicina"     → CONSULTA (contabilidade, 05/10/2026)

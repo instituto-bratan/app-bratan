@@ -5,6 +5,12 @@
 // que emite tudo pela Focus em sequência e registra cada nota no controle. A
 // função da Focus só aceita pedido de quem está logado, por isso o clique é
 // de uma pessoa — e é aqui que ela clica.
+//
+// 07/10/2026: emitir (uma linha ou o lote todo) depende da permissão "Emitir
+// nota fiscal" (podeEmitirNota — por padrão, só o Estevão), e NÃO do "só vê"
+// da tela: o Estevão só VÊ Impostos & NFs e é ele quem emite o lote. Tirar do
+// lote continua com quem edita a tela; Consultar (buscar o número da nota que
+// ficou aguardando a prefeitura) também fica com quem emite.
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, FileCheck2, RefreshCw, XCircle } from "lucide-react";
@@ -12,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { toast } from "@/components/ui/avisos";
+import { useAuth } from "@/hooks/useAuth";
+import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
 import { integracaoLigada } from "@/lib/integracoes";
 import { invocarIntegracao } from "@/lib/remoteData";
 import { atualizarRemoteNfseLoteItem, listRemoteNfseLote, prontidaoDoLote, type ProntidaoDoContato } from "@/lib/remote/nfseLote";
@@ -29,6 +37,8 @@ const dataBR = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` 
 // daqui também duplicava o imposto.
 export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
   const ligada = integracaoLigada("focus_nfse");
+  const { pessoa } = useAuth();
+  const podeEmitir = podeEmitirNota(pessoa);
   const queryClient = useQueryClient();
   const recarregarControle = () => void queryClient.invalidateQueries({ queryKey: ["fin-invoices"] });
   const [itens, setItens] = useState<ItemDoLote[] | null>(null);
@@ -60,6 +70,11 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
 
   /** Emite UM item e, se a prefeitura já autorizou, registra no controle. */
   async function emitirItem(item: ItemDoLote): Promise<"autorizada" | "enviada" | "erro"> {
+    // Segunda chave (07/10/2026): sem a permissão, nada vai à prefeitura nem muda a linha.
+    if (!podeEmitir) {
+      toast(avisoQuemEmiteNota, { tom: "atencao" });
+      return "erro";
+    }
     if (!partesFecham(item)) {
       const erro = "As partes não fecham com o valor da nota.";
       aplicar(item.id, { status: "ERRO", erro });
@@ -127,6 +142,7 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
   }
 
   async function emitirTodas() {
+    if (!podeEmitir) return toast(avisoQuemEmiteNota, { tom: "atencao" });
     const fila = visiveis.filter((i) => i.status === "PENDENTE" || i.status === "ERRO");
     if (!fila.length) return;
     if (!window.confirm(`Emitir ${fila.length} nota${fila.length > 1 ? "s" : ""} na prefeitura agora, no total de ${moneyFin(fila.reduce((s, i) => s + i.valor, 0))}? Depois de emitida, nota só sai com cancelamento.`)) return;
@@ -223,16 +239,16 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
                       )}
                     </td>
                     <td className="py-2 text-right whitespace-nowrap">
-                      {!readOnly && item.status === "ENVIADA" ? (
+                      {(!readOnly || podeEmitir) && item.status === "ENVIADA" ? (
                         <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null} onClick={() => void consultarItem(item)}>Consultar</Button>
                       ) : null}
+                      {podeEmitir && (item.status === "PENDENTE" || item.status === "ERRO") ? (
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void emitirItem(item).then((r) => toast(r === "autorizada" ? "Nota autorizada." : r === "enviada" ? "Enviada; consulte em instantes." : "Não saiu — veja o erro na linha.", { tom: r === "erro" ? "erro" : "ok" }))}>
+                          <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir
+                        </Button>
+                      ) : null}
                       {!readOnly && (item.status === "PENDENTE" || item.status === "ERRO") ? (
-                        <>
-                          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void emitirItem(item).then((r) => toast(r === "autorizada" ? "Nota autorizada." : r === "enviada" ? "Enviada; consulte em instantes." : "Não saiu — veja o erro na linha.", { tom: r === "erro" ? "erro" : "ok" }))}>
-                            <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir
-                          </Button>
-                          <Button type="button" size="sm" variant="ghost" className="ml-1 h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void retirar(item)}>Tirar</Button>
-                        </>
+                        <Button type="button" size="sm" variant="ghost" className="ml-1 h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void retirar(item)}>Tirar</Button>
                       ) : null}
                     </td>
                   </tr>
@@ -241,13 +257,15 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
             </tbody>
           </table>
         </div>
-        {!readOnly && pendentes.length ? (
+        {podeEmitir && pendentes.length ? (
           <div className="flex flex-wrap items-center gap-2">
             <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={rodando || emitindo !== null} onClick={() => void emitirTodas()}>
               {rodando ? "Emitindo…" : `Emitir as ${pendentes.length} notas · ${moneyFin(pendentes.reduce((s, i) => s + i.valor, 0))}`}
             </LiquidButton>
             <span className="text-xs text-muted-foreground">Uma por vez, na prefeitura. Cada autorizada entra no controle abaixo com o número.</span>
           </div>
+        ) : pendentes.length ? (
+          <p className="text-xs text-muted-foreground">{avisoQuemEmiteNota}</p>
         ) : null}
       </CardContent>
     </Card>

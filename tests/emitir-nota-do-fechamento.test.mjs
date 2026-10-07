@@ -47,6 +47,10 @@ function pedido(extra = {}) {
       solicitadoPor: "pessoa-1",
       comandaGravada: Promise.resolve(true),
       invocar: focus.invocar,
+      // 07/10/2026: a permissão "Emitir nota fiscal" virou campo obrigatório do
+      // pedido; estes testes falam de quem pode (o Estevão). Quem não pode está
+      // em nf-emitir-acesso.test.mjs.
+      podeEmitir: true,
       ...extra.entrada,
     },
   };

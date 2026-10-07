@@ -63,7 +63,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { isCoordenacao } from "@/lib/access";
+import { isCoordenacao, podeEmitirNota, recadoNotaNaFila } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -635,12 +635,21 @@ function CrmKanbanPageConteudo() {
   // O botão só promete emitir quando a nota REALMENTE vai sair. Prometer e não
   // cumprir é pior do que não prometer: quem fecha vai embora achando que a
   // prefeitura já recebeu.
-  const fcVaiEmitirNota =
+  const fcTemNotaParaEmitir =
     integracaoLigada("focus_nfse") &&
     fcNota.escolha !== "SEM_NOTA" &&
     fcTipo !== "SINAL_CONSULTA" &&
     fcValorRecebido > 0 &&
     fcPlanoDaNota.notas.length > 0;
+  // SÓ O ESTEVÃO EMITE (07/10/2026). Lucas: "quero que apenas o Estevão emita
+  // as notas no fechamento, ninguém mais, e que isso dê para a gente controlar
+  // o acesso". Quem não tem a permissão "Emitir nota fiscal" salva o fechamento
+  // do mesmo jeito: a comanda nasce sem nota e fica na fila (Comandas
+  // aguardando NF e "sem nota fiscal" no Lançar Dia) — o mesmo caminho da nota
+  // que fica para depois. O servidor também recusa, então não dá para burlar.
+  const fcPodeEmitirNota = podeEmitirNota(pessoa);
+  const fcVaiEmitirNota = fcTemNotaParaEmitir && fcPodeEmitirNota;
+  const fcNotaVaiParaFila = fcTemNotaParaEmitir && !fcPodeEmitirNota;
   const [fcEmitindo, setFcEmitindo] = useState(false);
   // O E-MAIL PARA ONDE A NOTA VAI (22/09/2026). Nasce do cadastro do paciente e
   // pode ser acertado no próprio fechamento; se o cadastro não tinha, ganha.
@@ -1541,38 +1550,54 @@ function CrmKanbanPageConteudo() {
     // O diálogo fica aberto enquanto a prefeitura é chamada: emitir documento
     // fiscal com a tela já fechada deixaria quem fechou sem saber se saiu. São
     // poucos segundos, e é o único momento em que a pessoa ainda está ali.
-    if (fcVaiEmitirNota && lancado?.saleId) {
-      setFcEmitindo(true);
+    //
+    // 07/10/2026: quem não emite (fcNotaVaiParaFila) passa por aqui também, mas
+    // sem chamar a prefeitura — só guarda CPF e e-mail na ficha, que é de onde
+    // a função lê quando o Estevão emitir pela fila.
+    if ((fcVaiEmitirNota || fcNotaVaiParaFila) && lancado?.saleId) {
+      if (fcVaiEmitirNota) setFcEmitindo(true);
       try {
         // O CPF digitado na hora vai nesta nota e, se der permissão, para a ficha.
         // Sem permissão (quem fecha nem sempre cuida de Impostos & NF) a nota sai
         // identificada mesmo assim — a função não guarda o número em lugar nenhum.
         const cpfDigitado = cpfValido(fcCpfNota) ? cpfDigitos(fcCpfNota) : "";
+        let cpfSoNestaTela = false;
         if (cpfDigitado && !fcCpfNaFicha.data?.cpf) {
           try {
             await salvarRemoteCpfDoContato(refDoPaciente, cpfDigitado, pessoaAuth?.id ?? null);
             void queryClientKanban.invalidateQueries({ queryKey: ["contato-cpf", refDoPaciente] });
           } catch {
             /* sem permissão para a ficha: o CPF vai só nesta nota */
+            cpfSoNestaTela = true;
           }
         }
-        const emissao = await emitirNotasDoFechamento({
-          saleRef: lancado.saleId,
-          escolha: fcNota.escolha,
-          notas: fcPlanoDaNota.notas,
-          pacienteNome: fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
-          // O CPF vem da ficha, no servidor: ele nunca passa por esta tela nem
-          // fica gravado no app.
-          cpf: cpfDigitado,
-          email: fcEmailNota,
-          solicitadoPor: pessoaAuth?.id ?? null,
-          comandaGravada: lancado.comandaGravada,
-          sinais: fcSinaisNaNota,
-          invocar: (slug, body) => invocarIntegracao(slug, body),
-        });
-        if (emissao.recado) {
-          toast(emissao.recado, { tom: emissao.tudoCerto ? "ok" : "atencao", duracaoMs: emissao.tudoCerto ? 6000 : 12000 });
-          if (!emissao.tudoCerto) setFeedback(emissao.recado);
+        if (fcNotaVaiParaFila) {
+          // A NOTA FICA NA FILA (07/10/2026): a comanda já foi gravada; quem
+          // emite a pega em Impostos & NFs. Se o CPF não coube na ficha, ele se
+          // perderia em silêncio — então o recado diz.
+          const recado = cpfSoNestaTela ? `${recadoNotaNaFila} O CPF digitado não ficou na ficha: passe para o Estevão.` : recadoNotaNaFila;
+          toast(recado, { tom: "info", duracaoMs: 9000 });
+          setFeedback((atual) => [atual, recado].filter(Boolean).join(" "));
+        } else {
+          const emissao = await emitirNotasDoFechamento({
+            saleRef: lancado.saleId,
+            escolha: fcNota.escolha,
+            notas: fcPlanoDaNota.notas,
+            pacienteNome: fcPatient.name.trim() || contactDisplayName(state.contacts.find((item) => item.id === refDoPaciente)) || "Paciente",
+            // O CPF vem da ficha, no servidor: ele nunca passa por esta tela nem
+            // fica gravado no app.
+            cpf: cpfDigitado,
+            email: fcEmailNota,
+            solicitadoPor: pessoaAuth?.id ?? null,
+            comandaGravada: lancado.comandaGravada,
+            sinais: fcSinaisNaNota,
+            invocar: (slug, body) => invocarIntegracao(slug, body),
+            podeEmitir: fcPodeEmitirNota,
+          });
+          if (emissao.recado) {
+            toast(emissao.recado, { tom: emissao.tudoCerto ? "ok" : "atencao", duracaoMs: emissao.tudoCerto ? 6000 : 12000 });
+            if (!emissao.tudoCerto) setFeedback(emissao.recado);
+          }
         }
         // O e-mail digitado no fechamento vira cadastro: da próxima vez já vem preenchido.
         const emailNota = fcEmailNota.trim().toLowerCase();
@@ -3016,6 +3041,9 @@ function CrmKanbanPageConteudo() {
                   <Button type="button" variant="outline" disabled={fcEmitindo} onClick={() => setFechamentoOpen(false)}>Cancelar</Button>
                   {fcEmitindo ? (
                     <span className="text-xs text-muted-foreground">Falando com a prefeitura — não feche a tela.</span>
+                  ) : fcNotaVaiParaFila ? (
+                    // 07/10/2026: quem não emite fica sabendo ANTES de salvar.
+                    <span className="text-xs text-muted-foreground">Nota fiscal: quem emite é o Estevão. Ao salvar, a comanda fica na fila de notas.</span>
                   ) : null}
                 </div>
               </form>

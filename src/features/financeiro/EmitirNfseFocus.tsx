@@ -2,11 +2,18 @@
 // focus_nfse ligada. Emite, depois consulta até a prefeitura devolver o número —
 // que preenche o campo "Nº" do plano de notas. O CPF do tomador, se digitado,
 // vai só no pedido e não é guardado.
+//
+// 07/10/2026: o botão de emitir só aparece para quem tem a permissão "Emitir
+// nota fiscal" (podeEmitirNota — por padrão, só o Estevão). Depende dela, e não
+// do "só vê" de Impostos & NFs: o Estevão só VÊ a tela e é quem emite. Quem não
+// pode lê, no lugar do botão, quem emite e onde isso se libera.
 import { useEffect, useState } from "react";
 import { FileCheck2, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/avisos";
+import { useAuth } from "@/hooks/useAuth";
+import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
 import { integracaoLigada } from "@/lib/integracoes";
 import { invocarIntegracao, listRemoteNfseDaComanda } from "@/lib/remoteData";
 import type { NfseEmissao } from "@/lib/remote/integracoes";
@@ -31,6 +38,8 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
   const [cancelando, setCancelando] = useState(false);
   const [motivoCancelamento, setMotivoCancelamento] = useState("");
   const ligada = integracaoLigada("focus_nfse");
+  const { pessoa } = useAuth();
+  const podeEmitir = podeEmitirNota(pessoa);
 
   // Ao abrir a tela, recupera o que já foi enviado: sem isso, um F5 no meio do
   // caminho apagava a memória do pedido e o botão voltava a oferecer "Emitir".
@@ -69,6 +78,7 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
   if (!ligada) return null;
 
   async function emitir() {
+    if (!podeEmitir) return toast(avisoQuemEmiteNota, { tom: "atencao" });
     if (!(valor > 0)) return toast("Valor da nota precisa ser maior que zero.", { tom: "atencao" });
     setOcupado(true);
     try {
@@ -136,7 +146,9 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
 
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      {!ref ? (
+      {!ref && !podeEmitir ? (
+        <span className="text-xs text-muted-foreground">{avisoQuemEmiteNota}</span>
+      ) : !ref ? (
         <>
           <Input value={cpf} onChange={(event) => setCpf(event.target.value)} placeholder="CPF do tomador (obrigatório se a ficha não tiver)" className="h-8 w-56 text-xs" inputMode="numeric" />
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail do paciente (a nota vai para ele)" className="h-8 w-60 text-xs" type="email" inputMode="email" />
