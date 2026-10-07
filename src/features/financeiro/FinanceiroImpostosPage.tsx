@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, ChevronDown, FileText, Landmark, Plus, ReceiptText, Sparkles, Trash2, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, ChevronDown, Combine, FileText, Landmark, Plus, ReceiptText, Sparkles, Trash2, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { toast } from "@/components/ui/avisos";
 import { EmitirNfseFocus } from "./EmitirNfseFocus";
 import { LoteDeNotasCard } from "./LoteDeNotasCard";
+import { JuntarNotasDialog } from "./JuntarNotasDialog";
+import { analisarComandas, comandasJaEncaminhadas, type AnaliseDaJuncao, type Encaminhamento } from "./juntarNotas";
+import { chaveDoLote } from "./loteDeNotas";
+import { listRemoteNfseLote, listRemoteNotasComPartes } from "@/lib/remote/nfseLote";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +45,7 @@ import {
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
 import { integracaoLigada } from "@/lib/integracoes";
-import { listRemoteNfseDaComanda } from "@/lib/remoteData";
+import { invocarIntegracao, listRemoteNfseDaComanda, listRemoteNfseDasComandas } from "@/lib/remoteData";
 import type { NfseEmissao } from "@/lib/remote/integracoes";
 import { fraseDasNotasFocus, linhasDasNotasFocus, notasFocusVivas } from "./notasEmitidasFocus";
 import { abaControleImpostos } from "./exportContabilidade";
@@ -528,6 +534,38 @@ export function FinanceiroImpostosPage() {
     [financeiro.sales, financeiro.invoices, month],
   );
   const pendingTotal = pending.reduce((sum, entry) => sum + entry.remaining, 0);
+
+  // JUNTAR COMANDAS NUMA NOTA SÓ (07/10/2026, pedido do Lucas — mãe e filho).
+  // Quem vê as comandas aguardando NF (quem edita a tela ou quem emite) marca
+  // duas ou mais; a janela mostra a nota única e emite (quem emite) ou deixa
+  // pronta no lote (quem não emite). Para não juntar o que já está a caminho
+  // de uma nota, a fila lê as três fontes que o servidor também trava: a nota
+  // pedida da própria comanda, a nota de outra que a leva como parte, e o lote.
+  const focusLigada = integracaoLigada("focus_nfse");
+  const usaJuncao = focusLigada && (!readOnly || podeEmitir);
+  const pendingRefs = useMemo(() => pending.map((entry) => entry.sale.id).sort(), [pending]);
+  const loteDeNotas = useQuery({ queryKey: [...chaveDoLote], queryFn: listRemoteNfseLote, enabled: usaJuncao, staleTime: 30_000 });
+  const notasComPartes = useQuery({ queryKey: ["nfse-com-partes"], queryFn: listRemoteNotasComPartes, enabled: usaJuncao, staleTime: 30_000 });
+  const notasProprias = useQuery({
+    queryKey: ["nfse-das-comandas", pendingRefs.join("|")],
+    queryFn: () => listRemoteNfseDasComandas(pendingRefs),
+    enabled: usaJuncao && pendingRefs.length > 0,
+    staleTime: 30_000,
+  });
+  const encaminhadas = useMemo(
+    () => comandasJaEncaminhadas({ proprias: notasProprias.data ?? [], comPartes: notasComPartes.data ?? [], lote: loteDeNotas.data ?? [] }),
+    [notasProprias.data, notasComPartes.data, loteDeNotas.data],
+  );
+  const [marcadas, setMarcadas] = useState<string[]>([]);
+  const [juncao, setJuncao] = useState<AnaliseDaJuncao | null>(null);
+  useEffect(() => setMarcadas([]), [month]);
+  const podeJuntarComanda = (entry: PendingInvoiceSale) => usaJuncao && entry.invoiced <= 0.005 && !encaminhadas[entry.sale.id];
+  const selecionadas = pending.filter((entry) => marcadas.includes(entry.sale.id) && podeJuntarComanda(entry));
+  const valorSelecionado = selecionadas.reduce((sum, entry) => sum + entry.remaining, 0);
+  function abrirJuncao() {
+    const frases = Object.fromEntries(Object.entries(encaminhadas).map(([ref, e]) => [ref, e.frase]));
+    setJuncao(analisarComandas({ sales: financeiro.sales, invoices: financeiro.invoices, saleRefs: selecionadas.map((entry) => entry.sale.id), encaminhadas: frases }));
+  }
   const monthInvoices = useMemo(
     () =>
       financeiro.invoices
@@ -762,17 +800,69 @@ export function FinanceiroImpostosPage() {
                   {pending.length} comanda{pending.length > 1 ? "s" : ""} aguardando NF. {avisoQuemEmiteNota}.
                 </p>
               ) : (
-                pending.map((entry) => (
-                  // key inclui o valor já emitido: registrar uma nota parcial
-                  // remonta o cartão e o plano sugerido recalcula do zero.
-                  <EmissaoCard key={`${entry.sale.id}:${entry.invoiced.toFixed(2)}`} entry={entry} allInvoices={financeiro.invoices} onRegister={registerBatch} podeRegistrar={!readOnly} />
-                ))
+                <>
+                  {usaJuncao && pending.length > 1 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Para juntar comandas de pacientes diferentes numa nota só (mãe e filho, por exemplo), marque as comandas e toque em “Juntar em uma nota”.
+                    </p>
+                  ) : null}
+                  {pending.map((entry) => {
+                    const encaminhamento = encaminhadas[entry.sale.id];
+                    // Comanda que já está dentro de uma nota juntada (aguardando a
+                    // prefeitura): sem o cartão de emitir, para não sair nota em dobro.
+                    if (encaminhamento?.notaJuntada) {
+                      return <NotaJuntadaAviso key={entry.sale.id} entry={entry} encaminhamento={encaminhamento} podeConsultar={!readOnly || podeEmitir} />;
+                    }
+                    const marcavel = podeJuntarComanda(entry);
+                    return (
+                      <div key={`${entry.sale.id}:${entry.invoiced.toFixed(2)}`} className="flex items-start gap-2">
+                        {usaJuncao ? (
+                          <input
+                            type="checkbox"
+                            className="mt-4 h-4 w-4 shrink-0 accent-brand-musgo disabled:opacity-40"
+                            checked={marcavel && marcadas.includes(entry.sale.id)}
+                            disabled={!marcavel}
+                            onChange={() =>
+                              setMarcadas((atual) => (atual.includes(entry.sale.id) ? atual.filter((ref) => ref !== entry.sale.id) : [...atual, entry.sale.id]))
+                            }
+                            aria-label={marcavel ? `Marcar a comanda de ${entry.sale.patientName} para juntar numa nota só` : `A comanda de ${entry.sale.patientName} não entra em junção`}
+                            title={marcavel ? "Juntar numa nota só" : entry.invoiced > 0.005 ? "Já tem nota parcial: não entra em junção" : encaminhamento?.frase}
+                          />
+                        ) : null}
+                        <div className="min-w-0 flex-1">
+                          {/* key inclui o valor já emitido: registrar uma nota parcial
+                              remonta o cartão e o plano sugerido recalcula do zero. */}
+                          <EmissaoCard entry={entry} allInvoices={financeiro.invoices} onRegister={registerBatch} podeRegistrar={!readOnly} />
+                          {usaJuncao && encaminhamento ? <p className="mt-1 text-xs text-muted-foreground">Não entra em junção: {encaminhamento.frase}.</p> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {usaJuncao && selecionadas.length === 1 ? <p className="text-xs text-muted-foreground">1 comanda marcada. Marque mais uma para juntar.</p> : null}
+                  {usaJuncao && selecionadas.length > 1 ? (
+                    <div className="sticky bottom-[calc(6rem+env(safe-area-inset-bottom))] z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-musgo bg-white/95 px-3 py-2 shadow-calm lg:bottom-3">
+                      <p className="text-sm font-semibold text-brand-tinta">
+                        {selecionadas.length} comandas · {moneyFin(valorSelecionado)}
+                        <span className="block text-xs font-normal text-muted-foreground">viram uma nota só, no nome de um dos pacientes</span>
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="button" size="sm" variant="ghost" className="h-9" onClick={() => setMarcadas([])}>
+                          Desmarcar
+                        </Button>
+                        <LiquidButton type="button" size="sm" className="h-9 px-4" onClick={abrirJuncao}>
+                          <Combine className="h-4 w-4" aria-hidden="true" /> Juntar em uma nota
+                        </LiquidButton>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               )
             ) : (
               <p className="py-4 text-center text-sm text-muted-foreground">Todas as comandas do mês têm NF registrada. ✓</p>
             )}
           </CardContent>
         </Card>
+        {juncao ? <JuntarNotasDialog modo="comandas" analise={juncao} onFechar={() => setJuncao(null)} onPronto={() => setMarcadas([])} /> : null}
 
         {/* O livro do mês — as duas "abas" da planilha, derivadas e sem fórmula quebrada. */}
         {/* Exportação para a contabilidade (09/09): um documento por classe, no formato CONTROLE DE IMPOSTOS. */}
@@ -876,6 +966,56 @@ export function FinanceiroImpostosPage() {
 
 export default FinanceiroImpostosPage;
 
+
+// A COMANDA QUE JÁ ESTÁ NUMA NOTA JUNTADA (07/10/2026). Enquanto a prefeitura
+// não autoriza, a comanda continua sem linha no controle e apareceria na fila
+// com o botão de emitir — e a nota sairia em dobro. Aqui ela aparece dizendo
+// em que nota entrou, com "Consultar" para buscar o número.
+function NotaJuntadaAviso({ entry, encaminhamento, podeConsultar }: { entry: PendingInvoiceSale; encaminhamento: Encaminhamento; podeConsultar: boolean }) {
+  const queryClient = useQueryClient();
+  const [ocupado, setOcupado] = useState(false);
+  const nota = encaminhamento.notaJuntada;
+  if (!nota) return null;
+  const titular = nota.partes?.find((parte) => parte.saleRef === nota.saleRef)?.patientName ?? "outro paciente";
+  const outros = (nota.partes ?? []).filter((parte) => parte.saleRef !== nota.saleRef).map((parte) => parte.patientName).filter(Boolean);
+  async function consultar() {
+    if (!nota) return;
+    setOcupado(true);
+    try {
+      const r = await invocarIntegracao<{ ok: boolean; error?: string; status?: string; dados?: { numero?: string; status?: string } }>("focus-nfse", { acao: "consultar", ref: nota.ref });
+      const st = String(r.dados?.status ?? r.status ?? "").toUpperCase();
+      if (r.dados?.numero) toast(`Nota autorizada: nº ${r.dados.numero}. As comandas saem da fila.`, { tom: "ok" });
+      else if (!r.ok || /ERRO/.test(st)) toast(r.error ?? "A prefeitura recusou. Veja o detalhe em Administração → Integrações; as comandas voltam a poder ser juntadas.", { tom: "erro", duracaoMs: 9000 });
+      else toast(`Ainda ${st.toLowerCase().replace(/_/g, " ") || "processando"}…`, { tom: "info" });
+      void queryClient.invalidateQueries({ queryKey: ["fin-invoices"] });
+      void queryClient.invalidateQueries({ queryKey: ["nfse-com-partes"] });
+    } finally {
+      setOcupado(false);
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 p-3">
+      <div className="min-w-0">
+        <p className="font-semibold text-brand-tinta">{entry.sale.patientName}</p>
+        <p className="text-xs text-muted-foreground">
+          Comanda {dateBR(entry.sale.saleDate)} · {moneyFin(entry.remaining)}
+        </p>
+        <p className="mt-1 inline-flex items-start gap-1.5 text-xs text-brand-tinta">
+          <Combine className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-musgo" aria-hidden="true" />
+          <span>
+            Está na nota juntada de {titular}
+            {outros.length ? ` com ${outros.join(", ")}` : ""} ({moneyFin(nota.valor)}): {nota.numero ? `nº ${nota.numero}` : "aguardando a prefeitura"}. Sai da fila quando a nota entrar no controle.
+          </span>
+        </p>
+      </div>
+      {podeConsultar && !nota.numero ? (
+        <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado} onClick={() => void consultar()}>
+          {ocupado ? "Consultando…" : "Consultar"}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
 
 // OS SINAIS QUE ESPERAM A CONSULTA (29/09/2026). Sinal não emite nota; ele
 // entra somado na nota da consulta ou do tratamento — o fechamento e o Lançar

@@ -52,6 +52,13 @@ type Entrada = {
    * quais comandas de sinal ela cobre.
    */
   sinais?: { saleRef?: string }[];
+  /**
+   * JUNTAR COMANDAS DE PACIENTES DIFERENTES NUMA NOTA SÓ (07/10/2026, pedido do
+   * Lucas — ex.: mãe e filho). A nota sai no nome do titular (a comanda de
+   * `saleRef`, cujo CPF vem da ficha); estas são as OUTRAS comandas que entram
+   * somadas, com o valor de cada uma. `valor` (acima) é o total da nota.
+   */
+  juntar?: { saleRef?: string; valor?: number }[];
 };
 
 // Servidor, token e cabeçalho da Focus moram em _shared/focus.ts (22/09/2026):
@@ -214,6 +221,35 @@ Deno.serve(async (request) => {
   const somaDosSinais = Math.round(partesDosSinais.reduce((s, p) => s + p.amount, 0) * 100) / 100;
   if (somaDosSinais > 0 && valor - somaDosSinais < 0.005) {
     return json({ ok: false, error: "O valor da nota tem que ser maior que o sinal somado — a nota é da consulta ou do tratamento, com o sinal junto." }, 400);
+  }
+  // AS COMANDAS JUNTADAS (07/10/2026). Cada uma: existe, não é a do titular nem
+  // repetida, NÃO tem nota (sozinha ou como parte de outra nota — senão o
+  // serviço seria tributado duas vezes) e o valor dela cabe na comanda.
+  const partesJuntadas: { saleRef: string; amount: number; comandaDate: string; patientName: string }[] = [];
+  for (const pedido of entrada.juntar ?? []) {
+    const ref = String(pedido?.saleRef ?? "").trim();
+    const valorDaParte = Math.round(Number(pedido?.valor ?? 0) * 100) / 100;
+    if (!ref || ref === entrada.saleRef || partesJuntadas.some((p) => p.saleRef === ref) || partesDosSinais.some((p) => p.saleRef === ref)) continue;
+    const { data: outra } = await client.from("fin_sales").select("client_ref, sale_date, patient_name, fin_sale_items(item_type, amount)").eq("client_ref", ref).is("deleted_at", null).maybeSingle();
+    if (!outra) return json({ ok: false, error: "Uma das comandas juntadas não existe mais. Recarregue a tela." }, 400);
+    const totalDaOutra = ((outra.fin_sale_items as { amount: number }[] | undefined) ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
+    if (!(valorDaParte > 0) || valorDaParte - totalDaOutra > 0.005) {
+      return json({ ok: false, error: `O valor juntado da comanda de ${outra.patient_name} (R$ ${valorDaParte.toFixed(2)}) não cabe nela (R$ ${totalDaOutra.toFixed(2)}).` }, 400);
+    }
+    if (await comandaJaTemNota(client, ref)) {
+      return json({ ok: false, error: `A comanda de ${outra.patient_name} (${String(outra.sale_date).split("-").reverse().join("/")}) já tem nota fiscal. Tire ela da junção.` }, 400);
+    }
+    partesJuntadas.push({ saleRef: ref, amount: valorDaParte, comandaDate: String(outra.sale_date), patientName: String(outra.patient_name ?? "") });
+  }
+  const somaDasJuntadas = Math.round(partesJuntadas.reduce((s, p) => s + p.amount, 0) * 100) / 100;
+  if (partesJuntadas.length) {
+    // A comanda do titular também não pode já estar dentro de outra nota.
+    if (await comandaJaTemNota(client, entrada.saleRef, { soComoParte: true })) {
+      return json({ ok: false, error: "A comanda do titular já entrou em outra nota. Recarregue a tela." }, 400);
+    }
+    if (valor - somaDosSinais - somaDasJuntadas < 0.005) {
+      return json({ ok: false, error: "O valor da nota tem que cobrir a comanda do titular e as juntadas." }, 400);
+    }
   }
   // A UNIFICADA é uma nota de TRATAMENTO — é exatamente por isso que ela sai mais
   // barata. Então ela segue a alíquota e o código de tratamento, nunca os de consulta.
@@ -419,10 +455,11 @@ Deno.serve(async (request) => {
       payload: payloadGuardado,
       solicitado_por: pediu.pessoaId,
       email_para: emailValido(email) || null,
-      partes: partesDosSinais.length
+      partes: partesDosSinais.length || partesJuntadas.length
         ? [
-            { saleRef: entrada.saleRef, amount: Math.round((valor - somaDosSinais) * 100) / 100, comandaDate: String(sale.sale_date), patientName: String(sale.patient_name) },
+            { saleRef: entrada.saleRef, amount: Math.round((valor - somaDosSinais - somaDasJuntadas) * 100) / 100, comandaDate: String(sale.sale_date), patientName: String(sale.patient_name) },
             ...partesDosSinais,
+            ...partesJuntadas,
           ]
         : null,
     });
@@ -464,3 +501,21 @@ Deno.serve(async (request) => {
   }
   return json({ ok: resposta.ok, ref, status, dados, numero: (dados.numero as string) ?? null, emailEnviado, emailPara: emailValido(email) || null });
 });
+
+
+/**
+ * A comanda já tem nota? (07/10/2026, junção de comandas.) Olha o controle de
+ * impostos (fin_invoices) e as emissões vivas da Focus — a da própria comanda e
+ * as que a levam como PARTE (nota juntada ou com sinal). `soComoParte` olha só
+ * a segunda (para o titular, a trava de sempre já olha a emissão dele).
+ */
+async function comandaJaTemNota(client: ReturnType<typeof db>, saleRef: string, opcoes: { soComoParte?: boolean } = {}) {
+  if (!opcoes.soComoParte) {
+    const { count } = await client.from("fin_invoices").select("id", { count: "exact", head: true }).eq("sale_ref", saleRef).is("deleted_at", null);
+    if ((count ?? 0) > 0) return true;
+    const { data: propria } = await client.from("nfse_emissao").select("status").eq("sale_ref", saleRef);
+    if ((propria ?? []).some((e) => !/ERRO|CANCEL|HTTP_/i.test(String(e.status ?? "")))) return true;
+  }
+  const { data: comoParte } = await client.from("nfse_emissao").select("status").contains("partes", [{ saleRef }]);
+  return (comoParte ?? []).some((e) => !/ERRO|CANCEL|HTTP_/i.test(String(e.status ?? "")));
+}

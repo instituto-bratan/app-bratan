@@ -11,9 +11,19 @@
 // da tela: o Estevão só VÊ Impostos & NFs e é ele quem emite o lote. Tirar do
 // lote continua com quem edita a tela; Consultar (buscar o número da nota que
 // ficou aguardando a prefeitura) também fica com quem emite.
-import { useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileCheck2, RefreshCw, XCircle } from "lucide-react";
+//
+// 07/10/2026 (juntar notas de dois pacientes, pedido do Lucas):
+//  · CORREÇÃO: as partes de OUTRAS comandas iam como `sinais`, e o servidor só
+//    aceita sinal do MESMO paciente — a nota "Simone + Murilo" (mãe e filho,
+//    lote de setembro) seria recusada ao emitir. Agora vão em `juntar`, com o
+//    valor de cada parte (juntarDoItem), e o texto ganha "INCLUI SERVIÇOS
+//    PRESTADOS A: …";
+//  · duas ou mais linhas ainda não emitidas podem virar uma só (JuntarNotasDialog);
+//  · o cartão mostra TODOS os lotes, separados (o de setembro e o do mês em que
+//    a junção pôs nota nova), e lê o lote pelo mesmo cache da fila de comandas.
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Combine, FileCheck2, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
@@ -24,7 +34,9 @@ import { integracaoLigada } from "@/lib/integracoes";
 import { invocarIntegracao } from "@/lib/remoteData";
 import { atualizarRemoteNfseLoteItem, listRemoteNfseLote, prontidaoDoLote, type ProntidaoDoContato } from "@/lib/remote/nfseLote";
 import { moneyFin } from "./financeiroData";
-import { discriminacaoDoItem, partesFecham, resumoDoLote, type ItemDoLote } from "./loteDeNotas";
+import { chaveDoLote, discriminacaoDoItem, juntarDoItem, partesFecham, resumoDoLote, type ItemDoLote } from "./loteDeNotas";
+import { analisarItensDoLote, type AnaliseDaJuncao } from "./juntarNotas";
+import { JuntarNotasDialog } from "./JuntarNotasDialog";
 import { rotuloDoTipoDeNota } from "../../../supabase/functions/_shared/notaEmitida";
 
 type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; numero?: string | null; emailEnviado?: boolean; dados?: { numero?: string; status?: string } };
@@ -41,31 +53,27 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
   const podeEmitir = podeEmitirNota(pessoa);
   const queryClient = useQueryClient();
   const recarregarControle = () => void queryClient.invalidateQueries({ queryKey: ["fin-invoices"] });
-  const [itens, setItens] = useState<ItemDoLote[] | null>(null);
-  const [prontidao, setProntidao] = useState<Record<string, ProntidaoDoContato>>({});
+  // O lote vem do cache compartilhado (chaveDoLote): a fila "Comandas
+  // aguardando NF" lê o mesmo, e a junção que põe nota nova no lote recarrega
+  // os dois de uma vez.
+  const lote = useQuery({ queryKey: [...chaveDoLote], queryFn: listRemoteNfseLote, enabled: ligada, staleTime: 30_000 });
+  const itens = lote.isError ? [] : (lote.data ?? null);
+  const contatos = useMemo(() => [...new Set((itens ?? []).map((i) => i.contactRef ?? "").filter(Boolean))].sort(), [itens]);
+  const fichas = useQuery({ queryKey: ["nfse-lote-prontidao", contatos.join("|")], queryFn: () => prontidaoDoLote(contatos), enabled: ligada && contatos.length > 0, staleTime: 30_000 });
+  const prontidao = useMemo<Record<string, ProntidaoDoContato>>(() => Object.fromEntries((fichas.data ?? []).map((p) => [p.contactRef, p])), [fichas.data]);
   const [emitindo, setEmitindo] = useState<string | null>(null);
   const [rodando, setRodando] = useState(false);
-
-  async function carregar() {
-    try {
-      const lista = await listRemoteNfseLote();
-      setItens(lista);
-      const pronta = await prontidaoDoLote(lista.map((i) => i.contactRef ?? ""));
-      setProntidao(Object.fromEntries(pronta.map((p) => [p.contactRef, p])));
-    } catch {
-      setItens([]);
-    }
-  }
-  useEffect(() => {
-    if (ligada) void carregar();
-  }, [ligada]);
+  // Juntar linhas (07/10/2026): quem mexe no lote marca; com 2 ou mais, junta.
+  const podeMexerNoLote = !readOnly || podeEmitir;
+  const [marcados, setMarcados] = useState<string[]>([]);
+  const [juncao, setJuncao] = useState<AnaliseDaJuncao | null>(null);
 
   const visiveis = useMemo(() => (itens ?? []).filter((i) => i.status !== "RETIRADA"), [itens]);
   const resumo = useMemo(() => resumoDoLote(itens ?? []), [itens]);
   if (!ligada || !itens || !visiveis.length) return null;
 
   function aplicar(id: string, patch: Partial<ItemDoLote>) {
-    setItens((atual) => (atual ?? []).map((i) => (i.id === id ? { ...i, ...patch } : i)));
+    queryClient.setQueryData<ItemDoLote[]>([...chaveDoLote], (atual) => (atual ?? []).map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
   /** Emite UM item e, se a prefeitura já autorizou, registra no controle. */
@@ -90,10 +98,11 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
         valor: item.valor,
         discriminacao: discriminacaoDoItem(item),
         tomador: { nome: item.tomadorNome },
-        // Os sinais do mesmo paciente entram somados na nota (regra do Lucas,
-        // 29/09): as partes de OUTRAS comandas vão como `sinais`, e a função
-        // confere se cada uma é mesmo só sinal e do mesmo paciente.
-        sinais: item.partes.filter((p) => p.saleRef && p.saleRef !== item.saleRef).map((p) => ({ saleRef: p.saleRef })),
+        // As partes de OUTRAS comandas (o filho junto da mãe, ou o sinal pago
+        // antes) vão em `juntar`, com o valor de cada parte (07/10/2026). Antes
+        // iam como `sinais`, e o servidor recusa sinal de outro paciente. Ele
+        // confere cada uma: existe, não tem nota e o valor cabe na comanda.
+        juntar: juntarDoItem(item),
       });
       if (!r.ok) {
         const erro = r.error ?? `A Focus recusou: ${r.status ?? ""}`;
@@ -174,11 +183,19 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
   const pendentes = visiveis.filter((i) => i.status === "PENDENTE" || i.status === "ERRO");
   const semCpf = pendentes.filter((i) => !(i.contactRef && prontidao[i.contactRef]?.temCpf)).length;
   const semEmail = pendentes.filter((i) => !(i.contactRef && prontidao[i.contactRef]?.temEmail)).length;
+  // Os lotes, do mais novo ao mais velho (a lista já vem nessa ordem).
+  const lotes = [...new Set(visiveis.map((i) => i.lote))];
+  const mesDoLote = (lote: string) => lote.split("-").reverse().join("/");
+  // Só entra na junção o que ainda não foi à prefeitura.
+  const marcaveis = new Set(pendentes.map((i) => i.id));
+  const selecionados = marcados.filter((id) => marcaveis.has(id));
+  const valorSelecionado = visiveis.filter((i) => selecionados.includes(i.id)).reduce((s, i) => s + i.valor, 0);
+  const alternar = (id: string) => setMarcados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Lote de notas conferido · {visiveis[0]?.lote.split("-").reverse().join("/")}</CardTitle>
+        <CardTitle className="text-lg">Lote de notas conferido · {lotes.map(mesDoLote).join(" e ")}</CardTitle>
         <p className="text-sm text-muted-foreground">{resumo.frase}</p>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -190,10 +207,14 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
             . A função lê CPF e e-mail da ficha na hora de emitir: preencha antes de clicar.
           </p>
         ) : null}
+        {podeMexerNoLote && pendentes.length > 1 ? (
+          <p className="text-xs text-muted-foreground">Para juntar duas notas numa só (mãe e filho, por exemplo), marque as linhas e toque em “Juntar em uma nota”.</p>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">
+                {podeMexerNoLote ? <th className="w-8 py-1.5 pr-2"><span className="sr-only">Juntar</span></th> : null}
                 <th className="py-1.5 pr-3">#</th>
                 <th className="py-1.5 pr-3">Paciente</th>
                 <th className="py-1.5 pr-3">Comanda</th>
@@ -204,11 +225,33 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
                 <th className="py-1.5"></th>
               </tr>
             </thead>
-            <tbody>
-              {visiveis.map((item) => {
+            {lotes.map((loteDoGrupo) => (
+              <tbody key={loteDoGrupo}>
+                {lotes.length > 1 ? (
+                  <tr className="border-t border-brand-oliva/10">
+                    <td colSpan={podeMexerNoLote ? 9 : 8} className="pb-1 pt-3 text-xs font-semibold text-brand-musgo">
+                      Lote de {mesDoLote(loteDoGrupo)} · {resumoDoLote((itens ?? []).filter((i) => i.lote === loteDoGrupo)).frase}
+                    </td>
+                  </tr>
+                ) : null}
+                {visiveis.filter((i) => i.lote === loteDoGrupo).map((item) => {
                 const p = item.contactRef ? prontidao[item.contactRef] : undefined;
                 return (
                   <tr key={item.id} className="border-t border-brand-oliva/10 align-top">
+                    {podeMexerNoLote ? (
+                      <td className="py-2 pr-2">
+                        {marcaveis.has(item.id) ? (
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 accent-brand-musgo"
+                            checked={selecionados.includes(item.id)}
+                            disabled={emitindo !== null || rodando}
+                            onChange={() => alternar(item.id)}
+                            aria-label={`Marcar a nota de ${item.tomadorNome} para juntar`}
+                          />
+                        ) : null}
+                      </td>
+                    ) : null}
                     <td className="py-2 pr-3 text-muted-foreground">{item.ordem}</td>
                     <td className="py-2 pr-3">
                       <p className="font-semibold text-brand-tinta">{item.tomadorNome}</p>
@@ -253,10 +296,28 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
                     </td>
                   </tr>
                 );
-              })}
-            </tbody>
+                })}
+              </tbody>
+            ))}
           </table>
         </div>
+        {podeMexerNoLote && selecionados.length === 1 ? (
+          <p className="text-xs text-muted-foreground">1 nota marcada. Marque mais uma para juntar.</p>
+        ) : null}
+        {podeMexerNoLote && selecionados.length > 1 ? (
+          <div className="sticky bottom-[calc(6rem+env(safe-area-inset-bottom))] z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-musgo bg-white/95 px-3 py-2 shadow-calm lg:bottom-3">
+            <p className="text-sm font-semibold text-brand-tinta">
+              {selecionados.length} notas · {moneyFin(valorSelecionado)}
+              <span className="block text-xs font-normal text-muted-foreground">viram uma nota só, no nome de um dos pacientes</span>
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" variant="ghost" className="h-9" onClick={() => setMarcados([])}>Desmarcar</Button>
+              <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={rodando || emitindo !== null} onClick={() => setJuncao(analisarItensDoLote({ itens: itens ?? [], ids: selecionados }))}>
+                <Combine className="h-4 w-4" aria-hidden="true" /> Juntar em uma nota
+              </LiquidButton>
+            </div>
+          </div>
+        ) : null}
         {podeEmitir && pendentes.length ? (
           <div className="flex flex-wrap items-center gap-2">
             <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={rodando || emitindo !== null} onClick={() => void emitirTodas()}>
@@ -267,6 +328,7 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
         ) : pendentes.length ? (
           <p className="text-xs text-muted-foreground">{avisoQuemEmiteNota}</p>
         ) : null}
+        {juncao ? <JuntarNotasDialog modo="lote" analise={juncao} onFechar={() => setJuncao(null)} onPronto={() => setMarcados([])} /> : null}
       </CardContent>
     </Card>
   );
