@@ -117,15 +117,31 @@ export async function listRemoteNotasComPartes(): Promise<EmissaoComPartes[]> {
   }));
 }
 
-export type ProntidaoDoContato = { contactRef: string; temCpf: boolean; temEmail: boolean };
+/**
+ * A prontidão de cada ficha do lote: tem CPF? tem e-mail? — só o sim/não,
+ * nunca o número. 07/10/2026: vem também o NOME da ficha, para a linha do lote
+ * perceber quando a nota sai no nome de uma pessoa e a comanda está ligada à
+ * ficha de outra (Simone ligada à ficha do filho) — aí o CPF digitado na linha
+ * não vai para a ficha (CpfDaNotaInline).
+ */
+export type ProntidaoDoContato = { contactRef: string; temCpf: boolean; temEmail: boolean; nomeDaFicha: string | null };
 
 export async function prontidaoDoLote(contactRefs: string[]): Promise<ProntidaoDoContato[]> {
   const refs = [...new Set(contactRefs.filter(Boolean))];
   if (!refs.length) return [];
   const client = requireSupabase();
-  const { data, error } = await client.rpc("nfse_lote_prontidao", { p_refs: refs });
+  const [{ data, error }, nomes] = await Promise.all([
+    client.rpc("nfse_lote_prontidao", { p_refs: refs }),
+    client.from("crm_contacts").select("client_ref, full_name").in("client_ref", refs),
+  ]);
   if (error) throw new Error(error.message);
-  const vindas = ((data ?? []) as Record<string, unknown>[]).map((r) => ({ contactRef: String(r.contact_ref), temCpf: Boolean(r.tem_cpf), temEmail: Boolean(r.tem_email) }));
+  const nomeDe = new Map(((nomes.data ?? []) as { client_ref: string; full_name: string | null }[]).map((c) => [c.client_ref, c.full_name ?? null]));
+  const vindas = ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    contactRef: String(r.contact_ref),
+    temCpf: Boolean(r.tem_cpf),
+    temEmail: Boolean(r.tem_email),
+    nomeDaFicha: nomeDe.get(String(r.contact_ref)) ?? null,
+  }));
   // 07/10/2026: a função do banco só responde ao financeiro completo. Para quem
   // EMITE (o Estevão, cargo gestor) ela voltava vazia e o lote dizia "sem CPF"
   // de todo mundo. O que faltou vai pela leitura direta que a RLS já abre à
@@ -140,5 +156,5 @@ export async function prontidaoDoLote(contactRefs: string[]): Promise<ProntidaoD
   const comCpf = new Set(((documentos.data ?? []) as { contact_ref: string }[]).map((d) => d.contact_ref));
   const emailValido = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
   const comEmail = new Set(((contatos.data ?? []) as { client_ref: string; email: string | null }[]).filter((c) => emailValido.test(String(c.email ?? ""))).map((c) => c.client_ref));
-  return [...vindas, ...faltam.map((ref) => ({ contactRef: ref, temCpf: comCpf.has(ref), temEmail: comEmail.has(ref) }))];
+  return [...vindas, ...faltam.map((ref) => ({ contactRef: ref, temCpf: comCpf.has(ref), temEmail: comEmail.has(ref), nomeDaFicha: nomeDe.get(ref) ?? null }))];
 }

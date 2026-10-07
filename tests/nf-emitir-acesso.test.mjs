@@ -170,7 +170,9 @@ test("Lote de notas: emitir depende da permissão; tirar do lote continua com qu
   assert.match(src, /const podeEmitir = podeEmitirNota\(pessoa\);/);
   assert.match(src, /async function emitirItem\([^)]*\)[^{]*\{\s*\/\/[^\n]*\n\s*if \(!podeEmitir\) \{/, "a linha não vai à prefeitura sem a permissão");
   assert.match(src, /async function emitirTodas\(\) \{\s*if \(!podeEmitir\) return/);
-  assert.match(src, /\{podeEmitir && \(item\.status === "PENDENTE" \|\| item\.status === "ERRO"\) \? \(\s*<Button[\s\S]{0,700}> Emitir\s*<\/Button>/);
+  // 07/10/2026: além da permissão, o botão direto só aparece na linha "pronta" (ficha certa com CPF,
+  // sem nota por outra tela) — senão o caminho é o campo de CPF da linha (tests/cpf-na-nota.test.mjs).
+  assert.match(src, /\{podeEmitir && \(item\.status === "PENDENTE" \|\| item\.status === "ERRO"\) && pronta \? \(\s*<Button[\s\S]{0,700}> Emitir\s*<\/Button>/);
   assert.match(src, /\{!readOnly && \(item\.status === "PENDENTE" \|\| item\.status === "ERRO"\) \? \(\s*<Button[\s\S]{0,300}retirar\(item\)/);
   assert.match(src, /\{podeEmitir && pendentes\.length \? \(/, "o botão do lote todo");
   assert.doesNotMatch(src, /!readOnly && pendentes\.length/, "emitir o lote não depende mais do 'só vê'");

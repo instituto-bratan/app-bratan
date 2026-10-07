@@ -73,6 +73,7 @@ import { notaDoFechamentoVazia, planoDeNotas, resumoDaNota, travaDoFechamento, t
 import { travaDosDadosDaNota } from "@/features/crm/travasDoFechamento";
 import { sinaisEmAberto, somaDosSinais } from "./sinaisDoPaciente";
 import { NotaDaComandaDialog } from "./NotaDaComandaDialog";
+import { CpfDaNotaInline } from "./CpfDaNotaInline";
 import { divisaoDosItens, ehSoSinal, estadoDaNota, parcelasDaComanda, quandoPadrao, valorFaturavel } from "./notaNaComandaDoDia";
 import { travaDaComandaComNota, valorDaComandaMudou } from "./notasEmitidasFocus";
 
@@ -165,6 +166,13 @@ export function FinanceiroLancarDiaPage() {
   const [cpfNota, setCpfNota] = useState("");
   const [emitindoNota, setEmitindoNota] = useState(false);
   const [notaDaComanda, setNotaDaComanda] = useState<FinSale | null>(null);
+  // CPF DA NOTA NA LISTA DO DIA (07/10/2026, pedido do Lucas: "colocar o CPF e
+  // já emitir de lá"). Toda comanda sem nota mostra se a ficha tem CPF e deixa
+  // guardar ali mesmo (CpfDaNotaInline — o MESMO campo do Lote de notas), para
+  // quem pode gravar CPF. Quem emite tem "Guardar CPF e emitir": guarda e abre a
+  // confirmação da nota (unificada ou repartida, e-mail) já com o CPF.
+  const [cpfParaANota, setCpfParaANota] = useState("");
+  const nomeDaFichaDe = (ref: string | null | undefined) => (ref ? crmState.contacts.find((item) => item.id === ref)?.fullName ?? null : null);
 
   const summary = useMemo(() => buildDailyCardSummary(financeiro.sales, date), [financeiro.sales, date]);
   // DINHEIRO NO CREDIÁRIO (29/09/2026): o que foi pago em dinheiro hoje, ligado a paciente/comanda.
@@ -611,7 +619,12 @@ export function FinanceiroLancarDiaPage() {
         <NotaDaComandaDialog
           sale={notaDaComanda}
           emailInicial={crmState.contacts.find((item) => item.id === notaDaComanda.crmContactRef)?.email ?? ""}
-          onFechar={() => setNotaDaComanda(null)}
+          cpfInicial={cpfParaANota}
+          nomeDaFicha={nomeDaFichaDe(notaDaComanda.crmContactRef)}
+          onFechar={() => {
+            setNotaDaComanda(null);
+            setCpfParaANota("");
+          }}
           onEmitida={() => void queryClient.invalidateQueries({ queryKey: ["nfse-comandas-do-dia"] })}
           onEmailConfirmado={(email) => {
             const contato = crmState.contacts.find((item) => item.id === notaDaComanda.crmContactRef);
@@ -1132,6 +1145,7 @@ export function FinanceiroLancarDiaPage() {
                           const estado = estadoDaNota(sale, emissoesDoDia.data.filter((e) => e.saleRef === sale.id));
                           const pedeEmissao = estado.estado === "SEM_NOTA" || estado.estado === "ERRO";
                           return (
+                            <>
                             <p className={cn("mt-1 inline-flex flex-wrap items-center gap-1.5 text-xs", estado.estado === "AUTORIZADA" ? "font-semibold text-brand-musgo" : pedeEmissao ? "font-semibold text-amber-700" : "text-muted-foreground")}>
                               {estado.estado === "AUTORIZADA" ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : pedeEmissao ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : null}
                               {estado.rotulo}
@@ -1144,6 +1158,24 @@ export function FinanceiroLancarDiaPage() {
                                 <span className="font-normal text-muted-foreground">· quem emite é o Estevão</span>
                               ) : null}
                             </p>
+                            {/* O CPF da nota na própria linha (07/10/2026): o mesmo campo do Lote de notas. */}
+                            {pedeEmissao && !isPreview ? (
+                              <CpfDaNotaInline
+                                className="mt-1.5 max-w-md"
+                                contactRef={sale.crmContactRef || null}
+                                nomeDaNota={sale.patientName}
+                                nomeDaFicha={nomeDaFichaDe(sale.crmContactRef)}
+                                emitir={
+                                  podeEmitir
+                                    ? ({ cpf }) => {
+                                        setCpfParaANota(cpf);
+                                        setNotaDaComanda(sale);
+                                      }
+                                    : undefined
+                                }
+                              />
+                            ) : null}
+                            </>
                           );
                         })() : null}
                       </div>

@@ -784,7 +784,8 @@ export function FinanceiroImpostosPage() {
         </Card>
 
         {/* O LOTE CONFERIDO (22/09/2026): as notas de setembro que faltavam, uma linha cada, emitidas pela Focus em sequência. */}
-        <LoteDeNotasCard readOnly={readOnly} />
+        {/* 07/10/2026: o lote confere o controle de impostos — nota que saiu por outra tela não aparece como "para emitir". */}
+        <LoteDeNotasCard readOnly={readOnly} invoices={financeiro.invoices} />
         <SinaisEsperandoCard sales={financeiro.sales} invoices={financeiro.invoices} />
 
         <Card>

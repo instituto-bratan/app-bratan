@@ -35,7 +35,11 @@ import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
 import {
   deriveInteligencia360FromCrm,
   diffCrmStates,
+  ehConflitoDeTelefone,
+  primeiroNomeDoBanco,
   seedCrmState,
+  telefoneDoBanco,
+  trocarFichaNoEstado,
   type CrmCadence,
   type CrmCadenceEnrollment,
   type CrmCadenceStep,
@@ -2272,7 +2276,117 @@ export async function listRemoteCrmState(): Promise<CrmState> {
   };
 }
 
-export async function saveRemoteCrmState(state: CrmState, options?: { includeCatalog?: boolean; baseline?: CrmState }) {
+/**
+ * A FICHA QUE O BANCO JÁ TEM (07/10/2026). Desde a migração
+ * 202610070005_telefone_da_familia o banco aceita duas fichas com o mesmo
+ * telefone quando o primeiro nome é diferente (mãe e filho, casal) e só recusa
+ * (23505) quando telefone E primeiro nome batem — é a mesma pessoa. Isso só
+ * acontece quando esta tela criou a ficha sem ter carregado a que já existia
+ * (outro aparelho acabou de criar, retrato velho). Em vez de travar o sync
+ * inteiro, a ficha NOVA dá lugar à que já existe.
+ *
+ * Só ficha nova (fora do último retrato carregado) é trocada: ficha antiga que
+ * foi EDITADA para o telefone de outra é decisão de quem edita — o erro sobe.
+ */
+async function fichasQueOBancoJaTem(contatos: CrmContact[], baseline?: CrmState): Promise<Map<string, string>> {
+  const troca = new Map<string, string>();
+  const jaCarregadas = new Set((baseline?.contacts ?? []).map((contato) => contato.id));
+  const novas = contatos.filter((contato) => !jaCarregadas.has(contato.id) && telefoneDoBanco(contato).length > 0);
+  if (!novas.length) return troca;
+  const client = requireSupabase();
+  // O número pode estar gravado com máscara nas fichas antigas: procura os
+  // dígitos em ordem e confere a igualdade exata aqui embaixo.
+  const filtros = [...new Set(novas.map(telefoneDoBanco))].flatMap((digitos) => {
+    const padrao = `*${digitos.split("").join("*")}*`;
+    return [`phone.ilike.${padrao}`, `whatsapp.ilike.${padrao}`];
+  });
+  const { data, error } = await client.from("crm_contacts").select("client_ref, full_name, phone, whatsapp").is("archived_at", null).or(filtros.join(","));
+  if (error) return troca;
+  const doBanco = ((data ?? []) as { client_ref: string; full_name: string | null; phone: string | null; whatsapp: string | null }[]).map((linha) => ({
+    ref: linha.client_ref,
+    telefone: telefoneDoBanco({ phone: linha.phone ?? "", whatsapp: linha.whatsapp ?? "" }),
+    primeiro: primeiroNomeDoBanco(linha.full_name ?? ""),
+  }));
+  for (const contato of novas) {
+    const igual = doBanco.find(
+      (linha) => linha.ref !== contato.id && linha.telefone === telefoneDoBanco(contato) && linha.primeiro === primeiroNomeDoBanco(contato.fullName),
+    );
+    if (igual) troca.set(contato.id, igual.ref);
+  }
+  return troca;
+}
+
+/**
+ * Comanda, comprovante, lembrete, dinheiro, lote de notas e CPF que já nasceram
+ * com o id da ficha trocada passam a apontar para a ficha que ficou
+ * (07/10/2026). Melhor esforço: o que a RLS desta pessoa não deixa mudar fica
+ * como está (e o erro não derruba o sync do CRM).
+ */
+async function reapontarFichaForaDoCrm(troca: Map<string, string>) {
+  const client = requireSupabase();
+  const tabelas: [string, string][] = [
+    ["fin_sales", "crm_contact_ref"],
+    ["comprovante", "crm_contact_ref"],
+    ["pagamento_lembrete", "crm_contact_ref"],
+    ["fin_cash_entries", "crm_contact_ref"],
+    ["nfse_lote_item", "contact_ref"],
+    ["contato_documento", "contact_ref"],
+  ];
+  for (const [de, para] of troca) {
+    for (const [tabela, coluna] of tabelas) {
+      try {
+        await client.from(tabela).update({ [coluna]: para }).eq(coluna, de);
+      } catch {
+        /* sem permissão nesta tabela: segue */
+      }
+    }
+  }
+}
+
+function linhasDosContatos(contatos: CrmContact[], now: string) {
+  return contatos.map((record) => ({
+    client_ref: record.id,
+    contact_type: record.contactType,
+    lifecycle_stage: record.lifecycleStage,
+    full_name: record.fullName,
+    preferred_name: record.preferredName || null,
+    phone: record.phone || null,
+    whatsapp: record.whatsapp || null,
+    email: record.email || null,
+    instagram: record.instagram || null,
+    source_channel: record.sourceChannel || null,
+    acquisition_campaign: record.acquisitionCampaign || null,
+    lead_temperature: record.leadTemperature,
+    persona_fit: record.personaFit,
+    main_pain: record.mainPain || null,
+    main_goal: record.mainGoal || null,
+    owner_user_id: record.ownerUserId || null,
+    commercial_owner_id: record.commercialOwnerId || null,
+    concierge_owner_id: record.conciergeOwnerId || null,
+    nurse_owner_id: record.nurseOwnerId || null,
+    doctor_id: record.doctorId || null,
+    notes: record.notes || null,
+    opt_out: record.optOut ?? false,
+    created_by: record.createdBy || null,
+    created_at: record.createdAt || now,
+    updated_at: record.updatedAt || now,
+    archived_at: record.archivedAt || null,
+    referrer_contact_id: record.referrerContactId ?? null,
+    marketing_opt_in_em: record.marketingOptInEm ?? null,
+    marketing_opt_in_canal: record.marketingOptInCanal ?? null,
+    referral_reward_paid_at: record.referralRewardPaidAt ?? null,
+  }));
+}
+
+/**
+ * Salva o CRM. Devolve `fichasTrocadas` (ficha nova → ficha que o banco já
+ * tinha) quando o banco recusou uma ficha repetida (07/10/2026): quem chamou
+ * aplica a mesma troca no estado da tela.
+ */
+export async function saveRemoteCrmState(
+  state: CrmState,
+  options?: { includeCatalog?: boolean; baseline?: CrmState },
+): Promise<{ fichasTrocadas: Map<string, string> }> {
   const now = new Date().toISOString();
   // Catálogo (cadências/passos/mensagens) tem RLS de gestão (can_crm_manage).
   // Quem não é coordenação pula essas tabelas: antes o sync inteiro morria
@@ -2281,43 +2395,24 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
   // Sync por DIFERENÇA: com um baseline (último estado carregado), só sobem as
   // linhas que mudaram. Sem baseline, sobe tudo (primeira carga / retry).
   // Isso reduz muito o "um usuário reverte o trabalho do outro" (LWW).
-  const pick = options?.baseline ? diffCrmStates(options.baseline, state) : state;
+  let pick = options?.baseline ? diffCrmStates(options.baseline, state) : state;
 
-  await upsertCrmTable(
-    "crm_contacts",
-    pick.contacts.map((record) => ({
-      client_ref: record.id,
-      contact_type: record.contactType,
-      lifecycle_stage: record.lifecycleStage,
-      full_name: record.fullName,
-      preferred_name: record.preferredName || null,
-      phone: record.phone || null,
-      whatsapp: record.whatsapp || null,
-      email: record.email || null,
-      instagram: record.instagram || null,
-      source_channel: record.sourceChannel || null,
-      acquisition_campaign: record.acquisitionCampaign || null,
-      lead_temperature: record.leadTemperature,
-      persona_fit: record.personaFit,
-      main_pain: record.mainPain || null,
-      main_goal: record.mainGoal || null,
-      owner_user_id: record.ownerUserId || null,
-      commercial_owner_id: record.commercialOwnerId || null,
-      concierge_owner_id: record.conciergeOwnerId || null,
-      nurse_owner_id: record.nurseOwnerId || null,
-      doctor_id: record.doctorId || null,
-      notes: record.notes || null,
-      opt_out: record.optOut ?? false,
-      created_by: record.createdBy || null,
-      created_at: record.createdAt || now,
-      updated_at: record.updatedAt || now,
-      archived_at: record.archivedAt || null,
-      referrer_contact_id: record.referrerContactId ?? null,
-      marketing_opt_in_em: record.marketingOptInEm ?? null,
-      marketing_opt_in_canal: record.marketingOptInCanal ?? null,
-      referral_reward_paid_at: record.referralRewardPaidAt ?? null,
-    })),
-  );
+  // 23505 de telefone (07/10/2026): a mesma pessoa (telefone + primeiro nome)
+  // já está no banco com outro id → reaproveita a ficha de lá em vez de travar.
+  let fichasTrocadas = new Map<string, string>();
+  try {
+    await upsertCrmTable("crm_contacts", linhasDosContatos(pick.contacts, now));
+  } catch (erro) {
+    const mensagem = erro instanceof Error ? erro.message : String(erro);
+    if (!ehConflitoDeTelefone(mensagem)) throw erro;
+    fichasTrocadas = await fichasQueOBancoJaTem(pick.contacts, options?.baseline);
+    if (!fichasTrocadas.size) {
+      throw new Error(`${mensagem} — o telefone já está em outra ficha com o mesmo primeiro nome. Se é a mesma pessoa, use a ficha que já existe.`);
+    }
+    pick = trocarFichaNoEstado(pick, fichasTrocadas);
+    await upsertCrmTable("crm_contacts", linhasDosContatos(pick.contacts, now));
+    await reapontarFichaForaDoCrm(fichasTrocadas);
+  }
 
   if (includeCatalog) {
   // Catálogo NUNCA vai por diff: o mergeCrmCatalogWithSeeds injeta os seeds no
@@ -2513,6 +2608,7 @@ export async function saveRemoteCrmState(state: CrmState, options?: { includeCat
       touchpoints: state.touchpoints.length,
     },
   });
+  return { fichasTrocadas };
 }
 
 

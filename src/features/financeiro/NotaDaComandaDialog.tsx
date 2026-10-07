@@ -9,6 +9,12 @@
 // 07/10/2026: só emite quem tem a permissão "Emitir nota fiscal"
 // (podeEmitirNota — por padrão, só o Estevão). Quem não tem vê o cartão, mas
 // no lugar do botão lê quem emite; a comanda continua na fila de notas.
+//
+// 07/10/2026 (CPF na lista do dia): o "Guardar CPF e emitir" da linha abre
+// este diálogo já com o CPF (cpfInicial). E a TRAVA da ficha de outra pessoa
+// (nota no nome de X, comanda ligada à ficha de Y — caso Simone × Murilo): o
+// CPF digitado NÃO vai para a ficha, o da ficha NÃO é usado, e a nota só sai
+// com o CPF digitado aqui.
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -16,22 +22,43 @@ import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
-import { cpfDigitos, cpfValido } from "@/lib/cpf";
+import { cpfDigitos, cpfEnquantoDigita, cpfValido } from "@/lib/cpf";
 import { invocarIntegracao, lerRemoteCpfDoContato, salvarRemoteCpfDoContato } from "@/lib/remoteData";
 import { NotaNoFechamentoCard } from "@/features/crm/NotaNoFechamentoCard";
 import { emitirNotasDoFechamento } from "@/features/crm/emitirNotaDoFechamento";
 import { notaDoFechamentoVazia, planoDeNotas, travaDoFechamento, type NotaDoFechamento } from "@/features/crm/notaNoFechamento";
 import { moneyFin, type FinSale } from "./financeiroData";
 import { divisaoDosItens, ehSoSinal, parcelasDaComanda, valorFaturavel } from "./notaNaComandaDoDia";
+import { fichaDeOutraPessoa } from "./cpfDaNota";
 
-export function NotaDaComandaDialog({ sale, emailInicial, onFechar, onEmitida, onEmailConfirmado }: { sale: FinSale; emailInicial: string; onFechar: () => void; onEmitida: () => void; onEmailConfirmado?: (email: string) => void }) {
+export function NotaDaComandaDialog({
+  sale,
+  emailInicial,
+  cpfInicial = "",
+  nomeDaFicha = null,
+  onFechar,
+  onEmitida,
+  onEmailConfirmado,
+}: {
+  sale: FinSale;
+  emailInicial: string;
+  /** O CPF que a pessoa já digitou na linha (07/10/2026). */
+  cpfInicial?: string;
+  /** O nome da ficha ligada à comanda — para a trava de outra pessoa. */
+  nomeDaFicha?: string | null;
+  onFechar: () => void;
+  onEmitida: () => void;
+  onEmailConfirmado?: (email: string) => void;
+}) {
   const { pessoa, session, isPreview } = useAuth();
   const queryClient = useQueryClient();
   const [nota, setNota] = useState<NotaDoFechamento>({ ...notaDoFechamentoVazia, divisao: divisaoDosItens(sale.items) });
   const [email, setEmail] = useState(emailInicial);
-  const [cpfRascunho, setCpfRascunho] = useState("");
+  const [cpfRascunho, setCpfRascunho] = useState(() => cpfEnquantoDigita(cpfInicial));
   const [emitindo, setEmitindo] = useState(false);
   useEffect(() => setEmail(emailInicial), [emailInicial]);
+  useEffect(() => setCpfRascunho(cpfEnquantoDigita(cpfInicial)), [cpfInicial]);
+  const outraPessoa = fichaDeOutraPessoa(sale.patientName, nomeDaFicha);
 
   const cpfNaFicha = useQuery({
     queryKey: ["contato-cpf", sale.crmContactRef],
@@ -45,14 +72,19 @@ export function NotaDaComandaDialog({ sale, emailInicial, onFechar, onEmitida, o
   const plano = planoDeNotas({ escolha: nota.escolha, valorRecebido: valor, divisao: nota.divisao, diaISO: sale.saleDate, parcelas });
   const trava = travaDoFechamento({ nota, valorRecebido: valor, ehSinal: sinal, plano });
   const temPermissao = podeEmitirNota(pessoa);
-  const podeEmitir = temPermissao && !sinal && nota.escolha !== "SEM_NOTA" && valor > 0 && plano.notas.length > 0 && !trava && !emitindo;
+  // Ficha de outra pessoa: só sai com o CPF digitado aqui (o da ficha seria o de outra pessoa).
+  const travaDaFicha =
+    outraPessoa && nota.escolha !== "SEM_NOTA" && !cpfValido(cpfRascunho)
+      ? `Esta nota sai no nome de ${sale.patientName}, mas a comanda está ligada à ficha de ${nomeDaFicha}. Digite o CPF de ${sale.patientName}: ele vale só para esta nota e não vai para a ficha.`
+      : "";
+  const podeEmitir = temPermissao && !sinal && nota.escolha !== "SEM_NOTA" && valor > 0 && plano.notas.length > 0 && !trava && !travaDaFicha && !emitindo;
 
   async function emitir() {
     if (!podeEmitir) return;
     setEmitindo(true);
     try {
       const cpfDigitado = cpfValido(cpfRascunho) ? cpfDigitos(cpfRascunho) : "";
-      if (cpfDigitado && !cpfNaFicha.data?.cpf && sale.crmContactRef) {
+      if (cpfDigitado && !cpfNaFicha.data?.cpf && sale.crmContactRef && !outraPessoa) {
         try {
           await salvarRemoteCpfDoContato(sale.crmContactRef, cpfDigitado, pessoa?.id ?? null);
           void queryClient.invalidateQueries({ queryKey: ["contato-cpf", sale.crmContactRef] });
@@ -98,13 +130,14 @@ export function NotaDaComandaDialog({ sale, emailInicial, onFechar, onEmitida, o
             diaISO={sale.saleDate}
             parcelas={parcelas}
             ehSinal={sinal}
-            tomador={{ nome: sale.patientName, cpf: cpfNaFicha.data?.cpf ? "na ficha" : "", email }}
+            tomador={{ nome: sale.patientName, cpf: cpfNaFicha.data?.cpf && !outraPessoa ? "na ficha" : "", email }}
             onEmailChange={setEmail}
             cpfRascunho={cpfRascunho}
             onCpfChange={setCpfRascunho}
           />
         </div>
         {trava ? <p className="mt-2 text-sm font-semibold text-amber-700">{trava}</p> : null}
+        {travaDaFicha ? <p className="mt-2 text-sm font-semibold text-amber-700">{travaDaFicha}</p> : null}
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onFechar} disabled={emitindo}>{temPermissao ? "Agora não" : "Fechar"}</Button>
           {temPermissao ? (

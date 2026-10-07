@@ -438,6 +438,24 @@ export function podeEmitirNota(pessoa: { cargo?: Cargo | null; acessos?: Record<
   return moduleLevel(pessoa, "nf-emitir") === "EDITAR";
 }
 
+/**
+ * Quem VÊ e quem GRAVA o CPF da ficha (07/10/2026) — espelho da RLS de
+ * contato_documento (202609280001): coordenação (inclui o cargo gestor, o
+ * Estevão), financeiro completo, ou a exceção de Acessos em "Impostos & NF"
+ * (VER para ver, EDITAR para gravar). Não é o "editar a tela": o Estevão só
+ * VÊ Impostos & NFs e mesmo assim grava CPF — é ele quem emite.
+ */
+export function podeVerCpf(pessoa: { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined) {
+  if (!pessoa?.cargo) return false;
+  const excecao = pessoa.acessos?.["fin-impostos"];
+  return isCoordenacao(pessoa.cargo) || canFinanceiroFull(pessoa.cargo) || excecao === "VER" || excecao === "EDITAR";
+}
+
+export function podeGravarCpf(pessoa: { cargo?: Cargo | null; acessos?: Record<string, string> | null } | null | undefined) {
+  if (!pessoa?.cargo) return false;
+  return isCoordenacao(pessoa.cargo) || canFinanceiroFull(pessoa.cargo) || pessoa.acessos?.["fin-impostos"] === "EDITAR";
+}
+
 /** O que aparece no lugar do botão de emitir para quem não pode (07/10/2026). */
 export const avisoQuemEmiteNota = "Quem emite nota fiscal é o Estevão (Administração › Acessos › Emitir nota fiscal)";
 

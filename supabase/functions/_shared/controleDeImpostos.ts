@@ -106,6 +106,13 @@ export async function registrarNoControle(client: SupabaseClient, ref: string): 
   const partesDaEmissao = Array.isArray(emissao.partes) && emissao.partes.length
     ? (emissao.partes as { saleRef: string; amount: number; comandaDate: string; patientName: string }[]).map((p) => ({ ...p, invoiceType: classeDaNota(String(emissao.tipo ?? "TRATAMENTO")) }))
     : null;
+  // A linha do lote achada só pela COMANDA (07/10/2026) pode ser de outra nota:
+  // a Simone emitida sozinha em Lançar Dia acharia a linha "Simone + Murilo" e
+  // lançaria a parte do filho no controle. As partes da linha só valem quando
+  // ela é desta emissão (ref) ou quando somam o valor desta nota.
+  const partesDoItem = Array.isArray(itemDoLote?.partes) && itemDoLote!.partes.length ? (itemDoLote!.partes as Parte[]) : null;
+  const somaDoItem = (partesDoItem ?? []).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const partesDoItemValem = Boolean(partesDoItem) && Math.abs(somaDoItem - Number(emissao.valor ?? 0)) < 0.01;
   const linhas = linhasDoControle({
     numero,
     tipo: String(emissao.tipo ?? "TRATAMENTO"),
@@ -114,7 +121,7 @@ export async function registrarNoControle(client: SupabaseClient, ref: string): 
     pacienteNome: String(itemDoLote?.tomador_nome ?? venda?.patient_name ?? "Paciente"),
     comandaDate: venda?.sale_date ?? null,
     diaEmissao: diaDaEmissao(resposta.data_emissao as string | undefined, String(emissao.criado_em)),
-    partesDoLote: partesDaEmissao ?? (Array.isArray(itemDoLote?.partes) && itemDoLote!.partes.length ? (itemDoLote!.partes as Parte[]) : null),
+    partesDoLote: partesDaEmissao ?? (partesDoItemValem ? partesDoItem : null),
     lote: itemDoLote?.lote ?? null,
   });
   const { error } = await client.from("fin_invoices").upsert(linhas, { onConflict: "client_ref", ignoreDuplicates: true });

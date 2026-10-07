@@ -21,6 +21,17 @@
 //  · duas ou mais linhas ainda não emitidas podem virar uma só (JuntarNotasDialog);
 //  · o cartão mostra TODOS os lotes, separados (o de setembro e o do mês em que
 //    a junção pôs nota nova), e lê o lote pelo mesmo cache da fila de comandas.
+//
+// 07/10/2026 (CPF e emissão numa tela só, pedido do Lucas):
+//  · a coluna Ficha das linhas abertas traz o CPF da ficha (CpfDaNotaInline, o
+//    MESMO campo do Lançar Dia): guardar ali mesmo, sem ir na aba Pacientes;
+//    quem emite tem "Guardar CPF e emitir";
+//  · nota no nome de X com a comanda ligada à ficha de Y: o CPF não vai para a
+//    ficha; quem emite manda "só nesta nota" (tomador.cpf). Essas linhas ficam
+//    de fora do "Emitir todas" — sairiam com o CPF da pessoa errada;
+//  · linha aberta cuja comanda já tem nota viva (emitida em outra tela — caso
+//    Luciane, nota 6238) diz "Nota 6238 já emitida em outra tela" e não
+//    oferece emitir. O banco também acompanha (202610070004_lote_acompanha_a_nota).
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Combine, FileCheck2, RefreshCw, XCircle } from "lucide-react";
@@ -31,10 +42,14 @@ import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
 import { integracaoLigada } from "@/lib/integracoes";
+import { cn } from "@/lib/utils";
 import { invocarIntegracao } from "@/lib/remoteData";
-import { atualizarRemoteNfseLoteItem, listRemoteNfseLote, prontidaoDoLote, type ProntidaoDoContato } from "@/lib/remote/nfseLote";
-import { moneyFin } from "./financeiroData";
-import { chaveDoLote, discriminacaoDoItem, juntarDoItem, partesFecham, resumoDoLote, type ItemDoLote } from "./loteDeNotas";
+import { atualizarRemoteNfseLoteItem, listRemoteNfseLote, listRemoteNotasComPartes, prontidaoDoLote, type ProntidaoDoContato } from "@/lib/remote/nfseLote";
+import { listRemoteNfseDasComandas } from "@/lib/remoteData";
+import { moneyFin, type FinInvoice } from "./financeiroData";
+import { chaveDoLote, discriminacaoDoItem, fraseDaNotaForaDoLote, juntarDoItem, notaForaDoLote, partesFecham, resumoDoLote, type ItemDoLote, type NotaForaDoLote } from "./loteDeNotas";
+import { CpfDaNotaInline } from "./CpfDaNotaInline";
+import { fichaDeOutraPessoa } from "./cpfDaNota";
 import { analisarItensDoLote, type AnaliseDaJuncao } from "./juntarNotas";
 import { JuntarNotasDialog } from "./JuntarNotasDialog";
 import { rotuloDoTipoDeNota } from "../../../supabase/functions/_shared/notaEmitida";
@@ -47,7 +62,7 @@ const dataBR = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` 
 // prefeitura autoriza (inclusive a nota que cobre várias comandas, uma linha
 // por parte). O cartão só pede para a tela recarregar o controle — registrar
 // daqui também duplicava o imposto.
-export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
+export function LoteDeNotasCard({ readOnly, invoices = [] }: { readOnly: boolean; invoices?: FinInvoice[] }) {
   const ligada = integracaoLigada("focus_nfse");
   const { pessoa } = useAuth();
   const podeEmitir = podeEmitirNota(pessoa);
@@ -61,6 +76,24 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
   const contatos = useMemo(() => [...new Set((itens ?? []).map((i) => i.contactRef ?? "").filter(Boolean))].sort(), [itens]);
   const fichas = useQuery({ queryKey: ["nfse-lote-prontidao", contatos.join("|")], queryFn: () => prontidaoDoLote(contatos), enabled: ligada && contatos.length > 0, staleTime: 30_000 });
   const prontidao = useMemo<Record<string, ProntidaoDoContato>>(() => Object.fromEntries((fichas.data ?? []).map((p) => [p.contactRef, p])), [fichas.data]);
+  // A NOTA QUE SAIU POR OUTRA TELA (07/10/2026): as emissões da Focus das
+  // comandas das linhas abertas (e das que cobrem várias, o mesmo cache da fila
+  // de comandas) + o controle de impostos que a página já carregou.
+  const refsAbertas = useMemo(
+    () => [...new Set((itens ?? []).filter((i) => i.status === "PENDENTE" || i.status === "ERRO").flatMap((i) => [i.saleRef, ...i.partes.map((p) => p.saleRef)]).filter(Boolean))].sort(),
+    [itens],
+  );
+  const emissoesDasLinhas = useQuery({ queryKey: ["nfse-das-comandas-do-lote", refsAbertas.join("|")], queryFn: () => listRemoteNfseDasComandas(refsAbertas), enabled: ligada && refsAbertas.length > 0, staleTime: 30_000 });
+  const notasComPartes = useQuery({ queryKey: ["nfse-com-partes"], queryFn: listRemoteNotasComPartes, enabled: ligada, staleTime: 30_000 });
+  const foraDoLote = useMemo<Record<string, NotaForaDoLote>>(() => {
+    const fontes = { invoices, emissoes: [...(emissoesDasLinhas.data ?? []), ...(notasComPartes.data ?? [])] };
+    const mapa: Record<string, NotaForaDoLote> = {};
+    for (const item of itens ?? []) {
+      const nota = notaForaDoLote(item, fontes);
+      if (nota) mapa[item.id] = nota;
+    }
+    return mapa;
+  }, [itens, invoices, emissoesDasLinhas.data, notasComPartes.data]);
   const [emitindo, setEmitindo] = useState<string | null>(null);
   const [rodando, setRodando] = useState(false);
   // Juntar linhas (07/10/2026): quem mexe no lote marca; com 2 ou mais, junta.
@@ -72,15 +105,39 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
   const resumo = useMemo(() => resumoDoLote(itens ?? []), [itens]);
   if (!ligada || !itens || !visiveis.length) return null;
 
+  // A comanda da linha está ligada à ficha de OUTRA pessoa (nome do tomador ≠ nome da ficha)?
+  const fichaTrocada = (item: ItemDoLote) => fichaDeOutraPessoa(item.tomadorNome, item.contactRef ? prontidao[item.contactRef]?.nomeDaFicha : null);
+  const recarregarProntidao = () => void queryClient.invalidateQueries({ queryKey: ["nfse-lote-prontidao"] });
+
   function aplicar(id: string, patch: Partial<ItemDoLote>) {
     queryClient.setQueryData<ItemDoLote[]>([...chaveDoLote], (atual) => (atual ?? []).map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
-  /** Emite UM item e, se a prefeitura já autorizou, registra no controle. */
-  async function emitirItem(item: ItemDoLote): Promise<"autorizada" | "enviada" | "erro"> {
+  /** Emite a linha e conta o que houve (o botão da linha e o "Guardar CPF e emitir"). */
+  async function emitirLinha(item: ItemDoLote, cpfDaNota = "") {
+    const r = await emitirItem(item, cpfDaNota);
+    toast(r === "autorizada" ? "Nota autorizada." : r === "enviada" ? "Enviada; consulte em instantes." : "Não saiu — veja o erro na linha.", { tom: r === "erro" ? "erro" : "ok" });
+  }
+
+  /**
+   * Emite UM item e, se a prefeitura já autorizou, registra no controle.
+   * `cpfDaNota` (07/10/2026): o CPF digitado na linha vai como tomador.cpf —
+   * é ele que manda na nota; sem ele, a função lê o da ficha da comanda.
+   */
+  async function emitirItem(item: ItemDoLote, cpfDaNota = ""): Promise<"autorizada" | "enviada" | "erro"> {
     // Segunda chave (07/10/2026): sem a permissão, nada vai à prefeitura nem muda a linha.
     if (!podeEmitir) {
       toast(avisoQuemEmiteNota, { tom: "atencao" });
+      return "erro";
+    }
+    // Nota no nome de X com a ficha de Y: sem o CPF desta nota, sairia com o CPF de Y.
+    if (!cpfDaNota && fichaTrocada(item)) {
+      toast(`A nota de ${item.tomadorNome} está ligada à ficha de outra pessoa: digite o CPF na linha ("só nesta nota").`, { tom: "atencao", duracaoMs: 9000 });
+      return "erro";
+    }
+    // Já saiu por outra tela: emitir de novo seria a segunda nota da mesma comanda.
+    if (foraDoLote[item.id]) {
+      toast(fraseDaNotaForaDoLote(foraDoLote[item.id]), { tom: "atencao" });
       return "erro";
     }
     if (!partesFecham(item)) {
@@ -97,7 +154,7 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
         tipo: item.tipo,
         valor: item.valor,
         discriminacao: discriminacaoDoItem(item),
-        tomador: { nome: item.tomadorNome },
+        tomador: { nome: item.tomadorNome, ...(cpfDaNota ? { cpf: cpfDaNota } : {}) },
         // As partes de OUTRAS comandas (o filho junto da mãe, ou o sinal pago
         // antes) vão em `juntar`, com o valor de cada parte (07/10/2026). Antes
         // iam como `sinais`, e o servidor recusa sinal de outro paciente. Ele
@@ -152,9 +209,12 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
 
   async function emitirTodas() {
     if (!podeEmitir) return toast(avisoQuemEmiteNota, { tom: "atencao" });
-    const fila = visiveis.filter((i) => i.status === "PENDENTE" || i.status === "ERRO");
+    // Fora do "todas" (07/10/2026): a que já saiu por outra tela e a ligada à
+    // ficha de outra pessoa (sairia com o CPF errado — essa vai pela linha).
+    const fila = emitiveis;
     if (!fila.length) return;
-    if (!window.confirm(`Emitir ${fila.length} nota${fila.length > 1 ? "s" : ""} na prefeitura agora, no total de ${moneyFin(fila.reduce((s, i) => s + i.valor, 0))}? Depois de emitida, nota só sai com cancelamento.`)) return;
+    const deFora = pendentes.length - fila.length;
+    if (!window.confirm(`Emitir ${fila.length} nota${fila.length > 1 ? "s" : ""} na prefeitura agora, no total de ${moneyFin(fila.reduce((s, i) => s + i.valor, 0))}?${deFora ? ` ${deFora} ficam de fora: a nota sai no nome de outra pessoa que não a da ficha — emita pela linha, com o CPF.` : ""} Depois de emitida, nota só sai com cancelamento.`)) return;
     setRodando(true);
     let autorizadas = 0;
     let enviadas = 0;
@@ -180,7 +240,9 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
     await atualizarRemoteNfseLoteItem(item.id, { status: "RETIRADA" });
   }
 
-  const pendentes = visiveis.filter((i) => i.status === "PENDENTE" || i.status === "ERRO");
+  // Abertas de verdade: a que já tem nota por outra tela não conta como "para emitir".
+  const pendentes = visiveis.filter((i) => (i.status === "PENDENTE" || i.status === "ERRO") && !foraDoLote[i.id]);
+  const emitiveis = pendentes.filter((i) => !fichaTrocada(i));
   const semCpf = pendentes.filter((i) => !(i.contactRef && prontidao[i.contactRef]?.temCpf)).length;
   const semEmail = pendentes.filter((i) => !(i.contactRef && prontidao[i.contactRef]?.temEmail)).length;
   // Os lotes, do mais novo ao mais velho (a lista já vem nessa ordem).
@@ -236,6 +298,14 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
                 ) : null}
                 {visiveis.filter((i) => i.lote === loteDoGrupo).map((item) => {
                 const p = item.contactRef ? prontidao[item.contactRef] : undefined;
+                const fora = foraDoLote[item.id];
+                // Linha aberta de verdade: ainda sem nota em lugar nenhum.
+                const aberta = (item.status === "PENDENTE" || item.status === "ERRO") && !fora;
+                // O botão direto quando a ficha certa tem CPF (ou ainda não se sabe — o
+                // servidor confere); sem CPF, o caminho é o campo da linha.
+                const pronta = aberta && !fichaTrocada(item) && p?.temCpf !== false;
+                // O erro "falta CPF" da tentativa anterior deixa de valer quando o CPF foi guardado.
+                const erroDeCpfResolvido = item.status === "ERRO" && Boolean(p?.temCpf) && /cpf/i.test(item.erro ?? "");
                 return (
                   <tr key={item.id} className="border-t border-brand-oliva/10 align-top">
                     {podeMexerNoLote ? (
@@ -263,16 +333,31 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
                       <p className="text-xs text-muted-foreground">{item.pagamentoTexto.toLowerCase()}</p>
                     </td>
                     <td className="py-2 pr-3 text-right font-semibold whitespace-nowrap">{moneyFin(item.valor)}</td>
-                    <td className="py-2 pr-3 text-xs whitespace-nowrap">
-                      <span className={p?.temCpf ? "text-brand-musgo" : "text-amber-700"}>CPF {p?.temCpf ? "✓" : "—"}</span>
-                      {" · "}
-                      <span className={p?.temEmail ? "text-brand-musgo" : "text-amber-700"}>e-mail {p?.temEmail ? "✓" : "—"}</span>
+                    <td className={aberta ? "min-w-[13rem] py-2 pr-3 text-xs" : "py-2 pr-3 text-xs whitespace-nowrap"}>
+                      {aberta ? (
+                        // O CPF na própria linha (07/10/2026): o mesmo campo do Lançar Dia.
+                        <CpfDaNotaInline
+                          contactRef={item.contactRef}
+                          nomeDaNota={item.tomadorNome}
+                          nomeDaFicha={p?.nomeDaFicha ?? null}
+                          emitir={podeEmitir ? ({ cpf }) => emitirLinha(item, cpf) : undefined}
+                          onGuardado={recarregarProntidao}
+                          desabilitado={emitindo !== null || rodando}
+                        />
+                      ) : (
+                        <span className={p?.temCpf ? "text-brand-musgo" : "text-amber-700"}>CPF {p?.temCpf ? "✓" : "—"}</span>
+                      )}
+                      <span className={cn("mt-1 block", p?.temEmail ? "text-brand-musgo" : "text-amber-700")}>e-mail {p?.temEmail ? "✓" : "— (a nota não vai por e-mail)"}</span>
                     </td>
                     <td className="py-2 pr-3 text-xs">
-                      {item.status === "AUTORIZADA" ? (
+                      {fora ? (
+                        <span className="inline-flex items-start gap-1 font-semibold text-brand-musgo"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {fraseDaNotaForaDoLote(fora)}</span>
+                      ) : item.status === "AUTORIZADA" ? (
                         <span className="inline-flex items-center gap-1 font-semibold text-brand-musgo"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> nº {item.numero}</span>
                       ) : item.status === "ENVIADA" ? (
                         <span className="text-amber-700">aguardando a prefeitura</span>
+                      ) : erroDeCpfResolvido ? (
+                        <span className="text-muted-foreground">CPF guardado: pronta para emitir</span>
                       ) : item.status === "ERRO" ? (
                         <span className="inline-flex items-start gap-1 text-red-700"><XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {item.erro}</span>
                       ) : emitindo === item.id ? (
@@ -285,8 +370,8 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
                       {(!readOnly || podeEmitir) && item.status === "ENVIADA" ? (
                         <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null} onClick={() => void consultarItem(item)}>Consultar</Button>
                       ) : null}
-                      {podeEmitir && (item.status === "PENDENTE" || item.status === "ERRO") ? (
-                        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void emitirItem(item).then((r) => toast(r === "autorizada" ? "Nota autorizada." : r === "enviada" ? "Enviada; consulte em instantes." : "Não saiu — veja o erro na linha.", { tom: r === "erro" ? "erro" : "ok" }))}>
+                      {podeEmitir && (item.status === "PENDENTE" || item.status === "ERRO") && pronta ? (
+                        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void emitirLinha(item)}>
                           <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir
                         </Button>
                       ) : null}
@@ -320,8 +405,8 @@ export function LoteDeNotasCard({ readOnly }: { readOnly: boolean }) {
         ) : null}
         {podeEmitir && pendentes.length ? (
           <div className="flex flex-wrap items-center gap-2">
-            <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={rodando || emitindo !== null} onClick={() => void emitirTodas()}>
-              {rodando ? "Emitindo…" : `Emitir as ${pendentes.length} notas · ${moneyFin(pendentes.reduce((s, i) => s + i.valor, 0))}`}
+            <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={rodando || emitindo !== null || !emitiveis.length} onClick={() => void emitirTodas()}>
+              {rodando ? "Emitindo…" : `Emitir as ${emitiveis.length} notas · ${moneyFin(emitiveis.reduce((s, i) => s + i.valor, 0))}`}
             </LiquidButton>
             <span className="text-xs text-muted-foreground">Uma por vez, na prefeitura. Cada autorizada entra no controle abaixo com o número.</span>
           </div>

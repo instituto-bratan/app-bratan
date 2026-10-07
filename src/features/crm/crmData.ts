@@ -1,4 +1,4 @@
-import { personNamesMatch } from "./nameMatch";
+import { nomesCompativeis, personNameTokens, personNamesMatch } from "./nameMatch";
 import { isCoordenacao } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import type { Cargo, Pessoa } from "@/types/database";
@@ -570,9 +570,38 @@ export function createCrmId(prefix: string) {
 // converge para o MESMO id → o upsert (por client_ref) funde em vez de duplicar.
 // Por telefone quando há (seguro); senão por nome+dono (evita colar homônimos de
 // donos diferentes). Sem nome utilizável, cai no id aleatório.
-export function deterministicContactId(values: { fullName?: string; phone?: string; whatsapp?: string; ownerUserId?: string }) {
+//
+// FAMÍLIA QUE DIVIDE TELEFONE (07/10/2026): `contact-tel-<tel>` já pode ser de
+// OUTRA pessoa (mãe e filho com o mesmo número — caso Simone × Murilo). Com a
+// lista de contatos, o id só é reaproveitado quando o dono tem nome compatível
+// (é a mesma pessoa: continua convergindo, sem voltar a duplicar); senão a
+// pessoa nova ganha `contact-tel-<tel>-<primeiro-nome>`
+// (ex.: contact-tel-11996395448-simone), depois o segundo nome junto, e só por
+// último o aleatório. Também determinístico: a Simone criada em dois
+// aparelhos cai no mesmo id. O banco aceita a segunda ficha com o mesmo
+// telefone desde a migração 202610070005_telefone_da_familia (o único passou a
+// ser telefone + primeiro nome).
+export function deterministicContactId(
+  values: { fullName?: string; phone?: string; whatsapp?: string; ownerUserId?: string },
+  contatos?: Pick<CrmContact, "id" | "fullName">[],
+) {
   const phone = normalizePhone(values.phone || values.whatsapp || "");
-  if (phone.length >= 10) return `contact-tel-${phone.slice(-11)}`;
+  if (phone.length >= 10) {
+    const base = `contact-tel-${phone.slice(-11)}`;
+    if (!contatos) return base;
+    const livre = (id: string) => {
+      const dono = contatos.find((contato) => contato.id === id);
+      return !dono || nomesCompativeis(values.fullName ?? "", dono.fullName);
+    };
+    if (livre(base)) return base;
+    const [primeiro, segundo] = personNameTokens(values.fullName ?? "");
+    if (primeiro) {
+      const comPrimeiro = `${base}-${primeiro}`;
+      if (livre(comPrimeiro)) return comPrimeiro;
+      if (segundo && livre(`${comPrimeiro}-${segundo}`)) return `${comPrimeiro}-${segundo}`;
+    }
+    return createCrmId("contact");
+  }
   const nameSlug = normalizeText(values.fullName || "").replace(/[^a-z0-9]+/g, "-").replace(/(^-+)|(-+$)/g, "");
   const ownerSlug = (values.ownerUserId || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+)|(-+$)/g, "");
   return nameSlug ? `contact-nm-${nameSlug}${ownerSlug ? `-${ownerSlug}` : ""}` : createCrmId("contact");
@@ -1683,19 +1712,93 @@ export function saveCrmStateWithIntelligence(state: CrmState) {
   saveInteligencia360State(deriveInteligencia360FromCrm(state, loadInteligencia360State()));
 }
 
-export function findPotentialDuplicateContacts(state: CrmState, values: Partial<Pick<CrmContact, "fullName" | "phone" | "whatsapp" | "email">>) {
+/**
+ * Quem já usa o mesmo telefone ou o mesmo e-mail (07/10/2026), separado em
+ * "pode ser a mesma pessoa" (nome compatível) e "outra pessoa da família"
+ * (primeiro nome diferente — Simone × Murilo, mãe e filho com o mesmo número).
+ * O seletor de paciente usa para perguntar "é outra pessoa?" em vez de ligar
+ * sozinho; findPotentialDuplicateContacts usa para não casar a família.
+ */
+export function fichasComMesmoCanal(
+  contatos: CrmContact[],
+  values: Partial<Pick<CrmContact, "fullName" | "phone" | "whatsapp" | "email">>,
+) {
   const phone = normalizePhone(values.whatsapp || values.phone || "");
   const email = normalizeText(values.email || "");
-  const name = normalizeText(values.fullName || "");
-
-  return state.contacts.filter((contact) => {
+  const mesmaPessoa: { contato: CrmContact; canal: "telefone" | "e-mail" }[] = [];
+  const outraPessoa: { contato: CrmContact; canal: "telefone" | "e-mail" }[] = [];
+  for (const contact of contatos) {
+    let canal: "telefone" | "e-mail" | null = null;
     if (phone && phone.length >= 8) {
-      const candidates = [contact.phone, contact.whatsapp].map((value) => normalizePhone(value)).filter((value) => value.length >= 8);
-      if (candidates.some((value) => value.endsWith(phone) || phone.endsWith(value))) return true;
+      const candidates = [contact.phone, contact.whatsapp].map((value) => normalizePhone(value || "")).filter((value) => value.length >= 8);
+      if (candidates.some((value) => value.endsWith(phone) || phone.endsWith(value))) canal = "telefone";
     }
-    if (email && normalizeText(contact.email) === email) return true;
-    return Boolean(values.fullName && contact.fullName && personNamesMatch(values.fullName, contact.fullName));
-  });
+    if (!canal && email && normalizeText(contact.email || "") === email) canal = "e-mail";
+    if (!canal) continue;
+    (nomesCompativeis(values.fullName ?? "", contact.fullName) ? mesmaPessoa : outraPessoa).push({ contato: contact, canal });
+  }
+  return { mesmaPessoa, outraPessoa };
+}
+
+// FAMÍLIA QUE DIVIDE TELEFONE (07/10/2026): telefone ou e-mail iguais só
+// contam como a mesma pessoa com nome compatível (nameMatch.nomesCompativeis).
+// Antes, qualquer ficha com o mesmo número era "a pessoa" — e o fechamento da
+// Simone foi parar na ficha do filho. Nome compatível SEM telefone continua
+// como sempre (personNamesMatch). Quem casou pelo telefone/e-mail vem primeiro.
+export function findPotentialDuplicateContacts(state: CrmState, values: Partial<Pick<CrmContact, "fullName" | "phone" | "whatsapp" | "email">>) {
+  const pelaVia = new Set(fichasComMesmoCanal(state.contacts, values).mesmaPessoa.map((item) => item.contato.id));
+  const pontuados = state.contacts
+    .map((contact, ordem) => {
+      if (pelaVia.has(contact.id)) return { contact, forca: 2, ordem };
+      if (values.fullName && contact.fullName && personNamesMatch(values.fullName, contact.fullName)) return { contact, forca: 1, ordem };
+      return null;
+    })
+    .filter((item): item is { contact: CrmContact; forca: number; ordem: number } => item !== null);
+  return pontuados.sort((a, b) => b.forca - a.forca || a.ordem - b.ordem).map((item) => item.contact);
+}
+
+/**
+ * O primeiro nome como o BANCO compara (07/10/2026): espelho de
+ * lower(split_part(btrim(full_name), ' ', 1)) do índice único
+ * crm_contacts_telefone_e_nome_unique (migração 202610070005). É ele que
+ * decide se o banco recusa a ficha nova com 23505.
+ */
+export function primeiroNomeDoBanco(fullName: string) {
+  return (fullName ?? "").trim().split(" ")[0].toLowerCase();
+}
+
+/** O telefone como o banco compara: dígitos de coalesce(nullif(whatsapp,''), phone). */
+export function telefoneDoBanco(contato: Pick<CrmContact, "phone" | "whatsapp">) {
+  return normalizePhone((contato.whatsapp || "").trim() ? contato.whatsapp : contato.phone || "");
+}
+
+/** O banco recusou a ficha por telefone repetido (índice novo ou o antigo, criado à mão)? */
+export function ehConflitoDeTelefone(mensagem: string) {
+  return /23505/.test(mensagem) && /crm_contacts_(telefone_e_nome|phone)_unique/.test(mensagem);
+}
+
+type ColecoesComContato = Partial<Pick<CrmState, "contacts" | "deals" | "tasks" | "cadenceEnrollments" | "touchpoints" | "timelineEvents">>;
+
+/**
+ * Troca uma ficha por outra no estado (07/10/2026). Usado quando o banco
+ * recusa a ficha nova com 23505 porque JÁ existe a mesma pessoa (mesmo
+ * telefone e mesmo primeiro nome) que esta tela ainda não tinha carregado: a
+ * ficha nova sai e tudo que apontava para ela passa a apontar para a que já
+ * existe. Pura; devolve o mesmo objeto quando não há troca.
+ */
+export function trocarFichaNoEstado<T extends ColecoesComContato>(estado: T, troca: Map<string, string>): T {
+  if (!troca.size) return estado;
+  const novo = <R extends { contactId: string }>(registro: R): R =>
+    troca.has(registro.contactId) ? { ...registro, contactId: troca.get(registro.contactId)! } : registro;
+  return {
+    ...estado,
+    ...(estado.contacts ? { contacts: estado.contacts.filter((contato) => !troca.has(contato.id)) } : {}),
+    ...(estado.deals ? { deals: estado.deals.map(novo) } : {}),
+    ...(estado.tasks ? { tasks: estado.tasks.map(novo) } : {}),
+    ...(estado.cadenceEnrollments ? { cadenceEnrollments: estado.cadenceEnrollments.map(novo) } : {}),
+    ...(estado.touchpoints ? { touchpoints: estado.touchpoints.map(novo) } : {}),
+    ...(estado.timelineEvents ? { timelineEvents: estado.timelineEvents.map(novo) } : {}),
+  };
 }
 
 /**
@@ -1822,8 +1925,15 @@ export function findOrCreateCrmContact(
   }
 
   const now = new Date().toISOString();
+  // O id vem da tela quando ela resolveu antes (prévia no retrato + gravação no
+  // estado vivo). Se, entre um e outro, esse id passou a ser de OUTRA pessoa
+  // (07/10/2026), não reaproveita: duas fichas com o mesmo id fariam o upsert
+  // trocar o nome da que já existe (o Murilo viraria Simone no banco).
+  const idTomado = (id: string) => state.contacts.some((contato) => contato.id === id);
+  const idPedido = values.id && !idTomado(values.id) ? values.id : null;
+  const idCalculado = idPedido ?? deterministicContactId(values, state.contacts);
   const contact: CrmContact = {
-    id: values.id ?? deterministicContactId(values),
+    id: idPedido || !idTomado(idCalculado) ? idCalculado : createCrmId("contact"),
     contactType: values.contactType ?? "LEAD",
     lifecycleStage: values.lifecycleStage ?? "COLD_LEAD",
     fullName: values.fullName,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Search, UserPlus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { contactDisplayName, type CrmContact } from "./crmData";
+import { contactDisplayName, fichasComMesmoCanal, type CrmContact } from "./crmData";
 import { ContactChannelsFields } from "./ContactChannelsFields";
 import { hasContactChannels, type ContactChannelsDraft } from "./contactChannels";
 
@@ -122,6 +122,19 @@ export function PatientPicker({
   );
   const pedirContato = Boolean(channels && onChannelsChange && !disabled && (linkedSemContato || (!linked && query.trim().length >= 2)));
 
+  // MESMO TELEFONE, OUTRA PESSOA? (07/10/2026). Mãe e filho (Simone × Murilo)
+  // dividem o número. Quem está cadastrando alguém novo e digita um telefone
+  // ou e-mail que já é de uma ficha vê de quem é — e decide. O seletor NUNCA
+  // liga sozinho à ficha de outro nome: sem clique, ao salvar nasce a ficha
+  // própria (o banco aceita desde a migração 202610070005).
+  const mesmoCanal = useMemo(() => {
+    if (linked || !channels || query.trim().length < 2) return null;
+    const achados = fichasComMesmoCanal(contacts, { fullName: query, phone: channels.phone, email: channels.email });
+    if (achados.mesmaPessoa[0]) return { ...achados.mesmaPessoa[0], outra: false };
+    if (achados.outraPessoa[0]) return { ...achados.outraPessoa[0], outra: true };
+    return null;
+  }, [linked, channels, query, contacts]);
+
   return (
     <div className="relative">
       <div className="relative">
@@ -167,6 +180,30 @@ export function PatientPicker({
           <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Novo paciente — será cadastrado no CRM ao salvar
           {channels && !hasContactChannels(channels) ? " (preencha o telefone abaixo)" : ""}
         </p>
+      ) : null}
+
+      {mesmoCanal && !disabled ? (
+        <div className={cn("mt-2 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs", mesmoCanal.outra ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50/60 text-emerald-900")}>
+          <span className="min-w-0 flex-1">
+            {mesmoCanal.outra ? (
+              <>
+                Mesmo {mesmoCanal.canal} de <strong>{contactDisplayName(mesmoCanal.contato)}</strong> — é outra pessoa? Se for, não precisa fazer nada: ao salvar,{" "}
+                <strong>{query.trim()}</strong> ganha uma ficha própria com este {mesmoCanal.canal}.
+              </>
+            ) : (
+              <>
+                Já existe <strong>{contactDisplayName(mesmoCanal.contato)}</strong> com este {mesmoCanal.canal}. Ao salvar, a comanda vai para essa ficha.
+              </>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={() => selectContact(mesmoCanal.contato)}
+            className="shrink-0 rounded-md border border-brand-oliva/30 bg-white/70 px-2 py-1 font-semibold hover:bg-white"
+          >
+            {mesmoCanal.outra ? "Não, é a mesma pessoa" : "Ligar a essa ficha"}
+          </button>
+        </div>
       ) : null}
 
       {pedirContato && channels && onChannelsChange ? (

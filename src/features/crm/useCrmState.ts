@@ -12,6 +12,7 @@ import {
   sanitizeCrmState,
   saveCrmStateWithIntelligence,
   seedCrmState,
+  trocarFichaNoEstado,
   type CrmState,
 } from "./crmData";
 
@@ -66,8 +67,11 @@ export function useCrmState(opcoes?: { modulo?: ModuleKey }) {
   });
   const saveRemoteMutation = useMutation({
     mutationFn: (next: CrmState) =>
-      saveRemoteCrmState(next, { includeCatalog: canSyncCatalog, baseline: baselineRef.current ?? undefined }).then(() => next),
-    onSuccess: (saved) => {
+      saveRemoteCrmState(next, { includeCatalog: canSyncCatalog, baseline: baselineRef.current ?? undefined }).then(({ fichasTrocadas }) => ({
+        saved: trocarFichaNoEstado(next, fichasTrocadas),
+        fichasTrocadas,
+      })),
+    onSuccess: ({ saved, fichasTrocadas }) => {
       // O que acabou de subir É a verdade agora: vira a nova base e entra no
       // cache. Assim o refetch não traz um retrato ANTIGO que apagaria da tela
       // a inscrição recém-criada (a causa do "coloco no D1 e some").
@@ -77,6 +81,17 @@ export function useCrmState(opcoes?: { modulo?: ModuleKey }) {
       setSyncErrorDetail("");
       queryClient.setQueryData(["crm-state"], saved);
       void queryClient.invalidateQueries({ queryKey: ["inteligencia-360-state"] });
+      // O banco já tinha a mesma pessoa (mesmo telefone e primeiro nome,
+      // 07/10/2026): a ficha nova desta tela dá lugar à de lá, e o retrato é
+      // recarregado para a ficha que ficou aparecer.
+      if (fichasTrocadas.size) {
+        setState((current) => {
+          const next = trocarFichaNoEstado(current, fichasTrocadas);
+          saveCrmStateWithIntelligence(next);
+          return next;
+        });
+        void queryClient.invalidateQueries({ queryKey: ["crm-state"] });
+      }
     },
     onError: (error) => {
       setSyncFailed(true);

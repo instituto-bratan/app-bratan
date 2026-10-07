@@ -7,6 +7,8 @@
 // fechamento (notaNoFechamento.ts), para a nota do lote sair igual à do dia.
 import type { FinInvoiceType } from "./financeiroData";
 import { dataBR, discriminacao as textoDaNota, type NaturezaDaNota } from "@/features/crm/notaNoFechamento";
+import { emissaoFalhou } from "./notasEmitidasFocus";
+import { notaExistenteCobre } from "../../../supabase/functions/_shared/notaEmitida";
 
 export type TipoDoLote = "CONSULTA" | "BIOIMPEDANCIA" | "TRATAMENTO" | "UNIFICADA";
 export type StatusDoLote = "PENDENTE" | "ENVIADA" | "AUTORIZADA" | "ERRO" | "RETIRADA";
@@ -168,4 +170,58 @@ export function resumoDoLote(itens: ItemDoLote[]) {
   if (por("ERRO").length) partes.push(`${por("ERRO").length} com erro`);
   if (por("RETIRADA").length) partes.push(`${por("RETIRADA").length} retiradas`);
   return { pendentes: pendentes.length, valorPendente: valor(pendentes), frase: partes.join(" · ") || "Lote vazio." };
+}
+
+// ---------------------------------------------------------------------------
+// A NOTA QUE SAIU POR OUTRA TELA (07/10/2026, caso Luciane Modernel).
+//
+// O Estevão tentou pelo lote (erro: faltava CPF), guardou o CPF em Lançar Dia e
+// emitiu lá — nota 6238. A linha do lote continuou "erro: falta CPF", com o
+// botão de emitir, oferecendo uma SEGUNDA nota da mesma comanda. O banco agora
+// acompanha (migração 202610070004_lote_acompanha_a_nota); a tela confere
+// também, com o que já carrega (controle de impostos e emissões da Focus):
+// linha aberta cuja comanda já tem nota viva diz "Nota 6238 já emitida em
+// outra tela" e não oferece emitir. A regra é a do banco: a mesma comanda com
+// tipo coberto (notaExistenteCobre), a comanda da linha como parte de outra
+// nota, ou uma comanda que a linha junta já com nota.
+// ---------------------------------------------------------------------------
+
+export type NotaForaDoLote = { numero: string | null; paciente: string | null };
+
+export type FontesDaNotaViva = {
+  /** Controle de impostos (fin_invoices vivas). */
+  invoices: { saleRef: string | null; invoiceNumber: string; invoiceType: string }[];
+  /** Emissões da Focus (da própria comanda e as que cobrem várias). */
+  emissoes: { saleRef: string; tipo?: string | null; status: string; numero: string | null; partes?: { saleRef: string }[] | null }[];
+};
+
+export function notaForaDoLote(
+  item: Pick<ItemDoLote, "status" | "saleRef" | "tipo" | "partes">,
+  fontes: FontesDaNotaViva,
+): NotaForaDoLote | null {
+  if (item.status !== "PENDENTE" && item.status !== "ERRO") return null;
+  const vivas = fontes.emissoes.filter((e) => !emissaoFalhou(String(e.status ?? "")));
+  const nomeDaParte = (ref: string) => item.partes.find((p) => p.saleRef === ref)?.patientName ?? null;
+  const achados: NotaForaDoLote[] = [];
+  // A comanda da linha.
+  for (const f of fontes.invoices) {
+    if (f.saleRef === item.saleRef && f.invoiceNumber.trim() && notaExistenteCobre(f.invoiceType, item.tipo)) achados.push({ numero: f.invoiceNumber.trim(), paciente: null });
+  }
+  for (const e of vivas) {
+    const propria = e.saleRef === item.saleRef && notaExistenteCobre(String(e.tipo ?? ""), item.tipo);
+    const comoParte = e.saleRef !== item.saleRef && (e.partes ?? []).some((p) => p.saleRef === item.saleRef);
+    if (propria || comoParte) achados.push({ numero: e.numero, paciente: null });
+  }
+  // As outras comandas que a linha junta (o filho junto da mãe): já com nota, a junção não sai mais.
+  for (const ref of new Set(item.partes.map((p) => p.saleRef).filter((r) => r && r !== item.saleRef))) {
+    for (const f of fontes.invoices) if (f.saleRef === ref && f.invoiceNumber.trim()) achados.push({ numero: f.invoiceNumber.trim(), paciente: nomeDaParte(ref) });
+    for (const e of vivas) if (e.saleRef === ref || (e.partes ?? []).some((p) => p.saleRef === ref)) achados.push({ numero: e.numero, paciente: nomeDaParte(ref) });
+  }
+  return achados.find((a) => a.numero) ?? achados[0] ?? null;
+}
+
+/** "Nota 6238 já emitida em outra tela" — a frase que entra no lugar de "erro/para emitir". */
+export function fraseDaNotaForaDoLote(nota: NotaForaDoLote) {
+  const de = nota.paciente ? ` (comanda de ${nota.paciente})` : "";
+  return nota.numero ? `Nota ${nota.numero} já emitida em outra tela${de}` : `Nota já pedida à prefeitura em outra tela${de}`;
 }
