@@ -29,6 +29,24 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    // Avisos (08/10/2026): destino novo do Início no menu aprovado.
+    pattern: "/avisos",
+    guide: {
+      title: "Avisos",
+      whatIs:
+        "É onde chega o que é para você saber. O que pede uma decisão fica em Para decidir; aqui ficam os avisos — e, no topo, como prioridade, as notas fiscais que esperam o CPF do paciente.",
+      steps: [
+        "Comece pelo bloco Prioridade: cada linha é uma nota do lote que não sai sem o CPF.",
+        "Toque em Completar no lote: o app abre Impostos & NFs já no lote de notas, onde o CPF é digitado na própria linha.",
+        "Depois leia os outros avisos (os recados do Mural) e abra o mural para ver o histórico.",
+      ],
+      tips: [
+        "O número do sino, no topo, é a quantidade de notas esperando CPF. Ele não entra no número do Início, que conta só decisões.",
+        "Só vê as notas quem cuida delas: o financeiro e quem emite nota fiscal.",
+      ],
+    },
+  },
+  {
     pattern: "/tarefas",
     guide: {
       title: "Checklist do dia",

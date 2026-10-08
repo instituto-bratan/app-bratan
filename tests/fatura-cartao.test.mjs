@@ -456,11 +456,20 @@ test("acesso: só o financeiro completo vê a fatura linha a linha; exceção po
 
 test("rota, menu, ⌘K, pré-carga e guia da tela nova estão ligados", () => {
   const app = fs.readFileSync("src/App.tsx", "utf8");
-  const layout = fs.readFileSync("src/layouts/AppLayout.tsx", "utf8");
   const preload = fs.readFileSync("src/lib/routePreload.ts", "utf8");
   assert.match(app, /path="\/financeiro\/fatura-cartao"/);
-  assert.match(layout, /href: "\/financeiro\/fatura-cartao"[^\n]*module: "fin-fatura"/);
-  assert.match(layout, /rotulo: "Importar fatura do cartão", href: "\/financeiro\/fatura-cartao"/);
+  // 08/10/2026 (casca nova): o menu vem do mapa e o ⌘K dos comandos da casca —
+  // Fatura do cartão é aba de Financeiro › Pagar, com a mesma porta (fin-fatura).
+  const nav = loadTs("src/lib/navegacao.ts");
+  const fatura = nav.destinoPorId("fatura");
+  assert.equal(fatura.rota, "/financeiro/fatura-cartao");
+  assert.deepEqual(plain(fatura.acesso), { tipo: "modulo", modulo: "fin-fatura" });
+  assert.equal(fatura.item, "pagar");
+  const comandos = loadTs("src/layouts/casca/comandos.ts");
+  const lucas = { id: "lucas", cargo: "gestor_financeiro", acessos: {} };
+  const achados = comandos.linhasDaBusca("fatura", lucas);
+  assert.ok(achados.some((linha) => linha.href === "/financeiro/fatura-cartao"), "o ⌘K acha a fatura do cartão");
+  assert.ok(comandos.COMANDOS.some((c) => c.rotulo === "Importar fatura do cartão" && c.href === "/financeiro/fatura-cartao"));
   assert.match(preload, /finFaturaCartao: namedPage\(\(\) => import\("@\/features\/financeiro\/FinanceiroFaturaCartaoPage"\), "FinanceiroFaturaCartaoPage"\)/);
   assert.match(preload, /pathname === "\/financeiro\/fatura-cartao"\) return "finFaturaCartao"/);
   const guia = guias.findPageGuide("/financeiro/fatura-cartao");

@@ -13,8 +13,6 @@
 // Este módulo é puro (testável com node --test). A tela decide o que carregar
 // por cargo; o motor só ordena, agrupa e escreve as frases.
 import type { FilaFinanceira } from "@/features/financeiro/filaFinanceira";
-import { saleTotal, type FinReconciliation, type FinSale } from "@/features/financeiro/financeiroData";
-import { diaUtilAnterior } from "@/features/financeiro/recebiveisRede";
 
 export type OrigemFila = "CONTA" | "COMPRA" | "PEDIDO" | "COMPROVANTE" | "NOTA" | "CRM" | "LEMBRETE" | "ESTOQUE" | "NPS" | "CHECKLIST" | "FECHAMENTO" | "AVISO" | "ACHADO";
 
@@ -180,14 +178,11 @@ const taskTypeLabel: Record<string, string> = {
   CHURN_INVESTIGATION: "investigar churn",
 };
 
-/** O fechamento de ontem (dia útil anterior) ficou sem conferir? */
-export function fechamentoPendente(sales: FinSale[], reconciliations: FinReconciliation[], hoje: string): { dia: string; total: number } | null {
-  const dia = diaUtilAnterior(hoje);
-  const total = Math.round(sales.filter((sale) => sale.saleDate === dia).reduce((soma, sale) => soma + saleTotal(sale), 0) * 100) / 100;
-  if (total <= 0.005) return null;
-  if (reconciliations.some((rec) => rec.day === dia && rec.status !== "PENDENTE")) return null;
-  return { dia, total };
-}
+// O fechamento de ontem sem conferir mora em ./fechamentoPendente desde
+// 08/10/2026: o contador do Início (na casca, que carrega em toda tela) usa a
+// MESMA regra, e importar daqui trazia a Fila do dia inteira para o pacote
+// principal. Continua exportado por aqui para a Home e os testes.
+export { fechamentoPendente } from "./fechamentoPendente";
 
 /** Remove silenciamentos que já venceram. */
 export function limparSilenciados(silenciados: Record<string, string>, hoje: string): Record<string, string> {

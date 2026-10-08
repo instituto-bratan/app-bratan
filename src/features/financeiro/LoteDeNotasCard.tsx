@@ -254,8 +254,9 @@ export function LoteDeNotasCard({ readOnly, invoices = [] }: { readOnly: boolean
   const valorSelecionado = visiveis.filter((i) => selecionados.includes(i.id)).reduce((s, i) => s + i.valor, 0);
   const alternar = (id: string) => setMarcados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
 
+  // 08/10/2026: âncora para o "Completar" de Avisos (nota sem CPF) cair aqui.
   return (
-    <Card>
+    <Card id="lote-de-notas" className="scroll-mt-24">
       <CardHeader>
         <CardTitle className="text-lg">Lote de notas conferido · {lotes.map(mesDoLote).join(" e ")}</CardTitle>
         <p className="text-sm text-muted-foreground">{resumo.frase}</p>

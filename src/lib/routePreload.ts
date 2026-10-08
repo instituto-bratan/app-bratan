@@ -15,6 +15,8 @@ function namedPage<TModule extends Record<string, unknown>, TExport extends keyo
 
 const routeLoaders = {
   home: namedPage(() => import("@/features/home/HomePage"), "HomePage"),
+  // Avisos (08/10/2026): destino novo do Início no menu aprovado.
+  avisos: namedPage(() => import("@/features/avisos/AvisosPage"), "AvisosPage"),
   perfil: namedPage(() => import("@/features/perfil/MeuPerfilPage"), "MeuPerfilPage"),
   tarefas: namedPage(() => import("@/features/checklist/ChecklistPage"), "ChecklistPage"),
   almoco: namedPage(() => import("@/features/almoco/AlmocoPage"), "AlmocoPage"),
@@ -95,6 +97,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   const pathname = normalizeHref(href);
 
   if (pathname === "/" || pathname === "/inicio") return "home";
+  if (pathname === "/avisos") return "avisos";
   if (pathname === "/meu-perfil") return "perfil";
   if (pathname === "/tarefas") return "tarefas";
   if (pathname === "/almoco") return "almoco";

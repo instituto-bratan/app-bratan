@@ -115,7 +115,10 @@ export function Avisos() {
   }, []);
   return (
     <>
-      <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[70] flex flex-col items-center gap-2 px-4 sm:bottom-6 sm:items-end sm:px-6" aria-live="polite" aria-atomic="false">
+      {/* Revisão de 08/10/2026: abaixo de 768 px a barra de baixo do celular (64 px,
+          mais a área segura) está na tela; o aviso fica ACIMA dela. Antes, de 640 a
+          767 px ele descia para 24 px e caía em cima da barra. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(80px+env(safe-area-inset-bottom))] z-[70] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6 md:bottom-6" aria-live="polite" aria-atomic="false">
         {estado.toasts.map((t) => (
           <div
             key={t.id}

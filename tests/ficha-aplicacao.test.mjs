@@ -394,10 +394,19 @@ test("a tela está ligada em rota, pré-carga, menu, busca, guia e na ficha do p
   const preload = ler("src/lib/routePreload.ts");
   assert.match(preload, /estoqueAplicacoes: namedPage\(\(\) => import\("@\/features\/estoque\/AplicacoesPage"\), "AplicacoesPage"\)/);
   assert.match(preload, /if \(pathname === "\/estoque\/aplicacoes"\) return "estoqueAplicacoes";/);
-  const layout = ler("src/layouts/AppLayout.tsx");
-  assert.match(layout, /href: "\/estoque\/aplicacoes", icon: Syringe, allowed: \(\) => false, module: "aplicacoes"/);
-  assert.match(layout, /href: "\/estoque", icon: Boxes, allowed: \(\) => true, module: "estoque", end: true/, "Estoque não fica aceso na tela filha");
-  assert.match(layout, /rotulo: "Registrar aplicação \(enfermagem\)", href: "\/estoque\/aplicacoes"/);
+  // 08/10/2026 (casca nova): o menu vem do mapa (navegacao.ts) e o ⌘K dos comandos da casca.
+  const nav = loadTs("src/lib/navegacao.ts");
+  const aplicacoes = nav.destinoPorId("aplicacoes");
+  assert.equal(aplicacoes.rota, "/estoque/aplicacoes");
+  assert.deepEqual(plain(aplicacoes.acesso), { tipo: "modulo", modulo: "aplicacoes" });
+  // Estoque não fica aceso na tela filha: /estoque/aplicacoes é o item Aplicações, não o Estoque.
+  assert.equal(nav.resolverRota("/estoque/aplicacoes").item.id, "aplicacoes");
+  assert.equal(nav.resolverRota("/estoque").item.id, "estoque");
+  const comandos = loadTs("src/layouts/casca/comandos.ts");
+  assert.ok(comandos.COMANDOS.some((c) => c.rotulo === "Registrar aplicação (enfermagem)" && c.href === "/estoque/aplicacoes"));
+  const enfermeira = { id: "enf", cargo: "enfermeira", acessos: {} };
+  assert.ok(comandos.linhasDaBusca("aplicar", enfermeira).some((linha) => linha.href === "/estoque/aplicacoes"), "a enfermeira acha pelo verbo");
+  assert.ok(!comandos.linhasDaBusca("aplicar", { id: "rec", cargo: "recepcionista", acessos: {} }).some((linha) => linha.href === "/estoque/aplicacoes"), "a recepção não vê Aplicações");
   const tela = ler("src/features/estoque/AplicacoesPage.tsx");
   assert.match(tela, /<AccessGate allowed={\(\) => false} module="aplicacoes"/);
   const guias = loadTs("src/lib/pageGuides.ts");

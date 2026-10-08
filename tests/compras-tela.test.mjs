@@ -100,24 +100,46 @@ test("rota /compras: carregada sob demanda, pré-carregável e com a porta do m�
   assert.match(pagina, /useNivelDaTela\("compras"\)/);
 });
 
+// 08/10/2026 (casca nova): o menu e o ⌘K deixaram de ser listas escritas no
+// AppLayout — vêm do mapa (src/lib/navegacao.ts) e dos comandos do ⌘K
+// (src/layouts/casca/comandos.ts). A intenção destes testes é a mesma de 06/10:
+// "Compras e estoque" com Pedidos primeiro, o registro do Financeiro no mesmo
+// endereço, e "Aprovar" só para quem aprova.
+const nav = loadTs("src/lib/navegacao.ts");
+const comandos = loadTs("src/layouts/casca/comandos.ts");
+const quem = (cargo, acessos = {}) => ({ id: `id-${cargo}`, cargo, acessos });
+
 test("menu: o grupo Estoque virou 'Compras e estoque', com Pedidos de compra primeiro; Compras do Financeiro continua", () => {
-  const layout = ler("src/layouts/AppLayout.tsx");
-  const grupo = /label: "Compras e estoque",[\s\S]*?entries: \[([\s\S]*?)\n {4}\],/.exec(layout);
+  const grupo = nav.itensDoMenu(quem("gestor_financeiro")).find((g) => g.id === "compras-estoque");
   assert.ok(grupo, "grupo 'Compras e estoque' não encontrado");
-  assert.match(layout, /label: "Compras e estoque",\s*detail: "pedidos, estoque por setor e aplicações",\s*href: "\/compras",/);
-  const hrefs = [...grupo[1].matchAll(/href: "([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(hrefs, ["/compras", "/estoque", "/estoque/aplicacoes"]);
-  assert.match(grupo[1], /label: "Pedidos de compra",[^\n]*href: "\/compras",[^\n]*module: "compras"/);
-  assert.doesNotMatch(layout, /label: "Estoque",\s*detail:/, "o grupo antigo 'Estoque' não pode ficar duplicado");
-  // O registro financeiro continua no Financeiro, no mesmo endereço.
-  assert.match(layout, /\{ label: "Compras", href: "\/financeiro\/compras", icon: ShoppingCart, allowed: canFinanceiroView, module: "fin-compras" \}/);
+  assert.equal(grupo.rotulo, "Compras e estoque");
+  assert.equal(grupo.href, "/compras");
+  assert.deepEqual(plain(grupo.itens.map((item) => item.href)), ["/compras", "/estoque", "/estoque/aplicacoes"]);
+  const pedidos = nav.destinoPorId("pedidos");
+  assert.equal(pedidos.rota, "/compras");
+  assert.deepEqual(plain(pedidos.acesso), { tipo: "modulo", modulo: "compras" });
+  assert.equal(nav.GRUPOS.filter((g) => g.rotulo === "Estoque").length, 0, "o grupo antigo 'Estoque' não pode ficar duplicado");
+  // O registro financeiro continua no mesmo endereço e com a mesma porta (fin-compras), como aba de Pedidos.
+  const controle = nav.destinoPorId("controle-compras");
+  assert.equal(controle.rota, "/financeiro/compras");
+  assert.deepEqual(plain(controle.acesso), { tipo: "modulo", modulo: "fin-compras" });
+  assert.equal(controle.item, "pedidos");
 });
 
 test("⌘K: 'Novo pedido de compra' para todos; 'Aprovar pedidos de compra' só para quem aprova", () => {
-  const layout = ler("src/layouts/AppLayout.tsx");
-  assert.match(layout, /palavras: \[[^\]]*"pedir"[^\]]*"pedido"[^\]]*"comprar"[^\]]*"requisicao"[^\]]*"solicitar compra"[^\]]*\], rotulo: "Novo pedido de compra", href: "\/compras\?novo=1"/);
-  assert.match(layout, /rotulo: "Aprovar pedidos de compra",\s*href: "\/compras\?filtro=AGUARDANDO",\s*so: canEditModule\(pessoa, "compras-aprovacao"\),/);
-  assert.match(layout, /if \(!podeIr\(comando\.href\) \|\| comando\.so === false\) continue;/);
+  const novo = nav.ACOES_RAPIDAS.find((acao) => acao.id === "novo-pedido");
+  assert.equal(novo.rotulo, "Novo pedido de compra");
+  assert.equal(novo.href, "/compras?novo=1");
+  for (const palavra of ["pedir", "pedido", "comprar", "requisição", "solicitar compra"]) assert.ok(novo.palavras.includes(palavra), palavra);
+  for (const cargo of ["recepcionista", "enfermeira", "gestor_financeiro"]) {
+    assert.ok(nav.acoesRapidas(quem(cargo)).some((acao) => acao.id === "novo-pedido"), `${cargo} pede`);
+  }
+  const aprovar = (pessoa) => comandos.linhasDaBusca("aprovar", pessoa).find((linha) => linha.rotulo === "Aprovar pedidos de compra");
+  assert.equal(aprovar(quem("gestor_financeiro")).href, "/compras?filtro=AGUARDANDO");
+  assert.equal(aprovar(quem("recepcionista")), undefined, "a recepção não aprova");
+  // A exceção de Acessos vence nas duas direções.
+  assert.ok(aprovar(quem("recepcionista", { "compras-aprovacao": "EDITAR" })));
+  assert.equal(aprovar(quem("gestor_financeiro", { "compras-aprovacao": "VER" })), undefined);
   // Os links do ⌘K são os que a tela lê.
   assert.equal(tela.lerPedidoDaUrl("?novo=1").novo, true);
   assert.equal(tela.lerPedidoDaUrl("?filtro=AGUARDANDO").filtro, "AGUARDANDO");

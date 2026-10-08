@@ -2,14 +2,17 @@ import { Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
+import { GuiaVisualPagina } from "@/components/ui/guia-visual-rota";
 import { LiquidGlassFilterDefs } from "@/components/ui/liquid-glass-button";
 import { AppLayout } from "@/layouts/AppLayout";
+import { PortaDoHub } from "@/layouts/casca/PortaDoHub";
 import { canCrmBratan, canInteligencia360 } from "@/lib/access";
 import { lazyRoute } from "@/lib/routePreload";
 import { LoginPage } from "@/routes/LoginPage";
 import { ProtectedRoute } from "@/routes/ProtectedRoute";
 
 const HomePage = lazyRoute("home");
+const AvisosPage = lazyRoute("avisos");
 const MeuPerfilPage = lazyRoute("perfil");
 const ChecklistPage = lazyRoute("tarefas");
 const AlmocoPage = lazyRoute("almoco");
@@ -105,6 +108,8 @@ export function App() {
             <Route element={<AppLayout />}>
               <Route index element={<HomePage />} />
               <Route path="/inicio" element={<HomePage />} />
+              {/* Avisos (08/10/2026, menu aprovado): rota NOVA do Início; nota sem CPF entra aqui como prioridade. */}
+              <Route path="/avisos" element={<AvisosPage />} />
               <Route path="/meu-perfil" element={<MeuPerfilPage />} />
               <Route path="/tarefas" element={<ChecklistPage />} />
               <Route path="/almoco" element={<AlmocoPage />} />
@@ -131,6 +136,11 @@ export function App() {
               {/* Aba Pacientes (05/10/2026): busca, ficha e CPF; a porta é o módulo "pacientes". */}
               <Route path="/pacientes" element={<PacientesPage />} />
               <Route path="/financeiro" element={<Navigate to="/financeiro/lancar-dia" replace />} />
+              {/* Portas NOVAS do Financeiro (08/10/2026): Dia, Pagar e Banco levam à 1ª aba
+                  que a pessoa vê. As telas continuam nos endereços de sempre. */}
+              <Route path="/financeiro/dia" element={<PortaDoHub item="dia" />} />
+              <Route path="/financeiro/pagar" element={<PortaDoHub item="pagar" />} />
+              <Route path="/financeiro/banco" element={<PortaDoHub item="banco" />} />
               <Route path="/financeiro/lancar-dia" element={<FinanceiroLancarDiaPage />} />
               <Route path="/financeiro/contas" element={<FinanceiroContasPage />} />
               <Route path="/financeiro/p12" element={<FinanceiroP12Page />} />
@@ -187,6 +197,8 @@ export function App() {
               <Route path="/administracao/integracoes" element={<IntegracoesPage />} />
               <Route path="/administracao/portal" element={<VozDoDoutorPage />} />
               <Route path="/administracao/compliance" element={<ComplianceCofrePage />} />
+              {/* Guia visual do redesenho Papel & Musgo (08/10/2026): rota nova, sem dado da clínica. */}
+              <Route path="/ajustes/guia-visual" element={<GuiaVisualPagina />} />
               <Route path="/marketing" element={<MarketingPage />} />
               <Route path="/nutricao" element={<PortaNutricao><NutricaoHojePage /></PortaNutricao>} />
               <Route path="/nutricao/pessoas" element={<PortaNutricao><NutricaoPessoasPage /></PortaNutricao>} />

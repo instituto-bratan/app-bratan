@@ -43,7 +43,9 @@ import {
   type Recebimento,
 } from "./comprasData";
 
-const pedidosKey = "app-bratan-compras-pedidos";
+// 08/10/2026: exportada para o contador da casca nova ler, na prévia, a mesma
+// lista de pedidos que a tela mostra.
+export const pedidosKey = "app-bratan-compras-pedidos";
 // A mesma chave de useEstoque: na prévia, o recebimento também dá a entrada no estoque local.
 const estoqueMovesKey = "app-bratan-estoque-moves";
 const queryKey = ["compras-pedidos"] as const;

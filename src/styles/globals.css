@@ -2,33 +2,276 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bratan-musgo: #4D563B;
-  --bratan-oliva: #7A895E;
-  --bratan-dourado: #C6A862;
-  --bratan-creme: #F8EDBD;
-  --bratan-papel: #FAF8F1;
-  --bratan-tinta: #2B2E24;
+/* ============================================================================
+   PAPEL & MUSGO — FUNDAÇÃO VISUAL DO APP (08/10/2026, redesenho aprovado pelo
+   Lucas: "pode implantar").
 
-  --background: 48 47% 96%;
-  --foreground: 75 10% 16%;
-  --card: 48 47% 98%;
-  --card-foreground: 75 10% 16%;
-  --primary: 75 18% 28%;
-  --primary-foreground: 48 47% 96%;
-  --secondary: 80 18% 45%;
-  --secondary-foreground: 75 10% 16%;
-  --muted: 49 38% 90%;
-  --muted-foreground: 78 10% 42%;
-  --accent: 43 44% 58%;
-  --accent-foreground: 75 10% 16%;
-  --popover: 48 47% 98%;
-  --popover-foreground: 75 10% 16%;
-  --destructive: 3 55% 43%;
-  --destructive-foreground: 48 47% 96%;
-  --border: 74 16% 78%;
-  --input: 74 16% 78%;
-  --ring: 43 44% 58%;
+   Fonte única dos tokens: trabalho-compras-e-visual/visual/final/tokens.css e
+   escuro.tokens.css (a proposta aprovada). Uma regra por linha:
+   · O menu é a MESA (o tom mais fundo). O conteúdo é PAPEL. O que pede decisão
+     é FOLHA (borda, sem sombra). O que é só para saber fica em SABER (um tom
+     abaixo do papel, sem borda e sem sombra).
+   · Musgo = ação. Oliva = SÓ ícone. Dourado = SÓ enfeite. O ouro marca o agora
+     (traço --ouro-fio; quando vira texto, --ouro).
+   · Fraunces só em título, número e data; Manrope no resto.
+   · Letra 12/13/14/16/20/24/32/40 · espaço 4/8/12/16/24/32/48/64 · raio 6/10/16.
+
+   POR QUE AS CORES MORAM EM CANAIS ("77 86 59") E NÃO EM HEX: o Tailwind só
+   aplica a opacidade (bg-musgo/10) a cor escrita como rgb(var(--x) / <alpha>).
+   Com hex direto na variável, `bg-brand-oliva/20` simplesmente NÃO gera CSS —
+   é o que acontece hoje com ~1.400 classes antigas (armadilha da memória "Tema
+   escuro do app"). As cores novas nascem já no formato que aceita /opacidade;
+   o nome curto (--musgo) continua existindo para quem escreve CSS à mão.
+
+   COMO O ESCURO LIGA: o app usa a classe "dark" no <html> (src/lib/tema.ts).
+   Um bloco isolado também pode virar escuro ou claro com data-tema="escuro" /
+   data-tema="claro" (o guia visual mostra os dois lado a lado). Por isso os
+   apelidos (--musgo: rgb(var(--musgo-rgb))) são declarados de novo em todo
+   [data-tema]: variável CSS herda o valor JÁ calculado, e sem redeclarar o
+   bloco escuro herdaria o musgo claro do <html>.
+   ========================================================================== */
+
+/* ---------- Fontes da casa, servidas pelo próprio app (a CSP só aceita
+   font-src 'self'). Os arquivos vêm do @fontsource, que já está instalado e
+   que a Nutrição usa no plano impresso; o Vite copia para /assets. Só o
+   subconjunto latino: cobre todo o português (á, ç, õ, ·, —). ---------- */
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 400; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 500; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 600; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: italic; font-weight: 400; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-400-italic.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: italic; font-weight: 500; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-500-italic.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 400; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 500; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 700; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 800; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-800-normal.woff2") format("woff2"); }
+
+/* ---------- Tokens · tema claro (os valores aprovados em 07/10) ---------- */
+:root,
+[data-tema="claro"] {
+  /* Superfícies, da mais funda para a mais alta */
+  --mesa-rgb: 232 227 210;          /* #E8E3D2 menu lateral */
+  --papel-rgb: 250 248 241;         /* #FAF8F1 fundo do conteúdo */
+  --saber-rgb: 243 240 229;         /* #F3F0E5 zona "para saber": sem borda, sem sombra */
+  --folha-rgb: 255 253 248;         /* #FFFDF8 o que pede decisão; item ativo do menu */
+  --fio-rgb: 228 223 208;           /* #E4DFD0 divisória leve */
+  --fio-2-rgb: 211 205 185;         /* #D3CDB9 divisória firme, contorno do botão secundário */
+  --borda-campo-rgb: 140 144 124;   /* #8C907C contorno de campo: 3,2:1 sobre a folha */
+
+  /* Texto */
+  --tinta-rgb: 43 46 36;            /* #2B2E24 13,0:1 no papel */
+  --tinta-2-rgb: 95 100 82;         /* #5F6452 5,8:1 no papel · 4,7:1 na mesa */
+  --sobre-musgo-rgb: 255 253 248;   /* #FFFDF8 texto em botão musgo: 7,6:1 */
+
+  /* Marca */
+  --musgo-rgb: 77 86 59;            /* #4D563B ação, foco, link: 7,3:1 */
+  --musgo-forte-rgb: 63 71 48;      /* #3F4730 ao passar o mouse */
+  --musgo-fundo-rgb: 51 58 39;      /* #333A27 pressionado */
+  --musgo-claro-rgb: 230 233 218;   /* #E6E9DA botão suave, linha escolhida */
+  --musgo-claro-2-rgb: 217 223 200; /* #D9DFC8 suave ao passar o mouse */
+  --oliva-rgb: 122 137 94;          /* #7A895E SÓ ícone (3,6:1) — nunca texto */
+  --dourado-rgb: 198 168 98;        /* #C6A862 SÓ enfeite (2,2:1) — nunca texto */
+  --ouro-fio-rgb: 154 123 47;       /* #9A7B2F traço de ouro que informa: 3,1:1 na mesa */
+  --ouro-rgb: 127 100 39;           /* #7F6427 ouro quando vira texto: 5,3:1 */
+  --ouro-claro-rgb: 244 235 210;    /* #F4EBD2 */
+  --creme-rgb: 243 235 203;         /* #F3EBCB brasão e nome sobre musgo escuro */
+  --musgo-noite-rgb: 38 44 31;      /* #262C1F login, modo apresentação */
+  --marca-rgb: var(--musgo-rgb);    /* cor do brasão e do nome no menu */
+
+  /* Situações (sempre com palavra; nunca só a cor) */
+  --atencao-rgb: 164 82 14;         /* #A4520E prazo vencido, falta algo */
+  --atencao-claro-rgb: 248 233 217; /* #F8E9D9 */
+  --erro-rgb: 166 58 44;            /* #A63A2C recusado, urgente, erro de campo */
+  --erro-claro-rgb: 247 228 223;    /* #F7E4DF */
+  --ok-rgb: 62 107 71;              /* #3E6B47 recebido, pago */
+  --ok-claro-rgb: 227 238 227;      /* #E3EEE3 */
+  --petroleo-rgb: 59 95 102;        /* #3B5F66 só "a caminho" */
+  --petroleo-claro-rgb: 224 236 236;/* #E0ECEC */
+
+  /* Flutuantes */
+  --aviso-fundo-rgb: 43 46 36;      /* #2B2E24 */
+  --aviso-texto-rgb: 250 248 241;   /* #FAF8F1 */
+  --aviso-acao-rgb: 243 235 203;    /* #F3EBCB */
+  --foco-rgb: 77 86 59;             /* #4D563B */
+  --veu: rgba(24, 32, 26, .42);
+  --sombra-flutua: 0 1px 2px rgba(43, 46, 36, .08), 0 18px 44px -14px rgba(43, 46, 36, .30);
+}
+
+/* ---------- Tokens · tema escuro ----------
+   A mesa é mais funda que o fundo; a folha fica um degrau acima, para não
+   sumir dentro da moldura. Já inclui os ajustes de escuro.tokens.css: o botão
+   suave preenchido de musgo (#384537) e o fio de ouro com tom próprio (#A08436),
+   para o arco de hoje não virar uma pílula chapada. */
+.dark,
+[data-tema="escuro"] {
+  --mesa-rgb: 11 17 13;             /* #0B110D */
+  --papel-rgb: 18 27 22;            /* #121B16 */
+  --saber-rgb: 23 33 27;            /* #17211B */
+  --folha-rgb: 28 41 33;            /* #1C2921 */
+  --fio-rgb: 42 57 47;              /* #2A392F */
+  --fio-2-rgb: 59 77 64;            /* #3B4D40 */
+  --borda-campo-rgb: 111 123 105;   /* #6F7B69 */
+
+  --tinta-rgb: 236 234 219;         /* #ECEADB */
+  --tinta-2-rgb: 169 174 154;       /* #A9AE9A */
+  --sobre-musgo-rgb: 21 29 23;      /* #151D17 */
+
+  --musgo-rgb: 184 194 156;         /* #B8C29C */
+  --musgo-forte-rgb: 201 210 174;   /* #C9D2AE */
+  --musgo-fundo-rgb: 166 177 137;   /* #A6B189 */
+  --musgo-claro-rgb: 56 69 55;      /* #384537 (escuro.tokens.css) */
+  --musgo-claro-2-rgb: 65 78 63;    /* #414E3F (escuro.tokens.css) */
+  --oliva-rgb: 147 163 116;         /* #93A374 */
+  --dourado-rgb: 198 168 98;        /* #C6A862 */
+  --ouro-fio-rgb: 160 132 54;       /* #A08436 (escuro.tokens.css) */
+  --ouro-rgb: 216 190 124;          /* #D8BE7C */
+  --ouro-claro-rgb: 43 40 23;       /* #2B2817 */
+  --creme-rgb: 243 235 203;         /* #F3EBCB */
+  --marca-rgb: var(--creme-rgb);
+
+  --atencao-rgb: 232 164 100;       /* #E8A464 */
+  --atencao-claro-rgb: 51 37 26;    /* #33251A */
+  --erro-rgb: 236 148 130;          /* #EC9482 */
+  --erro-claro-rgb: 54 33 29;       /* #36211D */
+  --ok-rgb: 143 197 156;            /* #8FC59C */
+  --ok-claro-rgb: 28 47 35;         /* #1C2F23 */
+  --petroleo-rgb: 146 190 198;      /* #92BEC6 */
+  --petroleo-claro-rgb: 24 44 47;   /* #182C2F */
+
+  --aviso-fundo-rgb: 236 234 219;   /* #ECEADB */
+  --aviso-texto-rgb: 26 33 25;      /* #1A2119 */
+  --aviso-acao-rgb: 77 86 59;       /* #4D563B */
+  --foco-rgb: 184 194 156;          /* #B8C29C */
+  --veu: rgba(4, 8, 6, .62);
+  --sombra-flutua: 0 1px 2px rgba(0, 0, 0, .4), 0 18px 44px -14px rgba(0, 0, 0, .7);
+}
+
+/* ---------- Apelidos em cor pronta (para CSS escrito à mão, como nos
+   mockups aprovados: var(--folha), var(--musgo)…) + tokens que não são cor.
+   Redeclarados em todo [data-tema] pelo motivo explicado no topo. ---------- */
+:root,
+.dark,
+[data-tema] {
+  --mesa: rgb(var(--mesa-rgb));
+  --papel: rgb(var(--papel-rgb));
+  --saber: rgb(var(--saber-rgb));
+  --folha: rgb(var(--folha-rgb));
+  --fio: rgb(var(--fio-rgb));
+  --fio-2: rgb(var(--fio-2-rgb));
+  --borda-campo: rgb(var(--borda-campo-rgb));
+  --tinta: rgb(var(--tinta-rgb));
+  --tinta-2: rgb(var(--tinta-2-rgb));
+  --sobre-musgo: rgb(var(--sobre-musgo-rgb));
+  --musgo: rgb(var(--musgo-rgb));
+  --musgo-forte: rgb(var(--musgo-forte-rgb));
+  --musgo-fundo: rgb(var(--musgo-fundo-rgb));
+  --musgo-claro: rgb(var(--musgo-claro-rgb));
+  --musgo-claro-2: rgb(var(--musgo-claro-2-rgb));
+  --oliva: rgb(var(--oliva-rgb));
+  --dourado: rgb(var(--dourado-rgb));
+  --ouro-fio: rgb(var(--ouro-fio-rgb));
+  --ouro: rgb(var(--ouro-rgb));
+  --ouro-claro: rgb(var(--ouro-claro-rgb));
+  --creme: rgb(var(--creme-rgb));
+  --musgo-noite: rgb(var(--musgo-noite-rgb));
+  --marca: rgb(var(--marca-rgb));
+  --atencao: rgb(var(--atencao-rgb));
+  --atencao-claro: rgb(var(--atencao-claro-rgb));
+  --erro: rgb(var(--erro-rgb));
+  --erro-claro: rgb(var(--erro-claro-rgb));
+  --ok: rgb(var(--ok-rgb));
+  --ok-claro: rgb(var(--ok-claro-rgb));
+  --petroleo: rgb(var(--petroleo-rgb));
+  --petroleo-claro: rgb(var(--petroleo-claro-rgb));
+  --aviso-fundo: rgb(var(--aviso-fundo-rgb));
+  --aviso-texto: rgb(var(--aviso-texto-rgb));
+  --aviso-acao: rgb(var(--aviso-acao-rgb));
+  --foco: rgb(var(--foco-rgb));
+
+  /* Do escuro.tokens.css: no claro são neutros (a tela fica igual). */
+  --mesa-fundo: var(--mesa);         /* cor por baixo da textura da mesa */
+  --mesa-textura: none;              /* ruído de papel; só o escuro usa */
+  --grupo-ativo: var(--folha);       /* folha do grupo aberto no menu */
+  --tinta-menu: var(--tinta);        /* grupos fechados, Fixados, Ajustes */
+  --borda-folha-ativa: 0 0 0 1px var(--fio-2), 0 1px 0 1px rgba(43, 46, 36, .05);
+
+  /* As cores antigas da marca, remapeadas para a paleta nova (as ~70 telas
+     antigas ficam coerentes sem serem reescritas agora). O oliva e o dourado
+     continuam os mesmos em fundo e borda; como TEXTO eles são trocados no
+     tailwind.config.ts (text-brand-oliva → tinta 2, text-brand-dourado →
+     ouro), porque 3,5:1 e 2,2:1 não passam no AA. */
+  --bratan-musgo: var(--musgo);
+  --bratan-oliva: var(--oliva);
+  --bratan-dourado: var(--dourado);
+  --bratan-creme: var(--creme);      /* era #F8EDBD; o creme novo é menos amarelo */
+  --bratan-papel: var(--papel);
+  --bratan-tinta: var(--tinta);
+}
+
+/* Ajustes que só o escuro tem (escuro.tokens.css). Ficam DEPOIS dos apelidos
+   porque têm a mesma força de seletor e precisam vencer. */
+.dark,
+[data-tema="escuro"] {
+  /* A mesa é material, não preto chapado: ruído de 5%; a cor por baixo desce
+     para #050B07 e a média na tela volta a ser a mesa #0B110D. */
+  --mesa-fundo: #050B07;
+  --mesa-textura: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* O grupo aberto no menu é uma folha de musgo profundo. */
+  --grupo-ativo: #2F3726;
+  --borda-folha-ativa: 0 0 0 1px #414B33;
+  /* O menu recua: grupos fechados em tinta a 84% (11,2:1). */
+  --tinta-menu: color-mix(in srgb, var(--tinta) 84%, var(--mesa));
+  /* No escuro o creme antigo era a superfície de destaque das faixas
+     (bg-brand-creme); continua sendo, agora no tom da paleta nova. */
+  --bratan-creme: #26311F;
+}
+
+[data-tema="claro"] { color-scheme: light; color: var(--tinta); }
+[data-tema="escuro"] { color-scheme: dark; color: var(--tinta); }
+
+/* ---------- Tipo, espaço, raio e medidas da casca (iguais nos dois temas) ---------- */
+:root {
+  --serifa: "Fraunces", Georgia, "Times New Roman", serif;
+  --sans: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --t-12: 12px; --t-13: 13px; --t-14: 14px; --t-16: 16px;
+  --t-20: 20px; --t-24: 24px; --t-32: 32px; --t-40: 40px;
+  --e-4: 4px; --e-8: 8px; --e-12: 12px; --e-16: 16px;
+  --e-24: 24px; --e-32: 32px; --e-48: 48px; --e-64: 64px;
+  --r-6: 6px;    /* controles: botão, campo, selo, linha */
+  --r-10: 10px;  /* folha, zona saber, aviso */
+  --r-16: 16px;  /* painel, janela, barra do celular */
+  --menu-largura: 248px;
+  --topo-altura: 56px;
+  --conteudo-max: 1200px;
+  --conteudo-lado: 32px;
+  --movimento: 160ms cubic-bezier(.2, .7, .2, 1);
+}
+@media (max-width: 1199px) { :root { --menu-largura: 232px; --conteudo-lado: 24px; } }
+@media (max-width: 767px) { :root { --conteudo-lado: 16px; } }
+
+/* ---------- Variáveis antigas (shadcn) apontadas para a paleta nova ----------
+   Ficam em HSL porque o Tailwind as lê como hsl(var(--x)) e já aplica a
+   opacidade (bg-primary/90). Valores = os tokens acima, convertidos. */
+:root {
+  --background: 46.7 47.4% 96.3%;        /* papel #FAF8F1 */
+  --foreground: 78 12.2% 16.1%;          /* tinta #2B2E24 */
+  --card: 42.9 100% 98.6%;               /* folha #FFFDF8 */
+  --card-foreground: 78 12.2% 16.1%;
+  --primary: 80 18.6% 28.4%;             /* musgo #4D563B */
+  --primary-foreground: 42.9 100% 98.6%;
+  --secondary: 72 25.4% 88.4%;           /* musgo claro #E6E9DA */
+  --secondary-foreground: 80 18.6% 28.4%;
+  --muted: 47.1 36.8% 92.5%;             /* saber #F3F0E5 */
+  --muted-foreground: 76.7 9.9% 35.7%;   /* tinta 2 #5F6452 — 5,8:1 (antes #6F7660, 4,46:1: reprovava no AA) */
+  --accent: 42 46.7% 58%;                /* dourado: só fundo/enfeite */
+  --accent-foreground: 78 12.2% 16.1%;
+  --popover: 42.9 100% 98.6%;
+  --popover-foreground: 78 12.2% 16.1%;
+  --destructive: 6.9 58.1% 41.2%;        /* erro #A63A2C */
+  --destructive-foreground: 42.9 100% 98.6%;
+  --border: 46.2 22.8% 77.6%;            /* fio 2 #D3CDB9 */
+  --input: 72 8.3% 52.5%;                /* borda do campo #8C907C: 3,2:1 */
+  --ring: 80 18.6% 28.4%;                /* foco = musgo */
   --glass: rgba(255, 255, 255, 0.58);
   --glass-strong: rgba(255, 255, 255, 0.78);
   --ios-surface: rgba(255, 255, 255, 0.66);
@@ -36,8 +279,10 @@
   --ios-hairline: rgba(77, 86, 59, 0.16);
   --ios-shadow: 0 24px 60px rgba(43, 46, 36, 0.10);
   --brilho-card: rgba(255, 255, 255, 0.62);
-  --tabela-cabecalho: rgba(248, 237, 189, 0.94);
-  --tabela-rodape: rgba(255, 255, 255, 0.95);
+  /* 08/10/2026: o cabeçalho da tabela densa era creme amarelado; vira o
+     "saber" da paleta nova, e o rodapé a folha. */
+  --tabela-cabecalho: rgba(243, 240, 229, 0.96);
+  --tabela-rodape: rgba(255, 253, 248, 0.95);
 }
 
 
@@ -56,45 +301,44 @@
    toque de verde. Nunca preto puro.
    ========================================================================== */
 .dark {
-  --bratan-musgo: #B3BD98;   /* no escuro os verdes da marca clareiam para virar texto e ícone */
-  --bratan-oliva: #96A57A;
-  --bratan-dourado: #D6BB77;
-  --bratan-creme: #24392D;   /* era o creme das faixas: vira a superfície de destaque */
-  --bratan-papel: #102019;
-  --bratan-tinta: #ECF3EF;
-
-  --background: 152 33% 9%;
-  --foreground: 152 20% 94%;
-  --card: 152 30% 14%;
-  --card-foreground: 152 20% 94%;
-  --primary: 140 28% 62%;
-  --primary-foreground: 152 33% 9%;
-  --secondary: 140 18% 40%;
-  --secondary-foreground: 152 20% 94%;
-  --muted: 152 24% 18%;
-  --muted-foreground: 152 12% 70%;
-  --accent: 43 50% 65%;
-  --accent-foreground: 152 33% 9%;
-  --popover: 152 30% 14%;
-  --popover-foreground: 152 20% 94%;
-  --destructive: 3 70% 62%;
-  --destructive-foreground: 152 33% 9%;
-  --border: 150 14% 26%;
-  --input: 150 14% 26%;
-  --ring: 43 50% 65%;
-  --glass: rgba(24, 47, 37, 0.62);
-  --glass-strong: rgba(24, 47, 37, 0.84);
-  --ios-surface: rgba(24, 47, 37, 0.7);
-  --ios-surface-strong: rgba(24, 47, 37, 0.88);
+  /* 08/10/2026: as --bratan-* do escuro não moram mais aqui; são apelidos dos
+     tokens Papel & Musgo (lá em cima), então mudam de tema sozinhas. As
+     variáveis shadcn abaixo são os mesmos tokens escuros, em HSL. */
+  --background: 146.7 20% 8.8%;          /* papel #121B16 */
+  --foreground: 52.9 30.9% 89.2%;        /* tinta #ECEADB */
+  --card: 143.1 18.8% 13.5%;             /* folha #1C2921 */
+  --card-foreground: 52.9 30.9% 89.2%;
+  --primary: 75.8 23.7% 68.6%;           /* musgo #B8C29C */
+  --primary-foreground: 135 16% 9.8%;    /* sobre musgo #151D17 */
+  --secondary: 115.7 11.3% 24.3%;        /* musgo claro #384537 */
+  --secondary-foreground: 75.8 23.7% 68.6%;
+  --muted: 144 17.9% 11%;                /* saber #17211B */
+  --muted-foreground: 75 11% 64.3%;      /* tinta 2 #A9AE9A */
+  --accent: 42 46.7% 58%;                /* dourado */
+  --accent-foreground: 135 16% 9.8%;
+  --popover: 143.1 18.8% 13.5%;
+  --popover-foreground: 52.9 30.9% 89.2%;
+  --destructive: 10.2 73.6% 71.8%;       /* erro #EC9482 */
+  --destructive-foreground: 135 16% 9.8%;
+  --border: 136.7 13.2% 26.7%;           /* fio 2 #3B4D40 */
+  --input: 100 7.9% 44.7%;               /* borda do campo #6F7B69 */
+  --ring: 75.8 23.7% 68.6%;              /* foco = musgo */
+  /* 08/10/2026: o vidro e as superfícies antigas passam a ter o tom da folha
+     escura (#1C2921), para as telas antigas morarem na mesma mesa da casca. */
+  --glass: rgba(28, 41, 33, 0.62);
+  --glass-strong: rgba(28, 41, 33, 0.84);
+  --ios-surface: rgba(28, 41, 33, 0.7);
+  --ios-surface-strong: rgba(28, 41, 33, 0.88);
   --ios-hairline: rgba(198, 232, 214, 0.14);
   --ios-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
   --brilho-card: rgba(198, 232, 214, 0.06);
-  --tabela-cabecalho: rgba(34, 59, 47, 0.96);
-  --tabela-rodape: rgba(24, 47, 37, 0.96);
+  --tabela-cabecalho: rgba(23, 33, 27, 0.96);   /* saber escuro */
+  --tabela-rodape: rgba(28, 41, 33, 0.96);      /* folha escura */
 
-  /* superfícies do remapeamento abaixo */
-  --superficie: #182F25;
-  --superficie-2: #223B2F;
+  /* superfícies do remapeamento abaixo: bg-white vira a folha escura e o
+     cinza-claro (bg-slate-50…) um degrau acima dela */
+  --superficie: #1C2921;
+  --superficie-2: #24342A;
   color-scheme: dark;
 }
 
@@ -103,8 +347,8 @@ html.dark {
   background: var(--bratan-papel);
 }
 .dark body {
-  background: linear-gradient(180deg, #16291F 0%, #102019 46%, #0C1913 100%);
-  background-attachment: fixed;
+  /* 08/10/2026: fundo chapado no papel escuro (Papel & Musgo: sem gradiente gratuito). */
+  background: var(--papel);
 }
 
 /* --- remapeamento das utilitárias claras (o coração do tema escuro) --- */
@@ -166,7 +410,9 @@ html.dark {
 html {
   background: var(--bratan-papel);
   color: var(--bratan-tinta);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, ui-sans-serif, system-ui, sans-serif;
+  /* 08/10/2026: Manrope é a letra do app (Papel & Musgo). O portal do paciente
+     não muda: o .portal declara a própria família (SF/Inter). */
+  font-family: var(--sans);
   -webkit-text-size-adjust: 100%;
 }
 
@@ -175,8 +421,8 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0;
-  background: linear-gradient(180deg, #fffdf7 0%, #faf8f1 46%, #eeeadd 100%);
-  background-attachment: fixed;
+  /* 08/10/2026: o conteúdo é PAPEL, chapado (era um degradê do branco ao bege). */
+  background: var(--papel);
   color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -213,7 +459,10 @@ a[href],
 h1,
 h2,
 h3 {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, ui-sans-serif, system-ui, sans-serif;
+  /* 08/10/2026: herdam a letra de quem os contém — Manrope no app, SF/Inter no
+     portal do paciente (que é o mesmo de antes: o .portal já usava SF/Inter).
+     A Fraunces entra só pelo componente Cabecalho (título da página). */
+  font-family: inherit;
   font-weight: 700;
   letter-spacing: 0;
 }
@@ -324,6 +573,12 @@ h3 {
     border-radius: 999px;
   }
 
+  /* EXCEÇÃO REGISTRADA (08/10/2026, revisão da etapa 1): a proposta tem
+     .conteudo até 1200 px (--conteudo-max) alinhado à esquerda. Aqui fica
+     1440 px centralizado porque as ~70 telas antigas — o Kanban, a P12, o
+     Lucro e as planilhas de 12 colunas — contam com a largura e já se
+     centralizam com mx-auto. Só muda em telas de 1500 px ou mais. As telas
+     redesenhadas usam o --conteudo-max (1200) por dentro, tela a tela. */
   .app-content-frame {
     --content-max: 1440px;
     width: 100%;
