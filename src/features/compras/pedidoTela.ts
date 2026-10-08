@@ -5,6 +5,7 @@
 // pessoa vê em cada pedido, como a lista se divide entre "esperam sua decisão",
 // "falta comprar" e o resto, e o que vai no formulário de cada passo. Assim a
 // tela fica burra e a regra fica em tests/compras-tela.test.mjs.
+import type { EstadoSelo } from "@/components/ui/papel-musgo";
 import type { Cargo } from "@/types/database";
 import {
   compraAbertaDoItem,
@@ -22,12 +23,15 @@ import {
   caixaDeAprovacao,
   contadoresDosPedidos,
   diaEmSaoPaulo,
+  diasEsperando,
   ehDoSetor,
   estaAtrasado,
   filtrarPedidos,
   filtroLabels,
+  nomeDoSetor,
   numeroDoPedido,
   ordenarPedidos,
+  pedidoStatusLabels,
   pedidosDaPessoa,
   podeAprovar,
   podeCancelar,
@@ -36,8 +40,10 @@ import {
   podeReceber,
   podeTransicionar,
   podeVerPedido,
+  tempoEsperandoTexto,
   type FiltroPedidos,
   type PedidoCompra,
+  type PedidoStatus,
   type RascunhoItem,
   type Recebimento,
 } from "./comprasData";
@@ -498,4 +504,219 @@ export function recebimentoDiferente(linhas: LinhaDeRecebimento[]) {
     const n = numeroDigitado(linha.qtdRecebida);
     return Number.isFinite(n) && Math.abs(n - linha.pedida) > 1e-9;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Redesenho Papel & Musgo (08/10/2026) — o que a tela nova desenha, sem React
+// ---------------------------------------------------------------------------
+
+/**
+ * O selo de cada situação (imagem 02 aprovada): as 4 marcas de etapa (pedido ·
+ * aprovação · compra · recebimento) + a palavra + a cor. Petróleo SÓ no "a
+ * caminho"; ouro no que espera a aprovação (é o "agora" de quem aprova).
+ */
+export const ESTADO_DO_SELO_DO_PEDIDO: Record<PedidoStatus, EstadoSelo> = {
+  ENVIADO: "aguardando",
+  APROVADO: "aprovado",
+  COMPRADO: "a-caminho",
+  RECEBIDO: "recebido",
+  DEVOLVIDO: "devolvido",
+  RECUSADO: "recusado",
+  CANCELADO: "cancelado",
+};
+
+/** O selo do pedido: estado + a palavra de sempre (pedidoStatusLabels). Para quem compra, o aprovado diz "falta comprar". */
+export function seloDoPedido(status: PedidoStatus, opcoes: { faltaComprar?: boolean } = {}): { estado: EstadoSelo; palavra: string } {
+  const palavra = status === "APROVADO" && opcoes.faltaComprar ? "Aprovado · falta comprar" : pedidoStatusLabels[status];
+  return { estado: ESTADO_DO_SELO_DO_PEDIDO[status], palavra };
+}
+
+/**
+ * Quanto do prazo de resposta já passou (0 a 1) — o "relógio" da linha: o fio de
+ * ouro enche e, passou do prazo, vira cheio e laranja. A régua é a de
+ * estaAtrasado (normal: 1 dia útil; urgente: o mesmo dia).
+ */
+export function fracaoDoPrazo(pedido: Pick<PedidoCompra, "status" | "urgencia" | "enviadoEm" | "createdAt">, hojeISO: string): number {
+  if (pedido.status !== "ENVIADO") return 0;
+  if (estaAtrasado(pedido, hojeISO)) return 1;
+  if (pedido.urgencia === "URGENTE") return 0.5;
+  return Math.min(1, (diasEsperando(pedido, hojeISO) + 1) / 3);
+}
+
+export type EstadoDaEtapa = "feita" | "agora" | "parou" | "falta";
+export type EtapaDoCaminho = {
+  chave: "pedido" | "aprovacao" | "compra" | "recebimento";
+  rotulo: string;
+  estado: EstadoDaEtapa;
+  /** A frase ao lado do rótulo (vazia quando o fluxo parou antes desta etapa). */
+  texto: string;
+  /** Onde parou: devolvido (atenção), recusado (erro) ou cancelado (neutro). */
+  tom?: "atencao" | "erro" | "neutro";
+};
+
+/**
+ * O CAMINHO DO PEDIDO (o selo aberto em pé, imagem 02): as 4 etapas com quem
+ * fez e quando. Feita = musgo; a vez dela = ouro, com "agora"; ainda falta =
+ * clara; onde o pedido parou (devolvido, recusado, cancelado) leva a cor da situação.
+ */
+export function caminhoDoPedido(pedido: PedidoCompra, hojeISO: string): EtapaDoCaminho[] {
+  const setor = nomeDoSetor(pedido.setor);
+  const quemPediu = pedido.solicitanteNome || setor;
+  const enviado = pedido.enviadoEm ?? pedido.createdAt;
+  const ultimo = (tipo: string) => [...pedido.eventos].reverse().find((evento) => evento.tipo === tipo) ?? null;
+  const aprovado = ultimo("APROVADO");
+  const status = pedido.status;
+
+  const etapaPedido: EtapaDoCaminho = {
+    chave: "pedido",
+    rotulo: "Pedido",
+    estado: "feita",
+    texto: enviado ? `${quemPediu} enviou em ${dataHora(enviado)}` : `${quemPediu} enviou`,
+  };
+
+  let aprovacao: EtapaDoCaminho;
+  let compra: EtapaDoCaminho = { chave: "compra", rotulo: "Compra", estado: "falta", texto: "o Financeiro compra" };
+  let recebimento: EtapaDoCaminho = { chave: "recebimento", rotulo: "Recebimento", estado: "falta", texto: `${setor} confirma quando chegar` };
+  const parado = (etapa: EtapaDoCaminho): EtapaDoCaminho => ({ ...etapa, texto: "" });
+
+  if (status === "ENVIADO") {
+    const atrasado = estaAtrasado(pedido, hojeISO);
+    const espera = diasEsperando(pedido, hojeISO) <= 0 ? "chegou hoje" : `espera ${tempoEsperandoTexto(pedido, hojeISO)}`;
+    aprovacao = { chave: "aprovacao", rotulo: "Aprovação", estado: "agora", texto: atrasado ? `${espera} · passou do prazo` : espera };
+  } else if (status === "DEVOLVIDO" || status === "RECUSADO") {
+    const evento = ultimo(status);
+    const quando = pedido.decididoEm ?? evento?.em ?? null;
+    aprovacao = {
+      chave: "aprovacao",
+      rotulo: "Aprovação",
+      estado: "parou",
+      tom: status === "DEVOLVIDO" ? "atencao" : "erro",
+      texto: `${status === "DEVOLVIDO" ? "devolvido para ajuste" : "recusado"}${evento?.porNome ? ` por ${evento.porNome}` : ""}${quando ? ` em ${dataHora(quando)}` : ""}`,
+    };
+    compra = parado(compra);
+    recebimento = parado(recebimento);
+  } else if (status === "CANCELADO") {
+    const cancelou = quemCancelou(pedido);
+    const textoCancelado = `cancelado${cancelou?.nome ? ` por ${cancelou.nome}` : ""}${cancelou?.em ? ` em ${dataHora(cancelou.em)}` : ""}`;
+    if (aprovado) {
+      aprovacao = { chave: "aprovacao", rotulo: "Aprovação", estado: "feita", texto: `${aprovado.porNome || "aprovado"}${aprovado.porNome ? " aprovou" : ""} em ${dataHora(aprovado.em)}` };
+      compra = { ...compra, estado: "parou", tom: "neutro", texto: textoCancelado };
+    } else {
+      aprovacao = { chave: "aprovacao", rotulo: "Aprovação", estado: "parou", tom: "neutro", texto: textoCancelado };
+      compra = parado(compra);
+    }
+    recebimento = parado(recebimento);
+  } else {
+    // APROVADO, COMPRADO ou RECEBIDO: a aprovação está feita.
+    const quando = aprovado?.em ?? pedido.decididoEm;
+    aprovacao = {
+      chave: "aprovacao",
+      rotulo: "Aprovação",
+      estado: "feita",
+      texto: `${aprovado?.porNome ? `${aprovado.porNome} aprovou` : "aprovado"}${quando ? ` em ${dataHora(quando)}` : ""}`,
+    };
+    if (status === "APROVADO") {
+      compra = { ...compra, estado: "agora", texto: "o Financeiro cota, compra e registra aqui" };
+    } else {
+      const partes = [pedido.fornecedor || "fornecedor não anotado", pedido.valorFinal !== null && pedido.valorFinal !== undefined ? brl(pedido.valorFinal) : ""];
+      compra = { ...compra, estado: "feita", texto: `${partes.filter(Boolean).join(" · ")}${pedido.compradoEm ? ` · ${diaCurto(pedido.compradoEm)}` : ""}` };
+      recebimento =
+        status === "COMPRADO"
+          ? { ...recebimento, estado: "agora", texto: `${setor} confirma quando chegar · ${previsaoTexto(pedido.previsaoEntrega, hojeISO)}` }
+          : {
+              ...recebimento,
+              estado: "feita",
+              texto: `recebido em ${dataHora(pedido.recebidoEm)}${pedido.divergencia ? " · com uma observação na entrega" : ""}`,
+            };
+    }
+  }
+  return [etapaPedido, aprovacao, compra, recebimento];
+}
+
+export type MedidorDoItem = {
+  saldo: number;
+  minimo: number;
+  /** O que o pedido traz. */
+  traz: number;
+  /** Com o pedido, fica com. */
+  fica: number;
+  /** O fim da régua (o maior dos três, com folga). */
+  max: number;
+  /** Zerado ou no mínimo/abaixo dele: a barra do "tem" fica vermelha. */
+  abaixo: boolean;
+  unidade: string;
+};
+
+/**
+ * O medidor do item do estoque no pedido (imagem 02): tem · mínimo · o que o
+ * pedido traz · com quanto fica. Só para item do estoque (o escrito à mão não tem saldo).
+ */
+export function medidorDoItem(
+  itemRef: string | null,
+  quantidade: number,
+  itens: Pick<EstoqueItem, "id" | "unidade" | "minimo">[],
+  moves: EstoqueMovimento[],
+): MedidorDoItem | null {
+  if (!itemRef) return null;
+  const item = itens.find((candidato) => candidato.id === itemRef);
+  if (!item) return null;
+  const saldo = Math.max(0, saldoDoItem(moves, item.id));
+  const minimo = Math.max(0, item.minimo || 0);
+  const traz = Number.isFinite(quantidade) && quantidade > 0 ? quantidade : 0;
+  const fica = saldo + traz;
+  const max = Math.max(fica, minimo, 1) * 1.15;
+  return { saldo, minimo, traz, fica, max, abaixo: saldo <= 0 || (minimo > 0 && saldo <= minimo), unidade: item.unidade || "un" };
+}
+
+/**
+ * Aprovar vários de uma vez (decisão do Lucas, 08/10/2026: SEM TETO de valor):
+ * os da caixa que ainda não estão na janela do "Desfazer", e quanto somam.
+ */
+export function loteParaAprovar(caixa: PedidoCompra[], jaAprovando: ReadonlySet<string>): { pedidos: PedidoCompra[]; valor: number } {
+  const pedidos = caixa.filter((pedido) => pedido.status === "ENVIADO" && !jaAprovando.has(pedido.id));
+  const valor = Math.round(pedidos.reduce((soma, pedido) => soma + (pedido.valorEstimado || 0), 0) * 100) / 100;
+  return { pedidos, valor };
+}
+
+/** O valor que a linha mostra: o da compra quando já foi comprado; senão o estimado. */
+export function valorDoPedido(pedido: Pick<PedidoCompra, "valorFinal" | "valorEstimado">): { valor: number; deOnde: "compra" | "estimado" | "sem" } {
+  if (pedido.valorFinal !== null && pedido.valorFinal !== undefined) return { valor: pedido.valorFinal, deOnde: "compra" };
+  return pedido.valorEstimado > 0 ? { valor: pedido.valorEstimado, deOnde: "estimado" } : { valor: 0, deOnde: "sem" };
+}
+
+export type NotaDaSituacao = { texto: string; tom: "neutro" | "atencao" | "erro" } | null;
+
+/**
+ * A frase curta embaixo do selo, na tabela (imagem 02: "Stin Pharma · chega
+ * qui, 08/10", "Você pediu: …"). É a faixa do passo de antes (FaixaDoPasso),
+ * agora em uma linha: o que falta, o motivo da devolução/recusa, quem cancelou.
+ * O aguardando não tem frase: a linha mostra o relógio do prazo. O aprovado,
+ * para quem compra, também não: a linha mostra "Registrar compra →".
+ */
+export function notaDaSituacao(pedido: PedidoCompra, hojeISO: string, opcoes: { quemCompra?: boolean } = {}): NotaDaSituacao {
+  switch (pedido.status) {
+    case "DEVOLVIDO":
+      return { texto: pedido.decisaoNota ? `O que ajustar: “${pedido.decisaoNota}”` : "Voltou para quem pediu ajustar e reenviar", tom: "atencao" };
+    case "RECUSADO":
+      return { texto: `Motivo: ${pedido.decisaoNota || "sem motivo registrado"}`, tom: "erro" };
+    case "CANCELADO": {
+      const cancelou = quemCancelou(pedido);
+      const quem = cancelou?.nome ? ` por ${cancelou.nome}` : "";
+      const quando = cancelou?.em ? ` em ${diaCurto(cancelou.em)}` : "";
+      return { texto: `Cancelado${quem}${quando}${cancelou?.motivo ? `: ${cancelou.motivo}` : ""}`, tom: "neutro" };
+    }
+    case "COMPRADO":
+      return { texto: `${pedido.fornecedor || "fornecedor não anotado"} · ${previsaoTexto(pedido.previsaoEntrega, hojeISO)}`, tom: "neutro" };
+    case "APROVADO":
+      return opcoes.quemCompra ? null : { texto: "o Financeiro vai comprar", tom: "neutro" };
+    case "RECEBIDO":
+      return { texto: `recebido em ${diaCurto(pedido.recebidoEm)}${pedido.divergencia ? " · com uma observação na entrega" : ""}`, tom: "neutro" };
+    default:
+      return null;
+  }
+}
+
+/** Pedido que já saiu do fluxo (recebido, recusado, cancelado): a linha fica mais apagada. */
+export function pedidoEncerrado(status: PedidoStatus): boolean {
+  return status === "RECEBIDO" || status === "RECUSADO" || status === "CANCELADO";
 }

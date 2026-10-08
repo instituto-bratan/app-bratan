@@ -1,14 +1,16 @@
+// LEMBRETES DE PAGAMENTO — Financeiro › Pagar › Lembretes (quem deve à clínica).
+//
+// REDESENHO PAPEL & MUSGO (08/10/2026): UM cabeçalho com a frase do número
+// ("Quatro lembretes em aberto somam R$ …; dois venceram"), a lista numa FOLHA
+// com os filtros no alto e o "Recebi" na linha, e ao lado o "em aberto" num
+// bloco SABER e o lembrete novo. Nenhuma regra mudou: o mesmo diálogo de
+// recebimento (uma escolha só decide o caminho do dinheiro), o mesmo encaixe
+// com a comanda, o mesmo texto de cobrança.
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
 import { CalendarClock, CheckCircle2, CircleDollarSign, Clock3, Copy, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, Selo } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { applyContactChannels, findOrCreateCrmContact } from "@/features/crm/crmData";
@@ -61,6 +63,23 @@ import {
   type PagamentoLembrete,
 } from "./pagamentosData";
 import { confirmar, toast } from "@/components/ui/avisos";
+import {
+  AJUDA,
+  AvisoDaTela,
+  CABECA_DA_FOLHA,
+  CAMPO,
+  CAMPO_TEXTO,
+  Campo,
+  Etiqueta,
+  Janela,
+  Leitura,
+  NumeroEmReais,
+  RUBRICA,
+  TituloDoBloco,
+  Vazio,
+  porExtenso,
+  quantos,
+} from "@/features/financeiro/pecasDiaPagar";
 
 type FormState = {
   pacienteNome: string;
@@ -523,94 +542,421 @@ export function PagamentosPage() {
     persist(records.map((item) => (item.id === record.id ? { ...item, deletedAt: new Date().toISOString() } : item)));
   }
 
+  // ---- Papel & Musgo (08/10/2026): a frase do cabeçalho, com os mesmos números do resumo ----
+  const nAbertos = summary.abertos.length;
+  const nVencidos = summary.vencidos.length;
+  const nHoje = summary.hoje.length;
+  const fraseDoTopo = nAbertos ? (
+    <>
+      <strong>
+        {porExtenso(nAbertos, "m")} {nAbertos === 1 ? "lembrete em aberto" : "lembretes em aberto"}
+      </strong>{" "}
+      {nAbertos === 1 ? "soma" : "somam"} {money(summary.totalAberto)}.{" "}
+      {nVencidos ? (
+        <span className="alerta">
+          {porExtenso(nVencidos, "m")} {nVencidos === 1 ? "venceu" : "venceram"} sem pagamento.{" "}
+        </span>
+      ) : null}
+      {nHoje ? `${porExtenso(nHoje, "m")} ${nHoje === 1 ? "está combinado" : "estão combinados"} para hoje.` : nVencidos ? "" : "Nada vencido."}
+    </>
+  ) : (
+    <>Ninguém devendo agora. Quando houver saldo combinado, registre a data para a equipe não depender de memória.</>
+  );
+  const valorDigitado = Number(recValor.replace(/\./g, "").replace(",", ".")) || 0;
+
   return (
     <AccessGate allowed={canLembretesPagamento} label="Lembretes de pagamento" module="fin-contas">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <Badge variant="gold" className="mb-4">
-                Coordenação
-              </Badge>
-              <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Lembretes de pagamento</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Lembretes simples por nome, valor pendente e data combinada. Cada lembrete alimenta Recebíveis 360 automaticamente.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 min-[430px]:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-brand-musgo">{summary.abertos.length}</p>
-                <p className="text-xs font-semibold uppercase text-brand-oliva">abertos</p>
-              </div>
-              <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/55 px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-brand-musgo">{summary.vencidos.length}</p>
-                <p className="text-xs font-semibold uppercase text-brand-oliva">vencidos</p>
-              </div>
-              <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-brand-musgo">{summary.hoje.length}</p>
-                <p className="text-xs font-semibold uppercase text-brand-oliva">hoje</p>
-              </div>
-              <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-                <p className="text-lg font-bold text-brand-musgo">{money(summary.totalAberto)}</p>
-                <p className="text-xs font-semibold uppercase text-brand-oliva">em aberto</p>
-              </div>
-            </div>
-          </div>
-        </motion.section>
-
-        <Card className="border-brand-dourado/40 bg-brand-creme/35 shadow-none">
-          <CardContent className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm font-bold text-brand-musgo">
-                  <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
-                  Crediário — recebido em dinheiro
-                </p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Faturamento separado e exclusivo do dinheiro do crediário — não entra na P12 nem se mistura com as comandas.
-                </p>
-              </div>
-              <div className="flex gap-6">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Neste mês</p>
-                  <p className="text-xl font-bold text-brand-tinta">{money(cashMonth)}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Acumulado</p>
-                  <p className="text-xl font-bold text-brand-tinta">{money(cashTotal)}</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho className="mb-0 max-md:mb-0" sobrancelha="Financeiro · Pagar" titulo="Lembretes de pagamento" frase={fraseDoTopo} />
 
         {pagamentosQuery.isError ? (
-          <Card className="border-destructive/30 bg-destructive/5 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-destructive">
-                Não foi possível carregar lembretes do Supabase. Aplique a migration nova e confira seu acesso de coordenação.
-              </p>
-            </CardContent>
-          </Card>
+          <AvisoDaTela tom="erro">Não foi possível carregar lembretes do Supabase. Aplique a migration nova e confira seu acesso de coordenação.</AvisoDaTela>
+        ) : null}
+        {feedbackRecebimento ? (
+          <AvisoDaTela tom="ok" onFechar={() => setFeedbackRecebimento("")}>
+            {feedbackRecebimento}
+          </AvisoDaTela>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-          <Card className="h-fit border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <CircleDollarSign className="h-5 w-5" aria-hidden="true" />
-                Novo lembrete
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-4" onSubmit={submit}>
-                <div className="space-y-2">
-                  <Label>Quem está devendo</Label>
+        {recebendo ? (
+          <Janela rotulo="Registrar recebimento" onFechar={() => setRecebendo(null)} largura="w-[min(34rem,94vw)]">
+            <h2 className="font-serifa text-2xl font-normal leading-tight text-tinta">Recebi de {recebendo.pacienteNome}</h2>
+            <p className="mt-2 text-sm font-medium text-tinta-2">
+              Dívida em aberto: <strong className="font-bold tabular-nums text-tinta">{money(recebendo.valorPendente)}</strong>
+            </p>
+
+            <div className="mt-5 grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Campo rotulo="Quanto recebeu" htmlFor="rec-valor">
+                  <input
+                    id="rec-valor"
+                    inputMode="decimal"
+                    value={recValor}
+                    onChange={(event) => setRecValor(event.target.value)}
+                    placeholder="500,00"
+                    autoFocus
+                    className={cn(CAMPO, "text-right tabular-nums")}
+                  />
+                </Campo>
+                <Campo rotulo="Como recebeu" htmlFor="rec-forma">
+                  <select
+                    id="rec-forma"
+                    value={recForma}
+                    onChange={(event) => {
+                      const forma = event.target.value as typeof recForma;
+                      setRecForma(forma);
+                      // Trocar a forma sugere o destino coerente: dinheiro é
+                      // crediário; o resto cai em "só baixa" (o mais comum).
+                      setRecDestino(destinoSugerido(forma));
+                    }}
+                    className={CAMPO}
+                  >
+                    <option value="PIX">PIX</option>
+                    <option value="CARTAO">Cartão</option>
+                    <option value="DINHEIRO">Dinheiro (vai para o crediário)</option>
+                    <option value="OUTRO">Transferência / outra</option>
+                  </select>
+                </Campo>
+              </div>
+
+              {/* PARA ONDE VAI ESTE DINHEIRO — uma escolha só, com o
+                  resultado escrito. Substituiu os dois controles que se
+                  contradiziam (17/08/2026). */}
+              <div className="grid gap-2" role="radiogroup" aria-labelledby="rec-destino-rotulo">
+                <p id="rec-destino-rotulo" className={RUBRICA}>
+                  Para onde vai este dinheiro?
+                </p>
+                <p className={AJUDA}>
+                  {recTemComanda
+                    ? "Achei comanda deste paciente no faturamento — por isso sugeri só dar baixa."
+                    : "Não achei comanda deste paciente — por isso sugeri lançar no faturamento. Se for parcela de crediário em dinheiro, escolha o caixa do Crediário."}
+                </p>
+                <div className="grid gap-2">
+                  {(["CREDIARIO", "FATURAMENTO", "SO_BAIXA"] as DestinoRecebimento[]).map((destino) => {
+                    const ativo = recDestino === destino;
+                    return (
+                      <button
+                        key={destino}
+                        type="button"
+                        role="radio"
+                        aria-checked={ativo}
+                        onClick={() => setRecDestino(destino)}
+                        className={cn(
+                          "flex w-full items-start gap-3 rounded-controle border p-3 text-left transition-colors duration-150",
+                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco",
+                          ativo ? "border-musgo bg-musgo-claro shadow-[inset_0_0_0_1px_rgb(var(--musgo-rgb))]" : "border-fio-2 bg-folha hover:border-borda-campo",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2",
+                            ativo ? "border-musgo bg-musgo" : "border-borda-campo bg-folha",
+                          )}
+                          aria-hidden="true"
+                        >
+                          {ativo ? <span className="h-1.5 w-1.5 rounded-full bg-sobre-musgo" /> : null}
+                        </span>
+                        <span>
+                          <span className="block text-sm font-bold text-tinta">{destinoRecebimentoLabels[destino]}</span>
+                          <span className="mt-0.5 block text-[13px] font-medium leading-5 text-tinta-2">{destinoRecebimentoExplica[destino]}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {avisoDoDestino(recForma, recDestino) ? <AvisoDaTela tom="atencao">{avisoDoDestino(recForma, recDestino)}</AvisoDaTela> : null}
+                <div className="rounded-controle bg-saber px-3 py-2">
+                  <p className={RUBRICA}>Resultado</p>
+                  <p className="mt-1 text-sm font-bold text-tinta">
+                    <span className="tabular-nums">{money(valorDigitado)}</span> em {formaLabel[recForma]} → {destinoRecebimentoLabels[recDestino]}
+                    {destinoGeraComanda(recDestino) ? " (cria comanda)" : " (sem comanda)"}
+                  </p>
+                </div>
+              </div>
+
+              {recErro ? <AvisoDaTela tom="erro">{recErro}</AvisoDaTela> : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Valor grande no celular: o rótulo quebra em vez de sair do botão (08/10/2026). */}
+                <Botao
+                  variante="primario"
+                  icone={<CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                  onClick={() => void confirmarRecebimento()}
+                  className="h-auto min-h-10 whitespace-normal py-2.5 text-left leading-5 tabular-nums"
+                >
+                  Confirmar recebimento de {money(valorDigitado)}
+                </Botao>
+                <Botao variante="fantasma" onClick={() => setRecebendo(null)}>
+                  Cancelar
+                </Botao>
+              </div>
+            </div>
+          </Janela>
+        ) : null}
+
+        <div className="grid items-start gap-8 max-md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+          {/* DECIDIR: quem deve, com Recebi / Reagendar na linha. */}
+          <BlocoFolha as="section" aria-labelledby="lista-lembretes-titulo" className="min-w-0 overflow-hidden">
+            <div className={CABECA_DA_FOLHA}>
+              <TituloDoBloco id="lista-lembretes-titulo" detalhe={quantos(visibleRecords.length, "lembrete")}>
+                {pagamentoFiltroLabels[filter]}
+              </TituloDoBloco>
+              {/* O TEXTINHO DE COBRAR (21/09/2026). Copia exatamente quem
+                  está na tela: trocou o filtro para "Vencidos", copiou os
+                  vencidos. Uma régua só, a que o Lucas já está olhando. */}
+              <Botao
+                variante="secundario"
+                tamanho="pq"
+                className="ml-auto"
+                disabled={!visibleRecords.length}
+                icone={<Copy className="h-4 w-4" aria-hidden="true" />}
+                onClick={() => {
+                  const texto = textoDeCobranca(visibleRecords);
+                  if (!texto) return;
+                  void navigator.clipboard
+                    ?.writeText(texto)
+                    .then(() =>
+                      toast(
+                        `Lista de ${pagamentoFiltroLabels[filter].toLowerCase()} copiada — ${visibleRecords.length} ${visibleRecords.length === 1 ? "pessoa" : "pessoas"}.`,
+                        { tom: "ok" },
+                      ),
+                    )
+                    .catch(() => toast("Não consegui copiar. Tente de novo.", { tom: "erro" }));
+                }}
+              >
+                Copiar cobrança
+              </Botao>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-fio px-6 py-3 max-md:px-4" role="group" aria-label="Mostrar">
+              {filtros.map((item) => (
+                <Leitura
+                  key={item}
+                  ativo={filter === item}
+                  onClick={() => setFilter(item)}
+                  contagem={item === "vencidos" ? nVencidos : item === "hoje" ? nHoje : undefined}
+                >
+                  {pagamentoFiltroLabels[item]}
+                </Leitura>
+              ))}
+            </div>
+
+            {visibleRecords.length ? (
+              <ul>
+                {visibleRecords.map((record) => {
+                  const vencido = record.status === "aberto" && isPagamentoVencido(record);
+                  const hoje = record.status === "aberto" && isPagamentoHoje(record);
+                  return (
+                    <li key={record.id} className={cn("border-b border-fio px-6 py-4 last:border-b-0 max-md:px-4", vencido && "bg-atencao-claro/40")}>
+                      <div className="grid gap-x-4 gap-y-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+                        <div className="grid min-w-0 gap-1">
+                          <p className="flex flex-wrap items-center gap-2">
+                            {record.status === "pago" ? (
+                              <Selo estado="pago">{dueBadge(record)}</Selo>
+                            ) : record.status === "cancelado" ? (
+                              <Selo estado="cancelado">{dueBadge(record)}</Selo>
+                            ) : vencido ? (
+                              <Selo estado="vencido">{dueBadge(record)}</Selo>
+                            ) : hoje ? (
+                              <Etiqueta tom="ouro">{dueBadge(record)}</Etiqueta>
+                            ) : (
+                              <Etiqueta>{dueBadge(record)}</Etiqueta>
+                            )}
+                            <span className="text-[13px] font-bold tabular-nums text-tinta">{formatDate(record.dataPrevista)}</span>
+                            <span className="text-xs font-medium text-tinta-2">criado às {formatShortTime(record.criadoEm)}</span>
+                          </p>
+                          <p className="flex flex-wrap items-baseline gap-x-3">
+                            <span className="text-base font-bold leading-6 text-tinta">{record.pacienteNome}</span>
+                            <span className="whitespace-nowrap text-base font-bold tabular-nums text-tinta">{money(record.valorPendente)}</span>
+                          </p>
+                          {record.observacao ? <p className="max-w-[64ch] text-[13px] font-medium leading-5 text-tinta-2">{record.observacao}</p> : null}
+                          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-tinta-2">
+                            <span>Recebíveis 360 sincronizado</span>
+                            {record.pagoEm ? <span>· Pago às {formatShortTime(record.pagoEm)}</span> : null}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1 md:max-w-[22rem] md:justify-end">
+                          {record.status === "aberto" ? (
+                            <>
+                              <Botao variante="suave" tamanho="pq" icone={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />} onClick={() => abrirRecebimento(record)} className="max-md:h-11">
+                                Recebi
+                              </Botao>
+                              <Botao variante="secundario" tamanho="pq" icone={<CircleDollarSign className="h-4 w-4" aria-hidden="true" />} onClick={() => updateStatus(record, "pago")} className="max-md:h-11">
+                                Só marcar pago
+                              </Botao>
+                              <Botao variante="secundario" tamanho="pq" icone={<RotateCcw className="h-4 w-4" aria-hidden="true" />} onClick={() => openPostpone(record)} className="max-md:h-11">
+                                Reagendar
+                              </Botao>
+                              <Botao variante="fantasma" tamanho="pq" onClick={() => updateStatus(record, "cancelado")} className="max-md:h-11">
+                                Cancelar
+                              </Botao>
+                            </>
+                          ) : (
+                            <Botao variante="secundario" tamanho="pq" onClick={() => updateStatus(record, "aberto")} className="max-md:h-11">
+                              Reabrir
+                            </Botao>
+                          )}
+                          {/* Editar e ocultar andam juntos: no celular a lixeira não sobra sozinha numa linha (08/10/2026). */}
+                          <span className="inline-flex items-center gap-1">
+                            <Botao variante="fantasma" tamanho="pq" icone={<Pencil className="h-4 w-4" aria-hidden="true" />} onClick={() => openEdit(record)} className="max-md:h-11">
+                              Editar
+                            </Botao>
+                            <button
+                              type="button"
+                              aria-label="Ocultar"
+                              title="Ocultar"
+                              onClick={() => hide(record)}
+                              className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco max-md:h-11 max-md:w-11"
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          </span>
+                        </div>
+                      </div>
+
+                      {editTarget === record.id ? (
+                        <div className="mt-4 grid gap-4 rounded-controle bg-saber p-4 sm:grid-cols-2">
+                          <Campo rotulo="Quem está devendo" htmlFor={`edit-nome-${record.id}`}>
+                            <input
+                              id={`edit-nome-${record.id}`}
+                              value={editForm.pacienteNome}
+                              onChange={(event) => setEditForm((current) => ({ ...current, pacienteNome: event.target.value }))}
+                              className={CAMPO}
+                            />
+                          </Campo>
+                          <div className="grid grid-cols-2 gap-3">
+                            <Campo rotulo="Valor pendente" htmlFor={`edit-valor-${record.id}`}>
+                              <input
+                                id={`edit-valor-${record.id}`}
+                                inputMode="decimal"
+                                value={editForm.valorPendente}
+                                onChange={(event) => setEditForm((current) => ({ ...current, valorPendente: event.target.value }))}
+                                className={cn(CAMPO, "text-right tabular-nums")}
+                              />
+                            </Campo>
+                            <Campo rotulo="Data combinada" htmlFor={`edit-data-${record.id}`}>
+                              <input
+                                id={`edit-data-${record.id}`}
+                                type="date"
+                                value={editForm.dataPrevista}
+                                onChange={(event) => setEditForm((current) => ({ ...current, dataPrevista: event.target.value }))}
+                                className={CAMPO}
+                              />
+                            </Campo>
+                          </div>
+                          <Campo rotulo="Observação" opcional htmlFor={`edit-obs-${record.id}`} className="sm:col-span-2">
+                            <input
+                              id={`edit-obs-${record.id}`}
+                              value={editForm.observacao}
+                              placeholder="Opcional"
+                              onChange={(event) => setEditForm((current) => ({ ...current, observacao: event.target.value }))}
+                              className={CAMPO}
+                            />
+                          </Campo>
+                          <div className="flex flex-wrap gap-2 sm:col-span-2">
+                            <Botao variante="primario" carregando={editMutation.isPending} onClick={() => void saveEdit(record)} disabled={editMutation.isPending}>
+                              {editMutation.isPending ? "Salvando..." : "Salvar alterações"}
+                            </Botao>
+                            <Botao variante="fantasma" onClick={() => setEditTarget(null)}>
+                              Fechar
+                            </Botao>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {postponeTarget === record.id ? (
+                        <div className="mt-4 flex flex-col gap-3 rounded-controle bg-saber p-4 sm:flex-row sm:items-end">
+                          <Campo rotulo="Nova data" htmlFor={`postpone-${record.id}`} className="sm:w-48">
+                            <input id={`postpone-${record.id}`} type="date" value={postponeDate} onChange={(event) => setPostponeDate(event.target.value)} className={CAMPO} />
+                          </Campo>
+                          <Botao variante="primario" onClick={() => savePostpone(record)}>
+                            Salvar data
+                          </Botao>
+                          <Botao variante="fantasma" onClick={() => setPostponeTarget(null)}>
+                            Fechar
+                          </Botao>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <Vazio titulo="Nenhum lembrete neste filtro">Quando houver saldo combinado, registre a data para a equipe não depender de memória.</Vazio>
+            )}
+          </BlocoFolha>
+
+          <div className="grid min-w-0 gap-8 max-md:gap-6">
+            {/* SABER: o que está em aberto e o dinheiro do crediário. */}
+            <BlocoSaber as="aside" aria-labelledby="em-aberto-titulo" className="grid min-w-0 gap-4">
+              <h2 id="em-aberto-titulo" className={RUBRICA}>
+                Em aberto
+              </h2>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <NumeroEmReais valor={summary.totalAberto} tamanho="grande" centavos={false} />
+                <span className="text-[13px] font-medium leading-5 text-tinta-2">
+                  a receber de
+                  <br />
+                  {quantos(nAbertos, "paciente")}
+                </span>
+              </div>
+              <dl className="border-t border-fio-2">
+                <div className="flex items-center justify-between gap-3 border-b border-fio py-3">
+                  <dt className="text-sm font-medium text-tinta-2">Vencidos</dt>
+                  <dd className={cn("text-base font-bold tabular-nums", nVencidos ? "text-atencao" : "text-ok")}>{nVencidos ? nVencidos : "nenhum"}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 border-b border-fio py-3">
+                  <dt className="text-sm font-medium text-tinta-2">Combinados para hoje</dt>
+                  <dd className="text-base font-bold tabular-nums text-tinta">{nHoje}</dd>
+                </div>
+                {summary.proximoLembrete ? (
+                  <div className="grid gap-1 border-b border-fio py-3">
+                    <dt className="flex items-center gap-2 text-sm font-medium text-tinta-2">
+                      <Clock3 className="h-4 w-4" aria-hidden="true" /> Próximo acompanhamento
+                    </dt>
+                    <dd className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                      <span className="font-bold text-tinta">
+                        {summary.proximoLembrete.pacienteNome} · {formatDate(summary.proximoLembrete.dataPrevista)}
+                      </span>
+                      <span className="font-bold tabular-nums text-tinta">{money(summary.proximoLembrete.valorPendente)}</span>
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+              <div className="grid gap-2 rounded-controle bg-folha p-4">
+                <p className="flex items-center gap-2 text-sm font-bold text-tinta">
+                  <CircleDollarSign className="h-4 w-4 text-tinta-2" aria-hidden="true" />
+                  Crediário — recebido em dinheiro
+                </p>
+                <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                  Faturamento separado e exclusivo do dinheiro do crediário — não entra na P12 nem se mistura com as comandas.
+                </p>
+                <dl className="mt-1 grid grid-cols-2 gap-3">
+                  <div>
+                    <dt className="text-xs font-bold text-tinta-2">Neste mês</dt>
+                    <dd className="text-base font-bold tabular-nums text-tinta">{money(cashMonth)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-bold text-tinta-2">Acumulado</dt>
+                    <dd className="text-base font-bold tabular-nums text-tinta">{money(cashTotal)}</dd>
+                  </div>
+                </dl>
+              </div>
+            </BlocoSaber>
+
+            {/* DECIDIR: o lembrete novo. */}
+            <BlocoFolha as="section" aria-labelledby="novo-lembrete-titulo">
+              <div className={CABECA_DA_FOLHA}>
+                <TituloDoBloco id="novo-lembrete-titulo" icone={<CalendarClock className="h-4 w-4" aria-hidden="true" />}>
+                  Novo lembrete
+                </TituloDoBloco>
+              </div>
+              <form className="grid gap-4 p-6 max-md:p-4" onSubmit={submit}>
+                <Campo
+                  rotulo="Quem está devendo"
+                  htmlFor="lembrete-paciente"
+                  ajuda="Vincular o paciente é o que permite a comanda ABATER este lembrete sozinha, sem contar o dinheiro duas vezes."
+                >
                   <PatientPicker
                     contacts={crmState.contacts}
                     value={{ ref: form.crmContactRef ?? "", name: form.pacienteNome }}
@@ -620,396 +966,45 @@ export function PagamentosPage() {
                     id="lembrete-paciente"
                     placeholder="Buscar paciente por nome ou telefone…"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Vincular o paciente é o que permite a comanda ABATER este lembrete sozinha, sem contar o dinheiro duas vezes.
-                  </p>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="space-y-2">
-                    <Label htmlFor="valor">Valor pendente</Label>
-                    <Input
+                </Campo>
+                <div className="grid grid-cols-2 gap-3">
+                  <Campo rotulo="Valor pendente" htmlFor="valor">
+                    <input
                       id="valor"
                       inputMode="decimal"
                       value={form.valorPendente}
                       placeholder="Ex.: 1500,00"
                       onChange={(event) => setForm((current) => ({ ...current, valorPendente: event.target.value }))}
+                      className={cn(CAMPO, "text-right tabular-nums")}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="data-prevista">Data combinada</Label>
-                    <Input
+                  </Campo>
+                  <Campo rotulo="Data combinada" htmlFor="data-prevista">
+                    <input
                       id="data-prevista"
                       type="date"
                       value={form.dataPrevista}
                       onChange={(event) => setForm((current) => ({ ...current, dataPrevista: event.target.value }))}
+                      className={CAMPO}
                     />
-                  </div>
+                  </Campo>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="observacao">Observação</Label>
+                <Campo rotulo="Observação" opcional htmlFor="observacao">
                   <textarea
                     id="observacao"
                     value={form.observacao}
-                    rows={4}
+                    rows={3}
                     placeholder="Ex.: pagou entrada, ficou de quitar o restante nesta data."
                     onChange={(event) => setForm((current) => ({ ...current, observacao: event.target.value }))}
-                    className="flex w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={cn(CAMPO_TEXTO, "min-h-[72px]")}
                   />
-                </div>
-
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-                <LiquidButton type="submit" size="lg" className="w-full" disabled={createMutation.isPending}>
+                </Campo>
+                {error ? <AvisoDaTela tom="atencao">{error}</AvisoDaTela> : null}
+                <Botao type="submit" variante="primario" bloco carregando={createMutation.isPending} disabled={createMutation.isPending}>
                   {createMutation.isPending ? "Salvando..." : "Salvar lembrete"}
-                </LiquidButton>
+                </Botao>
               </form>
-            </CardContent>
-          </Card>
-
-          {recebendo ? (
-            <div
-              className="fixed inset-0 z-[80] grid place-items-center bg-brand-tinta/30 px-4 py-6 backdrop-blur-sm"
-              onClick={() => setRecebendo(null)}
-            >
-              <div
-                className="max-h-[88dvh] w-[min(34rem,94vw)] overflow-y-auto rounded-2xl border border-brand-oliva/18 bg-brand-papel p-5 shadow-[0_32px_80px_rgba(43,46,36,0.28)]"
-                onClick={(event) => event.stopPropagation()}
-                role="dialog"
-                aria-label="Registrar recebimento"
-              >
-                <h2 className="text-xl text-brand-musgo">Recebi de {recebendo.pacienteNome}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Dívida em aberto: <strong className="text-brand-tinta">{money(recebendo.valorPendente)}</strong>
-                </p>
-
-                <div className="mt-4 grid gap-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label htmlFor="rec-valor">Quanto recebeu</Label>
-                      <Input
-                        id="rec-valor"
-                        inputMode="decimal"
-                        value={recValor}
-                        onChange={(event) => setRecValor(event.target.value)}
-                        placeholder="500,00"
-                        autoFocus
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="rec-forma">Como recebeu</Label>
-                      <select
-                        id="rec-forma"
-                        value={recForma}
-                        onChange={(event) => {
-                          const forma = event.target.value as typeof recForma;
-                          setRecForma(forma);
-                          // Trocar a forma sugere o destino coerente: dinheiro é
-                          // crediário; o resto cai em "só baixa" (o mais comum).
-                          setRecDestino(destinoSugerido(forma));
-                        }}
-                        className="h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                      >
-                        <option value="PIX">PIX</option>
-                        <option value="CARTAO">Cartão</option>
-                        <option value="DINHEIRO">Dinheiro (vai para o crediário)</option>
-                        <option value="OUTRO">Transferência / outra</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* PARA ONDE VAI ESTE DINHEIRO — uma escolha só, com o
-                      resultado escrito. Substituiu os dois controles que se
-                      contradiziam (17/08/2026). */}
-                  <div className="grid gap-2">
-                    <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">Para onde vai este dinheiro?</p>
-                    <p className="text-xs leading-snug text-muted-foreground">
-                      {recTemComanda
-                        ? "Achei comanda deste paciente no faturamento — por isso sugeri só dar baixa."
-                        : "Não achei comanda deste paciente — por isso sugeri lançar no faturamento. Se for parcela de crediário em dinheiro, escolha o caixa do Crediário."}
-                    </p>
-                    <div className="grid gap-2">
-                      {(["CREDIARIO", "FATURAMENTO", "SO_BAIXA"] as DestinoRecebimento[]).map((destino) => {
-                        const ativo = recDestino === destino;
-                        const cor =
-                          destino === "CREDIARIO"
-                            ? "border-brand-dourado bg-brand-creme/60"
-                            : destino === "FATURAMENTO"
-                              ? "border-emerald-300 bg-emerald-50/70"
-                              : "border-brand-oliva/25 bg-white/70";
-                        return (
-                          <button
-                            key={destino}
-                            type="button"
-                            onClick={() => setRecDestino(destino)}
-                            className={`flex w-full items-start gap-2.5 rounded-lg border p-3 text-left transition ${
-                              ativo ? `${cor} ring-2 ring-brand-musgo/30` : "border-brand-oliva/20 bg-white/50 hover:border-brand-musgo/40"
-                            }`}
-                          >
-                            <span
-                              className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
-                                ativo ? "border-brand-musgo bg-brand-musgo" : "border-brand-oliva/40"
-                              }`}
-                            >
-                              {ativo ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
-                            </span>
-                            <span>
-                              <span className="block text-sm font-semibold text-brand-tinta">{destinoRecebimentoLabels[destino]}</span>
-                              <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                                {destinoRecebimentoExplica[destino]}
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {avisoDoDestino(recForma, recDestino) ? (
-                      <p className="rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs font-semibold leading-snug text-amber-900">
-                        {avisoDoDestino(recForma, recDestino)}
-                      </p>
-                    ) : null}
-                    <p className="rounded-md border border-brand-musgo/25 bg-brand-papel px-3 py-2 text-sm">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">Resultado</span>
-                      <span className="mt-0.5 block font-semibold text-brand-musgo">
-                        {money(Number(recValor.replace(/\./g, "").replace(",", ".")) || 0)} em {formaLabel[recForma]} →{" "}
-                        {destinoRecebimentoLabels[recDestino]}
-                        {destinoGeraComanda(recDestino) ? " (cria comanda)" : " (sem comanda)"}
-                      </span>
-                    </p>
-                  </div>
-
-                  {recErro ? <p className="text-sm font-semibold text-destructive">{recErro}</p> : null}
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <LiquidButton type="button" size="sm" onClick={() => void confirmarRecebimento()}>
-                      Confirmar recebimento
-                    </LiquidButton>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setRecebendo(null)}>
-                      Cancelar
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <section className="space-y-4">
-            {feedbackRecebimento ? (
-              <div className="rounded-lg border border-brand-dourado/40 bg-brand-creme/40 px-4 py-3 text-sm font-semibold text-brand-tinta">
-                {feedbackRecebimento}
-              </div>
-            ) : null}
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardContent className="flex flex-wrap items-center gap-2 p-3">
-                {filtros.map((item) => (
-                  <Button
-                    key={item}
-                    type="button"
-                    variant={filter === item ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setFilter(item)}
-                  >
-                    {pagamentoFiltroLabels[item]}
-                  </Button>
-                ))}
-                {/* O TEXTINHO DE COBRAR (21/09/2026). Copia exatamente quem
-                    está na tela: trocou o filtro para "Vencidos", copiou os
-                    vencidos. Uma régua só, a que o Lucas já está olhando. */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="ml-auto"
-                  disabled={!visibleRecords.length}
-                  onClick={() => {
-                    const texto = textoDeCobranca(visibleRecords);
-                    if (!texto) return;
-                    void navigator.clipboard
-                      ?.writeText(texto)
-                      .then(() =>
-                        toast(
-                          `Lista de ${pagamentoFiltroLabels[filter].toLowerCase()} copiada — ${visibleRecords.length} ${visibleRecords.length === 1 ? "pessoa" : "pessoas"}.`,
-                          { tom: "ok" },
-                        ),
-                      )
-                      .catch(() => toast("Não consegui copiar. Tente de novo.", { tom: "erro" }));
-                  }}
-                >
-                  <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                  Copiar cobrança
-                </Button>
-              </CardContent>
-            </Card>
-
-            {visibleRecords.length ? (
-              visibleRecords.map((record, index) => (
-                <motion.article
-                  key={record.id}
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.28, delay: index * 0.03, ease: [0.4, 0, 0.2, 1] }}
-                >
-                  <Card
-                    className={cn(
-                      "border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm",
-                      isPagamentoVencido(record) && "border-destructive/35 bg-destructive/5",
-                      isPagamentoHoje(record) && "border-brand-dourado/50 bg-brand-creme/35",
-                    )}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="min-w-0">
-                          <div className="mb-3 flex flex-wrap items-center gap-2">
-                            <Badge variant={isPagamentoVencido(record) || isPagamentoHoje(record) ? "gold" : "muted"}>
-                              {dueBadge(record)}
-                            </Badge>
-                            <Badge variant="outline">{formatDate(record.dataPrevista)}</Badge>
-                            <span className="text-xs font-semibold uppercase text-brand-oliva">
-                              criado às {formatShortTime(record.criadoEm)}
-                            </span>
-                          </div>
-                          <h2 className="text-xl font-semibold leading-tight text-brand-tinta">{record.pacienteNome}</h2>
-                          <p className="mt-1 text-lg font-bold text-brand-musgo">{money(record.valorPendente)}</p>
-                          {record.observacao ? <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{record.observacao}</p> : null}
-                          <p className="mt-2 text-xs font-semibold uppercase text-brand-oliva">Recebíveis 360 sincronizado</p>
-                          {record.pagoEm ? <p className="mt-2 text-xs font-semibold uppercase text-brand-oliva">Pago às {formatShortTime(record.pagoEm)}</p> : null}
-                        </div>
-
-                        <div className="flex flex-wrap gap-2 xl:justify-end">
-                          {record.status === "aberto" ? (
-                            <>
-                              <Button type="button" size="sm" onClick={() => abrirRecebimento(record)}>
-                                <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                                Recebi
-                              </Button>
-                              <Button type="button" variant="outline" size="sm" onClick={() => updateStatus(record, "pago")}>
-                                <CircleDollarSign className="mr-2 h-4 w-4" aria-hidden="true" />
-                                Só marcar pago
-                              </Button>
-                              <Button type="button" variant="outline" size="sm" onClick={() => openPostpone(record)}>
-                                <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
-                                Reagendar
-                              </Button>
-                              <Button type="button" variant="ghost" size="sm" onClick={() => updateStatus(record, "cancelado")}>
-                                Cancelar
-                              </Button>
-                            </>
-                          ) : (
-                            <Button type="button" variant="outline" size="sm" onClick={() => updateStatus(record, "aberto")}>
-                              Reabrir
-                            </Button>
-                          )}
-                          <Button type="button" variant="outline" size="sm" onClick={() => openEdit(record)}>
-                            <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
-                            Editar
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" aria-label="Ocultar" onClick={() => hide(record)}>
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {editTarget === record.id ? (
-                        <div className="mt-4 grid gap-3 rounded-lg border border-brand-oliva/18 bg-white/65 p-3 sm:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label htmlFor={`edit-nome-${record.id}`}>Quem está devendo</Label>
-                            <Input
-                              id={`edit-nome-${record.id}`}
-                              value={editForm.pacienteNome}
-                              onChange={(event) => setEditForm((current) => ({ ...current, pacienteNome: event.target.value }))}
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                              <Label htmlFor={`edit-valor-${record.id}`}>Valor pendente</Label>
-                              <Input
-                                id={`edit-valor-${record.id}`}
-                                inputMode="decimal"
-                                value={editForm.valorPendente}
-                                onChange={(event) => setEditForm((current) => ({ ...current, valorPendente: event.target.value }))}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor={`edit-data-${record.id}`}>Data combinada</Label>
-                              <Input
-                                id={`edit-data-${record.id}`}
-                                type="date"
-                                value={editForm.dataPrevista}
-                                onChange={(event) => setEditForm((current) => ({ ...current, dataPrevista: event.target.value }))}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2 sm:col-span-2">
-                            <Label htmlFor={`edit-obs-${record.id}`}>Observação</Label>
-                            <Input
-                              id={`edit-obs-${record.id}`}
-                              value={editForm.observacao}
-                              placeholder="Opcional"
-                              onChange={(event) => setEditForm((current) => ({ ...current, observacao: event.target.value }))}
-                            />
-                          </div>
-                          <div className="flex gap-2 sm:col-span-2">
-                            <Button type="button" onClick={() => void saveEdit(record)} disabled={editMutation.isPending}>
-                              {editMutation.isPending ? "Salvando..." : "Salvar alterações"}
-                            </Button>
-                            <Button type="button" variant="ghost" onClick={() => setEditTarget(null)}>
-                              Fechar
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {postponeTarget === record.id ? (
-                        <div className="mt-4 flex flex-col gap-2 rounded-lg border border-brand-oliva/18 bg-white/65 p-3 sm:flex-row sm:items-end">
-                          <div className="space-y-2 sm:w-48">
-                            <Label htmlFor={`postpone-${record.id}`}>Nova data</Label>
-                            <Input
-                              id={`postpone-${record.id}`}
-                              type="date"
-                              value={postponeDate}
-                              onChange={(event) => setPostponeDate(event.target.value)}
-                            />
-                          </div>
-                          <Button type="button" onClick={() => savePostpone(record)}>
-                            Salvar data
-                          </Button>
-                          <Button type="button" variant="ghost" onClick={() => setPostponeTarget(null)}>
-                            Fechar
-                          </Button>
-                        </div>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                </motion.article>
-              ))
-            ) : (
-              <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-                <CardContent className="grid min-h-56 place-items-center p-8 text-center">
-                  <div>
-                    <CalendarClock className="mx-auto mb-4 h-9 w-9 text-brand-oliva" aria-hidden="true" />
-                    <p className="font-semibold text-brand-tinta">Nenhum lembrete neste filtro</p>
-                    <p className="mt-2 text-sm text-muted-foreground">Quando houver saldo combinado, registre a data para a equipe não depender de memória.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {summary.proximoLembrete ? (
-              <Card className="border-brand-dourado/45 bg-brand-creme/35 shadow-none">
-                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <Clock3 className="mt-1 h-5 w-5 shrink-0 text-brand-musgo" aria-hidden="true" />
-                    <div>
-                      <p className="font-semibold text-brand-tinta">Próximo acompanhamento</p>
-                      <p className="text-sm text-muted-foreground">
-                        {summary.proximoLembrete.pacienteNome} · {formatDate(summary.proximoLembrete.dataPrevista)}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="gold">{money(summary.proximoLembrete.valorPendente)}</Badge>
-                </CardContent>
-              </Card>
-            ) : null}
-          </section>
+            </BlocoFolha>
+          </div>
         </div>
       </div>
     </AccessGate>

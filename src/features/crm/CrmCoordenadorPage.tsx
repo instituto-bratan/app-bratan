@@ -19,6 +19,9 @@ import { cn } from "@/lib/utils";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { useCrmState } from "./useCrmState";
 import { CrmSyncBanner } from "./CrmSyncBanner";
+import { Abas, BlocoFolha, Cabecalho, FraseDoFluxo } from "@/components/ui/fundacao";
+import { CAMPO, Etiqueta, NOME_LINK } from "./comercialVisual";
+import { contagem, maiuscula, porExtenso } from "./comercialFrases";
 import {
   coordenadorMesVazio,
   formataPct,
@@ -50,12 +53,25 @@ function diaBR(iso: string) {
   return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "";
 }
 
-// Aparência de planilha: grade com bordas, cabeçalho cinza, números à direita.
-const th = "border border-neutral-300 bg-neutral-100 px-2 py-1.5 text-left text-xs font-bold text-neutral-800";
-const td = "border border-neutral-300 px-2 py-1 text-sm text-neutral-900";
+// Aparência de planilha (08/10/2026, Papel & Musgo): continua uma grade, como o
+// Estevão pediu ("que nem uma planilha"), mas nos fios da marca — cabeçalho em
+// saber, rubrica 12/700, números à direita e em tabular-nums. A célula que está
+// sendo digitada ganha o anel de foco por dentro (nada de amarelo).
+const th = "h-10 border border-fio bg-saber px-3 py-2 text-left align-bottom text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2";
+const td = "border border-fio px-3 py-1.5 text-sm font-medium leading-5 text-tinta";
 const tdNum = cn(td, "text-right tabular-nums");
-const input = "h-8 w-full rounded-none border-0 bg-transparent px-1 text-sm focus:bg-yellow-50 focus:outline-none";
-const select = "h-8 w-full rounded-none border-0 bg-transparent px-0.5 text-sm focus:bg-yellow-50 focus:outline-none";
+const input =
+  "h-8 w-full rounded-controle border-0 bg-transparent px-1 font-sans text-sm font-medium text-tinta placeholder:text-tinta-2 focus:bg-folha focus:outline-none focus:shadow-[inset_0_0_0_2px_rgb(var(--foco-rgb))]";
+const select =
+  "h-8 w-full cursor-pointer rounded-controle border-0 bg-transparent px-0.5 font-sans text-sm font-medium text-tinta focus:bg-folha focus:outline-none focus:shadow-[inset_0_0_0_2px_rgb(var(--foco-rgb))]";
+/** Título de cada aba da planilha e a linha que explica a aba. */
+const tituloDaAba = "text-base font-bold leading-6 text-tinta";
+const notaDaAba = "mb-4 mt-1 text-[13px] font-medium leading-5 text-tinta-2";
+/** Botão de texto da planilha ("Adicionar linha à mão"). */
+const botaoDeLinha =
+  "inline-flex items-center gap-1 rounded-sm text-sm font-bold text-musgo underline-offset-[3px] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco";
+const botaoExcluir =
+  "inline-grid h-8 w-8 place-items-center rounded-controle text-tinta-2 hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco";
 
 export function CrmCoordenadorPage() {
   const { pessoa, session, isPreview } = useAuth();
@@ -107,58 +123,69 @@ export function CrmCoordenadorPage() {
   }
   const totalPresc = mes.prescricoes.reduce((s, p) => ({ prescritos: s.prescritos + p.prescritos, fechados: s.fechados + p.fechados }), { prescritos: 0, fechados: 0 });
 
+  // CABEÇALHO (08/10/2026, redesenho etapa 3): o nome da planilha virou o
+  // cabeçalho da tela, com o funil do mês numa frase; as cinco abas da planilha
+  // ficam logo abaixo, na forma única de abas do app.
+  const total = funil.find((linha) => linha.origem === "TOTAL");
+  const fraseDoTopo =
+    !total || total.mensagens === 0 ? (
+      <>
+        <strong>Nenhum contato</strong> registrado em {mesLongo(monthKey)} ainda.
+      </>
+    ) : (
+      <>
+        <strong>{maiuscula(contagem(total.mensagens, "contato"))}</strong> em {mesLongo(monthKey)}:{" "}
+        {porExtenso(total.agendaram)} {total.agendaram === 1 ? "agendou" : "agendaram"} consulta e{" "}
+        {porExtenso(total.fecharam)} {total.fecharam === 1 ? "fechou" : "fecharam"} tratamento.
+      </>
+    );
+
   return (
     <AccessGate allowed={canCrmBratan} label="CRM · Gestão do Coordenador de Vendas" module="crm">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 font-sans max-md:gap-4">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Comercial · Coordenação"
+          titulo="Planilha de Gestão — Coordenador de Vendas"
+          frase={fraseDoTopo}
+          acoes={
+            <div className="flex flex-wrap items-center gap-3">
+              <span aria-live="polite" className="text-[13px] font-medium text-tinta-2">
+                {salvo === "salvando" ? "salvando…" : salvo === "ok" ? "salvo" : salvo === "erro" ? "não sincronizou — confira a internet" : ""}
+              </span>
+              <label className="flex items-center gap-2 text-[13px] font-bold text-tinta">
+                Mês
+                <input type="month" value={monthKey} onChange={(event) => setMonthKey(event.target.value)} className={cn(CAMPO, "w-44")} aria-label="Mês de referência" />
+              </label>
+            </div>
+          }
+          rodape={
+            <FraseDoFluxo>
+              Mês de referência: <strong className="font-bold text-tinta">{mesLongo(monthKey)}</strong> · as linhas marcadas{" "}
+              <Etiqueta tom="ok">CRM</Etiqueta> entram sozinhas do{" "}
+              <Link to="/crm/vendas" className="font-bold text-musgo underline underline-offset-[3px]">Kanban</Link>; as outras você digita como na planilha.
+            </FraseDoFluxo>
+          }
+        />
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={() => void retrySync()} />
         <AvisoSoVe soVe={telaCrm.soVe} />
 
-        {/* Barra de cima: nome da planilha, mês e estado de gravação */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2.5 shadow-sm">
-          <div>
-            <h1 className="text-lg font-bold text-neutral-900">Planilha de Gestão — Coordenador de Vendas</h1>
-            <p className="text-xs text-neutral-600">
-              Mês de referência: <strong>{mesLongo(monthKey)}</strong> · as linhas marcadas <span className="rounded bg-emerald-100 px-1 font-semibold text-emerald-800">CRM</span> entram sozinhas do{" "}
-              <Link to="/crm/vendas" className="underline">Kanban</Link>; as outras você digita como na planilha.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-neutral-600">{salvo === "salvando" ? "salvando…" : salvo === "ok" ? "salvo" : salvo === "erro" ? "não sincronizou — confira a internet" : ""}</span>
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
-              Mês
-              <input type="month" value={monthKey} onChange={(event) => setMonthKey(event.target.value)} className="h-9 rounded-md border border-neutral-300 bg-white px-2 text-sm" aria-label="Mês de referência" />
-            </label>
-          </div>
-        </div>
+        {/* A planilha: as mesmas cinco abas, uma por vez */}
+        <div className="grid gap-4">
+          <Abas
+            rotulo="Abas da planilha"
+            valor={aba}
+            onMudar={(id) => setAba(id as Aba)}
+            idDoPainel={() => "planilha-do-coordenador"}
+            itens={abas.map((item) => ({ id: item.chave, rotulo: item.rotulo, contador: item.chave === "registro" ? registro.length : undefined }))}
+          />
 
-        {/* A planilha */}
-        <div className="overflow-hidden rounded-lg border border-neutral-300 bg-white shadow-sm">
-          {/* abas iguais às da planilha */}
-          <div className="flex flex-wrap gap-0.5 border-b border-neutral-300 bg-neutral-200 px-2 pt-2" role="tablist" aria-label="Abas da planilha">
-            {abas.map((item) => (
-              <button
-                key={item.chave}
-                type="button"
-                role="tab"
-                aria-selected={aba === item.chave}
-                onClick={() => setAba(item.chave)}
-                className={cn(
-                  "-mb-px rounded-t-md border border-b-0 px-3 py-1.5 text-sm font-semibold",
-                  aba === item.chave ? "border-neutral-300 bg-white text-emerald-800" : "border-transparent bg-neutral-100 text-neutral-600 hover:bg-neutral-50",
-                )}
-              >
-                {item.rotulo}
-                {item.chave === "registro" ? <span className="ml-1.5 text-xs font-normal text-neutral-500">{registro.length}</span> : null}
-              </button>
-            ))}
-          </div>
-
-          <div className="overflow-x-auto p-3">
+          <BlocoFolha id="planilha-do-coordenador" role="tabpanel" className="overflow-x-auto p-5 max-md:p-4">
             {aba === "registro" ? (
               <>
-                <p className="text-sm font-bold uppercase text-neutral-800">Registro de contatos — nome e data de cada paciente</p>
-                <p className="mb-2 text-xs italic text-neutral-600">Lançar aqui CADA paciente que entrou em contato. As colunas Agendou / Compareceu / Fechou alimentam o Funil.</p>
-                <table className="w-full min-w-[960px] border-collapse">
+                <h2 className={tituloDaAba}>Registro de contatos — nome e data de cada paciente</h2>
+                <p className={notaDaAba}>Lançar aqui CADA paciente que entrou em contato. As colunas Agendou / Compareceu / Fechou alimentam o Funil.</p>
+                <table className="w-full min-w-[1080px] border-collapse">
                   <thead>
                     <tr>
                       <th className={cn(th, "w-28")}>Data do contato</th>
@@ -176,7 +203,7 @@ export function CrmCoordenadorPage() {
                       const manual = mes.registroManual.find((m) => `manual:${m.id}` === linha.dealId);
                       if (manual) {
                         return (
-                          <tr key={linha.dealId} className="bg-yellow-50/40">
+                          <tr key={linha.dealId}>
                             <td className={td}><input type="date" value={manual.data} onChange={(e) => mudaLinha(manual.id, { data: e.target.value })} className={input} aria-label="Data do contato" /></td>
                             <td className={td}><input value={manual.nome} onChange={(e) => mudaLinha(manual.id, { nome: e.target.value })} className={input} placeholder="Nome do paciente" aria-label="Nome do paciente" /></td>
                             <td className={td}>
@@ -194,17 +221,17 @@ export function CrmCoordenadorPage() {
                             ))}
                             <td className={td}><input value={manual.observacoes} onChange={(e) => mudaLinha(manual.id, { observacoes: e.target.value })} className={input} placeholder="Observações" aria-label="Observações" /></td>
                             <td className={cn(td, "text-center")}>
-                              <button type="button" onClick={() => grava({ ...mes, registroManual: mes.registroManual.filter((m) => m.id !== manual.id) })} className="text-neutral-500 hover:text-red-700" aria-label="Excluir linha"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
+                              <button type="button" onClick={() => grava({ ...mes, registroManual: mes.registroManual.filter((m) => m.id !== manual.id) })} className={botaoExcluir} aria-label="Excluir linha"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
                             </td>
                           </tr>
                         );
                       }
                       return (
                         <tr key={linha.dealId}>
-                          <td className={cn(td, "tabular-nums")}>{diaBR(linha.data)}</td>
-                          <td className={td}>
-                            <Link to={`/crm/contatos/${linha.contactId}`} className="hover:underline">{linha.nome}</Link>
-                            <span className="ml-1.5 rounded bg-emerald-100 px-1 text-[10px] font-semibold text-emerald-800" title="Linha do CRM — muda pela etapa do card no Kanban">CRM</span>
+                          <td className={cn(td, "whitespace-nowrap tabular-nums")}>{diaBR(linha.data)}</td>
+                          <td className={cn(td, "whitespace-nowrap")}>
+                            <Link to={`/crm/contatos/${linha.contactId}`} className={NOME_LINK}>{linha.nome}</Link>
+                            <Etiqueta tom="ok" className="ml-2" title="Linha do CRM — muda pela etapa do card no Kanban">CRM</Etiqueta>
                           </td>
                           <td className={td}>{origemLabels[linha.origem]}</td>
                           <td className={td}>{linha.agendou ? "Sim" : "Não"}</td>
@@ -216,11 +243,11 @@ export function CrmCoordenadorPage() {
                       );
                     })}
                     <tr>
-                      <td colSpan={8} className="border border-neutral-300 px-2 py-1.5">
-                        <button type="button" onClick={novaLinha} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-800 hover:underline">
+                      <td colSpan={8} className="border border-fio px-3 py-2">
+                        <button type="button" onClick={novaLinha} className={botaoDeLinha}>
                           <Plus className="h-4 w-4" aria-hidden="true" /> Adicionar linha à mão
                         </button>
-                        <span className="ml-3 text-xs text-neutral-500">Para uma linha que já venha ligada ao paciente, cadastre o lead no Kanban.</span>
+                        <span className="ml-3 text-xs font-medium text-tinta-2">Para uma linha que já venha ligada ao paciente, cadastre o lead no Kanban.</span>
                       </td>
                     </tr>
                   </tbody>
@@ -230,8 +257,8 @@ export function CrmCoordenadorPage() {
 
             {aba === "funil" ? (
               <>
-                <p className="text-sm font-bold uppercase text-neutral-800">Planilha de gestão — Coordenador de Vendas · Funil de Contatos</p>
-                <p className="mb-2 text-xs italic text-neutral-600">Preenchimento AUTOMÁTICO a partir da aba Registro de Contatos ({mesLongo(monthKey)}).</p>
+                <h2 className={tituloDaAba}>Funil de contatos</h2>
+                <p className={notaDaAba}>Preenchimento AUTOMÁTICO a partir da aba Registro de Contatos ({mesLongo(monthKey)}).</p>
                 <table className="w-full min-w-[860px] border-collapse">
                   <thead>
                     <tr>
@@ -246,7 +273,7 @@ export function CrmCoordenadorPage() {
                   </thead>
                   <tbody>
                     {funil.map((linha) => (
-                      <tr key={linha.origem} className={cn(linha.origem === "TOTAL" && "bg-neutral-100 font-bold")}>
+                      <tr key={linha.origem} className={cn(linha.origem === "TOTAL" && "bg-saber font-bold")}>
                         <td className={td}>{linha.origem === "TOTAL" ? "TOTAL" : origemLabels[linha.origem as OrigemContato]}</td>
                         <td className={tdNum}>{linha.mensagens}</td>
                         <td className={tdNum}>{linha.agendaram}</td>
@@ -263,8 +290,8 @@ export function CrmCoordenadorPage() {
 
             {aba === "prescricoes" ? (
               <>
-                <p className="text-sm font-bold uppercase text-neutral-800">PDCA de prescrições — tratamentos prescritos × fechados</p>
-                <p className="mb-2 text-xs italic text-neutral-600">Registrar cada profissional prescritor. A % de conversão calcula sozinha.</p>
+                <h2 className={tituloDaAba}>PDCA de prescrições — tratamentos prescritos × fechados</h2>
+                <p className={notaDaAba}>Registrar cada profissional prescritor. A % de conversão calcula sozinha.</p>
                 <table className="w-full min-w-[860px] border-collapse">
                   <thead>
                     <tr>
@@ -284,16 +311,16 @@ export function CrmCoordenadorPage() {
                         <td className={td}><input inputMode="numeric" value={String(p.fechados)} onChange={(e) => grava({ ...mes, prescricoes: mes.prescricoes.map((x, k) => (k === i ? { ...x, fechados: Number(e.target.value.replace(/\D/g, "")) || 0 } : x)) })} className={cn(input, "text-right")} aria-label="Fechados" /></td>
                         <td className={tdNum}>{formataPct(pct(p.fechados, p.prescritos))}</td>
                         <td className={td}><input value={p.observacoes} onChange={(e) => grava({ ...mes, prescricoes: mes.prescricoes.map((x, k) => (k === i ? { ...x, observacoes: e.target.value } : x)) })} className={input} aria-label="Observações" /></td>
-                        <td className={cn(td, "text-center")}><button type="button" onClick={() => grava({ ...mes, prescricoes: mes.prescricoes.filter((_, k) => k !== i) })} className="text-neutral-500 hover:text-red-700" aria-label="Excluir linha"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
+                        <td className={cn(td, "text-center")}><button type="button" onClick={() => grava({ ...mes, prescricoes: mes.prescricoes.filter((_, k) => k !== i) })} className={botaoExcluir} aria-label="Excluir linha"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
                       </tr>
                     ))}
-                    <tr className="bg-neutral-100 font-bold">
+                    <tr className="bg-saber font-bold">
                       <td className={td}>TOTAL</td>
                       <td className={tdNum}>{totalPresc.prescritos}</td>
                       <td className={tdNum}>{totalPresc.fechados}</td>
                       <td className={tdNum}>{formataPct(pct(totalPresc.fechados, totalPresc.prescritos))}</td>
                       <td className={td} colSpan={2}>
-                        <button type="button" onClick={() => grava({ ...mes, prescricoes: [...mes.prescricoes, { profissional: "", prescritos: 0, fechados: 0, observacoes: "" }] })} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-800 hover:underline"><Plus className="h-4 w-4" aria-hidden="true" /> Adicionar profissional</button>
+                        <button type="button" onClick={() => grava({ ...mes, prescricoes: [...mes.prescricoes, { profissional: "", prescritos: 0, fechados: 0, observacoes: "" }] })} className={botaoDeLinha}><Plus className="h-4 w-4" aria-hidden="true" /> Adicionar profissional</button>
                       </td>
                     </tr>
                   </tbody>
@@ -303,8 +330,8 @@ export function CrmCoordenadorPage() {
 
             {aba === "agendamentos" ? (
               <>
-                <p className="text-sm font-bold uppercase text-neutral-800">PDCA de agendamentos — coordenador e time</p>
-                <p className="mb-2 text-xs italic text-neutral-600">Uma linha por membro do time de agendamento. A % da meta calcula sozinha.</p>
+                <h2 className={tituloDaAba}>PDCA de agendamentos — coordenador e time</h2>
+                <p className={notaDaAba}>Uma linha por membro do time de agendamento. A % da meta calcula sozinha.</p>
                 <table className="w-full min-w-[860px] border-collapse">
                   <thead>
                     <tr>
@@ -322,14 +349,14 @@ export function CrmCoordenadorPage() {
                         <td className={td}><input value={a.colaborador} onChange={(e) => grava({ ...mes, agendamentos: mes.agendamentos.map((x, k) => (k === i ? { ...x, colaborador: e.target.value } : x)) })} className={input} placeholder="Nome" aria-label="Colaborador" /></td>
                         <td className={td}><input inputMode="numeric" value={String(a.meta)} onChange={(e) => grava({ ...mes, agendamentos: mes.agendamentos.map((x, k) => (k === i ? { ...x, meta: Number(e.target.value.replace(/\D/g, "")) || 0 } : x)) })} className={cn(input, "text-right")} aria-label="Meta" /></td>
                         <td className={td}><input inputMode="numeric" value={String(a.realizados)} onChange={(e) => grava({ ...mes, agendamentos: mes.agendamentos.map((x, k) => (k === i ? { ...x, realizados: Number(e.target.value.replace(/\D/g, "")) || 0 } : x)) })} className={cn(input, "text-right")} aria-label="Realizados" /></td>
-                        <td className={cn(tdNum, a.meta && a.realizados >= a.meta && "text-emerald-800")}>{formataPct(pct(a.realizados, a.meta))}</td>
+                        <td className={cn(tdNum, a.meta && a.realizados >= a.meta && "text-ok")}>{formataPct(pct(a.realizados, a.meta))}</td>
                         <td className={td}><input value={a.acao} onChange={(e) => grava({ ...mes, agendamentos: mes.agendamentos.map((x, k) => (k === i ? { ...x, acao: e.target.value } : x)) })} className={input} aria-label="Ação corretiva" /></td>
-                        <td className={cn(td, "text-center")}><button type="button" onClick={() => grava({ ...mes, agendamentos: mes.agendamentos.filter((_, k) => k !== i) })} className="text-neutral-500 hover:text-red-700" aria-label="Excluir linha"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
+                        <td className={cn(td, "text-center")}><button type="button" onClick={() => grava({ ...mes, agendamentos: mes.agendamentos.filter((_, k) => k !== i) })} className={botaoExcluir} aria-label="Excluir linha"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
                       </tr>
                     ))}
                     <tr>
-                      <td colSpan={6} className="border border-neutral-300 px-2 py-1.5">
-                        <button type="button" onClick={() => grava({ ...mes, agendamentos: [...mes.agendamentos, { colaborador: "", meta: 0, realizados: 0, acao: "" }] })} className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-800 hover:underline"><Plus className="h-4 w-4" aria-hidden="true" /> Adicionar colaborador</button>
+                      <td colSpan={6} className="border border-fio px-3 py-2">
+                        <button type="button" onClick={() => grava({ ...mes, agendamentos: [...mes.agendamentos, { colaborador: "", meta: 0, realizados: 0, acao: "" }] })} className={botaoDeLinha}><Plus className="h-4 w-4" aria-hidden="true" /> Adicionar colaborador</button>
                       </td>
                     </tr>
                   </tbody>
@@ -339,8 +366,8 @@ export function CrmCoordenadorPage() {
 
             {aba === "plano" ? (
               <>
-                <p className="text-sm font-bold uppercase text-neutral-800">Plano de ação do mês (PDCA)</p>
-                <p className="mb-2 text-xs italic text-neutral-600">O Funil é a régua: o CHECK compara os números deste mês com o anterior.</p>
+                <h2 className={tituloDaAba}>Plano de ação do mês (PDCA)</h2>
+                <p className={notaDaAba}>O Funil é a régua: o CHECK compara os números deste mês com o anterior.</p>
                 <table className="w-full min-w-[720px] border-collapse">
                   <thead>
                     <tr>
@@ -360,7 +387,7 @@ export function CrmCoordenadorPage() {
                       <tr key={chave}>
                         <td className={cn(td, "font-bold")}>{rotulo}</td>
                         <td className={cn(td, "p-0")}>
-                          <textarea value={mes.planoDeAcao[chave]} onChange={(e) => grava({ ...mes, planoDeAcao: { ...mes.planoDeAcao, [chave]: e.target.value } })} className="min-h-[72px] w-full resize-y border-0 bg-transparent px-2 py-1 text-sm focus:bg-yellow-50 focus:outline-none" aria-label={rotulo} />
+                          <textarea value={mes.planoDeAcao[chave]} onChange={(e) => grava({ ...mes, planoDeAcao: { ...mes.planoDeAcao, [chave]: e.target.value } })} className="min-h-[72px] w-full resize-y rounded-controle border-0 bg-transparent px-3 py-2 font-sans text-sm font-medium text-tinta focus:bg-folha focus:outline-none focus:shadow-[inset_0_0_0_2px_rgb(var(--foco-rgb))]" aria-label={rotulo} />
                         </td>
                       </tr>
                     ))}
@@ -368,7 +395,7 @@ export function CrmCoordenadorPage() {
                 </table>
               </>
             ) : null}
-          </div>
+          </BlocoFolha>
         </div>
       </div>
     </AccessGate>

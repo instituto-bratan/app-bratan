@@ -26,10 +26,8 @@ import {
   totalDosItensFechados,
   type ItemFechado,
 } from "@/features/financeiro/catalogoPrecificacao";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { Button, CAMPO, CAMPO_PQ, Input, Label, classeDoChip } from "./comercialVisual";
 import {
   parseFinAmount,
   paymentMethodLabels,
@@ -177,10 +175,10 @@ export function RecebimentoNoKanban({
   const prontos = destinos.filter((item) => item.pronto).length;
 
   return (
-    <div className="grid gap-3 rounded-xl border-2 border-brand-dourado/50 bg-brand-creme/40 p-3.5">
+    <div className="grid gap-4 rounded-bloco bg-saber p-4 font-sans">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-sm font-bold text-brand-musgo">{titulo}</p>
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">
+        <p className="text-base font-bold leading-6 text-tinta">{titulo}</p>
+        <span className="text-[13px] font-semibold leading-5 tabular-nums text-tinta-2">
           {prontos} de {destinos.length} destinos prontos
         </span>
       </div>
@@ -194,14 +192,14 @@ export function RecebimentoNoKanban({
           agrupados por seção. Tocar num produto adiciona a linha com nome e
           preço oficiais; a soma preenche o valor vendido e o recebido. */}
       <div className="grid gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-          <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">1</span>
+        <p className="flex items-center gap-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-musgo text-xs font-extrabold text-sobre-musgo">1</span>
           O que o paciente fechou (tabela de preços)
         </p>
-        <div className="grid gap-2 rounded-lg border border-brand-oliva/15 bg-white/60 p-2.5">
+        <div className="grid gap-3 rounded-bloco border border-fio bg-folha p-3">
           {secoesDoCatalogo().map((grupo) => (
             <div key={grupo.secao}>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{grupo.secao}</p>
+              <p className="text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2">{grupo.secao}</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {grupo.produtos.map((produto) => {
                   const escolhido = itens.some((item) => item.produtoNome === produto.nome);
@@ -210,13 +208,11 @@ export function RecebimentoNoKanban({
                       key={produto.nome}
                       type="button"
                       onClick={() => adicionaProduto(produto.nome)}
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-left text-[11px] font-semibold transition",
-                        escolhido ? "border-brand-musgo bg-brand-musgo text-white" : "border-brand-oliva/30 bg-white/80 text-brand-tinta hover:border-brand-dourado",
-                      )}
+                      aria-pressed={escolhido}
+                      className={classeDoChip(escolhido)}
                       title={escolhido ? "Toque de novo para somar mais um" : "Adicionar à comanda"}
                     >
-                      {produto.nome} <span className={cn("font-normal", escolhido ? "text-white/80" : "text-muted-foreground")}>· {moneyFin(produto.preco)}</span>
+                      {produto.nome} <span className="ml-1 font-medium tabular-nums text-tinta-2">· {moneyFin(produto.preco)}</span>
                     </button>
                   );
                 })}
@@ -224,7 +220,7 @@ export function RecebimentoNoKanban({
             </div>
           ))}
           <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => onItensChange([...itens, itemFechadoLivre(itemTipo)])}>
-            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> outro item (fora da tabela)
+            <Plus className="h-4 w-4" aria-hidden="true" /> outro item (fora da tabela)
           </Button>
         </div>
         {itens.length ? (
@@ -233,14 +229,14 @@ export function RecebimentoNoKanban({
               const produto = item.produtoNome ? produtoPorNome(item.produtoNome) : null;
               const atualiza = (mudanca: Partial<ItemFechado>) => onItensChange(itens.map((it, i) => (i === index ? { ...it, ...mudanca } : it)));
               return (
-                <div key={index} className="grid items-center gap-1.5 rounded-md border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,0.45fr)_minmax(0,0.8fr)_auto]">
+                <div key={index} className="grid items-center gap-1.5 rounded-controle border border-fio bg-folha p-2 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,0.45fr)_minmax(0,0.8fr)_auto]">
                   {produto ? (
-                    <span className="text-sm text-brand-tinta">
+                    <span className="text-sm font-semibold text-tinta">
                       {produto.nome}{" "}
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[13px] font-medium text-tinta-2">
                         · {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}
                         {Math.abs(parseFinAmount(item.valorTexto) - produto.preco * item.quantidade) > 0.005 && parseFinAmount(item.valorTexto) > 0 ? (
-                          <strong className="text-brand-musgo"> · cobrado {moneyFin(parseFinAmount(item.valorTexto))}</strong>
+                          <strong className="text-musgo"> · cobrado {moneyFin(parseFinAmount(item.valorTexto))}</strong>
                         ) : null}
                       </span>
                     </span>
@@ -249,7 +245,7 @@ export function RecebimentoNoKanban({
                       <select
                         value={item.itemType}
                         onChange={(event) => atualiza({ itemType: event.target.value as FinSaleItemType })}
-                        className="h-9 w-full min-w-0 rounded-md border border-input bg-white px-2 text-xs"
+                        className={cn(CAMPO_PQ, "h-9 cursor-pointer")}
                         aria-label="Tipo do item"
                       >
                         {tiposDeItem.map((opcao) => (
@@ -259,7 +255,7 @@ export function RecebimentoNoKanban({
                       <Input value={item.descricao} onChange={(event) => atualiza({ descricao: event.target.value })} placeholder="Descreva o item (fora da tabela)" className="h-9" />
                     </div>
                   )}
-                  <label className="grid gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <label className="grid gap-1 text-xs font-bold leading-4 text-tinta-2">
                     Qtd
                     <Input
                       value={String(item.quantidade)}
@@ -270,10 +266,10 @@ export function RecebimentoNoKanban({
                       }}
                       inputMode="numeric"
                       aria-label="Quantidade"
-                      className="h-9 text-center normal-case"
+                      className="h-9 text-center tabular-nums"
                     />
                   </label>
-                  <label className="grid gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <label className="grid gap-1 text-xs font-bold leading-4 text-tinta-2">
                     Valor cobrado
                     <Input
                       value={item.valorTexto}
@@ -281,7 +277,7 @@ export function RecebimentoNoKanban({
                       placeholder={produto ? formataValor(produto.preco * item.quantidade) : "0,00"}
                       inputMode="decimal"
                       aria-label="Valor cobrado na linha"
-                      className="h-9 text-right normal-case"
+                      className="h-9 text-right tabular-nums"
                     />
                   </label>
                   <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => onItensChange(itens.filter((_, i) => i !== index))}>
@@ -290,21 +286,21 @@ export function RecebimentoNoKanban({
                 </div>
               );
             })}
-            <p className="text-xs text-muted-foreground">
-              Itens somam <strong className="text-brand-tinta">{moneyFin(totalDosItensFechados(itens, parseFinAmount))}</strong>
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">
+              Itens somam <strong className="tabular-nums text-tinta">{moneyFin(totalDosItensFechados(itens, parseFinAmount))}</strong>
               {valor > 0 && Math.abs(totalDosItensFechados(itens, parseFinAmount) - valor) > 0.01
                 ? ` — entrou ${moneyFin(valor)}: a comanda leva o que entrou, com cada item na mesma proporção; o resto fica como vendido.`
                 : valor > 0
                   ? " — bate com o valor recebido."
                   : " — o valor recebido foi preenchido com essa soma; ajuste se entrou menos."}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">
               O preço da tabela é só a sugestão: se cobrou diferente (sinal de R$ 200, desconto, acréscimo do cartão), digite o
               valor cobrado na linha — o nome do produto continua o mesmo.
             </p>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[13px] font-medium leading-5 text-tinta-2">
             Toque nos produtos que o paciente fechou — Plano + HCG + vitamina D, por exemplo. Cada um vira um item da comanda com o nome e o
             preço da tabela, e a soma preenche o valor.
           </p>
@@ -315,8 +311,8 @@ export function RecebimentoNoKanban({
       atrás de "valor > 0": quem abria a tela não via o botão de anexar e
       concluía que nada havia mudado. */}
       <div className="grid gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-          <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">2</span>
+        <p className="flex items-center gap-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-musgo text-xs font-extrabold text-sobre-musgo">2</span>
           Comprovante de pagamento
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -341,16 +337,16 @@ export function RecebimentoNoKanban({
               event.target.value = "";
             }}
           />
-          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => inputArquivo.current?.click()}>
+          <Button type="button" variant="outline" size="sm" onClick={() => inputArquivo.current?.click()}>
             <Paperclip className="h-4 w-4" aria-hidden="true" />
             {arquivos.length ? "Anexar outro comprovante" : "Anexar comprovante"}
           </Button>
           {arquivos.length ? (
-            <span className="text-xs font-semibold text-brand-musgo">
+            <span className="text-[13px] font-bold text-musgo">
               {arquivos.length} arquivo{arquivos.length > 1 ? "s" : ""} — todos vão para a mesma comanda
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground">Pode anexar mais de um (PIX + cartão, ou quem pagou junto).</span>
+            <span className="text-[13px] font-medium text-tinta-2">Pode anexar mais de um (PIX + cartão, ou quem pagou junto).</span>
           )}
         </div>
         {arquivos.length ? (
@@ -358,36 +354,36 @@ export function RecebimentoNoKanban({
             {arquivos.map((arquivo, indice) => (
               <li
                 key={`${arquivo.name}-${arquivo.size}-${indice}`}
-                className="flex items-center justify-between gap-2 rounded-md border border-brand-oliva/20 bg-white/70 px-2.5 py-1.5"
+                className="flex items-center justify-between gap-2 rounded-controle border border-fio bg-folha px-2.5 py-1.5"
               >
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-brand-musgo">{arquivo.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-tinta">{arquivo.name}</span>
                 <button
                   type="button"
                   onClick={() => onArquivosChange(arquivos.filter((_, i) => i !== indice))}
-                  className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-brand-creme hover:text-brand-tinta"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
                   aria-label={`Remover ${arquivo.name}`}
                 >
-                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               </li>
             ))}
           </ul>
         ) : null}
         {faltaComprovante ? (
-          <div className="flex flex-wrap items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+          <div className="flex flex-wrap items-start gap-2 rounded-bloco bg-atencao-claro px-4 py-3 text-[13px] font-medium leading-5 text-atencao">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <div className="flex-1">
               <strong>Entrou dinheiro e não tem comprovante anexado.</strong> Anexe agora — ou marque abaixo que vem depois,
               para o financeiro saber que está pendente de propósito.
               <label className="mt-1.5 flex cursor-pointer items-center gap-2 font-semibold">
-                <input type="checkbox" checked={mandaDepois} onChange={(event) => onMandaDepoisChange(event.target.checked)} />
+                <input type="checkbox" className="h-4 w-4 accent-musgo" checked={mandaDepois} onChange={(event) => onMandaDepoisChange(event.target.checked)} />
                 Vou mandar o comprovante depois
               </label>
             </div>
           </div>
         ) : null}
         {mandaDepois && arquivos.length === 0 ? (
-          <p className="text-xs font-semibold text-brand-oliva">
+          <p className="text-[13px] font-semibold leading-5 text-tinta-2">
             Fica registrado como AGUARDANDO comprovante — aparece nos avisos até alguém anexar.
           </p>
         ) : null}
@@ -395,8 +391,8 @@ export function RecebimentoNoKanban({
 
       {/* PASSO 3 — quanto entrou */}
       <div className="grid gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-          <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">3</span>
+        <p className="flex items-center gap-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-musgo text-xs font-extrabold text-sobre-musgo">3</span>
           Quanto entrou
         </p>
         <div>
@@ -406,13 +402,13 @@ export function RecebimentoNoKanban({
             onChange={(event) => onValorChange(event.target.value)}
             inputMode="decimal"
             placeholder="0,00"
-            className="sm:max-w-xs"
+            className="mt-2 tabular-nums sm:max-w-xs"
           />
         </div>
 
         {valor > 0 ? (
           <div className="grid gap-2">
-            <p className="text-xs font-semibold text-brand-tinta">Como ele pagou</p>
+            <p className="text-[13px] font-bold leading-5 text-tinta">Como ele pagou</p>
             {divisao.map((parcela, indice) => (
               <div key={indice} className="grid gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.6fr)_auto]">
                 <select
@@ -420,7 +416,7 @@ export function RecebimentoNoKanban({
                   onChange={(event) =>
                     onDivisaoChange(divisao.map((item, i) => (i === indice ? { ...item, forma: event.target.value as FinPaymentMethod } : item)))
                   }
-                  className="h-11 w-full min-w-0 rounded-md border border-input bg-white/80 px-3 text-sm"
+                  className={cn(CAMPO, "cursor-pointer")}
                   aria-label="Forma de pagamento"
                 >
                   {salePaymentMethods.map((method) => (
@@ -481,13 +477,13 @@ export function RecebimentoNoKanban({
                 + Dividiu em duas formas
               </Button>
               {divisao.length > 1 ? (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-[13px] font-medium tabular-nums text-tinta-2">
                   somando {moneyFin(somaDasParcelas(divisao, parseFinAmount))} de {moneyFin(valor)}
                 </span>
               ) : null}
             </div>
             {conferirDivisao(valor, divisao, parseFinAmount) ? (
-              <p className="rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs font-semibold leading-snug text-amber-900">
+              <p className="rounded-bloco bg-atencao-claro px-4 py-3 text-[13px] font-semibold leading-5 text-atencao">
                 {conferirDivisao(valor, divisao, parseFinAmount)}
               </p>
             ) : null}
@@ -499,8 +495,8 @@ export function RecebimentoNoKanban({
         <>
           {/* PASSO 4 — do que se trata */}
           <div className="grid gap-2">
-            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-              <span className="grid h-4 w-4 place-items-center rounded-full bg-brand-musgo text-[10px] text-white">4</span>
+            <p className="flex items-center gap-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-musgo text-xs font-extrabold text-sobre-musgo">4</span>
               Do que se trata
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -509,12 +505,8 @@ export function RecebimentoNoKanban({
                   key={opcao}
                   type="button"
                   onClick={() => onTipoChange(opcao)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                    tipo === opcao
-                      ? "border-brand-musgo bg-brand-musgo text-white"
-                      : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-musgo/50",
-                  )}
+                  aria-pressed={tipo === opcao}
+                  className={classeDoChip(tipo === opcao)}
                 >
                   {tipoRecebimentoLabels[opcao]}
                 </button>
@@ -522,19 +514,15 @@ export function RecebimentoNoKanban({
             </div>
             {itens.length === 0 ? (
               <div>
-                <p className="text-[11px] text-muted-foreground">Sem produto escolhido no passo 1, a comanda leva um item só, deste tipo:</p>
+                <p className="text-[13px] font-medium leading-5 text-tinta-2">Sem produto escolhido no passo 1, a comanda leva um item só, deste tipo:</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {tiposDeItem.map((opcao) => (
                     <button
                       key={opcao}
                       type="button"
                       onClick={() => onItemTipoChange(opcao)}
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
-                        itemTipo === opcao
-                          ? "border-brand-dourado bg-brand-creme text-brand-tinta"
-                          : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-dourado",
-                      )}
+                      aria-pressed={itemTipo === opcao}
+                      className={classeDoChip(itemTipo === opcao)}
                     >
                       {saleItemTypeLabels[opcao]}
                     </button>
@@ -542,37 +530,37 @@ export function RecebimentoNoKanban({
                 </div>
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[13px] font-medium leading-5 text-tinta-2">
                 A comanda leva os {itens.length} item(ns) escolhidos no passo 1, com o nome da tabela.
               </p>
             )}
           </div>
 
           {/* PARA ONDE VAI — a lista se completando, em vez de um parágrafo */}
-          <div className="grid gap-1 rounded-lg border border-brand-musgo/25 bg-brand-papel p-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
+          <div className="grid gap-2 rounded-bloco border border-fio bg-folha p-4">
+            <p className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
               Ao salvar, isto alimenta de uma vez
             </p>
             {destinos.map((destino) => (
-              <span key={destino.titulo} className="flex items-start gap-2 text-sm">
+              <span key={destino.titulo} className="flex items-start gap-2 text-sm leading-5">
                 <span
                   className={cn(
                     "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full",
-                    destino.pronto ? "bg-brand-musgo text-white" : "border border-brand-oliva/30 bg-white",
+                    destino.pronto ? "bg-musgo text-sobre-musgo" : "border border-fio-2 bg-folha",
                   )}
                 >
                   {destino.pronto ? <Check className="h-2.5 w-2.5" aria-hidden="true" /> : null}
                 </span>
-                <span className={cn(destino.pronto ? "text-brand-tinta" : "text-muted-foreground")}>
+                <span className={cn(destino.pronto ? "text-tinta" : "text-tinta-2")}>
                   <strong className="font-semibold">{destino.titulo}</strong>
-                  <span className="text-muted-foreground"> — {destino.detalhe}</span>
+                  <span className="text-tinta-2"> — {destino.detalhe}</span>
                 </span>
               </span>
             ))}
           </div>
         </>
       ) : (
-        <p className="text-xs leading-snug text-muted-foreground">
+        <p className="text-[13px] font-medium leading-5 text-tinta-2">
           Informe o valor recebido para lançar a comanda e o comprovante daqui. Sem valor, este cadastro segue normal — só o
           paciente e o card no Kanban.
         </p>
@@ -601,9 +589,9 @@ export function RecebimentoNoKanban({
         onCpfChange={onCpfChange}
       />
 
-      <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-          <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+      <div className="grid gap-3 rounded-bloco border border-fio bg-folha p-4">
+        <p className="flex items-center gap-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+          <FileText className="h-4 w-4 text-oliva" aria-hidden="true" />
           Recado para quem emite
         </p>
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -620,7 +608,7 @@ export function RecebimentoNoKanban({
             <select
               value={quandoNota}
               onChange={(event) => onQuandoNotaChange(event.target.value as QuandoNota)}
-              className="mt-1 h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
+              className={cn(CAMPO, "mt-2 cursor-pointer")}
             >
               {(Object.keys(quandoNotaLabels) as QuandoNota[]).map((quando) => (
                 <option key={quando} value={quando}>
@@ -630,7 +618,7 @@ export function RecebimentoNoKanban({
             </select>
           </div>
         </div>
-        <p className="text-[11px] leading-snug text-muted-foreground">
+        <p className="text-[13px] font-medium leading-5 text-tinta-2">
           Isto aparece na comanda do <strong>Lançar dia</strong> e na aba de <strong>Impostos &amp; NF</strong> — é o que a
           pessoa lê na hora de emitir.
         </p>

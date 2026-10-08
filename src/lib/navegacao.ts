@@ -1253,7 +1253,7 @@ export type AcaoRapida = {
   destino: string;
   icone: NomeIcone;
   palavras: readonly string[];
-  /** Contas a pagar já entende ?valor=1234.56 (⌘K de 14/09) e abre o formulário com o valor. */
+  /** Contas a pagar entende ?valor=1234.56 (⌘K de 14/09) e ?novo=1 (08/10) e abre o formulário. */
   aceitaValor: boolean;
 };
 
@@ -1280,7 +1280,10 @@ export const ACOES_RAPIDAS: readonly AcaoRapida[] = [
   {
     id: "nova-conta",
     rotulo: "Nova conta a pagar",
-    href: "/financeiro/contas",
+    // ?novo=1 (revisão de 08/10/2026): Contas a pagar abre o formulário vazio —
+    // a ação "Nova conta" leva à conta nova, e não só à tela. Com valor no ⌘K,
+    // vai junto: ?novo=1&valor=1250.00.
+    href: "/financeiro/contas?novo=1",
     destino: "contas",
     icone: "Receipt",
     palavras: ["conta", "lançar conta", "boleto", "pagar", "despesa"],

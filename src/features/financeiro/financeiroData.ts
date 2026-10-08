@@ -369,7 +369,13 @@ export function semProvisoes(expenses: FinExpense[], categories: FinCategory[]) 
   return expenses.filter((expense) => !isProvisaoExpense(expense, categories));
 }
 
-export function upcomingExpenses(expenses: FinExpense[], todayISO: string, days: number, maxOverdueDays = 60) {
+/**
+ * Vencidas e chegando. `diaDePagar` (08/10/2026): a régua do dia de pagar
+ * (filaFinanceiraDiaDePagar.ts — sábado, domingo e feriado pagam no dia útil
+ * anterior). Sem ela, vale o vencimento cru, como antes. A janela das vencidas
+ * continua contada pelo vencimento.
+ */
+export function upcomingExpenses(expenses: FinExpense[], todayISO: string, days: number, maxOverdueDays = 60, diaDePagar: (vencimento: string) => string = (vencimento) => vencimento) {
   const shift = (base: string, deltaDays: number) => {
     const date = new Date(`${base}T12:00:00`);
     date.setDate(date.getDate() + deltaDays);
@@ -381,8 +387,8 @@ export function upcomingExpenses(expenses: FinExpense[], todayISO: string, days:
   const open = expenses.filter((expense) => !expense.paidAt);
   const byDue = (a: FinExpense, b: FinExpense) => a.dueDate.localeCompare(b.dueDate);
   return {
-    vencidas: open.filter((expense) => expense.dueDate < todayISO && expense.dueDate >= oldestISO).sort(byDue),
-    chegando: open.filter((expense) => expense.dueDate >= todayISO && expense.dueDate <= limitISO).sort(byDue),
+    vencidas: open.filter((expense) => diaDePagar(expense.dueDate) < todayISO && expense.dueDate >= oldestISO).sort(byDue),
+    chegando: open.filter((expense) => diaDePagar(expense.dueDate) >= todayISO && diaDePagar(expense.dueDate) <= limitISO).sort(byDue),
   };
 }
 

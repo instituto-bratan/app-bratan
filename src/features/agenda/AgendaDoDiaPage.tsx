@@ -6,14 +6,20 @@
 // relatório semanal do médico. As regras moram em agendaDoDia.ts (testadas);
 // aqui só se desenha. Dia e profissional ficam no endereço (?dia=&prof=), para
 // o link mandado a um colega abrir no mesmo lugar.
+//
+// REDESENHO "PAPEL & MUSGO", ETAPA 2 (08/10/2026): a aba "Agenda do dia" do
+// Início › Hoje. Um cabeçalho só (a frase do dia vira a frase do cabeçalho),
+// cada profissional numa folha, Veio/Faltou como botões de decisão na linha, a
+// semana do relatório num bloco "saber". Sem vidro, sem pílula colorida, sem
+// fonte mono. O que a tela faz não muda: mesmas leituras, mesmas marcações,
+// mesmos avisos e as mesmas URLs (?dia=&prof=).
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleSlash, RefreshCw, UserRoundX, XCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleSlash, Info, RefreshCw, UserRoundX, XCircle } from "lucide-react";
+import { BlocoFolha, BlocoSaber } from "@/components/ui/blocos";
+import { Botao } from "@/components/ui/botao";
+import { Cabecalho } from "@/components/ui/cabecalho";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
@@ -162,87 +168,101 @@ export function AgendaDoDiaPage() {
   const avisosDeCalendario = saude.filter((s) => s.aviso && s.ligado);
   const semCalendario = saude.filter((s) => !s.ligado);
 
-  return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
-      <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <Badge variant="gold">iClinic</Badge>
-            <h1 className="mt-2 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-              <CalendarDays className="h-8 w-8 text-brand-oliva" aria-hidden="true" />
-              Agenda do dia
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">Quem vem hoje, com quem e em que horário. Quando o paciente chegar (ou não vier), marque Veio ou Faltou.</p>
-          </div>
-        </div>
+  // Botão pequeno de navegação do dia (40 px, ícone de 16 px).
+  const SETA =
+    "grid h-10 w-10 shrink-0 place-items-center rounded-controle border border-fio-2 bg-folha text-tinta transition-colors hover:border-borda-campo hover:bg-papel " +
+    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco";
 
-        {/* Dia */}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="icon" aria-label="Dia anterior" onClick={() => irPara({ dia: somarDias(dia, -1) })}>
+  return (
+    <div className="mx-auto w-full max-w-[1200px] font-sans text-tinta">
+      <Cabecalho
+        sobrancelha="Início · Hoje · iClinic"
+        titulo="Agenda do dia"
+        frase={
+          !remoto
+            ? "Quem vem hoje, com quem e em que horário. Quando o paciente chegar (ou não vier), marque Veio ou Faltou."
+            : carregando
+              ? "Lendo a agenda…"
+              : frase
+        }
+        acoes={
+          remoto ? (
+            <Botao
+              variante="secundario"
+              icone={<RefreshCw className={cn("h-4 w-4", buscando && "motion-safe:animate-spin")} aria-hidden="true" />}
+              disabled={buscando}
+              onClick={() => void buscarAgora()}
+            >
+              {buscando ? "Lido agora — espere 1 minuto" : "Buscar agora no iClinic"}
+            </Botao>
+          ) : null
+        }
+      />
+
+      {/* A lista do dia não precisa da largura toda: lê-se melhor em até 960 px. */}
+      <div className="max-w-[960px]">
+      {/* Dia e profissional (ficam no endereço: ?dia=&prof=) */}
+      <div className="mb-6 grid gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={SETA} aria-label="Dia anterior" onClick={() => irPara({ dia: somarDias(dia, -1) })}>
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <div className="min-w-[10rem] text-center">
-            <p className="text-lg font-semibold text-brand-tinta">{rotuloDoDia(dia, hoje)}</p>
-            <p className="text-xs text-muted-foreground">
+          </button>
+          <div className="min-w-[9.5rem] px-1 text-center">
+            <p className="font-serifa text-xl leading-7 text-tinta">{rotuloDoDia(dia, hoje)}</p>
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">
               {diaDaSemana(dia)}, {diaCurto(dia)}
             </p>
           </div>
-          <Button type="button" variant="outline" size="icon" aria-label="Dia seguinte" onClick={() => irPara({ dia: somarDias(dia, 1) })}>
+          <button type="button" className={SETA} aria-label="Dia seguinte" onClick={() => irPara({ dia: somarDias(dia, 1) })}>
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          </button>
           {dia !== hoje ? (
-            <Button type="button" variant="subtle" size="sm" onClick={() => irPara({ dia: hoje })}>
+            <Botao variante="fantasma" tamanho="pq" onClick={() => irPara({ dia: hoje })}>
               Voltar para hoje
-            </Button>
+            </Botao>
           ) : null}
           <input
             type="date"
             value={dia}
             onChange={(evento) => diaValido(evento.target.value) && irPara({ dia: evento.target.value })}
-            className="h-9 rounded-md border border-border bg-white/60 px-2 text-sm"
+            className="h-10 rounded-controle border border-borda-campo bg-folha px-3 text-sm font-medium text-tinta focus:border-musgo focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foco"
             aria-label="Escolher o dia"
           />
         </div>
 
-        {/* Profissional */}
-        <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Profissional">
-          {[{ chave: null as string | null, rotulo: "Todos" }, ...PROFISSIONAIS_ICLINIC.map((p) => ({ chave: p.chave as string | null, rotulo: p.curto }))].map((opcao) => (
-            <button
-              key={opcao.chave ?? "todos"}
-              type="button"
-              onClick={() => irPara({ prof: opcao.chave })}
-              aria-pressed={profissional === opcao.chave}
-              className={cn(
-                "rounded-full border px-3 py-1.5 text-sm font-semibold transition",
-                profissional === opcao.chave ? "border-brand-musgo bg-brand-musgo text-white" : "border-brand-oliva/25 bg-white/60 text-brand-tinta hover:bg-white",
-              )}
-            >
-              {opcao.rotulo}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Profissional">
+          {[{ chave: null as string | null, rotulo: "Todos" }, ...PROFISSIONAIS_ICLINIC.map((p) => ({ chave: p.chave as string | null, rotulo: p.curto }))].map((opcao) => {
+            const ativo = profissional === opcao.chave;
+            return (
+              <button
+                key={opcao.chave ?? "todos"}
+                type="button"
+                onClick={() => irPara({ prof: opcao.chave })}
+                aria-pressed={ativo}
+                className={cn(
+                  "inline-flex h-8 items-center rounded-controle border px-3 text-[13px] font-bold leading-5 transition-colors",
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco",
+                  ativo ? "border-musgo bg-musgo text-sobre-musgo" : "border-fio-2 bg-folha text-tinta hover:border-borda-campo hover:bg-papel",
+                )}
+              >
+                {opcao.rotulo}
+              </button>
+            );
+          })}
         </div>
-      </motion.section>
+      </div>
 
       {!remoto ? (
         <Aviso tom="info">Modo de demonstração: a agenda do iClinic só aparece com o login da clínica.</Aviso>
       ) : (
-        <>
-          {/* Frase do topo + frescor */}
-          <div className="rounded-lg border border-brand-musgo/25 bg-brand-creme/50 px-4 py-3">
-            <p className="text-base font-semibold text-brand-tinta">{carregando ? "Lendo a agenda…" : frase}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                {frescor.texto}
-                <InfoTip title="De onde vem esta agenda">
-                  O iClinic copia cada agenda para um calendário do Google, e o app lê esses calendários de hora em hora (aos 5 minutos de cada hora). É um espelho: marcar ou desmarcar continua sendo no iClinic. O que mudou lá aparece aqui na próxima leitura, ou na hora, pelo botão ao lado.
-                </InfoTip>
-              </span>
-              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={buscando} onClick={() => void buscarAgora()}>
-                <RefreshCw className={cn("mr-1 h-3.5 w-3.5", buscando && "motion-safe:animate-spin")} aria-hidden="true" />
-                {buscando ? "Lido agora — espere 1 minuto" : "Buscar agora no iClinic"}
-              </Button>
-            </div>
-          </div>
+        <div className="grid gap-4">
+          {/* De quando é o espelho */}
+          <p className="flex flex-wrap items-center gap-x-1 text-[13px] font-medium leading-5 text-tinta-2">
+            {frescor.texto}
+            <InfoTip title="De onde vem esta agenda">
+              O iClinic copia cada agenda para um calendário do Google, e o app lê esses calendários de hora em hora (aos 5 minutos de cada hora). É um espelho: marcar ou desmarcar continua sendo no iClinic. O que mudou lá aparece aqui na próxima leitura, ou na hora, pelo botão ao lado.
+            </InfoTip>
+          </p>
 
           {frescor.atrasado ? (
             <Aviso tom="atencao">
@@ -257,7 +277,7 @@ export function AgendaDoDiaPage() {
             </Aviso>
           ))}
           {semCalendario.length && !profissional ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">
               Sem calendário ligado: {semCalendario.map((s) => `${s.nome} (${s.funcao})`).join(", ")} — a agenda {semCalendario.length === 1 ? "dela" : "deles"} ainda não aparece aqui.
             </p>
           ) : null}
@@ -266,8 +286,8 @@ export function AgendaDoDiaPage() {
 
           {/* O dia */}
           {!carregando && !erro && grupos.length === 0 ? (
-            <Card>
-              <CardContent className="p-6 text-center text-sm text-muted-foreground">
+            <BlocoSaber>
+              <p className="text-sm font-medium leading-6 text-tinta-2">
                 {profissionalSemCalendario ? (
                   <>
                     A agenda de {profissionalSemCalendario.nome} ainda não chega ao app: falta ligar o calendário dela no Google (quem liga é o Lucas, em Administração → Integrações). Até lá, confira no iClinic.
@@ -277,64 +297,64 @@ export function AgendaDoDiaPage() {
                     Nenhuma consulta {profissional ? `de ${nomeDoProfissional(profissional)} ` : ""}neste dia no espelho. Se no iClinic tem consulta, toque em “Buscar agora no iClinic”. Se continuar vazio, o calendário desse profissional pode ter parado — veja os avisos acima e confira no iClinic.
                   </>
                 )}
-              </CardContent>
-            </Card>
+              </p>
+            </BlocoSaber>
           ) : null}
 
           {grupos.map((grupo) => {
             const resumo = resumirItens(grupo.itens);
+            const idGrupo = `agenda-${grupo.chave.replace(/[^a-z0-9]+/gi, "-")}`;
             return (
-              <Card key={grupo.chave} className="border-brand-oliva/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lg">
+              <BlocoFolha key={grupo.chave} as="section" aria-labelledby={idGrupo} className="overflow-hidden">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pb-3 pt-5">
+                  <h2 id={idGrupo} className="text-base font-bold leading-6 text-tinta">
                     {grupo.itens[0]?.profissional ?? nomeDoProfissional(grupo.chave)}
-                    <span className="text-sm font-normal text-muted-foreground">
-                      {resumo.consultas} {resumo.consultas === 1 ? "consulta" : "consultas"} · {resumo.novas} {resumo.novas === 1 ? "nova" : "novas"} · {resumo.vagas} {resumo.vagas === 1 ? "vaga livre" : "vagas livres"}
-                      {resumo.desmarcadas ? ` · ${resumo.desmarcadas} desmarcada${resumo.desmarcadas > 1 ? "s" : ""}` : ""}
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2">
+                  </h2>
+                  <span className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                    {resumo.consultas} {resumo.consultas === 1 ? "consulta" : "consultas"} · {resumo.novas} {resumo.novas === 1 ? "nova" : "novas"} · {resumo.vagas} {resumo.vagas === 1 ? "vaga livre" : "vagas livres"}
+                    {resumo.desmarcadas ? ` · ${resumo.desmarcadas} desmarcada${resumo.desmarcadas > 1 ? "s" : ""}` : ""}
+                  </span>
+                </div>
+                <ul>
                   {grupo.itens.map((item) => (
                     <LinhaDaAgenda key={item.id} item={item} podeEditar={podeEditar} salvando={marcar.isPending} aoMarcar={(mudanca) => marcar.mutate({ item, ...mudanca })} />
                   ))}
-                </CardContent>
-              </Card>
+                </ul>
+              </BlocoFolha>
             );
           })}
 
           {/* A semana do relatório do médico */}
-          <Card className="border-brand-musgo/25">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                Semana do relatório
-                <InfoTip title="Como esta conta é feita">
-                  A semana vai de sexta a quinta, igual ao check-in semanal. Contam só as consultas de paciente até hoje; desmarcadas no iClinic, vagas e bloqueios ficam de fora. “Sem registro” é consulta que já passou e ninguém marcou Veio nem Faltou — marque para o relatório do médico sair certo.
-                </InfoTip>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-brand-tinta">
-              <p>{semanaResumo.frase}</p>
-              {!profissional ? <p className="mt-1 text-xs text-muted-foreground">Escolha outro profissional acima para ver a semana dele.</p> : null}
-            </CardContent>
-          </Card>
-        </>
+          <BlocoSaber as="section" aria-labelledby="agenda-semana">
+            <h2 id="agenda-semana" className="flex items-center gap-1 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+              Semana do relatório
+              <InfoTip title="Como esta conta é feita">
+                A semana vai de sexta a quinta, igual ao check-in semanal. Contam só as consultas de paciente até hoje; desmarcadas no iClinic, vagas e bloqueios ficam de fora. “Sem registro” é consulta que já passou e ninguém marcou Veio nem Faltou — marque para o relatório do médico sair certo.
+              </InfoTip>
+            </h2>
+            <p className="mt-2 text-sm font-medium leading-6 text-tinta">{semanaResumo.frase}</p>
+            {!profissional ? <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">Escolha outro profissional acima para ver a semana dele.</p> : null}
+          </BlocoSaber>
+        </div>
       )}
+      </div>
     </div>
   );
 }
 
 function Aviso({ tom, children }: { tom: "info" | "atencao" | "erro"; children: React.ReactNode }) {
+  const Icone = tom === "info" ? Info : AlertTriangle;
   return (
     <div
+      role={tom === "erro" ? "alert" : undefined}
       className={cn(
-        "flex items-start gap-2 rounded-lg border px-4 py-3 text-sm font-semibold",
-        tom === "atencao" && "border-amber-300 bg-amber-50/80 text-amber-950",
-        tom === "erro" && "border-rose-300 bg-rose-50/80 text-rose-900",
-        tom === "info" && "border-brand-oliva/25 bg-white/60 text-brand-tinta",
+        "flex items-start gap-2 rounded-bloco px-4 py-3 text-sm font-semibold leading-5",
+        tom === "atencao" && "bg-atencao-claro text-atencao",
+        tom === "erro" && "bg-erro-claro text-erro",
+        tom === "info" && "bg-saber text-tinta",
       )}
     >
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <Icone className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
       <span>{children}</span>
     </div>
   );
@@ -352,57 +372,62 @@ function LinhaDaAgenda({
   aoMarcar: (mudanca: { presenca?: "VEIO" | "FALTOU" | null; primeiraConsulta?: boolean | null }) => void;
 }) {
   const horario = (
-    <span className="w-24 shrink-0 font-mono text-sm tabular-nums text-brand-musgo">
+    <span className="w-[6.5rem] shrink-0 whitespace-nowrap text-sm font-bold leading-6 tabular-nums text-tinta">
       {item.horario}
-      <span className="text-muted-foreground">–{item.fimHorario}</span>
+      <span className="font-medium text-tinta-2">–{item.fimHorario}</span>
     </span>
   );
 
   if (item.tipo === "VAGA") {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-dashed border-brand-oliva/35 bg-white/40 px-3 py-2 text-sm text-muted-foreground">
+      <li className="flex flex-wrap items-center gap-x-3 border-t border-dashed border-fio-2 px-4 py-2.5 text-sm text-tinta-2">
         {horario}
         <span className="font-semibold">Vaga livre</span>
-        <span className="text-xs">(“AGENDAR CONSULTA” no iClinic)</span>
-      </div>
+        <span className="text-[13px]">(“AGENDAR CONSULTA” no iClinic)</span>
+      </li>
     );
   }
 
   if (item.tipo === "BLOQUEIO") {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-brand-oliva/10 bg-white/30 px-3 py-2 text-sm text-muted-foreground">
+      <li className="flex items-center gap-3 border-t border-fio px-4 py-2.5 text-sm text-tinta-2">
         {horario}
         <CircleSlash className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate">{item.nome}</span>
-        <span className="text-xs">(não é paciente)</span>
-      </div>
+        <span className="text-[13px]">(não é paciente)</span>
+      </li>
     );
   }
 
   const primeira = item.novidade.novo === true;
   return (
-    <div className={cn("rounded-xl border px-3 py-2.5", item.cancelada ? "border-brand-oliva/10 bg-white/30 opacity-70" : "border-brand-oliva/15 bg-white/75")}>
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+    <li className={cn("border-t border-fio px-4 py-3", item.cancelada && "bg-papel")}>
+      {/* Grade: horário · paciente · Veio/Faltou. No celular os botões descem para baixo do nome. */}
+      <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2 md:grid-cols-[6.5rem_minmax(0,1fr)_auto]">
         {horario}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {item.ficha.status === "FICHA" ? (
-              <Link to={`/crm/contatos/${item.ficha.contatoId}`} className={cn("font-semibold text-brand-tinta hover:underline", item.cancelada && "line-through")}>
+              <Link
+                to={`/crm/contatos/${item.ficha.contatoId}`}
+                className={cn("text-sm font-bold leading-6 text-tinta underline-offset-[3px] hover:underline", item.cancelada && "text-tinta-2 line-through")}
+              >
                 {item.nome}
               </Link>
             ) : (
-              <span className={cn("font-semibold text-brand-tinta", item.cancelada && "line-through")}>{item.nome}</span>
+              <span className={cn("text-sm font-bold leading-6 text-tinta", item.cancelada && "text-tinta-2 line-through")}>{item.nome}</span>
             )}
             {primeira ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-900">
+              <span className="inline-flex h-6 items-center gap-1.5 rounded-controle bg-saber px-2 text-xs font-bold leading-5 text-tinta">
+                {/* A cor verde-água é a da Primeira consulta no iClinic: a mesma marca que a recepção vê lá. */}
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_PRIMEIRA_CONSULTA }} aria-hidden="true" />
                 Primeira consulta
-                {item.novidade.fonte === "recepcao" ? <span className="font-normal">(marcado pela recepção)</span> : null}
+                {item.novidade.fonte === "recepcao" ? <span className="font-medium text-tinta-2">(marcado pela recepção)</span> : null}
               </span>
             ) : null}
-            {item.cancelada ? <span className="text-xs font-semibold text-rose-800">Desmarcada no iClinic</span> : null}
+            {item.cancelada ? <span className="text-xs font-bold text-erro">Desmarcada no iClinic</span> : null}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-medium leading-5 text-tinta-2">
             {item.ficha.status === "FICHA" ? (
               <span>ficha do CRM ligada</span>
             ) : item.ficha.status === "DUVIDA" ? (
@@ -417,20 +442,24 @@ function LinhaDaAgenda({
             )}
             {!item.cancelada ? <SeloConfirmacao item={item} /> : null}
             {!item.cancelada && item.novidade.novo === null && podeEditar ? (
-              <button type="button" className="font-semibold text-brand-musgo underline-offset-2 hover:underline disabled:opacity-50" disabled={salvando} onClick={() => aoMarcar({ primeiraConsulta: true })}>
+              <button type="button" className="text-left font-bold text-musgo underline-offset-[3px] hover:underline disabled:opacity-60" disabled={salvando} onClick={() => aoMarcar({ primeiraConsulta: true })}>
                 Está verde-água no iClinic? Marcar como primeira consulta
               </button>
             ) : null}
             {item.novidade.fonte === "recepcao" && podeEditar && !item.cancelada ? (
-              <button type="button" className="underline-offset-2 hover:underline disabled:opacity-50" disabled={salvando} onClick={() => aoMarcar({ primeiraConsulta: null })}>
+              <button type="button" className="text-left font-semibold underline-offset-[3px] hover:underline disabled:opacity-60" disabled={salvando} onClick={() => aoMarcar({ primeiraConsulta: null })}>
                 desfazer primeira consulta
               </button>
             ) : null}
           </div>
         </div>
-        {!item.cancelada ? <BotoesDePresenca item={item} podeEditar={podeEditar} salvando={salvando} aoMarcar={aoMarcar} /> : null}
+        {!item.cancelada ? (
+          <div className="col-start-2 md:col-start-auto">
+            <BotoesDePresenca item={item} podeEditar={podeEditar} salvando={salvando} aoMarcar={aoMarcar} />
+          </div>
+        ) : null}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -439,10 +468,10 @@ function SeloConfirmacao({ item }: { item: ItemDaAgenda }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold",
-        chave === "CONFIRMOU" && "border-emerald-300 bg-emerald-50 text-emerald-900",
-        chave === "REMARCAR" && "border-amber-300 bg-amber-50 text-amber-900",
-        chave === "SEM_RESPOSTA" && "border-brand-oliva/20 bg-white/50 text-muted-foreground",
+        "font-bold",
+        chave === "CONFIRMOU" && "text-ok",
+        chave === "REMARCAR" && "text-atencao",
+        chave === "SEM_RESPOSTA" && "font-medium text-tinta-2",
       )}
     >
       {rotulo}
@@ -463,24 +492,28 @@ function BotoesDePresenca({
   aoMarcar: (mudanca: { presenca?: "VEIO" | "FALTOU" | null }) => void;
 }) {
   if (!item.podeMarcarPresenca) {
-    return <span className="self-center text-xs text-muted-foreground">Veio/Faltou abre no dia</span>;
+    return <span className="inline-block pt-0.5 text-[13px] font-medium text-tinta-2">Veio/Faltou abre no dia</span>;
   }
   if (!podeEditar) {
-    return <span className="self-center text-xs font-semibold text-muted-foreground">{item.presenca === "VEIO" ? "Veio" : item.presenca === "FALTOU" ? "Faltou" : "Sem registro"}</span>;
+    return (
+      <span className={cn("inline-block pt-0.5 text-[13px] font-bold", item.presenca === "VEIO" ? "text-ok" : item.presenca === "FALTOU" ? "text-erro" : "text-tinta-2")}>
+        {item.presenca === "VEIO" ? "Veio" : item.presenca === "FALTOU" ? "Faltou" : "Sem registro"}
+      </span>
+    );
   }
   const alternar = (valor: "VEIO" | "FALTOU") => aoMarcar({ presenca: item.presenca === valor ? null : valor });
+  const BASE =
+    "inline-flex h-8 items-center gap-1.5 rounded-controle border px-3 text-[13px] font-bold leading-5 transition-colors disabled:cursor-progress disabled:opacity-70 " +
+    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco max-md:h-11";
   return (
-    <div className="flex items-center gap-1.5" role="group" aria-label={`Presença de ${item.nome}`}>
+    <div className="flex items-center gap-2" role="group" aria-label={`Presença de ${item.nome}`}>
       <button
         type="button"
         disabled={salvando}
         aria-pressed={item.presenca === "VEIO"}
         onClick={() => alternar("VEIO")}
         title={item.presenca === "VEIO" && item.presencaPor ? `Marcado por ${item.presencaPor}` : undefined}
-        className={cn(
-          "inline-flex h-9 items-center gap-1 rounded-full border px-3 text-sm font-semibold transition disabled:opacity-60",
-          item.presenca === "VEIO" ? "border-emerald-600 bg-emerald-600 text-white" : "border-emerald-300 bg-white/70 text-emerald-800 hover:bg-emerald-50",
-        )}
+        className={cn(BASE, item.presenca === "VEIO" ? "border-ok bg-ok text-folha" : "border-fio-2 bg-folha text-tinta hover:border-ok hover:bg-ok-claro")}
       >
         <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Veio
       </button>
@@ -490,10 +523,7 @@ function BotoesDePresenca({
         aria-pressed={item.presenca === "FALTOU"}
         onClick={() => alternar("FALTOU")}
         title={item.presenca === "FALTOU" && item.presencaPor ? `Marcado por ${item.presencaPor}` : undefined}
-        className={cn(
-          "inline-flex h-9 items-center gap-1 rounded-full border px-3 text-sm font-semibold transition disabled:opacity-60",
-          item.presenca === "FALTOU" ? "border-rose-600 bg-rose-600 text-white" : "border-rose-300 bg-white/70 text-rose-800 hover:bg-rose-50",
-        )}
+        className={cn(BASE, item.presenca === "FALTOU" ? "border-erro bg-erro text-folha" : "border-fio-2 bg-folha text-tinta hover:border-erro hover:bg-erro-claro")}
       >
         {item.presenca === "FALTOU" ? <UserRoundX className="h-4 w-4" aria-hidden="true" /> : <XCircle className="h-4 w-4" aria-hidden="true" />} Faltou
       </button>

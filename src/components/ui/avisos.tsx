@@ -6,9 +6,19 @@
 //  · perguntar(): o mesmo diálogo com um campo de texto (o antigo prompt).
 // Tudo sem dependência nova: um único <Avisos /> montado no layout escuta uma
 // fila global, então qualquer motor/tela chama as funções direto.
+//
+// NO CORPO DA PÁGINA (revisão de 08/10/2026): o <Avisos /> mora dentro da casca,
+// que é um contexto de empilhamento próprio (`isolate`). As gavetas, janelas e a
+// tela cheia do Comercial vão para o <body> (NoCorpo, z 70–75) — e a confirmação
+// "Excluir … de vez?" ficava ATRÁS da gaveta, sem dar para clicar. Agora os
+// avisos e o diálogo também vão para o <body>, em z 90, acima de qualquer
+// gaveta; e saem da regra da casca do celular que limitava a largura de
+// `.rounded-xl`. Forma Papel & Musgo: folha com fio, véu chapado, sem vidro.
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { botaoClasses } from "./botao";
 
 type Tom = "ok" | "info" | "atencao" | "erro";
 type Toast = { id: number; texto: string; tom: Tom; acao?: { rotulo: string; onClick: () => void }; duracao: number };
@@ -98,11 +108,25 @@ export function avisar(texto: string, tom: Tom = "info") {
 }
 
 const icone: Record<Tom, ReactNode> = {
-  ok: <CheckCircle2 className="h-4 w-4 text-emerald-700" aria-hidden="true" />,
-  info: <Info className="h-4 w-4 text-brand-musgo" aria-hidden="true" />,
-  atencao: <TriangleAlert className="h-4 w-4 text-amber-700" aria-hidden="true" />,
-  erro: <TriangleAlert className="h-4 w-4 text-red-700" aria-hidden="true" />,
+  ok: <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" aria-hidden="true" />,
+  info: <Info className="h-4 w-4 shrink-0 text-musgo" aria-hidden="true" />,
+  atencao: <TriangleAlert className="h-4 w-4 shrink-0 text-atencao" aria-hidden="true" />,
+  erro: <TriangleAlert className="h-4 w-4 shrink-0 text-erro" aria-hidden="true" />,
 };
+
+/** A borda do aviso diz o tom junto com o ícone (nunca só a cor). */
+const bordaDoTom: Record<Tom, string> = {
+  ok: "border-ok/40",
+  info: "border-fio-2",
+  atencao: "border-atencao/50",
+  erro: "border-erro/50",
+};
+
+/** No corpo da página, fora da casca (ver o topo do arquivo). */
+function NoCorpoDaPagina({ children }: { children: ReactNode }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(children, document.body);
+}
 
 export function Avisos() {
   const [estado, setEstado] = useState<{ toasts: Toast[]; dialogo: Dialogo | null }>({ toasts: [], dialogo: null });
@@ -114,26 +138,26 @@ export function Avisos() {
     };
   }, []);
   return (
-    <>
+    <NoCorpoDaPagina>
       {/* Revisão de 08/10/2026: abaixo de 768 px a barra de baixo do celular (64 px,
           mais a área segura) está na tela; o aviso fica ACIMA dela. Antes, de 640 a
           767 px ele descia para 24 px e caía em cima da barra. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(80px+env(safe-area-inset-bottom))] z-[70] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6 md:bottom-6" aria-live="polite" aria-atomic="false">
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(80px+env(safe-area-inset-bottom))] z-[90] flex flex-col items-center gap-2 px-4 font-sans sm:items-end sm:px-6 md:bottom-6" aria-live="polite" aria-atomic="false">
         {estado.toasts.map((t) => (
           <div
             key={t.id}
             className={cn(
-              "pointer-events-auto flex max-w-md items-center gap-2 rounded-lg border bg-white/95 px-3 py-2 text-sm text-brand-tinta shadow-calm backdrop-blur",
-              t.tom === "erro" ? "border-red-200" : t.tom === "atencao" ? "border-amber-300" : t.tom === "ok" ? "border-emerald-200" : "border-brand-oliva/25",
+              "pointer-events-auto flex w-full max-w-md items-center gap-2 rounded-bloco border bg-folha px-3 py-2 text-sm font-medium leading-5 text-tinta shadow-flutua",
+              bordaDoTom[t.tom],
             )}
             role="status"
           >
             {icone[t.tom]}
-            <span className="flex-1">{t.texto}</span>
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{t.texto}</span>
             {t.acao ? (
               <button
                 type="button"
-                className="rounded-md border border-brand-oliva/30 px-2 py-0.5 text-xs font-semibold text-brand-musgo hover:bg-brand-creme/60"
+                className="inline-flex h-8 shrink-0 items-center rounded-controle border border-fio-2 bg-folha px-3 text-[13px] font-bold text-musgo hover:bg-saber focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
                 onClick={() => {
                   t.acao?.onClick();
                   toasts = toasts.filter((x) => x.id !== t.id);
@@ -146,19 +170,19 @@ export function Avisos() {
             <button
               type="button"
               aria-label="Fechar aviso"
-              className="rounded p-0.5 text-muted-foreground hover:text-brand-tinta"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-controle text-tinta-2 hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
               onClick={() => {
                 toasts = toasts.filter((x) => x.id !== t.id);
                 notificar();
               }}
             >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         ))}
       </div>
       {estado.dialogo ? <Dialogo dialogo={estado.dialogo} /> : null}
-    </>
+    </NoCorpoDaPagina>
   );
 }
 
@@ -195,14 +219,14 @@ function Dialogo({ dialogo }: { dialogo: Dialogo }) {
   }, [dialogo.id, valor]);
 
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center bg-brand-tinta/40 p-4 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) fechar(null); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby={`dialogo-${dialogo.id}`} className="w-full max-w-md rounded-xl border border-brand-oliva/25 bg-brand-papel p-5 shadow-calm">
-        <h2 id={`dialogo-${dialogo.id}`} className="text-lg font-bold text-brand-musgo">
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-[var(--veu)] p-4 font-sans" onMouseDown={(event) => { if (event.target === event.currentTarget) fechar(null); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby={`dialogo-${dialogo.id}`} className="w-full max-w-md rounded-painel border border-fio bg-folha p-6 text-tinta shadow-flutua max-md:p-5">
+        <h2 id={`dialogo-${dialogo.id}`} className="text-xl font-bold leading-7 text-tinta [text-wrap:balance]">
           {dialogo.titulo}
         </h2>
-        {dialogo.corpo ? <div className="mt-2 text-sm text-brand-tinta">{dialogo.corpo}</div> : null}
+        {dialogo.corpo ? <div className="mt-2 text-sm font-medium leading-[22px] text-tinta-2">{dialogo.corpo}</div> : null}
         {dialogo.campo ? (
-          <label className="mt-3 block text-xs font-semibold text-brand-oliva">
+          <label className="mt-4 block text-[13px] font-bold leading-5 text-tinta">
             {dialogo.campo.rotulo}
             {dialogo.campo.multilinha ? (
               <textarea
@@ -211,7 +235,7 @@ function Dialogo({ dialogo }: { dialogo: Dialogo }) {
                 onChange={(e) => setValor(e.target.value)}
                 placeholder={dialogo.campo.placeholder}
                 rows={3}
-                className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-sm font-normal text-brand-tinta"
+                className="mt-1 w-full rounded-controle border border-borda-campo bg-folha px-3 py-2 text-sm font-medium text-tinta placeholder:text-tinta-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foco"
               />
             ) : (
               <input
@@ -219,20 +243,21 @@ function Dialogo({ dialogo }: { dialogo: Dialogo }) {
                 value={valor}
                 onChange={(e) => setValor(e.target.value)}
                 placeholder={dialogo.campo.placeholder}
-                className="mt-1 h-10 w-full rounded-md border border-input bg-white px-3 text-sm font-normal text-brand-tinta"
+                className="mt-1 h-10 w-full rounded-controle border border-borda-campo bg-folha px-3 text-sm font-medium text-tinta placeholder:text-tinta-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foco"
               />
             )}
           </label>
         ) : null}
-        <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={() => fechar(null)} className="inline-flex h-9 items-center rounded-md border border-brand-oliva/40 bg-white px-3 text-sm font-semibold text-brand-tinta">
+        {/* A decisão na ponta direita; Cancelar antes dela (como a BarraDecisao). */}
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => fechar(null)} className={botaoClasses({ variante: "fantasma" })}>
             {dialogo.cancelar}
           </button>
           <button
             ref={dialogo.campo ? undefined : (primeiroRef as React.RefObject<HTMLButtonElement>)}
             type="button"
             onClick={() => fechar(dialogo.campo ? valor : "ok")}
-            className={cn("inline-flex h-9 items-center rounded-md px-3 text-sm font-semibold text-white", dialogo.destrutivo ? "bg-red-700 hover:bg-red-800" : "bg-brand-musgo hover:bg-brand-musgo/90")}
+            className={botaoClasses({ variante: dialogo.destrutivo ? "perigo-cheio" : "primario" })}
           >
             {dialogo.confirmar}
           </button>

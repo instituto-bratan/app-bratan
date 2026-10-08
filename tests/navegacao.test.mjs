@@ -613,8 +613,8 @@ test("ações rápidas do ⌘K e do Novo: só as que a pessoa pode abrir, nas ro
   assert.deepEqual(plain(nav.acoesRapidas(pessoa("recepcionista")).map((acao) => acao.id)), ["novo-pedido", "lancar-dia"]);
   assert.deepEqual(plain(nav.acoesRapidas(pessoa("enfermeira")).map((acao) => acao.id)), ["novo-pedido"]);
   const conta = nav.ACOES_RAPIDAS.find((acao) => acao.id === "nova-conta");
-  assert.equal(nav.hrefDaAcao(conta, 1250), "/financeiro/contas?valor=1250.00");
-  assert.equal(nav.hrefDaAcao(conta), "/financeiro/contas");
+  assert.equal(nav.hrefDaAcao(conta, 1250), "/financeiro/contas?novo=1&valor=1250.00");
+  assert.equal(nav.hrefDaAcao(conta), "/financeiro/contas?novo=1", "a ação abre o formulário de conta nova (revisão de 08/10/2026)");
   assert.equal(nav.hrefDaAcao(nav.ACOES_RAPIDAS[0], 10), "/compras?novo=1", "pedido não leva valor");
   for (const acao of nav.ACOES_RAPIDAS) {
     assert.ok(rotaNoMapa(acao.href.split("?")[0]), `${acao.rotulo} aponta para rota fora do mapa`);

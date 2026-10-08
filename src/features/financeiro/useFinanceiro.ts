@@ -249,7 +249,11 @@ export function useFinanceiro(year = new Date().getFullYear(), opcoes: { comAnoA
     if (partnerEntriesQuery.data) setPartnerEntries(partnerEntriesQuery.data);
   }, [partnerEntriesQuery.data]);
 
-  const invalidate = (key: string) => void queryClient.invalidateQueries({ queryKey: [key, year] });
+  // As CONTAS invalidam todos os anos (revisão de 08/10/2026): a fila do dia, a
+  // casca e o Início leem as contas pelos anos da janela de hoje (useContasDaFila),
+  // que nem sempre é o ano desta tela — em janeiro, a baixa de uma conta de
+  // dezembro precisa chegar ao contador do Início.
+  const invalidate = (key: string) => void queryClient.invalidateQueries({ queryKey: key === "fin-expenses" ? [key] : [key, year] });
 
   const purchasesQuery = useQuery({
     queryKey: ["fin-purchases", year],

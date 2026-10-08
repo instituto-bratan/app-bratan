@@ -13,12 +13,15 @@
 // fixo, sem conta paga e sem categoria da P12; agora a forma de pagamento, a
 // categoria e a conta paga do à vista saem daqui, iguais às do pedido. Só muda
 // o que vem preenchido (de onde a compra nasce) e a frase sobre o estoque.
+//
+// 08/10/2026 (redesenho Papel & Musgo): os mesmos campos e a mesma regra, na
+// forma nova — campos com contorno de 3:1, "Como pagou" em botões de escolha
+// com o musgo da ação, e o aviso do P12 numa faixa neutra (o azul era do selo
+// "a caminho" e não pode virar cor de aviso).
 import { useMemo, useState, type FormEvent } from "react";
 import { Info, ShoppingCart } from "lucide-react";
 import { toast } from "@/components/ui/avisos";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Botao } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -45,6 +48,7 @@ import {
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { nomeDoSetor, numeroDoPedido, podeComprar, resumoDoPedido, textoDoItem, type PedidoCompra } from "./comprasData";
 import { Gaveta } from "./Gaveta";
+import { Campo, CampoSelecao, CampoTexto, Recado, classeDoRotulo } from "./pecas";
 import { compraDoPedido, podeRegistrarCompraDoPedido } from "./pedidoTela";
 
 export type CompraRegistrada = { compraRef: string; fornecedor: string; valorFinal: number | null; previsaoEntrega: string | null };
@@ -101,6 +105,7 @@ export function RegistrarCompraGaveta({
     <Gaveta
       aberta={Boolean(pedido)}
       onFechar={onFechar}
+      sobrancelha={pedido ? `Pedido ${numeroDoPedido(pedido.numero)} · aprovado` : null}
       titulo={pedido ? `Registrar a compra do pedido ${numeroDoPedido(pedido.numero)}` : "Registrar compra"}
       subtitulo={pedido ? `${nomeDoSetor(pedido.setor)} · ${resumoDoPedido(pedido)}` : null}
       rodape={<BotaoDeRegistrar formId={FORM_ID} salvando={salvando} />}
@@ -163,6 +168,7 @@ export function JaCompreiGaveta({
     <Gaveta
       aberta={Boolean(item)}
       onFechar={onFechar}
+      sobrancelha="Estoque · compra sem pedido"
       titulo={item ? `Já comprei: ${item.nome}` : "Já comprei"}
       subtitulo={item ? `Estoque de ${setorNomes[item.setor]} · a compra entra no Financeiro` : null}
       rodape={<BotaoDeRegistrar formId={FORM_ID_ESTOQUE} salvando={salvando} />}
@@ -184,10 +190,17 @@ export function JaCompreiGaveta({
 
 function BotaoDeRegistrar({ formId, salvando }: { formId: string; salvando: boolean }) {
   return (
-    <Button type="submit" form={formId} disabled={salvando} className="h-12 w-full sm:h-11">
-      <ShoppingCart className="mr-2 h-4 w-4" aria-hidden="true" />
+    <Botao
+      type="submit"
+      form={formId}
+      variante="primario"
+      bloco
+      carregando={salvando}
+      icone={<ShoppingCart className="h-4 w-4" aria-hidden="true" />}
+      className="h-11 max-sm:h-[52px] max-sm:text-base"
+    >
       {salvando ? "Gravando…" : "Registrar compra"}
-    </Button>
+    </Botao>
   );
 }
 
@@ -265,11 +278,11 @@ function CorpoDaCompra({
   }
 
   return (
-    <form id={formId} onSubmit={registrar} className="grid gap-5" noValidate>
+    <form id={formId} onSubmit={registrar} className="grid gap-5 font-sans" noValidate>
       {origem.linhas.length ? (
-        <ul className="divide-y divide-brand-oliva/10 rounded-lg border border-brand-oliva/12 bg-white/60 text-sm">
+        <ul className="rounded-bloco bg-saber text-sm font-medium text-tinta">
           {origem.linhas.map((linha) => (
-            <li key={linha.chave} className="px-3 py-2 text-brand-tinta [overflow-wrap:anywhere]">
+            <li key={linha.chave} className="border-t border-fio px-3 py-2 first:border-t-0 [overflow-wrap:anywhere]">
               {linha.texto}
             </li>
           ))}
@@ -277,22 +290,26 @@ function CorpoDaCompra({
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="grid gap-2 sm:col-span-2">
-          <Label htmlFor={`${formId}-fornecedor`}>Fornecedor</Label>
-          <Input id={`${formId}-fornecedor`} value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Ex.: Stin, Mercado Livre, Kalunga" />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`${formId}-valor`}>Valor final (R$)</Label>
-          <Input id={`${formId}-valor`} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="Ex.: 486,00" className="text-lg font-semibold tabular-nums" />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`${formId}-data`}>Data da compra</Label>
-          <Input id={`${formId}-data`} type="date" value={purchaseDate} onChange={(event) => setPurchaseDate(event.target.value)} />
-        </div>
+        <Campo id={`${formId}-fornecedor`} rotulo="Fornecedor" className="sm:col-span-2">
+          <CampoTexto id={`${formId}-fornecedor`} value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Ex.: Stin, Mercado Livre, Kalunga" />
+        </Campo>
+        <Campo id={`${formId}-valor`} rotulo="Valor final (R$)">
+          <CampoTexto
+            id={`${formId}-valor`}
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            inputMode="decimal"
+            placeholder="Ex.: 486,00"
+            className="text-base font-bold tabular-nums"
+          />
+        </Campo>
+        <Campo id={`${formId}-data`} rotulo="Data da compra">
+          <CampoTexto id={`${formId}-data`} type="date" value={purchaseDate} onChange={(event) => setPurchaseDate(event.target.value)} />
+        </Campo>
       </div>
 
       <fieldset className="grid gap-2">
-        <legend className="mb-1 text-sm font-medium text-brand-tinta">Como pagou</legend>
+        <legend className={cn(classeDoRotulo, "mb-2")}>Como pagou</legend>
         <div className="flex flex-wrap gap-2">
           {FORMAS_DE_COMPRA.map((forma) => (
             <button
@@ -301,8 +318,8 @@ function CorpoDaCompra({
               aria-pressed={method === forma}
               onClick={() => setMethod(forma)}
               className={cn(
-                "min-h-11 rounded-full border px-4 text-sm font-medium transition-colors",
-                method === forma ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-brand-creme/60",
+                "min-h-10 rounded-controle border px-4 text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco max-md:min-h-11",
+                method === forma ? "border-musgo bg-musgo text-sobre-musgo" : "border-fio-2 bg-folha text-tinta hover:border-borda-campo hover:bg-papel",
               )}
             >
               {paymentMethodLabels[forma]}
@@ -313,37 +330,24 @@ function CorpoDaCompra({
 
       {ehCartao ? (
         <div className="grid grid-cols-2 gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor={`${formId}-cartao`}>Cartão</Label>
-            <select
-              id={`${formId}-cartao`}
-              value={card}
-              onChange={(event) => setCard(event.target.value as FinPurchaseCard)}
-              className="h-12 w-full rounded-md border border-input bg-white/80 px-3 text-base sm:h-11 sm:text-sm"
-            >
+          <Campo id={`${formId}-cartao`} rotulo="Cartão">
+            <CampoSelecao id={`${formId}-cartao`} value={card} onChange={(event) => setCard(event.target.value as FinPurchaseCard)}>
               {(Object.keys(purchaseCardLabels) as FinPurchaseCard[]).map((opcao) => (
                 <option key={opcao} value={opcao}>
                   {purchaseCardLabels[opcao]}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor={`${formId}-parcelas`}>Parcelas</Label>
-            <Input id={`${formId}-parcelas`} value={installments} onChange={(event) => setInstallments(event.target.value)} inputMode="numeric" className="tabular-nums" />
-          </div>
+            </CampoSelecao>
+          </Campo>
+          <Campo id={`${formId}-parcelas`} rotulo="Parcelas">
+            <CampoTexto id={`${formId}-parcelas`} value={installments} onChange={(event) => setInstallments(event.target.value)} inputMode="numeric" className="tabular-nums" />
+          </Campo>
         </div>
       ) : null}
 
       {aVista ? (
-        <div className="grid gap-2">
-          <Label htmlFor={`${formId}-categoria`}>Categoria da P12 (obrigatória no à vista)</Label>
-          <select
-            id={`${formId}-categoria`}
-            value={categoryRef}
-            onChange={(event) => setCategoryRef(event.target.value)}
-            className="h-12 w-full rounded-md border border-input bg-white/80 px-3 text-base sm:h-11 sm:text-sm"
-          >
+        <Campo id={`${formId}-categoria`} rotulo="Categoria da P12 (obrigatória no à vista)">
+          <CampoSelecao id={`${formId}-categoria`} value={categoryRef} onChange={(event) => setCategoryRef(event.target.value)}>
             <option value="">Escolha a categoria…</option>
             {categoriasPorGrupo.map((grupo) => (
               <optgroup key={grupo.grupo} label={finGroupLabels[grupo.grupo]}>
@@ -355,32 +359,27 @@ function CorpoDaCompra({
                 ))}
               </optgroup>
             ))}
-          </select>
-        </div>
+          </CampoSelecao>
+        </Campo>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor={`${formId}-previsao`}>Previsão de entrega</Label>
-          <Input id={`${formId}-previsao`} type="date" value={deliveryEta} onChange={(event) => setDeliveryEta(event.target.value)} />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`${formId}-nf`}>Nota fiscal (nº ou situação)</Label>
-          <Input id={`${formId}-nf`} value={nfNote} onChange={(event) => setNfNote(event.target.value)} placeholder="Ex.: 123, pedida, sem NF" />
-        </div>
+        <Campo id={`${formId}-previsao`} rotulo="Previsão de entrega">
+          <CampoTexto id={`${formId}-previsao`} type="date" value={deliveryEta} onChange={(event) => setDeliveryEta(event.target.value)} />
+        </Campo>
+        <Campo id={`${formId}-nf`} rotulo="Nota fiscal (nº ou situação)">
+          <CampoTexto id={`${formId}-nf`} value={nfNote} onChange={(event) => setNfNote(event.target.value)} placeholder="Ex.: 123, pedida, sem NF" />
+        </Campo>
       </div>
 
-      <p className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-6 text-sky-700">
-        <Info className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
-        <span>
-          {ondeEntraNoP12(method, ehCartao ? card : null)} {origem.fraseDoEstoque}
-        </span>
-      </p>
+      <Recado tom="neutro" icone={<Info aria-hidden="true" />}>
+        {ondeEntraNoP12(method, ehCartao ? card : null)} {origem.fraseDoEstoque}
+      </Recado>
 
       {erro ? (
-        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-          {erro}
-        </p>
+        <Recado tom="erro" role="alert">
+          <strong>{erro}</strong>
+        </Recado>
       ) : null}
     </form>
   );

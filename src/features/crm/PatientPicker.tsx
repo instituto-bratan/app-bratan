@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Search, UserPlus, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { Input } from "./comercialVisual";
 import { contactDisplayName, fichasComMesmoCanal, type CrmContact } from "./crmData";
 import { ContactChannelsFields } from "./ContactChannelsFields";
 import { hasContactChannels, type ContactChannelsDraft } from "./contactChannels";
@@ -138,14 +138,14 @@ export function PatientPicker({
   return (
     <div className="relative">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tinta-2" aria-hidden="true" />
         <Input
           id={id}
           value={query}
           disabled={disabled}
           autoFocus={autoFocus}
           placeholder={placeholder}
-          className={cn("pl-9", linked && "pr-9 border-emerald-300 bg-emerald-50/40", query && "pr-9")}
+          className={cn("pl-9", linked && "pr-9 border-ok/30 bg-ok-claro", query && "pr-9")}
           onChange={(event) => handleType(event.target.value)}
           onFocus={() => setOpen(true)}
           onBlur={() => {
@@ -158,32 +158,32 @@ export function PatientPicker({
             type="button"
             tabIndex={-1}
             onClick={clear}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-brand-tinta"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-tinta-2 hover:text-tinta"
             aria-label="Limpar paciente"
           >
-            {linked ? <Check className="h-4 w-4 text-emerald-600" aria-hidden="true" /> : <X className="h-4 w-4" aria-hidden="true" />}
+            {linked ? <Check className="h-4 w-4 text-ok" aria-hidden="true" /> : <X className="h-4 w-4" aria-hidden="true" />}
           </button>
         ) : null}
       </div>
 
       {/* Estado abaixo do campo: vinculado / novo */}
       {linked ? (
-        <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-emerald-700">
+        <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-ok">
           <Check className="h-3.5 w-3.5" aria-hidden="true" /> Vinculado ao cadastro do CRM
         </p>
       ) : query.trim() && somenteVincular ? (
-        <p className="mt-1 text-xs font-semibold text-amber-800">
+        <p className="mt-1 text-xs font-semibold text-atencao">
           Escolha o paciente na lista. Se ele não aparece, a recepção cadastra no CRM primeiro.
         </p>
       ) : query.trim() ? (
-        <p className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+        <p className="mt-1 flex items-center gap-1 text-xs text-atencao">
           <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Novo paciente — será cadastrado no CRM ao salvar
           {channels && !hasContactChannels(channels) ? " (preencha o telefone abaixo)" : ""}
         </p>
       ) : null}
 
       {mesmoCanal && !disabled ? (
-        <div className={cn("mt-2 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs", mesmoCanal.outra ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50/60 text-emerald-900")}>
+        <div className={cn("mt-2 flex flex-wrap items-center gap-2 rounded-controle border px-3 py-2 text-xs", mesmoCanal.outra ? "border-atencao/40 bg-atencao-claro text-atencao" : "border-ok/30 bg-ok-claro text-ok")}>
           <span className="min-w-0 flex-1">
             {mesmoCanal.outra ? (
               <>
@@ -199,7 +199,7 @@ export function PatientPicker({
           <button
             type="button"
             onClick={() => selectContact(mesmoCanal.contato)}
-            className="shrink-0 rounded-md border border-brand-oliva/30 bg-white/70 px-2 py-1 font-semibold hover:bg-white"
+            className="shrink-0 rounded-controle border border-fio-2 bg-folha px-2 py-1 font-semibold hover:bg-saber"
           >
             {mesmoCanal.outra ? "Não, é a mesma pessoa" : "Ligar a essa ficha"}
           </button>
@@ -222,7 +222,7 @@ export function PatientPicker({
 
       {open && !disabled ? (
         <div
-          className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-brand-oliva/25 bg-white/95 p-1 shadow-lg backdrop-blur"
+          className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-bloco border border-fio-2 bg-folha p-1"
           onMouseDown={() => {
             if (blurTimer.current) window.clearTimeout(blurTimer.current);
           }}
@@ -236,23 +236,23 @@ export function PatientPicker({
                   key={contact.id}
                   type="button"
                   onClick={() => selectContact(contact)}
-                  className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-brand-creme/70"
+                  className="flex w-full items-center justify-between gap-2 rounded-controle px-3 py-2 text-left text-sm hover:bg-saber"
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold text-brand-tinta">{contactDisplayName(contact)}</span>
-                    {phone ? <span className="block truncate text-xs text-muted-foreground">{phone}</span> : null}
+                    <span className="block truncate font-semibold text-tinta">{contactDisplayName(contact)}</span>
+                    {phone ? <span className="block truncate text-xs text-tinta-2">{phone}</span> : null}
                   </span>
-                  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", isPatient ? "bg-emerald-100 text-emerald-800" : "bg-brand-creme text-brand-musgo")}>
+                  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold", isPatient ? "bg-ok-claro text-ok" : "bg-saber text-musgo")}>
                     {isPatient ? "Paciente" : "Lead"}
                   </span>
                 </button>
               );
             })
           ) : (
-            <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum paciente encontrado com esse nome/telefone.</p>
+            <p className="px-3 py-2 text-xs text-tinta-2">Nenhum paciente encontrado com esse nome/telefone.</p>
           )}
           {canCreate ? (
-            <div className="mt-1 border-t border-brand-oliva/10 px-3 py-2 text-xs text-amber-800">
+            <div className="mt-1 border-t border-fio px-3 py-2 text-xs text-atencao">
               <UserPlus className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
               <strong>“{query.trim()}”</strong> será cadastrado como novo paciente ao salvar.
             </div>

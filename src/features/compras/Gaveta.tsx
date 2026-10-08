@@ -10,6 +10,10 @@
 // Vai por PORTAL para o <body>: a troca de tela do AppLayout anima o conteúdo
 // com transform/filter, e um `position: fixed` lá dentro ficaria preso à área
 // do conteúdo (a gaveta nascia embaixo do cabeçalho, cortada).
+//
+// 08/10/2026 (redesenho Papel & Musgo): a mesma gaveta, na forma aprovada —
+// véu sem desfoque (nada de vidro), folha com borda fina, raio de painel,
+// sombra só porque flutua, título em Manrope 20 e o rodapé na folha.
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -17,6 +21,7 @@ import { X } from "lucide-react";
 
 export function Gaveta({
   aberta,
+  sobrancelha,
   titulo,
   subtitulo,
   onFechar,
@@ -24,6 +29,8 @@ export function Gaveta({
   children,
 }: {
   aberta: boolean;
+  /** Rubrica em caixa alta acima do título ("Pedido #0012 · Enfermagem"), como no painel aprovado. */
+  sobrancelha?: ReactNode;
   titulo: string;
   subtitulo?: ReactNode;
   onFechar: () => void;
@@ -72,7 +79,7 @@ export function Gaveta({
       {aberta ? (
         <motion.div
           key="fundo"
-          className="fixed inset-0 z-[65] flex items-end justify-center bg-brand-tinta/35 backdrop-blur-[2px] sm:items-stretch sm:justify-end"
+          className="fixed inset-0 z-[65] flex items-end justify-center bg-[var(--veu)] sm:items-stretch sm:justify-end"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.15 } }}
@@ -87,31 +94,32 @@ export function Gaveta({
             data-gaveta=""
             aria-labelledby={tituloId}
             tabIndex={-1}
-            className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-brand-oliva/20 bg-brand-papel shadow-[0_-24px_60px_rgba(43,46,36,0.22)] outline-none sm:max-h-none sm:w-[min(36rem,100vw)] sm:rounded-none sm:rounded-l-2xl sm:shadow-[0_0_60px_rgba(43,46,36,0.22)]"
+            className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-painel border border-fio bg-folha font-sans text-tinta shadow-flutua outline-none sm:max-h-none sm:w-[min(36rem,100vw)] sm:rounded-none sm:rounded-l-painel"
             initial={reduzir ? { opacity: 0 } : { opacity: 0, y: 32 }}
             animate={reduzir ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={reduzir ? { opacity: 0 } : { opacity: 0, y: 24, transition: { duration: 0.15 } }}
             transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
           >
-            <header className="flex items-start justify-between gap-3 border-b border-brand-oliva/15 px-4 pb-3 pt-4 sm:px-6 sm:pt-6">
+            <header className="flex items-start justify-between gap-3 border-b border-fio px-4 pb-4 pt-4 sm:px-6 sm:pt-6">
               <div className="min-w-0">
-                <h2 id={tituloId} className="text-xl font-semibold leading-tight text-brand-musgo">
+                {sobrancelha ? <p className="mb-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">{sobrancelha}</p> : null}
+                <h2 id={tituloId} className="text-xl font-bold leading-7 text-tinta [text-wrap:balance]">
                   {titulo}
                 </h2>
-                {subtitulo ? <div className="mt-1 text-sm text-muted-foreground">{subtitulo}</div> : null}
+                {subtitulo ? <div className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{subtitulo}</div> : null}
               </div>
               <button
                 type="button"
                 onClick={onFechar}
                 aria-label="Fechar"
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-brand-tinta/70 transition-colors hover:bg-brand-oliva/10 hover:text-brand-tinta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-mr-2 -mt-1 grid h-11 w-11 shrink-0 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">{children}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">{children}</div>
             {rodape ? (
-              <footer className="border-t border-brand-oliva/15 bg-brand-papel px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5">
+              <footer className="border-t border-fio bg-folha px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-6">
                 {rodape}
               </footer>
             ) : null}

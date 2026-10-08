@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CalendarRange, Check, ChevronLeft, ChevronRight, Minus, PhoneCall, Table2 } from "lucide-react";
+import { AlertTriangle, CalendarRange, Check, ChevronLeft, ChevronRight, Minus, PhoneCall } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { AvisoSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
-import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useAuth } from "@/hooks/useAuth";
 import { canCrmBratan } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
+import { BlocoFolha, Cabecalho, FraseDoFluxo } from "@/components/ui/fundacao";
+import { BOTAO_CANAL, CAMPO_PQ, GrupoDeLeituras, Leitura, NOME_LINK, RUBRICA, TH } from "./comercialVisual";
+import { contagem, maiuscula } from "./comercialFrases";
 import {
   buildCadenceSheet,
   cadenceSheetCompletion,
@@ -38,25 +39,19 @@ const tabLabels: Record<SheetTab, string> = {
   GESTOR: "Gestor Estevão",
 };
 
-// Paleta de papéis da Régua de Relacionamento — a mesma do Kanban, para a
-// equipe reconhecer o setor pela cor sem precisar ler.
-const tabTone: Record<SheetTab, { chip: string; card: string; dot: string }> = {
-  ENFERMAGEM: { chip: "bg-violet-600 text-white border-violet-600", card: "border-violet-200 bg-violet-50/50", dot: "bg-violet-500" },
-  RECEPCAO: { chip: "bg-emerald-700 text-white border-emerald-700", card: "border-emerald-200 bg-emerald-50/50", dot: "bg-emerald-600" },
-  CONCIERGE: { chip: "bg-brand-dourado text-brand-tinta border-brand-dourado", card: "border-brand-dourado/40 bg-brand-creme/40", dot: "bg-brand-dourado" },
-  VENDAS: { chip: "bg-sky-700 text-white border-sky-700", card: "border-sky-200 bg-sky-50/50", dot: "bg-sky-600" },
-  GESTOR: { chip: "bg-brand-musgo text-white border-brand-musgo", card: "border-brand-oliva/30 bg-white/70", dot: "bg-brand-musgo" },
-};
+// 08/10/2026 (Papel & Musgo): o setor deixou de ter cor própria (a cor só fala
+// de situação: atenção, erro, ok). O placar diz o setor pelo nome; o escolhido
+// ganha o contorno musgo.
 
 function shortDate(value: string | null) {
   return value ? value.split("-").reverse().slice(0, 2).join("/") : "—";
 }
 
 const dStatusTone: Record<CadenceSheetDStatus, string> = {
-  SEM_RESPOSTA: "bg-slate-100 text-slate-600",
-  SATISFEITO: "bg-emerald-100 text-emerald-800",
-  INSATISFEITO_CONCIERGE: "bg-red-100 text-red-700",
-  AGENDADO_RESOLVIDO: "bg-brand-creme text-brand-musgo",
+  SEM_RESPOSTA: "bg-saber text-tinta-2",
+  SATISFEITO: "bg-ok-claro text-ok",
+  INSATISFEITO_CONCIERGE: "bg-erro-claro text-erro",
+  AGENDADO_RESOLVIDO: "bg-saber text-musgo",
 };
 
 // Linguagem simples pedida pelo Lucas (27/07): o menu pergunta "O que
@@ -85,12 +80,12 @@ const gestorCallShort: Record<string, string> = {
 
 // Cor do resultado final — bate o olho e entende como a régua terminou.
 function resultTone(resultado: string) {
-  if (resultado.startsWith("Escalonado")) return "bg-brand-creme text-brand-musgo";
-  if (resultado.startsWith("Insatisfação")) return "bg-red-100 text-red-700";
-  if (resultado.startsWith("Resolvido") || resultado.startsWith("Concluída")) return "bg-emerald-100 text-emerald-800";
-  if (resultado.startsWith("Sem resposta") || resultado.startsWith("Encerrado")) return "bg-slate-100 text-slate-600";
-  if (resultado.startsWith("Cancelada")) return "bg-slate-100 text-slate-500";
-  return "bg-sky-50 text-sky-700";
+  if (resultado.startsWith("Escalonado")) return "bg-saber text-musgo";
+  if (resultado.startsWith("Insatisfação")) return "bg-erro-claro text-erro";
+  if (resultado.startsWith("Resolvido") || resultado.startsWith("Concluída")) return "bg-ok-claro text-ok";
+  if (resultado.startsWith("Sem resposta") || resultado.startsWith("Encerrado")) return "bg-saber text-tinta-2";
+  if (resultado.startsWith("Cancelada")) return "bg-saber text-tinta-2";
+  return "bg-saber text-tinta";
 }
 
 // ————————————————————————————————————————————————————————————————
@@ -233,7 +228,7 @@ export function CrmPlanilhaCadenciasPage() {
         placeholder="Anotar..."
         onChange={(event) => setNotesDraft((prev) => ({ ...prev, [enrollmentId]: event.target.value }))}
         onBlur={() => saveNotes(enrollmentId, saved)}
-        className="w-full rounded-md border border-brand-oliva/20 bg-white/80 px-2 py-1.5 text-xs transition focus:border-brand-dourado focus:outline-none focus:ring-1 focus:ring-brand-dourado/40"
+        className={cn(CAMPO_PQ, "border-transparent bg-transparent hover:border-fio-2 focus-visible:bg-folha")}
       />
     );
   }
@@ -246,7 +241,7 @@ export function CrmPlanilhaCadenciasPage() {
       return (
         <td key={index} className="px-1.5 py-1.5">
           <div className={wrapper}>
-            <Minus className="h-3 w-3 text-muted-foreground/40" aria-hidden="true" />
+            <Minus className="h-3 w-3 text-tinta-2" aria-hidden="true" />
           </div>
         </td>
       );
@@ -256,14 +251,14 @@ export function CrmPlanilhaCadenciasPage() {
       return (
         <td key={cell.stepId} className="px-1.5 py-1.5">
           <div className={wrapper}>
-            <span className="text-[10px] font-medium uppercase tracking-wide text-brand-oliva">{shortDate(cell.date)}</span>
+            <span className="text-xs font-semibold tabular-nums text-tinta-2">{shortDate(cell.date)}</span>
             <select
               defaultValue=""
               disabled={semEdicao}
               onChange={(event) => {
                 if (event.target.value) registerD(taskId, event.target.value as CadenceSheetDStatus);
               }}
-              className="w-full cursor-pointer rounded-md border border-brand-dourado/60 bg-brand-creme/60 px-1 py-1 text-[11px] font-semibold text-brand-musgo shadow-sm transition hover:bg-brand-creme focus:outline-none focus:ring-1 focus:ring-brand-dourado"
+              className={cn(CAMPO_PQ, "h-7 cursor-pointer bg-musgo-claro px-1 text-xs font-bold text-musgo")}
               aria-label={`Registrar ${cell.stepName} de ${row.patientName}`}
             >
               <option value="">O que aconteceu?</option>
@@ -282,20 +277,20 @@ export function CrmPlanilhaCadenciasPage() {
         <div className={wrapper}>
           {cell.status ? (
             <>
-              <span className="text-[10px] text-muted-foreground">{shortDate(cell.date)}</span>
+              <span className="text-xs font-medium tabular-nums text-tinta-2">{shortDate(cell.date)}</span>
               <span
                 title={cadenceSheetStatusLabels[cell.status]}
-                className={cn("w-full truncate rounded-md px-1.5 py-1 text-center text-[11px] font-semibold leading-4", dStatusTone[cell.status])}
+                className={cn("w-full truncate rounded-controle px-1.5 py-1 text-center text-xs font-semibold leading-4", dStatusTone[cell.status])}
               >
                 {dStatusShort[cell.status]}
               </span>
             </>
           ) : cell.skipped ? (
-            <span className="rounded-md bg-slate-50 px-1.5 py-1 text-[11px] text-muted-foreground">pulada</span>
+            <span className="rounded-controle bg-saber px-1.5 py-1 text-xs font-semibold text-tinta-2">pulada</span>
           ) : cell.taskId ? (
-            <span className="text-[11px] text-muted-foreground">{shortDate(cell.date)}</span>
+            <span className="text-xs font-medium tabular-nums text-tinta-2">{shortDate(cell.date)}</span>
           ) : (
-            <Minus className="h-3 w-3 text-muted-foreground/40" aria-hidden="true" />
+            <Minus className="h-3 w-3 text-tinta-2" aria-hidden="true" />
           )}
         </div>
       </td>
@@ -306,21 +301,22 @@ export function CrmPlanilhaCadenciasPage() {
     return valor ? (
       <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full", tone)}>
         <Check className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="sr-only">sim</span>
       </span>
     ) : (
-      <Minus className="mx-auto h-3 w-3 text-muted-foreground/40" aria-hidden="true" />
+      <Minus className="mx-auto h-3 w-3 text-tinta-2" aria-hidden="true" />
     );
   }
 
-  const thBase = "sticky top-0 z-10 bg-brand-papel/95 px-2 py-2.5 text-[11px] font-bold uppercase tracking-wide text-brand-musgo backdrop-blur";
+  const thBase = cn(TH, "sticky top-0 z-10 bg-folha px-2");
 
   function emptyState(texto: string) {
     return (
       <div className="grid place-items-center px-4 py-12 text-center">
-        <CalendarRange className="mb-3 h-8 w-8 text-brand-oliva/50" aria-hidden="true" />
-        <p className="text-sm font-semibold text-brand-tinta">{texto}</p>
+        <CalendarRange className="mb-3 h-8 w-8 text-oliva" aria-hidden="true" />
+        <p className="text-sm font-bold text-tinta">{texto}</p>
         {periodo !== "tudo" ? (
-          <button type="button" onClick={() => setPeriodo("tudo")} className="mt-2 text-xs font-semibold text-brand-musgo underline">
+          <button type="button" onClick={() => setPeriodo("tudo")} className="mt-2 text-sm font-bold text-musgo underline underline-offset-[3px]">
             Ver todo o histórico
           </button>
         ) : null}
@@ -331,7 +327,7 @@ export function CrmPlanilhaCadenciasPage() {
   function sectorTable(rows: CadenceSheetRow[]) {
     if (!rows.length) return emptyState(`Nenhuma cadência em ${periodLabel(periodo, anchor).toLowerCase()}.`);
     return (
-      <div className="overflow-x-auto rounded-lg border border-brand-oliva/15">
+      <div className="overflow-x-auto">
         <table className="w-full min-w-[1180px] table-fixed border-collapse text-sm">
           <colgroup>
             <col className="w-[4.5rem]" />
@@ -360,37 +356,36 @@ export function CrmPlanilhaCadenciasPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
+            {rows.map((row) => (
               <tr
                 key={row.enrollmentId}
                 className={cn(
-                  "border-t border-brand-oliva/10 align-middle transition hover:bg-brand-creme/25",
-                  index % 2 === 1 && "bg-brand-papel/30",
-                  !row.active && "opacity-60",
+                  "border-t border-fio align-middle transition-colors hover:bg-saber",
+                  !row.active && "text-tinta-2 [&_a]:text-tinta-2",
                 )}
               >
-                <td className="px-2 py-1.5 text-xs font-medium text-brand-oliva">{shortDate(row.openedAt)}</td>
+                <td className="px-2 py-1.5 text-xs font-medium tabular-nums text-tinta-2">{shortDate(row.openedAt)}</td>
                 <td className="px-2 py-1.5">
                   <Link
                     to={`/crm/contatos/${row.contactId}`}
-                    className="block text-[13px] font-semibold leading-tight text-brand-musgo hover:underline"
+                    className={cn(NOME_LINK, "block text-[13px] leading-5")}
                     title={row.patientName}
                   >
                     {row.patientName}
                   </Link>
-                  <p className="text-[11px] text-muted-foreground">{row.phone}</p>
+                  <p className="text-xs font-medium tabular-nums text-tinta-2">{row.phone}</p>
                 </td>
                 <td className="px-2 py-1.5">
-                  <p className="line-clamp-2 text-[11px] leading-4 text-brand-tinta" title={row.motivo}>{row.motivo}</p>
+                  <p className="line-clamp-2 text-xs font-medium leading-4 text-tinta" title={row.motivo}>{row.motivo}</p>
                 </td>
                 {[0, 1, 2, 3, 4].map((cellIndex) => dCell(row, cellIndex))}
                 <td className="px-2 py-1.5">
-                  <span className={cn("inline-block max-w-full truncate rounded-md px-1.5 py-1 text-[11px] font-semibold", resultTone(row.resultadoFinal))} title={row.resultadoFinal}>
+                  <span className={cn("inline-block max-w-full truncate rounded-controle px-1.5 py-1 text-xs font-semibold", resultTone(row.resultadoFinal))} title={row.resultadoFinal}>
                     {row.resultadoFinal}
                   </span>
                 </td>
-                <td className="px-2 py-1.5 text-center">{simNao(row.encaminhadoConcierge, "bg-red-100 text-red-700")}</td>
-                <td className="px-2 py-1.5 text-center">{simNao(row.escalonadoGestor, "bg-brand-creme text-brand-musgo")}</td>
+                <td className="px-2 py-1.5 text-center">{simNao(row.encaminhadoConcierge, "bg-erro-claro text-erro")}</td>
+                <td className="px-2 py-1.5 text-center">{simNao(row.escalonadoGestor, "bg-musgo-claro text-musgo")}</td>
                 <td className="px-2 py-1.5">{notesInput(row.enrollmentId, row.observacoes)}</td>
               </tr>
             ))}
@@ -401,9 +396,9 @@ export function CrmPlanilhaCadenciasPage() {
   }
 
   function gestorTable(rows: GestorSheetRow[]) {
-    if (!rows.length) return emptyState(`Nenhum caso com o gestor em ${periodLabel(periodo, anchor).toLowerCase()}. ✓`);
+    if (!rows.length) return emptyState(`Nenhum caso com o gestor em ${periodLabel(periodo, anchor).toLowerCase()}.`);
     return (
-      <div className="overflow-x-auto rounded-lg border border-brand-oliva/15">
+      <div className="overflow-x-auto">
         <table className="w-full min-w-[1200px] table-fixed border-collapse text-sm">
           <colgroup>
             <col className="w-[4.5rem]" />
@@ -430,41 +425,40 @@ export function CrmPlanilhaCadenciasPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
+            {rows.map((row) => (
               <tr
                 key={row.enrollmentId}
                 className={cn(
-                  "border-t border-brand-oliva/10 align-middle transition hover:bg-brand-creme/25",
-                  index % 2 === 1 && "bg-brand-papel/30",
-                  !row.active && "opacity-60",
+                  "border-t border-fio align-middle transition-colors hover:bg-saber",
+                  !row.active && "text-tinta-2 [&_a]:text-tinta-2",
                 )}
               >
-                <td className="px-2 py-1.5 text-xs font-medium text-brand-oliva">{shortDate(row.entradaEm)}</td>
+                <td className="px-2 py-1.5 text-xs font-medium tabular-nums text-tinta-2">{shortDate(row.entradaEm)}</td>
                 <td className="px-2 py-1.5">
                   <Link
                     to={`/crm/contatos/${row.contactId}`}
-                    className="block text-[13px] font-semibold leading-tight text-brand-musgo hover:underline"
+                    className={cn(NOME_LINK, "block text-[13px] leading-5")}
                     title={row.patientName}
                   >
                     {row.patientName}
                   </Link>
-                  <p className="text-[11px] text-muted-foreground">{row.phone}</p>
-                  <p className="line-clamp-1 text-[11px] text-muted-foreground" title={row.motivoOriginal}>{row.motivoOriginal}</p>
+                  <p className="text-xs font-medium tabular-nums text-tinta-2">{row.phone}</p>
+                  <p className="line-clamp-1 text-xs font-medium text-tinta-2" title={row.motivoOriginal}>{row.motivoOriginal}</p>
                 </td>
-                <td className="px-2 py-1.5 text-[11px] font-medium text-brand-tinta">{row.setorOrigem}</td>
+                <td className="px-2 py-1.5 text-xs font-medium text-tinta">{row.setorOrigem}</td>
                 {row.calls.map((call) => (
                   <td key={call.n} className="px-1.5 py-1.5">
                     <div className="mx-auto flex h-12 w-full max-w-[7rem] flex-col items-center justify-center gap-0.5">
                       {call.actionable && call.taskId ? (
                         <>
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-brand-oliva">{shortDate(call.date)}</span>
+                          <span className="text-xs font-semibold tabular-nums text-tinta-2">{shortDate(call.date)}</span>
                           <select
                             defaultValue=""
                             disabled={semEdicao}
                             onChange={(event) => {
                               if (event.target.value && call.taskId) registerCall(call.taskId, event.target.value as GestorCallStatus);
                             }}
-                            className="w-full cursor-pointer rounded-md border border-brand-dourado/60 bg-brand-creme/60 px-1 py-1 text-[11px] font-semibold text-brand-musgo shadow-sm transition hover:bg-brand-creme focus:outline-none focus:ring-1 focus:ring-brand-dourado"
+                            className={cn(CAMPO_PQ, "h-7 cursor-pointer bg-musgo-claro px-1 text-xs font-bold text-musgo")}
                             aria-label={`Registrar ligação ${call.n} de ${row.patientName}`}
                           >
                             <option value="">Liguei…</option>
@@ -477,31 +471,31 @@ export function CrmPlanilhaCadenciasPage() {
                         </>
                       ) : call.status ? (
                         <>
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-xs font-medium tabular-nums text-tinta-2">
                             {shortDate(call.date)}
                             {call.hora ? ` · ${call.hora}` : ""}
                           </span>
                           <span
                             title={gestorCallStatusLabels[call.status]}
                             className={cn(
-                              "w-full truncate rounded-md px-1.5 py-1 text-center text-[11px] font-semibold leading-4",
+                              "w-full truncate rounded-controle px-1.5 py-1 text-center text-xs font-semibold leading-4",
                               call.status === "ATENDEU_RESOLVIDO" || call.status === "ATENDEU_DEVOLVIDO"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-slate-100 text-slate-600",
+                                ? "bg-ok-claro text-ok"
+                                : "bg-saber text-tinta-2",
                             )}
                           >
                             {gestorCallShort[call.status]}
                           </span>
                         </>
                       ) : (
-                        <Minus className="h-3 w-3 text-muted-foreground/40" aria-hidden="true" />
+                        <Minus className="h-3 w-3 text-tinta-2" aria-hidden="true" />
                       )}
                     </div>
                   </td>
                 ))}
                 <td className="px-2 py-1.5">
                   {row.encerramentoEnviadoEm ? (
-                    <span className="inline-block rounded-md bg-slate-100 px-1.5 py-1 text-[11px] font-semibold text-slate-600">
+                    <span className="inline-block rounded-controle bg-saber px-1.5 py-1 text-xs font-semibold text-tinta-2">
                       Enviada {shortDate(row.encerramentoEnviadoEm)}
                     </span>
                   ) : row.encerramentoActionable && row.encerramentoTaskId ? (
@@ -509,16 +503,16 @@ export function CrmPlanilhaCadenciasPage() {
                       type="button"
                       disabled={semEdicao}
                       onClick={() => row.encerramentoTaskId && registerEncerramento(row.encerramentoTaskId)}
-                      className="rounded-md border border-brand-dourado/60 bg-brand-creme/60 px-2 py-1 text-[11px] font-semibold text-brand-musgo shadow-sm transition hover:bg-brand-creme"
+                      className="inline-flex h-7 items-center rounded-controle bg-musgo-claro px-2 text-xs font-bold text-musgo transition hover:bg-musgo-claro-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco disabled:opacity-70"
                     >
                       Enviei a 5.1
                     </button>
                   ) : (
-                    <Minus className="h-3 w-3 text-muted-foreground/40" aria-hidden="true" />
+                    <Minus className="h-3 w-3 text-tinta-2" aria-hidden="true" />
                   )}
                 </td>
                 <td className="px-2 py-1.5">
-                  <span className={cn("inline-block max-w-full truncate rounded-md px-1.5 py-1 text-[11px] font-semibold", resultTone(row.resultadoFinal))} title={row.resultadoFinal}>
+                  <span className={cn("inline-block max-w-full truncate rounded-controle px-1.5 py-1 text-xs font-semibold", resultTone(row.resultadoFinal))} title={row.resultadoFinal}>
                     {row.resultadoFinal}
                   </span>
                 </td>
@@ -533,42 +527,42 @@ export function CrmPlanilhaCadenciasPage() {
 
   return (
     <AccessGate allowed={canCrmBratan} label="CRM · Planilha de Cadências" module="crm">
-      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-4">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="gold">CRM Bratan</Badge>
-            <Badge variant="muted">{syncMode}</Badge>
-          </div>
-          <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-            <Table2 className="h-7 w-7 text-brand-dourado" aria-hidden="true" />
-            Planilha de Cadências
-            <InfoTip title="Como funciona (é a Planilha Oficial, viva)">
-              Cada linha é um contato ativo do seu setor: registre o status de cada D no dia do envio pelo menu suspenso.
-              Qualquer resposta encerra a cadência. Insatisfação vira tarefa da Concierge NO MESMO DIA. Sem resposta até o
-              D5, o caso vai sozinho para a aba do Gestor Estevão (5 ligações + mensagem de encerramento). Nada aqui é
-              digitado duas vezes: a planilha lê e grava as MESMAS tarefas de Minhas Tarefas e do Kanban.
-            </InfoTip>
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Nada fica "de boca": se não está na planilha, não aconteceu. Janelas de envio — Enfermagem 10h00–10h30 ·
-            Recepção e Concierge até 12h00.
-          </p>
-        </motion.section>
+      <div className="mx-auto flex w-full max-w-[96rem] flex-col gap-6 font-sans max-md:gap-4">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Comercial · Cadências"
+          titulo="Planilha de Cadências"
+          frase={
+            <>
+              <strong>{countFor(tab) ? maiuscula(contagem(countFor(tab), "linha")) : "Nenhuma linha"}</strong> em {tabLabels[tab]} — {periodLabel(periodo, anchor).toLowerCase()}
+              {totalFor(tab) !== countFor(tab) ? `, de ${totalFor(tab)} no histórico` : ""}.
+            </>
+          }
+          rodape={
+            <FraseDoFluxo>
+              Nada fica &quot;de boca&quot;: se não está na planilha, não aconteceu. Janelas de envio — Enfermagem 10h00–10h30 · Recepção e
+              Concierge até 12h00. Dados: {syncMode}.{" "}
+              <InfoTip title="Como funciona (é a Planilha Oficial, viva)">
+                Cada linha é um contato ativo do seu setor: registre o status de cada D no dia do envio pelo menu suspenso.
+                Qualquer resposta encerra a cadência. Insatisfação vira tarefa da Concierge NO MESMO DIA. Sem resposta até o
+                D5, o caso vai sozinho para a aba do Gestor Estevão (5 ligações + mensagem de encerramento). Nada aqui é
+                digitado duas vezes: a planilha lê e grava as MESMAS tarefas de Minhas Tarefas e do Kanban.
+              </InfoTip>
+            </FraseDoFluxo>
+          }
+        />
 
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
         <AvisoSoVe soVe={telaCrm.soVe} />
 
-        <details className="rounded-lg border border-brand-dourado/30 bg-brand-creme/25 backdrop-blur">
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-brand-musgo">
-            📖 Entenda a planilha — o que é cada coluna e cada status (aula rápida)
+        <details className="group rounded-bloco bg-saber">
+          <summary className="flex cursor-pointer select-none list-none items-center gap-2 px-6 py-4 text-sm font-bold leading-5 text-tinta max-md:px-4 [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="h-4 w-4 shrink-0 text-tinta-2 transition-transform group-open:rotate-90" aria-hidden="true" />
+            Entenda a planilha — o que é cada coluna e cada status (aula rápida)
           </summary>
-          <div className="grid gap-4 border-t border-brand-dourado/20 p-4 text-sm leading-6 text-brand-tinta lg:grid-cols-2">
+          <div className="grid gap-6 border-t border-fio px-6 pb-6 pt-4 text-sm font-medium leading-6 text-tinta max-md:px-4 lg:grid-cols-2">
             <div>
-              <p className="mb-1 font-bold text-brand-musgo">O que é cada coluna</p>
+              <p className="mb-1 font-bold text-tinta">O que é cada coluna</p>
               <ul className="space-y-1.5">
                 <li><strong>Abertura</strong> — o dia em que este contato começou (ex.: dia seguinte à aplicação).</li>
                 <li><strong>Paciente</strong> — sempre o paciente de verdade, linkado no CRM (clique no nome para abrir a ficha).</li>
@@ -581,26 +575,26 @@ export function CrmPlanilhaCadenciasPage() {
               </ul>
             </div>
             <div>
-              <p className="mb-1 font-bold text-brand-musgo">O que cada opção do menu faz</p>
+              <p className="mb-1 font-bold text-tinta">O que cada opção do menu faz</p>
               <ul className="space-y-1.5">
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SEM_RESPOSTA)}>Não respondeu</span>{" "}
+                  <span className={cn("rounded-controle px-1.5 py-0.5 text-xs font-bold", dStatusTone.SEM_RESPOSTA)}>Não respondeu</span>{" "}
                   — mandei a mensagem e nada. <strong>O próximo D nasce sozinho amanhã.</strong>
                 </li>
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.SATISFEITO)}>Respondeu bem</span>{" "}
+                  <span className={cn("rounded-controle px-1.5 py-0.5 text-xs font-bold", dStatusTone.SATISFEITO)}>Respondeu bem</span>{" "}
                   — o paciente respondeu e está tudo certo. <strong>A régua encerra na hora.</strong>
                 </li>
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.INSATISFEITO_CONCIERGE)}>Reclamou → vai pra Concierge</span>{" "}
+                  <span className={cn("rounded-controle px-1.5 py-0.5 text-xs font-bold", dStatusTone.INSATISFEITO_CONCIERGE)}>Reclamou → vai pra Concierge</span>{" "}
                   — relatou queixa, dor ou problema. <strong>A Aline recebe a tarefa NO MESMO DIA</strong> e a régua encerra.
                 </li>
                 <li>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", dStatusTone.AGENDADO_RESOLVIDO)}>Agendei / resolvi</span>{" "}
+                  <span className={cn("rounded-controle px-1.5 py-0.5 text-xs font-bold", dStatusTone.AGENDADO_RESOLVIDO)}>Agendei / resolvi</span>{" "}
                   — o objetivo do contato foi cumprido. <strong>A régua encerra.</strong>
                 </li>
               </ul>
-              <p className="mt-3 font-bold text-brand-musgo">Aba do Gestor Estevão</p>
+              <p className="mt-3 font-bold text-tinta">Aba do Gestor Estevão</p>
               <p>
                 Recebe sozinha todo caso que chegou ao D5 sem resposta. O Estevão registra cada ligação — o app anota data
                 e hora. Sem contato na 5ª, ele clica em "Enviei a 5.1" e o paciente segue para os resgates de 6 meses e 1 ano.
@@ -610,54 +604,38 @@ export function CrmPlanilhaCadenciasPage() {
         </details>
 
         {/* ——— FILTRO DE PERÍODO ——— */}
-        <section className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-oliva/20 bg-white/70 p-3 backdrop-blur">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-musgo">
-            <CalendarRange className="h-4 w-4 text-brand-dourado" aria-hidden="true" />
-            Período
-          </div>
-          <div className="flex flex-wrap gap-1">
+        <section aria-label="Período" className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <GrupoDeLeituras rotulo="Período">
+            <span className={cn(RUBRICA, "mr-1 inline-flex items-center gap-1.5")}>
+              <CalendarRange className="h-4 w-4 text-oliva" aria-hidden="true" />
+              Período
+            </span>
             {(Object.keys(periodoLabels) as Periodo[]).map((item) => (
-              <button
+              <Leitura
                 key={item}
-                type="button"
+                ativa={periodo === item}
                 onClick={() => {
                   setPeriodo(item);
                   setAnchor(todayISO());
                 }}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                  periodo === item
-                    ? "border-brand-musgo bg-brand-musgo text-white shadow-sm"
-                    : "border-brand-oliva/25 bg-white/70 text-brand-musgo hover:bg-brand-creme/60",
-                )}
               >
                 {periodoLabels[item]}
-              </button>
+              </Leitura>
             ))}
-          </div>
+          </GrupoDeLeituras>
 
           {periodo !== "tudo" ? (
-            <div className="flex items-center gap-1 rounded-full border border-brand-oliva/25 bg-white/80 px-1 py-0.5">
-              <button
-                type="button"
-                onClick={() => shiftAnchor(-1)}
-                className="grid h-6 w-6 place-items-center rounded-full text-brand-musgo transition hover:bg-brand-creme"
-                aria-label="Período anterior"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => shiftAnchor(-1)} className={BOTAO_CANAL} aria-label="Período anterior">
+                <ChevronLeft aria-hidden="true" />
               </button>
-              <span className="min-w-44 px-1 text-center text-xs font-semibold text-brand-tinta">{periodLabel(periodo, anchor)}</span>
-              <button
-                type="button"
-                onClick={() => shiftAnchor(1)}
-                className="grid h-6 w-6 place-items-center rounded-full text-brand-musgo transition hover:bg-brand-creme"
-                aria-label="Próximo período"
-              >
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              <span className="min-w-44 text-center text-sm font-bold text-tinta first-letter:uppercase">{periodLabel(periodo, anchor)}</span>
+              <button type="button" onClick={() => shiftAnchor(1)} className={BOTAO_CANAL} aria-label="Próximo período">
+                <ChevronRight aria-hidden="true" />
               </button>
             </div>
           ) : (
-            <span className="text-xs text-muted-foreground">{periodLabel(periodo, anchor)}</span>
+            <span className="text-sm font-medium text-tinta-2">{periodLabel(periodo, anchor)}</span>
           )}
 
           {periodo === "mes" ? (
@@ -665,7 +643,7 @@ export function CrmPlanilhaCadenciasPage() {
               type="month"
               value={anchor.slice(0, 7)}
               onChange={(event) => event.target.value && setAnchor(`${event.target.value}-01`)}
-              className="rounded-md border border-brand-oliva/25 bg-white/80 px-2 py-1 text-xs text-brand-tinta"
+              className={cn(CAMPO_PQ, "w-auto")}
               aria-label="Escolher mês"
             />
           ) : null}
@@ -674,18 +652,18 @@ export function CrmPlanilhaCadenciasPage() {
               type="date"
               value={anchor}
               onChange={(event) => event.target.value && setAnchor(event.target.value)}
-              className="rounded-md border border-brand-oliva/25 bg-white/80 px-2 py-1 text-xs text-brand-tinta"
+              className={cn(CAMPO_PQ, "w-auto")}
               aria-label="Escolher dia"
             />
           ) : null}
 
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto text-[13px] font-medium tabular-nums text-tinta-2">
             {countFor(tab)} de {totalFor(tab)} linha(s) em {tabLabels[tab]}
           </span>
         </section>
 
         {/* ——— PLACAR POR SETOR (clicável) ——— */}
-        <div className="grid gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
           {tabOrder.map((item) => {
             const isGestor = item === "GESTOR";
             const casos = countFor(item);
@@ -701,56 +679,47 @@ export function CrmPlanilhaCadenciasPage() {
               <button
                 key={item}
                 type="button"
+                aria-pressed={tab === item}
                 onClick={() => setTab(item)}
                 className={cn(
-                  "rounded-lg border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-calm",
-                  tabTone[item].card,
-                  tab === item ? "ring-2 ring-brand-musgo/40" : "",
+                  "rounded-bloco border bg-folha p-4 text-left transition-colors",
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco",
+                  tab === item ? "border-musgo shadow-[inset_0_0_0_1px_rgb(var(--musgo-rgb))]" : "border-fio hover:border-fio-2",
                 )}
               >
-                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-brand-musgo">
-                  <span className={cn("h-2 w-2 rounded-full", tabTone[item].dot)} aria-hidden="true" />
+                <p className={cn(RUBRICA, "flex items-center gap-1.5")}>
                   {isGestor ? (
                     <>
-                      <PhoneCall className="h-3 w-3" aria-hidden="true" />
+                      <PhoneCall className="h-4 w-4 text-oliva" aria-hidden="true" />
                       Gestor Estevão
                     </>
                   ) : (
                     tabLabels[item]
                   )}
                 </p>
-                <p className="mt-0.5 text-2xl font-bold leading-tight text-brand-tinta">{casos}</p>
-                <p className="text-[11px] leading-4 text-muted-foreground">{detalhe}</p>
+                <p className="mt-1 font-serifa text-[32px] leading-10 tabular-nums text-tinta">{casos}</p>
+                <p className="text-[13px] font-medium leading-5 text-tinta-2">{detalhe}</p>
               </button>
             );
           })}
         </div>
 
         {/* ——— TABELA ——— */}
-        <section className="rounded-lg border border-brand-oliva/20 bg-white/60 p-3 backdrop-blur sm:p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <BlocoFolha as="section" aria-label={`Planilha de ${tabLabels[tab]}`}>
+          <GrupoDeLeituras rotulo="Setor" className="border-b border-fio px-6 py-4 max-md:px-4">
             {tabOrder.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setTab(item)}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 text-sm font-semibold transition",
-                  tab === item ? tabTone[item].chip : "border-brand-oliva/25 bg-white/70 text-brand-musgo hover:bg-brand-creme/60",
-                )}
-              >
+              <Leitura key={item} ativa={tab === item} numero={countFor(item)} onClick={() => setTab(item)}>
                 {tabLabels[item]}
-                <span className="ml-1.5 text-xs opacity-80">{countFor(item)}</span>
-              </button>
+              </Leitura>
             ))}
-          </div>
+          </GrupoDeLeituras>
           {tab === "GESTOR" ? gestorTable(filtered.gestor) : sectorTable(filtered.sectors[tab])}
-          <p className="mt-3 flex items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <p className="flex items-center gap-2 border-t border-fio px-6 py-4 text-[13px] font-medium leading-5 text-tinta-2 max-md:px-4">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
             LGPD: esta tela contém dados pessoais e relatos de saúde. Uso restrito à equipe operacional — não tirar print
             nem compartilhar fora do app.
           </p>
-        </section>
+        </BlocoFolha>
       </div>
     </AccessGate>
   );

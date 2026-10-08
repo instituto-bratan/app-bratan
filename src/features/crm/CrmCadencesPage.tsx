@@ -3,7 +3,6 @@ import { AvisoSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { canCrmBratan } from "@/lib/access";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import {
   ArrowRight,
   ClipboardCopy,
@@ -13,13 +12,25 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { BlocoSaber, Botao, Cabecalho, FraseDoFluxo } from "@/components/ui/fundacao";
+import { cn } from "@/lib/utils";
+import {
+  Button,
+  CAMPO,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Etiqueta,
+  GrupoDeLeituras,
+  Input,
+  Label,
+  Leitura,
+  NOME_LINK,
+  TITULO_SECAO,
+} from "./comercialVisual";
+import { contagem, maiuscula } from "./comercialFrases";
 import { useAuth } from "@/hooks/useAuth";
 import {
   RETURN_CYCLE_CADENCE_ID,
@@ -63,10 +74,10 @@ import {
 } from "./contactChannels";
 
 function statusTone(status: CrmCadenceStatus) {
-  if (status === "ACTIVE") return "bg-emerald-100 text-emerald-800";
-  if (status === "PAUSED") return "bg-brand-creme text-brand-tinta";
-  if (status === "CANCELED") return "bg-red-100 text-red-800";
-  return "bg-white/55 text-brand-musgo";
+  if (status === "ACTIVE") return "bg-ok-claro text-ok";
+  if (status === "PAUSED") return "bg-folha text-tinta-2";
+  if (status === "CANCELED") return "bg-erro-claro text-erro";
+  return "bg-musgo-claro text-musgo";
 }
 
 function CrmCadencesPageConteudo() {
@@ -344,154 +355,163 @@ function CrmCadencesPageConteudo() {
 
 
 
-  return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
-        {(() => {
-          const roleExplainer = roleRuleExplainers[cargoToCrmRole(pessoa?.cargo) ?? "ADMINISTRATIVO"];
-          if (!roleExplainer) return null;
-          return (
-            <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/55 px-4 py-3">
-              <p className="text-sm font-bold text-brand-musgo">{roleExplainer.title}</p>
-              <p className="mt-1 text-sm leading-6 text-brand-tinta">{roleExplainer.rule}</p>
-            </div>
-          );
-        })()}
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-      >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <Badge variant="gold">CRM Bratan</Badge>
-            <h1 className="mt-3 flex items-center gap-2 text-4xl leading-tight text-brand-musgo sm:text-5xl">
-              Cadências por função
-              <InfoTip title="O que são cadências?">
-                São as réguas de relacionamento do Instituto em ação: sequências de toques (D+1 do concierge, enfermeira a cada
-                14 dias, resgates D1·D5·D7·D60) que geram tarefas automaticamente para a pessoa certa, na hora certa. Você
-                aprova e envia a mensagem — o app nunca dispara sozinho.
-              </InfoTip>
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Mensagens sugeridas, tarefas geradas e antifadiga. Nada é enviado automaticamente nesta fase.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link to={crmModuleRoutes.tasks}>Minhas tarefas <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-            <LiquidButton type="button" size="sm" disabled={semEdicao} onClick={() => persist((current) => generateCadenceTasks(current))}>
-              <RefreshCw className="h-4 w-4" />
-              Gerar tarefas
-            </LiquidButton>
-          </div>
-        </div>
-      </motion.section>
+  // CABEÇALHO (08/10/2026, redesenho etapa 3): um cabeçalho só, com o número
+  // explicado em frase; as três seções (Inscrever · Radar · Como funciona) viram
+  // leituras logo abaixo, e o recado do papel vira um bloco "para saber".
+  const inscricoesAtivas = state.cadenceEnrollments.filter((enrollment) => enrollment.status === "ACTIVE").length;
+  const sumidos = radar.filter((pessoa) => pessoa.faixa !== "CHEGANDO").length;
+  const roleExplainer = roleRuleExplainers[cargoToCrmRole(pessoa?.cargo) ?? "ADMINISTRATIVO"];
 
-      {/* As três pílulas: cada trabalho no seu lugar. */}
-      <div className="flex flex-wrap items-center gap-2">
+  return (
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 font-sans max-md:gap-4">
+      <Cabecalho
+        className="mb-0 max-md:mb-0"
+        sobrancelha="Comercial"
+        titulo="Cadências por função"
+        frase={
+          <>
+            <strong>{maiuscula(contagem(inscricoesAtivas, "inscrição ativa", "inscrições ativas", "f"))}</strong> nas réguas.{" "}
+            {sumidos ? (
+              <span className="alerta">
+                {maiuscula(contagem(sumidos, "paciente"))} {sumidos === 1 ? "sumiu" : "sumiram"} sem ninguém cuidando.
+              </span>
+            ) : (
+              "Ninguém sumido fora de cuidado."
+            )}
+          </>
+        }
+        acoes={
+          <>
+            <Button asChild variant="outline">
+              <Link to={crmModuleRoutes.tasks}>
+                Minhas tarefas <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Button>
+            <Botao
+              variante="secundario"
+              icone={<RefreshCw className="h-4 w-4" aria-hidden="true" />}
+              disabled={semEdicao}
+              onClick={() => persist((current) => generateCadenceTasks(current))}
+            >
+              Gerar tarefas
+            </Botao>
+          </>
+        }
+        rodape={
+          <FraseDoFluxo>
+            As réguas geram as tarefas sozinhas para a pessoa certa, na hora certa. Mensagens sugeridas e antifadiga: nada é enviado
+            automaticamente — você aprova e envia.{" "}
+            <InfoTip title="O que são cadências?">
+              São as réguas de relacionamento do Instituto em ação: sequências de toques (D+1 do concierge, enfermeira a cada
+              14 dias, resgates D1·D5·D7·D60) que geram tarefas automaticamente para a pessoa certa, na hora certa. Você
+              aprova e envia a mensagem — o app nunca dispara sozinho.
+            </InfoTip>
+          </FraseDoFluxo>
+        }
+      />
+
+      {roleExplainer ? (
+        <BlocoSaber className="py-4">
+          <p className="text-sm font-bold leading-5 text-tinta">{roleExplainer.title}</p>
+          <p className="mt-1 text-sm font-medium leading-6 text-tinta-2">{roleExplainer.rule}</p>
+        </BlocoSaber>
+      ) : null}
+
+      {/* As três seções: cada trabalho no seu lugar. */}
+      <GrupoDeLeituras rotulo="Seção">
         {(
           [
-            ["AGIR", "Inscrever alguém"],
-            ["RADAR", `Radar de resgate${radar.filter((pessoa) => pessoa.faixa !== "CHEGANDO").length ? ` (${radar.filter((pessoa) => pessoa.faixa !== "CHEGANDO").length})` : ""}`],
-            ["APRENDER", "Como funciona + catálogo"],
+            ["AGIR", "Inscrever alguém", undefined],
+            ["RADAR", "Radar de resgate", sumidos || undefined],
+            ["APRENDER", "Como funciona + catálogo", undefined],
           ] as const
-        ).map(([chave, rotulo]) => (
-          <button
-            key={chave}
-            type="button"
-            onClick={() => setSecao(chave)}
-            className={
-              secao === chave
-                ? "rounded-full border border-brand-musgo bg-brand-musgo px-4 py-1.5 text-sm font-semibold text-brand-papel"
-                : "rounded-full border border-brand-oliva/25 bg-white/60 px-4 py-1.5 text-sm font-semibold text-brand-oliva hover:text-brand-musgo"
-            }
-          >
+        ).map(([chave, rotulo, numero]) => (
+          <Leitura key={chave} ativa={secao === chave} numero={numero} tom={chave === "RADAR" && numero ? "atencao" : undefined} onClick={() => setSecao(chave)}>
             {rotulo}
-          </button>
+          </Leitura>
         ))}
-      </div>
+      </GrupoDeLeituras>
 
       {/* A AULA (pedido do Lucas, 22/07): cada esteira explicada + o que cada
           pessoa vê. Conteúdo espelha gatesForPhase/nextPhaseFor — se o motor
           mudar, atualizar aqui junto. */}
       {secao === "APRENDER" ? (
-      <Card className="border-brand-dourado/30 bg-brand-creme/25">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Como funcionam as esteiras (a aula)</CardTitle>
-          <p className="text-sm text-muted-foreground">
+      <BlocoSaber as="section" className="grid gap-4">
+        <div>
+          <h2 className={TITULO_SECAO}>Como funcionam as esteiras (a aula)</h2>
+          <p className="mt-1 text-sm font-medium leading-6 text-tinta-2">
             Tudo começa quando o <strong>Estevão registra o fechamento</strong> no Kanban. O que o paciente fechou define a
             esteira — e cada pessoa recebe SÓ as tarefas dela, na hora certa. Ninguém move card: concluir a tarefa move.
           </p>
-        </CardHeader>
-        <CardContent className="grid gap-3">
+        </div>
+        <div className="grid gap-3">
           <div className="grid gap-2 lg:grid-cols-2">
-            <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-              <p className="text-sm font-bold text-brand-musgo">1 · Plano de Acompanhamento (a jornada completa)</p>
-              <ol className="mt-1.5 grid gap-1 text-xs leading-5 text-brand-tinta">
+            <div className="rounded-bloco bg-folha p-4">
+              <p className="text-sm font-bold leading-5 text-tinta">1 · Plano de Acompanhamento (a jornada completa)</p>
+              <ol className="mt-1.5 grid gap-1 text-xs leading-5 text-tinta">
                 <li><strong>Acabou de aderir (D0):</strong> Estevão salvou o cadastro — o card nasce e já passa sozinho para o D+1.</li>
-                <li><strong>Boas-vindas (D+1) — o portão:</strong> no dia seguinte, <span className="font-semibold text-amber-800">Concierge</span> (como foi? + avaliação Google), <span className="font-semibold text-emerald-800">Recepção</span> (mensagem para fechar toda a agenda) e <span className="font-semibold text-violet-800">Enfermeira</span> (como está com a medicação). O card SÓ avança quando as TRÊS marcarem "enviada".</li>
+                <li><strong>Boas-vindas (D+1) — o portão:</strong> no dia seguinte, <span className="font-semibold text-atencao">Concierge</span> (como foi? + avaliação Google), <span className="font-semibold text-ok">Recepção</span> (mensagem para fechar toda a agenda) e <span className="font-semibold text-tinta">Enfermeira</span> (como está com a medicação). O card SÓ avança quando as TRÊS marcarem "enviada".</li>
                 <li><strong>Agendamento:</strong> paciente respondeu → Recepção fecha todas as datas → avança sozinho.</li>
                 <li><strong>1º atendimento:</strong> Enfermeira faz a 1ª aplicação/bioimpedância → avança sozinho.</li>
                 <li><strong>Em acompanhamento (6–9 meses):</strong> Enfermeira no D+1 de cada aplicação e a cada 14 dias (relógio individual do paciente). No fim: renovar, manter ou alta.</li>
               </ol>
             </div>
             <div className="grid gap-2">
-              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-                <p className="text-sm font-bold text-brand-musgo">2 · Consulta Black (ex-Clube Bratan)</p>
-                <p className="mt-1 text-xs leading-5 text-brand-tinta">
-                  D+1 com <span className="font-semibold text-amber-800">Concierge</span> (boas-vindas) + <span className="font-semibold text-emerald-800">Recepção</span> (agendar a próxima consulta, ~3 meses). Agenda confirmada = Clube ativo. Sem enfermeira nesta esteira.
+              <div className="rounded-bloco bg-folha p-4">
+                <p className="text-sm font-bold leading-5 text-tinta">2 · Consulta Black (ex-Clube Bratan)</p>
+                <p className="mt-1 text-xs leading-5 text-tinta">
+                  D+1 com <span className="font-semibold text-atencao">Concierge</span> (boas-vindas) + <span className="font-semibold text-ok">Recepção</span> (agendar a próxima consulta, ~3 meses). Agenda confirmada = Clube ativo. Sem enfermeira nesta esteira.
                 </p>
               </div>
-              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-                <p className="text-sm font-bold text-brand-musgo">3 · Somente Tratamento</p>
-                <p className="mt-1 text-xs leading-5 text-brand-tinta">
-                  D+1 com <span className="font-semibold text-amber-800">Concierge</span> + <span className="font-semibold text-violet-800">Enfermeira</span> (agendar as medicações). Depois vai DIRETO para o 1º atendimento — não passa pela Recepção.
+              <div className="rounded-bloco bg-folha p-4">
+                <p className="text-sm font-bold leading-5 text-tinta">3 · Somente Tratamento</p>
+                <p className="mt-1 text-xs leading-5 text-tinta">
+                  D+1 com <span className="font-semibold text-atencao">Concierge</span> + <span className="font-semibold text-tinta">Enfermeira</span> (agendar as medicações). Depois vai DIRETO para o 1º atendimento — não passa pela Recepção.
                 </p>
               </div>
-              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-                <p className="text-sm font-bold text-brand-musgo">4 · Consulta avulsa</p>
-                <p className="mt-1 text-xs leading-5 text-brand-tinta">Sem esteira — segue a agenda normal. Se marcar retorno, entra o ciclo de retorno da Recepção (abaixo).</p>
+              <div className="rounded-bloco bg-folha p-4">
+                <p className="text-sm font-bold leading-5 text-tinta">4 · Consulta avulsa</p>
+                <p className="mt-1 text-xs leading-5 text-tinta">Sem esteira — segue a agenda normal. Se marcar retorno, entra o ciclo de retorno da Recepção (abaixo).</p>
               </div>
-              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-                <p className="text-sm font-bold text-brand-musgo">5 · Não fechou</p>
-                <p className="mt-1 text-xs leading-5 text-brand-tinta">
-                  <span className="font-semibold text-amber-800">Concierge</span> acolhe no D+1 e segue D2–D5, um passo por vez — qualquer resposta encerra na hora. Sem resposta no D5 → <span className="font-semibold text-slate-700">Estevão</span> (5 ligações) → encerrado → resgates de 60 dias, 6 meses e 1 ano.
+              <div className="rounded-bloco bg-folha p-4">
+                <p className="text-sm font-bold leading-5 text-tinta">5 · Não fechou</p>
+                <p className="mt-1 text-xs leading-5 text-tinta">
+                  <span className="font-semibold text-atencao">Concierge</span> acolhe no D+1 e segue D2–D5, um passo por vez — qualquer resposta encerra na hora. Sem resposta no D5 → <span className="font-semibold text-tinta">Estevão</span> (5 ligações) → encerrado → resgates de 60 dias, 6 meses e 1 ano.
                 </p>
               </div>
             </div>
           </div>
-          <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-            <p className="text-sm font-bold text-brand-musgo">O que CADA pessoa vê (e só isso)</p>
-            <div className="mt-1.5 grid gap-1.5 text-xs leading-5 text-brand-tinta sm:grid-cols-2">
-              <p><span className="font-semibold text-violet-800">Enfermeira:</span> apresentação D+1 (Programa/Só Tratamento), 1º atendimento, pós-aplicação D+1 e os 14 dias — o relógio é DE CADA paciente: quem passou dia 10 recebe dia 24, quem passou dia 11 recebe dia 25. Por isso quase todo dia tem mensagem de 14 dias de alguém.</p>
-              <p><span className="font-semibold text-emerald-800">Recepção:</span> mensagem de agenda no D+1 (Programa/Clube), fechar todas as datas, e o ciclo de retorno: exames 15 dias antes, 1 semana antes, confirmar 3 dias antes, lembrete 1 dia antes da consulta.</p>
-              <p><span className="font-semibold text-amber-800">Concierge:</span> boas-vindas do D+1 de TODOS os canais + avaliação Google, a régua do não-fechou (D1–D5) e os resgates de 60 dias/6 meses/1 ano (5 tentativas cada, parando na 1ª resposta).</p>
-              <p><span className="font-semibold text-slate-700">Estevão (gestor):</span> registra os fechamentos (a porta de entrada), assume o que escala no D5 sem resposta (5 ligações em dias e horários alternados) e tem o 3·1·3·1 para negociação parada: 3 dias, 1 semana, 3 semanas e 1 mês após o último contato.</p>
+          <div className="rounded-bloco bg-folha p-4">
+            <p className="text-sm font-bold leading-5 text-tinta">O que CADA pessoa vê (e só isso)</p>
+            <div className="mt-1.5 grid gap-1.5 text-xs leading-5 text-tinta sm:grid-cols-2">
+              <p><span className="font-semibold text-tinta">Enfermeira:</span> apresentação D+1 (Programa/Só Tratamento), 1º atendimento, pós-aplicação D+1 e os 14 dias — o relógio é DE CADA paciente: quem passou dia 10 recebe dia 24, quem passou dia 11 recebe dia 25. Por isso quase todo dia tem mensagem de 14 dias de alguém.</p>
+              <p><span className="font-semibold text-ok">Recepção:</span> mensagem de agenda no D+1 (Programa/Clube), fechar todas as datas, e o ciclo de retorno: exames 15 dias antes, 1 semana antes, confirmar 3 dias antes, lembrete 1 dia antes da consulta.</p>
+              <p><span className="font-semibold text-atencao">Concierge:</span> boas-vindas do D+1 de TODOS os canais + avaliação Google, a régua do não-fechou (D1–D5) e os resgates de 60 dias/6 meses/1 ano (5 tentativas cada, parando na 1ª resposta).</p>
+              <p><span className="font-semibold text-tinta">Estevão (gestor):</span> registra os fechamentos (a porta de entrada), assume o que escala no D5 sem resposta (5 ligações em dias e horários alternados) e tem o 3·1·3·1 para negociação parada: 3 dias, 1 semana, 3 semanas e 1 mês após o último contato.</p>
             </div>
-            <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+            <p className="mt-2 text-xs leading-4 text-tinta-2">
               Em "Minhas Tarefas" cada pessoa abre já na visão do próprio papel — e quem não é coordenação só enxerga as suas.
               Regras de ouro: 1 paciente = 1 card · 1 tarefa por pessoa por paciente (a próxima espera a atual) · 1 cadência
               ativa por paciente · resposta do paciente encerra a régua na hora.
             </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </BlocoSaber>
       ) : null}
 
       <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
       <AvisoSoVe soVe={telaCrm.soVe} />
 
       {forasDo31.length ? (
-        <Card className="border-destructive/40 bg-destructive/5">
+        <Card className="border-erro/40">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-lg text-destructive">
+            <CardTitle className="flex items-center gap-2 text-erro">
               <ShieldAlert className="h-5 w-5" aria-hidden="true" />
               {forasDo31.length} paciente(s) com consulta marcada FORA do 3·1
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2.5">
-            <p className="text-xs leading-5 text-muted-foreground">
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">
               Estão em "Consulta agendada/confirmada" no Kanban mas sem o Ciclo de retorno ativo — ou seja, ninguém vai
               receber a tarefa de confirmar (−3) nem o lembrete (−1). Foi exatamente isso que gerou o erro de agenda.
               Informe a data e corrija em um toque.
@@ -499,10 +519,10 @@ function CrmCadencesPageConteudo() {
             {forasDo31.map((deal) => {
               const contato = state.contacts.find((item) => item.id === deal.contactId);
               return (
-                <div key={deal.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/15 bg-white/70 p-2.5">
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-brand-tinta">
+                <div key={deal.id} className="flex flex-wrap items-center gap-2 border-t border-fio pt-3">
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-tinta">
                     {contactDisplayName(contato)}
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">{dealStageLabels[deal.stage]}</span>
+                    <span className="ml-2 text-[13px] font-medium text-tinta-2">{dealStageLabels[deal.stage]}</span>
                   </span>
                   <Input
                     type="date"
@@ -511,7 +531,7 @@ function CrmCadencesPageConteudo() {
                     className="h-9 w-40"
                     aria-label={`Data da consulta de ${contactDisplayName(contato)}`}
                   />
-                  <Button type="button" size="sm" disabled={semEdicao} onClick={() => corrigirFora31(deal.id, deal.contactId)}>
+                  <Button type="button" size="sm" variant="subtle" disabled={semEdicao} onClick={() => corrigirFora31(deal.id, deal.contactId)}>
                     Colocar no 3·1
                   </Button>
                 </div>
@@ -522,13 +542,13 @@ function CrmCadencesPageConteudo() {
       ) : null}
       {isManagement && secao === "APRENDER" ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant={onlyMine ? "default" : "outline"} size="sm" onClick={() => setOnlyMine(true)}>
+          <Leitura ativa={onlyMine} onClick={() => setOnlyMine(true)}>
             Só as minhas réguas
-          </Button>
-          <Button type="button" variant={!onlyMine ? "default" : "outline"} size="sm" onClick={() => setOnlyMine(false)}>
+          </Leitura>
+          <Leitura ativa={!onlyMine} onClick={() => setOnlyMine(false)}>
             Todas as réguas
-          </Button>
-          <span className="text-xs text-muted-foreground">
+          </Leitura>
+          <span className="text-[13px] font-medium leading-5 text-tinta-2">
             {onlyMine
               ? "Mostrando só as cadências em que o seu papel atua."
               : "Visão de coordenação: todas as cadências e inscrições do Instituto."}
@@ -558,12 +578,12 @@ function CrmCadencesPageConteudo() {
                   className="mt-1"
                 />
                 {contactSuggestions.length && !contactId ? (
-                  <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-brand-oliva/18 bg-brand-papel shadow-calm">
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-bloco border border-fio bg-folha p-1 shadow-flutua">
                     {contactSuggestions.map((contact) => (
                       <button
                         key={contact.id}
                         type="button"
-                        className="block w-full px-3 py-2 text-left text-sm text-brand-tinta hover:bg-brand-creme/50"
+                        className="block w-full rounded-controle px-3 py-2 text-left text-sm font-semibold text-tinta hover:bg-saber"
                         onClick={() => {
                           setContactQuery(contactDisplayName(contact));
                           setContactId(contact.id);
@@ -571,14 +591,14 @@ function CrmCadencesPageConteudo() {
                         }}
                       >
                         {contactDisplayName(contact)}
-                        <span className="ml-2 text-xs text-muted-foreground">{contact.lifecycleStage}</span>
+                        <span className="ml-2 text-xs font-medium text-tinta-2">{contact.lifecycleStage}</span>
                       </button>
                     ))}
                   </div>
                 ) : null}
                 {contactQuery.trim().length >= 3 && !contactId && !contactSuggestions.length ? (
-                  <div className="mt-2 rounded-lg border border-dashed border-brand-oliva/35 bg-brand-creme/40 p-3">
-                    <p className="text-xs font-semibold text-brand-musgo">
+                  <div className="mt-2 rounded-bloco bg-saber p-4">
+                    <p className="text-[13px] font-bold leading-5 text-tinta">
                       Pessoa nova! Ao inscrever, o contato é criado, entra no Kanban Comercial e as tarefas nascem sozinhas.
                     </p>
                     <ContactChannelsFields
@@ -600,7 +620,7 @@ function CrmCadencesPageConteudo() {
                     vincula a cadência a uma negociação já existente, para o histórico ficar amarrado no lugar certo.
                   </InfoTip>
                 </Label>
-                <select value={dealId} onChange={(event) => setDealId(event.target.value)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                <select value={dealId} onChange={(event) => setDealId(event.target.value)} className={cn(CAMPO, "cursor-pointer")}>
                   <option value="">Sem negociação específica</option>
                   {dealsForContact.map((deal) => {
                     const dealValue = deal.soldAmount || deal.estimatedValue;
@@ -612,10 +632,10 @@ function CrmCadencesPageConteudo() {
                   })}
                 </select>
                 {selectedContact && !dealsForContact.length ? (
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
                     Este contato ainda não tem negociação — sem problema: ao inscrever, uma negociação nova é criada em
                     "Lead novo" no{" "}
-                    <Link to={crmModuleRoutes.deals} className="font-semibold text-brand-musgo underline">
+                    <Link to={crmModuleRoutes.deals} className="font-bold text-musgo underline underline-offset-[3px]">
                       Kanban de Vendas
                     </Link>
                     .
@@ -624,15 +644,15 @@ function CrmCadencesPageConteudo() {
               </div>
               <div>
                 <Label>Cadência</Label>
-                <select value={cadenceId} onChange={(event) => setCadenceId(event.target.value)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                <select value={cadenceId} onChange={(event) => setCadenceId(event.target.value)} className={cn(CAMPO, "cursor-pointer")}>
                   {visibleCadences.map((cadence) => (
                     <option key={cadence.id} value={cadence.id}>
                       {cadence.name} · {crmRoleLabels[cadence.defaultOwnerRole]}
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Responsável pela régua: <span className="font-semibold text-brand-musgo">{crmRoleLabels[state.cadences.find((c) => c.id === cadenceId)?.defaultOwnerRole ?? myRole ?? "CONCIERGE"]}</span>. O primeiro toque cai em Minhas Tarefas de quem cuida deste passo.
+                <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
+                  Responsável pela régua: <span className="font-bold text-tinta">{crmRoleLabels[state.cadences.find((c) => c.id === cadenceId)?.defaultOwnerRole ?? myRole ?? "CONCIERGE"]}</span>. O primeiro toque cai em Minhas Tarefas de quem cuida deste passo.
                 </p>
               </div>
               {needsEventDate ? (
@@ -647,8 +667,8 @@ function CrmCadencesPageConteudo() {
                   <Input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} className="mt-1" required />
                 </div>
               ) : null}
-              <Button type="submit" disabled={semEdicao}>
-                <PlayCircle className="mr-2 h-4 w-4" />
+              <Button type="submit" disabled={semEdicao} className="justify-self-start">
+                <PlayCircle className="h-4 w-4" aria-hidden="true" />
                 {!contactId && contactQuery.trim().length >= 3 && !contactSuggestions.length
                   ? "Criar contato e inscrever"
                   : "Inscrever e criar tarefas"}
@@ -657,38 +677,36 @@ function CrmCadencesPageConteudo() {
           </CardContent>
         </Card>
 
-        <Card className="border-brand-dourado/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldAlert className="h-5 w-5" />
+        <BlocoSaber as="section">
+          <div>
+            <h2 className={cn(TITULO_SECAO, "flex items-center gap-2")}>
+              <ShieldAlert className="h-5 w-5 text-oliva" aria-hidden="true" />
               Governança premium
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-lg bg-brand-papel/70 p-3">
-                <p className="font-semibold text-brand-musgo">Sem envio automático</p>
-                <p className="mt-1 text-sm text-muted-foreground">O app sugere, copia e abre WhatsApp. Humano aprova.</p>
-              </div>
-              <div className="rounded-lg bg-brand-papel/70 p-3">
-                <p className="font-semibold text-brand-musgo">Antifadiga</p>
-                <p className="mt-1 text-sm text-muted-foreground">Muitos toques em curto período aparecem no Perfil 360.</p>
-              </div>
-              <div className="rounded-lg bg-brand-papel/70 p-3">
-                <p className="font-semibold text-brand-musgo">Fonte única</p>
-                <p className="mt-1 text-sm text-muted-foreground">Cadência gera tarefa; tarefa gera histórico; 360 consolida.</p>
-              </div>
+            </h2>
+          </div>
+          <dl className="mt-4 grid gap-4">
+            <div className="border-t border-fio pt-3">
+              <dt className="text-sm font-bold leading-5 text-tinta">Sem envio automático</dt>
+              <dd className="mt-1 text-sm font-medium leading-5 text-tinta-2">O app sugere, copia e abre WhatsApp. Humano aprova.</dd>
             </div>
-          </CardContent>
-        </Card>
+            <div className="border-t border-fio pt-3">
+              <dt className="text-sm font-bold leading-5 text-tinta">Antifadiga</dt>
+              <dd className="mt-1 text-sm font-medium leading-5 text-tinta-2">Muitos toques em curto período aparecem no Perfil 360.</dd>
+            </div>
+            <div className="border-t border-fio pt-3">
+              <dt className="text-sm font-bold leading-5 text-tinta">Fonte única</dt>
+              <dd className="mt-1 text-sm font-medium leading-5 text-tinta-2">Cadência gera tarefa; tarefa gera histórico; 360 consolida.</dd>
+            </div>
+          </dl>
+        </BlocoSaber>
       </div>
       ) : null}
 
       {secao === "RADAR" ? (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">Radar de resgate — quem sumiu e há quanto tempo</CardTitle>
-            <p className="text-xs leading-5 text-muted-foreground">
+            <CardTitle className="flex items-center gap-2">Radar de resgate — quem sumiu e há quanto tempo</CardTitle>
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">
               A última comanda diz quando o paciente veio pela última vez. Só aparece quem NINGUÉM está cuidando (sem
               negociação aberta, sem jornada, sem cadência ativa). Um toque inscreve no resgate certo — as 5 tentativas
               da Aline viram tarefas na hora.
@@ -696,8 +714,8 @@ function CrmCadencesPageConteudo() {
           </CardHeader>
           <CardContent className="grid gap-4">
             {radar.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-6 text-center text-sm text-muted-foreground">
-                Ninguém sumido fora de cuidado. 👏
+              <p className="rounded-bloco bg-ok-claro px-4 py-6 text-center text-sm font-semibold text-ok">
+                Ninguém sumido fora de cuidado.
               </p>
             ) : (
               (["D60", "CHEGANDO", "M6", "A1"] as const).map((faixa) => {
@@ -705,19 +723,19 @@ function CrmCadencesPageConteudo() {
                 if (!pessoas.length) return null;
                 return (
                   <div key={faixa}>
-                    <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-oliva">
+                    <p className="mb-2 flex flex-wrap items-center gap-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
                       {faixaLabels[faixa]}
-                      <Badge variant={faixa === "D60" ? "gold" : "muted"}>{pessoas.length}</Badge>
-                      {faixa === "CHEGANDO" ? <span className="font-normal normal-case text-muted-foreground">— ainda dá para trazer de volta ANTES de virar resgate</span> : null}
+                      <Etiqueta tom={faixa === "D60" ? "atencao" : "neutro"}>{pessoas.length}</Etiqueta>
+                      {faixa === "CHEGANDO" ? <span className="font-medium normal-case tracking-normal text-tinta-2">— ainda dá para trazer de volta ANTES de virar resgate</span> : null}
                     </p>
-                    <div className="grid gap-1.5">
+                    <div className="grid">
                       {pessoas.map((pessoa) => (
-                        <div key={pessoa.contact.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/15 bg-white/70 px-3 py-2">
+                        <div key={pessoa.contact.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-fio py-2.5">
                           <div className="min-w-0 text-sm">
-                            <Link to={crmModuleRoutes.contact(pessoa.contact.id)} className="font-semibold text-brand-musgo hover:underline">
+                            <Link to={crmModuleRoutes.contact(pessoa.contact.id)} className={NOME_LINK}>
                               {contactDisplayName(pessoa.contact)}
                             </Link>
-                            <span className="ml-2 text-xs text-muted-foreground">
+                            <span className="ml-2 text-[13px] font-medium tabular-nums text-tinta-2">
                               última visita {pessoa.ultimaVisita.split("-").reverse().join("/")} · {pessoa.diasSemVir} dias
                             </span>
                           </div>
@@ -738,7 +756,7 @@ function CrmCadencesPageConteudo() {
       ) : null}
 
       {feedback ? (
-        <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/70 p-3 text-sm text-brand-tinta">{feedback}</div>
+        <div role="status" className="rounded-bloco bg-saber px-4 py-3 text-sm font-semibold leading-5 text-tinta">{feedback}</div>
       ) : null}
 
       {secao === "APRENDER" ? (
@@ -752,16 +770,16 @@ function CrmCadencesPageConteudo() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <CardTitle>{cadence.name}</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">{cadence.description}</p>
+                    <p className="mt-1 text-sm font-medium leading-5 text-tinta-2">{cadence.description}</p>
                   </div>
-                  <Badge variant="outline">{crmRoleLabels[cadence.defaultOwnerRole]}</Badge>
+                  <Etiqueta>{crmRoleLabels[cadence.defaultOwnerRole]}</Etiqueta>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="mb-4 flex flex-wrap gap-2">
-                  <Badge variant="gold">{cadenceTypeLabels[cadence.cadenceType]}</Badge>
+                  <Etiqueta tom="musgo">{cadenceTypeLabels[cadence.cadenceType]}</Etiqueta>
                   <Button type="button" variant="outline" size="sm" onClick={() => copyTemplate(cadence)}>
-                    <ClipboardCopy className="mr-2 h-4 w-4" />
+                    <ClipboardCopy className="h-4 w-4" aria-hidden="true" />
                     Copiar 1ª mensagem
                   </Button>
                 </div>
@@ -770,45 +788,45 @@ function CrmCadencesPageConteudo() {
                   {steps.map((step) => {
                     const template = templatesById.get(step.messageTemplateId);
                     return (
-                      <div key={step.id} className="rounded-lg border border-brand-oliva/12 bg-white/58 p-3">
+                      <div key={step.id} className="border-t border-fio pt-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-semibold text-brand-musgo">{step.stepOrder}. {step.name}</p>
-                          <Badge variant="muted">{taskTypeLabels[step.taskType]}</Badge>
+                          <p className="text-sm font-bold leading-5 text-tinta"><span className="tabular-nums">{step.stepOrder}.</span> {step.name}</p>
+                          <Etiqueta>{taskTypeLabels[step.taskType]}</Etiqueta>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">{template?.body}</p>
+                        <p className="mt-1 text-sm font-medium leading-5 text-tinta-2">{template?.body}</p>
                       </div>
                     );
                   })}
                 </div>
 
-                <div className="mt-4 border-t border-brand-oliva/12 pt-4">
-                  <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Inscrições ativas</p>
+                <div className="mt-4 border-t border-fio pt-4">
+                  <p className="mb-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">Inscrições ativas</p>
                   <div className="grid gap-2">
                     {enrollments.length ? enrollments.map((enrollment) => {
                       const contact = state.contacts.find((item) => item.id === enrollment.contactId);
                       return (
-                        <div key={enrollment.id} className="rounded-lg bg-white/50 p-3">
+                        <div key={enrollment.id} className="rounded-bloco bg-saber p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <Link to={crmModuleRoutes.contact(enrollment.contactId)} className="font-semibold text-brand-musgo hover:underline">
+                            <Link to={crmModuleRoutes.contact(enrollment.contactId)} className={NOME_LINK}>
                               {contactDisplayName(contact)}
                             </Link>
-                            <Badge className={statusTone(enrollment.status)}>{enrollmentStatusLabels[enrollment.status]}</Badge>
+                            <Etiqueta className={statusTone(enrollment.status)}>{enrollmentStatusLabels[enrollment.status]}</Etiqueta>
                           </div>
-                          <p className="mt-1 text-xs text-muted-foreground">Gatilho: {enrollment.triggerDate} - {enrollment.triggerSource}</p>
+                          <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">Gatilho: {enrollment.triggerDate} · {enrollment.triggerSource}</p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => updateEnrollment(enrollment.id, "PAUSED")}>
-                              <PauseCircle className="mr-2 h-4 w-4" />
+                              <PauseCircle className="h-4 w-4" aria-hidden="true" />
                               Pausar
                             </Button>
                             <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => updateEnrollment(enrollment.id, "ACTIVE")}>
-                              <PlayCircle className="mr-2 h-4 w-4" />
+                              <PlayCircle className="h-4 w-4" aria-hidden="true" />
                               Ativar
                             </Button>
                           </div>
                         </div>
                       );
                     }) : (
-                      <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-sm text-muted-foreground">
+                      <div className="rounded-bloco bg-saber p-3 text-sm font-medium text-tinta-2">
                         Nenhum contato inscrito nesta cadência.
                       </div>
                     )}

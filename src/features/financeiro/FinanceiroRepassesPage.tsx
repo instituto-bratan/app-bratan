@@ -1,18 +1,19 @@
+// REPASSES NUTRI & PSI — a planilha de fechamento da Géssica e da Barbara.
+//
+// REDESENHO (08/10/2026, Papel & Musgo, imagem 03): um cabeçalho só, com o saldo
+// do mês dito em frase; a escolha da profissional como leitura (Nutricionista ·
+// Psicóloga); à esquerda, na folha, o que pede decisão (classificar o que veio
+// das comandas) e o fechamento do mês; à direita, no saber, o mês em repasses
+// com o botão de fechar, e o lançamento manual. Mesmos dados, mesmos botões,
+// mesmas regras (R$ 110 Instituto→Dra, R$ 150 Dra→Instituto, retorno sem repasse).
 import { useMemo, useState, type FormEvent } from "react";
-import { motion } from "framer-motion";
-import { ArrowLeftRight, CheckCircle2, Plus, Trash2, UserRound } from "lucide-react";
+import { ArrowLeftRight, Plus, Trash2, UserRound } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
-import { cn } from "@/lib/utils";
 import {
   createFinId,
   moneyFin,
@@ -29,6 +30,23 @@ import {
   type FinPartnerProfessional,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
+import {
+  Campo,
+  Leituras,
+  Linha,
+  NumeroGrande,
+  OrigemDosDados,
+  RecadoDaTela,
+  Razao,
+  Rubrica,
+  Selecao,
+  TituloDoBloco,
+  Vazio,
+  classeDoCampo,
+  classeDoCampoNumero,
+  mesDaRubrica,
+  nomeDoMes,
+} from "./pecasBancoFechamento";
 
 export function FinanceiroRepassesPage() {
   const { pessoa } = useAuth();
@@ -114,177 +132,242 @@ export function FinanceiroRepassesPage() {
     setFeedback(`Fechamento lançado: ${moneyFin(expense.amount)} em Contas a Pagar (${partnerProfessionalLabels[professional]}).`);
   }
 
+  const mesBR = month.split("-").reverse().join("/");
+  const nomeDoMesDaTela = nomeDoMes(month);
+  const mesRubrica = mesDaRubrica(month, now);
+  const quem = partnerProfessionalLabels[professional];
+  // O recado é o mesmo de sempre; só a cor muda quando ele pede algo (08/10/2026).
+  const recadoPedeAlgo = /^Informe/.test(feedback);
+  const mostraSugestoes = suggestions.length > 0 && !readOnly;
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Repasses" module="fin-repasses">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">{financeiro.syncMode}</Badge>
-              </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Repasses Nutri & Psi
-                <InfoTip title="Como funciona o fechamento?">
-                  Cada atendimento lançado nas comandas aparece aqui para classificar: plano de acompanhamento (R$ 110
-                  Instituto→Dra), consulta avulsa de paciente da Dra (R$ 150 Dra→Instituto) ou retorno (sem repasse). O app
-                  soma os dois lados e fecha o mês com um clique, lançando o repasse em Contas a Pagar na categoria certa.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                A planilha de fechamento da Géssica e da Barbara, montada sozinha a partir das comandas.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-40" aria-label="Mês" />
-            </div>
-          </div>
-        </motion.section>
+      <div className="mx-auto w-full max-w-[1320px]">
+        <Cabecalho
+          sobrancelha="Financeiro · Fechamento"
+          titulo={
+            <>
+              Repasses Nutri & Psi{" "}
+              <InfoTip title="Como funciona o fechamento?" className="align-middle">
+                Cada atendimento lançado nas comandas aparece aqui para classificar: plano de acompanhamento (R$ 110
+                Instituto→Dra), consulta avulsa de paciente da Dra (R$ 150 Dra→Instituto) ou retorno (sem repasse). O app
+                soma os dois lados e fecha o mês com um clique, lançando o repasse em Contas a Pagar na categoria certa.
+              </InfoTip>
+            </>
+          }
+          frase={
+            <>
+              {summary.net > 0.005 ? (
+                <>
+                  Em {nomeDoMesDaTela}, o repasse para {quem} é de <strong className="tabular-nums">{moneyFin(summary.net)}</strong>: os planos menos
+                  as avulsas.{" "}
+                </>
+              ) : summary.net < -0.005 ? (
+                <>
+                  Em {nomeDoMesDaTela}, {quem} devolve <strong className="tabular-nums">{moneyFin(Math.abs(summary.net))}</strong> ao Instituto: as
+                  avulsas passaram os planos.{" "}
+                </>
+              ) : (
+                <>Em {nomeDoMesDaTela}, nada a repassar para {quem} até agora. </>
+              )}
+              {mostraSugestoes ? (
+                <span className="alerta">
+                  {suggestions.length === 1 ? "Um atendimento das comandas espera" : `${suggestions.length} atendimentos das comandas esperam`} classificação.
+                </span>
+              ) : (
+                "A planilha de fechamento da Géssica e da Barbara, montada sozinha a partir das comandas."
+              )}
+            </>
+          }
+          acoes={
+            <Campo rotulo="Mês" className="w-48">
+              <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className={classeDoCampo} aria-label="Mês" />
+            </Campo>
+          }
+        />
 
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(partnerProfessionalLabels) as FinPartnerProfessional[]).map((option) => (
-            <Button key={option} type="button" variant={professional === option ? "default" : "outline"} onClick={() => setProfessional(option)}>
-              <UserRound className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              {partnerProfessionalLabels[option]}
-            </Button>
-          ))}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-            <p className="text-sm font-semibold text-brand-musgo">Instituto → Dra (planos)</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(summary.institutoParaDra)}</p>
-          </div>
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-            <p className="text-sm font-semibold text-brand-musgo">Dra → Instituto (avulsas)</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(summary.draParaInstituto)}</p>
-          </div>
-          <div className={cn("rounded-lg border p-4", summary.net > 0 ? "border-brand-dourado/45 bg-brand-creme/40" : "border-emerald-200 bg-emerald-50/50")}>
-            <p className="text-sm font-semibold text-brand-musgo">{summary.net >= 0 ? "A pagar à Dra" : "A receber da Dra"}</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(Math.abs(summary.net))}</p>
-            {summary.net > 0 && !readOnly ? (
-              <LiquidButton type="button" size="sm" className="mt-2 h-8 px-3 text-xs" disabled={closingExists} onClick={closeMonth}>
-                <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden="true" />
-                {closingExists ? "Fechamento já lançado" : "Fechar mês e lançar na P12"}
-              </LiquidButton>
-            ) : summary.net < 0 ? (
-              <p className="mt-2 text-xs leading-4 text-muted-foreground">Saldo a favor do Instituto — registre a entrada quando a Dra repassar.</p>
-            ) : null}
-          </div>
-        </div>
+        <Leituras
+          className="mb-6"
+          rotulo="De quem é o repasse"
+          valor={professional}
+          onMudar={setProfessional}
+          opcoes={(Object.keys(partnerProfessionalLabels) as FinPartnerProfessional[]).map((option) => ({
+            valor: option,
+            rotulo: (
+              <>
+                <UserRound className="h-4 w-4 text-tinta-2" aria-hidden="true" />
+                {partnerProfessionalLabels[option]}
+              </>
+            ),
+          }))}
+        />
 
         {feedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
+          <RecadoDaTela tom={recadoPedeAlgo ? "atencao" : "ok"} className="mb-6">
             {feedback}
-          </div>
+          </RecadoDaTela>
         ) : null}
 
-        {suggestions.length && !readOnly ? (
-          <Card className="border-brand-dourado/40 bg-brand-creme/25">
-            <CardHeader>
-              <CardTitle className="text-lg">Vindos das comandas — classifique ({suggestions.length})</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {suggestions.map((suggestion) => (
-                <div key={suggestion.saleItemRef} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/70 px-3 py-2.5">
-                  <div>
-                    <p className="text-sm font-semibold text-brand-tinta">{suggestion.patientName}</p>
-                    <p className="text-xs text-muted-foreground">{suggestion.date.split("-").reverse().join("/")} · pago na comanda: {moneyFin(suggestion.amount)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Button type="button" size="sm" variant="outline" onClick={() => classify(suggestion.saleItemRef, suggestion.date, suggestion.patientName, "PLANO")}>
-                      Plano (R$ 110)
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => classify(suggestion.saleItemRef, suggestion.date, suggestion.patientName, "AVULSA")}>
-                      Avulsa (R$ 150)
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => classify(suggestion.saleItemRef, suggestion.date, suggestion.patientName, "RETORNO")}>
-                      Retorno
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
+        <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          {/* DECIDIR — classificar o que veio das comandas e o fechamento do mês (folha). */}
+          <div className="grid min-w-0 gap-6">
+            {mostraSugestoes ? (
+              <BlocoFolha as="section" aria-labelledby="repasses-sugestoes" className="overflow-hidden">
+                <TituloDoBloco
+                  id="repasses-sugestoes"
+                  titulo="Vindos das comandas — classifique"
+                  soma={<span className="text-atencao">{suggestions.length}</span>}
+                  ajuda="Plano: o Instituto repassa R$ 110 à Dra. Avulsa: a Dra repassa R$ 150 ao Instituto. Retorno: sem repasse."
+                />
+                <ul>
+                  {suggestions.map((suggestion) => (
+                    <Linha
+                      key={suggestion.saleItemRef}
+                      titulo={suggestion.patientName}
+                      meta={[
+                        <span key="dia" className="tabular-nums">
+                          {suggestion.date.split("-").reverse().join("/")}
+                        </span>,
+                        <span key="pago">
+                          pago na comanda: <span className="tabular-nums">{moneyFin(suggestion.amount)}</span>
+                        </span>,
+                      ]}
+                      acoes={
+                        <>
+                          <Botao variante="suave" tamanho="pq" onClick={() => classify(suggestion.saleItemRef, suggestion.date, suggestion.patientName, "PLANO")}>
+                            Plano (R$ 110)
+                          </Botao>
+                          <Botao variante="secundario" tamanho="pq" onClick={() => classify(suggestion.saleItemRef, suggestion.date, suggestion.patientName, "AVULSA")}>
+                            Avulsa (R$ 150)
+                          </Botao>
+                          <Botao variante="fantasma" tamanho="pq" onClick={() => classify(suggestion.saleItemRef, suggestion.date, suggestion.patientName, "RETORNO")}>
+                            Retorno
+                          </Botao>
+                        </>
+                      }
+                    />
+                  ))}
+                </ul>
+              </BlocoFolha>
+            ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Fechamento de {month.split("-").reverse().join("/")} · {partnerProfessionalLabels[professional]}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2">
+            <BlocoFolha as="section" aria-labelledby="repasses-fechamento" className="overflow-hidden">
+              <TituloDoBloco
+                id="repasses-fechamento"
+                titulo={`Fechamento de ${mesBR} · ${quem}`}
+                soma={summary.entries.length ? `${summary.entries.length} atendimento${summary.entries.length > 1 ? "s" : ""}` : null}
+              />
               {summary.entries.length ? (
-                summary.entries.map((entry) => (
-                  <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-brand-tinta">{entry.patientName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {entry.entryDate.split("-").reverse().join("/")} · {partnerKindLabels[entry.kind]}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={cn("text-sm font-bold", entry.kind === "PLANO" ? "text-brand-dourado" : entry.kind === "AVULSA" ? "text-emerald-700" : "text-muted-foreground")}>
-                        {entry.kind === "RETORNO" ? "—" : moneyFin(entry.amount)}
-                      </span>
-                      {readOnly ? null : (
-                        <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${entry.patientName}`} onClick={() => financeiro.removePartnerEntry(entry.id)}>
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))
+                <ul>
+                  {summary.entries.map((entry) => (
+                    <Linha
+                      key={entry.id}
+                      titulo={entry.patientName}
+                      meta={[
+                        <span key="dia" className="tabular-nums">
+                          {entry.entryDate.split("-").reverse().join("/")}
+                        </span>,
+                        partnerKindLabels[entry.kind],
+                      ]}
+                      valor={entry.kind === "RETORNO" ? "—" : moneyFin(entry.amount)}
+                      tomDoValor={entry.kind === "AVULSA" ? "ok" : entry.kind === "RETORNO" ? "fraco" : undefined}
+                      acoes={
+                        readOnly ? null : (
+                          <button
+                            type="button"
+                            aria-label={`Excluir ${entry.patientName}`}
+                            onClick={() => financeiro.removePartnerEntry(entry.id)}
+                            className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        )
+                      }
+                    />
+                  ))}
+                </ul>
               ) : (
-                <p className="py-6 text-center text-sm text-muted-foreground">Nenhum atendimento classificado neste mês ainda.</p>
+                <Vazio tom="neutro">Nenhum atendimento classificado neste mês ainda.</Vazio>
               )}
-            </CardContent>
-          </Card>
+            </BlocoFolha>
+          </div>
 
-          <Card className={cn("h-fit", readOnly && "hidden")}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                Lançar manualmente
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-3" onSubmit={handleManual}>
-                <div>
-                  <Label>Paciente</Label>
-                  <Input value={manualName} onChange={(event) => setManualName(event.target.value)} placeholder="Nome" />
+          <div className="grid min-w-0 content-start gap-6">
+            {/* SABER — o mês em repasses (sem borda, sem sombra). */}
+            <BlocoSaber as="aside" aria-labelledby="repasses-mes" className="grid content-start gap-4">
+              <Rubrica as="h2" id="repasses-mes">
+                {mesRubrica} em repasses
+              </Rubrica>
+              <div className="flex flex-wrap items-center gap-3">
+                <NumeroGrande valor={Math.abs(summary.net)} />
+                <span className="text-[13px] font-medium leading-5 text-tinta-2">{summary.net >= 0 ? "A pagar à Dra" : "A receber da Dra"}</span>
+              </div>
+              <Razao
+                linhas={[
+                  { rotulo: "Instituto → Dra (planos)", valor: moneyFin(summary.institutoParaDra) },
+                  { rotulo: "Dra → Instituto (avulsas)", valor: moneyFin(summary.draParaInstituto), tom: summary.draParaInstituto > 0.005 ? "ok" : undefined },
+                ]}
+              />
+              {summary.net > 0 && !readOnly ? (
+                <div className="grid justify-items-start gap-2">
+                  <Botao variante="primario" disabled={closingExists} icone={<ArrowLeftRight className="h-4 w-4" aria-hidden="true" />} onClick={closeMonth}>
+                    {closingExists ? "Fechamento já lançado" : "Fechar mês e lançar na P12"}
+                  </Botao>
+                  <p className="text-[13px] font-medium leading-5 text-tinta-2">O repasse entra em Contas a Pagar, na categoria de {quem}.</p>
                 </div>
-                <div>
-                  <Label>Tipo</Label>
-                  <select value={manualKind} onChange={(event) => setManualKind(event.target.value as FinPartnerKind)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                    {(Object.keys(partnerKindLabels) as FinPartnerKind[]).map((kind) => (
-                      <option key={kind} value={kind}>{partnerKindLabels[kind]}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label>Valor (padrão {moneyFin(partnerKindDefaults[manualKind].amount)})</Label>
-                    <Input value={manualAmount} onChange={(event) => setManualAmount(event.target.value)} placeholder={String(partnerKindDefaults[manualKind].amount)} inputMode="decimal" />
+              ) : summary.net < 0 ? (
+                <p className="text-[13px] font-medium leading-5 text-tinta-2">Saldo a favor do Instituto — registre a entrada quando a Dra repassar.</p>
+              ) : null}
+              <OrigemDosDados modo={financeiro.syncMode} />
+            </BlocoSaber>
+
+            {readOnly ? null : (
+              <BlocoFolha as="section" aria-labelledby="repasses-manual">
+                <TituloDoBloco
+                  id="repasses-manual"
+                  titulo={
+                    <span className="inline-flex items-center gap-2">
+                      <Plus className="h-4 w-4 stroke-oliva" aria-hidden="true" />
+                      Lançar manualmente
+                    </span>
+                  }
+                />
+                <form className="grid gap-4 border-t border-fio px-6 pb-6 pt-4 max-md:px-4 max-md:pb-4" onSubmit={handleManual}>
+                  <Campo rotulo="Paciente">
+                    <input className={classeDoCampo} value={manualName} onChange={(event) => setManualName(event.target.value)} placeholder="Nome" />
+                  </Campo>
+                  <Campo rotulo="Tipo">
+                    <Selecao value={manualKind} onChange={(event) => setManualKind(event.target.value as FinPartnerKind)}>
+                      {(Object.keys(partnerKindLabels) as FinPartnerKind[]).map((kind) => (
+                        <option key={kind} value={kind}>
+                          {partnerKindLabels[kind]}
+                        </option>
+                      ))}
+                    </Selecao>
+                  </Campo>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                    <Campo rotulo={`Valor (padrão ${moneyFin(partnerKindDefaults[manualKind].amount)})`}>
+                      <input
+                        className={classeDoCampoNumero}
+                        value={manualAmount}
+                        onChange={(event) => setManualAmount(event.target.value)}
+                        placeholder={String(partnerKindDefaults[manualKind].amount)}
+                        inputMode="decimal"
+                      />
+                    </Campo>
+                    <Campo rotulo="Data">
+                      <input className={classeDoCampo} type="date" value={manualDate} onChange={(event) => setManualDate(event.target.value)} />
+                    </Campo>
                   </div>
                   <div>
-                    <Label>Data</Label>
-                    <Input type="date" value={manualDate} onChange={(event) => setManualDate(event.target.value)} />
+                    <Botao type="submit" variante="secundario" icone={<Plus className="h-4 w-4" aria-hidden="true" />}>
+                      Registrar
+                    </Botao>
                   </div>
-                </div>
-                <LiquidButton type="submit" size="sm">
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  Registrar
-                </LiquidButton>
-              </form>
-            </CardContent>
-          </Card>
+                </form>
+              </BlocoFolha>
+            )}
+          </div>
         </div>
       </div>
     </AccessGate>

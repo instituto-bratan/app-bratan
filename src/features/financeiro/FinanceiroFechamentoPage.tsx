@@ -1,14 +1,16 @@
+// FECHAMENTO DO DIA — esperado × extrato, dia a dia.
+//
+// REDESENHO (08/10/2026, Papel & Musgo, imagem 03): um cabeçalho só, com os
+// dias conferidos ditos em frase; à esquerda, um dia por folha (o que a
+// comanda diz, o que a recepção contou, as taxas e o Bateu/Divergente); à
+// direita, no saber, o mês do fechamento e as tarifas na P12, e embaixo o
+// rendimento do banco. A trava macia, os campos e os botões são os mesmos.
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Landmark, Scale } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, Selo } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { parseMoneyBR } from "@/lib/money";
 import { todayISO } from "@/lib/localStore";
@@ -26,9 +28,23 @@ import {
   type FinReconciliation,
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
+import { Campo, NumeroGrande, OrigemDosDados, RecadoDaTela, Razao, Rubrica, Vazio, classeDoCampo, classeDoCampoNumero, mesDaRubrica, nomeDoMes } from "./pecasBancoFechamento";
 
 function formatDay(day: string) {
   return day.split("-").reverse().slice(0, 2).join("/");
+}
+
+/** "terça" — o dia da semana ao lado da data (08/10/2026). */
+function diaDaSemana(day: string) {
+  const data = new Date(`${day}T12:00:00`);
+  return Number.isNaN(data.getTime()) ? "" : data.toLocaleDateString("pt-BR", { weekday: "long" });
+}
+
+/** O selo da situação do dia: a mesma palavra de sempre, com a forma e a cor do guia. */
+function SeloDoDia({ status }: { status: FinReconciliation["status"] }) {
+  if (status === "CONFERIDO") return <Selo estado="pago">{reconciliationStatusLabels[status]}</Selo>;
+  if (status === "DIVERGENTE") return <Selo estado="vencido">{reconciliationStatusLabels[status]}</Selo>;
+  return <Selo estado="aguardando">{reconciliationStatusLabels[status]}</Selo>;
 }
 
 function DayRow({
@@ -88,134 +104,135 @@ function DayRow({
   }
 
   const status = saved?.status ?? "PENDENTE";
+  const esperados = [
+    { rotulo: "PIX esperado", valor: expected.pix },
+    { rotulo: "Cartão Itaú", valor: expected.cardItau },
+    { rotulo: "Cartão Safra", valor: expected.cardSafra },
+    { rotulo: "Dinheiro", valor: expected.dinheiro },
+    { rotulo: "Outros", valor: expected.outros },
+  ];
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border p-3 sm:p-4",
-        status === "CONFERIDO" && "border-emerald-200 bg-emerald-50/50",
-        status === "DIVERGENTE" && "border-red-200 bg-red-50/60",
-        status === "PENDENTE" && "border-brand-oliva/16 bg-white/60",
-      )}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <p className="text-lg font-bold text-brand-musgo">{formatDay(day)}</p>
-          <Badge variant={status === "CONFERIDO" ? "muted" : status === "DIVERGENTE" ? "outline" : "gold"} className={cn(status === "DIVERGENTE" && "border-red-300 text-red-800")}>
-            {reconciliationStatusLabels[status]}
-          </Badge>
-          <span className="text-xs text-muted-foreground">{expected.salesCount} comandas · {moneyFin(expected.total)}</span>
+    <BlocoFolha as="article" aria-labelledby={`dia-${day}`} className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 pb-4 pt-5 max-md:px-4 max-md:pt-4">
+        <div className="min-w-0">
+          <h3 id={`dia-${day}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base font-bold leading-6 text-tinta">
+            <span className="tabular-nums">
+              {formatDay(day)} <span className="font-semibold text-tinta-2">{diaDaSemana(day)}</span>
+            </span>
+            <SeloDoDia status={status} />
+          </h3>
+          <p className="text-[13px] font-medium leading-5 text-tinta-2">
+            {expected.salesCount} {expected.salesCount === 1 ? "comanda" : "comandas"} · <span className="font-bold tabular-nums text-tinta">{moneyFin(expected.total)}</span>
+          </p>
         </div>
-        <div className={cn("flex gap-2", readOnly && "hidden")}>
-          <Button
-            type="button"
-            size="sm"
-            variant={status === "CONFERIDO" ? "default" : "outline"}
-            disabled={!podeConferir}
-            title={podeConferir ? undefined : "Explique a diferença na observação para fechar o dia."}
-            onClick={() => save("CONFERIDO")}
-          >
-            <CheckCircle2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Bateu
-          </Button>
-          <Button type="button" size="sm" variant="outline" className="border-red-300 text-red-800 hover:bg-red-50" onClick={() => save("DIVERGENTE")}>
-            <AlertTriangle className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Divergente
-          </Button>
-        </div>
+        {readOnly ? null : (
+          <div className="flex flex-wrap gap-2">
+            <Botao
+              variante={status === "CONFERIDO" ? "primario" : "suave"}
+              tamanho="pq"
+              disabled={!podeConferir}
+              title={podeConferir ? undefined : "Explique a diferença na observação para fechar o dia."}
+              icone={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+              onClick={() => save("CONFERIDO")}
+            >
+              Bateu
+            </Botao>
+            <Botao
+              variante="secundario"
+              tamanho="pq"
+              className={cn(status === "DIVERGENTE" && "border-atencao text-atencao")}
+              icone={<AlertTriangle className="h-4 w-4 text-atencao" aria-hidden="true" />}
+              onClick={() => save("DIVERGENTE")}
+            >
+              Divergente
+            </Botao>
+          </div>
+        )}
       </div>
 
-      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-5">
-        <div className="rounded-md bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase text-brand-oliva">PIX esperado</p>
-          <p className="font-semibold text-brand-tinta">{moneyFin(expected.pix)}</p>
-        </div>
-        <div className="rounded-md bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase text-brand-oliva">Cartão Itaú</p>
-          <p className="font-semibold text-brand-tinta">{moneyFin(expected.cardItau)}</p>
-        </div>
-        <div className="rounded-md bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase text-brand-oliva">Cartão Safra</p>
-          <p className="font-semibold text-brand-tinta">{moneyFin(expected.cardSafra)}</p>
-        </div>
-        <div className="rounded-md bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase text-brand-oliva">Dinheiro</p>
-          <p className="font-semibold text-brand-tinta">{moneyFin(expected.dinheiro)}</p>
-        </div>
-        <div className="rounded-md bg-white/70 px-3 py-2">
-          <p className="text-[11px] font-semibold uppercase text-brand-oliva">Outros</p>
-          <p className="font-semibold text-brand-tinta">{moneyFin(expected.outros)}</p>
-        </div>
-      </div>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-t border-fio px-6 py-4 sm:grid-cols-5 max-md:px-4">
+        {esperados.map((item) => (
+          <div key={item.rotulo} className="min-w-0">
+            <dt className="text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2">{item.rotulo}</dt>
+            <dd className="mt-1 whitespace-nowrap text-sm font-bold leading-5 tabular-nums text-tinta">{moneyFin(item.valor)}</dd>
+          </div>
+        ))}
+      </dl>
 
       {/* CONTAGEM DO DIA — 3 números, 30 segundos. É o que pega dinheiro fora da
           comanda e taxa de maquininha errada no mesmo dia. */}
-      <div className="mt-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">
-          Conferi de verdade (deixe em branco o que não conferiu)
+      <div className="mx-6 mb-4 grid gap-3 rounded-bloco bg-saber p-4 max-md:mx-4">
+        <p className="text-sm font-bold leading-5 text-tinta">
+          Conferi de verdade <span className="font-medium text-tinta-2">(deixe em branco o que não conferiu)</span>
         </p>
-        <div className="mt-2 grid gap-2 sm:grid-cols-3">
-          <label className="grid gap-1">
-            <span className="text-[11px] font-semibold text-brand-tinta">Dinheiro na gaveta</span>
-            <Input value={contDinheiro} onChange={(event) => setContDinheiro(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" disabled={readOnly} />
-          </label>
-          <label className="grid gap-1">
-            <span className="text-[11px] font-semibold text-brand-tinta">Total da maquininha</span>
-            <Input value={contCartao} onChange={(event) => setContCartao(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" disabled={readOnly} />
-          </label>
-          <label className="grid gap-1">
-            <span className="text-[11px] font-semibold text-brand-tinta">PIX recebido</span>
-            <Input value={contPix} onChange={(event) => setContPix(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" disabled={readOnly} />
-          </label>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Campo rotulo="Dinheiro na gaveta">
+            <input className={classeDoCampoNumero} value={contDinheiro} onChange={(event) => setContDinheiro(event.target.value)} placeholder="0,00" inputMode="decimal" disabled={readOnly} />
+          </Campo>
+          <Campo rotulo="Total da maquininha">
+            <input className={classeDoCampoNumero} value={contCartao} onChange={(event) => setContCartao(event.target.value)} placeholder="0,00" inputMode="decimal" disabled={readOnly} />
+          </Campo>
+          <Campo rotulo="PIX recebido">
+            <input className={classeDoCampoNumero} value={contPix} onChange={(event) => setContPix(event.target.value)} placeholder="0,00" inputMode="decimal" disabled={readOnly} />
+          </Campo>
         </div>
-        <div className="mt-2 grid gap-1">
-          {conferencia.linhas
-            .filter((linha) => linha.contado !== null)
-            .map((linha) => (
-              <div
-                key={linha.rotulo}
-                className={cn(
-                  "flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs",
-                  linha.bate ? "border-emerald-200 bg-emerald-50/70 text-emerald-900" : "border-red-200 bg-red-50/70 text-red-800",
-                )}
-              >
-                <span className="font-semibold">
-                  {linha.rotulo}: comanda diz {moneyFin(linha.esperado)} · você contou {moneyFin(linha.contado ?? 0)}
-                </span>
-                <span className="font-bold tabular-nums">
-                  {linha.bate ? "bate ✓" : `${linha.diferenca && linha.diferenca > 0 ? "+" : ""}${moneyFin(linha.diferenca ?? 0)}`}
-                </span>
-                {linha.pista ? <span className="w-full text-[11px] font-normal">{linha.pista}</span> : null}
-              </div>
-            ))}
-          {conferencia.taxaSuspeita ? (
-            <div className="rounded-md border border-amber-300 bg-amber-50/80 px-2.5 py-1.5 text-xs font-semibold text-amber-900">
-              A taxa lançada dá {conferencia.taxaPercentual?.toFixed(2).replace(".", ",")}% do cartão do dia — o normal é até 9%. Confira antes de fechar.
-            </div>
-          ) : null}
-          {conferencia.precisaJustificar && !podeConferir ? (
-            <div className="rounded-md border border-red-300 bg-red-50/80 px-2.5 py-1.5 text-xs font-semibold text-red-800">
-              Diferença de {moneyFin(conferencia.diferencaTotal)}. Escreva na observação o que aconteceu para poder fechar o dia.
-            </div>
-          ) : null}
-        </div>
+        {conferencia.linhas.some((linha) => linha.contado !== null) || conferencia.taxaSuspeita || (conferencia.precisaJustificar && !podeConferir) ? (
+          <ul className="grid gap-2">
+            {conferencia.linhas
+              .filter((linha) => linha.contado !== null)
+              .map((linha) => (
+                <li
+                  key={linha.rotulo}
+                  className={cn(
+                    "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-controle px-3 py-2 text-[13px] leading-5 text-tinta",
+                    linha.bate ? "bg-ok-claro" : "bg-erro-claro",
+                  )}
+                >
+                  <span className="font-semibold">
+                    {linha.rotulo}: comanda diz <span className="tabular-nums">{moneyFin(linha.esperado)}</span> · você contou{" "}
+                    <span className="tabular-nums">{moneyFin(linha.contado ?? 0)}</span>
+                  </span>
+                  <span className={cn("inline-flex items-center gap-1 font-bold tabular-nums", linha.bate ? "text-ok" : "text-erro")}>
+                    {linha.bate ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> bate
+                      </>
+                    ) : (
+                      `${linha.diferenca && linha.diferenca > 0 ? "+" : ""}${moneyFin(linha.diferenca ?? 0)}`
+                    )}
+                  </span>
+                  {linha.pista ? <span className="w-full font-medium text-tinta-2">{linha.pista}</span> : null}
+                </li>
+              ))}
+            {conferencia.taxaSuspeita ? (
+              <li className="flex items-start gap-2 rounded-controle bg-atencao-claro px-3 py-2 text-[13px] font-semibold leading-5 text-tinta">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-atencao" aria-hidden="true" />
+                A taxa lançada dá {conferencia.taxaPercentual?.toFixed(2).replace(".", ",")}% do cartão do dia — o normal é até 9%. Confira antes de fechar.
+              </li>
+            ) : null}
+            {conferencia.precisaJustificar && !podeConferir ? (
+              <li className="flex items-start gap-2 rounded-controle bg-erro-claro px-3 py-2 text-[13px] font-semibold leading-5 text-tinta">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-erro" aria-hidden="true" />
+                Diferença de {moneyFin(conferencia.diferencaTotal)}. Escreva na observação o que aconteceu para poder fechar o dia.
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
       </div>
 
-      <div className="mt-2 grid gap-2 sm:grid-cols-3">
-        <label className="grid gap-1">
-          <span className="text-[11px] font-semibold uppercase text-brand-oliva">Taxa descontada Itaú (extrato)</span>
-          <Input value={feeItau} onChange={(event) => setFeeItau(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-[11px] font-semibold uppercase text-brand-oliva">Taxa descontada Safra</span>
-          <Input value={feeSafra} onChange={(event) => setFeeSafra(event.target.value)} placeholder="0,00" inputMode="decimal" className="h-10" />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-[11px] font-semibold uppercase text-brand-oliva">Observação (se divergente)</span>
-          <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ex.: faltou cair 1 crédito 3x" className="h-10" />
-        </label>
+      <div className="grid gap-3 border-t border-fio px-6 pb-5 pt-4 sm:grid-cols-3 max-md:px-4">
+        <Campo rotulo="Taxa descontada Itaú (extrato)">
+          <input className={classeDoCampoNumero} value={feeItau} onChange={(event) => setFeeItau(event.target.value)} placeholder="0,00" inputMode="decimal" />
+        </Campo>
+        <Campo rotulo="Taxa descontada Safra">
+          <input className={classeDoCampoNumero} value={feeSafra} onChange={(event) => setFeeSafra(event.target.value)} placeholder="0,00" inputMode="decimal" />
+        </Campo>
+        <Campo rotulo="Observação (se divergente)">
+          <input className={classeDoCampo} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ex.: faltou cair 1 crédito 3x" />
+        </Campo>
       </div>
-    </div>
+    </BlocoFolha>
   );
 }
 
@@ -298,124 +315,139 @@ export function FinanceiroFechamentoPage() {
     setFeedback(`Rendimento do banco de ${moneyFin(amount)} registrado em ${moveDate.split("-").reverse().join("/")} — entra na linha "Entrada de valores" da P12 e na Poupança.`);
   }
 
+  const nomeDoMesDaTela = nomeDoMes(month);
+  const mesRubrica = mesDaRubrica(month, now);
+  // O recado é o mesmo de sempre; só a cor muda quando ele pede algo (08/10/2026).
+  const recadoPedeAlgo = /^Não entendi/.test(feedback);
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Fechamento" module="fin-fechamento">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">{financeiro.syncMode}</Badge>
-              </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Fechamento do dia
-                <InfoTip title="O que é o Fechamento?">
-                  O "bater com o Itaú" virou checklist: para cada dia com comandas, o app mostra o que deveria ter caído por
-                  forma de pagamento e maquininha. Você confere no extrato, registra a taxa descontada e marca "Bateu" ou
-                  "Divergente" com o motivo. No fim do mês, um clique lança a soma das taxas na P12.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Esperado × extrato, dia a dia. Divergência fica vermelha até ser resolvida.
-              </p>
-            </div>
-            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" aria-label="Mês" />
-          </div>
-        </motion.section>
+      <div className="mx-auto w-full max-w-[1320px]">
+        <Cabecalho
+          sobrancelha="Financeiro · Fechamento"
+          titulo={
+            <>
+              Fechamento do dia{" "}
+              <InfoTip title="O que é o Fechamento?" className="align-middle">
+                O "bater com o Itaú" virou checklist: para cada dia com comandas, o app mostra o que deveria ter caído por
+                forma de pagamento e maquininha. Você confere no extrato, registra a taxa descontada e marca "Bateu" ou
+                "Divergente" com o motivo. No fim do mês, um clique lança a soma das taxas na P12.
+              </InfoTip>
+            </>
+          }
+          frase={
+            <>
+              <strong>
+                {conferidos} de {days.length} {days.length === 1 ? "dia conferido" : "dias conferidos"}
+              </strong>{" "}
+              em {nomeDoMesDaTela}.{" "}
+              {divergentes ? (
+                <span className="alerta">
+                  {divergentes} {divergentes === 1 ? "divergência aberta" : "divergências abertas"}: fica marcada até ser resolvida.
+                </span>
+              ) : (
+                "Esperado × extrato, dia a dia; nenhuma divergência aberta."
+              )}
+            </>
+          }
+          acoes={
+            <Campo rotulo="Mês" className="w-48">
+              <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className={classeDoCampo} aria-label="Mês" />
+            </Campo>
+          }
+        />
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-            <Scale className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Dias conferidos</p>
-            <p className="text-2xl font-bold text-brand-tinta">{conferidos} / {days.length}</p>
-          </div>
-          <div className={cn("rounded-lg border p-4", divergentes ? "border-red-200 bg-red-50" : "border-brand-oliva/14 bg-white/55")}>
-            <AlertTriangle className={cn("h-5 w-5", divergentes ? "text-red-700" : "text-brand-musgo")} aria-hidden="true" />
-            <p className={cn("mt-2 text-sm font-semibold", divergentes ? "text-red-800" : "text-brand-musgo")}>Divergências abertas</p>
-            <p className={cn("text-2xl font-bold", divergentes ? "text-red-800" : "text-brand-tinta")}>{divergentes}</p>
-          </div>
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-            <Landmark className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Taxas registradas no mês</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(feesTotal)}</p>
-            <LiquidButton
-              type="button"
-              size="sm"
-              className={cn("mt-2 h-8 px-3 text-xs", readOnly && "hidden")}
-              onClick={syncFeesExpense}
-              disabled={feesSynced || feesTarget <= 0}
-            >
-              {feesSynced
-                ? `Sincronizada na P12 (${moneyFin(feesTarget)})`
-                : feesExpense
-                  ? `Atualizar P12 (${moneyFin(feesTarget)})`
-                  : "Lançar tarifas na P12"}
-            </LiquidButton>
-            {feesExpense && !feesSynced ? (
-              <p className="mt-1 text-[11px] font-semibold text-red-700">
-                P12 está com {moneyFin(feesExpense.amount || 0)} — diferente do Fechamento. Toque para acertar.
-              </p>
-            ) : null}
-          </div>
-        </div>
+        {feedback ? <RecadoDaTela tom={recadoPedeAlgo ? "atencao" : "ok"} className="mb-6">{feedback}</RecadoDaTela> : null}
 
-        {feedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-            {feedback}
-          </div>
-        ) : null}
-
-        <Card className="border-brand-dourado/30 bg-brand-creme/35 shadow-none">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-brand-musgo">Rendimento do banco no mês</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Quando a conta render, lance aqui: o valor entra como "Entrada de valores" na P12 e no histórico da Poupança — sem virar comanda.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Input
-                  type="date"
-                  value={bankYieldDate}
-                  onChange={(event) => setBankYieldDate(event.target.value)}
-                  className="w-40"
-                  aria-label="Data do rendimento (a mesma do extrato)"
-                />
-                <Input
-                  value={bankYield}
-                  onChange={(event) => setBankYield(event.target.value)}
-                  placeholder="Ex.: 152,37"
-                  inputMode="decimal"
-                  className="w-32"
-                  aria-label="Valor do rendimento do banco"
-                />
-                <Button type="button" variant="outline" size="sm" onClick={registrarRendimento} disabled={readOnly}>
-                  Registrar
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Dias de {month.split("-").reverse().join("/")}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+        <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          <section aria-labelledby="fechamento-dias" className="grid min-w-0 gap-4">
+            <h2 id="fechamento-dias" className="text-base font-bold leading-6 text-tinta">
+              Dias de {month.split("-").reverse().join("/")}
+            </h2>
             {days.length ? (
               days.map((day) => <DayRow key={`${day}-${financeiro.reconciliations.find((r) => r.day === day)?.confirmedAt ?? "novo"}`} day={day} financeiro={financeiro} readOnly={readOnly} />)
             ) : (
-              <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma comanda lançada neste mês ainda — o fechamento nasce do Lançar Dia.</p>
+              <BlocoFolha>
+                <Vazio tom="neutro" className="border-t-0">
+                  Nenhuma comanda lançada neste mês ainda — o fechamento nasce do Lançar Dia.
+                </Vazio>
+              </BlocoFolha>
             )}
-          </CardContent>
-        </Card>
+          </section>
+
+          <div className="grid min-w-0 content-start gap-6">
+            <BlocoSaber as="aside" aria-labelledby="fechamento-mes" className="grid content-start gap-4">
+              <Rubrica as="h2" id="fechamento-mes">
+                {mesRubrica} no fechamento
+              </Rubrica>
+              <div className="flex flex-wrap items-center gap-3">
+                <NumeroGrande semMoeda valor={`${conferidos} de ${days.length}`} />
+                <span className="text-[13px] font-medium leading-5 text-tinta-2">dias conferidos</span>
+              </div>
+              <Razao
+                linhas={[
+                  { rotulo: "Divergências abertas", valor: divergentes ? String(divergentes) : "nenhuma", tom: divergentes ? "atencao" : "ok" },
+                  { rotulo: "Taxas registradas no mês", valor: moneyFin(feesTotal) },
+                ]}
+              />
+              {readOnly ? null : (
+                <div className="grid justify-items-start gap-2">
+                  <Botao variante="secundario" onClick={syncFeesExpense} disabled={feesSynced || feesTarget <= 0}>
+                    {feesSynced
+                      ? `Sincronizada na P12 (${moneyFin(feesTarget)})`
+                      : feesExpense
+                        ? `Atualizar P12 (${moneyFin(feesTarget)})`
+                        : "Lançar tarifas na P12"}
+                  </Botao>
+                </div>
+              )}
+              {feesExpense && !feesSynced ? (
+                <p className="flex items-start gap-2 text-[13px] font-semibold leading-5 text-atencao">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  P12 está com {moneyFin(feesExpense.amount || 0)} — diferente do Fechamento. Toque para acertar.
+                </p>
+              ) : null}
+              <OrigemDosDados modo={financeiro.syncMode} />
+            </BlocoSaber>
+
+            <BlocoFolha as="section" aria-labelledby="fechamento-rendimento" respiro className="grid gap-4">
+              <div>
+                <h2 id="fechamento-rendimento" className="text-base font-bold leading-6 text-tinta">
+                  Rendimento do banco no mês
+                </h2>
+                <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
+                  Quando a conta render, lance aqui: o valor entra como "Entrada de valores" na P12 e no histórico da Poupança — sem virar comanda.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Campo rotulo="Data (a do extrato)">
+                  <input
+                    type="date"
+                    value={bankYieldDate}
+                    onChange={(event) => setBankYieldDate(event.target.value)}
+                    className={classeDoCampo}
+                    aria-label="Data do rendimento (a mesma do extrato)"
+                  />
+                </Campo>
+                <Campo rotulo="Valor">
+                  <input
+                    value={bankYield}
+                    onChange={(event) => setBankYield(event.target.value)}
+                    placeholder="Ex.: 152,37"
+                    inputMode="decimal"
+                    className={classeDoCampoNumero}
+                    aria-label="Valor do rendimento do banco"
+                  />
+                </Campo>
+              </div>
+              <div>
+                <Botao variante="secundario" onClick={registrarRendimento} disabled={readOnly}>
+                  Registrar
+                </Botao>
+              </div>
+            </BlocoFolha>
+          </div>
+        </div>
       </div>
     </AccessGate>
   );

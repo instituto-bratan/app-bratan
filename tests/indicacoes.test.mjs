@@ -103,7 +103,7 @@ test("a tela cria o indicador novo quando ele foi digitado sem cadastro", () => 
 test("o erro do formulário aparece colado no botão, não só no topo da página", () => {
   const fonte = readFileSync(new URL("../src/features/crm/CrmCanaisPage.tsx", import.meta.url), "utf8");
   assert.match(fonte, /formError/, "estado de erro do formulário existe");
-  const posBotao = fonte.indexOf("Registrar indicação\n                </LiquidButton>");
+  const posBotao = fonte.indexOf("Registrar indicação\n                </Botao>");
   const posErro = fonte.indexOf("{formError ? (");
   assert.ok(posErro > posBotao && posErro - posBotao < 400, "o erro renderiza logo abaixo do botão");
 });

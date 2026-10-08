@@ -1,15 +1,17 @@
+// LANÇAR DIA — Financeiro › Dia › Lançar dia (o cartão verde digital).
+//
+// REDESENHO PAPEL & MUSGO (08/10/2026): UM cabeçalho com a frase que explica o
+// dia ("Três comandas lançadas hoje: R$ 10.240,00 no faturamento"), a comanda e
+// a lista do dia em FOLHAS (decidir) e o cartão do dia num bloco SABER (o total
+// em Fraunces e o razão por tipo, forma e maquininha). Nenhuma regra mudou: o
+// mesmo formulário, a mesma divisão do dinheiro para o Crediário, a mesma nota
+// (só quem pode emite), as mesmas travas de mês fechado e de nota autorizada.
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { motion } from "framer-motion";
-import { AlertTriangle, BellRing, CalendarDays, CheckCircle2, FileText, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, BellRing, CheckCircle2, FileText, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, botaoClasses } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { parseMoneyBR } from "@/lib/money";
 import { canFinanceiroFull, canLancarDia, podeEmitirNota, recadoNotaNaFila } from "@/lib/access";
@@ -76,6 +78,23 @@ import { NotaDaComandaDialog } from "./NotaDaComandaDialog";
 import { CpfDaNotaInline } from "./CpfDaNotaInline";
 import { divisaoDosItens, ehSoSinal, estadoDaNota, parcelasDaComanda, quandoPadrao, valorFaturavel } from "./notaNaComandaDoDia";
 import { travaDaComandaComNota, valorDaComandaMudou } from "./notasEmitidasFocus";
+import {
+  AJUDA,
+  AvisoDaTela,
+  CABECA_DA_FOLHA,
+  CAMPO,
+  Campo,
+  Etiqueta,
+  Leitura,
+  MARCAR,
+  NumeroEmReais,
+  RUBRICA,
+  TituloDoBloco,
+  Vazio,
+  diaCurto,
+  porExtenso,
+  quantos,
+} from "./pecasDiaPagar";
 
 type DraftItem = { itemType: FinSaleItemType; amount: string; description: string };
 type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine
@@ -87,11 +106,30 @@ function parseAmount(value: string) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
-function SummaryLine({ label, value, strong = false }: { label: string; value: number; strong?: boolean }) {
+// PEÇAS DA TELA (08/10/2026, Papel & Musgo). As linhas de item e de pagamento
+// usam a MESMA grade do cabeçalho de colunas (que só aparece do tablet para cima).
+// No celular: item = produto | tipo · valor · lixeira | detalhe; pagamento = forma | valor · parcelas | maquininha · lixeira.
+const GRADE_ITEM =
+  "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem] items-center gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.75fr)_minmax(0,1.1fr)_2.5rem]";
+const GRADE_PAGAMENTO =
+  "grid grid-cols-2 items-center gap-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.75fr)_minmax(0,0.55fr)_minmax(0,0.8fr)_2.5rem]";
+const BOTAO_ICONE_PERIGO =
+  "grid h-10 w-10 place-items-center justify-self-end rounded-controle text-tinta-2 transition-colors hover:bg-erro-claro hover:text-erro " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco";
+
+/** Um grupo do cartão do dia: rubrica + linhas "rótulo … valor" (o razão do saber). */
+function RazaoDoDia({ titulo, linhas }: { titulo: string; linhas: [string, number][] }) {
   return (
-    <div className={cn("flex items-center justify-between gap-3 px-3 py-1.5", strong && "rounded-md bg-brand-musgo text-brand-papel")}>
-      <span className={cn("min-w-0 text-xs font-semibold uppercase leading-tight", strong ? "text-brand-papel/80" : "text-brand-oliva")}>{label}</span>
-      <span className={cn("shrink-0 whitespace-nowrap text-sm font-bold tabular-nums", strong ? "text-brand-papel" : "text-brand-tinta")}>{moneyFin(value)}</span>
+    <div className="grid gap-1">
+      <p className={RUBRICA}>{titulo}</p>
+      <dl className="border-t border-fio-2">
+        {linhas.map(([rotulo, valor]) => (
+          <div key={rotulo} className="flex items-center justify-between gap-3 border-b border-fio py-2">
+            <dt className="min-w-0 text-[13px] font-medium leading-5 text-tinta-2">{rotulo}</dt>
+            <dd className={cn("whitespace-nowrap text-sm font-bold tabular-nums", valor ? "text-tinta" : "text-tinta-2")}>{moneyFin(valor)}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -613,6 +651,39 @@ export function FinanceiroLancarDiaPage() {
     setAbaterLembrete(true);
   }
 
+  // ---- Papel & Musgo (08/10/2026): a frase do cabeçalho, derivada do que a tela já sabia ----
+  const ehHoje = date === todayISO();
+  const quandoDia = ehHoje ? "hoje" : `em ${diaCurto(date)}`;
+  const somaDoDia = daySales.reduce((soma, sale) => soma + saleTotal(sale), 0);
+  const fraseDoTopo = daySales.length ? (
+    <>
+      <strong>
+        {porExtenso(daySales.length)} {daySales.length === 1 ? "comanda lançada" : "comandas lançadas"}
+      </strong>{" "}
+      {quandoDia}: {moneyFin(somaDoDia)} no faturamento.
+      {dinheiroNoCrediarioDoDia > 0 ? ` Mais ${moneyFin(dinheiroNoCrediarioDoDia)} em dinheiro, no Crediário.` : ""}
+    </>
+  ) : dinheiroNoCrediarioDoDia > 0 ? (
+    <>
+      Nenhuma comanda {quandoDia}; <strong>{moneyFin(dinheiroNoCrediarioDoDia)}</strong> em dinheiro foram para o Crediário.
+    </>
+  ) : dayZeroMark ? (
+    <>Dia {diaCurto(date)} marcado como zerado: nenhum atendimento, R$ 0,00 recebido.</>
+  ) : (
+    <>Nenhuma comanda lançada {quandoDia} ainda. Lance paciente por paciente — ao salvar, o formulário limpa para o próximo.</>
+  );
+  const recadoRuim = /^(Informe|Adicione|Itens .* não fecham|Esta comanda ficou|Para emitir|Não consegui|Comanda salva, mas)/.test(feedback);
+  const botaoPlanilha = cn(botaoClasses({ variante: "secundario", tamanho: "pq" }), "shadow-none backdrop-blur-none");
+  const dadosDaPlanilha = {
+    sales: financeiro.sales,
+    expenses: financeiro.expenses,
+    categories: financeiro.categories,
+    savingsMoves: financeiro.savingsMoves,
+    crediarioProfits: financeiro.crediarioProfits,
+    purchases: financeiro.purchases,
+    monthKey: date.slice(0, 7),
+  };
+
   return (
     <AccessGate allowed={canLancarDia} label="Financeiro · Lançar dia" module="fin-lancar-dia">
       {notaDaComanda ? (
@@ -632,80 +703,26 @@ export function FinanceiroLancarDiaPage() {
           }}
         />
       ) : null}
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">{financeiro.syncMode}</Badge>
-              </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Lançar dia
-                <InfoTip title="O que é o Lançar dia?">
-                  A versão digital do cartão verde: uma linha por paciente, com o que foi feito e como foi pago. O app calcula
-                  os totais por tipo e por forma de pagamento e alimenta a P12, os impostos e os repasses — você digita uma vez.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Registre paciente por paciente tudo que entrou no dia anterior — ao salvar, o formulário limpa para o próximo.
-                Cada comanda vai direto para o financeiro (Fechamento, P12, NFs e repasses). Os comprovantes da maquininha
-                entram no módulo Comprovantes, como hoje.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-                <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-44" aria-label="Dia do lançamento" />
-              </label>
-              {/* O QUE FOI LANÇADO NO MÊS, em Excel (25/08/2026). Duas visões,
-                  porque a contabilidade usa as duas: comanda por comanda
-                  (recebimentos) e a grade por dia (valor faturado). */}
-              <BaixarPlanilhaButton
-                chave="recebimentos"
-                rotulo="Baixar comandas do mês"
-                dados={{
-                  sales: financeiro.sales,
-                  expenses: financeiro.expenses,
-                  categories: financeiro.categories,
-                  savingsMoves: financeiro.savingsMoves,
-                  crediarioProfits: financeiro.crediarioProfits,
-                  purchases: financeiro.purchases,
-                  monthKey: date.slice(0, 7),
-                }}
-              />
-              <BaixarPlanilhaButton
-                chave="valor-faturado"
-                rotulo="Baixar grade do mês"
-                dados={{
-                  sales: financeiro.sales,
-                  expenses: financeiro.expenses,
-                  categories: financeiro.categories,
-                  savingsMoves: financeiro.savingsMoves,
-                  crediarioProfits: financeiro.crediarioProfits,
-                  purchases: financeiro.purchases,
-                  monthKey: date.slice(0, 7),
-                }}
-              />
-            </div>
-          </div>
-        </motion.section>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Financeiro · Dia"
+          titulo="Lançar dia"
+          frase={fraseDoTopo}
+          acoes={
+            <label className="flex items-center">
+              <span className="sr-only">Dia do lançamento</span>
+              <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className={cn(CAMPO, "w-[176px]")} aria-label="Dia do lançamento" />
+            </label>
+          }
+        />
 
-        {avisoMesFechado ? (
-          <div role="status" className="rounded-lg border border-brand-dourado/50 bg-brand-dourado/10 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            {avisoMesFechado}
-          </div>
-        ) : null}
+        {avisoMesFechado ? <AvisoDaTela tom="atencao">{avisoMesFechado}</AvisoDaTela> : null}
 
         {feedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
+          <AvisoDaTela tom={recadoRuim ? "atencao" : "ok"} onFechar={() => setFeedback("")}>
             {feedback}
-          </div>
+          </AvisoDaTela>
         ) : null}
 
         {/* CONFERÊNCIA DO FECHAMENTO (18/08/2026): fechar no Kanban e lançar o
@@ -714,413 +731,472 @@ export function FinanceiroLancarDiaPage() {
             extrato com a agenda do Dr. Daniel. Agora o app avisa. */}
         <ConferenciaFechamentoCard crmState={crmState} sales={financeiro.sales} lembretes={lembretes} cashEntries={caixaQuery.data ?? []} hoje={todayISO()} />
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
-          <div className="flex flex-col gap-5">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  {editingSaleId ? <Pencil className="h-5 w-5 text-brand-dourado" aria-hidden="true" /> : <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />}
+        <div className="grid items-start gap-8 max-md:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+          <div className="grid min-w-0 gap-8 max-md:gap-6">
+            {/* DECIDIR: a comanda (uma linha do cartão verde, paciente por paciente). */}
+            <BlocoFolha as="section" aria-labelledby="comanda-titulo" className="min-w-0">
+              <div className={CABECA_DA_FOLHA}>
+                <TituloDoBloco
+                  id="comanda-titulo"
+                  icone={editingSaleId ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+                >
                   {editingSaleId ? "Editar comanda" : "Nova comanda"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="grid gap-4" onSubmit={handleSubmit}>
-                  <div>
-                    <Label>Paciente</Label>
-                    <PatientPicker
-                      contacts={crmState.contacts}
-                      value={{ ref: patientRef, name: patientName }}
-                      onChange={(next) => {
-                        setPatientName(next.name);
-                        setPatientRef(next.ref);
-                      }}
-                      channels={patientChannels}
-                      onChannelsChange={setPatientChannels}
-                      id="comanda-paciente"
-                      placeholder="Buscar paciente por nome ou telefone…"
-                    />
-                  </div>
+                </TituloDoBloco>
+                <InfoTip title="O que é o Lançar dia?">
+                  A versão digital do cartão verde: uma linha por paciente, com o que foi feito e como foi pago. O app calcula os totais por tipo e
+                  por forma de pagamento e alimenta a P12, os impostos e os repasses — você digita uma vez. Registre paciente por paciente tudo que
+                  entrou no dia anterior; ao salvar, o formulário limpa para o próximo. Os comprovantes da maquininha entram no módulo Comprovantes.
+                </InfoTip>
+              </div>
+              <form className="grid gap-6 p-6 max-md:gap-5 max-md:p-4" onSubmit={handleSubmit}>
+                <Campo rotulo="Paciente" htmlFor="comanda-paciente">
+                  <PatientPicker
+                    contacts={crmState.contacts}
+                    value={{ ref: patientRef, name: patientName }}
+                    onChange={(next) => {
+                      setPatientName(next.name);
+                      setPatientRef(next.ref);
+                    }}
+                    channels={patientChannels}
+                    onChannelsChange={setPatientChannels}
+                    id="comanda-paciente"
+                    placeholder="Buscar paciente por nome ou telefone…"
+                  />
+                </Campo>
 
-                  {/* ENCAIXE COM OS LEMBRETES — evita lançar o mesmo dinheiro duas vezes */}
-                  {encaixe.totalEmAberto > 0 && !editingSaleId ? (
-                    <div className="rounded-lg border border-brand-dourado/45 bg-brand-creme/45 p-3">
-                      <p className="flex items-center gap-2 text-sm font-bold text-brand-musgo">
-                        <BellRing className="h-4 w-4 shrink-0 text-brand-dourado" aria-hidden="true" />
-                        Este paciente está devendo {moneyFin(encaixe.totalEmAberto)} nos Lembretes
-                      </p>
-                      <ul className="mt-1.5 space-y-1 text-xs text-brand-tinta">
-                        {encaixe.encaixes.map((item) => (
-                          <li key={item.lembreteId} className="flex flex-wrap items-baseline gap-x-1.5">
-                            <Link2 className="h-3 w-3 shrink-0 text-brand-oliva" aria-hidden="true" />
-                            <span className="font-semibold">{moneyFin(item.valorAbatido)}</span>
-                            <span className="text-muted-foreground">
-                              de {moneyFin(item.valorPendente)} · venc. {formatLembreteDate(item.dataPrevista)}
-                              {item.quitou ? " · quita o lembrete" : ` · restam ${moneyFin(item.novoPendente)}`}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                      {encaixe.totalAbatido > 0 ? (
-                        <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs font-semibold text-brand-musgo">
-                          <input
-                            type="checkbox"
-                            checked={abaterLembrete}
-                            onChange={(event) => setAbaterLembrete(event.target.checked)}
-                            className="mt-0.5 h-3.5 w-3.5"
-                          />
-                          <span>
-                            Abater {moneyFin(encaixe.totalAbatido)} do lembrete com esta comanda (recomendado — o
-                            faturamento é a comanda, o lembrete só dá baixa; assim o valor não conta duas vezes).
+                {/* ENCAIXE COM OS LEMBRETES — evita lançar o mesmo dinheiro duas vezes */}
+                {encaixe.totalEmAberto > 0 && !editingSaleId ? (
+                  <div className="grid gap-3 rounded-bloco bg-atencao-claro p-4">
+                    <p className="flex items-start gap-2 text-sm font-bold leading-5 text-tinta">
+                      <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-atencao" aria-hidden="true" />
+                      Este paciente está devendo {moneyFin(encaixe.totalEmAberto)} nos Lembretes
+                    </p>
+                    <ul className="grid gap-1 pl-6 text-[13px] leading-5 text-tinta">
+                      {encaixe.encaixes.map((item) => (
+                        <li key={item.lembreteId} className="flex flex-wrap items-baseline gap-x-2">
+                          <Link2 className="h-3 w-3 shrink-0 self-center text-tinta-2" aria-hidden="true" />
+                          <span className="font-bold tabular-nums">{moneyFin(item.valorAbatido)}</span>
+                          <span className="font-medium text-tinta-2">
+                            de {moneyFin(item.valorPendente)} · venc. {formatLembreteDate(item.dataPrevista)}
+                            {item.quitou ? " · quita o lembrete" : ` · restam ${moneyFin(item.novoPendente)}`}
                           </span>
-                        </label>
-                      ) : (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          Preencha os itens para o app calcular quanto esta comanda abate.
-                        </p>
-                      )}
-                      {!abaterLembrete && encaixe.totalAbatido > 0 ? (
-                        <p className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-destructive">
-                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                          Sem abater, o mesmo dinheiro fica na comanda E no lembrete — dê baixa manualmente depois.
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <Label>
-                        Itens (o que foi feito) <span className="font-normal text-muted-foreground">· o produto da tabela sugere o preço; o valor é livre</span>
-                      </Label>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setItems((current) => [...current, { itemType: "TRATAMENTO", amount: "", description: "" }])}>
-                        <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Item
-                      </Button>
-                    </div>
-                    <div className="grid gap-2">
-                      {items.map((item, index) => (
-                        <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1.1fr)_auto]">
-                          {/* PRODUTO DA TABELA (02/09/2026): escolher aqui grava o nome e o
-                              preço oficiais — é o que o Lucro Inteligente lê para a coluna S. */}
-                          <select
-                            value={produtoPorNome(item.description) ? item.description : ""}
-                            onChange={(event) => {
-                              const produto = produtoPorNome(event.target.value);
-                              if (!produto) return;
-                              setItems((current) =>
-                                current.map((it, i) =>
-                                  i === index ? { ...it, itemType: produto.tipos[0], description: produto.nome, amount: amountToDraft(produto.preco) } : it,
-                                ),
-                              );
-                            }}
-                            className="h-11 w-full min-w-0 rounded-md border border-brand-dourado/50 bg-brand-creme/40 px-3 text-sm"
-                            aria-label="Produto da tabela de preços"
-                          >
-                            <option value="">Produto da tabela…</option>
-                            {secoesDoCatalogo().map((grupo) => (
-                              <optgroup key={grupo.secao} label={grupo.secao}>
-                                {grupo.produtos.map((produto) => (
-                                  <option key={produto.nome} value={produto.nome}>
-                                    {produto.nome} · {moneyFin(produto.preco)}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                          <select
-                            value={item.itemType}
-                            onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, itemType: event.target.value as FinSaleItemType } : it)))}
-                            className="h-11 w-full min-w-0 rounded-md border border-input bg-white/72 px-3 text-sm"
-                            aria-label="Tipo do item"
-                          >
-                            {saleItemTypes.map((type) => (
-                              <option key={type} value={type}>{saleItemTypeLabels[type]}</option>
-                            ))}
-                          </select>
-                          <Input
-                            value={item.amount}
-                            onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, amount: event.target.value } : it)))}
-                            placeholder="0,00"
-                            inputMode="decimal"
-                            aria-label="Valor do item"
-                          />
-                          <Input
-                            value={item.description}
-                            onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, description: event.target.value } : it)))}
-                            placeholder="Detalhe (ex.: restante, sinal 13/07...)"
-                          />
-                          <Button type="button" variant="ghost" size="icon" className="shrink-0 justify-self-end" aria-label="Remover item" onClick={() => setItems((current) => current.filter((_, i) => i !== index))}>
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
+                    {encaixe.totalAbatido > 0 ? (
+                      <label className="flex cursor-pointer items-start gap-3 pl-6 text-[13px] font-semibold leading-5 text-tinta">
+                        <input type="checkbox" checked={abaterLembrete} onChange={(event) => setAbaterLembrete(event.target.checked)} className={cn(MARCAR, "mt-0.5")} />
+                        <span>
+                          Abater {moneyFin(encaixe.totalAbatido)} do lembrete com esta comanda (recomendado — o faturamento é a comanda, o lembrete só
+                          dá baixa; assim o valor não conta duas vezes).
+                        </span>
+                      </label>
+                    ) : (
+                      <p className={cn(AJUDA, "pl-6")}>Preencha os itens para o app calcular quanto esta comanda abate.</p>
+                    )}
+                    {!abaterLembrete && encaixe.totalAbatido > 0 ? (
+                      <p className="flex items-start gap-2 pl-6 text-[13px] font-bold leading-5 text-erro">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                        Sem abater, o mesmo dinheiro fica na comanda E no lembrete — dê baixa manualmente depois.
+                      </p>
+                    ) : null}
                   </div>
+                ) : null}
 
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <Label>Pagamentos (como foi pago)</Label>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setPayments((current) => [...current, { method: "CARTAO_CREDITO", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }])}>
-                        <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Pagamento
-                      </Button>
-                    </div>
-                    <div className="grid gap-2">
-                      {payments.map((payment, index) => {
-                        const isCard = payment.method === "CARTAO_CREDITO" || payment.method === "CARTAO_DEBITO";
-                        return (
-                          <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.55fr)_minmax(0,0.7fr)_auto]">
+                {/* ITENS: o que foi feito. O produto da tabela sugere o preço; o valor é livre. */}
+                <div className="grid min-w-0 gap-3" role="group" aria-labelledby="comanda-itens-rotulo">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p id="comanda-itens-rotulo" className="text-[13px] font-bold leading-5 text-tinta">
+                      Itens (o que foi feito) <span className="font-medium text-tinta-2">· o produto da tabela sugere o preço; o valor é livre</span>
+                    </p>
+                    <Botao
+                      variante="fantasma"
+                      tamanho="pq"
+                      icone={<Plus className="h-4 w-4" aria-hidden="true" />}
+                      onClick={() => setItems((current) => [...current, { itemType: "TRATAMENTO", amount: "", description: "" }])}
+                    >
+                      Item
+                    </Botao>
+                  </div>
+                  <div className={cn(GRADE_ITEM, "max-sm:hidden")} aria-hidden="true">
+                    <span className={RUBRICA}>Produto da tabela</span>
+                    <span className={RUBRICA}>Tipo</span>
+                    <span className={cn(RUBRICA, "text-right")}>Valor</span>
+                    <span className={RUBRICA}>Detalhe</span>
+                    <span className="w-10" />
+                  </div>
+                  <div className="grid gap-2 max-sm:gap-4">
+                    {items.map((item, index) => (
+                      <div key={index} className={cn(GRADE_ITEM, "max-sm:rounded-controle max-sm:bg-saber max-sm:p-3")}>
+                        {/* PRODUTO DA TABELA (02/09/2026): escolher aqui grava o nome e o
+                            preço oficiais — é o que o Lucro Inteligente lê para a coluna S. */}
+                        <select
+                          value={produtoPorNome(item.description) ? item.description : ""}
+                          onChange={(event) => {
+                            const produto = produtoPorNome(event.target.value);
+                            if (!produto) return;
+                            setItems((current) =>
+                              current.map((it, i) => (i === index ? { ...it, itemType: produto.tipos[0], description: produto.nome, amount: amountToDraft(produto.preco) } : it)),
+                            );
+                          }}
+                          className={cn(CAMPO, "max-sm:col-span-3")}
+                          aria-label="Produto da tabela de preços"
+                        >
+                          <option value="">Produto da tabela…</option>
+                          {secoesDoCatalogo().map((grupo) => (
+                            <optgroup key={grupo.secao} label={grupo.secao}>
+                              {grupo.produtos.map((produto) => (
+                                <option key={produto.nome} value={produto.nome}>
+                                  {produto.nome} · {moneyFin(produto.preco)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <select
+                          value={item.itemType}
+                          onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, itemType: event.target.value as FinSaleItemType } : it)))}
+                          className={CAMPO}
+                          aria-label="Tipo do item"
+                        >
+                          {saleItemTypes.map((type) => (
+                            <option key={type} value={type}>
+                              {saleItemTypeLabels[type]}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          value={item.amount}
+                          onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, amount: event.target.value } : it)))}
+                          placeholder="0,00"
+                          inputMode="decimal"
+                          aria-label="Valor do item"
+                          className={cn(CAMPO, "text-right tabular-nums")}
+                        />
+                        <input
+                          value={item.description}
+                          onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, description: event.target.value } : it)))}
+                          placeholder="Detalhe (ex.: restante, sinal 13/07...)"
+                          aria-label="Detalhe do item"
+                          className={cn(CAMPO, "max-sm:col-span-3")}
+                        />
+                        <button
+                          type="button"
+                          aria-label="Remover item"
+                          title="Remover item"
+                          onClick={() => setItems((current) => current.filter((_, i) => i !== index))}
+                          className={cn(BOTAO_ICONE_PERIGO, "max-sm:col-start-3 max-sm:row-start-2")}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* PAGAMENTOS: como foi pago, com o comprovante resolvido na mesma linha. */}
+                <div className="grid min-w-0 gap-3" role="group" aria-labelledby="comanda-pagamentos-rotulo">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p id="comanda-pagamentos-rotulo" className="text-[13px] font-bold leading-5 text-tinta">
+                      Pagamentos (como foi pago)
+                    </p>
+                    <Botao
+                      variante="fantasma"
+                      tamanho="pq"
+                      icone={<Plus className="h-4 w-4" aria-hidden="true" />}
+                      onClick={() =>
+                        setPayments((current) => [...current, { method: "CARTAO_CREDITO", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }])
+                      }
+                    >
+                      Pagamento
+                    </Botao>
+                  </div>
+                  <div className={cn(GRADE_PAGAMENTO, "max-sm:hidden")} aria-hidden="true">
+                    <span className={RUBRICA}>Forma</span>
+                    <span className={cn(RUBRICA, "text-right")}>Valor</span>
+                    <span className={RUBRICA}>Parcelas</span>
+                    <span className={RUBRICA}>Maquininha</span>
+                    <span className="w-10" />
+                  </div>
+                  <div className="grid gap-3 max-sm:gap-4">
+                    {payments.map((payment, index) => {
+                      const isCard = payment.method === "CARTAO_CREDITO" || payment.method === "CARTAO_DEBITO";
+                      const estadoComprovante = payment.comprovanteStatus ?? "PENDENTE";
+                      return (
+                        <div key={index} className="grid gap-2 border-b border-fio pb-3 last:border-b-0 last:pb-0 max-sm:rounded-controle max-sm:border-b-0 max-sm:bg-saber max-sm:p-3">
+                          <div className={GRADE_PAGAMENTO}>
                             <select
                               value={payment.method}
                               onChange={(event) => setPayments((current) => current.map((p, i) => (i === index ? { ...p, method: event.target.value as FinPaymentMethod } : p)))}
-                              className="h-11 w-full min-w-0 rounded-md border border-input bg-white/72 px-3 text-sm"
+                              className={cn(CAMPO, "max-sm:col-span-2")}
                               aria-label="Forma de pagamento"
                             >
                               {salePaymentMethods.map((method) => (
-                                <option key={method} value={method}>{paymentMethodLabels[method]}</option>
+                                <option key={method} value={method}>
+                                  {paymentMethodLabels[method]}
+                                </option>
                               ))}
                             </select>
-                            <Input
+                            <input
                               value={payment.amount}
                               onChange={(event) => setPayments((current) => current.map((p, i) => (i === index ? { ...p, amount: event.target.value } : p)))}
                               placeholder="0,00"
                               inputMode="decimal"
                               aria-label="Valor pago"
+                              className={cn(CAMPO, "text-right tabular-nums")}
                             />
-                            <Input
+                            <input
                               value={payment.installments}
                               onChange={(event) => setPayments((current) => current.map((p, i) => (i === index ? { ...p, installments: event.target.value } : p)))}
                               inputMode="numeric"
                               aria-label="Parcelas"
                               disabled={payment.method !== "CARTAO_CREDITO"}
                               placeholder="1x"
+                              className={cn(CAMPO, "tabular-nums")}
                             />
                             <select
                               value={payment.cardMachine}
                               onChange={(event) => setPayments((current) => current.map((p, i) => (i === index ? { ...p, cardMachine: event.target.value as FinCardMachine } : p)))}
-                              className="h-11 w-full min-w-0 rounded-md border border-input bg-white/72 px-3 text-sm disabled:opacity-50"
+                              className={CAMPO}
                               disabled={!isCard}
                               aria-label="Maquininha"
                             >
                               {(Object.keys(cardMachineLabels) as FinCardMachine[]).map((machine) => (
-                                <option key={machine} value={machine}>{cardMachineLabels[machine]}</option>
+                                <option key={machine} value={machine}>
+                                  {cardMachineLabels[machine]}
+                                </option>
                               ))}
                             </select>
-                            <Button type="button" variant="ghost" size="icon" className="shrink-0 justify-self-end" aria-label="Remover pagamento" onClick={() => setPayments((current) => current.filter((_, i) => i !== index))}>
+                            <button
+                              type="button"
+                              aria-label="Remover pagamento"
+                              title="Remover pagamento"
+                              onClick={() => setPayments((current) => current.filter((_, i) => i !== index))}
+                              className={BOTAO_ICONE_PERIGO}
+                            >
                               <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            </Button>
-                            {/* COMPROVANTE (10/08/2026): resolvido aqui, em um toque, na
-                                mesma tela. Antes era outro módulo — e esquecer era o
-                                comportamento natural. "Falta" deixa de ser ambíguo. */}
-                            <div className="sm:col-span-5 -mt-1 flex flex-wrap items-center gap-1.5">
-                              <span className="text-[11px] font-semibold uppercase text-brand-oliva">Comprovante:</span>
-                              {(["ANEXADO", "AGUARDANDO", "NAO_SE_APLICA"] as ComprovanteStatus[]).map((opcao) => {
-                                const ativo = (payment.comprovanteStatus ?? "PENDENTE") === opcao;
-                                const rotulo =
-                                  opcao === "ANEXADO" ? "Tenho o comprovante" : opcao === "AGUARDANDO" ? "Vai mandar depois" : "Não se aplica (dinheiro)";
-                                return (
-                                  <button
-                                    key={opcao}
-                                    type="button"
-                                    onClick={() =>
-                                      setPayments((current) =>
-                                        current.map((p, i) => (i === index ? { ...p, comprovanteStatus: ativo ? "PENDENTE" : opcao } : p)),
-                                      )
-                                    }
-                                    className={cn(
-                                      "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
-                                      ativo
-                                        ? "border-brand-musgo bg-brand-musgo text-white"
-                                        : "border-brand-oliva/30 bg-white/70 text-brand-tinta hover:border-brand-musgo/50",
-                                    )}
-                                  >
-                                    {rotulo}
-                                  </button>
-                                );
-                              })}
-                              {(payment.comprovanteStatus ?? "PENDENTE") === "PENDENTE" ? (
-                                <span className="text-[11px] font-semibold text-amber-700">— escolha um (evita erro no fechamento)</span>
-                              ) : null}
-                            </div>
+                            </button>
                           </div>
-                        );
-                      })}
-                    </div>
+                          {/* COMPROVANTE (10/08/2026): resolvido aqui, em um toque, na
+                              mesma tela. Antes era outro módulo — e esquecer era o
+                              comportamento natural. "Falta" deixa de ser ambíguo. */}
+                          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Comprovante deste pagamento">
+                            <span className={RUBRICA}>Comprovante</span>
+                            {(["ANEXADO", "AGUARDANDO", "NAO_SE_APLICA"] as ComprovanteStatus[]).map((opcao) => {
+                              const ativo = estadoComprovante === opcao;
+                              const rotulo =
+                                opcao === "ANEXADO" ? "Tenho o comprovante" : opcao === "AGUARDANDO" ? "Vai mandar depois" : "Não se aplica (dinheiro)";
+                              return (
+                                <Leitura
+                                  key={opcao}
+                                  ativo={ativo}
+                                  onClick={() =>
+                                    setPayments((current) => current.map((p, i) => (i === index ? { ...p, comprovanteStatus: ativo ? "PENDENTE" : opcao } : p)))
+                                  }
+                                >
+                                  {rotulo}
+                                </Leitura>
+                              );
+                            })}
+                            {estadoComprovante === "PENDENTE" ? (
+                              <span className="text-[13px] font-bold text-atencao">— escolha um (evita erro no fechamento)</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
+                </div>
 
-                  <div>
-                    <Label>Observações (ex.: NF unificada, +11% imposto)</Label>
-                    <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Opcional" />
-                  </div>
+                <Campo rotulo="Observações" opcional htmlFor="comanda-observacoes" ajuda="Ex.: NF unificada, +11% imposto.">
+                  <input id="comanda-observacoes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Opcional" className={CAMPO} />
+                </Campo>
 
-                  {/* A NOTA FISCAL NA COMANDA DO DIA (23/09/2026): o mesmo cartão do
-                      fechamento do Kanban. Aparece quando a Focus está ligada, há
-                      valor a faturar e "Emitir" está em "agora". */}
-                  {focusLigada && !editingSaleId && valorDaNota > 0 && !soSinal ? (
-                    !podeEmitir ? (
-                      // 07/10/2026: quem não emite fica sabendo ANTES de salvar.
-                      <p className="rounded-md border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-xs text-muted-foreground">
-                        Nota fiscal: quem emite é o Estevão. Ao salvar, a comanda fica na fila de notas (sem nota fiscal na lista do dia e em Impostos &amp; NF).
-                      </p>
-                    ) : notaQuando === "AGORA" ? (
-                      <NotaNoFechamentoCard
-                        nota={notaFiscal}
-                        onNotaChange={setNotaFiscal}
-                        valorRecebido={valorDaNota}
-                        diaISO={date}
-                        parcelas={parcelasDaNota}
-                        ehSinal={soSinal}
-                        tomador={{ nome: patientName.trim(), cpf: cpfNaFicha.data?.cpf ? "na ficha" : "", email: emailNota }}
-                        onEmailChange={setEmailNota}
-                        cpfRascunho={cpfNota}
-                        onCpfChange={setCpfNota}
-                        sinais={sinaisDoPaciente}
-                        somarSinais={somarSinais}
-                        onSomarSinais={setSomarSinais}
+                {/* A NOTA FISCAL NA COMANDA DO DIA (23/09/2026): o mesmo cartão do
+                    fechamento do Kanban. Aparece quando a Focus está ligada, há
+                    valor a faturar e "Emitir" está em "agora". */}
+                {focusLigada && !editingSaleId && valorDaNota > 0 && !soSinal ? (
+                  !podeEmitir ? (
+                    // 07/10/2026: quem não emite fica sabendo ANTES de salvar.
+                    <AvisoDaTela tom="info">
+                      Nota fiscal: quem emite é o Estevão. Ao salvar, a comanda fica na fila de notas (sem nota fiscal na lista do dia e em Impostos
+                      &amp; NF).
+                    </AvisoDaTela>
+                  ) : notaQuando === "AGORA" ? (
+                    <NotaNoFechamentoCard
+                      nota={notaFiscal}
+                      onNotaChange={setNotaFiscal}
+                      valorRecebido={valorDaNota}
+                      diaISO={date}
+                      parcelas={parcelasDaNota}
+                      ehSinal={soSinal}
+                      tomador={{ nome: patientName.trim(), cpf: cpfNaFicha.data?.cpf ? "na ficha" : "", email: emailNota }}
+                      onEmailChange={setEmailNota}
+                      cpfRascunho={cpfNota}
+                      onCpfChange={setCpfNota}
+                      sinais={sinaisDoPaciente}
+                      somarSinais={somarSinais}
+                      onSomarSinais={setSomarSinais}
+                    />
+                  ) : (
+                    <AvisoDaTela tom="info">
+                      A nota desta comanda não sai agora ({quandoNotaLabels[notaQuando].toLowerCase()}). Para emitir junto com o lançamento, escolha
+                      &quot;Agora&quot; em Emitir. Depois, ela fica com o botão &quot;Emitir nota&quot; na lista do dia.
+                    </AvisoDaTela>
+                  )
+                ) : null}
+
+                {/* MESMO CAMPO DO REGISTRAR FECHAMENTO (25/08/2026): o que se
+                    escreve aqui é o que a pessoa lê na hora de emitir a nota,
+                    e aparece na lista do dia com o selo NF. */}
+                <div className="grid gap-4 rounded-bloco bg-saber p-4">
+                  <p className={cn(RUBRICA, "flex items-center gap-2")}>
+                    <FileText className="h-4 w-4" aria-hidden="true" />
+                    Como a nota vai ser emitida
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)]">
+                    <Campo rotulo="Observações da nota" htmlFor="comanda-nota-instrucao">
+                      <input
+                        id="comanda-nota-instrucao"
+                        value={notaInstrucao}
+                        onChange={(event) => setNotaInstrucao(event.target.value)}
+                        placeholder="Ex.: NF unificada consulta + tratamento · emitir no nome da mãe"
+                        className={CAMPO}
                       />
-                    ) : (
-                      <p className="rounded-md border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-xs text-muted-foreground">
-                        A nota desta comanda não sai agora ({quandoNotaLabels[notaQuando].toLowerCase()}). Para emitir junto com o lançamento, escolha "Agora" em Emitir. Depois, ela fica com o botão "Emitir nota" na lista do dia.
-                      </p>
-                    )
-                  ) : null}
-
-                  {/* MESMO CAMPO DO REGISTRAR FECHAMENTO (25/08/2026): o que se
-                      escreve aqui é o que a pessoa lê na hora de emitir a nota,
-                      e aparece na lista do dia com o selo NF. */}
-                  <div className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-                    <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-                      <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                      Como a nota vai ser emitida
-                    </p>
-                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                      <div>
-                        <Label>Observações da nota</Label>
-                        <Input
-                          value={notaInstrucao}
-                          onChange={(event) => setNotaInstrucao(event.target.value)}
-                          placeholder="Ex.: NF unificada consulta + tratamento · emitir no nome da mãe"
-                        />
-                      </div>
-                      <div>
-                        <Label>Emitir</Label>
-                        <select
-                          value={notaQuando}
-                          onChange={(event) => setNotaQuando(event.target.value as QuandoNota)}
-                          className="mt-1 h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
-                        >
-                          {(Object.keys(quandoNotaLabels) as QuandoNota[]).map((quando) => (
-                            <option key={quando} value={quando}>
-                              {quandoNotaLabels[quando]}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                    </Campo>
+                    <Campo rotulo="Emitir" htmlFor="comanda-nota-quando">
+                      <select id="comanda-nota-quando" value={notaQuando} onChange={(event) => setNotaQuando(event.target.value as QuandoNota)} className={CAMPO}>
+                        {(Object.keys(quandoNotaLabels) as QuandoNota[]).map((quando) => (
+                          <option key={quando} value={quando}>
+                            {quandoNotaLabels[quando]}
+                          </option>
+                        ))}
+                      </select>
+                    </Campo>
                   </div>
+                </div>
 
-                  <div>
-                    <Label>Aderiu ao plano de acompanhamento?</Label>
-                    <p className="mb-2 text-xs text-muted-foreground">
-                      Sinal pode ser só da consulta — marque a adesão aqui quando souber. "Em aberto" pode ser corrigido depois, por você ou pela recepção.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {(["ABERTO", "SIM", "NAO"] as FinAdhesion[]).map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setAdhesion(option)}
-                          className={cn(
-                            "rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors",
-                            adhesion === option
-                              ? option === "SIM"
-                                ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                                : option === "NAO"
-                                  ? "border-red-300 bg-red-100 text-red-700"
-                                  : "border-brand-dourado/50 bg-brand-creme text-brand-tinta"
-                              : "border-brand-oliva/25 bg-white/60 text-brand-oliva hover:bg-brand-creme/50",
-                          )}
-                        >
-                          {adhesionLabels[option]}
-                        </button>
-                      ))}
-                    </div>
+                <div className="grid gap-2">
+                  <p className="text-[13px] font-bold leading-5 text-tinta" id="comanda-adesao">
+                    Aderiu ao plano de acompanhamento?
+                  </p>
+                  <p className={AJUDA}>
+                    Sinal pode ser só da consulta — marque a adesão aqui quando souber. &quot;Em aberto&quot; pode ser corrigido depois, por você ou pela
+                    recepção.
+                  </p>
+                  <div className="flex flex-wrap gap-2" role="group" aria-labelledby="comanda-adesao">
+                    {(["ABERTO", "SIM", "NAO"] as FinAdhesion[]).map((option) => (
+                      <Leitura key={option} ativo={adhesion === option} onClick={() => setAdhesion(option)} className="h-10 px-4 text-sm">
+                        {adhesionLabels[option]}
+                      </Leitura>
+                    ))}
                   </div>
+                </div>
 
+                {/* A PONTA DA COMANDA: o botão, a soma que confere e os acertos de um toque. */}
+                <div className="-mx-6 -mb-6 grid gap-3 border-t border-fio px-6 py-4 max-md:-mx-4 max-md:-mb-4 max-md:px-4">
                   <div className="flex flex-wrap items-center gap-3">
-                    <LiquidButton type="submit" size="sm" disabled={emitindoNota}>
-                      {editingSaleId ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+                    <Botao
+                      type="submit"
+                      variante="primario"
+                      carregando={emitindoNota}
+                      disabled={emitindoNota}
+                      icone={editingSaleId ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+                      className="max-sm:w-full"
+                    >
                       {emitindoNota ? "Emitindo a nota na prefeitura…" : editingSaleId ? "Salvar alterações" : vaiEmitirNota ? "Lançar e emitir a nota" : "Lançar e adicionar próximo paciente"}
-                    </LiquidButton>
+                    </Botao>
                     {editingSaleId ? (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => { resetForm(); setFeedback(""); }}>
+                      <Botao
+                        variante="fantasma"
+                        onClick={() => {
+                          resetForm();
+                          setFeedback("");
+                        }}
+                      >
                         Cancelar edição
-                      </Button>
+                      </Botao>
                     ) : null}
-                    <span className={cn("text-sm font-semibold", totalsMatch ? "text-brand-musgo" : "text-destructive")}>
+                    <span className={cn("inline-flex items-center gap-1.5 text-sm font-bold tabular-nums", totalsMatch ? "text-ok" : "text-atencao")}>
+                      {totalsMatch ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> : <AlertTriangle className="h-4 w-4" aria-hidden="true" />}
                       Itens {moneyFin(itemsTotal)} · Pagamentos {moneyFin(paymentsTotal)}
-                      {totalsMatch ? " ✓" : " — não fecham"}
+                      {totalsMatch ? "" : " — não fecham"}
                     </span>
-                    {divisaoDoRascunho.dinheiro > 0 ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-md border border-brand-dourado/45 bg-brand-creme/50 px-2 py-1 text-xs font-semibold text-brand-tinta">
-                        <Wallet className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" />
-                        {divisaoDoRascunho.soDinheiro
-                          ? `Tudo em dinheiro: ${moneyFin(divisaoDoRascunho.dinheiro)} vai para o Crediário, fora do faturamento`
-                          : `${moneyFin(divisaoDoRascunho.dinheiro)} em dinheiro vai para o Crediário · no faturamento fica ${moneyFin(divisaoDoRascunho.resto)}`}
-                        <InfoTip title="Dinheiro vai para o Crediário">
-                          Regra da casa: a comanda é o que o banco confere (PIX e cartão). A parte em dinheiro entra no caixa do Crediário,
-                          ligada a este paciente, e só vira lucro quando o mês é somado. Ela continua aparecendo nesta comanda, marcada.
-                        </InfoTip>
-                      </span>
-                    ) : null}
-                    {/* VALOR FORA DA GRADE (10/09/2026): o app não recusa mais — acerta em um toque. */}
-                    {!totalsMatch && itemsTotal > 0 && paymentsTotal > 0 ? (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Button type="button" variant="outline" size="sm" onClick={ajustarItensAoPago} title="Rateia os itens na mesma proporção para bater com o que o paciente pagou">
-                          Itens = valor pago ({moneyFin(paymentsTotal)})
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={ajustarPagamentoAosItens} title="Corrige o pagamento para a soma dos itens">
-                          Pagamento = itens ({moneyFin(itemsTotal)})
-                        </Button>
-                      </div>
-                    ) : null}
                   </div>
-                </form>
-              </CardContent>
-            </Card>
+                  {divisaoDoRascunho.dinheiro > 0 ? (
+                    <p className="flex flex-wrap items-center gap-2 rounded-controle bg-ouro-claro px-3 py-2 text-[13px] font-semibold leading-5 text-tinta">
+                      <Wallet className="h-4 w-4 shrink-0 text-ouro" aria-hidden="true" />
+                      {divisaoDoRascunho.soDinheiro
+                        ? `Tudo em dinheiro: ${moneyFin(divisaoDoRascunho.dinheiro)} vai para o Crediário, fora do faturamento`
+                        : `${moneyFin(divisaoDoRascunho.dinheiro)} em dinheiro vai para o Crediário · no faturamento fica ${moneyFin(divisaoDoRascunho.resto)}`}
+                      <InfoTip title="Dinheiro vai para o Crediário">
+                        Regra da casa: a comanda é o que o banco confere (PIX e cartão). A parte em dinheiro entra no caixa do Crediário, ligada a este
+                        paciente, e só vira lucro quando o mês é somado. Ela continua aparecendo nesta comanda, marcada.
+                      </InfoTip>
+                    </p>
+                  ) : null}
+                  {/* VALOR FORA DA GRADE (10/09/2026): o app não recusa mais — acerta em um toque. */}
+                  {!totalsMatch && itemsTotal > 0 && paymentsTotal > 0 ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Botao variante="secundario" tamanho="pq" onClick={ajustarItensAoPago} title="Rateia os itens na mesma proporção para bater com o que o paciente pagou">
+                        Itens = valor pago ({moneyFin(paymentsTotal)})
+                      </Botao>
+                      <Botao variante="secundario" tamanho="pq" onClick={ajustarPagamentoAosItens} title="Corrige o pagamento para a soma dos itens">
+                        Pagamento = itens ({moneyFin(itemsTotal)})
+                      </Botao>
+                    </div>
+                  ) : null}
+                </div>
+              </form>
+            </BlocoFolha>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Lançamentos de {date.split("-").reverse().join("/")}</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2">
+            {/* AS COMANDAS DO DIA: paciente · o que foi feito · valor, com a nota na própria linha. */}
+            <BlocoFolha as="section" aria-labelledby="lancamentos-titulo" className="min-w-0 overflow-hidden">
+              <div className={CABECA_DA_FOLHA}>
+                <TituloDoBloco id="lancamentos-titulo" detalhe={daySales.length ? `${quantos(daySales.length, "comanda")} · ${moneyFin(somaDoDia)}` : undefined}>
+                  Lançamentos de {date.split("-").reverse().join("/")}
+                </TituloDoBloco>
+                {/* O QUE FOI LANÇADO NO MÊS, em Excel (25/08/2026). Duas visões,
+                    porque a contabilidade usa as duas: comanda por comanda
+                    (recebimentos) e a grade por dia (valor faturado). */}
+                <div className="ml-auto flex flex-wrap items-center gap-2 max-sm:ml-0">
+                  <BaixarPlanilhaButton chave="recebimentos" rotulo="Baixar comandas do mês" className={botaoPlanilha} dados={dadosDaPlanilha} />
+                  <BaixarPlanilhaButton chave="valor-faturado" rotulo="Baixar grade do mês" className={botaoPlanilha} dados={dadosDaPlanilha} />
+                </div>
+              </div>
+              <ul>
                 {/* SÓ DINHEIRO (29/09/2026): pagamento todo em dinheiro não vira comanda, mas aparece aqui, marcado. */}
                 {dinheiroSemComanda(entradasDoDia, daySales.map((sale) => sale.id)).map((entrada) => (
-                  <div key={entrada.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-brand-dourado/55 bg-brand-creme/40 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-brand-tinta">{pacienteDaDescricao(entrada.descricao)}</p>
-                      <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-tinta">
-                        <Wallet className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" />
+                  <li key={entrada.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-fio bg-saber/60 px-6 py-3 max-md:px-4">
+                    <div className="grid min-w-0 gap-1">
+                      <p className="text-sm font-bold leading-5 text-tinta">{pacienteDaDescricao(entrada.descricao)}</p>
+                      <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold leading-5 text-tinta">
+                        <Wallet className="h-4 w-4 text-ouro" aria-hidden="true" />
                         {fraseDoDinheiro(entrada.valor, moneyFin)}
                       </p>
-                      {entrada.descricao.includes(" · ") ? <p className="text-xs text-muted-foreground">{entrada.descricao.split(" · ").slice(1).join(" · ")}</p> : null}
+                      {entrada.descricao.includes(" · ") ? <p className="text-[13px] font-medium text-tinta-2">{entrada.descricao.split(" · ").slice(1).join(" · ")}</p> : null}
                     </div>
-                    <span className="text-sm font-bold text-brand-oliva">{moneyFin(entrada.valor)}</span>
-                  </div>
+                    <span className="whitespace-nowrap text-sm font-bold tabular-nums text-tinta-2">{moneyFin(entrada.valor)}</span>
+                  </li>
                 ))}
                 {daySales.length ? (
                   daySales.map((sale) => (
-                    <div key={sale.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-brand-tinta">{sale.patientName}</p>
-                        <p className="text-xs text-muted-foreground">
+                    <li
+                      key={sale.id}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 border-b border-fio px-6 py-4 last:border-b-0 transition-colors duration-150 hover:bg-saber/70 max-md:px-4"
+                    >
+                      <div className="grid min-w-0 justify-items-start gap-1.5">
+                        <p className="text-sm font-bold leading-5 text-tinta">{sale.patientName}</p>
+                        <p className="text-[13px] font-medium leading-5 text-tinta-2">
                           {sale.items.map((item) => `${saleItemTypeLabels[item.itemType]} ${moneyFin(item.amount)}`).join(" · ")}
                           {sale.notes ? ` — ${sale.notes}` : ""}
                         </p>
                         {(() => {
                           const dinheiro = entradasDoDia.filter((entrada) => entrada.saleRef === sale.id).reduce((soma, entrada) => soma + entrada.valor, 0);
                           return dinheiro > 0 ? (
-                            <p className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-brand-dourado/45 bg-brand-creme/50 px-2 py-1 text-xs font-semibold text-brand-tinta">
-                              <Wallet className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" />+ {fraseDoDinheiro(dinheiro, moneyFin)}
-                            </p>
+                            <Etiqueta tom="ouro" icone={<Wallet className="h-3 w-3" aria-hidden="true" />}>
+                              + {fraseDoDinheiro(dinheiro, moneyFin)}
+                            </Etiqueta>
                           ) : null;
                         })()}
                         {/* COMO EMITIR A NOTA (25/08/2026). O fechamento do
@@ -1129,15 +1205,11 @@ export function FinanceiroLancarDiaPage() {
                             foi combinado. Fica em destaque, não no meio do
                             texto cinza. */}
                         {sale.notaInstrucao?.trim() ? (
-                          <p className="mt-1 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-brand-dourado/45 bg-brand-creme/50 px-2 py-1 text-xs text-brand-tinta">
-                            <FileText className="h-3.5 w-3.5 shrink-0 text-brand-oliva" aria-hidden="true" />
+                          <p className="inline-flex flex-wrap items-center gap-1.5 rounded-controle bg-saber px-2 py-1 text-[13px] leading-5 text-tinta">
+                            <FileText className="h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" />
                             <strong className="font-semibold">NF:</strong>
                             {sale.notaInstrucao.trim()}
-                            {sale.notaQuando ? (
-                              <span className="rounded-full bg-white/80 px-1.5 text-[10px] font-bold uppercase text-brand-oliva">
-                                {quandoNotaLabels[sale.notaQuando]}
-                              </span>
-                            ) : null}
+                            {sale.notaQuando ? <Etiqueta tom="musgo">{quandoNotaLabels[sale.notaQuando]}</Etiqueta> : null}
                           </p>
                         ) : null}
                         {/* EM QUE PÉ ESTÁ A NOTA (23/09/2026): autorizada, enviada, sem nota (com o botão), sinal, ou "não emitir". */}
@@ -1146,22 +1218,22 @@ export function FinanceiroLancarDiaPage() {
                           const pedeEmissao = estado.estado === "SEM_NOTA" || estado.estado === "ERRO";
                           return (
                             <>
-                            <p className={cn("mt-1 inline-flex flex-wrap items-center gap-1.5 text-xs", estado.estado === "AUTORIZADA" ? "font-semibold text-brand-musgo" : pedeEmissao ? "font-semibold text-amber-700" : "text-muted-foreground")}>
-                              {estado.estado === "AUTORIZADA" ? <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> : pedeEmissao ? <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                            <p className={cn("inline-flex flex-wrap items-center gap-2 text-[13px] leading-5", estado.estado === "AUTORIZADA" ? "font-bold text-ok" : pedeEmissao ? "font-bold text-atencao" : "font-medium text-tinta-2")}>
+                              {estado.estado === "AUTORIZADA" ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> : pedeEmissao ? <AlertTriangle className="h-4 w-4" aria-hidden="true" /> : null}
                               {estado.rotulo}
                               {pedeEmissao && !isPreview && podeEmitir ? (
-                                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setNotaDaComanda(sale)}>
-                                  <FileText className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir nota
-                                </Button>
+                                <Botao variante="secundario" tamanho="pq" icone={<FileText className="h-4 w-4" aria-hidden="true" />} onClick={() => setNotaDaComanda(sale)}>
+                                  Emitir nota
+                                </Botao>
                               ) : pedeEmissao && !isPreview ? (
                                 // 07/10/2026: sem a permissão, não há botão — só quem emite.
-                                <span className="font-normal text-muted-foreground">· quem emite é o Estevão</span>
+                                <span className="font-medium text-tinta-2">· quem emite é o Estevão</span>
                               ) : null}
                             </p>
                             {/* O CPF da nota na própria linha (07/10/2026): o mesmo campo do Lote de notas. */}
                             {pedeEmissao && !isPreview ? (
                               <CpfDaNotaInline
-                                className="mt-1.5 max-w-md"
+                                className="mt-1 w-full max-w-md"
                                 contactRef={sale.crmContactRef || null}
                                 nomeDaNota={sale.patientName}
                                 nomeDaFicha={nomeDaFichaDe(sale.crmContactRef)}
@@ -1179,16 +1251,23 @@ export function FinanceiroLancarDiaPage() {
                           );
                         })() : null}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-brand-musgo">{moneyFin(saleTotal(sale))}</span>
-                        <Button type="button" variant="ghost" size="icon" aria-label={`Editar lançamento de ${sale.patientName}`} onClick={() => startEditing(sale)}>
-                          <Pencil className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                        <Button
+                      <div className="flex items-center gap-1 max-md:flex-col max-md:items-end max-md:gap-0">
+                        <span className="mr-2 whitespace-nowrap text-sm font-bold tabular-nums text-tinta max-md:mr-0 max-md:mb-1">{moneyFin(saleTotal(sale))}</span>
+                        <span className="flex items-center gap-1">
+                        <button
                           type="button"
-                          variant="ghost"
-                          size="icon"
+                          aria-label={`Editar lançamento de ${sale.patientName}`}
+                          title="Editar"
+                          onClick={() => startEditing(sale)}
+                          className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco max-md:h-11 max-md:w-11"
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
                           aria-label={`Excluir lançamento de ${sale.patientName}`}
+                          title="Excluir"
+                          className={cn(BOTAO_ICONE_PERIGO, "h-8 w-8 max-md:h-11 max-md:w-11")}
                           onClick={async () => {
                             if (mesTravado) {
                               toast(avisoMesFechado, { tom: "atencao", duracaoMs: 8000 });
@@ -1209,84 +1288,99 @@ export function FinanceiroLancarDiaPage() {
                           }}
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
+                        </button>
+                        </span>
                       </div>
-                    </div>
+                    </li>
                   ))
                 ) : entradasDoDia.length ? null : dayZeroMark ? (
-                  <div className="rounded-lg border border-brand-musgo/25 bg-[#f2f5ec] px-4 py-4 text-center">
-                    <p className="text-sm font-bold text-brand-musgo">Dia zerado ✓</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Nenhum atendimento neste dia — R$ 0,00 recebido, confirmado no fechamento.</p>
-                  </div>
+                  <li>
+                    <Vazio titulo="Dia zerado ✓">Nenhum atendimento neste dia — R$ 0,00 recebido, confirmado no fechamento.</Vazio>
+                  </li>
                 ) : (
-                  <div className="flex flex-col items-center gap-3 py-4">
-                    <p className="text-center text-sm text-muted-foreground">Nenhuma comanda lançada neste dia ainda.</p>
+                  <li>
                     {/* Marcar dia zerado grava um fechamento (fin_reconciliations),
                         que a RLS só libera para o financeiro completo. Para a
                         recepção o botão sumia de forma útil: sem isto, o clique
                         era bloqueado em silêncio e a marca "Dia zerado" sumia no
                         refetch. */}
                     {canFinanceiroFull(pessoa?.cargo) ? (
-                      <>
-                        <Button type="button" variant="outline" size="sm" onClick={markDayAsZero}>
-                          Dia sem atendimentos — marcar R$ 0,00
-                        </Button>
-                        <p className="max-w-md text-center text-xs text-muted-foreground">
-                          Use quando ninguém passou no dia: o dia fica registrado como zerado de propósito, e não como esquecido.
-                        </p>
-                      </>
+                      <Vazio
+                        titulo="Nenhuma comanda lançada neste dia ainda."
+                        acao={
+                          <Botao variante="secundario" onClick={markDayAsZero}>
+                            Dia sem atendimentos — marcar R$ 0,00
+                          </Botao>
+                        }
+                      >
+                        Use quando ninguém passou no dia: o dia fica registrado como zerado de propósito, e não como esquecido.
+                      </Vazio>
                     ) : (
-                      <p className="max-w-md text-center text-xs text-muted-foreground">
+                      <Vazio titulo="Nenhuma comanda lançada neste dia ainda.">
                         Sem comandas hoje? O fechamento (marcar o dia como zerado) é feito pelo financeiro.
-                      </p>
+                      </Vazio>
                     )}
-                  </div>
+                  </li>
                 )}
-              </CardContent>
-            </Card>
+              </ul>
+            </BlocoFolha>
           </div>
 
-          <Card className="h-fit border-brand-musgo/25 bg-[#f2f5ec]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Wallet className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
+          {/* SABER: o cartão verde do dia (os totais que eram escritos à caneta). */}
+          <BlocoSaber as="aside" aria-labelledby="cartao-do-dia-titulo" className="grid min-w-0 gap-4 xl:sticky xl:top-24">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="cartao-do-dia-titulo" className={RUBRICA}>
                 Cartão do dia
-                <InfoTip title="O cartão verde digital">
-                  Os mesmos totais que hoje são escritos à caneta: por tipo (consulta, medicação, psicóloga, nutricionista) e por
-                  forma de pagamento — calculados na hora, sem erro de soma.
-                </InfoTip>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-1.5">
-              <p className="px-3 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Por tipo</p>
-              <SummaryLine label="Total consulta" value={summary.totalConsulta} />
-              <SummaryLine label="Total medicação" value={summary.totalMedicacao} />
-              <SummaryLine label="Psicóloga" value={summary.totalPsicologa} />
-              <SummaryLine label="Nutricionista" value={summary.totalNutricionista} />
-              <p className="mt-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Por forma de pagamento</p>
-              <SummaryLine label="PIX" value={summary.byMethod.PIX} />
-              <SummaryLine label="Crédito" value={summary.byMethod.CARTAO_CREDITO} />
-              <SummaryLine label="Débito" value={summary.byMethod.CARTAO_DEBITO} />
-              {summary.byMethod.DINHEIRO ? <SummaryLine label="Dinheiro (comandas antigas)" value={summary.byMethod.DINHEIRO} /> : null}
-              <SummaryLine label="Dinheiro no Crediário · fora do faturamento" value={dinheiroNoCrediarioDoDia} />
-              {summary.byMethod.CHEQUE ? <SummaryLine label="Cheque" value={summary.byMethod.CHEQUE} /> : null}
-              {summary.byMethod.TRANSFERENCIA ? <SummaryLine label="Transferência" value={summary.byMethod.TRANSFERENCIA} /> : null}
-              <p className="mt-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Maquininhas (conferir com o extrato)</p>
-              <SummaryLine label="Itaú" value={summary.cardByMachine.ITAU} />
-              <SummaryLine label="Safra" value={summary.cardByMachine.SAFRA} />
-              <div className="mt-2" />
-              <SummaryLine label={`Total diário (${summary.salesCount} comandas)`} value={summary.totalDia} strong />
-              {summary.mismatchedSales.length ? (
-                <p className="mt-2 flex items-start gap-1.5 px-3 text-xs leading-5 text-destructive">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  {summary.mismatchedSales.length} lançamento(s) com pagamento diferente dos itens.
-                </p>
-              ) : null}
-              <p className="mt-1 px-3 text-[11px] leading-4 text-muted-foreground">
-                Lançado por {pessoa?.nome?.split(" ")[0] ?? "equipe"} · alimenta ENTRADA, P12 e módulos futuros.
+              </h2>
+              <InfoTip title="O cartão verde digital">
+                Os mesmos totais que hoje são escritos à caneta: por tipo (consulta, medicação, psicóloga, nutricionista) e por forma de pagamento —
+                calculados na hora, sem erro de soma.
+              </InfoTip>
+            </div>
+            <div className="grid gap-2">
+              <NumeroEmReais valor={summary.totalDia} tamanho="grande" />
+              <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                Total diário ({quantos(summary.salesCount, "comanda")}) · {date.split("-").reverse().join("/")}
               </p>
-            </CardContent>
-          </Card>
+            </div>
+            {summary.mismatchedSales.length ? (
+              <p className="flex items-start gap-2 text-[13px] font-bold leading-5 text-atencao">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                {summary.mismatchedSales.length} lançamento(s) com pagamento diferente dos itens.
+              </p>
+            ) : null}
+            <RazaoDoDia
+              titulo="Por tipo"
+              linhas={[
+                ["Total consulta", summary.totalConsulta],
+                ["Total medicação", summary.totalMedicacao],
+                ["Psicóloga", summary.totalPsicologa],
+                ["Nutricionista", summary.totalNutricionista],
+              ]}
+            />
+            <RazaoDoDia
+              titulo="Por forma de pagamento"
+              linhas={[
+                ["PIX", summary.byMethod.PIX],
+                ["Crédito", summary.byMethod.CARTAO_CREDITO],
+                ["Débito", summary.byMethod.CARTAO_DEBITO],
+                ...(summary.byMethod.DINHEIRO ? ([["Dinheiro (comandas antigas)", summary.byMethod.DINHEIRO]] as [string, number][]) : []),
+                ["Dinheiro no Crediário · fora do faturamento", dinheiroNoCrediarioDoDia],
+                ...(summary.byMethod.CHEQUE ? ([["Cheque", summary.byMethod.CHEQUE]] as [string, number][]) : []),
+                ...(summary.byMethod.TRANSFERENCIA ? ([["Transferência", summary.byMethod.TRANSFERENCIA]] as [string, number][]) : []),
+              ]}
+            />
+            <RazaoDoDia
+              titulo="Maquininhas (conferir com o extrato)"
+              linhas={[
+                ["Itaú", summary.cardByMachine.ITAU],
+                ["Safra", summary.cardByMachine.SAFRA],
+              ]}
+            />
+            <p className="text-xs font-medium leading-4 text-tinta-2">
+              Lançado por {pessoa?.nome?.split(" ")[0] ?? "equipe"} · alimenta ENTRADA, P12 e módulos futuros. Dados: {financeiro.syncMode}.
+            </p>
+          </BlocoSaber>
         </div>
       </div>
     </AccessGate>

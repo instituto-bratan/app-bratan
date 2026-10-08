@@ -15,13 +15,16 @@
 // É a Gaveta da casa (a dos pedidos de compra): sobe de baixo no celular, entra
 // pela direita no computador, vai por portal (a troca de tela anima o conteúdo
 // com transform, e um `fixed` lá dentro ficava cortado e por baixo do dock).
+//
+// REDESENHO (08/10/2026, Papel & Musgo): rubricas, lista com fio, o titular
+// escolhido em contorno musgo, o valor da nota em Fraunces e os botões da
+// fundação. Nenhuma regra mudou (emitir só com podeEmitirNota, trava do CPF).
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, XCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Botao } from "@/components/ui/fundacao";
 import { Gaveta } from "@/features/compras/Gaveta";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { avisoQuemEmiteNota, canFinanceiroFull, podeEmitirNota } from "@/lib/access";
@@ -33,6 +36,7 @@ import { dataBR } from "@/features/crm/notaNoFechamento";
 import { moneyFin } from "./financeiroData";
 import { chaveDoLote } from "./loteDeNotas";
 import { mudancasNoLote, planoDaJuncao, type AnaliseDaJuncao, type TitularPossivel } from "./juntarNotas";
+import { NumeroGrande, RecadoDaTela, Rubrica } from "./pecasBancoFechamento";
 
 type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; cobertaPor?: { rotulo: string; numero: string | null }; numero?: string | null; emailEnviado?: boolean; dados?: { numero?: string } };
 type Resultado = { tom: "ok" | "info" | "erro"; texto: string };
@@ -175,42 +179,31 @@ export function JuntarNotasDialog({
 
   const acoes = (
     <div className="grid gap-3">
-      {resultado ? (
-        <div
-          role={resultado.tom === "erro" ? "alert" : "status"}
-          className={cn(
-            "flex items-start gap-2 rounded-lg border px-3 py-2 text-sm",
-            resultado.tom === "erro" ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-800",
-          )}
-        >
-          {resultado.tom === "erro" ? <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
-          <span>{resultado.texto}</span>
-        </div>
-      ) : null}
+      {resultado ? <RecadoDaTela tom={resultado.tom === "erro" ? "erro" : "ok"}>{resultado.texto}</RecadoDaTela> : null}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-        <Button type="button" variant="ghost" onClick={fechar} disabled={ocupado !== null}>
+        <Botao variante="fantasma" onClick={fechar} disabled={ocupado !== null}>
           {terminou ? "Fechar" : "Agora não"}
-        </Button>
+        </Botao>
         {!terminou && analise.podeJuntar && plano ? (
           modo === "lote" ? (
-            <LiquidButton type="button" size="sm" className="h-10 px-4" disabled={ocupado !== null || !podeUsarOLote} onClick={() => void juntarNoLote()}>
+            <Botao variante="primario" carregando={ocupado !== null} disabled={ocupado !== null || !podeUsarOLote} onClick={() => void juntarNoLote()}>
               {ocupado ? "Juntando…" : `Juntar no lote · ${moneyFin(plano.item.valor)}`}
-            </LiquidButton>
+            </Botao>
           ) : podeEmitir ? (
             <>
-              <Button type="button" variant="outline" className="h-10" disabled={ocupado !== null} onClick={() => void deixarNoLote()}>
+              <Botao variante="secundario" carregando={ocupado === "lote"} disabled={ocupado !== null} onClick={() => void deixarNoLote()}>
                 {ocupado === "lote" ? "Pondo no lote…" : "Deixar pronta no lote"}
-              </Button>
-              <LiquidButton type="button" size="sm" className="h-10 px-4" disabled={ocupado !== null || travaPorCpf} onClick={() => void emitir()}>
+              </Botao>
+              <Botao variante="primario" carregando={ocupado === "emitir"} disabled={ocupado !== null || travaPorCpf} onClick={() => void emitir()}>
                 {ocupado === "emitir" ? "Emitindo na prefeitura…" : `Emitir nota única de ${moneyFin(plano.item.valor)}`}
-              </LiquidButton>
+              </Botao>
             </>
           ) : podeUsarOLote ? (
-            <LiquidButton type="button" size="sm" className="h-10 px-4" disabled={ocupado !== null} onClick={() => void deixarNoLote()}>
+            <Botao variante="primario" carregando={ocupado === "lote"} disabled={ocupado !== null} onClick={() => void deixarNoLote()}>
               {ocupado === "lote" ? "Pondo no lote…" : "Deixar pronta no lote para o Estevão"}
-            </LiquidButton>
+            </Botao>
           ) : (
-            <p className="text-sm text-muted-foreground">{avisoQuemEmiteNota}. Quem põe nota no lote é o financeiro.</p>
+            <p className="text-sm font-medium leading-5 text-tinta-2">{avisoQuemEmiteNota}. Quem põe nota no lote é o financeiro.</p>
           )
         ) : null}
       </div>
@@ -226,9 +219,12 @@ export function JuntarNotasDialog({
       rodape={acoes}
     >
       {!analise.podeJuntar ? (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700" role="alert">
-          <p className="font-semibold">Não dá para juntar estas {modo === "lote" ? "notas" : "comandas"}:</p>
-          <ul className="mt-1 list-disc pl-5">
+        <div className="mb-6 rounded-bloco bg-atencao-claro px-4 py-3 text-sm leading-5 text-tinta" role="alert">
+          <p className="flex items-start gap-2 font-bold">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-atencao" aria-hidden="true" />
+            Não dá para juntar estas {modo === "lote" ? "notas" : "comandas"}:
+          </p>
+          <ul className="mt-1 list-disc pl-11 font-medium">
             {analise.motivos.map((motivo) => (
               <li key={motivo}>{motivo}</li>
             ))}
@@ -236,28 +232,34 @@ export function JuntarNotasDialog({
         </div>
       ) : null}
 
-      <section>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{modo === "lote" ? "Notas que viram uma" : "Comandas que entram"}</p>
-        <ul className="mt-1.5 grid gap-1.5">
+      <section aria-labelledby="juntar-pedacos">
+        <Rubrica as="h3" id="juntar-pedacos">
+          {modo === "lote" ? "Notas que viram uma" : "Comandas que entram"}
+        </Rubrica>
+        <ul className="mt-2 border-t border-fio-2">
           {analise.pedacos.map((pedaco) => (
-            <li key={pedaco.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-md border border-brand-oliva/12 bg-white/70 px-3 py-2 text-sm">
-              <span className="min-w-0 font-medium text-brand-tinta">{pedaco.paciente}</span>
-              <span className="text-xs text-muted-foreground">
-                comanda de {dataBR(pedaco.dia)}
+            <li key={pedaco.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-fio py-3 text-sm leading-5">
+              <span className="min-w-0 font-bold text-tinta">{pedaco.paciente}</span>
+              <span className="text-[13px] font-medium text-tinta-2">
+                comanda de <span className="tabular-nums">{dataBR(pedaco.dia)}</span>
                 {pedaco.partes.length > 1 ? ` · já junta ${pedaco.partes.length} comandas` : ""}
               </span>
-              <span className="ml-auto font-semibold tabular-nums text-brand-tinta">{moneyFin(pedaco.valor)}</span>
+              <span className="ml-auto font-bold tabular-nums text-tinta">{moneyFin(pedaco.valor)}</span>
             </li>
           ))}
         </ul>
-        {modo === "comandas" ? <p className="mt-1 text-xs text-muted-foreground">Valor de cada uma = a parte do Instituto (nutricionista e psicóloga ficam fora, vão pelos repasses).</p> : null}
+        {modo === "comandas" ? (
+          <p className="mt-2 text-[13px] font-medium leading-5 text-tinta-2">
+            Valor de cada uma = a parte do Instituto (nutricionista e psicóloga ficam fora, vão pelos repasses).
+          </p>
+        ) : null}
       </section>
 
       {analise.podeJuntar && plano ? (
         <>
-          <fieldset className="mt-4" disabled={ocupado !== null || terminou}>
-            <legend className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">A nota sai no nome de:</legend>
-            <div className="mt-1.5 grid gap-1.5">
+          <fieldset className="mt-6" disabled={ocupado !== null || terminou}>
+            <legend className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">A nota sai no nome de:</legend>
+            <div className="mt-2 grid gap-2">
               {analise.titulares.map((t) => {
                 const ficha = fichaDe(t);
                 const marcado = t.chave === plano.titular.chave;
@@ -265,31 +267,34 @@ export function JuntarNotasDialog({
                   <label
                     key={t.chave}
                     className={cn(
-                      "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-colors",
-                      marcado ? "border-brand-musgo bg-white/90 ring-1 ring-brand-musgo" : "border-brand-oliva/18 bg-white/50 hover:bg-white/80",
+                      "flex cursor-pointer items-start gap-3 rounded-bloco border px-4 py-3 text-sm leading-5 transition-colors duration-150 ease-papel",
+                      marcado ? "border-musgo bg-folha shadow-[inset_0_0_0_1px_rgb(var(--musgo-rgb))]" : "border-fio-2 bg-folha hover:bg-saber",
                     )}
                   >
-                    <input type="radio" name="titular-da-nota" className="mt-1 h-4 w-4 accent-brand-musgo" checked={marcado} onChange={() => setEscolhida(t.chave)} />
+                    <input type="radio" name="titular-da-nota" className="mt-0.5 h-4 w-4 accent-musgo" checked={marcado} onChange={() => setEscolhida(t.chave)} />
                     <span className="min-w-0 flex-1">
-                      <span className="block font-semibold text-brand-tinta">{t.paciente}</span>
-                      <span className="block text-xs">
+                      <span className="block font-bold text-tinta">{t.paciente}</span>
+                      <span className="block text-[13px] font-medium">
                         {!t.contatoRef ? (
-                          <span className="text-amber-700">comanda sem ficha do paciente: o CPF não tem de onde vir</span>
+                          <span className="font-semibold text-atencao">comanda sem ficha do paciente: o CPF não tem de onde vir</span>
                         ) : prontidao.isPending ? (
-                          <span className="text-muted-foreground">conferindo a ficha…</span>
+                          <span className="text-tinta-2">conferindo a ficha…</span>
                         ) : prontidao.isError ? (
-                          <span className="text-muted-foreground">não consegui conferir a ficha agora (a prefeitura confere o CPF ao emitir)</span>
+                          <span className="text-tinta-2">não consegui conferir a ficha agora (a prefeitura confere o CPF ao emitir)</span>
                         ) : ficha?.temCpf ? (
-                          <span className="font-semibold text-brand-musgo">CPF guardado</span>
+                          <span className="inline-flex items-center gap-1 font-semibold text-ok">
+                            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            CPF guardado
+                          </span>
                         ) : (
-                          <span className="text-amber-700">
+                          <span className="font-semibold text-atencao">
                             sem CPF: coloque na{" "}
-                            <Link to="/pacientes" className="font-semibold underline underline-offset-2">
+                            <Link to="/pacientes" className="font-bold text-musgo underline underline-offset-2">
                               aba Pacientes
                             </Link>
                           </span>
                         )}
-                        {t.contatoRef && ficha && !ficha.temEmail ? <span className="text-muted-foreground"> · sem e-mail (a nota não vai por e-mail)</span> : null}
+                        {t.contatoRef && ficha && !ficha.temEmail ? <span className="text-tinta-2"> · sem e-mail (a nota não vai por e-mail)</span> : null}
                       </span>
                     </span>
                   </label>
@@ -298,27 +303,32 @@ export function JuntarNotasDialog({
             </div>
           </fieldset>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div className="mt-6 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Tipo da nota</p>
-              <p className="text-sm font-semibold text-brand-tinta">{rotuloDoTipo[analise.tipo]}</p>
-              <p className="text-xs text-muted-foreground">{analise.porQueOTipo}</p>
+              <Rubrica>Tipo da nota</Rubrica>
+              <p className="mt-1 text-sm font-bold leading-5 text-tinta">{rotuloDoTipo[analise.tipo]}</p>
+              <p className="text-[13px] font-medium leading-5 text-tinta-2">{analise.porQueOTipo}</p>
             </div>
-            <div className="rounded-lg border border-brand-dourado bg-white/70 px-4 py-2 sm:text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Valor da nota</p>
-              <p className="text-2xl font-bold tabular-nums text-brand-musgo">{moneyFin(plano.item.valor)}</p>
-              <p className="text-xs text-muted-foreground">soma das {n} {modo === "lote" ? "notas" : "comandas"}</p>
+            <div className="rounded-bloco bg-saber px-4 py-3 sm:text-right">
+              <Rubrica>Valor da nota</Rubrica>
+              <NumeroGrande valor={plano.item.valor} medio className="mt-2" />
+              <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
+                soma das {n} {modo === "lote" ? "notas" : "comandas"}
+              </p>
             </div>
           </div>
 
-          <div className="mt-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">O texto que vai na nota</p>
-            <p className="mt-1 whitespace-pre-wrap break-words rounded-md border border-brand-oliva/14 bg-white/70 p-3 font-mono text-[11px] leading-5 text-brand-tinta">{plano.discriminacao}</p>
+          <div className="mt-6">
+            <Rubrica>O texto que vai na nota</Rubrica>
+            <p className="mt-2 whitespace-pre-wrap break-words rounded-bloco bg-saber p-4 font-mono text-xs leading-5 text-tinta">{plano.discriminacao}</p>
           </div>
 
           {modo === "comandas" && podeEmitir && travaPorCpf && !conferindo ? (
-            <p className="mt-3 text-sm font-semibold text-amber-700">
-              Sem o CPF de {plano.titular.paciente} na ficha, a prefeitura recusa a nota. Coloque o CPF na aba Pacientes, escolha outro paciente ou deixe a nota pronta no lote.
+            <p className="mt-4 flex items-start gap-2 text-sm font-semibold leading-5 text-atencao">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                Sem o CPF de {plano.titular.paciente} na ficha, a prefeitura recusa a nota. Coloque o CPF na aba Pacientes, escolha outro paciente ou deixe a nota pronta no lote.
+              </span>
             </p>
           ) : null}
         </>

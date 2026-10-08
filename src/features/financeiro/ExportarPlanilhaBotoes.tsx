@@ -2,9 +2,10 @@
 // aparece no PDCA, em Impostos & NFs e na Poupança — o mesmo XlsxSheet vira
 // .xlsx (para quem trabalha na planilha) ou PDF em formato de planilha (para
 // quem só quer conferir/assinar). Desabilita quando o mês não tem linhas.
+// Papel & Musgo (08/10/2026): o Botao da fundação (secundário, 32 px), sem vidro.
 import { useEffect, useState } from "react";
 import { CheckCircle2, FileSpreadsheet, Printer } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Botao } from "@/components/ui/botao";
 import { imprimirPlanilhas } from "@/lib/planilhaImpressao";
 import { mensagemDoSalvamento } from "@/lib/salvarArquivo";
 import { baixarXlsx, type XlsxSheet } from "@/lib/xlsxWriter";
@@ -35,19 +36,31 @@ export function ExportarPlanilhaBotoes({
   }, [aviso]);
   return (
     <div className={cn("inline-flex flex-wrap items-center gap-1.5", className)}>
-      {rotulo ? <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-brand-oliva">{rotulo}</span> : null}
-      <Button type="button" variant="outline" size="sm" disabled={vazio} title={`Excel · ${dica}`} onClick={() => void baixarXlsx(arquivo, abas).then((resultado) => setAviso(mensagemDoSalvamento(resultado)))}>
-        <FileSpreadsheet className="mr-1.5 h-4 w-4" aria-hidden="true" />
+      {rotulo ? <span className="mr-1 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">{rotulo}</span> : null}
+      <Botao
+        variante="secundario"
+        tamanho="pq"
+        disabled={vazio}
+        title={`Excel · ${dica}`}
+        icone={<FileSpreadsheet className="h-4 w-4" aria-hidden="true" />}
+        onClick={() => void baixarXlsx(arquivo, abas).then((resultado) => setAviso(mensagemDoSalvamento(resultado)))}
+      >
         Excel
-      </Button>
-      <Button type="button" variant="outline" size="sm" disabled={vazio} title={`PDF em formato de planilha · ${dica}`} onClick={() => imprimirPlanilhas(arquivo, abas)}>
-        <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" />
+      </Botao>
+      <Botao
+        variante="secundario"
+        tamanho="pq"
+        disabled={vazio}
+        title={`PDF em formato de planilha · ${dica}`}
+        icone={<Printer className="h-4 w-4" aria-hidden="true" />}
+        onClick={() => imprimirPlanilhas(arquivo, abas)}
+      >
         PDF
-      </Button>
-      {vazio ? null : <span className="text-xs text-muted-foreground">({linhas})</span>}
+      </Botao>
+      {vazio ? null : <span className="text-[13px] font-medium tabular-nums text-tinta-2">({linhas})</span>}
       {aviso ? (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700" role="status">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="inline-flex items-center gap-1 text-[13px] font-bold text-ok" role="status">
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
           {aviso}
         </span>
       ) : null}

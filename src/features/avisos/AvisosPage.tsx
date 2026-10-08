@@ -6,6 +6,10 @@
 // isso ela vem no topo, num bloco de folha, com o caminho para completar o CPF
 // no lote de notas (Impostos & NFs). Embaixo fica o lugar dos outros avisos;
 // nesta etapa, os recados do Mural. A etapa 2 traz o resto do Início.
+//
+// Etapa 2 (08/10/2026): o "Avisos no celular às 7h", que morava no Início,
+// veio para cá, no fim da tela (ele só aparece com a integração de push
+// ligada). Os "Avisos recentes" do Início já eram os recados do Mural abaixo.
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -19,6 +23,7 @@ import { canSeeModule } from "@/lib/access";
 import { readLocalValue } from "@/lib/localStore";
 import { listRemoteAvisos } from "@/lib/remoteData";
 import { activeAvisos, initialAvisos, muralStorageKey } from "@/features/mural/muralData";
+import { AvisosNoCelularCard } from "@/features/home/AvisosNoCelularCard";
 import { fraseDasNotasSemCpf, nomeDoMes } from "@/layouts/casca/contadores";
 import { useContadoresDaTela } from "@/layouts/casca/contexto";
 
@@ -155,6 +160,13 @@ export function AvisosPage() {
           )}
         </BlocoSaber>
       </section>
+
+      {/* Só com a integração de push ligada; sem ela o cartão não desenha nada e o espaço some. */}
+      {remoto && pessoa ? (
+        <div className="mt-8 empty:hidden">
+          <AvisosNoCelularCard pessoaId={pessoa.id} />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -13,12 +13,12 @@
 // derivado que se grava congela e passa a mentir quando a régua muda.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarRange, ChevronLeft, ChevronRight, Copy, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "@/components/ui/avisos";
+import { BlocoFolha, Botao, Cabecalho, FraseDoFluxo } from "@/components/ui/fundacao";
+import { cn } from "@/lib/utils";
+import { Aviso, Campo, Indicadores, Input, Label, TITULO_SECAO, classeDoChip } from "./comercialVisual";
+import { contagem, maiuscula } from "./comercialFrases";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { moneyFin, parseFinAmount } from "@/features/financeiro/financeiroData";
@@ -147,191 +147,206 @@ export function CrmCheckinSemanalPage() {
 
   const numero = (valor: number) => moneyFin(valor);
 
+  // CABEÇALHO (08/10/2026, redesenho etapa 3): um cabeçalho só, com a semana numa
+  // frase; a tabela do prescrito mora numa folha (é o que se digita) e os oito
+  // números derivados viram a faixa "para saber", com a frase da meta junto.
+  const fraseDoTopo = (
+    <>
+      <strong>{maiuscula(contagem(resumo.pacientesTotais, "paciente"))}</strong> {resumo.pacientesTotais === 1 ? "passou" : "passaram"} na
+      semana de {rotuloDaSemana(sexta)}, somando {numero(resumo.faturamento)}.
+      {saldoHerdado > 0 ? <span className="alerta"> A meta trouxe {numero(saldoHerdado)} da semana passada.</span> : null}
+    </>
+  );
+
   return (
-    <div className="grid gap-4">
-      <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            <CalendarRange className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-            Check-in semanal
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 font-sans max-md:gap-4">
+      <Cabecalho
+        className="mb-0 max-md:mb-0"
+        sobrancelha="Comercial · Coordenação"
+        titulo="Check-in semanal"
+        frase={fraseDoTopo}
+        rodape={
+          <FraseDoFluxo>
+            A semana vai de sexta a quinta. O app traz quem tem comanda e quanto pagou; você digita só o prescrito.{" "}
             <InfoTip title="Por que sexta a quinta">A contagem fecha na quinta à noite e a semana nova abre na sexta — é a régua que o Lucas usa, e não a semana do calendário.</InfoTip>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setSexta(semanaAnterior(sexta))}>
+          </FraseDoFluxo>
+        }
+      />
+
+      {/* A semana e a meta combinada */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Semana">
+          <Botao tamanho="pq" className="w-8 px-0" aria-label="Semana anterior" onClick={() => setSexta(semanaAnterior(sexta))}>
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <span className="min-w-44 text-center text-sm font-semibold text-brand-tinta">{rotuloDaSemana(sexta)}</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => setSexta(proximaSexta(sexta))}>
+          </Botao>
+          <span className="flex min-w-44 items-center justify-center gap-2 text-sm font-bold tabular-nums text-tinta">
+            <CalendarRange className="h-4 w-4 text-oliva" aria-hidden="true" />
+            {rotuloDaSemana(sexta)}
+          </span>
+          <Botao tamanho="pq" className="w-8 px-0" aria-label="Próxima semana" onClick={() => setSexta(proximaSexta(sexta))}>
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setSexta(sextaDaSemana(todayISO()))}>
+          </Botao>
+          <Botao variante="fantasma" tamanho="pq" onClick={() => setSexta(sextaDaSemana(todayISO()))}>
             Semana de hoje
-          </Button>
-          <div className="ml-auto flex items-end gap-2">
-            <div>
-              <Label className="text-xs">Meta combinada da semana</Label>
-              <Input value={metaBaseTexto} onChange={(e) => setMetaBaseTexto(e.target.value)} className="h-9 w-36" inputMode="decimal" />
-            </div>
-            <Button type="button" disabled={salvando} onClick={() => void salvar()}>
-              {salvando ? "Salvando…" : "Salvar"}
-            </Button>
+          </Botao>
+        </div>
+        <div className="flex items-end gap-2">
+          <div>
+            <Label htmlFor="checkin-meta">Meta combinada da semana</Label>
+            <Input id="checkin-meta" value={metaBaseTexto} onChange={(e) => setMetaBaseTexto(e.target.value)} className="w-40 tabular-nums" inputMode="decimal" />
           </div>
-        </CardContent>
-      </Card>
+          <Botao variante="primario" carregando={salvando} onClick={() => void salvar()}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </Botao>
+        </div>
+      </div>
 
       {saldoHerdado > 0 ? (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
+        <Aviso tom="atencao">
           A semana passada fechou {numero(saldoHerdado)} abaixo da meta, e isso veio junto: a régua desta semana é{" "}
           {numero(resumo.meta)}.
-        </div>
+        </Aviso>
       ) : null}
 
-      <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Quem passou nesta semana</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            O app já trouxe quem tem comanda e quanto pagou. Falta o <strong>prescrito</strong> — o que foi proposto no
-            consultório, que não existe em nenhuma tela.
-          </p>
-        </CardHeader>
-        <CardContent className="grid gap-2">
+      <BlocoFolha as="section" respiro aria-labelledby="checkin-quem-passou">
+        <h2 id="checkin-quem-passou" className={TITULO_SECAO}>Quem passou nesta semana</h2>
+        <p className="mt-1 text-sm font-medium leading-5 text-tinta-2">
+          O app já trouxe quem tem comanda e quanto pagou. Falta o <strong className="font-bold text-tinta">prescrito</strong> — o que foi proposto no
+          consultório, que não existe em nenhuma tela.
+        </p>
+        <div className="mt-4 grid">
           {carregando ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Carregando a semana…</p>
+            <p className="py-6 text-center text-sm font-medium text-tinta-2">Carregando a semana…</p>
           ) : linhas.length ? (
             <>
-              <div className="hidden gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[1fr_92px_130px_130px_36px]">
+              <div className="hidden gap-2 border-b border-fio-2 pb-2 text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2 sm:grid sm:grid-cols-[1fr_112px_140px_140px_32px]">
                 <span>Paciente</span>
                 <span>Novo?</span>
-                <span>Prescrito</span>
-                <span>Pago</span>
+                <span className="text-right">Prescrito</span>
+                <span className="text-right">Pago</span>
                 <span />
               </div>
               {linhas.map((linha) => (
-                <div key={linha.ref} className="grid items-center gap-2 rounded-lg border border-brand-oliva/15 bg-white/70 p-2 sm:grid-cols-[1fr_92px_130px_130px_36px]">
-                  <Input
+                <div key={linha.ref} className="grid items-center gap-2 border-b border-fio py-2 sm:grid-cols-[1fr_112px_140px_140px_32px]">
+                  <Campo
+                    pequeno
                     value={linha.paciente}
                     onChange={(e) => alterarLinha(linha.ref, { paciente: e.target.value })}
-                    className="h-9"
                     aria-label="Paciente"
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant={linha.novo ? "default" : "outline"}
-                    size="sm"
-                    className="h-9"
+                    className={cn(classeDoChip(linha.novo), "h-8 justify-center")}
                     aria-pressed={linha.novo}
                     onClick={() => alterarLinha(linha.ref, { novo: !linha.novo })}
                   >
                     {linha.novo ? "Novo" : "Recorrente"}
-                  </Button>
-                  <Input
+                  </button>
+                  <Campo
+                    pequeno
                     value={linha.prescrito ? String(linha.prescrito).replace(".", ",") : ""}
                     onChange={(e) => alterarLinha(linha.ref, { prescrito: parseFinAmount(e.target.value) })}
-                    className="h-9"
+                    className="text-right tabular-nums"
                     inputMode="decimal"
                     placeholder="prescrito"
                     aria-label="Valor prescrito"
                   />
-                  <Input
+                  <Campo
+                    pequeno
                     value={linha.pago ? String(linha.pago).replace(".", ",") : ""}
                     onChange={(e) => alterarLinha(linha.ref, { pago: parseFinAmount(e.target.value) })}
-                    className="h-9"
+                    className="text-right tabular-nums"
                     inputMode="decimal"
                     placeholder="pago"
                     aria-label="Valor pago"
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 text-brand-grave"
+                    className="inline-grid h-8 w-8 place-items-center rounded-controle text-tinta-2 hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
                     aria-label={`Tirar ${linha.paciente} da semana`}
                     onClick={() => setLinhas((atual) => atual.filter((item) => item.ref !== linha.ref))}
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  </button>
                 </div>
               ))}
             </>
           ) : (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+            <p className="py-6 text-center text-sm font-medium text-tinta-2">
               Nenhuma comanda nesta semana ainda. Dá para adicionar quem passou e não pagou.
             </p>
           )}
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setLinhas((atual) => [
-                  ...atual,
-                  { ref: `manual-${Date.now().toString(36)}`, paciente: "", novo: false, prescrito: 0, pago: 0, origem: "MANUAL" },
-                ])
-              }
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Adicionar quem passou e não pagou
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => void carregar(sexta)}>
-              <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Recarregar das comandas
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Botao
+            tamanho="pq"
+            icone={<Plus className="h-4 w-4" aria-hidden="true" />}
+            onClick={() =>
+              setLinhas((atual) => [
+                ...atual,
+                { ref: `manual-${Date.now().toString(36)}`, paciente: "", novo: false, prescrito: 0, pago: 0, origem: "MANUAL" },
+              ])
+            }
+          >
+            Adicionar quem passou e não pagou
+          </Botao>
+          <Botao variante="fantasma" tamanho="pq" icone={<RotateCcw className="h-4 w-4" aria-hidden="true" />} onClick={() => void carregar(sexta)}>
+            Recarregar das comandas
+          </Botao>
+        </div>
+      </BlocoFolha>
 
-      <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Os números da semana</CardTitle>
-          <p className="text-xs text-muted-foreground">Tudo derivado da tabela acima — nada aqui é digitado.</p>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-4">
-            {[
-              ["Pacientes totais", String(resumo.pacientesTotais)],
-              ["Pacientes novos", String(resumo.pacientesNovos)],
-              ["Faturamento", numero(resumo.faturamento)],
-              ["Ticket médio", numero(resumo.ticketMedio)],
-              ["Orçamento prescrito", numero(resumo.prescrito)],
-              ["Orçamento realizado", numero(resumo.realizado)],
-              ["Conversão", resumo.conversao === null ? "—" : `${(resumo.conversao * 100).toFixed(1).replace(".", ",")}%`],
-              [resumo.encerrada ? "Meta da próxima" : "Meta da próxima (por ora)", numero(resumo.metaDaProxima)],
-            ].map(([rotulo, valor]) => (
-              <div key={rotulo} className="rounded-lg border border-brand-oliva/15 bg-brand-creme/40 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{rotulo}</p>
-                <p className="mt-1 text-lg font-semibold text-brand-tinta">{valor}</p>
-              </div>
-            ))}
-          </div>
-          {/* SEMANA ABERTA NÃO É SEMANA PERDIDA (21/09/2026). Na segunda-feira
-              a tela dizia "faltaram R$ 90 mil" e já dobrava a meta seguinte,
-              com quatro dias pela frente. Mesma regra de nunca comparar mês
-              parcial com mês fechado. */}
-          <p className="text-sm text-muted-foreground">
-            {resumo.faltou <= 0
-              ? `Meta de ${numero(resumo.meta)} batida. A próxima volta para a base, sem acúmulo.`
-              : resumo.encerrada
-                ? `Faltaram ${numero(resumo.faltou)} para a meta de ${numero(resumo.meta)} — e é isso que somou na meta da próxima.`
-                : `Faltam ${numero(resumo.faltou)} para a meta de ${numero(resumo.meta)}. A semana ainda está aberta: só o que sobrar na quinta é que vai acumular.`}
-          </p>
-          <div>
-            <Button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard
-                  ?.writeText(textoDoCheckin(semana))
-                  .then(() => toast("Check-in copiado — é só colar no WhatsApp.", { tom: "ok" }))
-                  .catch(() => toast("Não consegui copiar.", { tom: "erro" }));
-              }}
-            >
-              <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" /> Copiar o check-in
-            </Button>
-          </div>
-          <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg border border-brand-oliva/15 bg-brand-creme/30 p-3 font-sans text-xs leading-relaxed text-brand-tinta">
-            {textoDoCheckin(semana)}
-          </pre>
-        </CardContent>
-      </Card>
+      <Indicadores
+        rotulo="Os números da semana"
+        titulo={
+          <>
+            <strong>Os números da semana.</strong> Tudo derivado da tabela acima — nada aqui é digitado.
+          </>
+        }
+        colunas={4}
+        itens={[
+          { rotulo: "Pacientes totais", valor: String(resumo.pacientesTotais) },
+          { rotulo: "Pacientes novos", valor: String(resumo.pacientesNovos) },
+          { rotulo: "Faturamento", valor: numero(resumo.faturamento) },
+          { rotulo: "Ticket médio", valor: numero(resumo.ticketMedio) },
+          { rotulo: "Orçamento prescrito", valor: numero(resumo.prescrito) },
+          { rotulo: "Orçamento realizado", valor: numero(resumo.realizado) },
+          { rotulo: "Conversão", valor: resumo.conversao === null ? "—" : `${(resumo.conversao * 100).toFixed(1).replace(".", ",")}%` },
+          { rotulo: resumo.encerrada ? "Meta da próxima" : "Meta da próxima (por ora)", valor: numero(resumo.metaDaProxima) },
+        ]}
+      >
+        {/* SEMANA ABERTA NÃO É SEMANA PERDIDA (21/09/2026). Na segunda-feira
+            a tela dizia "faltaram R$ 90 mil" e já dobrava a meta seguinte,
+            com quatro dias pela frente. Mesma regra de nunca comparar mês
+            parcial com mês fechado. */}
+        <p className="mt-6 border-t border-fio pt-4 text-sm font-medium leading-6 text-tinta">
+          {resumo.faltou <= 0
+            ? `Meta de ${numero(resumo.meta)} batida. A próxima volta para a base, sem acúmulo.`
+            : resumo.encerrada
+              ? `Faltaram ${numero(resumo.faltou)} para a meta de ${numero(resumo.meta)} — e é isso que somou na meta da próxima.`
+              : `Faltam ${numero(resumo.faltou)} para a meta de ${numero(resumo.meta)}. A semana ainda está aberta: só o que sobrar na quinta é que vai acumular.`}
+        </p>
+      </Indicadores>
+
+      <section aria-labelledby="checkin-texto" className="grid gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="checkin-texto" className={TITULO_SECAO}>O texto para o WhatsApp</h2>
+          <Botao
+            icone={<Copy className="h-4 w-4" aria-hidden="true" />}
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText(textoDoCheckin(semana))
+                .then(() => toast("Check-in copiado — é só colar no WhatsApp.", { tom: "ok" }))
+                .catch(() => toast("Não consegui copiar.", { tom: "erro" }));
+            }}
+          >
+            Copiar o check-in
+          </Botao>
+        </div>
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded-bloco border border-fio bg-folha p-4 font-sans text-[13px] font-medium leading-6 text-tinta">
+          {textoDoCheckin(semana)}
+        </pre>
+      </section>
     </div>
   );
 }

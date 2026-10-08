@@ -158,6 +158,16 @@ const brl = (valor: number) => new Intl.NumberFormat("pt-BR", { style: "currency
 const diaCurto = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
 const plural = (n: number, um: string, varios: string) => (n === 1 ? um : varios);
 
+/**
+ * A frase da conta vencida (08/10/2026, dia de pagar): "venceu 05/10"; e, para
+ * a conta de fim de semana/feriado que devia ter sido paga no dia útil
+ * anterior e ainda não venceu de fato, "era para pagar 09/10 · vence no sábado, 10/10".
+ */
+function quandoVenceu(item: { data: string; pagarEm?: string; pagaAntes?: string | null }, hoje: string) {
+  if (item.data < hoje || !item.pagarEm || !item.pagaAntes) return `venceu ${diaCurto(item.data)}`;
+  return `era para pagar ${diaCurto(item.pagarEm)} · ${item.pagaAntes}`;
+}
+
 export function somaDiasISO(iso: string, dias: number) {
   const [ano, mes, dia] = iso.split("-").map(Number);
   const data = new Date(ano, mes - 1, dia + dias);
@@ -200,17 +210,17 @@ export function buildFilaDoDia(entrada: EntradasDaFila): FilaDoDia {
   const fin = entrada.financeira;
   if (fin) {
     for (const item of fin.vencidas.slice(0, 6)) {
-      itens.push({ chave: item.chave, origem: "CONTA", titulo: item.titulo, detalhe: `venceu ${diaCurto(item.data)}${item.detalhe ? ` · ${item.detalhe}` : ""}`, quando: item.data, urgencia: 0, valor: item.valor, href: "/financeiro/contas", acao: "Resolver", quantidade: 1 });
+      itens.push({ chave: item.chave, origem: "CONTA", titulo: item.titulo, detalhe: `${quandoVenceu(item, hoje)}${item.detalhe ? ` · ${item.detalhe}` : ""}`, quando: item.data, urgencia: 0, valor: item.valor, href: "/financeiro/contas", acao: "Resolver", quantidade: 1 });
     }
     if (fin.vencidas.length > 6) {
       const resto = fin.vencidas.slice(6);
       itens.push({ chave: "conta:vencidas-resto", origem: "CONTA", titulo: `+${resto.length} ${plural(resto.length, "conta vencida", "contas vencidas")}`, detalhe: `somam ${brl(resto.reduce((s, i) => s + i.valor, 0))}`, quando: resto[0]?.data ?? hoje, urgencia: 0, valor: resto.reduce((s, i) => s + i.valor, 0), href: "/financeiro/contas", acao: "Ver todas", quantidade: resto.length });
     }
     for (const item of fin.vencemHoje) {
-      itens.push({ chave: item.chave, origem: "CONTA", titulo: item.titulo, detalhe: `vence hoje${item.detalhe ? ` · ${item.detalhe}` : ""}${item.alerta === "SEM_ARQUIVO" ? " · sem boleto anexado" : ""}`, quando: hoje, urgencia: 1, valor: item.valor, href: "/financeiro/contas", acao: "Pagar", quantidade: 1 });
+      itens.push({ chave: item.chave, origem: "CONTA", titulo: item.titulo, detalhe: `${item.pagaAntes ? `${item.pagaAntes} · pagar hoje` : "vence hoje"}${item.detalhe ? ` · ${item.detalhe}` : ""}${item.alerta === "SEM_ARQUIVO" ? " · sem boleto anexado" : ""}`, quando: hoje, urgencia: 1, valor: item.valor, href: "/financeiro/contas", acao: "Pagar", quantidade: 1 });
     }
     if (fin.semana.length) {
-      itens.push({ chave: "conta:semana", origem: "CONTA", titulo: `${fin.semana.length} ${plural(fin.semana.length, "conta vence", "contas vencem")} nos próximos 7 dias`, detalhe: `${brl(fin.totais.semana)} · primeira em ${diaCurto(fin.semana[0].data)}${fin.totais.boletosSemArquivo ? ` · ${fin.totais.boletosSemArquivo} sem boleto anexado` : ""}`, quando: fin.semana[0].data, urgencia: 2, valor: fin.totais.semana, href: "/financeiro/contas", acao: "Abrir a fila", quantidade: fin.semana.length });
+      itens.push({ chave: "conta:semana", origem: "CONTA", titulo: `${fin.semana.length} ${plural(fin.semana.length, "conta vence", "contas vencem")} nos próximos 7 dias`, detalhe: `${brl(fin.totais.semana)} · primeira em ${diaCurto(fin.semana[0].data)}${fin.semana[0].pagaAntes ? ` (pagar ${diaCurto(fin.semana[0].pagarEm)})` : ""}${fin.totais.boletosSemArquivo ? ` · ${fin.totais.boletosSemArquivo} sem boleto anexado` : ""}`, quando: fin.semana[0].pagarEm || fin.semana[0].data, urgencia: 2, valor: fin.totais.semana, href: "/financeiro/contas", acao: "Abrir a fila", quantidade: fin.semana.length });
     }
     for (const item of fin.pendencias.slice(0, 4)) {
       const urgencia: Urgencia = item.alerta === "ATRASADO" ? 0 : item.alerta === "CHEGANDO" ? 1 : 2;
@@ -375,7 +385,11 @@ export function buildFilaDoDia(entrada: EntradasDaFila): FilaDoDia {
   const silenciados = limparSilenciados(entrada.silenciados ?? {}, hoje);
   const visiveis = itens.filter((item) => !silenciados[item.chave]);
   visiveis.sort((a, b) => a.urgencia - b.urgencia || (a.quando || "9999").localeCompare(b.quando || "9999") || (b.valor ?? 0) - (a.valor ?? 0) || a.titulo.localeCompare(b.titulo, "pt-BR"));
+  return fecharFila(hoje, visiveis, itens.length - visiveis.length);
+}
 
+/** Contagem, frase e número do ícone de uma lista já ordenada. */
+function fecharFila(hoje: string, visiveis: ItemFilaDoDia[], silenciados: number): FilaDoDia {
   const contagem: Record<Urgencia, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
   const porOrigem: Partial<Record<OrigemFila, number>> = {};
   for (const item of visiveis) {
@@ -391,12 +405,25 @@ export function buildFilaDoDia(entrada: EntradasDaFila): FilaDoDia {
   return {
     hoje,
     itens: visiveis,
-    silenciados: itens.length - visiveis.length,
+    silenciados,
     contagem,
     porOrigem,
     resumo: partes.join(" · "),
     badge: contagem[0] + contagem[1],
   };
+}
+
+/**
+ * O RESTO DA FILA (08/10/2026, redesenho etapa 2): o Início mostra as decisões
+ * — pedidos para aprovar, contas do dia e o fechamento de ontem — no "Para
+ * decidir", com o botão na linha. A Fila do dia continua embaixo, sem repetir
+ * esses itens (as `chaves` vêm de montarParaDecidir). O número do ícone do app
+ * continua contando TUDO (atrasados + hoje, decisões inclusas).
+ */
+export function restoDaFila(fila: FilaDoDia, chaves: Iterable<string>): FilaDoDia {
+  const fora = new Set(chaves);
+  const resto = fecharFila(fila.hoje, fila.itens.filter((item) => !fora.has(item.chave)), fila.silenciados);
+  return { ...resto, badge: fila.badge };
 }
 
 export const origemLabels: Record<OrigemFila, string> = {

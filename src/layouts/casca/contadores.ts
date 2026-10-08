@@ -103,7 +103,9 @@ export function decisoesPendentes(entradas: EntradasDasDecisoes): DecisoesPenden
       expenses: entradas.contas.filter((conta) => !String(conta.categoryRef ?? "").startsWith("cat-poup-")),
       purchases: [],
       hoje: entradas.hoje,
-      limiteAprovacao: aprovacaoLigada ? entradas.limiteAprovacao : 0,
+      // O limite vigente para todos (revisão de 08/10/2026, igual ao Para decidir
+      // do Início): marca a conta acima dele sem mudar a contagem.
+      limiteAprovacao: entradas.limiteAprovacao > 0 ? entradas.limiteAprovacao : 0,
     });
     // "Pagar hoje" do Início: as de hoje e as que já venceram.
     if (entradas.pagaContas) for (const item of [...fila.vencidas, ...fila.vencemHoje]) chaves.add(item.chave);

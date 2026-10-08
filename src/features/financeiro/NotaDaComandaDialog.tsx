@@ -17,8 +17,7 @@
 // com o CPF digitado aqui.
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { Botao } from "@/components/ui/fundacao";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
@@ -30,6 +29,7 @@ import { notaDoFechamentoVazia, planoDeNotas, travaDoFechamento, type NotaDoFech
 import { moneyFin, type FinSale } from "./financeiroData";
 import { divisaoDosItens, ehSoSinal, parcelasDaComanda, valorFaturavel } from "./notaNaComandaDoDia";
 import { fichaDeOutraPessoa } from "./cpfDaNota";
+import { Janela } from "./pecasDiaPagar";
 
 export function NotaDaComandaDialog({
   sale,
@@ -114,41 +114,42 @@ export function NotaDaComandaDialog({
     }
   }
 
+  // Papel & Musgo (08/10/2026): a janela sem blur no fundo, sombra só no que flutua,
+  // título em Fraunces e os botões da fundação. A regra (quem emite, a trava da ficha) é a mesma.
+  // A moldura é a Janela das telas do Dia e do Pagar (no <body>, acima da barra do celular).
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center bg-brand-tinta/30 px-4 py-6 backdrop-blur-sm" onClick={onFechar}>
-      <div className="max-h-[88dvh] w-[min(36rem,94vw)] overflow-y-auto rounded-2xl border border-brand-oliva/18 bg-brand-papel p-5 shadow-[0_32px_80px_rgba(43,46,36,0.28)]" onClick={(event) => event.stopPropagation()} role="dialog" aria-label={`Emitir a nota de ${sale.patientName}`}>
-        <h2 className="text-xl text-brand-musgo">Nota fiscal de {sale.patientName}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Comanda de {sale.saleDate.split("-").reverse().join("/")} · {moneyFin(valor)} a faturar
-          {sale.notaInstrucao?.trim() ? <> · combinado no fechamento: <strong className="text-brand-tinta">{sale.notaInstrucao.trim()}</strong></> : null}
-        </p>
-        <div className="mt-4">
-          <NotaNoFechamentoCard
-            nota={nota}
-            onNotaChange={setNota}
-            valorRecebido={valor}
-            diaISO={sale.saleDate}
-            parcelas={parcelas}
-            ehSinal={sinal}
-            tomador={{ nome: sale.patientName, cpf: cpfNaFicha.data?.cpf && !outraPessoa ? "na ficha" : "", email }}
-            onEmailChange={setEmail}
-            cpfRascunho={cpfRascunho}
-            onCpfChange={setCpfRascunho}
-          />
-        </div>
-        {trava ? <p className="mt-2 text-sm font-semibold text-amber-700">{trava}</p> : null}
-        {travaDaFicha ? <p className="mt-2 text-sm font-semibold text-amber-700">{travaDaFicha}</p> : null}
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onFechar} disabled={emitindo}>{temPermissao ? "Agora não" : "Fechar"}</Button>
-          {temPermissao ? (
-            <LiquidButton type="button" size="sm" className="h-10 px-4" disabled={!podeEmitir} onClick={() => void emitir()}>
-              {emitindo ? "Emitindo na prefeitura…" : plano.notas.length > 1 ? `Emitir ${plano.notas.length} notas` : "Emitir a nota"}
-            </LiquidButton>
-          ) : (
-            <p className="text-sm text-muted-foreground">{avisoQuemEmiteNota}</p>
-          )}
-        </div>
+    <Janela rotulo={`Emitir a nota de ${sale.patientName}`} onFechar={onFechar}>
+      <h2 className="font-serifa text-2xl font-normal leading-tight text-tinta">Nota fiscal de {sale.patientName}</h2>
+      <p className="mt-2 text-sm font-medium leading-[22px] text-tinta-2">
+        Comanda de {sale.saleDate.split("-").reverse().join("/")} · <span className="tabular-nums">{moneyFin(valor)}</span> a faturar
+        {sale.notaInstrucao?.trim() ? <> · combinado no fechamento: <strong className="font-bold text-tinta">{sale.notaInstrucao.trim()}</strong></> : null}
+      </p>
+      <div className="mt-4">
+        <NotaNoFechamentoCard
+          nota={nota}
+          onNotaChange={setNota}
+          valorRecebido={valor}
+          diaISO={sale.saleDate}
+          parcelas={parcelas}
+          ehSinal={sinal}
+          tomador={{ nome: sale.patientName, cpf: cpfNaFicha.data?.cpf && !outraPessoa ? "na ficha" : "", email }}
+          onEmailChange={setEmail}
+          cpfRascunho={cpfRascunho}
+          onCpfChange={setCpfRascunho}
+        />
       </div>
-    </div>
+      {trava ? <p className="mt-3 rounded-controle bg-atencao-claro px-3 py-2 text-sm font-bold text-atencao">{trava}</p> : null}
+      {travaDaFicha ? <p className="mt-3 rounded-controle bg-atencao-claro px-3 py-2 text-sm font-bold text-atencao">{travaDaFicha}</p> : null}
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+        <Botao variante="fantasma" onClick={onFechar} disabled={emitindo}>{temPermissao ? "Agora não" : "Fechar"}</Botao>
+        {temPermissao ? (
+          <Botao variante="primario" carregando={emitindo} disabled={!podeEmitir} onClick={() => void emitir()}>
+            {emitindo ? "Emitindo na prefeitura…" : plano.notas.length > 1 ? `Emitir ${plano.notas.length} notas` : "Emitir a nota"}
+          </Botao>
+        ) : (
+          <p className="text-sm font-medium text-tinta-2">{avisoQuemEmiteNota}</p>
+        )}
+      </div>
+    </Janela>
   );
 }

@@ -13,11 +13,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, IdCard, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
 import { confirmar, toast } from "@/components/ui/avisos";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "./comercialVisual";
 import { cpfEnquantoDigita, cpfFormatado, cpfMascarado, cpfValido, cpfDigitos } from "@/lib/cpf";
 import { apagarRemoteCpfDoContato, lerRemoteCpfDoContato, salvarRemoteCpfDoContato } from "@/lib/remoteData";
 
@@ -55,10 +53,10 @@ export function CpfDoPacienteCard({ contactRef, pessoaId, ativo }: { contactRef:
   const rascunhoValido = cpfValido(rascunho);
 
   return (
-    <Card className="border-brand-oliva/20">
+    <Card className="border-fio">
       <CardHeader className="pb-3">
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <IdCard className="h-4 w-4 text-brand-musgo" aria-hidden="true" />
+          <IdCard className="h-4 w-4 text-musgo" aria-hidden="true" />
           CPF para a nota fiscal
           <InfoTip title="Por que o app guarda isto">
             A nota emitida sem identificar o tomador tira do paciente o bilhete do sorteio da Nota do Milhão. O número fica guardado à parte, aparece escondido na tela, só quem cuida de nota fiscal enxerga, e pode ser apagado a qualquer momento a pedido do paciente.
@@ -67,9 +65,9 @@ export function CpfDoPacienteCard({ contactRef, pessoaId, ativo }: { contactRef:
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         {!ativo ? (
-          <p className="text-muted-foreground">Entre com a sua conta para ver ou guardar o CPF.</p>
+          <p className="text-tinta-2">Entre com a sua conta para ver ou guardar o CPF.</p>
         ) : guardado.isLoading ? (
-          <p className="text-muted-foreground">Carregando…</p>
+          <p className="text-tinta-2">Carregando…</p>
         ) : editando ? (
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -87,11 +85,11 @@ export function CpfDoPacienteCard({ contactRef, pessoaId, ativo }: { contactRef:
             <Button type="button" size="sm" variant="ghost" onClick={() => { setEditando(false); setRascunho(""); }}>
               Cancelar
             </Button>
-            {rascunho && !rascunhoValido ? <span className="text-xs text-red-700">Esse CPF não confere. Confira os números.</span> : null}
+            {rascunho && !rascunhoValido ? <span className="text-xs text-erro">Esse CPF não confere. Confira os números.</span> : null}
           </div>
         ) : temCpf ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-brand-papel/60 px-2.5 py-1 font-mono text-brand-tinta">
+            <span className="rounded-controle bg-saber px-2.5 py-1 font-mono text-tinta">
               {mostrando ? cpfFormatado(guardado.data!.cpf) : cpfMascarado(guardado.data!.cpf)}
             </span>
             <Button type="button" size="sm" variant="ghost" className="gap-1.5" onClick={() => setMostrando((atual) => !atual)}>
@@ -105,7 +103,7 @@ export function CpfDoPacienteCard({ contactRef, pessoaId, ativo }: { contactRef:
               type="button"
               size="sm"
               variant="ghost"
-              className="gap-1.5 text-red-700"
+              className="gap-1.5 text-erro"
               disabled={apagar.isPending}
               onClick={async () => {
                 if (!(await confirmar("Apagar o CPF deste paciente? A nota dele volta a sair sem identificação.", { destrutivo: true, confirmar: "Apagar" }))) return;
@@ -117,7 +115,7 @@ export function CpfDoPacienteCard({ contactRef, pessoaId, ativo }: { contactRef:
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-muted-foreground">Sem CPF guardado — a nota deste paciente sai sem identificação.</span>
+            <span className="text-tinta-2">Sem CPF guardado — a nota deste paciente sai sem identificação.</span>
             <Button type="button" size="sm" variant="outline" onClick={() => setEditando(true)}>
               Guardar o CPF
             </Button>

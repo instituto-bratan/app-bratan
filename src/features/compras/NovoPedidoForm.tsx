@@ -5,12 +5,14 @@
 //
 // A validação é a do motor (validarPedido), que tem as mesmas frases do banco:
 // o que a tela recusa é exatamente o que o banco recusaria.
+//
+// 08/10/2026 (redesenho Papel & Musgo): os mesmos campos, na forma aprovada —
+// campo com contorno de 3:1 e foco em anel musgo, recados em faixa (sem âmbar
+// e rosa soltos), "Urgente" na cor de erro e o botão principal no pé da gaveta.
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AlertTriangle, PackagePlus, PencilLine, Plus, Search, Send, Trash2 } from "lucide-react";
 import { toast } from "@/components/ui/avisos";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Botao } from "@/components/ui/fundacao";
 import { parseMoneyBR } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { saldoDoItem, setorNomes, type EstoqueItem, type EstoqueMovimento, type EstoqueSetor } from "@/features/estoque/estoqueData";
@@ -25,6 +27,7 @@ import {
   type RascunhoPedido,
 } from "./comprasData";
 import { Gaveta } from "./Gaveta";
+import { Campo, CampoArea, CampoSelecao, CampoTexto, Recado, classeDoRotulo } from "./pecas";
 import { itensDoEstoqueParaPedido, linhaDoEstoque, numeroDigitado, oQueJaVemDoItem } from "./pedidoTela";
 
 const brl = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -221,14 +224,15 @@ export function NovoPedidoForm({
     <Gaveta
       aberta={aberta}
       onFechar={onFechar}
+      sobrancelha={existente ? `Pedido ${numeroDoPedido(existente.numero)} · devolvido para ajuste` : nomeDoSetorAtual ? `Compras e estoque · ${nomeDoSetorAtual}` : "Compras e estoque"}
       titulo={existente ? `Ajustar o pedido ${numeroDoPedido(existente.numero)}` : "Novo pedido de compra"}
       subtitulo={existente ? "Corrija o que foi pedido e reenvie para aprovação." : "Diga o que falta, quanto e por quê. O Gestor Financeiro aprova."}
       rodape={
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[13px] font-medium leading-5 text-tinta-2">
             {total > 0 ? (
               <>
-                Estimado <span className="font-semibold tabular-nums text-brand-tinta">{brl(total)}</span>
+                Estimado <span className="text-sm font-bold tabular-nums text-tinta">{brl(total)}</span>
               </>
             ) : linhas.length ? (
               "Sem valor estimado (opcional)"
@@ -236,51 +240,51 @@ export function NovoPedidoForm({
               "Nenhum item ainda"
             )}
           </p>
-          <Button type="submit" form={formId} disabled={salvando} className="h-12 w-full sm:h-11 sm:w-auto sm:px-6">
-            <Send className="mr-2 h-4 w-4" aria-hidden="true" />
+          <Botao
+            type="submit"
+            form={formId}
+            variante="primario"
+            carregando={salvando}
+            icone={<Send className="h-4 w-4" aria-hidden="true" />}
+            className="max-sm:h-[52px] max-sm:w-full max-sm:text-base"
+          >
             {salvando ? "Enviando…" : existente ? "Reenviar para aprovação" : "Enviar pedido"}
-          </Button>
+          </Botao>
         </div>
       }
     >
-      <form id={formId} onSubmit={enviar} className="grid gap-6" noValidate>
+      <form id={formId} onSubmit={enviar} className="grid gap-6 font-sans" noValidate>
         {existente?.decisaoNota ? (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900 [overflow-wrap:anywhere]">
-            <span className="font-semibold">O que pediram para ajustar: </span>
+          <Recado tom="atencao">
+            <strong>O que pediram para ajustar: </strong>
             {existente.decisaoNota}
-          </p>
+          </Recado>
         ) : null}
 
         {/* Setor: só os que a pessoa pode pedir; o dela vem primeiro. */}
         {setores.length > 1 && !existente ? (
-          <div className="grid gap-2">
-            <Label htmlFor="pedido-setor">Para qual setor</Label>
-            <select
-              id="pedido-setor"
-              value={setor}
-              onChange={(event) => trocarSetor(event.target.value as EstoqueSetor)}
-              className="h-12 w-full rounded-md border border-input bg-white/80 px-3 text-base text-brand-tinta sm:h-11 sm:text-sm"
-            >
+          <Campo id="pedido-setor" rotulo="Para qual setor">
+            <CampoSelecao id="pedido-setor" value={setor} onChange={(event) => trocarSetor(event.target.value as EstoqueSetor)}>
               {setores.map((opcao) => (
                 <option key={opcao} value={opcao}>
                   {setorNomes[opcao]}
                 </option>
               ))}
-            </select>
-          </div>
+            </CampoSelecao>
+          </Campo>
         ) : (
-          <p className="text-sm text-brand-tinta">
-            Setor: <span className="font-semibold">{nomeDoSetorAtual || "—"}</span>
+          <p className="text-sm font-medium text-tinta-2">
+            Setor: <span className="font-bold text-tinta">{nomeDoSetorAtual || "—"}</span>
           </p>
         )}
 
         {/* Itens */}
         <fieldset className="grid gap-3">
-          <legend className="mb-1 text-sm font-semibold text-brand-tinta">O que precisa</legend>
+          <legend className={cn(classeDoRotulo, "mb-2")}>O que precisa</legend>
 
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
+            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-tinta-2" aria-hidden="true" />
+            <CampoTexto
               value={busca}
               onChange={(event) => setBusca(event.target.value)}
               onKeyDown={(event) => {
@@ -299,31 +303,33 @@ export function NovoPedidoForm({
           </div>
 
           {doSetor.length && (busca.trim() || sugestoes.length) ? (
-            <div className="rounded-lg border border-brand-oliva/15 bg-white/60">
-              <p className="px-3 pt-2 text-xs font-semibold text-muted-foreground">
+            <div className="rounded-bloco border border-fio bg-folha">
+              <p className="px-3 pb-1 pt-2 text-xs font-bold uppercase tracking-[0.06em] text-tinta-2">
                 {busca.trim() ? (sugestoes.length ? "No estoque do setor" : "Nada com esse nome no estoque do setor") : "Em falta no estoque do setor"}
               </p>
-              <ul className="divide-y divide-brand-oliva/10">
+              <ul>
                 {sugestoes.map(({ item, saldo, emFalta, jaVem }) => {
                   const ja = noPedido.has(item.id);
                   return (
-                    <li key={item.id}>
+                    <li key={item.id} className="border-t border-fio first:border-t-0">
                       <button
                         type="button"
                         disabled={ja}
                         onClick={() => adicionarDoEstoque(item)}
-                        className="flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-brand-creme/50 disabled:cursor-default disabled:opacity-60"
+                        className="flex min-h-12 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-saber focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-foco disabled:cursor-default disabled:hover:bg-transparent"
                       >
                         <span className="min-w-0">
-                          <span className="block font-semibold text-brand-tinta [overflow-wrap:anywhere]">{item.nome}</span>
-                          <span className={cn("block text-xs tabular-nums", emFalta ? "text-amber-800" : "text-muted-foreground")}>
+                          <span className={cn("block font-bold [overflow-wrap:anywhere]", ja ? "text-tinta-2" : "text-tinta")}>{item.nome}</span>
+                          <span className={cn("block text-[13px] leading-5 tabular-nums", emFalta ? "font-bold text-atencao" : "font-medium text-tinta-2")}>
                             tem {qtdBR(saldo)} {item.unidade || "un"}
                             {item.minimo > 0 ? ` · mínimo ${qtdBR(item.minimo)}` : ""}
                             {jaVem ? ` · ${jaVem}` : ""}
                           </span>
                         </span>
-                        <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-brand-musgo">
-                          {ja ? "No pedido" : (
+                        <span className={cn("inline-flex shrink-0 items-center gap-1 text-[13px] font-bold", ja ? "text-tinta-2" : "text-musgo")}>
+                          {ja ? (
+                            "No pedido"
+                          ) : (
                             <>
                               <Plus className="h-4 w-4" aria-hidden="true" />
                               Pedir
@@ -338,31 +344,30 @@ export function NovoPedidoForm({
             </div>
           ) : null}
 
-          <Button type="button" variant="outline" onClick={adicionarItemNovo} className="h-12 justify-start sm:h-10">
-            <PencilLine className="mr-2 h-4 w-4" aria-hidden="true" />
+          <Botao variante="secundario" onClick={adicionarItemNovo} icone={<PencilLine className="h-4 w-4" aria-hidden="true" />} className="justify-start max-md:h-11">
             {busca.trim() && !sugestoes.length ? `Item novo: “${busca.trim()}”` : "Item novo (fora do estoque)"}
-          </Button>
+          </Botao>
 
           {linhas.length ? (
             <ul className="grid gap-3">
               {linhas.map((linha, indice) => (
-                <li key={linha.chave} className="rounded-lg border border-brand-oliva/15 bg-white/70 p-3">
+                <li key={linha.chave} className="rounded-bloco border border-fio bg-folha p-3">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       {linha.estoqueItemRef ? (
-                        <p className="text-sm font-semibold text-brand-tinta [overflow-wrap:anywhere]">
+                        <p className="pt-2 text-sm font-bold text-tinta [overflow-wrap:anywhere]">
                           {linha.descricao}
-                          <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-brand-oliva/20 bg-brand-creme/60 px-2 py-0.5 text-xs font-semibold text-brand-musgo">
+                          <span className="ml-2 inline-flex h-5 items-center gap-1 rounded-controle bg-musgo-claro px-2 align-[1px] text-xs font-bold text-musgo">
                             <PackagePlus className="h-3 w-3" aria-hidden="true" />
                             do estoque
                           </span>
                         </p>
                       ) : (
                         <>
-                          <Label htmlFor={`${linha.chave}-desc`} className="sr-only">
+                          <label htmlFor={`${linha.chave}-desc`} className="sr-only">
                             O que é o item {indice + 1}
-                          </Label>
-                          <Input
+                          </label>
+                          <CampoTexto
                             id={`${linha.chave}-desc`}
                             ref={indice === linhas.length - 1 ? ultimaDescricaoRef : undefined}
                             value={linha.descricao}
@@ -377,41 +382,32 @@ export function NovoPedidoForm({
                       type="button"
                       onClick={() => setLinhas((atuais) => atuais.filter((outra) => outra.chave !== linha.chave))}
                       aria-label={`Tirar ${linha.descricao || `o item ${indice + 1}`} do pedido`}
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-rose-50 hover:text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </div>
                   <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.2fr)] items-end gap-2">
-                    <div className="grid gap-1">
-                      <Label htmlFor={`${linha.chave}-qtd`} className="text-xs text-muted-foreground">
-                        Quantidade
-                      </Label>
-                      <Input
+                    <Campo id={`${linha.chave}-qtd`} rotulo="Quantidade">
+                      <CampoTexto
                         id={`${linha.chave}-qtd`}
                         value={linha.quantidade}
                         inputMode="decimal"
                         onChange={(event) => mudarLinha(linha.chave, "quantidade", event.target.value)}
                         className="tabular-nums"
                       />
-                    </div>
-                    <div className="grid gap-1">
-                      <Label htmlFor={`${linha.chave}-un`} className="text-xs text-muted-foreground">
-                        Unidade
-                      </Label>
-                      <Input
+                    </Campo>
+                    <Campo id={`${linha.chave}-un`} rotulo="Unidade">
+                      <CampoTexto
                         id={`${linha.chave}-un`}
                         value={linha.unidade}
                         maxLength={LIMITES_DO_PEDIDO.unidade}
                         onChange={(event) => mudarLinha(linha.chave, "unidade", event.target.value)}
                         placeholder="un, cx, pct"
                       />
-                    </div>
-                    <div className="grid gap-1">
-                      <Label htmlFor={`${linha.chave}-valor`} className="text-xs text-muted-foreground">
-                        Valor de cada
-                      </Label>
-                      <Input
+                    </Campo>
+                    <Campo id={`${linha.chave}-valor`} rotulo="Valor de cada">
+                      <CampoTexto
                         id={`${linha.chave}-valor`}
                         value={linha.valorUnitario}
                         inputMode="decimal"
@@ -419,71 +415,69 @@ export function NovoPedidoForm({
                         placeholder="R$ (opcional)"
                         className="tabular-nums"
                       />
-                    </div>
+                    </Campo>
                   </div>
-                  <div className="mt-2 grid gap-1">
-                    <Label htmlFor={`${linha.chave}-link`} className="text-xs text-muted-foreground">
-                      Link ou fornecedor sugerido (opcional)
-                    </Label>
-                    <Input
+                  <Campo id={`${linha.chave}-link`} rotulo="Link ou fornecedor sugerido (opcional)" className="mt-3">
+                    <CampoTexto
                       id={`${linha.chave}-link`}
                       value={linha.link}
                       maxLength={LIMITES_DO_PEDIDO.link}
                       onChange={(event) => mudarLinha(linha.chave, "link", event.target.value)}
                       placeholder="https://… ou o nome da loja"
                     />
-                  </div>
+                  </Campo>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="rounded-lg border border-dashed border-brand-oliva/25 px-3 py-4 text-center text-sm text-muted-foreground">
+            <p className="rounded-bloco bg-saber px-3 py-4 text-center text-sm font-medium text-tinta-2">
               Nenhum item ainda. Busque no estoque do setor ou escreva um item novo.
             </p>
           )}
         </fieldset>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="pedido-para-quando">Para quando (opcional)</Label>
-            <Input id="pedido-para-quando" type="date" value={precisaAte} onChange={(event) => setPrecisaAte(event.target.value)} />
-          </div>
-          <label className="flex min-h-12 cursor-pointer items-center gap-3 self-end rounded-md border border-input bg-white/70 px-3 py-2 text-sm text-brand-tinta">
-            <input type="checkbox" checked={urgente} onChange={(event) => setUrgente(event.target.checked)} className="h-5 w-5 accent-[var(--bratan-musgo)]" />
+          <Campo id="pedido-para-quando" rotulo="Para quando (opcional)">
+            <CampoTexto id="pedido-para-quando" type="date" value={precisaAte} onChange={(event) => setPrecisaAte(event.target.value)} />
+          </Campo>
+          <label className="flex min-h-12 cursor-pointer items-center gap-3 self-end rounded-controle border border-borda-campo bg-folha px-3 py-2 text-sm text-tinta has-[:checked]:border-erro has-[:checked]:bg-erro-claro">
+            <input type="checkbox" checked={urgente} onChange={(event) => setUrgente(event.target.checked)} className="h-5 w-5 accent-[rgb(var(--erro-rgb))]" />
             <span>
-              <span className="block font-semibold">Urgente</span>
-              <span className="block text-xs text-muted-foreground">vai para o topo da aprovação</span>
+              <span className="block font-bold">Urgente</span>
+              <span className="block text-[13px] font-medium text-tinta-2">vai para o topo da aprovação</span>
             </span>
           </label>
         </div>
 
-        <div className="grid gap-2">
-          <Label htmlFor="pedido-por-que">Por quê</Label>
-          <textarea
+        <Campo
+          id="pedido-por-que"
+          rotulo="Por quê"
+          ajuda={
+            <span className="block text-right tabular-nums">
+              {justificativa.trim().length}/{LIMITES_DO_PEDIDO.justificativa}
+            </span>
+          }
+        >
+          <CampoArea
             id="pedido-por-que"
             value={justificativa}
             maxLength={LIMITES_DO_PEDIDO.justificativa}
             onChange={(event) => setJustificativa(event.target.value)}
             rows={3}
             placeholder="Ex.: acaba antes da próxima entrega; a semana tem 18 aplicações."
-            className="w-full rounded-md border border-input bg-white/80 px-3.5 py-2.5 text-base text-brand-tinta placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
           />
-          <p className="text-right text-xs tabular-nums text-muted-foreground">
-            {justificativa.trim().length}/{LIMITES_DO_PEDIDO.justificativa}
-          </p>
-        </div>
+        </Campo>
 
         {mostrarProblemas && problemas.length ? (
-          <div ref={problemasRef} tabIndex={-1} role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 outline-none">
-            <p className="flex items-center gap-1.5 font-semibold">
-              <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-              Falta pouco para enviar:
-            </p>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5">
-              {problemas.slice(0, 6).map((problema) => (
-                <li key={problema}>{problema}</li>
-              ))}
-            </ul>
+          <div ref={problemasRef} tabIndex={-1} role="alert" className="outline-none">
+            <Recado tom="atencao" icone={<AlertTriangle aria-hidden="true" />}>
+              <strong>Falta pouco para enviar:</strong>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {problemas.slice(0, 6).map((problema) => (
+                  <li key={problema}>{problema}</li>
+                ))}
+              </ul>
+            </Recado>
           </div>
         ) : null}
       </form>

@@ -4,13 +4,37 @@
 // grade: nome, telefone, tempo sem vir, última visita, isca, ligações, situação,
 // observações editáveis). "Adicionar pessoa" coloca alguém na repescagem à mão —
 // mesmo sem comanda no app — pelo nome e telefone.
-import { useState, type ReactNode } from "react";
+//
+// PAPEL & MUSGO (08/10/2026, redesenho etapa 3): o título "Repescagens" subiu
+// para o cabeçalho da página; aqui ficam a troca Quadro · Planilha e as faixas
+// como leituras com número. As colunas são as do quadro da cadência (texto com
+// traço embaixo, sem faixa cheia), os cartões são folhas pequenas com o nome que
+// abre a ficha, e "Repescados" e "Sem retorno" viraram zonas "para saber". A
+// planilha usa a tabela do guia. Mesmos dados, mesmos botões.
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, LayoutGrid, PhoneCall, PhoneOff, Plus, Table2, UserPlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CalendarClock, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, LayoutGrid, MessageCircle, PhoneCall, PhoneOff, Plus, Table2, UserPlus } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
+import { BlocoFolha } from "@/components/ui/fundacao";
 import { cn } from "@/lib/utils";
+import {
+  BOTAO_CANAL,
+  Button,
+  CAMPO,
+  CAMPO_PQ,
+  CartaoDoQuadro,
+  ColunaDoQuadro,
+  Etiqueta,
+  GrupoDeLeituras,
+  Input,
+  LARGURA_DA_COLUNA,
+  Leitura,
+  NOME_LINK,
+  TD,
+  TH,
+  TITULO_SECAO,
+  VazioDaColuna,
+} from "./comercialVisual";
 import type { CrmContact } from "./crmData";
 import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
 import {
@@ -23,7 +47,7 @@ import {
   type QuadroRepescagem,
   type RepescagemManual,
 } from "./repescagemData";
-import { densityColumns, type KanbanDensity } from "./kanbanDensidade";
+import type { KanbanDensity } from "./kanbanDensidade";
 import { usePanScroll } from "./usePanScroll";
 
 export type ResultadoLigacao = "AGENDOU" | "VAI_PENSAR" | "NAO_ATENDEU" | "NAO_QUER";
@@ -61,45 +85,65 @@ function situacaoDe(c: CartaoRepescagem) {
   return c.etapa === "ISCA" ? "isca pendente" : c.etapa === "LIGAR" ? `ligação ${c.ligacaoN || 1} pendente` : c.etapa === "REPESCADO" ? `repescado · ${c.resultado}` : c.resultado || "sem retorno";
 }
 
-const lista = "kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5";
-const vazio = "rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground";
-// Planilha: grade com bordas, cabeçalho cinza (mesmo desenho da Gestão de Vendas).
-const th = "border border-neutral-300 bg-neutral-100 px-2 py-1.5 text-left text-xs font-bold text-neutral-800";
-const td = "border border-neutral-300 px-2 py-1 text-sm text-neutral-900";
-
 type Etapa = { rotulo: string; estado: "feito" | "vez" | "falta" };
 
+/** As etapas da repescagem (Isca · Ligação 1 · Ligação 2): ✓ feita, ponto = a vez, relógio = falta. */
 function Chips({ etapas }: { etapas: Etapa[] }) {
   return (
-    <div className="mt-1.5 flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1">
       {etapas.map((e) => (
         <span
           key={e.rotulo}
           className={cn(
-            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-            e.estado === "feito" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : e.estado === "vez" ? "border-brand-musgo bg-brand-musgo text-white" : "border-dashed border-slate-300 bg-white text-slate-500",
+            "inline-flex h-6 items-center gap-1 rounded-controle px-2 text-xs font-bold leading-4",
+            e.estado === "feito"
+              ? "bg-musgo-claro text-musgo"
+              : e.estado === "vez"
+                ? "bg-folha text-tinta shadow-[inset_0_0_0_1.5px_rgb(var(--musgo-rgb))]"
+                : "bg-folha text-tinta-2 shadow-[inset_0_0_0_1px_rgb(var(--fio-2-rgb))]",
           )}
         >
-          <span className={cn("h-1.5 w-1.5 rounded-full", e.estado === "feito" ? "bg-emerald-500" : e.estado === "vez" ? "bg-white" : "bg-slate-300")} aria-hidden="true" />
-          {e.rotulo} {e.estado === "feito" ? "✓" : e.estado === "vez" ? "●" : "⏳"}
+          {e.estado === "feito" ? (
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : e.estado === "vez" ? (
+            <span className="h-1.5 w-1.5 rounded-full bg-musgo" aria-hidden="true" />
+          ) : (
+            <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+          {e.rotulo}
+          <span className="sr-only">{e.estado === "feito" ? "feita" : e.estado === "vez" ? "é a vez" : "falta"}</span>
         </span>
       ))}
     </div>
   );
 }
 
-function Coluna({ titulo, sub, tom, tomTitulo, icone, children }: { titulo: string; sub: string; tom: string; tomTitulo: string; icone?: ReactNode; children: ReactNode }) {
+function Coluna({
+  titulo,
+  sub,
+  total,
+  saber = false,
+  icone,
+  children,
+}: {
+  titulo: string;
+  sub: string;
+  total: number;
+  saber?: boolean;
+  icone?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <section className={cn("flex h-full min-h-0 w-full flex-col rounded-lg border p-2 backdrop-blur-xl", tom)}>
-      <div className={cn("mb-2 shrink-0 rounded-md px-3 py-2", tomTitulo)}>
-        <p className="flex items-center gap-1.5 text-sm font-semibold">
-          {icone}
-          {titulo}
-        </p>
-        <p className="mt-1 text-[11px] opacity-80">{sub}</p>
-      </div>
-      <div className={lista}>{children}</div>
-    </section>
+    <ColunaDoQuadro
+      saber={saber}
+      rotulo={titulo}
+      icone={icone}
+      titulo={titulo}
+      esquerda={`${total} ${total === 1 ? "paciente" : "pacientes"}`}
+      acima={<p className={cn("px-3 text-[13px] font-medium leading-5 text-tinta-2", saber && "pb-2")}>{sub}</p>}
+    >
+      {children}
+    </ColunaDoQuadro>
   );
 }
 
@@ -113,7 +157,7 @@ function FormAdicionar({ contacts, hoje, onAdicionar, onFechar }: { contacts: Cr
   const podeSalvar = Boolean(pessoa.name.trim()) && (Boolean(pessoa.ref) || telefone.replace(/\D/g, "").length >= 10);
   return (
     <form
-      className="grid gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/40 p-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr] lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.4fr_auto]"
+      className="grid gap-3 rounded-bloco border border-fio bg-folha p-4 sm:grid-cols-[1.4fr_1fr_1fr_1fr] lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.4fr_auto]"
       onSubmit={(event) => {
         event.preventDefault();
         if (!podeSalvar) return;
@@ -121,33 +165,33 @@ function FormAdicionar({ contacts, hoje, onAdicionar, onFechar }: { contacts: Cr
         onFechar();
       }}
     >
-      <label className="grid gap-1 text-xs font-semibold text-brand-tinta">
+      <label className="grid content-start gap-2 text-[13px] font-bold leading-5 text-tinta">
         Paciente
         <PatientPicker contacts={contacts} value={pessoa} onChange={setPessoa} placeholder="Nome (busca no CRM ou digite um novo)" />
       </label>
-      <label className="grid gap-1 text-xs font-semibold text-brand-tinta">
+      <label className="grid content-start gap-2 text-[13px] font-bold leading-5 text-tinta">
         Telefone / WhatsApp
-        <Input value={contatoExistente ? contatoExistente.whatsapp || contatoExistente.phone : telefone} onChange={(e) => setTelefone(e.target.value)} disabled={Boolean(contatoExistente)} placeholder="(11) 9…" className="h-10" inputMode="tel" />
+        <Input value={contatoExistente ? contatoExistente.whatsapp || contatoExistente.phone : telefone} onChange={(e) => setTelefone(e.target.value)} disabled={Boolean(contatoExistente)} placeholder="(11) 9…" inputMode="tel" />
       </label>
-      <label className="grid gap-1 text-xs font-semibold text-brand-tinta">
+      <label className="grid content-start gap-2 text-[13px] font-bold leading-5 text-tinta">
         Tempo sem vir
-        <select value={faixa} onChange={(e) => setFaixa(e.target.value as FaixaRepescagem)} className="h-10 rounded-md border border-input bg-white px-2 text-sm">
+        <select value={faixa} onChange={(e) => setFaixa(e.target.value as FaixaRepescagem)} className={cn(CAMPO, "cursor-pointer")}>
           {faixas.map((f) => <option key={f} value={f}>{faixaRepescagemLabels[f]}</option>)}
         </select>
       </label>
-      <label className="grid gap-1 text-xs font-semibold text-brand-tinta">
+      <label className="grid content-start gap-2 text-[13px] font-bold leading-5 text-tinta">
         Última visita
-        <Input type="date" value={ultima} max={hoje} onChange={(e) => setUltima(e.target.value)} className="h-10" />
+        <Input type="date" value={ultima} max={hoje} onChange={(e) => setUltima(e.target.value)} />
       </label>
-      <label className="grid gap-1 text-xs font-semibold text-brand-tinta">
+      <label className="grid content-start gap-2 text-[13px] font-bold leading-5 text-tinta">
         Observações
-        <Input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: prefere ligação à tarde" className="h-10" />
+        <Input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: prefere ligação à tarde" />
       </label>
       <div className="flex items-end gap-1">
-        <Button type="submit" size="sm" className="h-10" disabled={!podeSalvar}>
-          <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Adicionar
+        <Button type="submit" disabled={!podeSalvar}>
+          <Plus className="h-4 w-4" aria-hidden="true" /> Adicionar
         </Button>
-        <Button type="button" size="sm" variant="ghost" className="h-10" onClick={onFechar}>Cancelar</Button>
+        <Button type="button" variant="ghost" onClick={onFechar}>Cancelar</Button>
       </div>
     </form>
   );
@@ -167,6 +211,7 @@ export function RepescagemBoard({
   onIscaEnviada,
   onMarcarHorario,
   onLiguei,
+  busca: campoDeBusca,
 }: {
   quadro: QuadroRepescagem;
   contacts: CrmContact[];
@@ -181,6 +226,8 @@ export function RepescagemBoard({
   onIscaEnviada: (taskId: string) => void;
   onMarcarHorario: (taskId: string, dueAtISO: string) => void;
   onLiguei: (taskId: string, resultado: ResultadoLigacao) => void;
+  /** O campo de busca da página, na mesma linha das leituras (08/10/2026). */
+  busca?: ReactNode;
 }) {
   const [visao, setVisao] = useState<"quadro" | "planilha">(() => {
     try {
@@ -193,12 +240,21 @@ export function RepescagemBoard({
   const [ligando, setLigando] = useState<string | null>(null);
   const [adicionando, setAdicionando] = useState(false);
   const pan = usePanScroll<HTMLDivElement>();
+  // As setas só aparecem quando o quadro passa da largura da tela (como no quadro da cadência).
+  const [transborda, setTransborda] = useState(false);
+  useEffect(() => {
+    const el = pan.ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const mede = () => setTransborda(el.scrollWidth > el.clientWidth + 4);
+    mede();
+    const observador = new ResizeObserver(mede);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [pan.ref, visao]);
   const busca = filtro.trim().toLowerCase();
   const bate = (nome: string) => !busca || nome.toLowerCase().includes(busca);
   const candidatos = quadro.candidatos.filter((c) => (faixaFiltro === "TODAS" || c.faixa === faixaFiltro) && bate(c.contact.fullName || c.contact.preferredName));
-  const pad = density === "compact" ? "p-3" : "p-4";
-  const nomeCls = cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg");
-  function mudaVisao(v: "quadro" | "planilha") {
+    function mudaVisao(v: "quadro" | "planilha") {
     setVisao(v);
     try {
       window.localStorage.setItem("app-bratan-repescagem-visao", v);
@@ -225,33 +281,35 @@ export function RepescagemBoard({
           : "A ligação nasce sozinha em instantes";
     const emLigacao = ativo && cartao.etapa === "LIGAR";
     return (
-      <article className={cn("rounded-lg border bg-white/75 shadow-sm backdrop-blur-xl", pad, atrasado ? "border-red-300" : "border-brand-oliva/14")}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className={nomeCls}>{cartao.nome}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {cartao.faixa ? faixaRepescagemLabels[cartao.faixa] : "tempo sem vir não registrado"}
-              {cartao.ultimaVisita ? ` · última visita ${diaCurto(cartao.ultimaVisita)}` : ""}
-            </p>
-          </div>
-          {cartao.faixa ? <span className="shrink-0 rounded-full bg-brand-papel px-2 py-0.5 text-[11px] font-bold text-brand-oliva">{faixaRepescagemCurta[cartao.faixa]}</span> : null}
+      <CartaoDoQuadro tom={atrasado ? "atrasado" : "normal"}>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2">
+          <Link to={`/crm/contatos/${cartao.contactId}`} className={NOME_LINK} title={`Abrir a ficha de ${cartao.nome}`}>
+            {cartao.nome}
+          </Link>
+          {cartao.faixa ? <Etiqueta>{faixaRepescagemCurta[cartao.faixa]}</Etiqueta> : null}
         </div>
-        <div className={cn("mt-3 rounded-md border px-2.5 py-2", atrasado ? "border-red-200 bg-red-50/70" : "border-brand-oliva/15 bg-brand-papel/60")}>
-          <p className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide", atrasado ? "text-red-700" : "text-brand-oliva")}>
-            {atrasado ? <AlertTriangle className="h-3 w-3" aria-hidden="true" /> : null}
-            {situacao}
+        {density !== "compact" ? (
+          <p className="-mt-1 truncate text-[13px] font-medium leading-5 text-tinta-2">
+            {cartao.faixa ? faixaRepescagemLabels[cartao.faixa] : "tempo sem vir não registrado"}
+            {cartao.ultimaVisita ? ` · última visita ${diaCurto(cartao.ultimaVisita)}` : ""}
           </p>
-          <Chips etapas={etapas} />
-          <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
-            {cartao.iscaEnviadaEm ? `isca ${dataHora(cartao.iscaEnviadaEm)}` : "isca ainda não enviada"}
-            {cartao.ligacoes.map((l) => ` · ligação ${l.n} ${dataHora(l.em)} (${l.resultado})`).join("")}
-            {cartao.observacoes ? ` · obs.: ${cartao.observacoes}` : ""}
-          </p>
-        </div>
+        ) : null}
+        <p className={cn("inline-flex items-center gap-1 text-[13px] leading-5 tabular-nums", atrasado ? "font-bold text-atencao" : "font-semibold text-tinta")}>
+          {atrasado ? <Clock className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+          {situacao}
+        </p>
+        <Chips etapas={etapas} />
+        <p className="text-xs font-medium leading-4 text-tinta-2">
+          {cartao.iscaEnviadaEm ? `isca ${dataHora(cartao.iscaEnviadaEm)}` : "isca ainda não enviada"}
+          {cartao.ligacoes.map((l) => ` · ligação ${l.n} ${dataHora(l.em)} (${l.resultado})`).join("")}
+          {cartao.observacoes ? ` · obs.: ${cartao.observacoes}` : ""}
+        </p>
         {!readOnly && emLigacao && cartao.tarefaId ? (
-          <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-            <CalendarClock className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="shrink-0">Horário que o paciente pediu</span>
+          <label className="grid gap-1 text-xs font-bold leading-4 text-tinta-2">
+            <span className="inline-flex items-center gap-1">
+              <CalendarClock className="h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
+              Horário que o paciente pediu
+            </span>
             <input
               type="datetime-local"
               defaultValue=""
@@ -259,114 +317,118 @@ export function RepescagemBoard({
                 const iso = localISO(event.target.value);
                 if (iso) onMarcarHorario(cartao.tarefaId!, iso);
               }}
-              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-white px-1.5 text-xs"
+              className={cn(CAMPO_PQ, "tabular-nums")}
               aria-label="Horário que o paciente pediu para a ligação"
             />
           </label>
         ) : null}
-        <div className="mt-3 flex gap-2">
-          <Button asChild variant="outline" size="sm" className="flex-1">
-            <Link to={`/crm/contatos/${cartao.contactId}`}>Perfil</Link>
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          {!readOnly && ativo && cartao.etapa === "ISCA" && cartao.tarefaId ? (
+            <Button type="button" size="sm" variant="subtle" className="min-w-0 flex-1" onClick={() => onIscaEnviada(cartao.tarefaId!)}>Isca enviada</Button>
+          ) : null}
+          {!readOnly && emLigacao && cartao.tarefaId ? (
+            <Button type="button" size="sm" variant={ligandoAqui ? "default" : "subtle"} aria-expanded={ligandoAqui} className="min-w-0 flex-1" onClick={() => setLigando(ligandoAqui ? null : cartao.enrollmentId)}>Liguei</Button>
+          ) : null}
           {cartao.telefone && ativo && cartao.etapa === "ISCA" ? (
-            <Button asChild variant="outline" size="sm" className="flex-1">
+            <Button asChild variant="outline" size="sm" className="min-w-0 flex-1">
               <a href={whatsapp(cartao.telefone, textoDaIsca(primeiroNome(cartao.nome), remetente))} target="_blank" rel="noreferrer">Isca no WhatsApp</a>
             </Button>
           ) : cartao.telefone && emLigacao ? (
-            <Button asChild variant="outline" size="sm" className="flex-1">
-              <a href={`tel:${cartao.telefone.replace(/\D/g, "")}`}>{cartao.telefone}</a>
+            <Button asChild variant="outline" size="sm" className="min-w-0 flex-1 tabular-nums">
+              <a href={`tel:${cartao.telefone.replace(/\D/g, "")}`} aria-label={`Ligar para ${cartao.nome}: ${cartao.telefone}`}>
+                <PhoneCall className="h-4 w-4" aria-hidden="true" />
+                {cartao.telefone}
+              </a>
             </Button>
           ) : cartao.telefone ? (
-            <Button asChild variant="outline" size="sm" className="flex-1">
-              <a href={whatsapp(cartao.telefone)} target="_blank" rel="noreferrer">WhatsApp</a>
-            </Button>
-          ) : null}
-          {!readOnly && ativo && cartao.etapa === "ISCA" && cartao.tarefaId ? (
-            <Button type="button" size="sm" className="flex-1" onClick={() => onIscaEnviada(cartao.tarefaId!)}>Isca enviada</Button>
-          ) : null}
-          {!readOnly && emLigacao && cartao.tarefaId ? (
-            <Button type="button" size="sm" variant={ligandoAqui ? "default" : "outline"} className="flex-1" onClick={() => setLigando(ligandoAqui ? null : cartao.enrollmentId)}>Liguei</Button>
+            <a href={whatsapp(cartao.telefone)} target="_blank" rel="noreferrer" className={BOTAO_CANAL} aria-label={`Abrir o WhatsApp de ${cartao.nome}`}>
+              <MessageCircleIcone />
+            </a>
           ) : null}
         </div>
         {ligandoAqui && cartao.tarefaId ? (
-          <div className="mt-2 grid gap-1 rounded-md border border-brand-oliva/20 bg-brand-creme/40 p-2">
-            <p className="text-[11px] font-semibold text-brand-tinta">Como foi a ligação?</p>
+          <div className="grid gap-1 rounded-controle bg-saber p-2">
+            <p className="px-1 text-[13px] font-bold leading-5 text-tinta">Como foi a ligação?</p>
             {(Object.keys(resultadoLigacaoLabels) as ResultadoLigacao[]).map((resultado) => (
-              <button key={resultado} type="button" onClick={() => { onLiguei(cartao.tarefaId!, resultado); setLigando(null); }} className="rounded-md border border-brand-oliva/25 bg-white px-2 py-1.5 text-left text-xs hover:border-brand-musgo">
-                {resultado === "NAO_ATENDEU" ? <PhoneOff className="mr-1 inline h-3 w-3" aria-hidden="true" /> : <PhoneCall className="mr-1 inline h-3 w-3" aria-hidden="true" />}
+              <button
+                key={resultado}
+                type="button"
+                onClick={() => { onLiguei(cartao.tarefaId!, resultado); setLigando(null); }}
+                className="flex min-h-8 items-center gap-1.5 rounded-controle border border-fio-2 bg-folha px-2 py-1.5 text-left text-[13px] font-semibold leading-5 text-tinta hover:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+              >
+                {resultado === "NAO_ATENDEU" ? <PhoneOff className="h-3.5 w-3.5 shrink-0 text-oliva" aria-hidden="true" /> : <PhoneCall className="h-3.5 w-3.5 shrink-0 text-oliva" aria-hidden="true" />}
                 {resultadoLigacaoLabels[resultado]}
               </button>
             ))}
           </div>
         ) : null}
-      </article>
+      </CartaoDoQuadro>
     );
   }
 
   function Candidato({ c }: { c: CandidatoRepescagem }) {
+    const nome = c.contact.fullName || c.contact.preferredName;
     return (
-      <article className={cn("rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl", pad)}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className={nomeCls}>{c.contact.fullName || c.contact.preferredName}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground">{faixaRepescagemLabels[c.faixa]} · última visita {diaCurto(c.ultimaVisita)}</p>
-          </div>
-          <span className="shrink-0 rounded-full bg-brand-papel px-2 py-0.5 text-[11px] font-bold text-brand-oliva">{c.diasSemVir} dias</span>
+      <CartaoDoQuadro>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2">
+          <Link to={`/crm/contatos/${c.contact.id}`} className={NOME_LINK} title={`Abrir a ficha de ${nome}`}>
+            {nome}
+          </Link>
+          <Etiqueta className="tabular-nums">{c.diasSemVir} dias</Etiqueta>
         </div>
-        <div className="mt-3 rounded-md border border-brand-oliva/15 bg-brand-papel/60 px-2.5 py-2">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-brand-oliva">Sugestão do app · ninguém cuidando</p>
-          <Chips etapas={[{ rotulo: "Isca", estado: "falta" }, { rotulo: "Ligação 1", estado: "falta" }, { rotulo: "Ligação 2", estado: "falta" }]} />
-        </div>
-        <div className="mt-3 flex gap-2">
-          <Button asChild variant="outline" size="sm" className="flex-1">
-            <Link to={`/crm/contatos/${c.contact.id}`}>Perfil</Link>
-          </Button>
-          {readOnly ? null : (
-            <Button type="button" size="sm" className="flex-1" onClick={() => onIniciar(c)}>Iniciar repescagem</Button>
-          )}
-        </div>
-      </article>
+        <p className="-mt-1 truncate text-[13px] font-medium leading-5 text-tinta-2">{faixaRepescagemLabels[c.faixa]} · última visita {diaCurto(c.ultimaVisita)}</p>
+        <p className="text-xs font-bold leading-4 text-tinta-2">Sugestão do app · ninguém cuidando</p>
+        <Chips etapas={[{ rotulo: "Isca", estado: "falta" }, { rotulo: "Ligação 1", estado: "falta" }, { rotulo: "Ligação 2", estado: "falta" }]} />
+        {readOnly ? null : (
+          <Button type="button" size="sm" variant="subtle" onClick={() => onIniciar(c)}>Iniciar repescagem</Button>
+        )}
+      </CartaoDoQuadro>
     );
   }
 
   const registro = quadro.registro.filter((c) => bate(c.nome));
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col gap-2">
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs">
-        <h2 className="flex items-center gap-1.5 text-sm font-bold text-brand-musgo">
-          Repescagens
+    <section className="flex h-full min-h-0 w-full flex-col gap-3 font-sans" aria-label="Repescagens">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+        <GrupoDeLeituras rotulo="Visão da repescagem">
+          <Leitura ativa={visao === "quadro"} onClick={() => mudaVisao("quadro")}>
+            <LayoutGrid className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Quadro
+          </Leitura>
+          <Leitura ativa={visao === "planilha"} numero={quadro.registro.length} onClick={() => mudaVisao("planilha")}>
+            <Table2 className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Planilha
+          </Leitura>
           <InfoTip title="Como funciona">
             A repescagem é a LIGAÇÃO; antes vai a isca no WhatsApp, só para saber o melhor horário. Você pode adicionar qualquer pessoa à mão
             (nome, telefone, tempo sem vir) ou aceitar as sugestões do app (quem tem comanda e não vem há 30 dias, sem ninguém cuidando). A
             Planilha é o controle: cada linha com data e hora da isca e das ligações, e observações que você escreve.
           </InfoTip>
-        </h2>
-        <div className="flex rounded-full border border-brand-oliva/25 bg-white/70 p-0.5" role="tablist" aria-label="Visão da repescagem">
-          <button type="button" role="tab" aria-selected={visao === "quadro"} onClick={() => mudaVisao("quadro")} className={cn("flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold", visao === "quadro" ? "bg-brand-musgo text-white" : "text-brand-oliva")}>
-            <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> Quadro
-          </button>
-          <button type="button" role="tab" aria-selected={visao === "planilha"} onClick={() => mudaVisao("planilha")} className={cn("flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold", visao === "planilha" ? "bg-brand-musgo text-white" : "text-brand-oliva")}>
-            <Table2 className="h-3.5 w-3.5" aria-hidden="true" /> Planilha <span className="opacity-75">{quadro.registro.length}</span>
-          </button>
-        </div>
-        {visao === "quadro"
-          ? (["TODAS", ...faixas] as const).map((faixa) => (
-              <button key={faixa} type="button" onClick={() => setFaixaFiltro(faixa)} className={cn("rounded-full border px-2 py-0.5 text-[11px] font-semibold", faixaFiltro === faixa ? "border-brand-musgo bg-brand-musgo text-white" : "border-brand-oliva/30 bg-white text-brand-tinta")}>
-                {faixa === "TODAS" ? `Sugestões ${quadro.candidatos.length}` : `${faixaRepescagemCurta[faixa]} ${quadro.porFaixa[faixa]}`}
-              </button>
-            ))
-          : null}
-        <span className="ml-auto flex items-center gap-1">
+        </GrupoDeLeituras>
+        {visao === "quadro" ? (
+          <GrupoDeLeituras rotulo="Tempo sem vir" className="border-l border-fio pl-4 max-md:border-l-0 max-md:pl-0">
+            {(["TODAS", ...faixas] as const).map((faixa) => (
+              <Leitura
+                key={faixa}
+                ativa={faixaFiltro === faixa}
+                numero={faixa === "TODAS" ? quadro.candidatos.length : quadro.porFaixa[faixa]}
+                onClick={() => setFaixaFiltro(faixa)}
+              >
+                {faixa === "TODAS" ? "Sugestões" : faixaRepescagemCurta[faixa]}
+              </Leitura>
+            ))}
+          </GrupoDeLeituras>
+        ) : null}
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-2 max-md:ml-0 max-md:w-full max-md:justify-start">
+          {campoDeBusca}
           {readOnly ? null : (
-            <Button type="button" size="sm" className="h-8" onClick={() => setAdicionando((v) => !v)}>
-              <UserPlus className="mr-1 h-4 w-4" aria-hidden="true" /> Adicionar pessoa
+            <Button type="button" size="sm" variant="outline" aria-expanded={adicionando} onClick={() => setAdicionando((v) => !v)}>
+              <UserPlus className="h-4 w-4" aria-hidden="true" /> Adicionar pessoa
             </Button>
           )}
-          {visao === "quadro" ? (
+          {visao === "quadro" && transborda ? (
             <>
-              <button type="button" onClick={() => pan.rolar(-1)} className="grid h-8 w-8 place-items-center rounded-md border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Rolar para a esquerda"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>
-              <button type="button" onClick={() => pan.rolar(1)} className="grid h-8 w-8 place-items-center rounded-md border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Rolar para a direita"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+              <button type="button" onClick={() => pan.rolar(-1)} className={cn(BOTAO_CANAL, "max-md:hidden")} aria-label="Rolar para a esquerda"><ChevronLeft aria-hidden="true" /></button>
+              <button type="button" onClick={() => pan.rolar(1)} className={cn(BOTAO_CANAL, "max-md:hidden")} aria-label="Rolar para a direita"><ChevronRight aria-hidden="true" /></button>
             </>
           ) : null}
         </span>
@@ -375,81 +437,94 @@ export function RepescagemBoard({
       {adicionando && !readOnly ? <FormAdicionar contacts={contacts} hoje={hoje} onAdicionar={onAdicionar} onFechar={() => setAdicionando(false)} /> : null}
 
       {visao === "quadro" ? (
-        <div ref={pan.ref} {...pan.handlers} className="kanban-scroll min-h-0 flex-1 cursor-grab touch-pan-x overflow-x-auto pb-1 active:cursor-grabbing">
-          <div className={cn("grid h-full w-max grid-flow-col items-stretch gap-3", densityColumns[density])}>
-            <Coluna titulo="Sugestões para repescar" sub={`${candidatos.length} · pelo dinheiro: comanda há 30+ dias, ninguém cuidando`} tom="border-brand-oliva/14 bg-white/40" tomTitulo="bg-brand-musgo text-brand-papel">
-              {candidatos.length ? candidatos.slice(0, 60).map((c) => <Candidato key={c.contact.id} c={c} />) : <p className={vazio}>{busca ? "Ninguém com esse nome." : "Nenhuma sugestão nesta faixa. Use \"Adicionar pessoa\"."}</p>}
+        <div ref={pan.ref} {...pan.handlers} className="kanban-scroll min-h-0 flex-1 cursor-grab touch-pan-x overflow-x-auto pb-2 active:cursor-grabbing">
+          <div className={cn("grid h-full w-full grid-flow-col items-stretch gap-4 max-xl:gap-3", LARGURA_DA_COLUNA[density])}>
+            <Coluna titulo="Sugestões" sub="Pelo dinheiro: comanda há 30+ dias e ninguém cuidando." total={candidatos.length}>
+              {candidatos.length ? candidatos.slice(0, 60).map((c) => <Candidato key={c.contact.id} c={c} />) : <VazioDaColuna>{busca ? "Ninguém com esse nome." : "Nenhuma sugestão nesta faixa. Use \"Adicionar pessoa\"."}</VazioDaColuna>}
             </Coluna>
-            <Coluna titulo="Isca a enviar" sub={`${quadro.isca.length} · mensagem que pergunta o melhor horário`} tom="border-emerald-200/70 bg-emerald-50/30" tomTitulo="bg-emerald-700 text-white">
+            <Coluna titulo="Isca a enviar" sub="Mensagem que pergunta o melhor horário." total={quadro.isca.length} icone={<MessageCircleIcone />}>
               {quadro.isca.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.isca.length ? <p className={vazio}>Nenhuma isca pendente</p> : null}
+              {!quadro.isca.length ? <VazioDaColuna>Nenhuma isca pendente</VazioDaColuna> : null}
             </Coluna>
-            <Coluna titulo="Ligar" sub={`${quadro.ligar.length} · a repescagem é a ligação`} tom="border-amber-300/60 bg-amber-50/40" tomTitulo="bg-amber-600 text-white" icone={<PhoneCall className="h-4 w-4" aria-hidden="true" />}>
+            <Coluna titulo="Ligar" sub="A repescagem é a ligação." total={quadro.ligar.length} icone={<PhoneCall aria-hidden="true" />}>
               {quadro.ligar.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.ligar.length ? <p className={vazio}>Ninguém aguardando ligação</p> : null}
+              {!quadro.ligar.length ? <VazioDaColuna>Ninguém aguardando ligação</VazioDaColuna> : null}
             </Coluna>
-            <Coluna titulo="Repescados" sub={`${quadro.repescados.length} · atenderam e responderam (90 dias)`} tom="border-brand-dourado/50 bg-brand-creme/30" tomTitulo="bg-brand-dourado text-white">
+            <Coluna saber titulo="Repescados" sub="Atenderam e responderam (90 dias)." total={quadro.repescados.length} icone={<CheckCircle2 className="text-ok" aria-hidden="true" />}>
               {quadro.repescados.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.repescados.length ? <p className={vazio}>Nenhum repescado ainda</p> : null}
+              {!quadro.repescados.length ? <VazioDaColuna>Nenhum repescado ainda</VazioDaColuna> : null}
             </Coluna>
-            <Coluna titulo="Sem retorno" sub={`${quadro.semRetorno.length} · duas ligações sem atender (90 dias)`} tom="border-brand-oliva/20 bg-white/30" tomTitulo="bg-brand-tinta/80 text-white" icone={<PhoneOff className="h-4 w-4" aria-hidden="true" />}>
+            <Coluna saber titulo="Sem retorno" sub="Duas ligações sem atender (90 dias)." total={quadro.semRetorno.length} icone={<PhoneOff className="text-tinta-2" aria-hidden="true" />}>
               {quadro.semRetorno.filter((c) => bate(c.nome)).map((c) => <Cartao key={c.enrollmentId} cartao={c} />)}
-              {!quadro.semRetorno.length ? <p className={vazio}>Ninguém sem retorno</p> : null}
+              {!quadro.semRetorno.length ? <VazioDaColuna>Ninguém sem retorno</VazioDaColuna> : null}
             </Coluna>
           </div>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-neutral-300 bg-white p-3 shadow-sm">
-          <p className="text-sm font-bold uppercase text-neutral-800">Controle de repescagens</p>
-          <p className="mb-2 text-xs italic text-neutral-600">Uma linha por pessoa em repescagem (últimos 90 dias). Data e hora entram sozinhas quando a isca e as ligações são registradas no quadro; as observações você escreve aqui.</p>
+        <BlocoFolha className="min-h-0 flex-1 overflow-auto">
+          <div className="border-b border-fio px-6 py-4 max-md:px-4">
+            <h2 className={TITULO_SECAO}>Controle de repescagens</h2>
+            <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
+              Uma linha por pessoa em repescagem (últimos 90 dias). Data e hora entram sozinhas quando a isca e as ligações são registradas no quadro;
+              as observações você escreve aqui.
+            </p>
+          </div>
           <table className="w-full min-w-[1100px] border-collapse">
             <thead>
               <tr>
-                <th className={th}>Paciente</th>
-                <th className={th}>Telefone</th>
-                <th className={th}>Tempo sem vir</th>
-                <th className={th}>Última visita</th>
-                <th className={th}>Entrou na repescagem</th>
-                <th className={th}>Isca enviada</th>
-                <th className={th}>Ligação 1</th>
-                <th className={th}>Ligação 2</th>
-                <th className={th}>Situação</th>
-                <th className={cn(th, "w-64")}>Observações</th>
+                <th className={TH}>Paciente</th>
+                <th className={TH}>Telefone</th>
+                <th className={TH}>Tempo sem vir</th>
+                <th className={TH}>Última visita</th>
+                <th className={TH}>Entrou na repescagem</th>
+                <th className={TH}>Isca enviada</th>
+                <th className={TH}>Ligação 1</th>
+                <th className={TH}>Ligação 2</th>
+                <th className={TH}>Situação</th>
+                <th className={cn(TH, "w-64")}>Observações</th>
               </tr>
             </thead>
             <tbody>
-              {registro.map((c) => (
-                <tr key={c.enrollmentId} className={cn(c.atrasoDias > 0 && c.status === "ACTIVE" && "bg-red-50/60")}>
-                  <td className={cn(td, "font-semibold")}><Link to={`/crm/contatos/${c.contactId}`} className="hover:underline">{c.nome}</Link></td>
-                  <td className={cn(td, "tabular-nums")}>{c.telefone || "—"}</td>
-                  <td className={td}>{c.faixa ? faixaRepescagemLabels[c.faixa] : "—"}</td>
-                  <td className={cn(td, "tabular-nums")}>{c.ultimaVisita ? diaCurto(c.ultimaVisita) : "—"}</td>
-                  <td className={cn(td, "tabular-nums")}>{dataHora(c.iniciadaEm)}</td>
-                  <td className={cn(td, "tabular-nums")}>{dataHora(c.iscaEnviadaEm)}</td>
-                  <td className={cn(td, "tabular-nums")}>{c.ligacoes[0] ? `${dataHora(c.ligacoes[0].em)} · ${c.ligacoes[0].resultado}` : "—"}</td>
-                  <td className={cn(td, "tabular-nums")}>{c.ligacoes[1] ? `${dataHora(c.ligacoes[1].em)} · ${c.ligacoes[1].resultado}` : "—"}</td>
-                  <td className={td}>{situacaoDe(c)}</td>
-                  <td className={cn(td, "p-0")}>
-                    <input
-                      defaultValue={c.observacoes}
-                      onBlur={(e) => {
-                        if (e.target.value !== c.observacoes) onObservacao(c.enrollmentId, e.target.value);
-                      }}
-                      disabled={readOnly}
-                      className="h-8 w-full border-0 bg-transparent px-2 text-sm focus:bg-yellow-50 focus:outline-none"
-                      placeholder="anotar…"
-                      aria-label={`Observações de ${c.nome}`}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {registro.map((c) => {
+                const atrasada = c.atrasoDias > 0 && c.status === "ACTIVE";
+                return (
+                  <tr key={c.enrollmentId} className={cn("hover:bg-saber", atrasada && "bg-atencao-claro hover:bg-atencao-claro")}>
+                    <td className={cn(TD, "font-bold")}><Link to={`/crm/contatos/${c.contactId}`} className={NOME_LINK}>{c.nome}</Link></td>
+                    <td className={cn(TD, "tabular-nums")}>{c.telefone || "—"}</td>
+                    <td className={TD}>{c.faixa ? faixaRepescagemLabels[c.faixa] : "—"}</td>
+                    <td className={cn(TD, "tabular-nums")}>{c.ultimaVisita ? diaCurto(c.ultimaVisita) : "—"}</td>
+                    <td className={cn(TD, "tabular-nums")}>{dataHora(c.iniciadaEm)}</td>
+                    <td className={cn(TD, "tabular-nums")}>{dataHora(c.iscaEnviadaEm)}</td>
+                    <td className={cn(TD, "tabular-nums")}>{c.ligacoes[0] ? `${dataHora(c.ligacoes[0].em)} · ${c.ligacoes[0].resultado}` : "—"}</td>
+                    <td className={cn(TD, "tabular-nums")}>{c.ligacoes[1] ? `${dataHora(c.ligacoes[1].em)} · ${c.ligacoes[1].resultado}` : "—"}</td>
+                    <td className={cn(TD, atrasada && "font-bold text-atencao")}>{situacaoDe(c)}</td>
+                    <td className={cn(TD, "p-1")}>
+                      <input
+                        defaultValue={c.observacoes}
+                        onBlur={(e) => {
+                          if (e.target.value !== c.observacoes) onObservacao(c.enrollmentId, e.target.value);
+                        }}
+                        disabled={readOnly}
+                        className={cn(CAMPO_PQ, "border-transparent bg-transparent hover:border-fio-2 focus-visible:bg-folha")}
+                        placeholder="anotar…"
+                        aria-label={`Observações de ${c.nome}`}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
               {!registro.length ? (
-                <tr><td colSpan={10} className="border border-neutral-300 px-2 py-4 text-center text-sm text-neutral-600">Nenhuma repescagem ainda. Use &quot;Adicionar pessoa&quot; ou aceite uma sugestão no Quadro.</td></tr>
+                <tr><td colSpan={10} className="px-6 py-8 text-center text-sm font-medium text-tinta-2">Nenhuma repescagem ainda. Use &quot;Adicionar pessoa&quot; ou aceite uma sugestão no Quadro.</td></tr>
               ) : null}
             </tbody>
           </table>
-        </div>
+        </BlocoFolha>
       )}
     </section>
   );
+}
+
+/** O balão do WhatsApp (o mesmo ícone do quadro da cadência). */
+function MessageCircleIcone() {
+  return <MessageCircle aria-hidden="true" />;
 }

@@ -15,11 +15,10 @@ import { Upload,
   Move,
   Plus,
   Search,
-  Sparkles,
   Target,
   UserPlus,
   X,
-  Trash2, MoreHorizontal, PhoneCall, ChevronLeft, ChevronRight } from "lucide-react";
+  Trash2, MoreHorizontal, PhoneCall, CheckCircle2, Clock, Check, MessageCircle } from "lucide-react";
 import {
   createFinId,
   moneyFin,
@@ -55,13 +54,9 @@ import {
   type ResultadoDoFechamento,
   type TipoRecebimento,
 } from "./recebimentoKanbanData";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-tour";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { BlocoFolha, Botao, Cabecalho, CampoBusca, FraseDoFluxo } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { isCoordenacao, podeEmitirNota, recadoNotaNaFila } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
@@ -125,8 +120,8 @@ import {
   type ContactChannelsDraft,
 } from "./contactChannels";
 import { useCrmState } from "./useCrmState";
-import { CadenciaKanban } from "./CadenciaKanban";
-import { resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
+import { CadenciaKanban, type LeituraDoQuadro } from "./CadenciaKanban";
+import { buildKanbanCadencia, resumoDasCadencias, rotuloCurtoDaCadencia } from "./cadenciaKanbanData";
 import { buildResumoSla, formatMinutos, slaDoNegocio } from "./slaLead";
 import { PRAZO_SNCR, marcarReceitaSncr } from "./crmData";
 import { integracaoLigada } from "@/lib/integracoes";
@@ -134,11 +129,43 @@ import { riscoDoPaciente } from "./riscoAdesao";
 import { invocarIntegracao } from "@/lib/remoteData";
 import { configAtual } from "@/lib/configNegocio";
 import { confirmar, toast } from "@/components/ui/avisos";
+import {
+  AvatarMini,
+  Badge,
+  BOTAO_CANAL,
+  Button,
+  CAMPO,
+  CartaoDoQuadro,
+  classeDaEscolha,
+  classeDoChip,
+  ColunaDoQuadro,
+  Etiqueta,
+  GrupoDeLeituras,
+  Input,
+  Label,
+  LARGURA_DA_COLUNA_DO_PLANO,
+  Leitura,
+  NOME_LINK,
+  NoCorpo,
+  RUBRICA,
+  VazioDaColuna,
+} from "./comercialVisual";
+import { LinkOutrasCadencias, SeletorDeQuadro } from "./SeletorDeQuadro";
+import {
+  fraseDaCadencia,
+  fraseDaRepescagem,
+  fraseDoPlano,
+  fraseEmAberto,
+  leiturasDaCadencia,
+  secoesDoSeletor,
+  toquesEmOutrasCadencias,
+  type FraseDoQuadro,
+  type ResumoParaSeletor,
+} from "./comercialFrases";
 import { RepescagemBoard, type ResultadoLigacao } from "./RepescagemBoard";
-import { usePanScroll } from "./usePanScroll";
 import { PRAZO_DA_FASE_DIAS, diasNaFase, faseVencida, ordenaPorTempoNaFase } from "./faseVencida";
 import { SenhaDeGestor } from "@/components/SenhaDeGestor";
-import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityColumns, densityLabels, type KanbanDensity } from "./kanbanDensidade";
+import { DENSIDADE_PADRAO, DENSIDADE_STORAGE_KEY, densityLabels, type KanbanDensity } from "./kanbanDensidade";
 import { adicionarRepescagemManual, atualizarObservacaoRepescagem, buildQuadroRepescagem, iniciarRepescagem, iniciarRepescagemComResultado, marcarHorarioDaLigacao, type CandidatoRepescagem, type RepescagemManual } from "./repescagemData";
 import { AccessGate } from "@/components/access/AccessGate";
 import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
@@ -185,19 +212,6 @@ function cadenceSheetStatusLabelSafe(status: CadenceSheetDStatus) {
 function cadenciaDoBoard(board: KanbanBoard): string | null {
   return board.startsWith("cadencia:") ? board.slice("cadencia:".length) : null;
 }
-
-// Cores por papel — a mesma linguagem visual da Régua de Relacionamento.
-const roleTones: Partial<Record<CrmRole, { chip: string; dot: string }>> = {
-  RECEPCAO: { chip: "border-emerald-300 bg-emerald-50 text-emerald-800", dot: "bg-emerald-500" },
-  CONCIERGE: { chip: "border-amber-300 bg-amber-50 text-amber-800", dot: "bg-amber-500" },
-  ENFERMAGEM: { chip: "border-violet-300 bg-violet-50 text-violet-800", dot: "bg-violet-500" },
-  MEDICO: { chip: "border-brand-musgo/40 bg-brand-musgo/10 text-brand-musgo", dot: "bg-brand-musgo" },
-  PERFORMANCE: { chip: "border-orange-300 bg-orange-50 text-orange-800", dot: "bg-orange-500" },
-  ADMIN_GESTAO: { chip: "border-slate-300 bg-slate-50 text-slate-700", dot: "bg-slate-500" },
-  ADMINISTRATIVO: { chip: "border-slate-300 bg-slate-50 text-slate-700", dot: "bg-slate-500" },
-  COMERCIAL_VENDEDOR: { chip: "border-sky-300 bg-sky-50 text-sky-800", dot: "bg-sky-500" },
-};
-const roleTone = (role: CrmRole) => roleTones[role] ?? { chip: "border-slate-300 bg-slate-50 text-slate-700", dot: "bg-slate-400" };
 
 /** A comanda usa MAIÚSCULO, o comprovante usa o enum minúsculo do banco. */
 function formaParaComprovante(forma: FinPaymentMethod) {
@@ -312,37 +326,37 @@ function DealCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        "cursor-grab rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl transition-opacity active:cursor-grabbing",
+        "cursor-grab rounded-bloco border border-fio bg-folha transition-opacity active:cursor-grabbing",
         density === "compact" ? "p-3" : "p-4",
         isDragging && "opacity-45",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className={cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg")}>{contactName}</p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{deal.title}</p>
+          <p className={cn("truncate font-semibold text-musgo", density === "executive" && "text-lg")}>{contactName}</p>
+          <p className="mt-1 truncate text-xs text-tinta-2">{deal.title}</p>
         </div>
         <Badge variant="muted">{deal.probability}%</Badge>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Badge variant="outline">{deal.sourceChannel || "Manual"}</Badge>
         {contact?.leadTemperature ? <Badge variant={contact.leadTemperature === "HOT" ? "gold" : "muted"}>{temperatureLabels[contact.leadTemperature]}</Badge> : null}
-        {!hasNextTask ? <Badge className="bg-red-100 text-red-800">Sem próxima ação</Badge> : null}
-        {hasCadence === false ? <Badge className="bg-amber-100 text-amber-800">Sem régua</Badge> : null}
-        {deal.mainObjection ? <Badge className="bg-brand-creme text-brand-tinta">{deal.mainObjection}</Badge> : null}
+        {!hasNextTask ? <Badge className="bg-erro-claro text-erro">Sem próxima ação</Badge> : null}
+        {hasCadence === false ? <Badge className="bg-atencao-claro text-atencao">Sem régua</Badge> : null}
+        {deal.mainObjection ? <Badge className="bg-saber text-tinta">{deal.mainObjection}</Badge> : null}
       </div>
       <div className="mt-3 grid gap-2">
         {nextTask ? (
-          <div className="rounded-md border border-brand-dourado/25 bg-brand-creme/35 px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase text-brand-oliva">Próxima ação</p>
-            <p className="mt-1 text-sm font-semibold leading-5 text-brand-tinta">{nextTask.title}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{formatCrmDateTime(nextTask.dueAt)}</p>
+          <div className="rounded-controle border border-fio-2 bg-saber px-3 py-2">
+            <p className="text-xs font-semibold uppercase text-tinta-2">Próxima ação</p>
+            <p className="mt-1 text-sm font-semibold leading-5 text-tinta">{nextTask.title}</p>
+            <p className="mt-1 text-xs text-tinta-2">{formatCrmDateTime(nextTask.dueAt)}</p>
           </div>
         ) : null}
         {canSeeValue ? (
-          <div className="rounded-md bg-brand-papel/70 px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase text-muted-foreground">Potencial / vendido</p>
-            <p className="font-semibold text-brand-musgo">{moneyCrm(deal.estimatedValue)} / {moneyCrm(deal.soldAmount)}</p>
+          <div className="rounded-controle bg-saber px-3 py-2">
+            <p className="text-xs font-semibold uppercase text-tinta-2">Potencial / vendido</p>
+            <p className="font-semibold text-musgo">{moneyCrm(deal.estimatedValue)} / {moneyCrm(deal.soldAmount)}</p>
           </div>
         ) : null}
         <div className="flex gap-2">
@@ -402,98 +416,106 @@ function ProgramCard({
   // SEMÁFORO DE ADESÃO (14/09/2026): só a partir do acompanhamento; visitas ficam para a tela do plano.
   const risco = phase === "CADENCIA_PROGRAMA" || phase === "ENCERRAMENTO" ? riscoDoPaciente(state, deal, undefined, hojeISO) : null;
 
+  const statusDoPrazo =
+    prazo === null ? null : vencida ? `Parado há ${dias} dias` : dias === 0 ? "Entrou hoje" : `Há ${dias} dia${dias > 1 ? "s" : ""} na fase`;
+
+  // 08/10/2026 (Papel & Musgo): o cartão do Plano é a mesma folha pequena do
+  // quadro da cadência. O nome abre a ficha (o antigo botão "Perfil"); o canal
+  // do fechamento é uma etiqueta; o prazo da fase vem com a palavra; o gate
+  // mostra cada setor com ✓ (feito) ou relógio (falta); e embaixo ficam
+  // "Detalhes" e o WhatsApp.
   return (
-    <article
+    <CartaoDoQuadro
       data-deal-card
       draggable={canDrag}
       onDragStart={canDrag ? onDragStart : undefined}
       onDragEnd={canDrag ? onDragEnd : undefined}
-      className={cn(
-        "rounded-lg border border-brand-oliva/14 bg-white/75 shadow-sm backdrop-blur-xl transition-opacity",
-        canDrag && "cursor-grab active:cursor-grabbing",
-        density === "compact" ? "p-3" : "p-4",
-        isDragging && "opacity-45",
-      )}
+      tom={vencida ? "atrasado" : "normal"}
+      className={cn("transition-opacity", canDrag && "cursor-grab active:cursor-grabbing", isDragging && "opacity-45")}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className={cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg")}>{contactName}</p>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{deal.title}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          {deal.adhesionChannel ? <Badge variant="gold">{channelShort[deal.adhesionChannel]}</Badge> : null}
-          {risco && risco.nivel !== "VERDE" ? (
-            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", risco.nivel === "VERMELHO" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900")} title={risco.frase}>
-              semáforo {risco.nivel.toLowerCase()}
-            </span>
-          ) : null}
-          {prazo !== null ? (
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2">
+        <Link to={crmModuleRoutes.contact(deal.contactId)} className={NOME_LINK} title={`Abrir a ficha de ${contactName}`}>
+          {contactName}
+        </Link>
+        {deal.adhesionChannel ? <Etiqueta tom="musgo">{channelShort[deal.adhesionChannel]}</Etiqueta> : null}
+      </div>
+      {density !== "compact" && deal.title ? <p className="-mt-1 truncate text-[13px] font-medium leading-5 text-tinta-2">{deal.title}</p> : null}
+      {statusDoPrazo || (risco && risco.nivel !== "VERDE") ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {statusDoPrazo ? (
             <span
-              className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", vencida ? "bg-red-100 text-red-700" : "bg-brand-papel text-brand-oliva")}
+              className={cn("inline-flex items-center gap-1 text-[13px] leading-5 tabular-nums", vencida ? "font-bold text-atencao" : "font-semibold text-tinta-2")}
               title={vencida ? `Prazo da fase: ${prazo} dia(s). Ninguém marcou o gate — a coordenação pode avançar.` : `Prazo da fase: ${prazo} dia(s)`}
             >
-              {vencida ? `parado há ${dias} dias` : dias === 0 ? "entrou hoje" : `há ${dias} dia${dias > 1 ? "s" : ""}`}
+              {vencida ? <Clock className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+              {statusDoPrazo}
             </span>
+          ) : (
+            <span />
+          )}
+          {risco && risco.nivel !== "VERDE" ? (
+            <Etiqueta tom={risco.nivel === "VERMELHO" ? "erro" : "atencao"} title={risco.frase}>
+              Semáforo {risco.nivel.toLowerCase()}
+            </Etiqueta>
           ) : null}
         </div>
-      </div>
+      ) : null}
 
-      {/* Faixa do GATE: cada setor exigido nesta fase, com ✓ ou ⏳ */}
+      {/* Faixa do GATE: cada setor exigido nesta fase, com ✓ ou o relógio */}
       {gate.total > 0 ? (
-        <div className="mt-3 rounded-md border border-brand-oliva/15 bg-brand-papel/60 px-2.5 py-2">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-brand-oliva">
-            Para avançar · {gate.done} de {gate.total}
+        <div className="grid gap-2 rounded-controle bg-saber p-2">
+          <p className="text-xs font-bold leading-4 text-tinta-2">
+            Para avançar · <span className="tabular-nums text-tinta">{gate.done} de {gate.total}</span>
           </p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {spec.gate.map((gateSpec) => {
               const done = !missingRoles.has(gateSpec.role);
-              const tone = roleTone(gateSpec.role);
               return (
                 <span
                   key={gateSpec.key}
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                    done ? tone.chip : "border-dashed border-slate-300 bg-white text-slate-500",
+                    "inline-flex h-6 items-center gap-1 rounded-controle px-2 text-xs font-bold leading-4",
+                    done ? "bg-musgo-claro text-musgo" : "bg-folha text-tinta-2 shadow-[inset_0_0_0_1px_rgb(var(--fio-2-rgb))]",
                   )}
                 >
-                  <span className={cn("h-1.5 w-1.5 rounded-full", done ? tone.dot : "bg-slate-300")} aria-hidden="true" />
-                  {crmRoleLabels[gateSpec.role]} {done ? "✓" : "⏳"}
+                  {done ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {crmRoleLabels[gateSpec.role]}
+                  <span className="sr-only">{done ? "feito" : "falta"}</span>
                 </span>
               );
             })}
           </div>
           {nextLabel ? (
-            <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+            <p className="text-xs font-medium leading-4 text-tinta-2">
               {gate.done === gate.total ? "Gate completo — avançando…" : `Quando todos concluírem → ${nextLabel}`}
             </p>
           ) : null}
         </div>
       ) : nextLabel ? (
-        <p className="mt-3 rounded-md bg-brand-papel/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
-          Próxima fase: <span className="font-semibold text-brand-musgo">{nextLabel}</span>
+        <p className="text-[13px] font-medium leading-5 text-tinta-2">
+          Próxima fase: <span className="font-bold text-tinta">{nextLabel}</span>
         </p>
       ) : null}
 
-      {deal.programOutcome ? (
-        <Badge className="mt-2 bg-emerald-100 text-emerald-800">Desfecho: {programOutcomeLabels[deal.programOutcome]}</Badge>
-      ) : null}
+      {deal.programOutcome ? <Etiqueta tom="ok">Desfecho: {programOutcomeLabels[deal.programOutcome]}</Etiqueta> : null}
 
-      <div className="mt-3 flex gap-2">
-        <Button asChild variant="outline" size="sm" className="flex-1">
-          <Link to={crmModuleRoutes.contact(deal.contactId)}>Perfil</Link>
-        </Button>
-        {contactPhone ? (
-          <Button asChild variant="outline" size="sm" className="flex-1">
-            <a href={`https://wa.me/55${contactPhone.replace(/^55/, "")}`} target="_blank" rel="noreferrer">
-              WhatsApp
-            </a>
-          </Button>
-        ) : null}
-        <Button type="button" size="sm" variant="outline" onClick={onSelect}>
+      <div className="flex gap-2">
+        <Button type="button" size="sm" variant="subtle" className="min-w-0 flex-1" onClick={onSelect}>
           Detalhes
         </Button>
+        {contactPhone ? (
+          <a
+            href={`https://wa.me/55${contactPhone.replace(/^55/, "")}`}
+            target="_blank"
+            rel="noreferrer"
+            className={BOTAO_CANAL}
+            aria-label={`Abrir o WhatsApp de ${contactName}`}
+          >
+            <MessageCircle aria-hidden="true" />
+          </a>
+        ) : null}
       </div>
-    </article>
+    </CartaoDoQuadro>
   );
 }
 
@@ -840,7 +862,6 @@ function CrmKanbanPageConteudo() {
   // ENQUADRAMENTO (08/09): o quadro ocupa o resto da tela e as colunas rolam por
   // dentro — a página não cresce com 9 mil pixels de coluna.
   const [boardTop, setBoardTop] = useState(0);
-  const abasPan = usePanScroll<HTMLDivElement>();
   useEffect(() => {
     function mede() {
       if (boardRef.current) setBoardTop(Math.round(boardRef.current.getBoundingClientRect().top + window.scrollY));
@@ -1848,21 +1869,225 @@ function CrmKanbanPageConteudo() {
     setFeedback(success ? `${name} foi excluído do CRM.` : `${name} foi excluído neste aparelho, mas a exclusão NÃO chegou ao Supabase — confira a internet e tente de novo.`);
   }
 
-  return (
+  // ---- CABEÇALHO DO QUADRO (08/10/2026, redesenho etapa 3 — imagem 04) ----
+  // O nome do quadro é o título da página; "Trocar quadro" abre a lista por
+  // urgência (o mesmo ?quadro= de antes). A frase diz o número com palavras e as
+  // leituras (Todos · Para hoje · Atrasado · por setor) filtram o quadro aberto.
+  const hojeDoQuadro = todayISO();
+  const [leitura, setLeitura] = useState<LeituraDoQuadro>("todos");
+  const [responsavelFiltro, setResponsavelFiltro] = useState("");
+  const [seletorAberto, setSeletorAberto] = useState(false);
+  useEffect(() => {
+    setLeitura("todos");
+    setResponsavelFiltro("");
+  }, [board]);
+  const kanbanDaCadencia = useMemo(
+    () => (cadenciaAtiva ? buildKanbanCadencia(state, cadenciaAtiva, hojeDoQuadro) : null),
+    [state, cadenciaAtiva, hojeDoQuadro],
+  );
+  const cartoesDaCadencia = useMemo(() => {
+    if (!kanbanDaCadencia) return [];
+    const termo = query.trim().toLowerCase();
+    return kanbanDaCadencia.colunas
+      .flatMap((coluna) => coluna.cartoes)
+      .filter((cartao) => !termo || cartao.nome.toLowerCase().includes(termo) || cartao.motivo.toLowerCase().includes(termo));
+  }, [kanbanDaCadencia, query]);
+  const leiturasCadencia = useMemo(() => leiturasDaCadencia(cartoesDaCadencia), [cartoesDaCadencia]);
+  const resumosParaSeletor: ResumoParaSeletor[] = useMemo(
+    () =>
+      cadenciasResumo.map((item) => ({
+        id: item.cadence.id,
+        rotulo: rotuloCurtoDaCadencia(item.cadence),
+        nome: item.cadence.name,
+        ativos: item.ativos,
+        hoje: item.hoje,
+        atrasados: item.atrasados,
+      })),
+    [cadenciasResumo],
+  );
+  const secoesDoQuadro = useMemo(
+    () =>
+      secoesDoSeletor({
+        fixos: [
+          { chave: "programa", rotulo: boardLabels.programa, destaque: programDeals.length, numero: programDeals.length === 1 ? "paciente" : "pacientes" },
+          { chave: "comercial", rotulo: boardLabels.comercial, destaque: comercialDeals.length, numero: "em aberto" },
+          {
+            chave: "repescagem",
+            rotulo: "Repescagens",
+            destaque: quadroRepescagem.isca.length + quadroRepescagem.ligar.length,
+            numero: quadroRepescagem.candidatos.length ? `na régua · ${quadroRepescagem.candidatos.length} para repescar` : "na régua",
+          },
+        ],
+        cadencias: resumosParaSeletor,
+      }),
+    [programDeals.length, comercialDeals.length, quadroRepescagem, resumosParaSeletor],
+  );
+  const outrasComToque = toquesEmOutrasCadencias(resumosParaSeletor, cadenciaAtiva);
+  const tituloDoQuadro =
+    board === "programa"
+      ? boardLabels.programa
+      : board === "comercial"
+        ? "Em aberto"
+        : board === "repescagem"
+          ? "Repescagens"
+          : kanbanDaCadencia
+            ? rotuloCurtoDaCadencia(kanbanDaCadencia.cadence)
+            : "Cadência";
+  const parados = board === "programa" ? programDeals.filter((deal) => faseVencida(deal, hojeDoQuadro)).length : 0;
+  const fraseDoQuadro: FraseDoQuadro =
+    board === "programa"
+      ? fraseDoPlano({ pacientes: programDeals.length, parados, semAcao: withoutNextAction, vendido: soldTotal, mostrarValor: canSeeValue })
+      : board === "comercial"
+        ? fraseEmAberto({ abertos: comercialDeals.filter((deal) => deal.status === "OPEN").length, semResposta: resumoSla.semResposta.length })
+        : board === "repescagem"
+          ? fraseDaRepescagem({ isca: quadroRepescagem.isca.length, ligar: quadroRepescagem.ligar.length, candidatos: quadroRepescagem.candidatos.length })
+          : fraseDaCadencia({
+              ativos: kanbanDaCadencia?.totais.ativos ?? 0,
+              hoje: kanbanDaCadencia?.totais.hoje ?? 0,
+              atrasados: kanbanDaCadencia?.totais.atrasados ?? 0,
+              soma: kanbanDaCadencia ? kanbanDaCadencia.colunas.flatMap((coluna) => coluna.cartoes).reduce((total, cartao) => total + cartao.valor, 0) : 0,
+              mostrarValor: canSeeValue,
+            });
+  const explicacaoDoQuadro =
+    board === "comercial"
+      ? "Lista de quem ainda não tem fechamento registrado. O CRM começa quando o Estevão registra o fechamento: aí o paciente entra no Plano e as tarefas do D+1 nascem sozinhas."
+      : board === "programa"
+        ? "A jornada depois do fechamento. O cartão anda sozinho quando as tarefas da fase são concluídas; ninguém arrasta cartão. A coordenação corrige a fase pelos detalhes do cartão."
+        : board === "repescagem"
+          ? "Quem deixou de vir há 1, 3 ou 6 meses ou 1 ano (pela última comanda). A repescagem é por ligação: antes vai a isca no WhatsApp, só para saber o melhor horário."
+          : kanbanDaCadencia?.cadence.description ||
+            "Cada coluna é um passo da régua e o cartão fica no passo que está esperando. \"Fiz o toque\" registra o resultado e o cartão anda sozinho.";
+  const opcoesDeStatus: [string, string, string][] = [["", "Todos", "Todas as negociações"], ["OPEN", "Abertos", "Negociações abertas"], ["WON_FULL", "Ganhos", "Ganhos completos"], ["WON_PARTIAL", "Parciais", "Ganhos parciais"], ["LOST", "Perdidos", "Perdidos"]];
+  // Quantos em cada situação, no quadro aberto e com a busca (sem o filtro de situação).
+  const contagemPorStatus = useMemo(() => {
+    const termo = query.trim().toLowerCase();
+    const doQuadro = state.deals.filter((deal) => {
+      const contact = contactsById.get(deal.contactId);
+      if (pessoa && contact && !canUserAccessContact(pessoa, contact)) return false;
+      if (board === "programa" ? !(deal.programPhase && !deal.programOutcome) : Boolean(deal.programPhase)) return false;
+      if (!termo) return true;
+      return `${deal.title} ${contactDisplayName(contact)} ${deal.sourceChannel} ${deal.mainObjection}`.toLowerCase().includes(termo);
+    });
+    const contagem: Record<string, number> = { "": doQuadro.length };
+    for (const deal of doQuadro) contagem[deal.status] = (contagem[deal.status] ?? 0) + 1;
+    return contagem;
+  }, [state.deals, contactsById, pessoa, query, board]);
+  const menuAcao =
+    "flex w-full items-center gap-2 rounded-controle px-3 py-2 text-left font-sans text-sm font-semibold leading-5 text-tinta hover:bg-saber focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foco";
+
+  const pagina = (
     <div
       className={cn(
-        "mx-auto flex w-full max-w-[1500px] flex-col gap-3 sm:gap-4",
-        fullscreen
-          ? "fixed inset-0 z-50 max-w-none gap-3 overflow-hidden bg-brand-papel p-3 sm:p-4"
-          : "lg:h-[calc(100dvh-9.5rem)] lg:min-h-[540px]",
+        "mx-auto flex w-full max-w-[1500px] flex-col gap-4 font-sans",
+        fullscreen ? "fixed inset-0 z-50 max-w-none gap-3 overflow-hidden bg-papel p-4 max-md:p-3" : "",
       )}
     >
+      <Cabecalho
+        className="mb-0 max-md:mb-0"
+        sobrancelha="Comercial"
+        titulo={
+          <span className="inline-flex max-w-full flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="min-w-0" title={kanbanDaCadencia?.cadence.name}>{tituloDoQuadro}</span>
+            <SeletorDeQuadro
+              secoes={secoesDoQuadro}
+              atual={board}
+              onEscolher={(chave) => changeBoard(chave as KanbanBoard)}
+              aberto={seletorAberto}
+              onAbertoChange={setSeletorAberto}
+            />
+          </span>
+        }
+        frase={
+          <>
+            <strong>{fraseDoQuadro.destaque}</strong>
+            {fraseDoQuadro.resto}
+            {fraseDoQuadro.alerta ? <span className="alerta">{fraseDoQuadro.alerta}</span> : null}
+          </>
+        }
+        acoes={
+          <>
+            <Botao
+              variante="primario"
+              icone={<Plus className="h-4 w-4" aria-hidden="true" />}
+              disabled={!telaCrm.podeEditar}
+              title={telaCrm.motivo || undefined}
+              onClick={() => { setFcFeedback(""); setFechamentoOpen(true); }}
+            >
+              Registrar fechamento
+            </Botao>
+            <Botao
+              variante="secundario"
+              icone={<UserPlus className="h-4 w-4" aria-hidden="true" />}
+              disabled={!telaCrm.podeEditar}
+              title={telaCrm.motivo || undefined}
+              onClick={() => setLeadModalOpen(true)}
+            >
+              Novo lead
+            </Botao>
+            <details className="relative">
+              <summary
+                className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-controle border border-fio-2 bg-folha text-tinta-2 hover:border-borda-campo hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco [&::-webkit-details-marker]:hidden"
+                aria-label="Mais ações"
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+              </summary>
+              <div className="absolute right-0 z-30 mt-2 grid w-64 gap-0.5 rounded-painel border border-fio bg-folha p-2 shadow-flutua max-md:left-0 max-md:right-auto">
+                <button type="button" className={menuAcao} onClick={() => { setImportFeedback(""); setImportOpen(true); }}>
+                  <Upload className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Importar do Feegow
+                </button>
+                <button type="button" className={menuAcao} onClick={() => { setTourOpen(true); markTourSeen(); }}>
+                  <GraduationCap className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Como usar
+                </button>
+                {fullscreen ? (
+                  <button type="button" className={menuAcao} onClick={() => setFullscreen(false)}>
+                    <Minimize2 className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Sair da tela cheia (Esc)
+                  </button>
+                ) : (
+                  <button type="button" className={menuAcao} onClick={() => setFullscreen(true)}>
+                    <Maximize2 className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Tela cheia
+                  </button>
+                )}
+                <Link to={crmModuleRoutes.tasks} className={menuAcao}>
+                  <ArrowRight className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Minhas tarefas
+                </Link>
+                {/* A densidade dos cartões saiu da barra (08/10/2026) e mora aqui: é preferência, não filtro. */}
+                <div role="group" aria-label="Densidade dos cards" className="mt-1 grid gap-0.5 border-t border-fio pt-2">
+                  <p className="px-3 pb-1 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">Tamanho dos cartões</p>
+                  {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      aria-pressed={density === item}
+                      className={cn(menuAcao, density === item && "font-extrabold")}
+                      onClick={() => changeDensity(item)}
+                    >
+                      <span className={cn("grid h-4 w-4 place-items-center rounded-full border", density === item ? "border-musgo bg-musgo" : "border-fio-2")} aria-hidden="true">
+                        {density === item ? <span className="h-1.5 w-1.5 rounded-full bg-sobre-musgo" /> : null}
+                      </span>
+                      {densityLabels[item]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </details>
+          </>
+        }
+        rodape={
+          fullscreen ? undefined : (
+            <FraseDoFluxo link={cadenciaAtiva ? { to: "/crm/planilha", rotulo: "Ver na planilha" } : undefined}>
+              {explicacaoDoQuadro}
+            </FraseDoFluxo>
+          )
+        }
+      />
+
       <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
       <AvisoSoVe soVe={telaCrm.soVe} />
       {/* CONFERÊNCIA DO FECHAMENTO (18/08/2026): fica aqui porque é aqui que o
           fechamento acontece. R$ 13.808 de um paciente foram dados como ganhos
           e nunca viraram comanda — o financeiro só descobriu comparando o
-          extrato do banco com a agenda do Dr. Daniel na mão. */}
+          extrato do banco com a agenda do Dr. Daniel na mão. (08/10/2026: desceu
+          para baixo do cabeçalho — um cabeçalho por página, e ele vem primeiro.) */}
       {!fullscreen ? (
         <ConferenciaFechamentoCard
           crmState={state}
@@ -1872,235 +2097,97 @@ function CrmKanbanPageConteudo() {
           hoje={todayISO()}
         />
       ) : null}
-      {/* CABEÇALHO (redesenho 08/09/2026): uma linha de título + ações; abaixo,
-          UMA linha de abas com rolagem (Quadros · Repescagens · Cadências). */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Badge variant="gold">CRM Bratan</Badge>
-          <h1 className={cn("text-brand-musgo", fullscreen ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl")}>Kanban</h1>
-          <InfoTip title={board === "comercial" ? "Em aberto (antes do fechamento)" : board === "programa" ? "Plano de Acompanhamento" : board === "repescagem" ? "Repescagens" : "Quadro da cadência"}>
-            {board === "comercial"
-              ? "Lista de quem ainda NÃO tem fechamento registrado. O CRM começa quando o Estevão registra o fechamento — aí o paciente entra na Jornada e as tarefas nascem sozinhas."
-              : board === "programa"
-                ? "A jornada pós-fechamento. O card avança SOZINHO quando as tarefas da fase são concluídas (no D+1, todas as pessoas da esteira marcam \"mensagem enviada\"). Ninguém arrasta card; a coordenação corrige pela ficha."
-                : board === "repescagem"
-                  ? "Quem deixou de vir (1 mês, 3 meses, 6 meses, 1 ano — pela última comanda). A repescagem é por LIGAÇÃO: antes vai a isca no WhatsApp, só para saber o melhor horário. Cada toque registra data e hora no Registro, embaixo do quadro."
-                  : "Uma aba por cadência: as colunas são os passos (D1, D5, D7… ou as ligações do Gestor) e cada paciente fica no passo que está esperando. Vermelho é atrasado, amarelo é hoje. \"Fiz o toque\" registra o resultado e o cartão anda sozinho."}
-          </InfoTip>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={!telaCrm.podeEditar} title={telaCrm.motivo || undefined} onClick={() => { setFcFeedback(""); setFechamentoOpen(true); }}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Registrar fechamento
-          </LiquidButton>
-          <Button type="button" variant="outline" size="sm" disabled={!telaCrm.podeEditar} title={telaCrm.motivo || undefined} onClick={() => setLeadModalOpen(true)}>
-            <UserPlus className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Novo lead
-          </Button>
-          <details className="relative">
-            <summary className="flex h-9 cursor-pointer list-none items-center rounded-md border border-input bg-white/70 px-2.5 text-sm font-medium text-brand-tinta hover:bg-white" aria-label="Mais ações">
-              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-            </summary>
-            <div className="absolute right-0 z-30 mt-1 grid w-56 gap-0.5 rounded-lg border border-brand-oliva/20 bg-brand-papel p-1.5 shadow-xl">
-              <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => { setImportFeedback(""); setImportOpen(true); }}>
-                <Upload className="h-4 w-4" aria-hidden="true" /> Importar do Feegow
-              </button>
-              <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => { setTourOpen(true); markTourSeen(); }}>
-                <GraduationCap className="h-4 w-4" aria-hidden="true" /> Como usar
-              </button>
-              {fullscreen ? (
-                <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => setFullscreen(false)}>
-                  <Minimize2 className="h-4 w-4" aria-hidden="true" /> Sair da tela cheia (Esc)
-                </button>
-              ) : (
-                <button type="button" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-white" onClick={() => setFullscreen(true)}>
-                  <Maximize2 className="h-4 w-4" aria-hidden="true" /> Tela cheia
-                </button>
-              )}
-              <Link to={crmModuleRoutes.tasks} className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm hover:bg-white">
-                <ArrowRight className="h-4 w-4" aria-hidden="true" /> Minhas tarefas
-              </Link>
-            </div>
-          </details>
-        </div>
-      </div>
 
-      <div className="flex items-center gap-1">
-        <button type="button" onClick={() => abasPan.rolar(-1)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Abas anteriores">
-          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-        </button>
-        <div ref={abasPan.ref} {...abasPan.handlers} className="kanban-scroll min-w-0 flex-1 cursor-grab overflow-x-auto pb-1 active:cursor-grabbing" role="tablist" aria-label="Quadro" title="Arraste para o lado para ver mais abas">
-        <div className="flex w-max items-center gap-1.5">
-          {(Object.keys(boardLabels) as KanbanBoardFixo[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={board === item}
-              onClick={() => changeBoard(item)}
-              className={cn(
-                "flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold transition",
-                board === item ? "border-brand-musgo bg-brand-musgo text-brand-papel shadow-sm" : "border-brand-oliva/25 bg-white/70 text-brand-oliva hover:border-brand-musgo/50 hover:text-brand-musgo",
-              )}
-            >
-              {boardLabels[item]}
-              <span className={cn("rounded-full px-1.5 text-[11px] font-bold", board === item ? "bg-white/20" : "bg-brand-papel text-brand-tinta")}>
-                {item === "comercial" ? comercialDeals.length : programDeals.length}
-              </span>
-            </button>
-          ))}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={board === "repescagem"}
-            onClick={() => changeBoard("repescagem")}
-            className={cn(
-              "flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold transition",
-              board === "repescagem" ? "border-amber-600 bg-amber-600 text-white shadow-sm" : "border-amber-300 bg-amber-50 text-amber-900 hover:border-amber-500",
-            )}
-          >
-            <PhoneCall className="h-3.5 w-3.5" aria-hidden="true" />
-            Repescagens
-            <span className={cn("rounded-full px-1.5 text-[11px] font-bold", board === "repescagem" ? "bg-white/20" : "bg-white text-amber-900")}>
-              {quadroRepescagem.isca.length + quadroRepescagem.ligar.length}
-            </span>
-            {quadroRepescagem.candidatos.length ? <span className="text-[11px] font-normal opacity-80">· {quadroRepescagem.candidatos.length} para repescar</span> : null}
-          </button>
-          <span className="mx-1 h-6 w-px bg-brand-oliva/25" aria-hidden="true" />
-          <span className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Cadências</span>
-          {cadenciasComGente.map((item) => {
-            const chave: KanbanBoard = `cadencia:${item.cadence.id}`;
-            const ativa = board === chave;
-            return (
-              <button
-                key={chave}
-                type="button"
-                role="tab"
-                aria-selected={ativa}
-                onClick={() => changeBoard(chave)}
-                title={item.cadence.name}
-                className={cn(
-                  "flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-sm font-semibold transition",
-                  ativa ? "border-brand-musgo bg-brand-musgo text-brand-papel shadow-sm" : "border-brand-oliva/25 bg-white/70 text-brand-oliva hover:border-brand-musgo/50 hover:text-brand-musgo",
-                )}
-              >
-                {rotuloCurtoDaCadencia(item.cadence)}
-                <span className={cn("rounded-full px-1.5 text-[11px] font-bold", ativa ? "bg-white/20" : "bg-brand-papel text-brand-tinta")}>{item.ativos}</span>
-                {item.atrasados ? <span className={cn("rounded-full px-1.5 text-[11px] font-bold", ativa ? "bg-red-200 text-red-900" : "bg-red-100 text-red-700")} title="toques atrasados">{item.atrasados}</span> : null}
-              </button>
-            );
-          })}
-          {cadenciasVazias.length ? (
-            <select
-              value=""
-              onChange={(event) => event.target.value && changeBoard(`cadencia:${event.target.value}`)}
-              className="h-9 rounded-full border border-dashed border-brand-oliva/30 bg-white/50 px-3 text-sm font-semibold text-brand-oliva"
-              aria-label="Outras cadências (sem ninguém na régua agora)"
-            >
-              <option value="">Outras cadências…</option>
-              {cadenciasVazias.map((item) => (
-                <option key={item.cadence.id} value={item.cadence.id}>{rotuloCurtoDaCadencia(item.cadence)} (0)</option>
-              ))}
-            </select>
-          ) : null}
-        </div>
-        </div>
-        <button type="button" onClick={() => abasPan.rolar(1)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Próximas abas">
-          <ChevronRight className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
       {!tourSeen && !fullscreen ? (
-        <motion.div
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/50 px-4 py-2.5"
-        >
-          <p className="flex items-center gap-2 text-sm text-brand-tinta">
-            <Sparkles className="h-4 w-4 text-brand-dourado" aria-hidden="true" />
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-bloco bg-saber px-4 py-3">
+          <p className="flex items-center gap-2 text-sm font-semibold leading-5 text-tinta">
+            <GraduationCap className="h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
             Primeira vez no Kanban? Veja como usar em 6 passos rápidos.
           </p>
           <div className="flex gap-2">
-            <Button type="button" size="sm" onClick={() => { setTourOpen(true); markTourSeen(); }}>
+            <Botao variante="suave" tamanho="pq" onClick={() => { setTourOpen(true); markTourSeen(); }}>
               Ver tutorial
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={markTourSeen}>
+            </Botao>
+            <Botao variante="fantasma" tamanho="pq" onClick={markTourSeen}>
               Agora não
-            </Button>
+            </Botao>
           </div>
-        </motion.div>
-      ) : null}
-
-      {feedback ? (
-        <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/70 p-3 text-sm text-brand-tinta">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          {feedback}
         </div>
       ) : null}
 
+      {feedback ? (
+        <div role="status" className="flex items-start gap-2 rounded-bloco bg-saber px-4 py-3 text-sm font-semibold leading-5 text-tinta">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" />
+          {feedback}
+        </div>
+      ) : null}
       {selectedDeal ? (
-        <div className="fixed inset-0 z-[70] bg-brand-tinta/28 backdrop-blur-sm" onClick={() => setSelectedDealId("")}>
+        <NoCorpo>
+        <div className="fixed inset-0 z-[70] bg-[var(--veu)]" onClick={() => setSelectedDealId("")}>
           <aside
-            className="ml-auto flex h-full w-[min(36rem,100vw)] flex-col overflow-y-auto border-l border-brand-oliva/20 bg-brand-papel p-4 shadow-2xl sm:p-5"
+            role="dialog"
+            aria-label={`Detalhes de ${contactDisplayName(selectedContact)}`}
+            className="ml-auto flex h-full w-[min(36rem,100vw)] flex-col overflow-y-auto border-l border-fio bg-folha p-6 font-sans text-tinta shadow-flutua max-md:p-4"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <Badge variant="gold">Detalhes do card</Badge>
-                <h2 className="mt-2 text-2xl text-brand-musgo">{selectedDeal.title}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{contactDisplayName(selectedContact)} - {dealStageLabels[selectedDeal.stage]}</p>
+              <div className="min-w-0">
+                <p className={RUBRICA}>Detalhes do cartão</p>
+                <h2 className="mt-2 font-sans text-xl font-bold leading-7 text-tinta">{selectedDeal.title}</h2>
+                <p className="mt-1 text-sm font-medium leading-5 text-tinta-2">{contactDisplayName(selectedContact)} · {dealStageLabels[selectedDeal.stage]}</p>
               </div>
-              <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedDealId("")}>
-                <X className="h-5 w-5" />
+              <Button type="button" variant="ghost" size="icon" aria-label="Fechar os detalhes" onClick={() => setSelectedDealId("")}>
+                <X className="h-5 w-5" aria-hidden="true" />
               </Button>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-brand-oliva/14 bg-white/64 p-3">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">Próxima ação</p>
+              <div className="rounded-bloco bg-saber p-4">
+                <p className={RUBRICA}>Próxima ação</p>
                 {selectedNextTask ? (
                   <>
-                    <p className="mt-1 font-semibold text-brand-tinta">{selectedNextTask.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-2 text-sm font-bold leading-5 text-tinta">{selectedNextTask.title}</p>
+                    <p className="mt-1 text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
                       {formatCrmDateTime(selectedNextTask.dueAt)} - {taskEffectiveStatus(selectedNextTask)}
                     </p>
                   </>
                 ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">Sem próxima ação. Ao mover etapa, o app cria a pendência correta.</p>
+                  <p className="mt-2 text-sm font-medium leading-5 text-tinta-2">Sem próxima ação. Ao mover etapa, o app cria a pendência correta.</p>
                 )}
                 {(() => {
                   const lastDone = state.tasks
                     .filter((task) => task.dealId === selectedDeal.id && taskEffectiveStatus(task) === "DONE")
                     .sort((a, b) => (b.completedAt ?? b.dueAt ?? "").localeCompare(a.completedAt ?? a.dueAt ?? ""))[0];
                   return lastDone ? (
-                    <p className="mt-2 text-xs text-emerald-700">✓ Última concluída: {lastDone.title}</p>
+                    <p className="mt-2 text-[13px] font-semibold leading-5 text-ok">✓ Última concluída: {lastDone.title}</p>
                   ) : null;
                 })()}
               </div>
-              <div className="rounded-lg border border-brand-oliva/14 bg-white/64 p-3">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">Qualidade</p>
+              <div className="rounded-bloco bg-saber p-4">
+                <p className={RUBRICA}>Qualidade</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge variant={selectedNextTask ? "muted" : "gold"}>{selectedNextTask ? "Com próxima ação" : "Falta próxima ação"}</Badge>
-                  <Badge variant={selectedDeal.mainObjection ? "muted" : "gold"}>{selectedDeal.mainObjection ? "Objeção registrada" : "Falta objeção"}</Badge>
+                  <Etiqueta tom={selectedNextTask ? "ok" : "atencao"}>{selectedNextTask ? "Com próxima ação" : "Falta próxima ação"}</Etiqueta>
+                  <Etiqueta tom={selectedDeal.mainObjection ? "ok" : "atencao"}>{selectedDeal.mainObjection ? "Objeção registrada" : "Falta objeção"}</Etiqueta>
                 </div>
               </div>
             </div>
 
             {selectedDeal.programPhase ? (
-              <div className="mt-4 rounded-lg border border-brand-dourado/30 bg-brand-creme/40 p-3">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">Jornada do Programa</p>
-                <p className="mt-1 font-semibold text-brand-musgo">
+              <div className="mt-4 rounded-bloco bg-saber p-4">
+                <p className={RUBRICA}>Jornada do Programa</p>
+                <p className="mt-2 text-sm font-bold leading-5 text-tinta">
                   Fase: {programPhaseLabels[selectedDeal.programPhase]}
                   {selectedDeal.adhesionChannel ? ` · ${channelShort[selectedDeal.adhesionChannel]}` : ""}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{programPhaseHints[selectedDeal.programPhase]}</p>
+                <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{programPhaseHints[selectedDeal.programPhase]}</p>
                 {(() => {
                   const gate = programGateStatus(state, selectedDeal.id);
                   if (!gate.total) return null;
                   return (
                     <div className="mt-2">
-                      <p className="text-[11px] font-bold uppercase text-brand-oliva">Gate: {gate.done} de {gate.total} concluídos</p>
+                      <p className="text-xs font-bold leading-4 text-tinta-2">Gate: <span className="tabular-nums text-tinta">{gate.done} de {gate.total}</span> concluídos</p>
                       {gate.missing.length ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
                           Faltam: {gate.missing.map((item) => crmRoleLabels[item.role]).join(", ")}
                         </p>
                       ) : null}
@@ -2109,7 +2196,7 @@ function CrmKanbanPageConteudo() {
                 })()}
                 {selectedDeal.programPhase === "ENCERRAMENTO" && canOverridePhase && !selectedDeal.programOutcome ? (
                   <div className="mt-3">
-                    <p className="text-[11px] font-bold uppercase text-brand-oliva">Ponto de decisão — desfecho:</p>
+                    <p className="text-xs font-bold leading-4 text-tinta-2">Ponto de decisão — desfecho:</p>
                     <div className="mt-1.5 flex flex-wrap gap-2">
                       {(Object.keys(programOutcomeLabels) as CrmProgramOutcome[]).map((outcome) => (
                         <Button key={outcome} type="button" variant="outline" size="sm" onClick={() => setOutcome(selectedDeal.id, outcome)}>
@@ -2120,12 +2207,12 @@ function CrmKanbanPageConteudo() {
                   </div>
                 ) : null}
                 {selectedDeal.programOutcome ? (
-                  <Badge className="mt-2 bg-emerald-100 text-emerald-800">Desfecho: {programOutcomeLabels[selectedDeal.programOutcome]}</Badge>
+                  <Etiqueta tom="ok" className="mt-2">Desfecho: {programOutcomeLabels[selectedDeal.programOutcome]}</Etiqueta>
                 ) : null}
                 {selectedDeal.adhesionChannel && integracaoLigada("supersign") ? (
-                  <div className="mt-3 rounded-md border border-brand-dourado/40 bg-brand-creme/40 p-2.5">
-                    <p className="text-[11px] font-bold uppercase text-brand-oliva">Contrato de adesão (SuperSign)</p>
-                    <p className="mt-1 text-sm text-brand-tinta">Manda o contrato-modelo para assinatura pelo WhatsApp/e-mail do paciente.</p>
+                  <div className="mt-3 rounded-controle border border-fio bg-folha p-3">
+                    <p className="text-xs font-bold leading-4 text-tinta-2">Contrato de adesão (SuperSign)</p>
+                    <p className="mt-1 text-sm font-medium leading-5 text-tinta">Manda o contrato-modelo para assinatura pelo WhatsApp/e-mail do paciente.</p>
                     <Button
                       type="button"
                       size="sm"
@@ -2145,8 +2232,8 @@ function CrmKanbanPageConteudo() {
                   </div>
                 ) : null}
                 {selectedDeal.adhesionChannel ? (
-                  <div className={cn("mt-3 rounded-md border p-2.5", selectedDeal.receitaSncrEm ? "border-emerald-200 bg-emerald-50/60" : todayISO() >= PRAZO_SNCR ? "border-red-300 bg-red-50/70" : "border-amber-200 bg-amber-50/60")}>
-                    <p className="flex items-center gap-1 text-[11px] font-bold uppercase text-brand-oliva">
+                  <div className={cn("mt-3 rounded-controle p-3", selectedDeal.receitaSncrEm ? "bg-ok-claro" : todayISO() >= PRAZO_SNCR ? "bg-erro-claro" : "bg-atencao-claro")}>
+                    <p className="flex items-center gap-1 text-xs font-bold leading-4 text-tinta">
                       Receita controlada no SNCR
                       <InfoTip title="Por que isto está aqui">
                         RDC Anvisa 1.000/2025: receitas de medicamentos controlados (tirzepatida, semaglutida e outros com retenção) passam a ser
@@ -2155,15 +2242,15 @@ function CrmKanbanPageConteudo() {
                       </InfoTip>
                     </p>
                     {selectedDeal.receitaSncrEm ? (
-                      <p className="mt-1 text-sm text-emerald-900">Registrada em {selectedDeal.receitaSncrEm.slice(8, 10)}/{selectedDeal.receitaSncrEm.slice(5, 7)}/{selectedDeal.receitaSncrEm.slice(0, 4)}.</p>
+                      <p className="mt-1 text-sm font-semibold leading-5 text-ok">Registrada em {selectedDeal.receitaSncrEm.slice(8, 10)}/{selectedDeal.receitaSncrEm.slice(5, 7)}/{selectedDeal.receitaSncrEm.slice(0, 4)}.</p>
                     ) : (
-                      <p className="mt-1 text-sm text-brand-tinta">
+                      <p className="mt-1 text-sm font-medium leading-5 text-tinta">
                         {todayISO() >= PRAZO_SNCR ? "Prazo da Anvisa já passou: este plano ainda não tem receita registrada no SNCR." : `Sem receita registrada no SNCR ainda (prazo da Anvisa: 30/09/2026).`}
                       </p>
                     )}
                     {canOverridePhase || isCoordenacao(pessoa?.cargo) ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Input type="date" className="h-8 w-40" defaultValue={selectedDeal.receitaSncrEm ?? ""} onChange={(event) => setSncrData(event.target.value)} aria-label="Data da receita no SNCR" />
+                        <Input type="date" className="h-8 w-40 bg-folha" defaultValue={selectedDeal.receitaSncrEm ?? ""} onChange={(event) => setSncrData(event.target.value)} aria-label="Data da receita no SNCR" />
                         <Button type="button" size="sm" variant="outline" onClick={() => { persist((current) => marcarReceitaSncr(current, selectedDeal.id, sncrData || todayISO(), pessoa?.id ?? "coordenacao")); setFeedback("Data da receita no SNCR registrada."); }}>
                           {selectedDeal.receitaSncrEm ? "Atualizar data" : "Marcar (hoje se vazio)"}
                         </Button>
@@ -2177,9 +2264,9 @@ function CrmKanbanPageConteudo() {
                   </div>
                 ) : null}
                 {canOverridePhase ? (
-                  <div className="mt-3 border-t border-brand-oliva/15 pt-2">
-                    <p className="text-[11px] font-bold uppercase text-brand-oliva">Corrigir fase (só coordenação — fica registrado)</p>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <div className="mt-4 border-t border-fio pt-3">
+                    <p className="text-xs font-bold leading-4 text-tinta-2">Corrigir fase (só coordenação — fica registrado)</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       {programPhases.map((phase) => (
                         <button
                           key={phase}
@@ -2190,12 +2277,8 @@ function CrmKanbanPageConteudo() {
                             setDrawerFeedback("");
                             setFeedback(`Card movido manualmente para "${programPhaseLabels[phase]}" (registrado no histórico).`);
                           }}
-                          className={cn(
-                            "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                            selectedDeal.programPhase === phase
-                              ? "border-brand-musgo bg-brand-musgo text-brand-papel"
-                              : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-brand-creme/50",
-                          )}
+                          aria-pressed={selectedDeal.programPhase === phase}
+                          className={cn(classeDoChip(selectedDeal.programPhase === phase), "disabled:cursor-default")}
                         >
                           {programPhaseLabels[phase]}
                         </button>
@@ -2205,27 +2288,23 @@ function CrmKanbanPageConteudo() {
                         entrou novamente como programa e ele não é programa, ele é
                         uma consulta black"). Trocar o canal aqui reescreve a régua
                         sem apagar o fechamento — e pede a senha do gestor. */}
-                    <div className="mt-3 border-t border-brand-oliva/15 pt-2">
-                      <p className="text-[11px] font-bold uppercase text-brand-oliva">
+                    <div className="mt-4 border-t border-fio pt-3">
+                      <p className="text-xs font-bold leading-4 text-tinta-2">
                         Corrigir o canal do fechamento (pede a senha do gestor)
                       </p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
                         O canal define quais tarefas nascem. Trocando aqui, a fase e o que já foi feito ficam — as tarefas
                         da esteira errada são canceladas e as da certa nascem.
                       </p>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {(Object.keys(adhesionChannelLabels) as CrmAdhesionChannel[]).map((canal) => (
                           <button
                             key={canal}
                             type="button"
                             disabled={selectedDeal.adhesionChannel === canal}
                             onClick={() => setPedidoCanal({ dealId: selectedDeal.id, canal })}
-                            className={cn(
-                              "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                              selectedDeal.adhesionChannel === canal
-                                ? "border-brand-musgo bg-brand-musgo text-brand-papel"
-                                : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-brand-creme/50",
-                            )}
+                            aria-pressed={selectedDeal.adhesionChannel === canal}
+                            className={cn(classeDoChip(selectedDeal.adhesionChannel === canal), "disabled:cursor-default")}
                           >
                             {channelLabels[canal]}
                           </button>
@@ -2233,7 +2312,7 @@ function CrmKanbanPageConteudo() {
                         <button
                           type="button"
                           onClick={() => setPedidoCanal({ dealId: selectedDeal.id, canal: null })}
-                          className="rounded-full border border-red-300 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50"
+                          className="inline-flex min-h-8 items-center rounded-controle border border-erro/40 bg-folha px-2.5 py-1 text-[13px] font-semibold leading-5 text-erro hover:bg-erro-claro focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
                         >
                           Consulta avulsa (sai da esteira)
                         </button>
@@ -2244,7 +2323,7 @@ function CrmKanbanPageConteudo() {
               </div>
             ) : null}
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-6 flex flex-wrap gap-2">
               <Button asChild variant="outline">
                 <Link to={crmModuleRoutes.contact(selectedDeal.contactId)}>Abrir Perfil 360</Link>
               </Button>
@@ -2257,18 +2336,18 @@ function CrmKanbanPageConteudo() {
               ) : null}
               <Button
                 type="button"
-                variant="outline"
-                className="border-red-300 text-red-700 hover:bg-red-50"
+                variant="ghost"
+                className="ml-auto text-erro hover:bg-erro-claro hover:text-erro"
                 onClick={() => void handleDeleteLead()}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
                 Excluir lead
               </Button>
             </div>
 
-            <div className="mt-5 rounded-lg border border-brand-oliva/16 bg-white/64 p-3">
-              <p className="text-xs font-semibold uppercase text-brand-oliva">Cadastro do lead</p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <div className="mt-6 rounded-bloco border border-fio bg-folha p-4">
+              <p className={RUBRICA}>Cadastro do lead</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
                 <Input value={editName} onChange={(event) => setEditName(event.target.value)} placeholder="Nome completo" aria-label="Nome completo do lead" />
                 <Input value={editPreferred} onChange={(event) => setEditPreferred(event.target.value)} placeholder="Apelido (no card)" aria-label="Apelido do lead" />
                 <Input value={editDealTitle} onChange={(event) => setEditDealTitle(event.target.value)} placeholder="Título da negociação" aria-label="Título da negociação" />
@@ -2293,28 +2372,28 @@ function CrmKanbanPageConteudo() {
                 />
               </div>
               {!editPhone.trim() && !editEmail.trim() ? (
-                <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                <p className="mt-2 text-[13px] font-semibold leading-5 text-atencao">
                   Este lead está sem telefone e sem e-mail — a cadência não tem para onde ligar nem escrever.
                 </p>
               ) : null}
-              <div className="mt-2 flex flex-wrap items-center gap-3">
+              <div className="mt-3 flex flex-wrap items-center gap-3">
                 <Button type="button" size="sm" variant="outline" onClick={saveLeadName}>
                   Salvar cadastro
                 </Button>
-                {nameFeedback ? <p className="text-xs font-semibold text-brand-musgo">{nameFeedback}</p> : null}
+                {nameFeedback ? <p role="status" className="text-[13px] font-semibold leading-5 text-musgo">{nameFeedback}</p> : null}
               </div>
             </div>
 
             {!canOverridePhase ? (
-              <p className="mt-5 rounded-lg border border-brand-oliva/16 bg-white/64 p-3 text-xs leading-5 text-muted-foreground">
+              <p className="mt-6 rounded-bloco bg-saber p-4 text-[13px] font-medium leading-5 text-tinta-2">
                 O card anda sozinho quando a tarefa é concluída em <strong>Minhas Tarefas</strong> — ninguém move card na mão.
                 Precisa corrigir uma etapa? Fale com a coordenação.
               </p>
             ) : null}
-            <form className={cn("mt-5 grid gap-3 sm:grid-cols-2", !canOverridePhase && "hidden")} onSubmit={handleMoveDeal}>
+            <form className={cn("mt-6 grid gap-4 sm:grid-cols-2", !canOverridePhase && "hidden")} onSubmit={handleMoveDeal}>
               <div>
                 <Label>Nova etapa</Label>
-                <select value={targetStage} onChange={(event) => setTargetStage(event.target.value as CrmDealStage)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                <select value={targetStage} onChange={(event) => setTargetStage(event.target.value as CrmDealStage)} className={cn(CAMPO, "cursor-pointer")}>
                   {dealStages.map((stage) => <option key={stage} value={stage}>{dealStageLabels[stage]}</option>)}
                 </select>
               </div>
@@ -2327,7 +2406,7 @@ function CrmKanbanPageConteudo() {
                     onChange={(event) => setTargetConsultaData(event.target.value)}
                     className="mt-1"
                   />
-                  <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
                     Com a data, o paciente entra sozinho no 3·1 da recepção: exames −15/−7, confirmação −3 e lembrete −1.
                     Remarcou? Mova de novo com a data nova — as tarefas antigas são canceladas sozinhas.
                   </p>
@@ -2339,13 +2418,13 @@ function CrmKanbanPageConteudo() {
                   <select
                     value={adhesion}
                     onChange={(event) => setAdhesion(event.target.value as CrmAdhesionChannel)}
-                    className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
+                    className={cn(CAMPO, "cursor-pointer")}
                   >
                     {(Object.keys(channelLabels) as CrmAdhesionChannel[]).map((channel) => (
                       <option key={channel} value={channel}>{channelLabels[channel]}</option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
                     Define quem age no D+1: Programa/Clube → recepção agenda · Somente Tratamento → enfermeira agenda as doses.
                   </p>
                 </div>
@@ -2364,7 +2443,7 @@ function CrmKanbanPageConteudo() {
               </div>
               <div>
                 <Label>Categoria da objeção</Label>
-                <select value={objectionCategory} onChange={(event) => setObjectionCategory(event.target.value as CrmObjectionCategory)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                <select value={objectionCategory} onChange={(event) => setObjectionCategory(event.target.value as CrmObjectionCategory)} className={cn(CAMPO, "cursor-pointer")}>
                   {objectionOptions.map((item) => <option key={item} value={item}>{objectionCategoryLabels[item]}</option>)}
                 </select>
               </div>
@@ -2377,7 +2456,7 @@ function CrmKanbanPageConteudo() {
                 <Input value={partialReason} onChange={(event) => setPartialReason(event.target.value)} placeholder="Obrigatório se fechou parcial" />
               </div>
               {drawerFeedback ? (
-                <div className="sm:col-span-2 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-800">
+                <div role="alert" className="flex items-start gap-2 rounded-bloco bg-erro-claro px-4 py-3 text-sm font-semibold leading-5 text-erro sm:col-span-2">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   {drawerFeedback}
                 </div>
@@ -2389,73 +2468,86 @@ function CrmKanbanPageConteudo() {
             </form>
           </aside>
         </div>
+        </NoCorpo>
       ) : null}
 
-      {board !== "programa" && board !== "comercial" ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="relative block w-full max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 pl-9" placeholder="Buscar paciente neste quadro" />
-          </label>
-          <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-10 rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm" aria-label="Densidade dos cards">
-            {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
-              <option key={item} value={item}>{densityLabels[item]}</option>
-            ))}
-          </select>
-        </div>
-      ) : null}
-      <section className={cn("rounded-lg border border-brand-oliva/15 bg-white/45 p-2.5 shadow-sm backdrop-blur-xl", board !== "programa" && board !== "comercial" && "hidden")}>
-        <div className="grid gap-2 lg:grid-cols-[1.2fr_0.65fr_0.6fr_0.55fr_auto]">
-          <label className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Buscar lead, paciente, origem ou objeção" />
-          </label>
-          <div className="flex h-12 items-center gap-2 overflow-x-auto rounded-md border border-brand-oliva/16 bg-white/60 px-3" aria-label="Legenda de papéis">
-            {(["CONCIERGE", "RECEPCAO", "ENFERMAGEM", "ADMIN_GESTAO"] as CrmRole[]).map((role) => {
-              const tone = roleTone(role);
-              return (
-                <span key={role} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-brand-musgo">
-                  <span className={cn("h-2 w-2 rounded-full", tone.dot)} aria-hidden="true" />
-                  {crmRoleLabels[role]}
-                </span>
-              );
-            })}
-          </div>
-          <select value={density} onChange={(event) => changeDensity(event.target.value as KanbanDensity)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Densidade dos cards">
-            {(Object.keys(densityLabels) as KanbanDensity[]).map((item) => (
-              <option key={item} value={item}>{densityLabels[item]}</option>
-            ))}
-          </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm shadow-sm backdrop-blur-xl" aria-label="Status das negociações">
-            <option value="">Todos os status</option>
-            <option value="OPEN">Abertos</option>
-            <option value="WON_FULL">Ganhos completos</option>
-            <option value="WON_PARTIAL">Ganhos parciais</option>
-            <option value="LOST">Perdidos</option>
-          </select>
-          <div className="hidden items-center gap-2 lg:flex">
-            {canSeeValue ? (
-              <span className="flex h-12 items-center gap-1.5 whitespace-nowrap rounded-md border border-brand-oliva/16 bg-white/60 px-3 text-xs font-semibold text-brand-musgo">
-                <CircleDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
-                {moneyCrm(soldTotal)}
-              </span>
-            ) : null}
-            <span
-              className={cn(
-                "flex h-12 items-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-xs font-semibold",
-                withoutNextAction ? "border-red-200 bg-red-50 text-red-800" : "border-brand-oliva/16 bg-white/60 text-brand-musgo",
-              )}
+      {/* LEITURAS (08/10/2026): os filtros viram texto com número (Todos 10 ·
+          Para hoje 5 · Atrasado 1 · um por setor), a busca fica na ponta e o
+          "Mais N toques hoje em outras cadências" abre o seletor. */}
+      {board === "repescagem" ? null : (
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        {cadenciaAtiva ? (
+          <GrupoDeLeituras rotulo="Mostrar no quadro">
+            <Leitura
+              ativa={leitura === "todos" && !responsavelFiltro}
+              numero={leiturasCadencia.todos}
+              onClick={() => {
+                setLeitura("todos");
+                setResponsavelFiltro("");
+              }}
             >
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-              {withoutNextAction} sem ação
-            </span>
+              Todos
+            </Leitura>
+            <Leitura ativa={leitura === "hoje"} numero={leiturasCadencia.hoje} onClick={() => setLeitura(leitura === "hoje" ? "todos" : "hoje")}>
+              Para hoje
+            </Leitura>
+            <Leitura
+              ativa={leitura === "atrasado"}
+              numero={leiturasCadencia.atrasado}
+              tom={leiturasCadencia.atrasado ? "atencao" : undefined}
+              onClick={() => setLeitura(leitura === "atrasado" ? "todos" : "atrasado")}
+            >
+              Atrasado
+            </Leitura>
+            {leiturasCadencia.responsaveis.length > 1
+              ? leiturasCadencia.responsaveis.map((item) => (
+                  <Leitura
+                    key={item.nome}
+                    ativa={responsavelFiltro === item.nome}
+                    numero={item.total}
+                    onClick={() => setResponsavelFiltro(responsavelFiltro === item.nome ? "" : item.nome)}
+                  >
+                    <AvatarMini nome={item.nome} className="-ml-1" />
+                    {item.nome}
+                  </Leitura>
+                ))
+              : null}
+          </GrupoDeLeituras>
+        ) : board === "programa" || board === "comercial" ? (
+          <GrupoDeLeituras rotulo="Situação das negociações">
+            {opcoesDeStatus.map(([valor, rotulo, completo]) => (
+              <Leitura key={valor || "todos"} title={completo} ativa={status === valor} numero={contagemPorStatus[valor] ?? 0} onClick={() => setStatus(status === valor ? "" : valor)}>
+                {rotulo}
+              </Leitura>
+            ))}
             <InfoTip title="Validações do Kanban" side="bottom">
               "Vendidos" soma o valor fechado pelo CRM. "Sem ação" conta negociações abertas sem próxima tarefa — a regra de
               ouro é zerar esse número. Ao mover etapas: não fechou exige objeção, fechou exige valor, parcial exige motivo.
             </InfoTip>
-          </div>
+          </GrupoDeLeituras>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-6 gap-y-3 max-md:ml-0 max-md:w-full max-md:justify-start">
+          <LinkOutrasCadencias
+            toques={outrasComToque.toques}
+            cadencias={outrasComToque.cadencias}
+            outras={Boolean(cadenciaAtiva)}
+            onAbrir={() => {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              setSeletorAberto(true);
+            }}
+          />
+          <CampoBusca
+            valor={query}
+            onMudar={setQuery}
+            rotulo="Buscar neste quadro"
+            placeholder={board === "programa" || board === "comercial" ? "Buscar lead, paciente, origem ou objeção" : "Buscar paciente neste quadro"}
+            className="w-60 max-md:w-full"
+          />
         </div>
-      </section>
+      </div>
+      )}
 
       <div
         ref={boardRef}
@@ -2466,7 +2558,7 @@ function CrmKanbanPageConteudo() {
         style={fullscreen ? undefined : { height: `calc(100dvh - ${boardTop + 12}px)`, minHeight: 440 }}
         className={cn(
           "kanban-scroll touch-pan-x overflow-x-auto pb-2",
-          board === "programa" || board === "comercial" ? "cursor-grab active:cursor-grabbing" : "",
+          board === "programa" ? "cursor-grab active:cursor-grabbing" : "",
           fullscreen ? "min-h-0 flex-1" : "min-h-0",
         )}
       >
@@ -2476,7 +2568,7 @@ function CrmKanbanPageConteudo() {
               ? "w-full min-w-0 max-w-5xl"
               : cadenciaAtiva || board === "repescagem"
                 ? "h-full w-full min-w-0"
-                : cn("grid h-full w-max grid-flow-col items-stretch gap-3", densityColumns[density]),
+                : cn("grid h-full w-max min-w-full grid-flow-col items-stretch gap-4 max-xl:gap-3", LARGURA_DA_COLUNA_DO_PLANO[density]),
           )}
         >
           {board === "comercial"
@@ -2487,13 +2579,14 @@ function CrmKanbanPageConteudo() {
                   .filter((deal) => deal.status === "OPEN")
                   .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
                 return (
-                  <section className="flex flex-col gap-2 rounded-lg border border-brand-oliva/14 bg-white/40 p-3 backdrop-blur-xl">
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      Pacientes/leads ainda SEM fechamento registrado. Quando o Estevão registra o fechamento, o paciente
-                      entra na <strong>Jornada</strong> e as tarefas certas nascem sozinhas. ({rows.length} em aberto)
-                    </p>
+                  <section aria-label="Em aberto (antes do fechamento)" className="grid gap-4">
                     {resumoSla.total || resumoSla.semResposta.length ? (
-                      <p className={cn("rounded-md px-2.5 py-1.5 text-xs leading-5", resumoSla.semResposta.length ? "bg-red-50 text-red-800" : "bg-emerald-50 text-emerald-800")}>
+                      <p
+                        className={cn(
+                          "flex flex-wrap items-center gap-x-2 rounded-bloco px-4 py-3 text-sm font-semibold leading-5",
+                          resumoSla.semResposta.length ? "bg-erro-claro text-erro" : "bg-ok-claro text-ok",
+                        )}
+                      >
                         <strong>Resposta ao lead:</strong> {resumoSla.frase}
                         <InfoTip title="SLA de resposta">
                           Tempo entre o lead entrar e o primeiro toque registrado (tarefa concluída ou mensagem/ligação na linha do tempo). A meta
@@ -2502,60 +2595,67 @@ function CrmKanbanPageConteudo() {
                         </InfoTip>
                       </p>
                     ) : null}
-                    {rows.length ? (
-                      rows.map((deal) => {
-                        const contact = contactsById.get(deal.contactId);
-                        const phone = contact ? (contact.whatsapp || contact.phone || "").replace(/\D/g, "") : "";
-                        const sla = slaDoNegocio(resumoSla, deal.id);
-                        return (
-                          <div key={deal.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/65 px-3 py-2">
-                            <div className="min-w-0">
-                              <p className="flex flex-wrap items-center gap-1.5 font-semibold text-brand-tinta">
-                                <span className="truncate">{contactDisplayName(contact)}</span>
-                                {sla ? (
-                                  <span
-                                    className={cn(
-                                      "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
-                                      sla.semResposta ? "bg-red-100 text-red-800" : sla.dentroDoSla ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800",
-                                    )}
-                                    title={sla.semResposta ? `Sem nenhum toque desde a entrada (${formatMinutos(sla.minutos)})` : `Primeiro toque ${formatMinutos(sla.minutos)} depois da entrada (meta ${resumoSla.limiteMinutos} min)`}
+                    <BlocoFolha as="div">
+                      <p className={cn(RUBRICA, "border-b border-fio px-6 py-4 max-md:px-4")}>
+                        {rows.length} em aberto · ainda sem fechamento registrado
+                      </p>
+                      {rows.length ? (
+                        <ul>
+                          {rows.map((deal) => {
+                            const contact = contactsById.get(deal.contactId);
+                            const phone = contact ? (contact.whatsapp || contact.phone || "").replace(/\D/g, "") : "";
+                            const sla = slaDoNegocio(resumoSla, deal.id);
+                            return (
+                              <li key={deal.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-fio px-6 py-3 last:border-b-0 max-md:px-4">
+                                <div className="min-w-0">
+                                  <p className="flex flex-wrap items-center gap-2 text-sm font-bold leading-5 text-tinta">
+                                    <Link to={crmModuleRoutes.contact(deal.contactId)} className={NOME_LINK}>
+                                      {contactDisplayName(contact)}
+                                    </Link>
+                                    {sla ? (
+                                      <Etiqueta
+                                        tom={sla.semResposta ? "erro" : sla.dentroDoSla ? "ok" : "atencao"}
+                                        title={sla.semResposta ? `Sem nenhum toque desde a entrada (${formatMinutos(sla.minutos)})` : `Primeiro toque ${formatMinutos(sla.minutos)} depois da entrada (meta ${resumoSla.limiteMinutos} min)`}
+                                      >
+                                        {sla.semResposta ? `sem resposta há ${formatMinutos(sla.minutos)}` : sla.dentroDoSla ? `respondido em ${formatMinutos(sla.minutos)}` : `respondido em ${formatMinutos(sla.minutos)} (fora da meta)`}
+                                      </Etiqueta>
+                                    ) : null}
+                                  </p>
+                                  <p className="truncate text-[13px] font-medium leading-5 text-tinta-2">
+                                    {dealStageLabels[deal.stage]}
+                                    {deal.sourceChannel ? ` · ${deal.sourceChannel}` : ""}
+                                    {phone ? ` · ${phone}` : ""}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="sm"
+                                    disabled={!telaCrm.podeEditar}
+                                    title={telaCrm.motivo || undefined}
+                                    onClick={() => {
+                                      setFcPatient({ ref: deal.contactId, name: contactDisplayName(contact) });
+                                      setFcFeedback("");
+                                      setFechamentoOpen(true);
+                                    }}
                                   >
-                                    {sla.semResposta ? `sem resposta há ${formatMinutos(sla.minutos)}` : sla.dentroDoSla ? `respondido em ${formatMinutos(sla.minutos)}` : `respondido em ${formatMinutos(sla.minutos)} (fora da meta)`}
-                                  </span>
-                                ) : null}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {dealStageLabels[deal.stage]}
-                                {deal.sourceChannel ? ` · ${deal.sourceChannel}` : ""}
-                                {phone ? ` · ${phone}` : ""}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 gap-1.5">
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={!telaCrm.podeEditar}
-                                title={telaCrm.motivo || undefined}
-                                onClick={() => {
-                                  setFcPatient({ ref: deal.contactId, name: contactDisplayName(contact) });
-                                  setFcFeedback("");
-                                  setFechamentoOpen(true);
-                                }}
-                              >
-                                Registrar fechamento
-                              </Button>
-                              <Button type="button" variant="outline" size="sm" onClick={() => selectDeal(deal)}>
-                                Abrir
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-4 text-center text-sm text-muted-foreground">
-                        Ninguém em aberto — todo mundo já tem fechamento registrado. ✓
-                      </div>
-                    )}
+                                    Registrar fechamento
+                                  </Button>
+                                  <Button type="button" variant="outline" size="sm" onClick={() => selectDeal(deal)}>
+                                    Abrir
+                                  </Button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="px-6 py-8 text-center text-sm font-semibold leading-5 text-ok max-md:px-4">
+                          Ninguém em aberto: todo mundo já tem fechamento registrado.
+                        </p>
+                      )}
+                    </BlocoFolha>
                   </section>
                 );
               })()
@@ -2572,68 +2672,65 @@ function CrmKanbanPageConteudo() {
                   // REGRA DE OURO nº 4: concluir a tarefa É o que move o card.
                   // Arrastar com o mouse foi desabilitado (Lucas, 22/07); a
                   // coordenação corrige fases pelo painel do card.
-                  <section
+                  <ColunaDoQuadro
                     key={phase}
-                    className={cn(
-                      "flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl transition-colors",
-                      "h-full min-h-0",
-                    )}
+                    rotulo={programPhaseLabels[phase]}
+                    titulo={<span title={programPhaseHints[phase]}>{programPhaseLabels[phase]}</span>}
+                    canal={
+                      <InfoTip title={programPhaseLabels[phase]}>
+                        {programPhaseHints[phase]}
+                      </InfoTip>
+                    }
+                    esquerda={
+                      <>
+                        {phaseDeals.length} {phaseDeals.length === 1 ? "paciente" : "pacientes"}
+                        {vencidos.length ? <span className="font-bold text-atencao"> · {vencidos.length} {vencidos.length === 1 ? "parado" : "parados"}</span> : null}
+                      </>
+                    }
+                    direita={
+                      <span className="font-semibold text-tinta-2" title={nextPhase ? `Depois: ${programPhaseLabels[nextPhase]}` : undefined}>
+                        {nextPhase ? (prazoFase !== null ? `prazo ${prazoFase} d` : "→ próxima") : "fim da trilha"}
+                      </span>
+                    }
+                    acima={
+                      vencidos.length && canOverridePhase && prazoFase !== null ? (
+                        <Botao
+                          variante="secundario"
+                          tamanho="pq"
+                          bloco
+                          className="border-atencao/40 text-atencao hover:border-atencao hover:bg-atencao-claro"
+                          title="Só a coordenação vê este botão"
+                          icone={<ArrowRight className="h-4 w-4" aria-hidden="true" />}
+                          onClick={async () => {
+                            if (!(await confirmar("Avançar os parados?", { corpo: `Avançar ${vencidos.length} paciente(s) parados em "${programPhaseLabels[phase]}" há mais de ${prazoFase} dia(s) para "Em acompanhamento"? O gate desta fase fica registrado como pulado pela coordenação.`, confirmar: "Avançar" }))) return;
+                            persist((current) => vencidos.reduce((acc, deal) => setProgramPhase(acc, deal.id, "CADENCIA_PROGRAMA", pessoa?.id ?? "coordenacao"), current));
+                            setFeedback(`${vencidos.length} paciente(s) de "${programPhaseLabels[phase]}" avançados para Em acompanhamento.`);
+                          }}
+                        >
+                          Avançar {vencidos.length} parado(s) → Em acompanhamento
+                        </Botao>
+                      ) : undefined
+                    }
                   >
-                    <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
-                      <p className="flex items-center gap-1.5 text-sm font-semibold" title={programPhaseHints[phase]}>
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-papel/20 text-[11px] font-bold">
-                          {phaseIndex + 1}
-                        </span>
-                        {programPhaseLabels[phase]}
-                        <InfoTip title={programPhaseLabels[phase]} className="text-brand-papel/80">
-                          {programPhaseHints[phase]}
-                        </InfoTip>
-                      </p>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
-                        <span>
-                          {phaseDeals.length} pacientes
-                          {vencidos.length ? <span className="ml-1 rounded-full bg-red-200/90 px-1.5 font-bold text-red-900">{vencidos.length} parados</span> : null}
-                        </span>
-                        {nextPhase ? <span>→ {programPhaseLabels[nextPhase]}{prazoFase !== null ? ` · prazo ${prazoFase}d` : ""}</span> : <span>fim da trilha</span>}
-                      </div>
-                    </div>
-                    {vencidos.length && canOverridePhase && prazoFase !== null ? (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!(await confirmar("Avançar os parados?", { corpo: `Avançar ${vencidos.length} paciente(s) parados em "${programPhaseLabels[phase]}" há mais de ${prazoFase} dia(s) para "Em acompanhamento"? O gate desta fase fica registrado como pulado pela coordenação.`, confirmar: "Avançar" }))) return;
-                          persist((current) => vencidos.reduce((acc, deal) => setProgramPhase(acc, deal.id, "CADENCIA_PROGRAMA", pessoa?.id ?? "coordenacao"), current));
-                          setFeedback(`${vencidos.length} paciente(s) de "${programPhaseLabels[phase]}" avançados para Em acompanhamento.`);
-                        }}
-                        className="mb-2 flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100"
-                        title="Só a coordenação vê este botão"
-                      >
-                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /> Avançar {vencidos.length} parado(s) → Em acompanhamento
-                      </button>
-                    ) : null}
-                    <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
-                      {phaseDeals.length ? (
-                        phaseDeals.map((deal) => (
-                          <ProgramCard
-                            key={deal.id}
-                            deal={deal}
-                            contact={contactsById.get(deal.contactId)}
-                            state={state}
-                            density={density}
-                            canDrag={false}
-                            isDragging={false}
-                            onSelect={() => selectDeal(deal)}
-                            onDragStart={() => undefined}
-                            onDragEnd={() => undefined}
-                          />
-                        ))
-                      ) : (
-                        <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
-                          {phase === "FECHAMENTO_D0" ? "Ninguém fechou hoje ainda" : "Nenhum paciente nesta fase"}
-                        </div>
-                      )}
-                    </div>
-                  </section>
+                    {phaseDeals.length ? (
+                      phaseDeals.map((deal) => (
+                        <ProgramCard
+                          key={deal.id}
+                          deal={deal}
+                          contact={contactsById.get(deal.contactId)}
+                          state={state}
+                          density={density}
+                          canDrag={false}
+                          isDragging={false}
+                          onSelect={() => selectDeal(deal)}
+                          onDragStart={() => undefined}
+                          onDragEnd={() => undefined}
+                        />
+                      ))
+                    ) : (
+                      <VazioDaColuna>{phase === "FECHAMENTO_D0" ? "Ninguém fechou hoje ainda" : "Nenhum paciente nesta fase"}</VazioDaColuna>
+                    )}
+                  </ColunaDoQuadro>
                 );
               })}
           {cadenciaAtiva ? (
@@ -2642,8 +2739,11 @@ function CrmKanbanPageConteudo() {
               cadenceId={cadenciaAtiva}
               hoje={todayISO()}
               filtro={query}
+              leitura={leitura}
+              responsavel={responsavelFiltro}
               density={density}
               readOnly={false}
+              mostrarValor={canSeeValue}
               onConcluirPasso={concluirPassoDaCadencia}
               onConcluirLigacao={concluirLigacaoDoGestor}
             />
@@ -2663,6 +2763,7 @@ function CrmKanbanPageConteudo() {
               onIscaEnviada={iscaEnviada}
               onMarcarHorario={marcarHorario}
               onLiguei={liguei}
+              busca={<CampoBusca valor={query} onMudar={setQuery} rotulo="Buscar neste quadro" placeholder="Buscar paciente neste quadro" className="w-60 max-md:w-full" />}
             />
           ) : null}
           {board === "programa"
@@ -2670,6 +2771,7 @@ function CrmKanbanPageConteudo() {
                 // Colunas de exceção da jornada (prompt do Lucas): quem caiu da
                 // esteira aparece AQUI — primeiro com a Concierge (D1–D5), depois
                 // com o Estevão (5 ligações) e, por fim, Encerrado (resgates futuros).
+                // 08/10/2026: viraram zonas "para saber" (sem cartão, sem borda).
                 const activeByContact = new Map<string, string>();
                 for (const enrollment of state.cadenceEnrollments) {
                   if (enrollment.status === "ACTIVE") activeByContact.set(enrollment.contactId, enrollment.cadenceId);
@@ -2688,55 +2790,54 @@ function CrmKanbanPageConteudo() {
                       key={deal.id}
                       type="button"
                       onClick={() => selectDeal(deal)}
-                      className="rounded-lg border border-brand-oliva/16 bg-white/70 px-3 py-2 text-left transition-colors hover:bg-brand-creme/50"
+                      className="grid w-full gap-1 p-3 text-left transition-colors hover:bg-folha focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foco [&+&]:border-t [&+&]:border-fio"
                     >
-                      <p className="truncate text-sm font-semibold text-brand-tinta">{contactDisplayName(contact)}</p>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{driver}</p>
+                      <span className="truncate text-sm font-bold leading-5 text-tinta">{contactDisplayName(contact)}</span>
+                      <span className="truncate text-[13px] font-medium leading-5 text-tinta-2">{driver}</span>
                     </button>
                   );
                 };
                 return (
                   <>
-                    <section className={cn("flex flex-col rounded-lg border border-amber-300/60 bg-amber-50/40 p-2 backdrop-blur-xl", "h-full min-h-0")}>
-                      <div className="mb-2 shrink-0 rounded-md bg-amber-600 px-3 py-2 text-white">
-                        <p className="text-sm font-semibold">Recuperação / Resgate</p>
-                        <p className="mt-1 text-[11px] text-white/80">{recoveryDeals.length} pacientes · Concierge D1–D5 → Estevão</p>
-                      </div>
-                      <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
-                        {recoveryDeals.length ? (
-                          recoveryDeals.map((deal) =>
-                            renderMini(
-                              deal,
-                              activeByContact.get(deal.contactId) === "cad-gestor-5lig" ? "Com o Estevão (5 ligações)" : "Com a Concierge (D1–D5)",
-                            ),
-                          )
-                        ) : (
-                          <div className="rounded-lg border border-dashed border-amber-300/60 bg-white/35 p-3 text-center text-xs text-muted-foreground">
-                            Ninguém em recuperação
-                          </div>
-                        )}
-                      </div>
-                    </section>
-                    <section className={cn("flex flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl", "h-full min-h-0")}>
-                      <div className="mb-2 shrink-0 rounded-md bg-brand-oliva px-3 py-2 text-brand-papel">
-                        <p className="text-sm font-semibold">Encerrado</p>
-                        <p className="mt-1 text-[11px] text-brand-papel/75">{closedDeals.length} na base · resgates de 60d/6m/1a seguem sozinhos</p>
-                      </div>
-                      <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
-                        {closedVisible.length ? (
-                          <>
-                            {closedVisible.map((deal) => renderMini(deal, dealStageLabels[deal.stage]))}
-                            {closedDeals.length > closedVisible.length ? (
-                              <p className="px-1 text-center text-[11px] text-muted-foreground">e mais {closedDeals.length - closedVisible.length}…</p>
-                            ) : null}
-                          </>
-                        ) : (
-                          <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">
-                            Nenhum encerrado
-                          </div>
-                        )}
-                      </div>
-                    </section>
+                    <ColunaDoQuadro
+                      saber
+                      rotulo="Recuperação / Resgate"
+                      icone={<PhoneCall className="text-atencao" aria-hidden="true" />}
+                      titulo="Recuperação"
+                      canal="resgate"
+                      esquerda={`${recoveryDeals.length} ${recoveryDeals.length === 1 ? "paciente" : "pacientes"}`}
+                      direita={<span className="font-semibold text-tinta-2">Concierge → Estevão</span>}
+                    >
+                      {recoveryDeals.length ? (
+                        recoveryDeals.map((deal) =>
+                          renderMini(
+                            deal,
+                            activeByContact.get(deal.contactId) === "cad-gestor-5lig" ? "Com o Estevão (5 ligações)" : "Com a Concierge (D1–D5)",
+                          ),
+                        )
+                      ) : (
+                        <VazioDaColuna>Ninguém em recuperação</VazioDaColuna>
+                      )}
+                    </ColunaDoQuadro>
+                    <ColunaDoQuadro
+                      saber
+                      rotulo="Encerrado"
+                      icone={<CheckCircle2 className="text-ok" aria-hidden="true" />}
+                      titulo="Encerrado"
+                      esquerda={`${closedDeals.length} na base`}
+                      direita={<span className="font-semibold text-tinta-2">resgates 60d · 6m · 1a</span>}
+                    >
+                      {closedVisible.length ? (
+                        <>
+                          {closedVisible.map((deal) => renderMini(deal, dealStageLabels[deal.stage]))}
+                          {closedDeals.length > closedVisible.length ? (
+                            <p className="border-t border-fio px-3 py-3 text-center text-[13px] font-medium text-tinta-2">e mais {closedDeals.length - closedVisible.length}…</p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <VazioDaColuna>Nenhum encerrado</VazioDaColuna>
+                      )}
+                    </ColunaDoQuadro>
                   </>
                 );
               })()
@@ -2744,6 +2845,7 @@ function CrmKanbanPageConteudo() {
         </div>
       </div>
 
+      <NoCorpo>
       <AnimatePresence>
         {fechamentoOpen ? (
           <motion.div
@@ -2751,7 +2853,7 @@ function CrmKanbanPageConteudo() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[75] grid place-items-center bg-brand-tinta/30 px-4 py-6 backdrop-blur-sm"
+            className="fixed inset-0 z-[75] grid place-items-center bg-[var(--veu)] px-4 py-6"
             onClick={() => setFechamentoOpen(false)}
           >
             <motion.div
@@ -2759,18 +2861,18 @@ function CrmKanbanPageConteudo() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}
               transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              className="max-h-[86dvh] w-[min(34rem,94vw)] overflow-y-auto rounded-2xl border border-brand-oliva/18 bg-brand-papel p-5 shadow-[0_32px_80px_rgba(43,46,36,0.28)] sm:p-6"
+              className="max-h-[86dvh] w-[min(36rem,94vw)] overflow-y-auto rounded-painel border border-fio bg-folha p-6 font-sans text-tinta shadow-flutua max-md:p-4"
               onClick={(event) => event.stopPropagation()}
               role="dialog"
               aria-label="Registrar fechamento"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="flex items-center gap-2 text-xl text-brand-musgo">
-                    <CircleDollarSign className="h-5 w-5" aria-hidden="true" />
+                  <h2 className="flex items-center gap-2 font-sans text-xl font-bold leading-7 text-tinta">
+                    <CircleDollarSign className="h-5 w-5 text-oliva" aria-hidden="true" />
                     Registrar fechamento
                   </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm font-medium leading-5 text-tinta-2">
                     A jornada começa aqui: escolha o paciente, marque o que ele fechou e a esteira certa liga sozinha
                     (as tarefas do D+1 nascem para as pessoas certas).
                   </p>
@@ -2779,10 +2881,10 @@ function CrmKanbanPageConteudo() {
                   <X className="h-5 w-5" aria-hidden="true" />
                 </Button>
               </div>
-              <form className="grid gap-3" onSubmit={handleRegistrarFechamento}>
+              <form className="grid gap-4" onSubmit={handleRegistrarFechamento}>
                 <div>
                   <Label>Paciente (busca por nome ou telefone — não duplica)</Label>
-                  <div className="mt-1">
+                  <div>
                     <PatientPicker
                       contacts={state.contacts}
                       value={fcPatient}
@@ -2796,7 +2898,7 @@ function CrmKanbanPageConteudo() {
                 </div>
                 <div>
                   <Label>O que o paciente fechou?</Label>
-                  <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     {(
                       [
                         ["PROGRAMA_ACOMPANHAMENTO", "Plano de Acompanhamento", "Concierge + Recepção + Enfermeira no D+1"],
@@ -2815,13 +2917,11 @@ function CrmKanbanPageConteudo() {
                         key={value}
                         type="button"
                         onClick={() => setFcResultado(value)}
-                        className={cn(
-                          "rounded-lg border px-3 py-2 text-left transition-colors",
-                          fcResultado === value ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-brand-creme/50",
-                        )}
+                        aria-pressed={fcResultado === value}
+                        className={classeDaEscolha(fcResultado === value)}
                       >
-                        <span className="block text-sm font-semibold">{label}</span>
-                        <span className={cn("block text-[11px]", fcResultado === value ? "text-brand-papel/80" : "text-muted-foreground")}>{hint}</span>
+                        <span className="block text-sm font-bold leading-5">{label}</span>
+                        <span className="block text-xs font-medium leading-4 text-tinta-2">{hint}</span>
                       </button>
                     ))}
                   </div>
@@ -2836,10 +2936,8 @@ function CrmKanbanPageConteudo() {
                     return (
                       <p
                         className={cn(
-                          "rounded-lg border px-3 py-2 text-xs leading-5",
-                          canalDoPaciente
-                            ? "border-brand-oliva/25 bg-white/70 text-brand-tinta"
-                            : "border-amber-400 bg-amber-50 text-amber-900",
+                          "rounded-bloco px-4 py-3 text-[13px] font-medium leading-5",
+                          canalDoPaciente ? "bg-saber text-tinta" : "bg-atencao-claro text-atencao",
                         )}
                       >
                         {canalDoPaciente ? (
@@ -2861,14 +2959,14 @@ function CrmKanbanPageConteudo() {
                 {fcResultado !== "NAO_FECHOU" ? (
                   <>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Label className="mr-1">Fechou tudo?</Label>
-                      <button type="button" onClick={() => setFcCompleto(true)} className={cn("rounded-full border px-3 py-1 text-xs font-semibold", fcCompleto ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70")}>Completo (10% desc.)</button>
-                      <button type="button" onClick={() => setFcCompleto(false)} className={cn("rounded-full border px-3 py-1 text-xs font-semibold", !fcCompleto ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70")}>Parcial (5% desc.)</button>
+                      <Label className="mr-1 pb-0">Fechou tudo?</Label>
+                      <button type="button" aria-pressed={fcCompleto} onClick={() => setFcCompleto(true)} className={classeDoChip(fcCompleto)}>Completo (10% desc.)</button>
+                      <button type="button" aria-pressed={!fcCompleto} onClick={() => setFcCompleto(false)} className={classeDoChip(!fcCompleto)}>Parcial (5% desc.)</button>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <Label>Valor vendido (R$)</Label>
-                        <Input value={fcSold} onChange={(event) => setFcSold(event.target.value)} inputMode="decimal" placeholder="9000" />
+                        <Input value={fcSold} onChange={(event) => setFcSold(event.target.value)} inputMode="decimal" placeholder="9000" className="tabular-nums" />
                       </div>
                     </div>
 
@@ -2919,9 +3017,9 @@ function CrmKanbanPageConteudo() {
                     />
 
                     {fcTemSaldo ? (
-                      <div className="grid gap-2 rounded-lg border border-brand-dourado/50 bg-brand-creme/40 p-3">
-                        <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">O que ficou para depois</p>
-                        <p className="text-xs leading-snug text-muted-foreground">
+                      <div className="grid gap-3 rounded-bloco bg-saber p-4">
+                        <p className={RUBRICA}>O que ficou para depois</p>
+                        <p className="text-[13px] font-medium leading-5 text-tinta-2">
                           Vendido {moneyFin(fcVendidoNumero)}, entrou {moneyFin(fcValorRecebido)} agora. A diferença vira um
                           Lembrete de pagamento com o paciente ligado — o fechamento não salva sem ele.
                         </p>
@@ -2964,7 +3062,7 @@ function CrmKanbanPageConteudo() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <Label>Categoria da objeção</Label>
-                      <select value={fcObjectionCategory} onChange={(event) => setFcObjectionCategory(event.target.value as CrmObjectionCategory)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                      <select value={fcObjectionCategory} onChange={(event) => setFcObjectionCategory(event.target.value as CrmObjectionCategory)} className={cn(CAMPO, "cursor-pointer")}>
                         {objectionOptions.map((item) => <option key={item} value={item}>{objectionCategoryLabels[item]}</option>)}
                       </select>
                     </div>
@@ -3017,19 +3115,19 @@ function CrmKanbanPageConteudo() {
                   </div>
                 )}
                 {fcFeedback ? (
-                  <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-800">
+                  <div role="alert" className="flex items-start gap-2 rounded-bloco bg-erro-claro px-4 py-3 text-sm font-semibold leading-5 text-erro">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     {fcFeedback}
                   </div>
                 ) : null}
                 {fcTravaGeral ? (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
+                  <div className="flex items-start gap-2 rounded-bloco bg-atencao-claro px-4 py-3 text-sm font-semibold leading-5 text-atencao">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     {fcTravaGeral}
                   </div>
                 ) : null}
-                <div className="flex flex-wrap items-center gap-2">
-                  <LiquidButton type="submit" className="h-10 px-5" disabled={Boolean(fcTravaGeral) || fcEmitindo}>
+                <div className="flex flex-wrap items-center gap-3 border-t border-fio pt-4">
+                  <Botao variante="primario" type="submit" disabled={Boolean(fcTravaGeral) || fcEmitindo}>
                     {fcEmitindo
                       ? "Emitindo a nota…"
                       : fcVaiEmitirNota
@@ -3037,13 +3135,13 @@ function CrmKanbanPageConteudo() {
                           ? `Salvar e emitir ${fcPlanoDaNota.notas.length} notas`
                           : "Salvar e emitir a nota"
                         : "Salvar fechamento"}
-                  </LiquidButton>
+                  </Botao>
                   <Button type="button" variant="outline" disabled={fcEmitindo} onClick={() => setFechamentoOpen(false)}>Cancelar</Button>
                   {fcEmitindo ? (
-                    <span className="text-xs text-muted-foreground">Falando com a prefeitura — não feche a tela.</span>
+                    <span className="text-[13px] font-medium leading-5 text-tinta-2">Falando com a prefeitura — não feche a tela.</span>
                   ) : fcNotaVaiParaFila ? (
                     // 07/10/2026: quem não emite fica sabendo ANTES de salvar.
-                    <span className="text-xs text-muted-foreground">Nota fiscal: quem emite é o Estevão. Ao salvar, a comanda fica na fila de notas.</span>
+                    <span className="text-[13px] font-medium leading-5 text-tinta-2">Nota fiscal: quem emite é o Estevão. Ao salvar, a comanda fica na fila de notas.</span>
                   ) : null}
                 </div>
               </form>
@@ -3056,7 +3154,7 @@ function CrmKanbanPageConteudo() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[75] grid place-items-center bg-brand-tinta/30 px-4 py-6 backdrop-blur-sm"
+            className="fixed inset-0 z-[75] grid place-items-center bg-[var(--veu)] px-4 py-6"
             onClick={() => setLeadModalOpen(false)}
           >
             <motion.div
@@ -3064,18 +3162,18 @@ function CrmKanbanPageConteudo() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}
               transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              className="max-h-[86dvh] w-[min(32rem,94vw)] overflow-y-auto rounded-2xl border border-brand-oliva/18 bg-brand-papel p-5 shadow-[0_32px_80px_rgba(43,46,36,0.28)] sm:p-6"
+              className="max-h-[86dvh] w-[min(34rem,94vw)] overflow-y-auto rounded-painel border border-fio bg-folha p-6 font-sans text-tinta shadow-flutua max-md:p-4"
               onClick={(event) => event.stopPropagation()}
               role="dialog"
               aria-label="Novo lead"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="flex items-center gap-2 text-xl text-brand-musgo">
-                    <UserPlus className="h-5 w-5" aria-hidden="true" />
+                  <h2 className="flex items-center gap-2 font-sans text-xl font-bold leading-7 text-tinta">
+                    <UserPlus className="h-5 w-5 text-oliva" aria-hidden="true" />
                     Novo lead sem retrabalho
                   </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm font-medium leading-5 text-tinta-2">
                     Se o telefone já existir, o app avisa e reaproveita o cadastro — nada duplica.
                   </p>
                 </div>
@@ -3083,7 +3181,7 @@ function CrmKanbanPageConteudo() {
                   <X className="h-5 w-5" aria-hidden="true" />
                 </Button>
               </div>
-              <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleCreateLead}>
+              <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleCreateLead}>
                 <div>
                   <Label>Nome</Label>
                   <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Nome ou referência" />
@@ -3154,7 +3252,7 @@ function CrmKanbanPageConteudo() {
 
                 <div>
                   <Label>Temperatura</Label>
-                  <select value={newTemp} onChange={(event) => setNewTemp(event.target.value as CrmLeadTemperature)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                  <select value={newTemp} onChange={(event) => setNewTemp(event.target.value as CrmLeadTemperature)} className={cn(CAMPO, "cursor-pointer")}>
                     <option value="COLD">Frio</option>
                     <option value="WARM">Morno</option>
                     <option value="HOT">Quente</option>
@@ -3162,7 +3260,7 @@ function CrmKanbanPageConteudo() {
                 </div>
                 <div>
                   <Label>Persona</Label>
-                  <select value={newFit} onChange={(event) => setNewFit(event.target.value as CrmPersonaFit)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
+                  <select value={newFit} onChange={(event) => setNewFit(event.target.value as CrmPersonaFit)} className={cn(CAMPO, "cursor-pointer")}>
                     <option value="AAA">AAA</option>
                     <option value="HIGH_TICKET">High ticket</option>
                     <option value="MEDIUM">Médio</option>
@@ -3170,11 +3268,10 @@ function CrmKanbanPageConteudo() {
                     <option value="UNKNOWN">A validar</option>
                   </select>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-2 sm:col-span-2">
-                  <LiquidButton type="submit" size="sm">
-                    <Plus className="h-4 w-4" aria-hidden="true" />
+                <div className="flex flex-wrap gap-2 border-t border-fio pt-4 sm:col-span-2">
+                  <Botao variante="primario" type="submit" icone={<Plus className="h-4 w-4" aria-hidden="true" />}>
                     Criar contato e oportunidade
-                  </LiquidButton>
+                  </Botao>
                   <Button type="button" variant="outline" onClick={() => setLeadModalOpen(false)}>
                     Fechar
                   </Button>
@@ -3184,13 +3281,15 @@ function CrmKanbanPageConteudo() {
           </motion.div>
         ) : null}
       </AnimatePresence>
+      </NoCorpo>
 
       <GuidedTour open={tourOpen} steps={kanbanTourSteps} title="Como usar o Kanban" onClose={() => setTourOpen(false)} />
-          {importOpen ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-brand-tinta/35 p-4 backdrop-blur-sm" onClick={() => setImportOpen(false)}>
-          <div className="w-[min(30rem,94vw)] rounded-xl border border-brand-oliva/25 bg-brand-papel p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <h2 className="text-xl font-bold text-brand-musgo">Importar do Feegow</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+      {importOpen ? (
+        <NoCorpo>
+        <div className="fixed inset-0 z-[75] grid place-items-center bg-[var(--veu)] p-4" onClick={() => setImportOpen(false)}>
+          <div role="dialog" aria-label="Importar do Feegow" className="w-[min(30rem,94vw)] rounded-painel border border-fio bg-folha p-6 font-sans text-tinta shadow-flutua max-md:p-4" onClick={(event) => event.stopPropagation()}>
+            <h2 className="font-sans text-xl font-bold leading-7 text-tinta">Importar do Feegow</h2>
+            <p className="mt-2 text-sm font-medium leading-6 text-tinta-2">
               No Feegow, exporte a lista de pacientes (ou leads) e salve como <strong>CSV</strong>. O app acha as colunas de
               nome, telefone e e-mail sozinho e não duplica quem já existe.
             </p>
@@ -3200,10 +3299,8 @@ function CrmKanbanPageConteudo() {
                   key={value}
                   type="button"
                   onClick={() => setImportAs(value)}
-                  className={cn(
-                    "rounded-full border px-3.5 py-1.5 text-sm font-semibold",
-                    importAs === value ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/60 text-brand-oliva",
-                  )}
+                  aria-pressed={importAs === value}
+                  className={classeDoChip(importAs === value)}
                 >
                   {label}
                 </button>
@@ -3212,7 +3309,7 @@ function CrmKanbanPageConteudo() {
             <input
               type="file"
               accept=".csv,text/csv"
-              className="mt-4 w-full text-sm"
+              className="mt-4 w-full font-sans text-sm font-medium text-tinta-2 file:mr-3 file:h-10 file:cursor-pointer file:rounded-controle file:border file:border-solid file:border-fio-2 file:bg-folha file:px-4 file:font-sans file:text-sm file:font-bold file:text-tinta hover:file:border-borda-campo"
               aria-label="Arquivo CSV do Feegow"
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -3221,7 +3318,7 @@ function CrmKanbanPageConteudo() {
               }}
             />
             {importFeedback ? (
-              <p className="mt-3 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-3 py-2 text-sm font-semibold text-brand-tinta">
+              <p role="status" className="mt-3 rounded-bloco bg-saber px-4 py-3 text-sm font-semibold leading-5 text-tinta">
                 {importFeedback}
               </p>
             ) : null}
@@ -3230,10 +3327,12 @@ function CrmKanbanPageConteudo() {
             </div>
           </div>
         </div>
+        </NoCorpo>
       ) : null}
 
       {/* A senha do gestor entra ANTES de reescrever a régua de um fechamento. */}
       {pedidoCanal ? (
+        <NoCorpo>
         <SenhaDeGestor
           acao={
             pedidoCanal.canal
@@ -3251,9 +3350,13 @@ function CrmKanbanPageConteudo() {
             });
           }}
         />
+        </NoCorpo>
       ) : null}
 </div>
   );
+  // Tela cheia (08/10/2026): a página sobe para o <body>, para o topo da casca não
+  // cobrir o cabeçalho. O estado mora aqui em cima, então nada se perde na troca.
+  return fullscreen ? <NoCorpo>{pagina}</NoCorpo> : pagina;
 }
 
 // A tela inteira passa pelo controle de Administração → Acessos, igual às outras

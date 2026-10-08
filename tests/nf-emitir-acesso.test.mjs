@@ -145,7 +145,8 @@ test("Lançar Dia: a nota só sai ao lançar para quem pode; o botão da lista t
   assert.match(src, /const emiteAoLancar = focusLigada && podeEmitir && /);
   assert.match(src, /const notaVaiParaFila = focusLigada && !podeEmitir && /);
   assert.match(src, /\$\{notaVaiParaFila \? ` \$\{recadoNotaNaFila\}` : ""\}/, "o recado entra na mensagem de lançado");
-  assert.match(src, /pedeEmissao && !isPreview && podeEmitir \? \(\s*<Button[\s\S]{0,200}setNotaDaComanda\(sale\)/, '"Emitir nota" da lista só para quem pode');
+  // 08/10/2026 (redesenho Papel & Musgo): o botão virou o <Botao> da fundação; a regra é a mesma.
+  assert.match(src, /pedeEmissao && !isPreview && podeEmitir \? \(\s*<Bot(?:ton|ao)\b[\s\S]{0,200}setNotaDaComanda\(sale\)/, '"Emitir nota" da lista só para quem pode');
   assert.match(src, /podeEmitir,\s*\}\);/, "e o emissor recebe a permissão");
 });
 
@@ -154,7 +155,8 @@ test("Diálogo da comanda: sem a permissão não há botão de emitir", () => {
   assert.match(src, /const temPermissao = podeEmitirNota\(pessoa\);/);
   assert.match(src, /const podeEmitir = temPermissao && /);
   assert.match(src, /podeEmitir: temPermissao,/);
-  assert.match(src, /\{temPermissao \? \(\s*<LiquidButton[\s\S]{0,400}\) : \(\s*<p[^>]*>\{avisoQuemEmiteNota\}<\/p>/);
+  // 08/10/2026 (redesenho Papel & Musgo): o botão virou o <Botao> da fundação; a regra é a mesma.
+  assert.match(src, /\{temPermissao \? \(\s*<(?:LiquidButton|Botao)\b[\s\S]{0,400}\) : \(\s*<p[^>]*>\{avisoQuemEmiteNota\}<\/p>/);
 });
 
 test("EmitirNfseFocus: o botão depende da permissão, e não do 'só vê' da tela", () => {
@@ -172,8 +174,9 @@ test("Lote de notas: emitir depende da permissão; tirar do lote continua com qu
   assert.match(src, /async function emitirTodas\(\) \{\s*if \(!podeEmitir\) return/);
   // 07/10/2026: além da permissão, o botão direto só aparece na linha "pronta" (ficha certa com CPF,
   // sem nota por outra tela) — senão o caminho é o campo de CPF da linha (tests/cpf-na-nota.test.mjs).
-  assert.match(src, /\{podeEmitir && \(item\.status === "PENDENTE" \|\| item\.status === "ERRO"\) && pronta \? \(\s*<Button[\s\S]{0,700}> Emitir\s*<\/Button>/);
-  assert.match(src, /\{!readOnly && \(item\.status === "PENDENTE" \|\| item\.status === "ERRO"\) \? \(\s*<Button[\s\S]{0,300}retirar\(item\)/);
+  // 08/10/2026 (redesenho): o botão é o Botao da fundação; a regra é a mesma.
+  assert.match(src, /\{podeEmitir && \(item\.status === "PENDENTE" \|\| item\.status === "ERRO"\) && pronta \? \(\s*<(?:Button|Botao)\b[\s\S]{0,700}>\s*Emitir\s*<\/(?:Button|Botao)>/);
+  assert.match(src, /\{!readOnly && \(item\.status === "PENDENTE" \|\| item\.status === "ERRO"\) \? \(\s*<(?:Button|Botao)\b[\s\S]{0,300}retirar\(item\)/);
   assert.match(src, /\{podeEmitir && pendentes\.length \? \(/, "o botão do lote todo");
   assert.doesNotMatch(src, /!readOnly && pendentes\.length/, "emitir o lote não depende mais do 'só vê'");
   assert.match(src, /\) : pendentes\.length \? \(\s*<p[^>]*>\{avisoQuemEmiteNota\}<\/p>/);

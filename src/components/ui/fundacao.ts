@@ -7,7 +7,7 @@ export { Abas, type AbasProps, type ItemAba } from "./abas";
 export { BlocoFolha, BlocoSaber, type BlocoFolhaProps, type BlocoProps } from "./blocos";
 export { Botao, Giro, LinkSeta, botaoClasses, type BotaoProps, type LinkSetaProps, type TamanhoBotao, type VarianteBotao } from "./botao";
 export { BarraDecisao, BotaoDecisao, type BarraDecisaoProps, type BotaoDecisaoProps, type TipoDecisao } from "./botao-decisao";
-export { Cabecalho, FraseDoFluxo, type CabecalhoProps, type FraseDoFluxoProps } from "./cabecalho";
+export { Cabecalho, ContextoAbasDaPagina, FraseDoFluxo, type CabecalhoProps, type FraseDoFluxoProps } from "./cabecalho";
 export { CampoBusca, type CampoBuscaProps } from "./campo-busca";
 export { Contador, type ContadorProps, type TomContador } from "./contador";
 export { FioDoMes, type FioDoMesProps } from "./fio-do-mes";

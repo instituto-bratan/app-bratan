@@ -1,13 +1,11 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
 import {
   CalendarDays,
   ChevronDown,
   ExternalLink,
   Film,
   Layers,
-  Megaphone,
   MessageCircle,
   Plus,
   RefreshCw,
@@ -18,13 +16,8 @@ import {
 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, FraseDoFluxo, Giro, MarcasDeEtapa } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { canMarketing } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
@@ -42,6 +35,18 @@ import {
 } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import { confirmar } from "@/components/ui/avisos";
+import {
+  Aviso,
+  CampoSelecao,
+  Etiqueta,
+  GrupoDeLeituras,
+  Input,
+  Label,
+  Leitura,
+  RUBRICA,
+  TITULO_SECAO,
+  type TomEtiqueta,
+} from "@/features/crm/comercialVisual";
 
 const marketingStorageKey = "app-bratan-marketing-briefings";
 
@@ -52,12 +57,10 @@ const pieceStatusLabels: Record<MarketingPiece["status"], string> = {
   EDITADO: "Editado",
   POSTADO: "Postado",
 };
-const pieceStatusClasses: Record<MarketingPiece["status"], string> = {
-  A_PRODUZIR: "border-brand-oliva/30 bg-white text-brand-musgo",
-  GRAVADO: "border-amber-300 bg-amber-50 text-amber-800",
-  EDITADO: "border-sky-300 bg-sky-50 text-sky-800",
-  POSTADO: "border-emerald-300 bg-emerald-50 text-emerald-800",
-};
+// O status da peça é uma trilha de quatro etapas (08/10/2026): a mesma linguagem
+// das marcas do selo — cheia = feita, vazada = é a vez, apagada = ainda não.
+// Postado fecha a trilha (as quatro cheias) e ganha o verde de "deu certo".
+const pieceStatusEtapas: Record<MarketingPiece["status"], number> = { A_PRODUZIR: 0, GRAVADO: 1, EDITADO: 2, POSTADO: 4 };
 
 const pieceFormats = ["REEL", "CARROSSEL", "STORY", "YOUTUBE", "TEASER", "OUTRO"];
 
@@ -67,18 +70,50 @@ const briefingStatusLabels: Record<MarketingBriefing["status"], string> = {
   PROCESSADO: "Plano pronto",
   ERRO: "Deu erro",
 };
+const briefingStatusTom: Record<MarketingBriefing["status"], TomEtiqueta> = {
+  PENDENTE: "neutro",
+  PROCESSANDO: "neutro",
+  PROCESSADO: "ok",
+  ERRO: "erro",
+};
 
 // Cor e rótulo por formato — usados na legenda, no calendário e nas peças.
-const formatStyles: Record<string, { label: string; chip: string; dot: string; text: string }> = {
-  REEL: { label: "Reel", chip: "border-rose-200 bg-rose-50 text-rose-700", dot: "bg-rose-500", text: "text-rose-700" },
-  CARROSSEL: { label: "Carrossel", chip: "border-emerald-200 bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", text: "text-emerald-700" },
-  STORY: { label: "Story", chip: "border-amber-200 bg-amber-50 text-amber-700", dot: "bg-amber-500", text: "text-amber-700" },
-  YOUTUBE: { label: "YouTube", chip: "border-red-200 bg-red-50 text-red-700", dot: "bg-red-500", text: "text-red-700" },
-  TEASER: { label: "Teaser", chip: "border-violet-200 bg-violet-50 text-violet-700", dot: "bg-violet-500", text: "text-violet-700" },
-  OUTRO: { label: "Outro", chip: "border-slate-200 bg-slate-50 text-slate-700", dot: "bg-slate-400", text: "text-slate-700" },
+// Papel & Musgo (08/10/2026): a cor do formato vira só um ponto/traço ao lado da
+// palavra (o fundo das etiquetas é neutro). Vermelho, verde e laranja cheios
+// ficam para situação (erro, deu certo, atenção), não para tipo de peça.
+const formatStyles: Record<string, { label: string; dot: string; barra: string }> = {
+  REEL: { label: "Reel", dot: "bg-erro", barra: "shadow-[inset_3px_0_0_rgb(var(--erro-rgb))]" },
+  CARROSSEL: { label: "Carrossel", dot: "bg-ok", barra: "shadow-[inset_3px_0_0_rgb(var(--ok-rgb))]" },
+  STORY: { label: "Story", dot: "bg-atencao", barra: "shadow-[inset_3px_0_0_rgb(var(--atencao-rgb))]" },
+  YOUTUBE: { label: "YouTube", dot: "bg-erro", barra: "shadow-[inset_3px_0_0_rgb(var(--erro-rgb))]" },
+  TEASER: { label: "Teaser", dot: "bg-musgo", barra: "shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))]" },
+  OUTRO: { label: "Outro", dot: "bg-tinta-2", barra: "shadow-[inset_3px_0_0_rgb(var(--tinta-2-rgb))]" },
 };
 function fmtStyle(format: string) {
   return formatStyles[(format || "").toUpperCase()] ?? formatStyles.OUTRO;
+}
+
+/** A etiqueta do formato: fundo neutro, ponto na cor do formato e a palavra. */
+function EtiquetaDoFormato({ format, children }: { format: string; children?: ReactNode }) {
+  const style = fmtStyle(format);
+  return (
+    <span className="inline-flex h-6 max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-controle bg-saber px-2 text-xs font-bold leading-5 text-tinta">
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", style.dot)} aria-hidden="true" />
+      {children ?? style.label}
+    </span>
+  );
+}
+
+/** Rubrica de seção dentro da semana (Reels · alcance), com o ponto do formato. */
+function RubricaDoFormato({ format, icone, children }: { format: string; icone: ReactNode; children: ReactNode }) {
+  const style = fmtStyle(format);
+  return (
+    <p className="flex items-center gap-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", style.dot)} aria-hidden="true" />
+      <span className="text-oliva [&>svg]:h-4 [&>svg]:w-4">{icone}</span>
+      {children}
+    </p>
+  );
 }
 
 const weekdayShort = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -122,56 +157,56 @@ function planIsRich(plan: MarketingPlan | null): boolean {
   );
 }
 
+/** Uma semana do plano: linha que abre (dentro da folha "Detalhe por semana"). */
 function WeekCard({ week }: { week: MarketingWeek }) {
   const [open, setOpen] = useState(false);
   return (
-    <Card className="overflow-hidden">
+    <div className="[&+&]:border-t [&+&]:border-fio">
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-brand-papel/50"
+        className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors duration-150 ease-papel hover:bg-papel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foco max-md:px-4"
       >
-        <div className="mt-0.5 rounded-lg bg-brand-musgo px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-brand-papel">
+        <Etiqueta tom="musgo" className="mt-0.5 uppercase tracking-[0.04em]">
           {week.label}
-        </div>
+        </Etiqueta>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-brand-musgo">{week.theme}</p>
-          {week.dateRange ? <p className="text-xs text-brand-oliva">{week.dateRange}</p> : null}
+          <p className="text-sm font-bold leading-5 text-tinta">{week.theme}</p>
+          {week.dateRange ? <p className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">{week.dateRange}</p> : null}
           {week.angle && !open ? (
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{week.angle}</p>
+            <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-5 text-tinta-2">{week.angle}</p>
           ) : null}
         </div>
         <ChevronDown
-          className={cn("mt-1 h-5 w-5 shrink-0 text-brand-oliva transition-transform", open && "rotate-180")}
+          className={cn("mt-0.5 h-5 w-5 shrink-0 text-tinta-2 transition-transform duration-150 ease-papel", open && "rotate-180")}
           aria-hidden="true"
         />
       </button>
 
       {open ? (
-        <CardContent className="space-y-4 border-t border-brand-oliva/15 bg-white/60 pt-4">
-          {week.angle ? <p className="text-sm leading-6 text-muted-foreground">{week.angle}</p> : null}
+        <div className="grid gap-5 border-t border-fio bg-papel px-5 py-5 max-md:px-4">
+          {week.angle ? <p className="text-sm font-medium leading-6 text-tinta-2">{week.angle}</p> : null}
           {week.mediaHook ? (
-            <p className="rounded-lg border border-brand-dourado/30 bg-brand-dourado/10 px-3 py-2 text-xs leading-5 text-brand-musgo">
-              <span className="font-semibold">Gancho de mídia:</span> {week.mediaHook}
+            <p className="rounded-bloco bg-saber px-3 py-2 text-[13px] font-medium leading-5 text-tinta">
+              <span className="font-bold">Gancho de mídia:</span> {week.mediaHook}
             </p>
           ) : null}
 
           {week.reels && week.reels.length > 0 ? (
-            <section className="space-y-2">
-              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-rose-700">
-                <Film className="h-4 w-4" aria-hidden="true" /> Reels · alcance
-              </p>
+            <section className="grid gap-2">
+              <RubricaDoFormato format="REEL" icone={<Film aria-hidden="true" />}>Reels · alcance</RubricaDoFormato>
               {week.reels.map((reel) => (
-                <div key={reel.n} className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
-                  <p className="text-sm font-semibold text-brand-musgo">
-                    <span className="mr-1.5 text-rose-500">#{reel.n}</span>
+                <div key={reel.n} className={cn("rounded-bloco bg-folha p-3 pl-4", fmtStyle("REEL").barra)}>
+                  <p className="text-sm font-bold leading-5 text-tinta">
+                    <span className="mr-1.5 tabular-nums text-tinta-2">#{reel.n}</span>
                     {reel.title}
                   </p>
                   {reel.description ? (
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{reel.description}</p>
+                    <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{reel.description}</p>
                   ) : null}
                   {reel.cta ? (
-                    <p className="mt-1.5 text-xs font-semibold text-rose-700">CTA · {reel.cta}</p>
+                    <p className="mt-1.5 text-xs font-bold text-tinta">CTA · {reel.cta}</p>
                   ) : null}
                 </div>
               ))}
@@ -179,28 +214,20 @@ function WeekCard({ week }: { week: MarketingWeek }) {
           ) : null}
 
           {week.carrosseis && week.carrosseis.length > 0 ? (
-            <section className="space-y-2">
-              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-emerald-700">
-                <Layers className="h-4 w-4" aria-hidden="true" /> Carrosséis · aprofundam
-              </p>
+            <section className="grid gap-2">
+              <RubricaDoFormato format="CARROSSEL" icone={<Layers aria-hidden="true" />}>Carrosséis · aprofundam</RubricaDoFormato>
               {week.carrosseis.map((carrossel) => (
-                <div key={carrossel.n} className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
-                  <p className="text-sm font-semibold text-brand-musgo">
-                    <span className="mr-1.5 text-emerald-600">#{carrossel.n}</span>
-                    {carrossel.title}
-                    {carrossel.telas ? (
-                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                        {carrossel.telas} telas
-                      </span>
-                    ) : null}
-                    {carrossel.tag ? (
-                      <span className="ml-2 rounded-full bg-brand-dourado/20 px-2 py-0.5 text-[10px] font-bold uppercase text-brand-musgo">
-                        {carrossel.tag}
-                      </span>
-                    ) : null}
+                <div key={carrossel.n} className={cn("rounded-bloco bg-folha p-3 pl-4", fmtStyle("CARROSSEL").barra)}>
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-bold leading-5 text-tinta">
+                    <span>
+                      <span className="mr-1.5 tabular-nums text-tinta-2">#{carrossel.n}</span>
+                      {carrossel.title}
+                    </span>
+                    {carrossel.telas ? <Etiqueta>{carrossel.telas} telas</Etiqueta> : null}
+                    {carrossel.tag ? <Etiqueta tom="musgo" className="uppercase">{carrossel.tag}</Etiqueta> : null}
                   </p>
                   {carrossel.roteiro ? (
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{carrossel.roteiro}</p>
+                    <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{carrossel.roteiro}</p>
                   ) : null}
                 </div>
               ))}
@@ -208,32 +235,28 @@ function WeekCard({ week }: { week: MarketingWeek }) {
           ) : null}
 
           {week.youtube ? (
-            <section className="space-y-2">
-              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-red-700">
-                <Youtube className="h-4 w-4" aria-hidden="true" /> YouTube · autoridade
-              </p>
-              <div className="rounded-xl border border-red-100 bg-red-50/40 p-3">
-                <p className="text-sm font-semibold text-brand-musgo">{week.youtube.title}</p>
+            <section className="grid gap-2">
+              <RubricaDoFormato format="YOUTUBE" icone={<Youtube aria-hidden="true" />}>YouTube · autoridade</RubricaDoFormato>
+              <div className={cn("rounded-bloco bg-folha p-3 pl-4", fmtStyle("YOUTUBE").barra)}>
+                <p className="text-sm font-bold leading-5 text-tinta">{week.youtube.title}</p>
                 {week.youtube.description ? (
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{week.youtube.description}</p>
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{week.youtube.description}</p>
                 ) : null}
               </div>
             </section>
           ) : null}
 
           {week.stories ? (
-            <section className="space-y-2">
-              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-amber-700">
-                <MessageCircle className="h-4 w-4" aria-hidden="true" /> Stories da semana
-              </p>
-              <p className="rounded-xl border border-amber-100 bg-amber-50/40 p-3 text-xs leading-5 text-muted-foreground">
+            <section className="grid gap-2">
+              <RubricaDoFormato format="STORY" icone={<MessageCircle aria-hidden="true" />}>Stories da semana</RubricaDoFormato>
+              <p className={cn("rounded-bloco bg-folha p-3 pl-4 text-[13px] font-medium leading-5 text-tinta-2", fmtStyle("STORY").barra)}>
                 {week.stories}
               </p>
             </section>
           ) : null}
-        </CardContent>
+        </div>
       ) : null}
-    </Card>
+    </div>
   );
 }
 
@@ -445,481 +468,439 @@ export function MarketingPage() {
     return cells;
   }, [plan, selected]);
 
+  // CABEÇALHO (08/10/2026, redesenho etapa 3): um cabeçalho só, com o mês aberto
+  // e a produção numa frase; o envio do briefing e o acompanhamento das peças
+  // moram em folhas (é onde se age); o plano (clima, cadência, calendário,
+  // stories, semanas) é leitura, em blocos "para saber". Sem degradê e sem
+  // cartões coloridos: a cor do formato virou um ponto ao lado da palavra.
+  const fraseDoTopo = selected ? (
+    <>
+      <strong>{monthLabelFromRef(selected.monthRef)}</strong>:{" "}
+      {sortedPieces.length === 0
+        ? "nenhuma peça no acompanhamento ainda."
+        : `${postedCount} de ${sortedPieces.length} ${sortedPieces.length === 1 ? "peça postada" : "peças postadas"}.`}
+      {selected.status === "ERRO" ? <span className="alerta"> A IA não conseguiu ler este briefing.</span> : null}
+    </>
+  ) : (
+    <>
+      <strong>Nenhum briefing ainda.</strong> Envie o do mês abaixo ou mande pelo chat.
+    </>
+  );
+
   return (
     <AccessGate allowed={canMarketing} label="Marketing" module="marketing">
-      <div className="mx-auto w-full max-w-6xl space-y-6">
-        <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Megaphone className="h-6 w-6 text-brand-musgo" aria-hidden="true" />
-            <h1 className="text-3xl text-brand-musgo">Marketing — Briefing do Mês</h1>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            O plano de conteúdo completo do mês numa tela: cadência, o clima do mês, o calendário, o motor de stories e o
-            detalhe de cada semana. Todo mês é só me mandar o briefing pelo chat que eu deixo tudo montado aqui.
-          </p>
-        </motion.header>
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 font-sans max-md:gap-4">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Comercial · Marketing"
+          titulo="Briefing do mês"
+          frase={fraseDoTopo}
+          rodape={
+            <FraseDoFluxo>
+              O plano de conteúdo completo do mês numa tela: cadência, o clima do mês, o calendário, o motor de stories e o
+              detalhe de cada semana. Todo mês é só me mandar o briefing pelo chat que eu deixo tudo montado aqui.
+            </FraseDoFluxo>
+          }
+        />
 
         <AvisoSoVe soVe={telaMkt.soVe} />
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Upload className="h-5 w-5" aria-hidden="true" /> Enviar briefing
-              <InfoTip title="Como funciona">
-                Duas formas: (1) me mande o briefing pelo chat e eu monto o plano completo aqui; (2) envie a foto/PDF abaixo
-                para a IA preencher sozinha (precisa da chave configurada).
-              </InfoTip>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleUpload} className="grid gap-3 sm:grid-cols-[160px_1fr_auto] sm:items-end">
-              <div className="space-y-1.5">
-                <Label htmlFor="marketing-month">Mês do briefing</Label>
-                <Input id="marketing-month" type="month" value={monthRef} onChange={(event) => setMonthRef(event.target.value)} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="marketing-file">Foto ou documento</Label>
-                <Input id="marketing-file" ref={fileInputRef} type="file" accept="image/*,application/pdf,.txt,.md,.html" />
-              </div>
-              <LiquidButton type="submit" disabled={uploading || semEdicao} className="sm:mb-0.5">
-                <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
-                {uploading ? "Enviando…" : "Preencher com IA"}
-              </LiquidButton>
-            </form>
-            {feedback ? <p className="mt-3 text-sm font-medium text-brand-musgo">{feedback}</p> : null}
-          </CardContent>
-        </Card>
+        <BlocoFolha as="section" respiro aria-labelledby="marketing-enviar">
+          <h2 id="marketing-enviar" className={cn(TITULO_SECAO, "flex items-center gap-2")}>
+            <Upload className="h-4 w-4 text-oliva" aria-hidden="true" /> Enviar briefing
+            <InfoTip title="Como funciona">
+              Duas formas: (1) me mande o briefing pelo chat e eu monto o plano completo aqui; (2) envie a foto/PDF abaixo
+              para a IA preencher sozinha (precisa da chave configurada).
+            </InfoTip>
+          </h2>
+          <form onSubmit={handleUpload} className="mt-4 grid gap-3 sm:grid-cols-[176px_1fr_auto] sm:items-end">
+            <div>
+              <Label htmlFor="marketing-month">Mês do briefing</Label>
+              <Input id="marketing-month" type="month" value={monthRef} onChange={(event) => setMonthRef(event.target.value)} required />
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="marketing-file">Foto ou documento</Label>
+              <Input
+                id="marketing-file"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf,.txt,.md,.html"
+                className="cursor-pointer py-0 pl-1 leading-[38px] file:mr-3 file:h-8 file:cursor-pointer file:rounded-controle file:border file:border-solid file:border-fio-2 file:bg-papel file:px-3 file:font-sans file:text-[13px] file:font-bold file:text-tinta hover:file:border-borda-campo"
+              />
+            </div>
+            <Botao variante="primario" type="submit" disabled={uploading || semEdicao} carregando={uploading} icone={<Sparkles className="h-4 w-4" aria-hidden="true" />}>
+              {uploading ? "Enviando…" : "Preencher com IA"}
+            </Botao>
+          </form>
+          {feedback ? (
+            <Aviso tom="info" className="mt-4">
+              {feedback}
+            </Aviso>
+          ) : null}
+        </BlocoFolha>
 
         {briefings.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
+          <GrupoDeLeituras rotulo="Briefings por mês">
             {briefings.map((briefing) => (
-              <button
-                key={briefing.id}
-                type="button"
-                onClick={() => setSelectedId(briefing.id)}
-                className={cn(
-                  "rounded-full border px-4 py-2 text-sm font-semibold transition",
-                  selected?.id === briefing.id
-                    ? "border-brand-musgo bg-brand-musgo text-brand-papel"
-                    : "border-brand-oliva/30 bg-white text-brand-musgo hover:border-brand-musgo/50",
-                )}
-              >
+              <Leitura key={briefing.id} ativa={selected?.id === briefing.id} onClick={() => setSelectedId(briefing.id)}>
                 {monthLabelFromRef(briefing.monthRef)}
-                <span className="ml-2 text-xs font-normal opacity-80">{briefingStatusLabels[briefing.status]}</span>
-              </button>
+                <span className="font-medium text-tinta-2">· {briefingStatusLabels[briefing.status]}</span>
+              </Leitura>
             ))}
-          </div>
+          </GrupoDeLeituras>
         ) : (
-          <Card>
-            <CardContent className="p-6 text-sm text-muted-foreground">
+          <BlocoSaber className="py-4">
+            <p className="text-sm font-medium leading-6 text-tinta-2">
               Nenhum briefing ainda. Me mande o briefing do mês pelo chat que eu monto o plano completo aqui, ou envie a
               foto/PDF acima para a IA preencher.
-            </CardContent>
-          </Card>
+            </p>
+          </BlocoSaber>
         )}
 
         {selected ? (
-          <div className="space-y-6">
+          <div className="grid gap-6 max-md:gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="gold">{monthLabelFromRef(selected.monthRef)}</Badge>
-              <Badge
-                className={cn(
-                  selected.status === "PROCESSADO" && "border-emerald-300 bg-emerald-50 text-emerald-800",
-                  selected.status === "ERRO" && "border-red-300 bg-red-50 text-red-700",
-                )}
-              >
-                {briefingStatusLabels[selected.status]}
-              </Badge>
-              {selected.sourcePath && useRemote ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => void openOriginal(selected)}>
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Ver briefing original
-                </Button>
-              ) : null}
-              {selected.status === "ERRO" && useRemote ? (
-                <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => void retryParse(selected)}>
-                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Tentar com a IA de novo
-                </Button>
-              ) : null}
-              <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => void removeBriefing(selected)}>
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" /> Excluir
-              </Button>
+              <Etiqueta tom="musgo">{monthLabelFromRef(selected.monthRef)}</Etiqueta>
+              <Etiqueta tom={briefingStatusTom[selected.status]}>{briefingStatusLabels[selected.status]}</Etiqueta>
+              <span className="ml-auto flex flex-wrap items-center gap-2 max-md:ml-0">
+                {selected.sourcePath && useRemote ? (
+                  <Botao tamanho="pq" onClick={() => void openOriginal(selected)} icone={<ExternalLink className="h-4 w-4" aria-hidden="true" />}>
+                    Ver briefing original
+                  </Botao>
+                ) : null}
+                {selected.status === "ERRO" && useRemote ? (
+                  <Botao tamanho="pq" disabled={semEdicao} onClick={() => void retryParse(selected)} icone={<RefreshCw className="h-4 w-4" aria-hidden="true" />}>
+                    Tentar com a IA de novo
+                  </Botao>
+                ) : null}
+                <Botao variante="perigo" tamanho="pq" disabled={semEdicao} onClick={() => void removeBriefing(selected)} icone={<Trash2 className="h-4 w-4" aria-hidden="true" />}>
+                  Excluir
+                </Botao>
+              </span>
             </div>
 
-            {selected.status === "ERRO" && selected.errorDetail ? (
-              <Card className="border-red-200 bg-red-50/60">
-                <CardContent className="p-4 text-sm text-red-700">{selected.errorDetail}</CardContent>
-              </Card>
-            ) : null}
+            {selected.status === "ERRO" && selected.errorDetail ? <Aviso tom="erro">{selected.errorDetail}</Aviso> : null}
 
             {(selected.status === "PENDENTE" || selected.status === "PROCESSANDO") && useRemote ? (
-              <Card>
-                <CardContent className="flex items-center gap-3 p-5 text-sm font-medium text-brand-musgo">
-                  <span className="h-2.5 w-2.5 rounded-full bg-brand-dourado motion-safe:animate-pulse" aria-hidden="true" />
-                  A IA está lendo o briefing e montando o plano. Isso leva menos de um minuto — a tela atualiza sozinha.
-                </CardContent>
-              </Card>
+              <Aviso tom="info" icone={<Giro className="text-musgo" />}>
+                A IA está lendo o briefing e montando o plano. Isso leva menos de um minuto — a tela atualiza sozinha.
+              </Aviso>
             ) : null}
 
             {plan ? (
               <>
                 {/* Título / subtítulo do briefing */}
                 {plan.title || plan.subtitle ? (
-                  <div className="rounded-2xl border border-brand-oliva/20 bg-gradient-to-br from-brand-musgo to-brand-oliva px-5 py-6 text-brand-papel shadow-sm">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-papel/70">
-                      Instituto Bratan · Motor de Autoridade
-                    </p>
-                    {plan.title ? <h2 className="mt-1 text-2xl font-semibold">{plan.title}</h2> : null}
-                    {plan.subtitle ? <p className="mt-1.5 max-w-2xl text-sm leading-6 text-brand-papel/85">{plan.subtitle}</p> : null}
-                  </div>
+                  <BlocoSaber as="section" aria-label="Capa do briefing">
+                    <p className={RUBRICA}>Instituto Bratan · Motor de Autoridade</p>
+                    {plan.title ? <h2 className="mt-2 text-xl font-bold leading-7 text-tinta [text-wrap:balance]">{plan.title}</h2> : null}
+                    {plan.subtitle ? <p className="mt-1.5 max-w-3xl text-sm font-medium leading-6 text-tinta-2">{plan.subtitle}</p> : null}
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Cadência (destaques do topo) */}
                 {plan.cadenceHeader && plan.cadenceHeader.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    {plan.cadenceHeader.map((item, index) => (
-                      <Card key={`${item.format}-${index}`} className="border-brand-oliva/20">
-                        <CardContent className="p-4">
-                          <p className="text-2xl font-bold text-brand-musgo">{item.target}</p>
-                          <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">{item.format}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                  <BlocoSaber as="section" aria-label="Cadência do briefing">
+                    <dl className="grid grid-cols-2 gap-x-8 gap-y-5 lg:grid-cols-4">
+                      {plan.cadenceHeader.map((item, index) => (
+                        <div key={`${item.format}-${index}`} className="min-w-0">
+                          <dt className={RUBRICA}>{item.format}</dt>
+                          <dd className="mt-2 font-serifa text-[28px] font-normal leading-9 text-tinta [font-variant-numeric:lining-nums_tabular-nums]">{item.target}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Como usar */}
                 {plan.howToUse ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Como usar este briefing</CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm leading-6 text-muted-foreground">{plan.howToUse}</CardContent>
-                  </Card>
+                  <BlocoSaber as="section" aria-labelledby="marketing-como-usar">
+                    <h2 id="marketing-como-usar" className={TITULO_SECAO}>Como usar este briefing</h2>
+                    <p className="mt-2 text-sm font-medium leading-6 text-tinta-2">{plan.howToUse}</p>
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Clima do mês + âncoras de notícia */}
                 {plan.climate ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">O clima do mês — por que estes temas</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {plan.climate.intro ? (
-                        <p className="text-sm leading-6 text-muted-foreground">{plan.climate.intro}</p>
-                      ) : null}
-                      {plan.climate.anchors.length > 0 ? (
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {plan.climate.anchors.map((anchor, index) => (
-                            <div key={index} className="rounded-xl border border-brand-oliva/20 bg-white/70 p-3">
-                              <p className="text-sm font-semibold text-brand-musgo">{anchor.title}</p>
-                              <p className="mt-1 text-xs leading-5 text-muted-foreground">{anchor.description}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </CardContent>
-                  </Card>
+                  <BlocoSaber as="section" aria-labelledby="marketing-clima" className="grid gap-3">
+                    <h2 id="marketing-clima" className={TITULO_SECAO}>O clima do mês — por que estes temas</h2>
+                    {plan.climate.intro ? <p className="text-sm font-medium leading-6 text-tinta-2">{plan.climate.intro}</p> : null}
+                    {plan.climate.anchors.length > 0 ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {plan.climate.anchors.map((anchor, index) => (
+                          <div key={index} className="rounded-bloco bg-folha p-4">
+                            <p className="text-sm font-bold leading-5 text-tinta">{anchor.title}</p>
+                            <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{anchor.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Cadência do mês (totais) + legenda */}
                 {(plan.cadenceTotals && plan.cadenceTotals.length > 0) || (plan.legend && plan.legend.length > 0) ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">A cadência do mês</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {plan.cadenceTotals && plan.cadenceTotals.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                          {plan.cadenceTotals.map((total, index) => (
-                            <div key={index} className="rounded-xl border border-brand-oliva/20 bg-brand-papel/60 p-3 text-center">
-                              <p className="text-xl font-bold text-brand-musgo">{total.count}</p>
-                              <p className="text-xs font-semibold text-brand-oliva">{total.format}</p>
-                              {total.detail ? <p className="mt-0.5 text-[11px] text-muted-foreground">{total.detail}</p> : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {plan.legend && plan.legend.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {plan.legend.map((item, index) => {
-                            const style = fmtStyle(item.format);
-                            return (
-                              <span
-                                key={index}
-                                className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold", style.chip)}
-                              >
-                                <span className={cn("h-2 w-2 rounded-full", style.dot)} aria-hidden="true" />
-                                {item.format} · {item.role}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </CardContent>
-                  </Card>
+                  <BlocoSaber as="section" aria-labelledby="marketing-cadencia" className="grid gap-4">
+                    <h2 id="marketing-cadencia" className={TITULO_SECAO}>A cadência do mês</h2>
+                    {plan.cadenceTotals && plan.cadenceTotals.length > 0 ? (
+                      <dl className="grid grid-cols-2 gap-x-8 gap-y-5 lg:grid-cols-4">
+                        {plan.cadenceTotals.map((total, index) => (
+                          <div key={index} className="min-w-0">
+                            <dt className={RUBRICA}>{total.format}</dt>
+                            <dd className="mt-2 font-serifa text-[32px] font-normal leading-10 text-tinta [font-variant-numeric:lining-nums_tabular-nums]">{total.count}</dd>
+                            {total.detail ? <dd className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{total.detail}</dd> : null}
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+                    {plan.legend && plan.legend.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 border-t border-fio pt-4">
+                        {plan.legend.map((item, index) => (
+                          <EtiquetaDoFormato key={index} format={item.format}>
+                            {item.format} · {item.role}
+                          </EtiquetaDoFormato>
+                        ))}
+                      </div>
+                    ) : null}
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Calendário do mês */}
                 {calendarGrid ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <CalendarDays className="h-4 w-4" aria-hidden="true" /> Calendário de {monthLabelFromRef(selected.monthRef)}
-                      </CardTitle>
-                      <p className="text-xs text-muted-foreground">
+                  <BlocoSaber as="section" aria-labelledby="marketing-calendario" className="grid gap-4">
+                    <div>
+                      <h2 id="marketing-calendario" className={cn(TITULO_SECAO, "flex items-center gap-2")}>
+                        <CalendarDays className="h-4 w-4 text-oliva" aria-hidden="true" /> Calendário de {monthLabelFromRef(selected.monthRef)}
+                      </h2>
+                      <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
                         O mês inteiro numa tela. Stories rodam todos os dias pelo motor de 8 blocos. Deslize para o lado no
                         celular.
                       </p>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
-                        <div className="min-w-[640px]">
-                          <div className="mb-1 grid grid-cols-7 gap-1.5">
-                            {weekdayShort.map((weekday) => (
-                              <div key={weekday} className="text-center text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
-                                {weekday}
-                              </div>
-                            ))}
-                          </div>
-                          <div className="grid grid-cols-7 gap-1.5">
-                            {calendarGrid.map((cell, index) => {
-                              if (!cell) return <div key={`blank-${index}`} className="min-h-[92px] rounded-lg" />;
-                              const entry = cell.entry;
-                              return (
-                                <div
-                                  key={cell.day}
-                                  className={cn(
-                                    "min-h-[92px] rounded-lg border p-1.5",
-                                    entry?.rest
-                                      ? "border-dashed border-brand-oliva/30 bg-brand-papel/40"
-                                      : "border-brand-oliva/20 bg-white/70",
-                                  )}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs font-bold text-brand-musgo">{cell.day}</span>
-                                    {entry?.week ? (
-                                      <span className="rounded bg-brand-musgo px-1 py-0.5 text-[9px] font-bold text-brand-papel">
-                                        {entry.week}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <div className="mt-1 space-y-1">
-                                    {entry?.rest ? (
-                                      <p className="text-[10px] font-semibold text-brand-oliva">Descanso</p>
-                                    ) : null}
-                                    {(entry?.items ?? []).map((item, itemIndex) => {
-                                      const style = fmtStyle(item.format);
-                                      return (
-                                        <div
-                                          key={itemIndex}
-                                          className={cn("rounded border px-1 py-0.5 text-[10px] font-medium leading-tight", style.chip)}
-                                        >
-                                          {item.title}
-                                        </div>
-                                      );
-                                    })}
-                                    <p className="text-[9px] italic text-brand-oliva/70">◦ stories</p>
-                                  </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <div className="min-w-[700px]">
+                        <div className="mb-2 grid grid-cols-7 gap-2">
+                          {weekdayShort.map((weekday) => (
+                            <div key={weekday} className="text-center text-xs font-bold uppercase tracking-[0.06em] text-tinta-2">
+                              {weekday}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-7 gap-2">
+                          {calendarGrid.map((cell, index) => {
+                            if (!cell) return <div key={`blank-${index}`} className="min-h-[96px]" />;
+                            const entry = cell.entry;
+                            return (
+                              <div
+                                key={cell.day}
+                                className={cn(
+                                  "min-h-[96px] rounded-bloco p-2",
+                                  entry?.rest ? "bg-transparent shadow-[inset_0_0_0_1px_rgb(var(--fio-2-rgb))]" : "bg-folha",
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-serifa text-base leading-5 text-tinta [font-variant-numeric:lining-nums_tabular-nums]">{cell.day}</span>
+                                  {entry?.week ? <Etiqueta tom="musgo" className="h-auto px-1.5 leading-4">{entry.week}</Etiqueta> : null}
                                 </div>
-                              );
-                            })}
-                          </div>
+                                <div className="mt-1.5 grid gap-1">
+                                  {entry?.rest ? <p className="text-xs font-bold text-tinta-2">Descanso</p> : null}
+                                  {(entry?.items ?? []).map((item, itemIndex) => (
+                                    <div
+                                      key={itemIndex}
+                                      className={cn("rounded-[4px] bg-saber py-0.5 pl-2 pr-1 text-xs font-semibold leading-4 text-tinta", fmtStyle(item.format).barra)}
+                                    >
+                                      {item.title}
+                                    </div>
+                                  ))}
+                                  <p className="text-xs font-medium text-tinta-2">◦ stories</p>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Motor de stories */}
                 {plan.storiesEngine && plan.storiesEngine.length > 0 ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <MessageCircle className="h-4 w-4" aria-hidden="true" /> Motor de Stories — até 8 por dia
-                      </CardTitle>
-                      <p className="text-xs text-muted-foreground">
+                  <BlocoSaber as="section" aria-labelledby="marketing-stories" className="grid gap-4">
+                    <div>
+                      <h2 id="marketing-stories" className={cn(TITULO_SECAO, "flex items-center gap-2")}>
+                        <MessageCircle className="h-4 w-4 text-oliva" aria-hidden="true" /> Motor de Stories — até 8 por dia
+                      </h2>
+                      <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
                         Sequência fixa reutilizável todo dia. Seg–sex rodam os 8 blocos; fim de semana, versão leve (1, 3, 5 e 8).
                       </p>
-                    </CardHeader>
-                    <CardContent className="grid gap-2 sm:grid-cols-2">
+                    </div>
+                    <ol className="grid gap-2 sm:grid-cols-2">
                       {plan.storiesEngine.map((block) => (
-                        <div key={block.n} className="flex gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">
+                        <li key={block.n} className="flex gap-3 rounded-bloco bg-folha p-3">
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-musgo-claro text-xs font-extrabold tabular-nums text-musgo">
                             {block.n}
                           </span>
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-brand-musgo">{block.title}</p>
-                            <p className="text-xs leading-5 text-muted-foreground">{block.description}</p>
+                            <p className="text-sm font-bold leading-5 text-tinta">{block.title}</p>
+                            <p className="text-[13px] font-medium leading-5 text-tinta-2">{block.description}</p>
                           </div>
-                        </div>
+                        </li>
                       ))}
-                    </CardContent>
-                  </Card>
+                    </ol>
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Semanas */}
                 {plan.weeks && plan.weeks.length > 0 ? (
-                  <section className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-semibold text-brand-musgo">Detalhe por semana</h2>
-                      <span className="text-xs text-muted-foreground">toque para abrir cada semana</span>
-                    </div>
-                    {plan.weeks.map((week) => (
-                      <WeekCard key={week.id} week={week} />
-                    ))}
+                  <section aria-labelledby="marketing-semanas" className="grid gap-3">
+                    <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span id="marketing-semanas" className={TITULO_SECAO}>Detalhe por semana</span>
+                      <span className="text-[13px] font-medium text-tinta-2">toque para abrir cada semana</span>
+                    </p>
+                    <BlocoFolha>
+                      {plan.weeks.map((week) => (
+                        <WeekCard key={week.id} week={week} />
+                      ))}
+                    </BlocoFolha>
                   </section>
                 ) : null}
 
                 {/* Como produzir */}
                 {plan.production && plan.production.length > 0 ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Como produzir sem sobrecarregar o Dr. Daniel</CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-3 sm:grid-cols-2">
+                  <BlocoSaber as="section" aria-labelledby="marketing-producao" className="grid gap-3">
+                    <h2 id="marketing-producao" className={TITULO_SECAO}>Como produzir sem sobrecarregar o Dr. Daniel</h2>
+                    <div className="grid gap-3 sm:grid-cols-2">
                       {plan.production.map((note, index) => (
-                        <div key={index} className="rounded-xl border border-brand-oliva/20 bg-white/70 p-3">
-                          <p className="text-sm font-semibold text-brand-musgo">{note.title}</p>
-                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{note.description}</p>
+                        <div key={index} className="rounded-bloco bg-folha p-4">
+                          <p className="text-sm font-bold leading-5 text-tinta">{note.title}</p>
+                          <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{note.description}</p>
                         </div>
                       ))}
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Fallback: plano simples (IA antiga) — só quando não é rico */}
                 {!isRich && plan.summary ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Estratégia do mês</CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm leading-6 text-muted-foreground">{plan.summary}</CardContent>
-                  </Card>
+                  <BlocoSaber as="section" aria-labelledby="marketing-estrategia">
+                    <h2 id="marketing-estrategia" className={TITULO_SECAO}>Estratégia do mês</h2>
+                    <p className="mt-2 text-sm font-medium leading-6 text-tinta-2">{plan.summary}</p>
+                  </BlocoSaber>
                 ) : null}
                 {!isRich && plan.cadence && plan.cadence.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    {plan.cadence.map((item, index) => (
-                      <Card key={`${item.format}-${index}`}>
-                        <CardContent className="p-4">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">{item.format}</p>
-                          <p className="mt-1 text-sm font-semibold text-brand-musgo">{item.target}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                  <BlocoSaber as="section" aria-label="Cadência">
+                    <dl className="grid grid-cols-2 gap-x-8 gap-y-5 lg:grid-cols-4">
+                      {plan.cadence.map((item, index) => (
+                        <div key={`${item.format}-${index}`} className="min-w-0">
+                          <dt className={RUBRICA}>{item.format}</dt>
+                          <dd className="mt-1 text-sm font-bold leading-5 text-tinta">{item.target}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </BlocoSaber>
                 ) : null}
                 {!isRich && plan.weeklyThemes && plan.weeklyThemes.length > 0 ? (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <CalendarDays className="h-4 w-4" aria-hidden="true" /> Temas da semana
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-3 sm:grid-cols-2">
+                  <BlocoSaber as="section" aria-labelledby="marketing-temas" className="grid gap-3">
+                    <h2 id="marketing-temas" className={cn(TITULO_SECAO, "flex items-center gap-2")}>
+                      <CalendarDays className="h-4 w-4 text-oliva" aria-hidden="true" /> Temas da semana
+                    </h2>
+                    <div className="grid gap-3 sm:grid-cols-2">
                       {plan.weeklyThemes
                         .slice()
                         .sort((a, b) => a.week - b.week)
                         .map((theme) => (
-                          <div key={theme.week} className="rounded-xl border border-brand-oliva/20 bg-white/70 p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">Semana {theme.week}</p>
-                            <p className="mt-1 text-sm font-semibold text-brand-musgo">{theme.theme}</p>
-                            {theme.notes ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{theme.notes}</p> : null}
+                          <div key={theme.week} className="rounded-bloco bg-folha p-4">
+                            <p className={RUBRICA}>Semana {theme.week}</p>
+                            <p className="mt-1 text-sm font-bold leading-5 text-tinta">{theme.theme}</p>
+                            {theme.notes ? <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{theme.notes}</p> : null}
                           </div>
                         ))}
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </BlocoSaber>
                 ) : null}
 
                 {/* Acompanhar produção (peças com status) */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowTracker((value) => !value)}
-                      className="flex w-full items-center justify-between text-left"
-                    >
-                      <CardTitle className="text-base">
-                        Acompanhar produção
-                        <span className="ml-2 text-sm font-normal text-muted-foreground">
-                          {postedCount} de {sortedPieces.length} postadas
-                        </span>
-                      </CardTitle>
-                      <ChevronDown className={cn("h-5 w-5 text-brand-oliva transition-transform", showTracker && "rotate-180")} aria-hidden="true" />
-                    </button>
-                    {showTracker ? (
-                      <p className="text-xs text-muted-foreground">
+                <BlocoFolha as="section" aria-labelledby="marketing-producao-pecas">
+                  <button
+                    type="button"
+                    aria-expanded={showTracker}
+                    onClick={() => setShowTracker((value) => !value)}
+                    className="flex w-full items-center justify-between gap-3 rounded-bloco px-5 py-4 text-left hover:bg-papel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foco max-md:px-4"
+                  >
+                    <span id="marketing-producao-pecas" className={TITULO_SECAO}>
+                      Acompanhar produção
+                      <span className="ml-2 text-sm font-medium tabular-nums text-tinta-2">
+                        {postedCount} de {sortedPieces.length} postadas
+                      </span>
+                    </span>
+                    <ChevronDown className={cn("h-5 w-5 shrink-0 text-tinta-2 transition-transform duration-150 ease-papel", showTracker && "rotate-180")} aria-hidden="true" />
+                  </button>
+                  {showTracker ? (
+                    <div className="border-t border-fio">
+                      <p className="px-5 pt-4 text-[13px] font-medium leading-5 text-tinta-2 max-md:px-4">
                         Marque cada peça conforme avança: A produzir → Gravado → Editado → Postado. Toque no status para mudar.
                       </p>
-                    ) : null}
-                  </CardHeader>
-                  {showTracker ? (
-                    <CardContent className="space-y-2">
                       {sortedPieces.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">Nenhuma peça no acompanhamento ainda — adicione abaixo.</p>
+                        <p className="px-5 py-4 text-sm font-medium text-tinta-2 max-md:px-4">Nenhuma peça no acompanhamento ainda — adicione abaixo.</p>
                       ) : (
-                        sortedPieces.map((piece) => {
-                          const style = fmtStyle(piece.format);
-                          return (
-                            <div
-                              key={piece.id}
-                              className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-oliva/20 bg-white/70 px-3 py-2"
-                            >
-                              <span className="w-24 shrink-0 text-xs font-semibold uppercase text-brand-oliva">
-                                {formatPieceDate(piece.date)}
-                              </span>
-                              <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold", style.chip)}>
-                                {style.label}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-brand-musgo">{piece.title}</p>
-                                {piece.notes ? <p className="text-xs leading-5 text-muted-foreground">{piece.notes}</p> : null}
-                              </div>
-                              <button
-                                type="button"
-                                disabled={semEdicao}
-                                onClick={() => cyclePieceStatus(piece)}
-                                className={cn(
-                                  "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-80",
-                                  pieceStatusClasses[piece.status],
-                                )}
-                              >
-                                {pieceStatusLabels[piece.status]}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={semEdicao}
-                                onClick={() => removePiece(piece)}
-                                className="shrink-0 rounded-full p-1.5 text-muted-foreground transition hover:bg-red-50 hover:text-red-600"
-                                aria-label={`Excluir ${piece.title}`}
-                              >
-                                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                              </button>
-                            </div>
-                          );
-                        })
+                        <ul className="mt-3">
+                          {sortedPieces.map((piece) => {
+                            const style = fmtStyle(piece.format);
+                            const postado = piece.status === "POSTADO";
+                            return (
+                              <li key={piece.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-fio px-5 py-3 max-md:px-4">
+                                <span className="w-24 shrink-0 text-xs font-bold uppercase tabular-nums text-tinta-2">
+                                  {formatPieceDate(piece.date)}
+                                </span>
+                                <EtiquetaDoFormato format={piece.format}>{style.label}</EtiquetaDoFormato>
+                                <div className="min-w-0 flex-1 basis-48">
+                                  <p className="text-sm font-bold leading-5 text-tinta">{piece.title}</p>
+                                  {piece.notes ? <p className="text-[13px] font-medium leading-5 text-tinta-2">{piece.notes}</p> : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={semEdicao}
+                                  onClick={() => cyclePieceStatus(piece)}
+                                  title="Toque para passar à próxima etapa"
+                                  className={cn(
+                                    "inline-flex h-8 shrink-0 items-center gap-2 rounded-controle border px-2.5 text-[13px] font-bold transition-colors duration-150 ease-papel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco disabled:cursor-not-allowed disabled:opacity-70",
+                                    postado ? "border-transparent bg-ok-claro text-ok" : "border-fio-2 bg-folha text-tinta hover:border-borda-campo",
+                                  )}
+                                >
+                                  <MarcasDeEtapa etapas={pieceStatusEtapas[piece.status]} fim={postado} className={postado ? "" : "text-musgo"} />
+                                  {pieceStatusLabels[piece.status]}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={semEdicao}
+                                  onClick={() => removePiece(piece)}
+                                  className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-controle text-tinta-2 transition-colors duration-150 ease-papel hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco disabled:cursor-not-allowed disabled:opacity-70"
+                                  aria-label={`Excluir ${piece.title}`}
+                                >
+                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
                       )}
 
-                      <form onSubmit={addPiece} className="mt-3 grid gap-2 rounded-xl border border-dashed border-brand-oliva/30 p-3 sm:grid-cols-[140px_140px_1fr_auto] sm:items-end">
-                        <div className="space-y-1">
+                      <form onSubmit={addPiece} className="grid gap-3 border-t border-fio bg-papel px-5 py-4 max-md:px-4 sm:grid-cols-[160px_160px_1fr_auto] sm:items-end">
+                        <div>
                           <Label htmlFor="piece-date">Data</Label>
                           <Input id="piece-date" type="date" value={newPieceDate} onChange={(event) => setNewPieceDate(event.target.value)} />
                         </div>
-                        <div className="space-y-1">
+                        <div>
                           <Label htmlFor="piece-format">Formato</Label>
-                          <select
-                            id="piece-format"
-                            value={newPieceFormat}
-                            onChange={(event) => setNewPieceFormat(event.target.value)}
-                            className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm"
-                          >
+                          <CampoSelecao id="piece-format" value={newPieceFormat} onChange={(event) => setNewPieceFormat(event.target.value)}>
                             {pieceFormats.map((format) => (
                               <option key={format} value={format}>
                                 {format}
                               </option>
                             ))}
-                          </select>
+                          </CampoSelecao>
                         </div>
-                        <div className="space-y-1">
+                        <div className="min-w-0">
                           <Label htmlFor="piece-title">Título da peça</Label>
                           <Input
                             id="piece-title"
@@ -928,13 +909,13 @@ export function MarketingPage() {
                             placeholder="Ex.: Carrossel — mitos do GLP-1"
                           />
                         </div>
-                        <Button type="submit" variant="outline" disabled={semEdicao}>
-                          <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Adicionar
-                        </Button>
+                        <Botao type="submit" disabled={semEdicao} icone={<Plus className="h-4 w-4" aria-hidden="true" />}>
+                          Adicionar
+                        </Botao>
                       </form>
-                    </CardContent>
+                    </div>
                   ) : null}
-                </Card>
+                </BlocoFolha>
               </>
             ) : null}
           </div>

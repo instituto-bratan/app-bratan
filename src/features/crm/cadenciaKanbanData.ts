@@ -9,6 +9,7 @@
 import {
   cadenceTaskIdFor,
   contactDisplayName,
+  crmRoleLabels,
   type CrmCadence,
   type CrmCadenceEnrollment,
   type CrmCadenceStep,
@@ -40,12 +41,18 @@ export type CartaoCadencia = {
   /** Resultado do último toque feito, para quem lê o cartão. */
   ultimoResultado: string;
   status: CrmCadenceEnrollment["status"];
+  /** Setor que responde pela inscrição ("Concierge", "Comercial") — o avatar do cartão (08/10/2026). */
+  responsavel: string;
+  /** Valor da negociação ligada (vendido; senão o potencial). 0 = sem valor. Só aparece para quem vê valores. */
+  valor: number;
 };
 
 export type ColunaCadencia = {
   stepId: string;
   nome: string;
   ordem: number;
+  /** Canal do passo (o tipo da tarefa): WHATSAPP, CALL… — o cabeçalho da coluna mostra o ícone (08/10/2026). */
+  canal: CrmCadenceStep["taskType"];
   cartoes: CartaoCadencia[];
 };
 
@@ -100,6 +107,7 @@ function cartaoDaInscricao(state: CrmState, enrollment: CrmCadenceEnrollment, pa
   const vence = tarefa ? tarefa.dueAt.slice(0, 10) : null;
   const atraso = vence ? diasEntre(vence, hoje) : 0;
   const ultimo = [...feitos].sort((a, b) => (b.task!.completedAt ?? "").localeCompare(a.task!.completedAt ?? ""))[0]?.task;
+  const negociacao = state.deals.find((deal) => deal.id === enrollment.dealId);
   return {
     enrollmentId: enrollment.id,
     cadenceId: enrollment.cadenceId,
@@ -118,6 +126,8 @@ function cartaoDaInscricao(state: CrmState, enrollment: CrmCadenceEnrollment, pa
     totalPassos: passos.length,
     ultimoResultado: ultimo?.resultNotes || ultimo?.result || "",
     status: enrollment.status,
+    responsavel: enrollment.ownerRole ? crmRoleLabels[enrollment.ownerRole] ?? "" : "",
+    valor: negociacao ? negociacao.soldAmount || negociacao.estimatedValue || 0 : 0,
   };
 }
 
@@ -125,7 +135,7 @@ export function buildKanbanCadencia(state: CrmState, cadenceId: string, hoje: st
   const cadence = state.cadences.find((item) => item.id === cadenceId);
   if (!cadence) return null;
   const passos = passosDaCadencia(state, cadenceId);
-  const colunas: ColunaCadencia[] = passos.map((step) => ({ stepId: step.id, nome: step.name, ordem: step.stepOrder, cartoes: [] }));
+  const colunas: ColunaCadencia[] = passos.map((step) => ({ stepId: step.id, nome: step.name, ordem: step.stepOrder, canal: step.taskType, cartoes: [] }));
   const encerrados: CartaoCadencia[] = [];
   let atrasados = 0;
   let hojeN = 0;
@@ -151,7 +161,8 @@ export function buildKanbanCadencia(state: CrmState, cadenceId: string, hoje: st
   return { cadence, colunas, encerrados, totais: { ativos, atrasados, hoje: hojeN } };
 }
 
-export type ResumoCadencia = { cadence: CrmCadence; ativos: number; atrasados: number; passos: number };
+/** `hoje` (08/10/2026): toques que vencem hoje — o seletor de quadro ordena por eles. */
+export type ResumoCadencia = { cadence: CrmCadence; ativos: number; atrasados: number; hoje: number; passos: number };
 
 /** Uma linha por cadência com passos, para montar as abas: quem tem gente ativa vem primeiro. */
 export function resumoDasCadencias(state: CrmState, hoje: string): ResumoCadencia[] {
@@ -159,7 +170,7 @@ export function resumoDasCadencias(state: CrmState, hoje: string): ResumoCadenci
     .filter((cadence) => cadence.active && passosDaCadencia(state, cadence.id).length > 0)
     .map((cadence) => {
       const kanban = buildKanbanCadencia(state, cadence.id, hoje, 0);
-      return { cadence, ativos: kanban?.totais.ativos ?? 0, atrasados: kanban?.totais.atrasados ?? 0, passos: kanban?.colunas.length ?? 0 };
+      return { cadence, ativos: kanban?.totais.ativos ?? 0, atrasados: kanban?.totais.atrasados ?? 0, hoje: kanban?.totais.hoje ?? 0, passos: kanban?.colunas.length ?? 0 };
     })
     .sort((a, b) => b.ativos - a.ativos || b.atrasados - a.atrasados || a.cadence.name.localeCompare(b.cadence.name));
 }

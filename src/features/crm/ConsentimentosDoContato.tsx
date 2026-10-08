@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/avisos";
 import { TIPOS_CONSENTIMENTO } from "@/features/admin/ComplianceCofrePage";
 import { listRemoteConsentimentos, registrarRemoteConsentimento, type TipoConsentimento } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
+import { Botao } from "@/components/ui/fundacao";
+import { CampoSelecao } from "./comercialVisual";
 
 export function ConsentimentosDoContato({ contactRef, pessoaId, podeEditar }: { contactRef: string; pessoaId: string | null; podeEditar: boolean }) {
   const queryClient = useQueryClient();
@@ -30,39 +31,47 @@ export function ConsentimentosDoContato({ contactRef, pessoaId, podeEditar }: { 
     }
   }
 
+  // Papel & Musgo (08/10/2026): bloco saber dentro da ficha, sem branco
+  // translúcido; aceito em verde e recusado em vermelho, sempre com a palavra.
   return (
-    <div className="mt-4 rounded-lg border border-brand-oliva/15 bg-brand-papel/50 p-3">
+    <div className="mt-4 rounded-bloco bg-saber p-4 font-sans">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-tinta">
-          <ShieldCheck className="h-4 w-4 text-brand-oliva" aria-hidden="true" /> Consentimentos (LGPD)
+        <p className="flex items-center gap-2 text-sm font-bold text-tinta">
+          <ShieldCheck className="h-4 w-4 text-oliva" aria-hidden="true" /> Consentimentos (LGPD)
         </p>
         {podeEditar ? (
-          <select value={canal} onChange={(e) => setCanal(e.target.value)} className="h-8 rounded-md border border-brand-oliva/25 bg-white px-2 text-xs" aria-label="Como foi coletado">
+          <CampoSelecao pequeno value={canal} onChange={(e) => setCanal(e.target.value)} className="w-auto" aria-label="Como foi coletado">
             {["Presencial (ficha)", "WhatsApp", "E-mail", "Site / formulário", "Telefone"].map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
-          </select>
+          </CampoSelecao>
         ) : null}
       </div>
-      <ul className="mt-2 grid gap-1.5">
+      <ul className="mt-3 grid">
         {TIPOS_CONSENTIMENTO.map((t) => {
           const estado = atual.get(t.tipo);
           return (
-            <li key={t.tipo} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="text-brand-tinta" title={t.texto}>
+            <li key={t.tipo} className="flex flex-wrap items-center justify-between gap-2 border-t border-fio py-2 text-sm">
+              <span className="font-semibold text-tinta" title={t.texto}>
                 {t.rotulo}
-                {estado ? <span className={cn("ml-2 text-xs", estado.aceito ? "text-emerald-800" : "text-red-700")}>{estado.aceito ? "aceito" : "recusado"} · {estado.em.slice(8, 10)}/{estado.em.slice(5, 7)}/{estado.em.slice(0, 4)} · {estado.canal}</span> : <span className="ml-2 text-xs text-muted-foreground">não registrado</span>}
+                {estado ? (
+                  <span className={cn("ml-2 text-xs font-bold tabular-nums", estado.aceito ? "text-ok" : "text-erro")}>
+                    {estado.aceito ? "aceito" : "recusado"} · {estado.em.slice(8, 10)}/{estado.em.slice(5, 7)}/{estado.em.slice(0, 4)} · {estado.canal}
+                  </span>
+                ) : (
+                  <span className="ml-2 text-xs font-medium text-tinta-2">não registrado</span>
+                )}
               </span>
               {podeEditar ? (
-                <span className="flex gap-1">
-                  <Button type="button" size="sm" variant={estado?.aceito ? "default" : "outline"} className="h-7 px-2 text-xs" disabled={ocupado === t.tipo} onClick={() => void registrar(t.tipo, true)}>
+                <span className="flex gap-2">
+                  <Botao variante={estado?.aceito ? "primario" : "suave"} tamanho="pq" disabled={ocupado === t.tipo} onClick={() => void registrar(t.tipo, true)}>
                     Aceitou
-                  </Button>
-                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs text-red-700" disabled={ocupado === t.tipo} onClick={() => void registrar(t.tipo, false)}>
+                  </Botao>
+                  <Botao variante="perigo" tamanho="pq" disabled={ocupado === t.tipo} onClick={() => void registrar(t.tipo, false)}>
                     Recusou
-                  </Button>
+                  </Botao>
                 </span>
               ) : null}
             </li>

@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
+import { avisarMudancaLocal } from "@/lib/mudancaLocal";
 import {
   cancelarRemotePedidoDeCompra,
   decidirRemotePedidoDeCompra,
@@ -159,6 +160,8 @@ export function useCompras() {
     localRef.current = proximos;
     setLocalPedidos(proximos);
     writeLocalValue(pedidosKey, proximos);
+    // Prévia: o contador do Início na casca relê o aparelho (revisão de 08/10/2026).
+    avisarMudancaLocal();
   }
 
   /** Modo prévia/local: a mesma máquina do banco, aplicada no aparelho. */

@@ -5,9 +5,11 @@
 // sei se eu estou ficando louco, mas eu lembro que eu te pedi"). Ele não estava
 // louco: estava na tela errada. Agora cada página tem o seu próprio botão, do
 // lado do dado que ele acabou de olhar.
+// Papel & Musgo (08/10/2026): o Botao da fundação (secundário, 32 px), sem vidro;
+// quem passa className (o tamanho da tela) continua mandando.
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Sheet } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Botao } from "@/components/ui/botao";
 import { mensagemDoSalvamento } from "@/lib/salvarArquivo";
 import { baixarXlsx } from "@/lib/xlsxWriter";
 import { planilhasContabilidade, type DadosContabilidade } from "./contabilidadeXlsx";
@@ -39,11 +41,11 @@ export function BaixarPlanilhaButton({
   const quantas = aba.rows.length;
 
   const botao = (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
+    <Botao
+      variante="secundario"
+      tamanho="pq"
       className={className}
+      icone={<Sheet className="h-4 w-4" aria-hidden="true" />}
       disabled={quantas === 0}
       title={
         quantas === 0
@@ -52,17 +54,16 @@ export function BaixarPlanilhaButton({
       }
       onClick={() => void baixarXlsx(planilha.arquivo(dados.monthKey), [aba]).then((resultado) => setAviso(mensagemDoSalvamento(resultado)))}
     >
-      <Sheet className="mr-1.5 h-4 w-4" aria-hidden="true" />
       {rotulo ?? "Baixar planilha"}
-      {quantas > 0 ? <span className="ml-1.5 text-xs font-normal opacity-75">({quantas})</span> : null}
-    </Button>
+      {quantas > 0 ? <span className="text-[13px] font-medium tabular-nums text-tinta-2">({quantas})</span> : null}
+    </Botao>
   );
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       {botao}
       {aviso ? (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700" role="status">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="inline-flex items-center gap-1 text-[13px] font-bold text-ok" role="status">
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
           {aviso}
         </span>
       ) : null}

@@ -1,10 +1,13 @@
 // AVISOS NO CELULAR (15/09/2026, proposta 4.5): quem instalou o app ativa aqui
 // e recebe a Fila do dia às 7h (Web Push). Só aparece com a integração "push"
 // ligada e a chave pública configurada; a assinatura fica em push_assinatura.
+//
+// Redesenho etapa 2 (08/10/2026): o cartão saiu do Início e foi para Avisos
+// (é sobre avisos), com a forma nova — uma linha de folha, botão secundário.
 import { useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { BlocoFolha } from "@/components/ui/blocos";
+import { Botao } from "@/components/ui/botao";
 import { toast } from "@/components/ui/avisos";
 import { configIntegracao, integracaoLigada } from "@/lib/integracoes";
 import { removerPushAssinatura, salvarPushAssinatura } from "@/lib/remoteData";
@@ -71,21 +74,21 @@ export function AvisosNoCelularCard({ pessoaId }: { pessoaId: string }) {
   }
 
   return (
-    <Card className="border-brand-dourado/40 bg-brand-creme/40 shadow-none backdrop-blur">
-      <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <div className="flex items-start gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-            <BellRing className="h-4.5 w-4.5" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="font-semibold text-brand-tinta">Avisos no celular às 7h</p>
-            <p className="text-sm text-muted-foreground">{assinado ? "Este aparelho recebe a Fila do dia toda manhã." : "Receba a Fila do dia neste aparelho toda manhã, sem abrir o app."}</p>
-          </div>
+    <BlocoFolha as="section" aria-labelledby="avisos-no-celular" className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4 max-md:px-4">
+      <div className="flex min-w-0 items-start gap-3">
+        <BellRing className="mt-0.5 h-5 w-5 shrink-0 text-tinta-2" aria-hidden="true" />
+        <div className="min-w-0">
+          <h2 id="avisos-no-celular" className="text-sm font-bold leading-5 text-tinta">
+            Avisos no celular às 7h
+          </h2>
+          <p className="text-[13px] font-medium leading-5 text-tinta-2">
+            {assinado ? "Este aparelho recebe a Fila do dia toda manhã." : "Receba a Fila do dia neste aparelho toda manhã, sem abrir o app."}
+          </p>
         </div>
-        <Button type="button" size="sm" variant={assinado ? "outline" : "default"} disabled={ocupado || assinado === null} onClick={() => void (assinado ? desativar() : ativar())}>
-          {assinado ? "Desativar aqui" : "Ativar neste aparelho"}
-        </Button>
-      </CardContent>
-    </Card>
+      </div>
+      <Botao variante={assinado ? "fantasma" : "secundario"} tamanho="pq" carregando={ocupado} disabled={assinado === null} onClick={() => void (assinado ? desativar() : ativar())}>
+        {assinado ? "Desativar aqui" : "Ativar neste aparelho"}
+      </Botao>
+    </BlocoFolha>
   );
 }

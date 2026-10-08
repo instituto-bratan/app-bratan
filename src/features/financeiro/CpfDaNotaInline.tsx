@@ -14,17 +14,20 @@
 //  · quem não grava CPF (RLS de contato_documento) não vê o campo;
 //  · o número nunca vai para console nem para recado de erro (semCpfNoTexto).
 // As regras são puras, em cpfDaNota.ts.
+//
+// REDESENHO (08/10/2026, Papel & Musgo): só a forma — campo e botões da
+// fundação, letra de 13 px, aviso em fundo de atenção. A lógica é a mesma.
 import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IdCard } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Botao } from "@/components/ui/fundacao";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { podeEmitirNota, podeGravarCpf, podeVerCpf } from "@/lib/access";
 import { cpfDigitos, cpfEnquantoDigita, cpfMascarado, cpfValido } from "@/lib/cpf";
 import { lerRemoteCpfDoContato, salvarRemoteCpfDoContato } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
+import { classeDoCampo } from "./pecasBancoFechamento";
 import { acoesDoCpfDaNota, avisoDoCpfDaNota, fichaDeOutraPessoa, rotuloDaAcao, semCpfNoTexto, situacaoDoCpfDaNota, type AcaoDoCpfDaNota } from "./cpfDaNota";
 
 export function CpfDaNotaInline({
@@ -116,61 +119,59 @@ export function CpfDaNotaInline({
   }
 
   return (
-    <div className={cn("grid min-w-0 gap-1.5 text-xs", className)}>
-      {aviso ? <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 font-semibold text-amber-900 whitespace-normal">{aviso}</p> : null}
+    <div className={cn("grid min-w-0 gap-2 text-[13px] leading-5", className)}>
+      {aviso ? <p className="whitespace-normal rounded-controle bg-atencao-claro px-3 py-2 font-semibold text-tinta">{aviso}</p> : null}
 
-      {situacao === "CARREGANDO" ? <span className="text-muted-foreground">CPF: conferindo a ficha…</span> : null}
+      {situacao === "CARREGANDO" ? <span className="text-tinta-2">CPF: conferindo a ficha…</span> : null}
 
       {situacao === "COM_CPF" && !editando ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 text-brand-musgo">
-            <IdCard className="h-3.5 w-3.5" aria-hidden="true" />
-            CPF guardado <span className="font-mono">{cpfMascarado(guardado.data?.cpf ?? "")}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-ok">
+            <IdCard className="h-4 w-4 shrink-0" aria-hidden="true" />
+            CPF guardado <span className="font-mono text-tinta">{cpfMascarado(guardado.data?.cpf ?? "")}</span>
           </span>
           {gravaCpf ? (
-            <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={travado} onClick={() => { setEditando(true); setRascunho(""); }}>
+            <Botao variante="fantasma" tamanho="pq" className="px-2" disabled={travado} onClick={() => { setEditando(true); setRascunho(""); }}>
               Trocar
-            </Button>
+            </Botao>
           ) : null}
         </div>
       ) : null}
 
-      {situacao === "SEM_CPF" && !mostraCampo ? <span className="font-semibold text-amber-700">Sem CPF na ficha</span> : null}
+      {situacao === "SEM_CPF" && !mostraCampo ? <span className="font-semibold text-atencao">Sem CPF na ficha</span> : null}
 
       {mostraCampo ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <label className="w-full text-[11px] font-semibold text-brand-oliva whitespace-normal" htmlFor={campoId}>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="w-full whitespace-normal text-[13px] font-bold text-tinta" htmlFor={campoId}>
             {situacao === "OUTRA_PESSOA" || situacao === "SEM_FICHA" ? `CPF de ${nomeDaNota} (só nesta nota)` : `CPF de ${nomeDaNota}`}
           </label>
-          <Input
+          <input
             id={campoId}
             value={rascunho}
             onChange={(evento) => setRascunho(cpfEnquantoDigita(evento.target.value))}
             placeholder="000.000.000-00"
             inputMode="numeric"
             autoComplete="off"
-            className="h-8 w-[9.5rem] text-xs"
+            className={cn(classeDoCampo, "h-8 w-[10.5rem] tabular-nums")}
             disabled={travado}
           />
           {acoes.map((acao, indice) => (
-            <Button
+            <Botao
               key={acao}
-              type="button"
-              size="sm"
-              variant={indice === 0 ? "default" : "ghost"}
-              className="h-8 px-2.5 text-xs"
+              variante={indice === 0 ? "suave" : "fantasma"}
+              tamanho="pq"
               disabled={travado || !valido}
               onClick={() => void executar(acao)}
             >
               {ocupado && indice === 0 ? "Um instante…" : rotuloDaAcao(acao, acoes)}
-            </Button>
+            </Botao>
           ))}
           {editando ? (
-            <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-xs" disabled={ocupado} onClick={() => { setEditando(false); setRascunho(""); }}>
+            <Botao variante="fantasma" tamanho="pq" className="px-2" disabled={ocupado} onClick={() => { setEditando(false); setRascunho(""); }}>
               Cancelar
-            </Button>
+            </Botao>
           ) : null}
-          {rascunho && !valido ? <span className="w-full text-red-700">Esse CPF não confere. Confira os números.</span> : null}
+          {rascunho && !valido ? <span className="w-full font-semibold text-erro">Esse CPF não confere. Confira os números.</span> : null}
         </div>
       ) : null}
     </div>

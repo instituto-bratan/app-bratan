@@ -32,12 +32,14 @@
 //  · linha aberta cuja comanda já tem nota viva (emitida em outra tela — caso
 //    Luciane, nota 6238) diz "Nota 6238 já emitida em outra tela" e não
 //    oferece emitir. O banco também acompanha (202610070004_lote_acompanha_a_nota).
+//
+// REDESENHO (08/10/2026, Papel & Musgo): o cartão virou uma folha (é decisão:
+// emitir, juntar, tirar) com a tabela do guia, a situação de cada linha dita em
+// palavra + ícone + cor, e os botões da fundação. Nenhuma regra mudou.
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Combine, FileCheck2, RefreshCw, XCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { CheckCircle2, Combine, FileCheck2, XCircle } from "lucide-react";
+import { BlocoFolha, Botao, BotaoDecisao, Giro } from "@/components/ui/fundacao";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
@@ -52,6 +54,7 @@ import { CpfDaNotaInline } from "./CpfDaNotaInline";
 import { fichaDeOutraPessoa } from "./cpfDaNota";
 import { analisarItensDoLote, type AnaliseDaJuncao } from "./juntarNotas";
 import { JuntarNotasDialog } from "./JuntarNotasDialog";
+import { TituloDoBloco, tabela } from "./pecasBancoFechamento";
 import { rotuloDoTipoDeNota } from "../../../supabase/functions/_shared/notaEmitida";
 
 type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; numero?: string | null; emailEnviado?: boolean; dados?: { numero?: string; status?: string } };
@@ -255,167 +258,190 @@ export function LoteDeNotasCard({ readOnly, invoices = [] }: { readOnly: boolean
   const alternar = (id: string) => setMarcados((atual) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]));
 
   // 08/10/2026: âncora para o "Completar" de Avisos (nota sem CPF) cair aqui.
+  // Sem overflow-hidden na folha: a barra de juntar gruda embaixo enquanto a lista rola.
   return (
-    <Card id="lote-de-notas" className="scroll-mt-24">
-      <CardHeader>
-        <CardTitle className="text-lg">Lote de notas conferido · {lotes.map(mesDoLote).join(" e ")}</CardTitle>
-        <p className="text-sm text-muted-foreground">{resumo.frase}</p>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        {pendentes.length ? (
-          <p className="text-xs text-muted-foreground">
+    <BlocoFolha as="section" id="lote-de-notas" aria-labelledby="lote-de-notas-titulo" className="scroll-mt-24">
+      <TituloDoBloco
+        id="lote-de-notas-titulo"
+        titulo={`Lote de notas conferido · ${lotes.map(mesDoLote).join(" e ")}`}
+        ajuda={resumo.frase}
+      />
+      {pendentes.length ? (
+        <p className="border-t border-fio px-6 py-3 text-[13px] font-medium leading-5 text-tinta-2 max-md:px-4">
+          <span className={semCpf ? "font-semibold text-atencao" : undefined}>
             {semCpf ? `${semCpf} ${semCpf === 1 ? "paciente ainda sem CPF na ficha (a nota dele não sai até guardar o CPF)" : "pacientes ainda sem CPF na ficha (a nota deles não sai até guardar o CPF)"}` : "Todos com CPF na ficha"}
-            {" · "}
-            {semEmail ? `${semEmail} sem e-mail (a nota não será enviada por e-mail)` : "todos com e-mail"}
-            . A função lê CPF e e-mail da ficha na hora de emitir: preencha antes de clicar.
-          </p>
-        ) : null}
-        {podeMexerNoLote && pendentes.length > 1 ? (
-          <p className="text-xs text-muted-foreground">Para juntar duas notas numa só (mãe e filho, por exemplo), marque as linhas e toque em “Juntar em uma nota”.</p>
-        ) : null}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">
-                {podeMexerNoLote ? <th className="w-8 py-1.5 pr-2"><span className="sr-only">Juntar</span></th> : null}
-                <th className="py-1.5 pr-3">#</th>
-                <th className="py-1.5 pr-3">Paciente</th>
-                <th className="py-1.5 pr-3">Comanda</th>
-                <th className="py-1.5 pr-3">Nota</th>
-                <th className="py-1.5 pr-3 text-right">Valor</th>
-                <th className="py-1.5 pr-3">Ficha</th>
-                <th className="py-1.5 pr-3">Situação</th>
-                <th className="py-1.5"></th>
-              </tr>
-            </thead>
-            {lotes.map((loteDoGrupo) => (
-              <tbody key={loteDoGrupo}>
-                {lotes.length > 1 ? (
-                  <tr className="border-t border-brand-oliva/10">
-                    <td colSpan={podeMexerNoLote ? 9 : 8} className="pb-1 pt-3 text-xs font-semibold text-brand-musgo">
-                      Lote de {mesDoLote(loteDoGrupo)} · {resumoDoLote((itens ?? []).filter((i) => i.lote === loteDoGrupo)).frase}
-                    </td>
-                  </tr>
-                ) : null}
-                {visiveis.filter((i) => i.lote === loteDoGrupo).map((item) => {
-                const p = item.contactRef ? prontidao[item.contactRef] : undefined;
-                const fora = foraDoLote[item.id];
-                // Linha aberta de verdade: ainda sem nota em lugar nenhum.
-                const aberta = (item.status === "PENDENTE" || item.status === "ERRO") && !fora;
-                // O botão direto quando a ficha certa tem CPF (ou ainda não se sabe — o
-                // servidor confere); sem CPF, o caminho é o campo da linha.
-                const pronta = aberta && !fichaTrocada(item) && p?.temCpf !== false;
-                // O erro "falta CPF" da tentativa anterior deixa de valer quando o CPF foi guardado.
-                const erroDeCpfResolvido = item.status === "ERRO" && Boolean(p?.temCpf) && /cpf/i.test(item.erro ?? "");
-                return (
-                  <tr key={item.id} className="border-t border-brand-oliva/10 align-top">
-                    {podeMexerNoLote ? (
-                      <td className="py-2 pr-2">
-                        {marcaveis.has(item.id) ? (
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 h-4 w-4 accent-brand-musgo"
-                            checked={selecionados.includes(item.id)}
-                            disabled={emitindo !== null || rodando}
-                            onChange={() => alternar(item.id)}
-                            aria-label={`Marcar a nota de ${item.tomadorNome} para juntar`}
-                          />
-                        ) : null}
-                      </td>
-                    ) : null}
-                    <td className="py-2 pr-3 text-muted-foreground">{item.ordem}</td>
-                    <td className="py-2 pr-3">
-                      <p className="font-semibold text-brand-tinta">{item.tomadorNome}</p>
-                      {item.observacao ? <p className="text-xs text-muted-foreground">{item.observacao}</p> : null}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap">{dataBR(item.dia)}{item.partes.length > 1 ? ` (+${item.partes.length - 1})` : ""}</td>
-                    <td className="py-2 pr-3">
-                      {item.tipo === "UNIFICADA" ? "unificada, tratamento" : rotuloDoTipoDeNota(item.tipo)}
-                      <p className="text-xs text-muted-foreground">{item.pagamentoTexto.toLowerCase()}</p>
-                    </td>
-                    <td className="py-2 pr-3 text-right font-semibold whitespace-nowrap">{moneyFin(item.valor)}</td>
-                    <td className={aberta ? "min-w-[13rem] py-2 pr-3 text-xs" : "py-2 pr-3 text-xs whitespace-nowrap"}>
-                      {aberta ? (
-                        // O CPF na própria linha (07/10/2026): o mesmo campo do Lançar Dia.
-                        <CpfDaNotaInline
-                          contactRef={item.contactRef}
-                          nomeDaNota={item.tomadorNome}
-                          nomeDaFicha={p?.nomeDaFicha ?? null}
-                          emitir={podeEmitir ? ({ cpf }) => emitirLinha(item, cpf) : undefined}
-                          onGuardado={recarregarProntidao}
-                          desabilitado={emitindo !== null || rodando}
+          </span>
+          {" · "}
+          {semEmail ? `${semEmail} sem e-mail (a nota não será enviada por e-mail)` : "todos com e-mail"}
+          . A função lê CPF e e-mail da ficha na hora de emitir: preencha antes de clicar.
+        </p>
+      ) : null}
+      {podeMexerNoLote && pendentes.length > 1 ? (
+        <p className="border-t border-fio px-6 py-3 text-[13px] font-medium leading-5 text-tinta-2 max-md:px-4">
+          Para juntar duas notas numa só (mãe e filho, por exemplo), marque as linhas e toque em “Juntar em uma nota”.
+        </p>
+      ) : null}
+      <div className="mobile-scrollbar-none overflow-x-auto border-t border-fio">
+        <table className={cn(tabela.tabela, "min-w-[880px]")}>
+          <caption className="sr-only">Notas do lote</caption>
+          <thead>
+            <tr>
+              {podeMexerNoLote ? (
+                <th scope="col" className={cn(tabela.th, "w-10 pr-0")}>
+                  <span className="sr-only">Juntar</span>
+                </th>
+              ) : null}
+              <th scope="col" className={cn(tabela.th, "w-10")}>#</th>
+              <th scope="col" className={tabela.th}>Paciente</th>
+              <th scope="col" className={tabela.th}>Comanda</th>
+              <th scope="col" className={tabela.th}>Nota</th>
+              <th scope="col" className={tabela.thNum}>Valor</th>
+              <th scope="col" className={tabela.th}>Ficha</th>
+              <th scope="col" className={tabela.th}>Situação</th>
+              <th scope="col" className={tabela.th}>
+                <span className="sr-only">Ações</span>
+              </th>
+            </tr>
+          </thead>
+          {lotes.map((loteDoGrupo) => (
+            <tbody key={loteDoGrupo}>
+              {lotes.length > 1 ? (
+                <tr>
+                  <td colSpan={podeMexerNoLote ? 9 : 8} className="border-b border-fio bg-saber px-4 py-2 text-[13px] font-bold leading-5 text-tinta">
+                    Lote de {mesDoLote(loteDoGrupo)} · <span className="font-medium text-tinta-2">{resumoDoLote((itens ?? []).filter((i) => i.lote === loteDoGrupo)).frase}</span>
+                  </td>
+                </tr>
+              ) : null}
+              {visiveis.filter((i) => i.lote === loteDoGrupo).map((item) => {
+              const p = item.contactRef ? prontidao[item.contactRef] : undefined;
+              const fora = foraDoLote[item.id];
+              // Linha aberta de verdade: ainda sem nota em lugar nenhum.
+              const aberta = (item.status === "PENDENTE" || item.status === "ERRO") && !fora;
+              // O botão direto quando a ficha certa tem CPF (ou ainda não se sabe — o
+              // servidor confere); sem CPF, o caminho é o campo da linha.
+              const pronta = aberta && !fichaTrocada(item) && p?.temCpf !== false;
+              // O erro "falta CPF" da tentativa anterior deixa de valer quando o CPF foi guardado.
+              const erroDeCpfResolvido = item.status === "ERRO" && Boolean(p?.temCpf) && /cpf/i.test(item.erro ?? "");
+              return (
+                <tr key={item.id} className={cn(tabela.linha, "align-top")}>
+                  {podeMexerNoLote ? (
+                    <td className={cn(tabela.td, "pr-0")}>
+                      {marcaveis.has(item.id) ? (
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 cursor-pointer accent-musgo disabled:cursor-not-allowed disabled:opacity-40"
+                          checked={selecionados.includes(item.id)}
+                          disabled={emitindo !== null || rodando}
+                          onChange={() => alternar(item.id)}
+                          aria-label={`Marcar a nota de ${item.tomadorNome} para juntar`}
                         />
-                      ) : (
-                        <span className={p?.temCpf ? "text-brand-musgo" : "text-amber-700"}>CPF {p?.temCpf ? "✓" : "—"}</span>
-                      )}
-                      <span className={cn("mt-1 block", p?.temEmail ? "text-brand-musgo" : "text-amber-700")}>e-mail {p?.temEmail ? "✓" : "— (a nota não vai por e-mail)"}</span>
+                      ) : null}
                     </td>
-                    <td className="py-2 pr-3 text-xs">
-                      {fora ? (
-                        <span className="inline-flex items-start gap-1 font-semibold text-brand-musgo"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {fraseDaNotaForaDoLote(fora)}</span>
-                      ) : item.status === "AUTORIZADA" ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-brand-musgo"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> nº {item.numero}</span>
-                      ) : item.status === "ENVIADA" ? (
-                        <span className="text-amber-700">aguardando a prefeitura</span>
-                      ) : erroDeCpfResolvido ? (
-                        <span className="text-muted-foreground">CPF guardado: pronta para emitir</span>
-                      ) : item.status === "ERRO" ? (
-                        <span className="inline-flex items-start gap-1 text-red-700"><XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {item.erro}</span>
-                      ) : emitindo === item.id ? (
-                        <span className="inline-flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> emitindo…</span>
-                      ) : (
-                        <span className="text-muted-foreground">para emitir</span>
-                      )}
-                    </td>
-                    <td className="py-2 text-right whitespace-nowrap">
+                  ) : null}
+                  <td className={cn(tabela.td, "tabular-nums text-tinta-2")}>{item.ordem}</td>
+                  <td className={tabela.td}>
+                    <p className="font-bold text-tinta">{item.tomadorNome}</p>
+                    {item.observacao ? <p className="text-[13px] text-tinta-2">{item.observacao}</p> : null}
+                  </td>
+                  <td className={cn(tabela.td, "whitespace-nowrap tabular-nums")}>{dataBR(item.dia)}{item.partes.length > 1 ? ` (+${item.partes.length - 1})` : ""}</td>
+                  <td className={tabela.td}>
+                    {item.tipo === "UNIFICADA" ? "unificada, tratamento" : rotuloDoTipoDeNota(item.tipo)}
+                    <p className="text-[13px] text-tinta-2">{item.pagamentoTexto.toLowerCase()}</p>
+                  </td>
+                  <td className={cn(tabela.tdNum, "font-bold")}>{moneyFin(item.valor)}</td>
+                  <td className={cn(tabela.td, "text-[13px]", aberta ? "min-w-[14rem]" : "whitespace-nowrap")}>
+                    {aberta ? (
+                      // O CPF na própria linha (07/10/2026): o mesmo campo do Lançar Dia.
+                      <CpfDaNotaInline
+                        contactRef={item.contactRef}
+                        nomeDaNota={item.tomadorNome}
+                        nomeDaFicha={p?.nomeDaFicha ?? null}
+                        emitir={podeEmitir ? ({ cpf }) => emitirLinha(item, cpf) : undefined}
+                        onGuardado={recarregarProntidao}
+                        desabilitado={emitindo !== null || rodando}
+                      />
+                    ) : (
+                      <span className={cn("font-semibold", p?.temCpf ? "text-ok" : "text-atencao")}>CPF {p?.temCpf ? "✓" : "—"}</span>
+                    )}
+                    <span className={cn("mt-1 block font-semibold", p?.temEmail ? "text-ok" : "text-atencao")}>e-mail {p?.temEmail ? "✓" : "— (a nota não vai por e-mail)"}</span>
+                  </td>
+                  <td className={cn(tabela.td, "text-[13px]")}>
+                    {fora ? (
+                      <span className="inline-flex items-start gap-1.5 font-semibold text-ok"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {fraseDaNotaForaDoLote(fora)}</span>
+                    ) : item.status === "AUTORIZADA" ? (
+                      <span className="inline-flex items-center gap-1.5 font-semibold tabular-nums text-ok"><CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" /> nº {item.numero}</span>
+                    ) : item.status === "ENVIADA" ? (
+                      <span className="font-semibold text-petroleo">aguardando a prefeitura</span>
+                    ) : erroDeCpfResolvido ? (
+                      <span className="text-tinta-2">CPF guardado: pronta para emitir</span>
+                    ) : item.status === "ERRO" ? (
+                      <span className="inline-flex items-start gap-1.5 font-semibold text-erro"><XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {item.erro}</span>
+                    ) : emitindo === item.id ? (
+                      <span className="inline-flex items-center gap-1.5 font-semibold text-tinta"><Giro className="h-3.5 w-3.5" /> emitindo…</span>
+                    ) : (
+                      <span className="text-tinta-2">para emitir</span>
+                    )}
+                  </td>
+                  <td className={cn(tabela.td, "whitespace-nowrap text-right")}>
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1">
                       {(!readOnly || podeEmitir) && item.status === "ENVIADA" ? (
-                        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null} onClick={() => void consultarItem(item)}>Consultar</Button>
+                        <Botao variante="secundario" tamanho="pq" disabled={emitindo !== null} onClick={() => void consultarItem(item)}>Consultar</Botao>
                       ) : null}
                       {podeEmitir && (item.status === "PENDENTE" || item.status === "ERRO") && pronta ? (
-                        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void emitirLinha(item)}>
-                          <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir
-                        </Button>
+                        <Botao variante="suave" tamanho="pq" disabled={emitindo !== null || rodando} icone={<FileCheck2 className="h-4 w-4" aria-hidden="true" />} onClick={() => void emitirLinha(item)}>
+                          Emitir
+                        </Botao>
                       ) : null}
                       {!readOnly && (item.status === "PENDENTE" || item.status === "ERRO") ? (
-                        <Button type="button" size="sm" variant="ghost" className="ml-1 h-7 text-xs" disabled={emitindo !== null || rodando} onClick={() => void retirar(item)}>Tirar</Button>
+                        <Botao variante="fantasma" tamanho="pq" disabled={emitindo !== null || rodando} onClick={() => void retirar(item)}>Tirar</Botao>
                       ) : null}
-                    </td>
-                  </tr>
-                );
-                })}
-              </tbody>
-            ))}
-          </table>
-        </div>
-        {podeMexerNoLote && selecionados.length === 1 ? (
-          <p className="text-xs text-muted-foreground">1 nota marcada. Marque mais uma para juntar.</p>
-        ) : null}
-        {podeMexerNoLote && selecionados.length > 1 ? (
-          <div className="sticky bottom-[calc(6rem+env(safe-area-inset-bottom))] z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-musgo bg-white/95 px-3 py-2 shadow-calm lg:bottom-3">
-            <p className="text-sm font-semibold text-brand-tinta">
-              {selecionados.length} notas · {moneyFin(valorSelecionado)}
-              <span className="block text-xs font-normal text-muted-foreground">viram uma nota só, no nome de um dos pacientes</span>
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" size="sm" variant="ghost" className="h-9" onClick={() => setMarcados([])}>Desmarcar</Button>
-              <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={rodando || emitindo !== null} onClick={() => setJuncao(analisarItensDoLote({ itens: itens ?? [], ids: selecionados }))}>
-                <Combine className="h-4 w-4" aria-hidden="true" /> Juntar em uma nota
-              </LiquidButton>
-            </div>
-          </div>
-        ) : null}
-        {podeEmitir && pendentes.length ? (
+                    </span>
+                  </td>
+                </tr>
+              );
+              })}
+            </tbody>
+          ))}
+        </table>
+      </div>
+      {podeMexerNoLote && selecionados.length === 1 ? (
+        <p className="border-t border-fio px-6 py-3 text-[13px] font-medium leading-5 text-tinta-2 max-md:px-4">1 nota marcada. Marque mais uma para juntar.</p>
+      ) : null}
+      {podeMexerNoLote && selecionados.length > 1 ? (
+        <div className="sticky bottom-[calc(6rem+env(safe-area-inset-bottom))] z-10 mx-4 my-4 flex flex-wrap items-center justify-between gap-3 rounded-bloco border border-musgo bg-folha px-4 py-3 shadow-flutua lg:bottom-3">
+          <p className="text-sm font-bold leading-5 text-tinta">
+            {selecionados.length} notas · <span className="tabular-nums">{moneyFin(valorSelecionado)}</span>
+            <span className="block text-[13px] font-medium text-tinta-2">viram uma nota só, no nome de um dos pacientes</span>
+          </p>
           <div className="flex flex-wrap items-center gap-2">
-            <LiquidButton type="button" size="sm" className="h-9 px-4" disabled={rodando || emitindo !== null || !emitiveis.length} onClick={() => void emitirTodas()}>
-              {rodando ? "Emitindo…" : `Emitir as ${emitiveis.length} notas · ${moneyFin(emitiveis.reduce((s, i) => s + i.valor, 0))}`}
-            </LiquidButton>
-            <span className="text-xs text-muted-foreground">Uma por vez, na prefeitura. Cada autorizada entra no controle abaixo com o número.</span>
+            <Botao variante="fantasma" onClick={() => setMarcados([])}>Desmarcar</Botao>
+            <Botao
+              variante="primario"
+              disabled={rodando || emitindo !== null}
+              icone={<Combine className="h-4 w-4" aria-hidden="true" />}
+              onClick={() => setJuncao(analisarItensDoLote({ itens: itens ?? [], ids: selecionados }))}
+            >
+              Juntar em uma nota
+            </Botao>
           </div>
-        ) : pendentes.length ? (
-          <p className="text-xs text-muted-foreground">{avisoQuemEmiteNota}</p>
-        ) : null}
-        {juncao ? <JuntarNotasDialog modo="lote" analise={juncao} onFechar={() => setJuncao(null)} onPronto={() => setMarcados([])} /> : null}
-      </CardContent>
-    </Card>
+        </div>
+      ) : null}
+      {podeEmitir && pendentes.length ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-fio px-6 py-4 max-md:px-4">
+          <BotaoDecisao
+            tipo="aprovar"
+            rotulo={rodando ? "Emitindo…" : `Emitir as ${emitiveis.length} notas`}
+            valor={rodando ? undefined : emitiveis.reduce((s, i) => s + i.valor, 0)}
+            carregando={rodando}
+            disabled={rodando || emitindo !== null || !emitiveis.length}
+            onClick={() => void emitirTodas()}
+          />
+          <span className="text-[13px] font-medium leading-5 text-tinta-2">Uma por vez, na prefeitura. Cada autorizada entra no controle abaixo com o número.</span>
+        </div>
+      ) : pendentes.length ? (
+        <p className="border-t border-fio px-6 py-4 text-[13px] font-medium leading-5 text-tinta-2 max-md:px-4">{avisoQuemEmiteNota}</p>
+      ) : null}
+      {juncao ? <JuntarNotasDialog modo="lote" analise={juncao} onFechar={() => setJuncao(null)} onPronto={() => setMarcados([])} /> : null}
+    </BlocoFolha>
   );
 }

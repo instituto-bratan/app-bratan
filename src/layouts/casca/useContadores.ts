@@ -3,20 +3,22 @@
 // o dado — e sempre nas MESMAS chaves de cache das telas que já carregam a
 // mesma coisa (Pedidos de compra, Home, Impostos & NFs), para o menu não fazer
 // uma segunda leitura do banco nem mostrar número diferente da tela.
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { configAtual, type LinhaConfig } from "@/lib/configNegocio";
 import { readLocalValue, todayISO } from "@/lib/localStore";
+import { aoMudarLocal } from "@/lib/mudancaLocal";
 import type { Contador } from "@/lib/navegacao";
-import { listRemoteFinExpenses, listRemoteFinReconciliations, listRemoteFinSales } from "@/lib/remoteData";
+import { listRemoteFinReconciliations, listRemoteFinSales } from "@/lib/remoteData";
 import { listRemotePedidosDeCompra } from "@/lib/remote/compras";
 import { listRemoteNfseLote, prontidaoDoLote } from "@/lib/remote/nfseLote";
 import { pedidosDeExemplo, type PedidoCompra } from "@/features/compras/comprasData";
 import { pedidosKey } from "@/features/compras/useCompras";
 import { loadLocalFinExpenses, loadLocalFinReconciliations, loadLocalFinSales } from "@/features/financeiro/financeiroData";
 import { chaveDoLote } from "@/features/financeiro/loteDeNotas";
+import { useContasDaFila } from "@/features/financeiro/useContasDaFila";
 import { diaUtilAnterior } from "@/features/financeiro/recebiveisRede";
 import {
   decisoesPendentes,
@@ -63,13 +65,10 @@ export function useContadoresDaCasca({ linhasDeConfig, focusLigada }: { linhasDe
     refetchInterval: 120_000,
   });
 
-  // ---- contas de hoje, vencidas e acima do limite: quem paga ou aprova (mesma chave da Home) ----
-  const contasQuery = useQuery({
-    queryKey: ["fin-expenses", ano],
-    queryFn: () => listRemoteFinExpenses(ano),
-    enabled: remoto && (pagaContas || aprovaContas),
-    staleTime: 60_000,
-  });
+  // ---- contas de hoje, vencidas e acima do limite: quem paga ou aprova (mesmas chaves da Home) ----
+  // Pelos ANOS DA JANELA da fila (revisão de 08/10/2026): na virada do ano a conta
+  // de 02/01 que se paga em 31/12 e as vencidas de dezembro em janeiro entram.
+  const contasDaFila = useContasDaFila({ hoje, ativo: remoto && (pagaContas || aprovaContas) });
 
   // ---- fechamento de ontem sem conferir: quem confere (mesmas chaves da Home) ----
   // O ano é o do dia útil anterior: em 04/01 o "ontem" ainda é dezembro.
@@ -87,16 +86,22 @@ export function useContadoresDaCasca({ linhasDeConfig, focusLigada }: { linhasDe
     staleTime: 60_000,
   });
 
+  // Prévia: "Paguei" e "Aprovar" gravam no aparelho e avisam (revisão de
+  // 08/10/2026) — o contador relê na hora, sem esperar a troca de tela.
+  const [versaoLocal, setVersaoLocal] = useState(0);
+  useEffect(() => (remoto ? undefined : aoMudarLocal(() => setVersaoLocal((versao) => versao + 1))), [remoto]);
+
   const decisoes = useMemo(() => {
     // Na prévia tudo vive no aparelho; relê a cada troca de tela (as telas de
-    // Pedidos, Contas e Fechamento gravam no mesmo lugar).
+    // Pedidos, Contas e Fechamento gravam no mesmo lugar) e a cada aviso de mudança.
     void pathname;
+    void versaoLocal;
     const pedidos: PedidoCompra[] = remoto
       ? pedidosQuery.data ?? []
       : aprovaPedidos
         ? readLocalValue<PedidoCompra[]>(pedidosKey, pedidosDeExemplo(hoje))
         : [];
-    const contas = remoto ? contasQuery.data ?? [] : pagaContas || aprovaContas ? loadLocalFinExpenses() : [];
+    const contas = remoto ? contasDaFila.contas : pagaContas || aprovaContas ? loadLocalFinExpenses() : [];
     const comandas = remoto ? comandasQuery.data ?? [] : confereFechamento ? loadLocalFinSales() : [];
     // Sem a resposta das conferências ainda, não acusa o fechamento: espera.
     const conferencias = remoto ? conferenciasQuery.data : confereFechamento ? loadLocalFinReconciliations() : [];
@@ -115,7 +120,7 @@ export function useContadoresDaCasca({ linhasDeConfig, focusLigada }: { linhasDe
   }, [
     remoto,
     pedidosQuery.data,
-    contasQuery.data,
+    contasDaFila.contas,
     comandasQuery.data,
     conferenciasQuery.data,
     aprovaPedidos,
@@ -125,6 +130,7 @@ export function useContadoresDaCasca({ linhasDeConfig, focusLigada }: { linhasDe
     limiteAprovacao,
     hoje,
     pathname,
+    versaoLocal,
   ]);
 
   // ---- notas sem CPF: quem lê o lote (RLS: financeiro completo ou quem emite) E abre

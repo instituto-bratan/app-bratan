@@ -2,9 +2,8 @@
 // pessoa nova. Um componente só para os dois campos serem iguais em todo lugar
 // e ninguém esquecer nenhum deles de novo (29/07/2026).
 
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { Input, Label } from "./comercialVisual";
 import { contactChannelsIssue, formatPhoneBR, type ContactChannelsDraft } from "./contactChannels";
 
 type ContactChannelsFieldsProps = {
@@ -36,12 +35,12 @@ export function ContactChannelsFields({
     <div
       className={cn(
         "grid gap-3",
-        !bare && "rounded-lg border border-brand-dourado/35 bg-brand-creme/25 p-3",
+        !bare && "rounded-bloco border border-fio-2 bg-saber p-3",
         className,
       )}
     >
       {!bare || note ? (
-        <p className="text-[11px] leading-snug text-muted-foreground">
+        <p className="text-xs leading-snug text-tinta-2">
           {note ?? "Contato da pessoa — é por aqui que a cadência liga e escreve. Sem número, o CRM não tem como cobrar nem acompanhar."}
         </p>
       ) : null}
@@ -74,7 +73,7 @@ export function ContactChannelsFields({
           />
         </div>
       </div>
-      {issue ? <p className="text-[11px] font-semibold text-destructive">{issue}</p> : null}
+      {issue ? <p className="text-xs font-semibold text-erro">{issue}</p> : null}
     </div>
   );
 }

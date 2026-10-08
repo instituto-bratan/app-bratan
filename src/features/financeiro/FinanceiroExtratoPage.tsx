@@ -4,16 +4,17 @@
 // casa sozinho. Em vez de ele precisar "se atentar ao extrato", os problemas
 // vêm até ele em quatro caixas. Tudo que a conciliação manual desta semana
 // levou horas para achar aparece aqui em segundos.
+//
+// REDESENHO (08/10/2026, Papel & Musgo, imagem 03): um cabeçalho só, com a
+// leitura da conciliação como frase; à esquerda, na folha, o que pede decisão
+// (as quatro caixas e a maquininha dia a dia); à direita, no saber, o mês em
+// números. Mesmos dados, mesmos botões, mesma regra de gravação.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, FileUp, Landmark, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileUp, Info, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Label } from "@/components/ui/label";
 import { canEditModule, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
@@ -28,6 +29,7 @@ import { moneyFin, monthKeyLabel } from "./financeiroData";
 import { conciliarExtrato, leituraDaConciliacao, lerExtratoDeTexto, lerExtratoDeXlsx, linhasNovasDoExtrato, type BankEntry } from "./extratoBanco";
 import { agendaRecebiveis, faturamentoRede, saldoRecebiveis } from "./recebiveisRede";
 import { useFinanceiro } from "./useFinanceiro";
+import { Campo, Linha, NumeroGrande, OrigemDosDados, RecadoDaTela, Razao, Rubrica, Selecao, TituloDoBloco, Vazio, mesDaRubrica, tabela } from "./pecasBancoFechamento";
 
 const dataBr = (iso: string) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
@@ -190,12 +192,15 @@ export function FinanceiroExtratoPage() {
   const problemas =
     balde.entrouSemRegistro.length + balde.saiuSemRegistro.length + balde.comandaSemDinheiro.length + balde.contaSemSaida.length;
 
+  // As quatro caixas. `tom` (08/10/2026) troca o fundo vermelho/âmbar antigo:
+  // dinheiro que entrou ou saiu sem registro pede ação já (erro); comanda ou
+  // conta sem o par no banco pede conferência (atenção).
   const caixas = [
     {
       chave: "entrou",
       titulo: "Entrou no banco e não tem comanda",
       explica: "Dinheiro que caiu na conta sem registro no app. Alguém atendeu e não lançou.",
-      cor: "border-red-300 bg-red-50/70",
+      tom: "erro" as const,
       itens: balde.entrouSemRegistro.map((entry) => ({
         id: entry.clientRef,
         dia: entry.entryDate,
@@ -209,7 +214,7 @@ export function FinanceiroExtratoPage() {
       chave: "saiu",
       titulo: "Saiu do banco e não tem conta lançada",
       explica: "Pagamento que aconteceu e o Contas a Pagar não sabe. Foi assim que 47 mil ficaram de fora em agosto.",
-      cor: "border-red-300 bg-red-50/70",
+      tom: "erro" as const,
       itens: balde.saiuSemRegistro.map((entry) => ({
         id: entry.clientRef,
         dia: entry.entryDate,
@@ -223,7 +228,7 @@ export function FinanceiroExtratoPage() {
       chave: "comanda",
       titulo: "Comanda no app e o dinheiro não apareceu",
       explica: "Provável forma de pagamento errada — ou o PIX não caiu mesmo.",
-      cor: "border-amber-300 bg-amber-50/70",
+      tom: "atencao" as const,
       itens: balde.comandaSemDinheiro.map((item) => ({
         id: `${item.sale.id}-${item.valor}`,
         dia: item.sale.saleDate,
@@ -237,7 +242,7 @@ export function FinanceiroExtratoPage() {
       chave: "conta",
       titulo: "Marcada como paga e não saiu do banco",
       explica: "Ou o pagamento não aconteceu, ou saiu por outra conta. Foi o caso da provisão de impostos.",
-      cor: "border-amber-300 bg-amber-50/70",
+      tom: "atencao" as const,
       itens: balde.contaSemSaida.map((expense) => ({
         id: expense.id,
         dia: expense.paidAt ?? "",
@@ -249,306 +254,348 @@ export function FinanceiroExtratoPage() {
     },
   ];
 
+  const nomeDoMes = monthKeyLabel(monthKey);
+  const mesRubrica = mesDaRubrica(monthKey, hoje);
+  const maquininha = balde.maquininha;
+  const tomDaMaquininha = maquininha.situacao === "OK" ? "ok" : maquininha.situacao === "SEM_DADOS" ? null : "atencao";
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Extrato do banco" module="fin-extrato">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="gold">Conferência automática</Badge>
-            <Badge variant="muted">{financeiro.syncMode}</Badge>
-          </div>
-          <h1 className="mt-3 flex flex-wrap items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-            <Landmark className="h-7 w-7" aria-hidden="true" />
-            Extrato do banco × app
-            <InfoTip title="Para que serve">
-              O extrato é a única fonte que não mente: se o dinheiro entrou, está lá. Arraste o arquivo que você já baixa
-              do Itaú e o app casa sozinho com as comandas e as contas. O que sobrar aparece nas caixas abaixo — é só
-              isso que precisa da sua atenção. Importar o mesmo arquivo duas vezes não duplica nada.
-            </InfoTip>
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Em vez de você precisar olhar o extrato linha por linha, o app olha — e te mostra só o que não fecha.
-          </p>
-
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <div>
-              <Label htmlFor="mes-extrato">Mês</Label>
-              <select
-                id="mes-extrato"
-                value={monthKey}
-                onChange={(event) => setMonthKey(event.target.value)}
-                className="mt-1 block rounded-md border border-brand-oliva/25 bg-white/80 px-3 py-2 text-sm font-semibold text-brand-tinta"
-              >
-                {meses.map((mes) => (
-                  <option key={mes} value={mes}>
-                    {monthKeyLabel(mes)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {!readOnly ? (
-              <>
-                <input
-                  ref={inputArquivo}
-                  type="file"
-                  accept=".xlsx,.csv,.txt"
-                  className="hidden"
-                  onChange={(event) => {
-                    const arquivo = event.target.files?.[0];
-                    if (arquivo) void receberArquivo(arquivo);
-                    event.target.value = "";
-                  }}
-                />
-                <Button type="button" className="gap-2" disabled={lendo || importar.isPending} onClick={() => inputArquivo.current?.click()}>
-                  {lendo || importar.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <FileUp className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  Importar extrato (.xlsx do Itaú)
-                </Button>
-              </>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              onClick={() => void queryClient.invalidateQueries({ queryKey: ["fin-bank-entries"] })}
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" /> Atualizar
-            </Button>
-          </div>
-          {feedback ? <p className="mt-3 text-sm font-semibold text-brand-musgo">{feedback}</p> : null}
-          {erro ? <p className="mt-3 text-sm font-semibold text-red-700">{erro}</p> : null}
-        </motion.section>
-
-        {/* Placar */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { rotulo: "Entrou no banco", valor: moneyFin(balde.totais.entrouBanco), dica: `${monthKeyLabel(monthKey)}` },
-            { rotulo: "Saiu do banco", valor: moneyFin(balde.totais.saiuBanco), dica: "pagamentos do mês" },
-            { rotulo: "Faturado no app", valor: moneyFin(balde.totais.faturadoApp), dica: "comandas do mês" },
-            {
-              rotulo: "Pontos para olhar",
-              valor: String(problemas),
-              dica: problemas ? "abaixo, um por caixa" : "nada pendente 🎉",
-              alerta: problemas > 0,
-            },
-          ].map((card) => (
-            <div
-              key={card.rotulo}
-              className={cn(
-                "rounded-xl border px-5 py-4",
-                card.alerta ? "border-red-300 bg-red-50/70" : "border-brand-oliva/20 bg-white/70",
-              )}
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{card.rotulo}</p>
-              <p className={cn("mt-1 text-2xl font-bold", card.alerta ? "text-red-800" : "text-brand-musgo")}>{card.valor}</p>
-              <p className="text-[11px] text-muted-foreground">{card.dica}</p>
-            </div>
-          ))}
-        </div>
-
-        <Card className="border-brand-oliva/20 bg-white/70">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-              {problemas ? (
-                <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
-              ) : (
-                <CheckCircle2 className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-              )}
-              {leituraDaConciliacao(balde)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 text-sm">
-            <p className="text-muted-foreground">
-              Casaram por valor e data: <strong>{balde.casadas.length}</strong> · com diferença de centavo/real:{" "}
-              <strong>{balde.casadasComDiferenca.length}</strong> · conta paga em 2 lançamentos:{" "}
-              <strong>{balde.casadasAgrupadas.length}</strong>
-            </p>
-            {balde.casadasComDiferenca.map((item) => (
-              <div key={item.entry.clientRef} className="rounded-md border border-brand-dourado/40 bg-brand-creme/40 px-3 py-1.5">
-                {dataBr(item.entry.entryDate)} · {moneyFin(Math.abs(item.entry.amount))} casou com <strong>{item.comQue}</strong> —
-                diferença de {moneyFin(item.diferenca)}
-              </div>
-            ))}
-            {balde.casadasAgrupadas.map((item) => (
-              <div key={item.comQue + item.total} className="rounded-md border border-brand-dourado/40 bg-brand-creme/40 px-3 py-1.5">
-                <strong>{item.comQue}</strong> foi pago em {item.entries.length} lançamentos:{" "}
-                {item.entries.map((entry) => moneyFin(Math.abs(entry.amount))).join(" + ")} = {moneyFin(item.total)}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* MAQUININHA (regra do Lucas): toda TRANSFERÊNCIA AUTOM. RECEBIDA é o
-            crédito da véspera caindo, líquido da taxa — tem que bater com os
-            cartões das comandas. */}
-        <Card
-          className={cn(
-            "shadow-none",
-            balde.maquininha.situacao === "OK"
-              ? "border-emerald-200 bg-emerald-50/50"
-              : balde.maquininha.situacao === "SEM_DADOS"
-                ? "border-brand-oliva/20 bg-white/60"
-                : "border-amber-300 bg-amber-50/70",
-          )}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              Maquininha: o que caiu × as parcelas que venciam
-              <InfoTip title="Como funciona">
-                Desde 24/08/2026 a Rede não antecipa mais: o crédito cai em 31 dias corridos — uma parcela por mês no
-                parcelado. Cada dia é confrontado com as PARCELAS que venciam nele, já líquidas pela tabela do contrato
-                que valia NA DATA DA VENDA: vendas de 24 a 31/08 pelo acordo Q-7594851 (1,4% à vista · 2,68% no
-                parcelado), vendas de 01/09 em diante pelo Q-7621480 (1,7% à vista · 2,39% em qualquer parcelado ·
-                0,7% no débito). Antes de 24/08 a antecipação estava ligada (custo ~6%) e os dias antigos continuam
-                sendo lidos assim.
+      <div className="mx-auto w-full max-w-[1320px]">
+        <Cabecalho
+          sobrancelha="Financeiro · Banco"
+          titulo={
+            <>
+              Extrato do banco{" "}
+              <InfoTip title="Para que serve" className="align-middle">
+                O extrato é a única fonte que não mente: se o dinheiro entrou, está lá. Arraste o arquivo que você já baixa
+                do Itaú e o app casa sozinho com as comandas e as contas. O que sobrar aparece nas caixas abaixo — é só
+                isso que precisa da sua atenção. Importar o mesmo arquivo duas vezes não duplica nada.
               </InfoTip>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 text-sm">
-            <div className="flex flex-wrap gap-x-6 gap-y-1">
-              <span>
-                Transferências recebidas: <strong className="tabular-nums">{moneyFin(balde.maquininha.transferencias)}</strong>
-              </span>
-              <span>
-                Cartão das comandas (véspera): <strong className="tabular-nums">{moneyFin(balde.maquininha.cartaoComandas)}</strong>
-              </span>
-              <span title="Soma das parcelas com vencimento depois de hoje, já líquidas da taxa do contrato.">
-                A maquininha ainda me deve:{" "}
-                <strong className="tabular-nums text-brand-musgo">{moneyFin(saldoMaquininha.aReceber)}</strong>{" "}
-                <span className="text-muted-foreground">({saldoMaquininha.parcelas} parcela(s))</span>
-              </span>
-              <span
-                className={cn(!faturamentoAcordado.bateu && "text-amber-900")}
-                title="Faturamento mensal acordado com a Rede (Tabela 1 do contrato). Se em nenhum dos 3 meses do período de apuração o volume for atingido, as taxas com desconto caem."
+            </>
+          }
+          frase={
+            problemas ? (
+              <>
+                <span className="alerta">{leituraDaConciliacao(balde)}</span> Em vez de você olhar o extrato linha por linha, o app olha e
+                mostra só o que não fecha.
+              </>
+            ) : (
+              <>
+                {leituraDaConciliacao(balde)} Em vez de você olhar o extrato linha por linha, o app olha e mostra só o que não fecha.
+              </>
+            )
+          }
+          acoes={
+            <div className="flex flex-wrap items-end gap-2">
+              <Campo rotulo="Mês" className="w-44">
+                <Selecao id="mes-extrato" value={monthKey} onChange={(event) => setMonthKey(event.target.value)}>
+                  {meses.map((mes) => (
+                    <option key={mes} value={mes}>
+                      {monthKeyLabel(mes)}
+                    </option>
+                  ))}
+                </Selecao>
+              </Campo>
+              <Botao
+                variante="fantasma"
+                icone={<RefreshCw className="h-4 w-4" aria-hidden="true" />}
+                onClick={() => void queryClient.invalidateQueries({ queryKey: ["fin-bank-entries"] })}
               >
-                Acordado com a Rede:{" "}
-                <strong className="tabular-nums">{faturamentoAcordado.percentual.toFixed(0)}%</strong> de{" "}
-                {moneyFin(faturamentoAcordado.acordado)}
-                {faturamentoAcordado.bateu ? " ✓" : ` — faltam ${moneyFin(faturamentoAcordado.falta)}`}
-              </span>
-              {balde.maquininha.taxaImplicita !== null ? (
-                <span>
-                  Taxa implícita: <strong className="tabular-nums">{String(balde.maquininha.taxaImplicita).replace(".", ",")}%</strong>
-                </span>
+                Atualizar
+              </Botao>
+              {!readOnly ? (
+                <>
+                  <input
+                    ref={inputArquivo}
+                    type="file"
+                    accept=".xlsx,.csv,.txt"
+                    className="hidden"
+                    onChange={(event) => {
+                      const arquivo = event.target.files?.[0];
+                      if (arquivo) void receberArquivo(arquivo);
+                      event.target.value = "";
+                    }}
+                  />
+                  <Botao
+                    variante="primario"
+                    carregando={lendo || importar.isPending}
+                    disabled={lendo || importar.isPending}
+                    icone={<FileUp className="h-4 w-4" aria-hidden="true" />}
+                    onClick={() => inputArquivo.current?.click()}
+                  >
+                    Importar extrato (.xlsx do Itaú)
+                  </Botao>
+                </>
               ) : null}
             </div>
-            <p
-              className={cn(
-                "font-semibold",
-                balde.maquininha.situacao === "OK"
-                  ? "text-emerald-800"
-                  : balde.maquininha.situacao === "SEM_DADOS"
-                    ? "text-muted-foreground"
-                    : "text-amber-900",
-              )}
-            >
-              {balde.maquininha.leitura}
-            </p>
+          }
+        />
 
-            {/* DIA POR DIA (18/08/2026). No total do mês a taxa de um dia
-                compensa a sobra de outro e o furo desaparece: foi assim que
-                R$ 13.808 fechados no Kanban e nunca lançados ficaram escondidos.
-                Aqui cada adiantamento é confrontado só com o cartão do dia útil
-                que o originou. */}
-            {balde.maquininha.porDia.length ? (
-              <div className="mt-1 overflow-x-auto">
-                <table className="w-full min-w-[34rem] border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-brand-oliva/25 text-left text-muted-foreground">
-                      <th className="py-1 pr-3 font-medium">Caiu no banco</th>
-                      <th className="py-1 pr-3 font-medium">Origem</th>
-                      <th className="py-1 pr-3 text-right font-medium">Caiu</th>
-                      <th className="py-1 pr-3 text-right font-medium">Previsto</th>
-                      <th className="py-1 pr-3 text-right font-medium">Taxa</th>
-                      <th className="py-1 font-medium">Leitura</th>
-                    </tr>
-                  </thead>
-                  <tbody className="tabular-nums">
-                    {balde.maquininha.porDia.map((dia) => (
-                      <tr
-                        key={dia.diaTransferencia}
-                        className={cn(
-                          "border-b border-brand-oliva/10 last:border-0",
-                          dia.situacao === "SOBROU_NO_BANCO" ? "bg-rose-50/80" : dia.situacao === "FALTOU_CAIR" ? "bg-amber-50/70" : "",
-                        )}
-                      >
-                        <td className="py-1 pr-3">{dataBr(dia.diaTransferencia)}</td>
-                        <td className="py-1 pr-3 text-muted-foreground">{dia.origem}</td>
-                        <td className="py-1 pr-3 text-right">{moneyFin(dia.transferencia)}</td>
-                        <td className="py-1 pr-3 text-right">
-                          {moneyFin(dia.regime === "PRAZO" ? dia.previstoLiquido : dia.cartao)}
-                          {dia.regime === "PRAZO" ? null : <span className="ml-1 text-[10px] text-muted-foreground">bruto</span>}
-                        </td>
-                        <td className="py-1 pr-3 text-right">
-                          {dia.taxaImplicita === null ? "—" : `${String(dia.taxaImplicita).replace(".", ",")}%`}
-                        </td>
-                        <td className={cn("py-1", dia.situacao === "SOBROU_NO_BANCO" ? "font-semibold text-rose-800" : dia.situacao === "FALTOU_CAIR" ? "text-amber-900" : "text-emerald-800")}>
-                          {dia.situacao === "OK"
-                            ? "bate"
-                            : dia.situacao === "SOBROU_NO_BANCO"
-                              ? `sobrou ${moneyFin(dia.sobra)} — falta comanda de cartão`
-                              : dia.transferencia === 0
-                                ? dia.regime === "PRAZO"
-                                  ? "parcela não caiu — conferir no portal da Rede"
-                                  : "o dinheiro do cartão não caiu"
-                                : "caiu menos do que o previsto"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+        {feedback || erro ? (
+          <div className="mb-6 grid gap-2">
+            {feedback ? <RecadoDaTela>{feedback}</RecadoDaTela> : null}
+            {erro ? <RecadoDaTela tom="erro">{erro}</RecadoDaTela> : null}
+          </div>
+        ) : null}
 
-        {/* As quatro caixas */}
-        {caixas.map((caixa) => (
-          <Card key={caixa.chave} className={cn("shadow-none", caixa.itens.length ? caixa.cor : "border-brand-oliva/20 bg-white/60")}>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-                {caixa.titulo}
-                <Badge variant={caixa.itens.length ? "gold" : "muted"}>{caixa.itens.length}</Badge>
-              </CardTitle>
-              <p className="text-xs leading-5 text-muted-foreground">{caixa.explica}</p>
-            </CardHeader>
-            <CardContent>
-              {!caixa.itens.length ? (
-                <p className="text-sm text-muted-foreground">Nada aqui — está tudo conferido. ✓</p>
-              ) : (
-                <div className="grid gap-1.5">
-                  {caixa.itens.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-oliva/16 bg-white/80 px-3 py-2 text-sm"
-                    >
-                      <span className="flex flex-wrap items-baseline gap-2">
-                        <span className="font-semibold tabular-nums text-brand-tinta">{dataBr(item.dia)}</span>
-                        <span className="font-bold tabular-nums text-brand-musgo">{moneyFin(item.valor)}</span>
-                        <span className="text-brand-tinta">{item.texto}</span>
-                        {item.detalhe && item.detalhe !== item.texto ? (
-                          <span className="text-xs text-muted-foreground">{item.detalhe}</span>
-                        ) : null}
-                      </span>
-                      {item.entry && !readOnly ? (
-                        <Button type="button" size="sm" variant="ghost" onClick={() => void ignorar(item.entry!)}>
-                          Não é do Instituto
-                        </Button>
-                      ) : null}
-                    </div>
-                  ))}
+        <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          {/* DECIDIR — o que não fechou, caixa por caixa (folha). */}
+          <div className="grid min-w-0 gap-6">
+            <BlocoFolha as="section" aria-labelledby="extrato-pontos" className="overflow-hidden">
+              <TituloDoBloco
+                id="extrato-pontos"
+                titulo="Pontos para olhar"
+                soma={
+                  problemas ? (
+                    <span className="text-atencao">
+                      {problemas} {problemas === 1 ? "ponto" : "pontos"} em {nomeDoMes}
+                    </span>
+                  ) : (
+                    <span className="text-ok">nada pendente</span>
+                  )
+                }
+                ajuda="Só o que o app não conseguiu casar sozinho. Resolva na origem (comanda ou conta) e a linha some daqui."
+              />
+              {caixas.map((caixa, indice) => {
+                const soma = caixa.itens.reduce((total, item) => total + Math.abs(item.valor), 0);
+                return (
+                  <section key={caixa.chave} aria-labelledby={`caixa-${caixa.chave}`} className={cn("border-t", indice > 0 ? "border-fio-2" : "border-fio")}>
+                    <TituloDoBloco
+                      id={`caixa-${caixa.chave}`}
+                      nivel="h3"
+                      className="pt-4"
+                      titulo={caixa.titulo}
+                      soma={
+                        caixa.itens.length ? (
+                          <span className={caixa.tom === "erro" ? "text-erro" : "text-atencao"}>
+                            {caixa.itens.length} · {moneyFin(soma)}
+                          </span>
+                        ) : null
+                      }
+                      ajuda={caixa.explica}
+                    />
+                    {!caixa.itens.length ? (
+                      <Vazio>Nada aqui — está tudo conferido.</Vazio>
+                    ) : (
+                      <ul>
+                        {caixa.itens.map((item) => (
+                          <Linha
+                            key={item.id}
+                            titulo={item.texto}
+                            meta={[
+                              <span key="dia" className="tabular-nums">
+                                {dataBr(item.dia)}
+                              </span>,
+                              item.detalhe && item.detalhe !== item.texto ? item.detalhe : null,
+                            ]}
+                            valor={moneyFin(item.valor)}
+                            acoes={
+                              item.entry && !readOnly ? (
+                                <Botao variante="fantasma" tamanho="pq" onClick={() => void ignorar(item.entry!)}>
+                                  Não é do Instituto
+                                </Botao>
+                              ) : null
+                            }
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
+            </BlocoFolha>
+
+            {/* MAQUININHA (regra do Lucas): toda TRANSFERÊNCIA AUTOM. RECEBIDA é o
+                crédito da véspera caindo, líquido da taxa — tem que bater com os
+                cartões das comandas. */}
+            <BlocoFolha as="section" aria-labelledby="extrato-maquininha" className="overflow-hidden">
+              <TituloDoBloco
+                id="extrato-maquininha"
+                titulo={
+                  <>
+                    Maquininha: o que caiu × as parcelas que venciam
+                    <InfoTip title="Como funciona">
+                      Desde 24/08/2026 a Rede não antecipa mais: o crédito cai em 31 dias corridos — uma parcela por mês no
+                      parcelado. Cada dia é confrontado com as PARCELAS que venciam nele, já líquidas pela tabela do contrato
+                      que valia NA DATA DA VENDA: vendas de 24 a 31/08 pelo acordo Q-7594851 (1,4% à vista · 2,68% no
+                      parcelado), vendas de 01/09 em diante pelo Q-7621480 (1,7% à vista · 2,39% em qualquer parcelado ·
+                      0,7% no débito). Antes de 24/08 a antecipação estava ligada (custo ~6%) e os dias antigos continuam
+                      sendo lidos assim.
+                    </InfoTip>
+                  </>
+                }
+              />
+              <dl className="grid gap-x-6 gap-y-4 border-t border-fio px-6 py-4 sm:grid-cols-2 lg:grid-cols-3 max-md:px-4">
+                <div className="min-w-0">
+                  <dt className="text-[13px] font-medium leading-5 text-tinta-2">Transferências recebidas</dt>
+                  <dd className="text-base font-bold leading-6 tabular-nums text-tinta">{moneyFin(maquininha.transferencias)}</dd>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+                <div className="min-w-0">
+                  <dt className="text-[13px] font-medium leading-5 text-tinta-2">Cartão das comandas (véspera)</dt>
+                  <dd className="text-base font-bold leading-6 tabular-nums text-tinta">{moneyFin(maquininha.cartaoComandas)}</dd>
+                </div>
+                <div className="min-w-0" title="Soma das parcelas com vencimento depois de hoje, já líquidas da taxa do contrato.">
+                  <dt className="text-[13px] font-medium leading-5 text-tinta-2">A maquininha ainda me deve</dt>
+                  <dd className="text-base font-bold leading-6 tabular-nums text-tinta">
+                    {moneyFin(saldoMaquininha.aReceber)}{" "}
+                    <span className="text-[13px] font-medium text-tinta-2">({saldoMaquininha.parcelas} parcela(s))</span>
+                  </dd>
+                </div>
+                <div
+                  className="min-w-0"
+                  title="Faturamento mensal acordado com a Rede (Tabela 1 do contrato). Se em nenhum dos 3 meses do período de apuração o volume for atingido, as taxas com desconto caem."
+                >
+                  <dt className="text-[13px] font-medium leading-5 text-tinta-2">Acordado com a Rede</dt>
+                  <dd className={cn("text-base font-bold leading-6 tabular-nums", faturamentoAcordado.bateu ? "text-tinta" : "text-atencao")}>
+                    {faturamentoAcordado.percentual.toFixed(0)}%{" "}
+                    <span className="text-[13px] font-medium text-tinta-2">
+                      de {moneyFin(faturamentoAcordado.acordado)}
+                      {faturamentoAcordado.bateu ? " · bateu" : ` — faltam ${moneyFin(faturamentoAcordado.falta)}`}
+                    </span>
+                  </dd>
+                </div>
+                {maquininha.taxaImplicita !== null ? (
+                  <div className="min-w-0">
+                    <dt className="text-[13px] font-medium leading-5 text-tinta-2">Taxa implícita</dt>
+                    <dd className="text-base font-bold leading-6 tabular-nums text-tinta">{String(maquininha.taxaImplicita).replace(".", ",")}%</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <p
+                className={cn(
+                  "flex items-start gap-2 border-t border-fio px-6 py-3 text-sm font-semibold leading-5 max-md:px-4",
+                  tomDaMaquininha === "ok" ? "text-ok" : tomDaMaquininha === "atencao" ? "text-atencao" : "text-tinta-2",
+                )}
+              >
+                {tomDaMaquininha === "ok" ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                ) : tomDaMaquininha === "atencao" ? (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                ) : (
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 stroke-oliva" aria-hidden="true" />
+                )}
+                <span>{maquininha.leitura}</span>
+              </p>
+
+              {/* DIA POR DIA (18/08/2026). No total do mês a taxa de um dia
+                  compensa a sobra de outro e o furo desaparece: foi assim que
+                  R$ 13.808 fechados no Kanban e nunca lançados ficaram escondidos.
+                  Aqui cada adiantamento é confrontado só com o cartão do dia útil
+                  que o originou. */}
+              {maquininha.porDia.length ? (
+                <div className="overflow-x-auto border-t border-fio">
+                  <table className={cn(tabela.tabela, "min-w-[40rem]")}>
+                    <caption className="sr-only">Maquininha dia por dia</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col" className={tabela.th}>Caiu no banco</th>
+                        <th scope="col" className={tabela.th}>Origem</th>
+                        <th scope="col" className={tabela.thNum}>Caiu</th>
+                        <th scope="col" className={tabela.thNum}>Previsto</th>
+                        <th scope="col" className={tabela.thNum}>Taxa</th>
+                        <th scope="col" className={tabela.th}>Leitura</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {maquininha.porDia.map((dia) => (
+                        <tr
+                          key={dia.diaTransferencia}
+                          className={cn(
+                            tabela.linha,
+                            dia.situacao === "SOBROU_NO_BANCO" ? "bg-erro-claro/50" : dia.situacao === "FALTOU_CAIR" ? "bg-atencao-claro/50" : "",
+                          )}
+                        >
+                          <td className={cn(tabela.td, "whitespace-nowrap tabular-nums")}>{dataBr(dia.diaTransferencia)}</td>
+                          <td className={cn(tabela.td, "text-tinta-2")}>{dia.origem}</td>
+                          <td className={tabela.tdNum}>{moneyFin(dia.transferencia)}</td>
+                          <td className={tabela.tdNum}>
+                            {moneyFin(dia.regime === "PRAZO" ? dia.previstoLiquido : dia.cartao)}
+                            {dia.regime === "PRAZO" ? null : <span className="ml-1 text-xs font-medium text-tinta-2">bruto</span>}
+                          </td>
+                          <td className={tabela.tdNum}>{dia.taxaImplicita === null ? "—" : `${String(dia.taxaImplicita).replace(".", ",")}%`}</td>
+                          <td
+                            className={cn(
+                              tabela.td,
+                              "font-semibold",
+                              dia.situacao === "SOBROU_NO_BANCO" ? "text-erro" : dia.situacao === "FALTOU_CAIR" ? "text-atencao" : "text-ok",
+                            )}
+                          >
+                            {dia.situacao === "OK"
+                              ? "bate"
+                              : dia.situacao === "SOBROU_NO_BANCO"
+                                ? `sobrou ${moneyFin(dia.sobra)} — falta comanda de cartão`
+                                : dia.transferencia === 0
+                                  ? dia.regime === "PRAZO"
+                                    ? "parcela não caiu — conferir no portal da Rede"
+                                    : "o dinheiro do cartão não caiu"
+                                  : "caiu menos do que o previsto"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </BlocoFolha>
+          </div>
+
+          {/* SABER — o mês no banco (sem borda, sem sombra). */}
+          <BlocoSaber as="aside" aria-labelledby="extrato-mes" className="grid content-start gap-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <Rubrica as="h2" id="extrato-mes">
+                {mesRubrica} no banco
+              </Rubrica>
+              <span className="whitespace-nowrap text-[13px] font-medium text-tinta-2">conferência automática</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <NumeroGrande valor={balde.totais.entrouBanco} />
+              <span className="text-[13px] font-medium leading-5 text-tinta-2">entrou no banco</span>
+            </div>
+            <Razao
+              linhas={[
+                { rotulo: "Saiu do banco", detalhe: "pagamentos do mês", valor: moneyFin(balde.totais.saiuBanco) },
+                { rotulo: "Faturado no app", detalhe: "comandas do mês", valor: moneyFin(balde.totais.faturadoApp) },
+                {
+                  rotulo: "Pontos para olhar",
+                  detalhe: problemas ? "na folha ao lado, um por caixa" : undefined,
+                  valor: problemas ? String(problemas) : "nenhum",
+                  tom: problemas ? "atencao" : "ok",
+                },
+              ]}
+            />
+            <div className="grid gap-1">
+              <p className="text-sm font-semibold leading-5 text-tinta">Casaram com o app</p>
+              <Razao
+                className="border-t-0"
+                linhas={[
+                  { rotulo: "Por valor e data", valor: String(balde.casadas.length), valorMenor: true },
+                  { rotulo: "Com diferença de centavo/real", valor: String(balde.casadasComDiferenca.length), valorMenor: true },
+                  { rotulo: "Conta paga em 2 lançamentos", valor: String(balde.casadasAgrupadas.length), valorMenor: true },
+                ]}
+              />
+            </div>
+            {balde.casadasComDiferenca.length || balde.casadasAgrupadas.length ? (
+              <ul className="grid gap-2 text-[13px] font-medium leading-5 text-tinta">
+                {balde.casadasComDiferenca.map((item) => (
+                  <li key={item.entry.clientRef} className="rounded-controle bg-folha px-3 py-2">
+                    <span className="tabular-nums">{dataBr(item.entry.entryDate)}</span> · {moneyFin(Math.abs(item.entry.amount))} casou com{" "}
+                    <strong className="font-bold">{item.comQue}</strong> — diferença de {moneyFin(item.diferenca)}
+                  </li>
+                ))}
+                {balde.casadasAgrupadas.map((item) => (
+                  <li key={item.comQue + item.total} className="rounded-controle bg-folha px-3 py-2">
+                    <strong className="font-bold">{item.comQue}</strong> foi pago em {item.entries.length} lançamentos:{" "}
+                    <span className="tabular-nums">
+                      {item.entries.map((entry) => moneyFin(Math.abs(entry.amount))).join(" + ")} = {moneyFin(item.total)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <OrigemDosDados modo={financeiro.syncMode} />
+          </BlocoSaber>
+        </div>
       </div>
     </AccessGate>
   );

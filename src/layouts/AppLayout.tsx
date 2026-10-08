@@ -25,6 +25,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { BalaoDoDia } from "@/components/BalaoDoDia";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Avisos } from "@/components/ui/avisos";
+import { ContextoAbasDaPagina } from "@/components/ui/cabecalho";
 import { GuiaDaTela } from "@/components/ui/page-guide";
 import { PublicadorDoResumo } from "@/features/financeiro/PublicadorDoResumo";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,6 +36,7 @@ import { useCarregarConfigDoMotor } from "@/lib/useConfigDoMotor";
 import { useConfigNegocio } from "@/lib/useConfigNegocio";
 import { useIntegracoes } from "@/lib/useIntegracoes";
 import { AbasDoItem } from "./casca/AbasDoItem";
+import { mostraBarraDeAbas } from "./casca/casca";
 import { BarraDoCelular, FolhaDoNovo, GavetaDoMenu } from "./casca/BarraDoCelular";
 import { BuscaRapida } from "./casca/BuscaRapida";
 import { ContextoDosContadores } from "./casca/contexto";
@@ -140,6 +142,8 @@ export function AppLayout() {
     ? { rotulo: destinoAtual.rotulo, fixado: estaFixado(destinoAtual.id), onAlternar: () => void alternar(destinoAtual.id) }
     : null;
   const temGuia = Boolean(findPageGuide(location.pathname));
+  // A mesma barra, entregue ao Cabecalho da tela para ir logo abaixo do título.
+  const abasNoCabecalho = useMemo(() => (mostraBarraDeAbas(caminho) ? <AbasDoItem caminho={caminho} className="" /> : null), [caminho]);
   const sair = useCallback(() => void signOut(), [signOut]);
   const propsDaPessoa = { pessoa, isPreview, tema, onTema: escolherTema, onSair: sair };
 
@@ -183,9 +187,14 @@ export function AppLayout() {
           <main
             id="conteudo"
             tabIndex={-1}
-            className="app-content-frame relative z-10 flex-1 px-[var(--conteudo-lado)] pb-16 pt-8 outline-none max-md:pb-[calc(104px+env(safe-area-inset-bottom))] max-md:pt-6"
+            className="app-content-frame group/conteudo relative z-10 flex-1 px-[var(--conteudo-lado)] pb-16 pt-8 outline-none max-md:pb-[calc(104px+env(safe-area-inset-bottom))] max-md:pt-6"
           >
-            <AbasDoItem caminho={caminho} />
+            {/* A barra de abas do item: no alto do conteúdo só enquanto a tela não
+                tem o Cabecalho novo; com ele, a barra desce para logo abaixo do
+                título (imagem 03 aprovada) e esta some (revisão de 08/10/2026). */}
+            <div className="group-has-[[data-abas-no-cabecalho]]/conteudo:hidden">
+              <AbasDoItem caminho={caminho} />
+            </div>
             <Suspense fallback={<PaginaCarregando />}>
               <motion.div
                 key={location.pathname}
@@ -194,7 +203,9 @@ export function AppLayout() {
                 transition={{ duration: 0.16, ease: [0.2, 0.7, 0.2, 1] }}
               >
                 <ErrorBoundary rotulo={location.pathname}>
-                  <Outlet />
+                  <ContextoAbasDaPagina.Provider value={abasNoCabecalho}>
+                    <Outlet />
+                  </ContextoAbasDaPagina.Provider>
                 </ErrorBoundary>
               </motion.div>
             </Suspense>

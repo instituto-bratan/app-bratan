@@ -1,15 +1,16 @@
+// COMPROVANTES — Financeiro › Dia › Comprovantes.
+//
+// REDESENHO PAPEL & MUSGO (08/10/2026): UM cabeçalho com a frase do número
+// ("Doze comprovantes no filtro, somando R$ …"), o anexar numa FOLHA (o arquivo
+// à esquerda, o que ele quita à direita) e a lista com os filtros no alto, no
+// mesmo bloco. Nenhuma regra mudou: quem só vê não anexa, não estorna nem oculta;
+// a recepção só exclui de vez o que ela mesma anexou; o estorno é um registro novo.
 import { useMemo, useRef, useState, type DragEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { FileText, ImageIcon, RotateCcw, Search, UploadCloud, X } from "lucide-react";
+import { FileText, ImageIcon, RotateCcw, UploadCloud, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { MetalButton } from "@/components/ui/liquid-glass-button";
+import { BlocoFolha, Botao, Cabecalho, CampoBusca } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { canComprovantes, cargoLabels, isCoordenacao } from "@/lib/access";
 import { formatShortTime, readLocalValue, writeLocalValue } from "@/lib/localStore";
@@ -58,6 +59,26 @@ import {
   type PeriodoFiltro,
 } from "./comprovantesData";
 import { confirmar, toast } from "@/components/ui/avisos";
+import {
+  AvisoDaTela,
+  CABECA_DA_FOLHA,
+  CAMPO,
+  CAMPO_PQ,
+  CAMPO_TEXTO,
+  Campo,
+  Etiqueta,
+  Leitura,
+  MARCAR,
+  RUBRICA,
+  TituloDoBloco,
+  Vazio,
+  porExtenso,
+} from "@/features/financeiro/pecasDiaPagar";
+
+/** Botão só com ícone (limpar o dia/mês do filtro). */
+const BOTAO_ICONE =
+  "grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-saber hover:text-tinta " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco";
 
 function createId() {
   return `comprovante-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -386,45 +407,38 @@ export function ComprovantesPage() {
     persist(records.filter((item) => item.id !== record.id));
   }
 
+  // ---- Papel & Musgo (08/10/2026): a frase do cabeçalho, com o número do filtro ----
+  const fraseDoTopo = (
+    <>
+      <strong>
+        {porExtenso(visibleRecords.length, "m")} {visibleRecords.length === 1 ? "comprovante" : "comprovantes"}
+      </strong>{" "}
+      no filtro, somando {money(totalNoFiltro)}. Cada arquivo fica guardado num armazenamento privado e sobe sozinho para a pasta do mês no
+      SharePoint (a cada 15 minutos).
+    </>
+  );
+  const periodos = ["dia", "semana", "mes", "ano", "tudo"] as (PeriodoFiltro | "tudo")[];
+  const rotuloPeriodo = (periodo: PeriodoFiltro | "tudo") =>
+    periodo === "mes" ? "Este mês" : periodo === "dia" ? "Hoje" : periodo === "semana" ? "Semana" : periodo === "ano" ? "Este ano" : "Tudo";
+
   return (
     <AccessGate allowed={canComprovantes} label="Comprovantes" module="comprovantes">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
         <AvisoSoVe soVe={telaComp.soVe} />
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <Badge variant="gold" className="mb-4">
-                Supabase Storage privado
-              </Badge>
-              <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Comprovantes</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Comprovantes da coordenação e da recepção. Cada arquivo entra na fila e sobe sozinho para a pasta do mês no SharePoint (a cada 15 minutos).
-              </p>
-            </div>
-            <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-              <p className="text-2xl font-bold text-brand-musgo">{visibleRecords.length}</p>
-              <p className="text-xs font-semibold uppercase text-brand-oliva">no filtro</p>
-            </div>
-          </div>
-        </motion.section>
+        <Cabecalho className="mb-0 max-md:mb-0" sobrancelha="Financeiro · Dia" titulo="Comprovantes" frase={fraseDoTopo} />
 
         {comprovantesQuery.isError ? (
-          <Card className="border-destructive/30 bg-destructive/5 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-destructive">
-                Não foi possível carregar comprovantes do Supabase. Confira bucket privado, RLS e vínculo do colaborador.
-              </p>
-            </CardContent>
-          </Card>
+          <AvisoDaTela tom="erro">Não foi possível carregar comprovantes do Supabase. Confira bucket privado, RLS e vínculo do colaborador.</AvisoDaTela>
         ) : null}
 
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardContent className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,280px)]">
+        {/* DECIDIR: anexar (o arquivo à esquerda, o que ele quita à direita). */}
+        <BlocoFolha as="section" aria-labelledby="anexar-titulo" className="min-w-0">
+          <div className={CABECA_DA_FOLHA}>
+            <TituloDoBloco id="anexar-titulo" icone={<UploadCloud className="h-4 w-4" aria-hidden="true" />}>
+              Anexar comprovante
+            </TituloDoBloco>
+          </div>
+          <div className="grid gap-6 p-6 max-md:p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
             <div
               onDrop={onDrop}
               onDragOver={(event) => {
@@ -433,17 +447,19 @@ export function ComprovantesPage() {
               }}
               onDragLeave={() => setIsDragging(false)}
               className={cn(
-                "grid min-h-52 place-items-center rounded-lg border border-dashed p-6 text-center transition",
-                isDragging ? "border-brand-dourado bg-brand-creme/55" : "border-brand-oliva/35 bg-brand-papel/70",
+                "grid min-h-52 place-items-center rounded-bloco border-2 border-dashed p-6 text-center transition-colors duration-150",
+                isDragging ? "border-musgo bg-musgo-claro" : "border-borda-campo bg-saber",
               )}
             >
-              <div>
-                <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-lg bg-white/75 text-brand-musgo">
-                  <UploadCloud className="h-7 w-7" aria-hidden="true" />
-                </div>
-                <p className="text-lg font-semibold text-brand-tinta">Arraste e solte o comprovante aqui</p>
-                <p className="mt-2 text-sm text-muted-foreground">JPG, PNG, HEIC ou PDF. O registro guarda data, hora, nome e cargo de quem anexou.</p>
-                <div className="mt-5">
+              <div className="grid justify-items-center gap-2">
+                <span className="grid h-12 w-12 place-items-center rounded-controle bg-folha text-musgo">
+                  <UploadCloud className="h-6 w-6" aria-hidden="true" />
+                </span>
+                <p className="mt-2 text-base font-bold leading-6 text-tinta">Arraste e solte o comprovante aqui</p>
+                <p className="max-w-[44ch] text-sm font-medium leading-[22px] text-tinta-2">
+                  JPG, PNG, HEIC ou PDF. O registro guarda data, hora, nome e cargo de quem anexou.
+                </p>
+                <div className="mt-3">
                   <input
                     ref={inputRef}
                     type="file"
@@ -454,22 +470,22 @@ export function ComprovantesPage() {
                       if (event.target.files) void attach(event.target.files);
                     }}
                   />
-                  <MetalButton type="button" variant="gold" disabled={semEdicao} onClick={() => inputRef.current?.click()}>
+                  <Botao
+                    variante="primario"
+                    disabled={semEdicao}
+                    carregando={uploadMutation.isPending}
+                    icone={<UploadCloud className="h-4 w-4" aria-hidden="true" />}
+                    onClick={() => inputRef.current?.click()}
+                  >
                     {uploadMutation.isPending ? "Anexando..." : "Anexar comprovante"}
-                  </MetalButton>
+                  </Botao>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="pagamento-vinculado">Baixar pendência existente</Label>
-                <select
-                  id="pagamento-vinculado"
-                  value={pagamentoLembreteId}
-                  onChange={(event) => selectPagamento(event.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
+            <div className="grid content-start gap-4">
+              <Campo rotulo="Baixar pendência existente" htmlFor="pagamento-vinculado" ajuda="Ao vincular, o comprovante marca a pendência como paga e alimenta os recebíveis.">
+                <select id="pagamento-vinculado" value={pagamentoLembreteId} onChange={(event) => selectPagamento(event.target.value)} className={CAMPO}>
                   <option value="">Não vincular</option>
                   {pagamentosAbertos.map((record) => (
                     <option key={record.id} value={record.id}>
@@ -477,12 +493,8 @@ export function ComprovantesPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Ao vincular, o comprovante marca a pendência como paga e alimenta os recebíveis.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="paciente-referencia">Paciente</Label>
+              </Campo>
+              <Campo rotulo="Paciente" htmlFor="paciente-referencia">
                 <PatientPicker
                   id="paciente-referencia"
                   contacts={crmState.contacts}
@@ -495,168 +507,137 @@ export function ComprovantesPage() {
                   onChannelsChange={setPatientChannels}
                   placeholder="Buscar paciente por nome ou telefone…"
                 />
+              </Campo>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Campo rotulo="Valor" opcional htmlFor="valor">
+                  <input id="valor" inputMode="decimal" placeholder="0,00" value={valor} onChange={(event) => setValor(event.target.value)} className={cn(CAMPO, "text-right tabular-nums")} />
+                </Campo>
+                <Campo rotulo="Forma de pagamento" htmlFor="forma">
+                  <select id="forma" value={formaPagamento} onChange={(event) => setFormaPagamento(event.target.value as FormaPagamento | "")} className={CAMPO}>
+                    <option value="">Não informar</option>
+                    {Object.entries(formaLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Campo>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="valor">Valor opcional</Label>
-                <Input id="valor" inputMode="decimal" placeholder="0,00" value={valor} onChange={(event) => setValor(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="forma">Forma de pagamento</Label>
-                <select
-                  id="forma"
-                  value={formaPagamento}
-                  onChange={(event) => setFormaPagamento(event.target.value as FormaPagamento | "")}
-                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option value="">Não informar</option>
-                  {Object.entries(formaLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="observacao">Observação</Label>
+              <Campo rotulo="Observação" opcional htmlFor="observacao">
                 <textarea
                   id="observacao"
                   rows={3}
-                  className="min-h-24 w-full resize-none rounded-lg border border-input bg-white/80 px-3 py-3 text-sm leading-6 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={cn(CAMPO_TEXTO, "min-h-[72px] resize-none")}
                   placeholder="Detalhe opcional"
                   value={observacao}
                   onChange={(event) => setObservacao(event.target.value)}
                 />
-              </div>
-              <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6">
-                <input
-                  type="checkbox"
-                  checked={alimentarRecebiveis360}
-                  onChange={(event) => setAlimentarRecebiveis360(event.target.checked)}
-                  className="mt-1"
-                />
+              </Campo>
+              <label className="flex cursor-pointer items-start gap-3 rounded-controle bg-saber p-3 text-sm leading-5">
+                <input type="checkbox" checked={alimentarRecebiveis360} onChange={(event) => setAlimentarRecebiveis360(event.target.checked)} className={cn(MARCAR, "mt-0.5")} />
                 <span>
-                  <span className="block font-semibold text-brand-tinta">Alimentar Recebíveis 360</span>
-                  <span className="text-muted-foreground">Com paciente e valor, este comprovante vira receita recebida no 360.</span>
+                  <span className="block font-bold text-tinta">Alimentar Recebíveis 360</span>
+                  <span className="block text-[13px] font-medium text-tinta-2">Com paciente e valor, este comprovante vira receita recebida no 360.</span>
                 </span>
               </label>
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              {error ? <AvisoDaTela tom="erro">{error}</AvisoDaTela> : null}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </BlocoFolha>
 
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardContent className="space-y-4 p-4 sm:p-5">
-            {/* Busca + limpar */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-oliva" aria-hidden="true" />
-                <Input
-                  value={filtros.busca}
-                  onChange={(event) => updateFiltros({ busca: event.target.value })}
-                  placeholder="Buscar por paciente, nome do arquivo, observação ou quem anexou"
-                  className="pl-9"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setFiltros(defaultComprovanteFiltros)}
-                disabled={activeFiltros === 0}
-                className="shrink-0"
-              >
-                <X className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                Limpar filtros{activeFiltros > 0 ? ` (${activeFiltros})` : ""}
-              </Button>
-            </div>
+        {/* A LISTA: filtros no alto, os comprovantes embaixo (o mesmo bloco). */}
+        <BlocoFolha as="section" aria-labelledby="lista-comprovantes-titulo" className="min-w-0 overflow-hidden">
+          <div className={CABECA_DA_FOLHA}>
+            <TituloDoBloco id="lista-comprovantes-titulo" detalhe={`${visibleRecords.length} no filtro · ${money(totalNoFiltro)}`}>
+              Comprovantes
+            </TituloDoBloco>
+            <Botao
+              variante="fantasma"
+              tamanho="pq"
+              className="ml-auto"
+              icone={<X className="h-4 w-4" aria-hidden="true" />}
+              onClick={() => setFiltros(defaultComprovanteFiltros)}
+              disabled={activeFiltros === 0}
+            >
+              Limpar filtros{activeFiltros > 0 ? ` (${activeFiltros})` : ""}
+            </Botao>
+          </div>
 
-            {/* Período: presets + mês específico */}
+          <div className="grid gap-4 border-b border-fio px-6 py-4 max-md:px-4">
+            <CampoBusca
+              valor={filtros.busca}
+              onMudar={(busca) => updateFiltros({ busca })}
+              placeholder="Buscar por paciente, nome do arquivo, observação ou quem anexou"
+              rotulo="Buscar comprovante"
+            />
+
+            {/* Período: presets + dia ou mês específico */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold uppercase text-brand-oliva">Período:</span>
-              {(["dia", "semana", "mes", "ano", "tudo"] as (PeriodoFiltro | "tudo")[]).map((periodo) => {
+              <span className={RUBRICA}>Período</span>
+              {periodos.map((periodo) => {
                 const active = !filtros.mes && !filtros.data && filtros.periodo === periodo;
                 return (
-                  <Button
-                    key={periodo}
-                    type="button"
-                    variant={active ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => updateFiltros({ periodo, mes: "", data: "" })}
-                  >
-                    {periodo === "mes"
-                      ? "Este mês"
-                      : periodo === "dia"
-                        ? "Hoje"
-                        : periodo === "semana"
-                          ? "Semana"
-                          : periodo === "ano"
-                            ? "Este ano"
-                            : "Tudo"}
-                  </Button>
+                  <Leitura key={periodo} ativo={active} onClick={() => updateFiltros({ periodo, mes: "", data: "" })}>
+                    {rotuloPeriodo(periodo)}
+                  </Leitura>
                 );
               })}
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="filtro-dia" className="text-xs font-semibold uppercase text-brand-oliva">
-                  dia:
-                </Label>
-                <Input
+              <span className="flex items-center gap-2">
+                <label htmlFor="filtro-dia" className={RUBRICA}>
+                  dia
+                </label>
+                <input
                   id="filtro-dia"
                   type="date"
                   value={filtros.data}
                   onChange={(event) => updateFiltros({ data: event.target.value, mes: "" })}
-                  className="h-9 w-[160px]"
+                  className={cn(CAMPO_PQ, "w-[150px]")}
                 />
                 {filtros.data ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => updateFiltros({ data: "" })}>
+                  <button type="button" aria-label="Limpar o dia" onClick={() => updateFiltros({ data: "" })} className={BOTAO_ICONE}>
                     <X className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  </button>
                 ) : null}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="filtro-mes" className="text-xs font-semibold uppercase text-brand-oliva">
-                  ou mês:
-                </Label>
-                <Input
+              </span>
+              <span className="flex items-center gap-2">
+                <label htmlFor="filtro-mes" className={RUBRICA}>
+                  ou mês
+                </label>
+                <input
                   id="filtro-mes"
                   type="month"
                   value={filtros.mes}
                   onChange={(event) => updateFiltros({ mes: event.target.value, data: "" })}
-                  className="h-9 w-[150px]"
+                  className={cn(CAMPO_PQ, "w-[150px]")}
                 />
                 {filtros.mes ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => updateFiltros({ mes: "" })}>
+                  <button type="button" aria-label="Limpar o mês" onClick={() => updateFiltros({ mes: "" })} className={BOTAO_ICONE}>
                     <X className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  </button>
                 ) : null}
-              </div>
+              </span>
             </div>
 
             {/* Tipo · Forma · Autor · Ordenar */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-1">
-                <Label htmlFor="filtro-tipo" className="text-xs font-semibold uppercase text-brand-oliva">
-                  Tipo
-                </Label>
+              <Campo rotulo="Tipo" htmlFor="filtro-tipo">
                 <select
                   id="filtro-tipo"
                   value={filtros.tipo}
                   onChange={(event) => updateFiltros({ tipo: event.target.value as ComprovanteFiltros["tipo"] })}
-                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={CAMPO}
                 >
                   <option value="todos">Todos</option>
                   <option value="entrada">Comprovantes</option>
                   <option value="estorno">Estornos</option>
                 </select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="filtro-forma" className="text-xs font-semibold uppercase text-brand-oliva">
-                  Forma de pagamento
-                </Label>
+              </Campo>
+              <Campo rotulo="Forma de pagamento" htmlFor="filtro-forma">
                 <select
                   id="filtro-forma"
                   value={filtros.forma}
                   onChange={(event) => updateFiltros({ forma: event.target.value as ComprovanteFiltros["forma"] })}
-                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={CAMPO}
                 >
                   <option value="todas">Todas</option>
                   {Object.entries(formaLabels).map(([value, label]) => (
@@ -665,17 +646,9 @@ export function ComprovantesPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="filtro-autor" className="text-xs font-semibold uppercase text-brand-oliva">
-                  Quem anexou
-                </Label>
-                <select
-                  id="filtro-autor"
-                  value={filtros.autor}
-                  onChange={(event) => updateFiltros({ autor: event.target.value })}
-                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
+              </Campo>
+              <Campo rotulo="Quem anexou" htmlFor="filtro-autor">
+                <select id="filtro-autor" value={filtros.autor} onChange={(event) => updateFiltros({ autor: event.target.value })} className={CAMPO}>
                   <option value="todos">Todos</option>
                   {autores.map((autor) => (
                     <option key={autor} value={autor}>
@@ -683,66 +656,69 @@ export function ComprovantesPage() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="filtro-ordem" className="text-xs font-semibold uppercase text-brand-oliva">
-                  Ordenar
-                </Label>
+              </Campo>
+              <Campo rotulo="Ordenar" htmlFor="filtro-ordem">
                 <select
                   id="filtro-ordem"
                   value={filtros.ordenacao}
                   onChange={(event) => updateFiltros({ ordenacao: event.target.value as OrdenacaoComprovante })}
-                  className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={CAMPO}
                 >
                   <option value="recentes">Mais recentes</option>
                   <option value="antigos">Mais antigos</option>
                   <option value="maior_valor">Maior valor</option>
                   <option value="menor_valor">Menor valor</option>
                 </select>
-              </div>
+              </Campo>
             </div>
+          </div>
 
-            {/* Resumo do filtro */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-brand-oliva/15 pt-3 text-sm">
-              <span className="font-semibold text-brand-musgo">
-                {visibleRecords.length} {visibleRecords.length === 1 ? "comprovante" : "comprovantes"} no filtro
-              </span>
-              <span className="font-semibold text-brand-musgo">Total no filtro: {money(totalNoFiltro)}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <section className="space-y-3">
           {visibleRecords.length ? (
-            visibleRecords.map((record, index) => (
-              <motion.article
-                key={record.id}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, delay: index * 0.03, ease: [0.4, 0, 0.2, 1] }}
-              >
-                <Card className={cn("border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur", record.tipo === "estorno" && "border-destructive/30 bg-destructive/5")}>
-                  <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
-                    <div className="flex min-w-0 gap-3">
-                      <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-brand-oliva/20 bg-brand-papel text-brand-musgo">
-                        {previewUrls[record.id] ? (
-                          <img src={previewUrls[record.id]} alt="" className="h-full w-full object-cover" />
-                        ) : record.arquivoTipo.includes("pdf") ? (
-                          <FileText className="h-6 w-6" aria-hidden="true" />
-                        ) : (
-                          <ImageIcon className="h-6 w-6" aria-hidden="true" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={record.tipo === "estorno" ? "outline" : "gold"}>{record.tipo === "estorno" ? "Estorno" : "Comprovante"}</Badge>
-                          <span className="text-xs font-semibold uppercase text-brand-oliva">{formatShortTime(record.anexadoEm)}</span>
-                        </div>
-                        <p className="mt-2 truncate font-semibold text-brand-tinta">{record.arquivoNome}</p>
+            <ul>
+              {visibleRecords.map((record) => {
+                const estorno = record.tipo === "estorno";
+                return (
+                  <li
+                    key={record.id}
+                    className={cn(
+                      "grid gap-x-4 gap-y-3 border-b border-fio px-6 py-4 last:border-b-0 transition-colors duration-150 hover:bg-saber/70 max-md:px-4 md:grid-cols-[3rem_minmax(0,1fr)_auto_auto] md:items-center",
+                      estorno && "bg-erro-claro/40",
+                    )}
+                  >
+                    <span className="grid h-12 w-12 place-items-center overflow-hidden rounded-controle border border-fio bg-saber text-tinta-2 max-md:hidden">
+                      {previewUrls[record.id] ? (
+                        <img src={previewUrls[record.id]} alt="" className="h-full w-full object-cover" />
+                      ) : record.arquivoTipo.includes("pdf") ? (
+                        <FileText className="h-5 w-5" aria-hidden="true" />
+                      ) : (
+                        <ImageIcon className="h-5 w-5" aria-hidden="true" />
+                      )}
+                    </span>
+                    <div className="grid min-w-0 gap-1">
+                      <p className="flex flex-wrap items-center gap-2">
+                        <Etiqueta tom={estorno ? "erro" : "musgo"}>{estorno ? "Estorno" : "Comprovante"}</Etiqueta>
+                        <span className="text-xs font-bold tabular-nums text-tinta-2">{formatShortTime(record.anexadoEm)}</span>
+                      </p>
+                      <p className="truncate text-sm font-bold leading-5 text-tinta">{record.arquivoNome}</p>
+                      <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                        {record.anexadoPor} · {cargoLabels[record.anexadoPorCargo]} · {formatFileSize(record.arquivoTamanho)}
+                      </p>
+                      {record.pacienteReferencia || record.formaPagamento ? (
+                        <p className="text-[13px] font-medium leading-5 text-tinta">
+                          {record.pacienteReferencia ? <>Paciente/referência: {record.pacienteReferencia}</> : null}
+                          {record.pacienteReferencia && record.formaPagamento ? " · " : null}
+                          {record.formaPagamento ? formaLabels[record.formaPagamento] : null}
+                        </p>
+                      ) : null}
+                      {record.observacao ? <p className="text-[13px] font-medium leading-5 text-tinta-2">{record.observacao}</p> : null}
+                      <p className="flex flex-wrap items-center gap-2">
+                        {record.pagamentoLembreteId ? <Etiqueta tom="ok">Pendência baixada pelo comprovante</Etiqueta> : null}
+                        {record.inteligencia360ReceivableId ? <Etiqueta tom="ok">Recebíveis 360 alimentado</Etiqueta> : null}
+                        <Etiqueta>SharePoint: {record.sharePoint.status}</Etiqueta>
                         {record.storagePath ? (
                           <button
                             type="button"
-                            className="mt-1 text-sm font-semibold text-brand-musgo underline underline-offset-2 hover:text-brand-oliva"
+                            className="rounded-sm text-[13px] font-bold text-musgo underline-offset-[3px] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
                             onClick={() => {
                               void getRemoteComprovanteUrl(record.storagePath as string)
                                 .then((url) => window.open(url, "_blank", "noopener"))
@@ -752,66 +728,38 @@ export function ComprovantesPage() {
                             Ver comprovante
                           </button>
                         ) : null}
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {record.anexadoPor} · {cargoLabels[record.anexadoPorCargo]} · {formatFileSize(record.arquivoTamanho)}
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-brand-musgo">{money(record.valor)}</p>
-                        {record.pacienteReferencia ? <p className="text-sm text-muted-foreground">Paciente/referência: {record.pacienteReferencia}</p> : null}
-                        {record.formaPagamento ? <p className="text-sm text-muted-foreground">{formaLabels[record.formaPagamento]}</p> : null}
-                        {record.pagamentoLembreteId ? (
-                          <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">Pendência baixada pelo comprovante</p>
-                        ) : null}
-                        {record.inteligencia360ReceivableId ? (
-                          <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">Recebíveis 360 alimentado</p>
-                        ) : null}
-                        {record.observacao ? <p className="mt-2 text-sm leading-6 text-muted-foreground">{record.observacao}</p> : null}
-                        <p className="mt-2 text-xs font-semibold uppercase text-brand-oliva">SharePoint: {record.sharePoint.status}</p>
-                      </div>
+                      </p>
                     </div>
-                    <div className="flex flex-wrap gap-2 md:justify-end">
+                    <span className={cn("whitespace-nowrap text-sm font-bold tabular-nums md:text-right", estorno ? "text-erro" : "text-tinta")}>{money(record.valor)}</span>
+                    <div className="flex flex-wrap items-center gap-1 md:justify-end">
                       {record.tipo === "entrada" ? (
-                        <Button type="button" variant="outline" size="sm" disabled={semEdicao} onClick={() => createEstorno(record)}>
-                          <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                        <Botao variante="secundario" tamanho="pq" disabled={semEdicao} icone={<RotateCcw className="h-4 w-4" aria-hidden="true" />} onClick={() => createEstorno(record)}>
                           Estornar
-                        </Button>
+                        </Botao>
                       ) : null}
                       {podeOcultar ? (
-                        <Button type="button" variant="ghost" size="sm" disabled={semEdicao} onClick={() => softDelete(record)}>
+                        <Botao variante="fantasma" tamanho="pq" disabled={semEdicao} onClick={() => softDelete(record)}>
                           Ocultar
-                        </Button>
+                        </Botao>
                       ) : null}
                       {podeExcluirDeVez(record) ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:bg-red-50 hover:text-destructive"
-                          disabled={semEdicao}
-                          onClick={() => hardDelete(record)}
-                        >
+                        <Botao variante="perigo" tamanho="pq" disabled={semEdicao} onClick={() => hardDelete(record)}>
                           Excluir de vez
-                        </Button>
+                        </Botao>
                       ) : null}
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.article>
-            ))
+                  </li>
+                );
+              })}
+            </ul>
           ) : (
-            <Card className="border-brand-oliva/20 bg-white/55 shadow-none">
-              <CardHeader>
-                <CardTitle className="text-lg">Nenhum comprovante com esses filtros</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {activeFiltros > 0
-                    ? "Nada bate com os filtros atuais. Toque em “Limpar filtros” para ver todos, ou ajuste o período/busca."
-                    : "Use o botão de anexo ou arraste um arquivo para iniciar a captura. Os registros são imutáveis; correções entram como estorno."}
-                </p>
-              </CardContent>
-            </Card>
+            <Vazio titulo="Nenhum comprovante com esses filtros">
+              {activeFiltros > 0
+                ? "Nada bate com os filtros atuais. Toque em “Limpar filtros” para ver todos, ou ajuste o período/busca."
+                : "Use o botão de anexo ou arraste um arquivo para iniciar a captura. Os registros são imutáveis; correções entram como estorno."}
+            </Vazio>
           )}
-        </section>
+        </BlocoFolha>
       </div>
     </AccessGate>
   );

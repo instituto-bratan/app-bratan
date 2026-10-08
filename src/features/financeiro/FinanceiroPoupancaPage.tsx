@@ -1,15 +1,16 @@
+// POUPANÇA / COFRE — o dinheiro reservado (obra/CDB e provisões).
+//
+// REDESENHO (08/10/2026, Papel & Musgo, imagem 03): um cabeçalho só, com o
+// saldo do cofre dito em frase; à esquerda, o que se faz (conta da obra,
+// registrar movimento, confirmar provisões, a lista de movimentos); à direita,
+// no saber, o cofre em números e as planilhas para a contabilidade. Os mesmos
+// dados, os mesmos botões e a mesma regra de cada tipo de movimento.
 import { useMemo, useState, type FormEvent } from "react";
-import { motion } from "framer-motion";
-import { ArrowDownCircle, ArrowUpCircle, CheckCircle2, HandCoins, PiggyBank, Plus, Trash2 } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,20 @@ import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
 import { abaEntradaPoupanca } from "./exportContabilidade";
 import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
+import {
+  Campo,
+  Linha,
+  NumeroGrande,
+  OrigemDosDados,
+  RecadoDaTela,
+  Razao,
+  Rubrica,
+  Selecao,
+  TituloDoBloco,
+  Vazio,
+  classeDoCampo,
+  classeDoCampoNumero,
+} from "./pecasBancoFechamento";
 
 // Tipos oferecidos no formulário (na ordem de uso mais comum).
 const KIND_OPTIONS: { value: FinSavingsKind; hint: string }[] = [
@@ -43,17 +58,6 @@ const KIND_OPTIONS: { value: FinSavingsKind; hint: string }[] = [
   { value: "SALDO_INICIAL", hint: "Saldo que já existia no cofre quando começou o controle." },
   { value: "AJUSTE", hint: "Correção manual (entra como entrada)." },
 ];
-
-const kindBadgeVariant: Record<FinSavingsKind, "gold" | "muted" | "outline"> = {
-  APORTE: "muted",
-  USO_OBRA: "outline",
-  EMPRESTIMO: "gold",
-  DEVOLUCAO: "muted",
-  RENDIMENTO: "muted",
-  PROVISAO: "muted",
-  SALDO_INICIAL: "outline",
-  AJUSTE: "outline",
-};
 
 export function FinanceiroPoupancaPage() {
   const { pessoa } = useAuth();
@@ -89,10 +93,9 @@ export function FinanceiroPoupancaPage() {
   const saiuNoMes = movimentosDoMes.filter((move) => move.direction === "SAIDA").reduce((sum, move) => sum + move.amount, 0);
   const rotuloMes = (m: string) => m.split("-").reverse().join("/");
   const seletorDeMes = (permitirTodos: boolean, aria: string) => (
-    <select
+    <Selecao
       value={mesDaPlanilha === "TODOS" && !permitirTodos ? "" : mesDaPlanilha}
       onChange={(event) => setMesDaPlanilha(event.target.value || now.slice(0, 7))}
-      className="h-9 rounded-md border border-brand-oliva/25 bg-white/80 px-2 text-sm font-semibold text-brand-tinta"
       aria-label={aria}
     >
       {permitirTodos ? <option value="TODOS">Todos os meses</option> : mesDaPlanilha === "TODOS" ? <option value="">Escolha o mês</option> : null}
@@ -101,7 +104,7 @@ export function FinanceiroPoupancaPage() {
           {rotuloMes(m)}
         </option>
       ))}
-    </select>
+    </Selecao>
   );
   // Dois cofres separados (03/08/2026, pedido do Lucas p/ fechamento): OBRA
   // (CDB — uso na obra, empréstimo e devolução) × PROVISÕES (13º, férias,
@@ -196,37 +199,318 @@ export function FinanceiroPoupancaPage() {
     setFeedback(`Provisões de ${provisionMonth.split("-").reverse().join("/")} confirmadas: ${moneyFin(moves.reduce((sum, move) => sum + move.amount, 0))}.`);
   }
 
+  // O recado é o mesmo de sempre; só a cor muda quando ele pede algo (08/10/2026).
+  const recadoPedeAlgo = /^(Informe|Descreva|Nenhum)/.test(feedback);
+  const temContaDaObra = cdbResgatadoMes > 0.005 || cdbDevolvidoMes > 0.005;
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Poupança" module="fin-poupanca">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">{financeiro.syncMode}</Badge>
+      <div className="mx-auto w-full max-w-[1320px]">
+        <Cabecalho
+          sobrancelha="Financeiro · Banco"
+          titulo={
+            <>
+              Poupança{" "}
+              <InfoTip title="Como funciona o cofre?" className="align-middle">
+                O cofre guarda o dinheiro reservado (obra/CDB, provisões de 13º e férias). Regra da casa: TODO resgate do CDB é
+                obra e TODA devolução ao CDB também — o abatimento é contra as contas de obra do Contas a Pagar. Os outros
+                tipos (aporte, rendimento, provisão) são o cofre das provisões. O saldo é a soma dos movimentos.
+              </InfoTip>
+            </>
+          }
+          frase={
+            <>
+              O cofre tem <strong className="tabular-nums">{moneyFin(balance)}</strong>: {moneyFin(dual.obra.saldo)} da obra (CDB) e{" "}
+              {moneyFin(dual.provisoes.saldo)} das provisões.{" "}
+              {debt > 0.005 ? (
+                <span className="alerta">O operacional deve {moneyFin(debt)} ao cofre.</span>
+              ) : (
+                "Nada pendente com o operacional, nada misturado."
+              )}
+            </>
+          }
+        />
+
+        {feedback ? <RecadoDaTela tom={recadoPedeAlgo ? "atencao" : "ok"} className="mb-6">{feedback}</RecadoDaTela> : null}
+
+        <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          <div className="grid min-w-0 gap-6">
+            {/* CONTA DA OBRA — CDB × gastos (03/08/2026): TODO resgate do CDB é obra,
+                TODA devolução ao CDB é obra; o abatimento é contra as contas de
+                obra (CAPEX) do Contas a Pagar. Tudo derivado. */}
+            {temContaDaObra ? (
+              <BlocoSaber as="section" aria-labelledby="poupanca-obra" className="grid gap-4">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <Rubrica as="h2" id="poupanca-obra">
+                      Conta da obra — CDB × gastos
+                    </Rubrica>
+                    <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">Calculada sozinha a partir do cofre e do Contas a Pagar.</p>
+                  </div>
+                  <Campo rotulo="Mês da conta da obra" className="w-40">
+                    <Selecao value={obraMesKey} onChange={(event) => setObraMes(event.target.value)}>
+                      {obraMeses.map((m) => (
+                        <option key={m} value={m}>
+                          {m.split("-").reverse().join("/")}
+                        </option>
+                      ))}
+                    </Selecao>
+                  </Campo>
+                </div>
+                <dl className="grid gap-x-6 gap-y-4 border-t border-fio-2 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="min-w-0">
+                    <dt className="text-[13px] font-medium leading-5 text-tinta-2">Resgatado do CDB (tudo é obra)</dt>
+                    <dd className="mt-1 text-xl font-bold leading-7 tabular-nums text-tinta">{moneyFin(cdbResgatadoMes)}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[13px] font-medium leading-5 text-tinta-2">− Devolvido ao CDB</dt>
+                    <dd className="mt-1 text-xl font-bold leading-7 tabular-nums text-tinta">{moneyFin(cdbDevolvidoMes)}</dd>
+                    <dd className="text-[13px] font-medium leading-5 text-tinta-2">líquido usado: {moneyFin(cdbLiquidoMes)}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[13px] font-medium leading-5 text-tinta-2">− Gasto na obra (Contas a Pagar)</dt>
+                    <dd className="mt-1 text-xl font-bold leading-7 tabular-nums text-tinta">{moneyFin(obraDoMes)}</dd>
+                    <dd className="text-[13px] font-medium leading-5 text-tinta-2">contas da categoria Obras (CAPEX)</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-[13px] font-medium leading-5 text-tinta-2">= Diferença</dt>
+                    <dd className={cn("mt-1 text-xl font-bold leading-7 tabular-nums", Math.abs(sobraDoMes) > 0.005 ? "text-atencao" : "text-ok")}>
+                      {moneyFin(sobraDoMes)}
+                    </dd>
+                    <dd className={cn("text-[13px] font-medium leading-5", Math.abs(sobraDoMes) > 0.005 ? "text-atencao" : "text-tinta-2")}>
+                      {sobraDoMes > 0.005
+                        ? "resgatou mais do que a obra paga no app — falta lançar conta de obra?"
+                        : sobraDoMes < -0.005
+                          ? "a obra paga passou o CDB líquido — parte saiu da conta corrente"
+                          : "bate no centavo"}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                  Regra da casa: todo resgate do CDB é obra e toda devolução ao CDB é obra. O abatimento é contra as contas da
+                  categoria Obras no Contas a Pagar — mexeu numa conta, estes números se ajustam na hora.
+                </p>
+              </BlocoSaber>
+            ) : null}
+
+            {readOnly ? null : (
+              <div className="grid items-start gap-6 lg:grid-cols-2">
+                <BlocoFolha as="section" aria-labelledby="poupanca-novo">
+                  <TituloDoBloco
+                    id="poupanca-novo"
+                    titulo={
+                      <span className="inline-flex items-center gap-2">
+                        <Plus className="h-4 w-4 stroke-oliva" aria-hidden="true" />
+                        Novo movimento
+                      </span>
+                    }
+                  />
+                  <form className="grid gap-4 border-t border-fio px-6 pb-6 pt-4 max-md:px-4 max-md:pb-4" onSubmit={handleAddMove}>
+                    <Campo
+                      rotulo="O que é este movimento?"
+                      ajuda={
+                        <span className="flex items-start gap-1.5">
+                          {direction === "ENTRADA" ? (
+                            <ArrowUpCircle className="mt-0.5 h-4 w-4 shrink-0 text-ok" aria-hidden="true" />
+                          ) : (
+                            <ArrowDownCircle className="mt-0.5 h-4 w-4 shrink-0 text-erro" aria-hidden="true" />
+                          )}
+                          {KIND_OPTIONS.find((option) => option.value === kind)?.hint}
+                        </span>
+                      }
+                    >
+                      <Selecao value={kind} onChange={(event) => setKind(event.target.value as FinSavingsKind)}>
+                        {KIND_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {savingsKindLabels[option.value]}
+                          </option>
+                        ))}
+                      </Selecao>
+                    </Campo>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Campo rotulo="Valor">
+                        <input className={classeDoCampoNumero} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0,00" inputMode="decimal" />
+                      </Campo>
+                      <Campo rotulo="Data">
+                        <input className={classeDoCampo} type="date" value={moveDate} onChange={(event) => setMoveDate(event.target.value)} />
+                      </Campo>
+                    </div>
+                    <Campo rotulo="Motivo / descrição">
+                      <input
+                        className={classeDoCampo}
+                        value={reason}
+                        onChange={(event) => setReason(event.target.value)}
+                        placeholder="Ex.: fatura VISA obra, guardar lucro de junho..."
+                      />
+                    </Campo>
+                    <div>
+                      <Botao type="submit" variante="primario" icone={<Plus className="h-4 w-4" aria-hidden="true" />}>
+                        Registrar movimento
+                      </Botao>
+                    </div>
+                  </form>
+                </BlocoFolha>
+
+                <BlocoFolha as="section" aria-labelledby="poupanca-provisoes">
+                  <TituloDoBloco id="poupanca-provisoes" titulo="Provisões do mês" />
+                  <div className="border-t border-fio px-6 py-4 max-md:px-4">
+                    <Campo rotulo="Mês das provisões" className="w-48">
+                      <input
+                        type="month"
+                        value={provisionMonth}
+                        onChange={(event) => setProvisionMonth(event.target.value)}
+                        className={classeDoCampo}
+                        aria-label="Mês das provisões"
+                      />
+                    </Campo>
+                  </div>
+                  {provisionsDone ? (
+                    <Vazio>Provisões de {provisionMonth.split("-").reverse().join("/")} já confirmadas.</Vazio>
+                  ) : (
+                    <div className="grid gap-4 border-t border-fio px-6 pb-6 pt-4 max-md:px-4 max-md:pb-4">
+                      <ul className="grid">
+                        {financeiro.provisionRules.map((rule) => (
+                          <li key={rule.id} className="border-b border-fio py-2 first:pt-0">
+                            <label className="flex items-center justify-between gap-3">
+                              <span className="min-w-0 text-sm font-semibold leading-5 text-tinta">{rule.name}</span>
+                              <input
+                                value={provisionAmounts[rule.id] ?? String(rule.monthlyAmount).replace(".", ",")}
+                                onChange={(event) => setProvisionAmounts((current) => ({ ...current, [rule.id]: event.target.value }))}
+                                className={cn(classeDoCampoNumero, "w-32 shrink-0")}
+                                inputMode="decimal"
+                                aria-label={`Valor de ${rule.name}`}
+                              />
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="flex items-baseline justify-between gap-3 text-sm font-semibold leading-5 text-tinta">
+                        Total sugerido <span className="text-base font-bold tabular-nums">{moneyFin(provisionTotal)}</span>
+                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Botao variante="secundario" icone={<CheckCircle2 className="h-4 w-4" aria-hidden="true" />} onClick={confirmProvisions}>
+                          Confirmar provisões
+                        </Botao>
+                      </div>
+                      <p className="text-[13px] font-medium leading-5 text-tinta-2">Edite ou zere qualquer linha antes de confirmar — nada entra sozinho.</p>
+                    </div>
+                  )}
+                </BlocoFolha>
               </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Cofre / Poupança
-                <InfoTip title="Como funciona o cofre?">
-                  O cofre guarda o dinheiro reservado (obra/CDB, provisões de 13º e férias). Regra da casa: TODO resgate do CDB é
-                  obra e TODA devolução ao CDB também — o abatimento é contra as contas de obra do Contas a Pagar. Os outros
-                  tipos (aporte, rendimento, provisão) são o cofre das provisões. O saldo é a soma dos movimentos.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Tudo separado: o que a obra resgatou do CDB, o que devolveu, e o que está guardado para provisões.
+            )}
+
+            <BlocoFolha as="section" aria-labelledby="poupanca-movimentos" className="overflow-hidden">
+              <TituloDoBloco
+                id="poupanca-movimentos"
+                titulo="Movimentos"
+                soma={
+                  movimentosDoMes.length ? (
+                    <span className="font-semibold text-tinta-2">
+                      {movimentosDoMes.length} movimento(s) · {entrouNoMes - saiuNoMes >= 0 ? "guardou" : "usou"}{" "}
+                      <span className="font-bold text-tinta">{moneyFin(Math.abs(entrouNoMes - saiuNoMes))}</span>
+                      {mesDaLista ? ` em ${rotuloMes(mesDaLista)}` : " no total"}
+                    </span>
+                  ) : null
+                }
+                ajuda={movimentosDoMes.length ? `Entrou ${moneyFin(entrouNoMes)} · saiu ${moneyFin(saiuNoMes)}.` : undefined}
+                acoes={<div className="w-44">{seletorDeMes(true, "Mês dos movimentos")}</div>}
+              />
+              {movimentosDoMes.length ? (
+                <ul>
+                  {movimentosDoMes.slice(0, mesDaLista ? undefined : 200).map((move) => (
+                    <Linha
+                      key={move.id}
+                      antes={
+                        move.direction === "ENTRADA" ? (
+                          <ArrowUpCircle className="h-4 w-4 shrink-0 text-ok" aria-label="Entrada" />
+                        ) : (
+                          <ArrowDownCircle className="h-4 w-4 shrink-0 text-erro" aria-label="Saída" />
+                        )
+                      }
+                      titulo={move.reason}
+                      meta={[
+                        <span key="dia" className="tabular-nums">
+                          {move.moveDate.split("-").reverse().join("/")}
+                        </span>,
+                        move.kind ? savingsKindLabels[move.kind] : null,
+                      ]}
+                      valor={`${move.direction === "ENTRADA" ? "+" : "−"}${moneyFin(move.amount)}`}
+                      tomDoValor={move.direction === "ENTRADA" ? "ok" : "erro"}
+                      acoes={
+                        readOnly ? null : (
+                          <button
+                            type="button"
+                            aria-label={`Excluir movimento ${move.reason}`}
+                            onClick={() => financeiro.removeSavingsMove(move.id)}
+                            className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        )
+                      }
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <Vazio tom="neutro">
+                  {financeiro.savingsMoves.length
+                    ? `Sem movimentos em ${rotuloMes(mesDaLista)}. Escolha outro mês ou "Todos os meses".`
+                    : 'Sem movimentos ainda. Dica: comece com um "Saldo inicial" com o valor atual do cofre.'}
+                </Vazio>
+              )}
+            </BlocoFolha>
+          </div>
+
+          {/* SABER — o cofre em números. Dois cofres separados (03/08/2026,
+              pedido do Lucas p/ fechamento): OBRA (CDB) × PROVISÕES. */}
+          <div className="grid min-w-0 content-start gap-6">
+            <BlocoSaber as="aside" aria-labelledby="poupanca-saldo" className="grid content-start gap-4">
+              <Rubrica as="h2" id="poupanca-saldo">
+                Saldo do cofre
+              </Rubrica>
+              <NumeroGrande valor={balance} tom={balance < 0 ? "erro" : undefined} />
+              <p className="-mt-1 text-[13px] font-medium leading-5 text-tinta-2">Total reservado (obra, provisões, aportes).</p>
+              <Razao
+                linhas={[
+                  {
+                    rotulo: "Poupança da obra (CDB)",
+                    detalhe: `entrou ${moneyFin(dual.obra.entradas)} · saiu ${moneyFin(dual.obra.saidas)}`,
+                    valor: moneyFin(dual.obra.saldo),
+                    tom: dual.obra.saldo < 0 ? "erro" : undefined,
+                  },
+                  {
+                    rotulo: "Poupança das provisões",
+                    detalhe: `entrou ${moneyFin(dual.provisoes.entradas)} · saiu ${moneyFin(dual.provisoes.saidas)}`,
+                    valor: moneyFin(dual.provisoes.saldo),
+                    tom: dual.provisoes.saldo < 0 ? "erro" : undefined,
+                  },
+                  {
+                    rotulo: "Operacional deve ao cofre",
+                    detalhe: debt > 0.005 ? "Dinheiro do cofre que cobriu contas do operacional — a devolver." : "Nada pendente. Nada misturado.",
+                    valor: moneyFin(debt),
+                    tom: debt > 0.005 ? "atencao" : "ok",
+                  },
+                ]}
+              />
+              <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                Todo resgate do CDB sai da obra e toda devolução volta para ela. Provisões: 13º, férias, impostos, urgências, aportes e
+                rendimentos.
               </p>
-              {/* QUANTO ENTROU E SAIU DO COFRE, em Excel (25/08/2026). Era a
-                  planilha que o Lucas mais procurou ("do quanto que entrou e
-                  saiu de poupança, que no caso é da obra") e a única forma de
-                  chegar nela era descer o Painel do Mês até o fim. */}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {seletorDeMes(false, "Mês da planilha do cofre")}
+              <OrigemDosDados modo={financeiro.syncMode} />
+            </BlocoSaber>
+
+            {/* QUANTO ENTROU E SAIU DO COFRE, em Excel (25/08/2026). Era a
+                planilha que o Lucas mais procurou ("do quanto que entrou e
+                saiu de poupança, que no caso é da obra"). */}
+            <BlocoFolha as="section" aria-labelledby="poupanca-planilhas" respiro className="grid gap-4">
+              <div>
+                <h2 id="poupanca-planilhas" className="text-base font-bold leading-6 text-tinta">
+                  Planilhas do cofre
+                </h2>
+                <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">Entradas e saídas do mês, para a contabilidade.</p>
+              </div>
+              <Campo rotulo="Mês da planilha">{seletorDeMes(false, "Mês da planilha do cofre")}</Campo>
+              <div className="grid justify-items-start gap-3">
                 <BaixarPlanilhaButton
                   chave="poupanca"
                   rotulo="Baixar entradas e saídas"
@@ -246,266 +530,9 @@ export function FinanceiroPoupancaPage() {
                   abas={[abaEntradaPoupanca(financeiro.savingsMoves, mesDaLista || now.slice(0, 7))]}
                 />
               </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-brand-dourado/40 bg-brand-creme/50 px-5 py-4">
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-brand-oliva">
-                  <PiggyBank className="h-4 w-4" aria-hidden="true" /> Saldo do cofre
-                </p>
-                <p className={cn("mt-1 text-3xl font-bold", balance < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(balance)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Total reservado (obra, provisões, aportes).</p>
-              </div>
-              <div className={cn("rounded-xl border px-5 py-4", debt > 0.005 ? "border-amber-400/60 bg-amber-50/60" : "border-brand-oliva/20 bg-white/60")}>
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-brand-oliva">
-                  <HandCoins className="h-4 w-4" aria-hidden="true" /> Operacional deve ao cofre
-                </p>
-                <p className={cn("mt-1 text-3xl font-bold", debt > 0.005 ? "text-amber-700" : "text-brand-musgo")}>{moneyFin(debt)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {debt > 0.005 ? "Dinheiro do cofre que cobriu contas do operacional — a devolver." : "Nada pendente. Nada misturado. 👌"}
-                </p>
-              </div>
-              {/* Cofre da OBRA × Cofre das PROVISÕES — o fechamento contábil lê daqui. */}
-              <div className="rounded-xl border border-brand-oliva/20 bg-white/60 px-5 py-4">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">🏗️ Poupança da OBRA (CDB)</p>
-                <p className={cn("mt-1 text-2xl font-bold", dual.obra.saldo < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(dual.obra.saldo)}</p>
-                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                  entrou {moneyFin(dual.obra.entradas)} · saiu {moneyFin(dual.obra.saidas)}
-                </p>
-                <p className="text-[11px] text-muted-foreground">Todo resgate do CDB sai daqui; toda devolução volta para cá.</p>
-              </div>
-              <div className="rounded-xl border border-brand-oliva/20 bg-white/60 px-5 py-4">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">🛟 Poupança das PROVISÕES</p>
-                <p className={cn("mt-1 text-2xl font-bold", dual.provisoes.saldo < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(dual.provisoes.saldo)}</p>
-                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                  entrou {moneyFin(dual.provisoes.entradas)} · saiu {moneyFin(dual.provisoes.saidas)}
-                </p>
-                <p className="text-[11px] text-muted-foreground">13º, férias, impostos, urgências, aportes e rendimentos.</p>
-              </div>
-            </div>
+            </BlocoFolha>
           </div>
-        </motion.section>
-
-        {cdbResgatadoMes > 0.005 || cdbDevolvidoMes > 0.005 ? (
-          <Card className="border-brand-dourado/30 bg-brand-creme/30">
-            <CardHeader>
-              <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-                <HandCoins className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                Conta da OBRA — CDB × gastos
-                <Badge variant="muted" className="text-[10px]">automático</Badge>
-                <select
-                  value={obraMesKey}
-                  onChange={(event) => setObraMes(event.target.value)}
-                  className="ml-auto rounded-md border border-brand-oliva/25 bg-white/80 px-2 py-1 text-xs font-semibold text-brand-tinta"
-                  aria-label="Mês da conta da obra"
-                >
-                  {obraMeses.map((m) => (
-                    <option key={m} value={m}>
-                      {m.split("-").reverse().join("/")}
-                    </option>
-                  ))}
-                </select>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">Resgatado do CDB (tudo é obra)</p>
-                  <p className="mt-1 text-2xl font-bold text-brand-musgo">{moneyFin(cdbResgatadoMes)}</p>
-                </div>
-                <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">− Devolvido ao CDB</p>
-                  <p className="mt-1 text-2xl font-bold text-brand-musgo">{moneyFin(cdbDevolvidoMes)}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">líquido usado: {moneyFin(cdbLiquidoMes)}</p>
-                </div>
-                <div className="rounded-lg border border-brand-oliva/16 bg-white/70 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">− Gasto na obra (Contas a Pagar)</p>
-                  <p className="mt-1 text-2xl font-bold text-brand-tinta">{moneyFin(obraDoMes)}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">contas da categoria Obras (CAPEX)</p>
-                </div>
-                <div className={cn("rounded-lg border px-4 py-3", Math.abs(sobraDoMes) > 0.005 ? "border-amber-400/50 bg-amber-50/60" : "border-brand-oliva/16 bg-white/70")}>
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">= Diferença</p>
-                  <p className={cn("mt-1 text-2xl font-bold", Math.abs(sobraDoMes) > 0.005 ? "text-amber-700" : "text-brand-musgo")}>{moneyFin(sobraDoMes)}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {sobraDoMes > 0.005
-                      ? "resgatou mais do que a obra paga no app — falta lançar conta de obra?"
-                      : sobraDoMes < -0.005
-                        ? "a obra paga passou o CDB líquido — parte saiu da conta corrente"
-                        : "bate no centavo"}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                Regra da casa: todo resgate do CDB é obra e toda devolução ao CDB é obra. O abatimento é contra as contas da
-                categoria Obras no Contas a Pagar — mexeu numa conta, estes números se ajustam na hora.
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {feedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-            {feedback}
-          </div>
-        ) : null}
-
-        <div className={cn("grid gap-5 lg:grid-cols-2", readOnly && "hidden")}>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                Novo movimento
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-3" onSubmit={handleAddMove}>
-                <div>
-                  <Label>O que é este movimento?</Label>
-                  <select
-                    value={kind}
-                    onChange={(event) => setKind(event.target.value as FinSavingsKind)}
-                    className="flex h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {KIND_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {savingsKindLabels[option.value]}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1.5 flex items-center gap-1.5 text-xs leading-5 text-muted-foreground">
-                    {direction === "ENTRADA" ? (
-                      <ArrowUpCircle className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden="true" />
-                    ) : (
-                      <ArrowDownCircle className="h-3.5 w-3.5 shrink-0 text-red-600" aria-hidden="true" />
-                    )}
-                    {KIND_OPTIONS.find((option) => option.value === kind)?.hint}
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label>Valor</Label>
-                    <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0,00" inputMode="decimal" />
-                  </div>
-                  <div>
-                    <Label>Data</Label>
-                    <Input type="date" value={moveDate} onChange={(event) => setMoveDate(event.target.value)} />
-                  </div>
-                </div>
-                <div>
-                  <Label>Motivo / descrição</Label>
-                  <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ex.: fatura VISA obra, guardar lucro de junho..." />
-                </div>
-                <div>
-                  <LiquidButton type="submit" size="sm">
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    Registrar movimento
-                  </LiquidButton>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card className={cn(provisionsDone && "border-emerald-200 bg-emerald-50/40")}>
-            <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex items-center gap-2">
-                  <PiggyBank className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                  Provisões do mês
-                </CardTitle>
-                <Input type="month" value={provisionMonth} onChange={(event) => setProvisionMonth(event.target.value)} className="h-9 w-40" aria-label="Mês das provisões" />
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {provisionsDone ? (
-                <p className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-800">
-                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                  Provisões de {provisionMonth.split("-").reverse().join("/")} já confirmadas.
-                </p>
-              ) : (
-                <>
-                  {financeiro.provisionRules.map((rule) => (
-                    <label key={rule.id} className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2">
-                      <span className="text-sm text-brand-tinta">{rule.name}</span>
-                      <Input
-                        value={provisionAmounts[rule.id] ?? String(rule.monthlyAmount).replace(".", ",")}
-                        onChange={(event) => setProvisionAmounts((current) => ({ ...current, [rule.id]: event.target.value }))}
-                        className="h-9 w-28 text-right"
-                        inputMode="decimal"
-                        aria-label={`Valor de ${rule.name}`}
-                      />
-                    </label>
-                  ))}
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-bold text-brand-musgo">Total sugerido: {moneyFin(provisionTotal)}</p>
-                    <LiquidButton type="button" size="sm" onClick={confirmProvisions}>
-                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                      Confirmar provisões
-                    </LiquidButton>
-                  </div>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    Edite ou zere qualquer linha antes de confirmar — nada entra sozinho.
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-              Movimentos
-              {seletorDeMes(true, "Mês dos movimentos")}
-              {movimentosDoMes.length ? (
-                <span className="text-xs font-normal text-muted-foreground">
-                  {movimentosDoMes.length} movimento(s) · entrou {moneyFin(entrouNoMes)} · saiu {moneyFin(saiuNoMes)} ·{" "}
-                  {entrouNoMes - saiuNoMes >= 0 ? "guardou" : "usou"} {moneyFin(Math.abs(entrouNoMes - saiuNoMes))}
-                  {mesDaLista ? ` em ${rotuloMes(mesDaLista)}` : " no total"}
-                </span>
-              ) : null}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {movimentosDoMes.length ? (
-              movimentosDoMes.slice(0, mesDaLista ? undefined : 200).map((move) => (
-                <div key={move.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    {move.direction === "ENTRADA" ? (
-                      <ArrowUpCircle className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
-                    ) : (
-                      <ArrowDownCircle className="h-4 w-4 shrink-0 text-red-600" aria-hidden="true" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <p className="truncate text-sm font-semibold text-brand-tinta">{move.reason}</p>
-                        {move.kind ? (
-                          <Badge variant={kindBadgeVariant[move.kind]} className="shrink-0 text-[10px]">{savingsKindLabels[move.kind]}</Badge>
-                        ) : null}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{move.moveDate.split("-").reverse().join("/")}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={cn("text-sm font-bold", move.direction === "ENTRADA" ? "text-emerald-700" : "text-red-700")}>
-                      {move.direction === "ENTRADA" ? "+" : "−"}{moneyFin(move.amount)}
-                    </span>
-                    {readOnly ? null : (
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Excluir movimento ${move.reason}`} onClick={() => financeiro.removeSavingsMove(move.id)}>
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                {financeiro.savingsMoves.length
-                  ? `Sem movimentos em ${rotuloMes(mesDaLista)}. Escolha outro mês ou "Todos os meses".`
-                  : 'Sem movimentos ainda. Dica: comece com um "Saldo inicial" com o valor atual do cofre.'}
-              </p>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </AccessGate>
   );

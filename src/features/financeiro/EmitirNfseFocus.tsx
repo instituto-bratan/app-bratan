@@ -7,11 +7,14 @@
 // nota fiscal" (podeEmitirNota — por padrão, só o Estevão). Depende dela, e não
 // do "só vê" de Impostos & NFs: o Estevão só VÊ a tela e é quem emite. Quem não
 // pode lê, no lugar do botão, quem emite e onde isso se libera.
+//
+// REDESENHO (08/10/2026, Papel & Musgo): só a forma — campos e botões da
+// fundação; "Cancelar nota" em perigo, longe do Emitir. A lógica é a mesma.
 import { useEffect, useState } from "react";
 import { FileCheck2, RefreshCw, XCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Botao } from "@/components/ui/fundacao";
 import { toast } from "@/components/ui/avisos";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { avisoQuemEmiteNota, podeEmitirNota } from "@/lib/access";
 import { integracaoLigada } from "@/lib/integracoes";
@@ -19,6 +22,10 @@ import { invocarIntegracao, listRemoteNfseDaComanda } from "@/lib/remoteData";
 import type { NfseEmissao } from "@/lib/remote/integracoes";
 import { emissaoQueCobre, notasFocusVivas } from "./notasEmitidasFocus";
 import { rotuloDoTipoDeNota } from "../../../supabase/functions/_shared/notaEmitida";
+import { classeDoCampo } from "./pecasBancoFechamento";
+
+/** O campo do guia, 32 px de altura para caber na linha da nota (08/10/2026). */
+const CAMPO = cn(classeDoCampo, "h-8 text-[13px]");
 
 type Resposta = { ok: boolean; ref?: string; status?: string; error?: string; jaEmitida?: boolean; cobertaPor?: { tipo: string; rotulo: string; numero: string | null }; numero?: string | null; emailEnviado?: boolean; dados?: { numero?: string; url?: string; status?: string } };
 
@@ -145,57 +152,78 @@ export function EmitirNfseFocus({ saleRef, tipo, valor, pacienteNome, solicitado
   const autorizada = Boolean(cobertaPor && cobertaPor.numero && /^autorizad/i.test(cobertaPor.status));
 
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
+    <span className="inline-flex flex-wrap items-center gap-2">
       {!ref && !podeEmitir ? (
-        <span className="text-xs text-muted-foreground">{avisoQuemEmiteNota}</span>
+        <span className="text-[13px] font-medium leading-5 text-tinta-2">{avisoQuemEmiteNota}</span>
       ) : !ref ? (
         <>
-          <Input value={cpf} onChange={(event) => setCpf(event.target.value)} placeholder="CPF do tomador (obrigatório se a ficha não tiver)" className="h-8 w-56 text-xs" inputMode="numeric" />
-          <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="E-mail do paciente (a nota vai para ele)" className="h-8 w-60 text-xs" type="email" inputMode="email" />
-          <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado} onClick={() => void emitir()}>
-            <FileCheck2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Emitir na prefeitura (Focus)
-          </Button>
+          <input
+            value={cpf}
+            onChange={(event) => setCpf(event.target.value)}
+            placeholder="CPF do tomador (obrigatório se a ficha não tiver)"
+            aria-label="CPF do tomador"
+            className={cn(CAMPO, "w-60")}
+            inputMode="numeric"
+          />
+          <input
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="E-mail do paciente (a nota vai para ele)"
+            aria-label="E-mail do paciente"
+            className={cn(CAMPO, "w-64")}
+            type="email"
+            inputMode="email"
+          />
+          <Botao variante="secundario" tamanho="pq" carregando={ocupado} disabled={ocupado} icone={<FileCheck2 className="h-4 w-4" aria-hidden="true" />} onClick={() => void emitir()}>
+            Emitir na prefeitura (Focus)
+          </Botao>
         </>
       ) : cobertaPor && cobertaPor.numero && /^autorizad/i.test(cobertaPor.status) ? (
-        <span className="inline-flex items-center gap-1 rounded-md border border-brand-musgo/30 bg-brand-musgo/10 px-2 py-1 text-xs font-semibold text-brand-musgo">
-          <FileCheck2 className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="inline-flex flex-wrap items-center gap-1.5 rounded-controle bg-ok-claro px-2.5 py-1 text-[13px] font-semibold leading-5 text-tinta">
+          <FileCheck2 className="h-4 w-4 shrink-0 text-ok" aria-hidden="true" />
           {cobertaPor.tipo === "UNIFICADA" ? `Coberta pela nota unificada nº ${cobertaPor.numero}` : `Emitida pela Focus: nº ${cobertaPor.numero}`}
           {cobertaPor.urlPdf ? (
-            <a href={cobertaPor.urlPdf} target="_blank" rel="noreferrer" className="underline">
+            <a href={cobertaPor.urlPdf} target="_blank" rel="noreferrer" className="font-bold text-musgo underline underline-offset-2">
               abrir
             </a>
           ) : null}
         </span>
       ) : cobertaPor && /^cancelad/i.test(cobertaPor.status) ? (
-        <span className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-800">
-          <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="inline-flex items-center gap-1.5 rounded-controle bg-erro-claro px-2.5 py-1 text-[13px] font-semibold leading-5 text-tinta">
+          <XCircle className="h-4 w-4 shrink-0 text-erro" aria-hidden="true" />
           Nota {cobertaPor.numero ? `nº ${cobertaPor.numero} ` : ""}cancelada
         </span>
       ) : (
-        <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={ocupado} onClick={() => void consultar()}>
-          <RefreshCw className={ocupado ? "mr-1 h-3.5 w-3.5 animate-spin" : "mr-1 h-3.5 w-3.5"} aria-hidden="true" /> Consultar ({cobertaPor && cobertaPor.tipo !== tipo ? `${rotuloDoTipoDeNota(cobertaPor.tipo)} ` : ""}{status.toLowerCase() || "enviada"})
-        </Button>
+        <Botao
+          variante="secundario"
+          tamanho="pq"
+          disabled={ocupado}
+          icone={<RefreshCw className={ocupado ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />}
+          onClick={() => void consultar()}
+        >
+          Consultar ({cobertaPor && cobertaPor.tipo !== tipo ? `${rotuloDoTipoDeNota(cobertaPor.tipo)} ` : ""}{status.toLowerCase() || "enviada"})
+        </Botao>
       )}
       {autorizada && !cancelando ? (
-        <Button type="button" size="sm" variant="ghost" className="h-8 text-xs text-red-700" disabled={ocupado} onClick={() => setCancelando(true)}>
-          <XCircle className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Cancelar nota
-        </Button>
+        <Botao variante="perigo" tamanho="pq" disabled={ocupado} icone={<XCircle className="h-4 w-4" aria-hidden="true" />} onClick={() => setCancelando(true)}>
+          Cancelar nota
+        </Botao>
       ) : null}
       {autorizada && cancelando ? (
-        <span className="inline-flex flex-wrap items-center gap-1.5">
-          <Input
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <input
             value={motivoCancelamento}
             onChange={(event) => setMotivoCancelamento(event.target.value)}
             placeholder="Motivo (vai para a prefeitura)"
             aria-label="Motivo do cancelamento da nota"
-            className="h-8 w-64 text-xs"
+            className={cn(CAMPO, "w-64")}
           />
-          <Button type="button" size="sm" variant="outline" className="h-8 border-red-300 text-xs text-red-800" disabled={ocupado || motivoCancelamento.trim().length < 15} onClick={() => void cancelar()}>
+          <Botao variante="perigo-cheio" tamanho="pq" carregando={ocupado} disabled={ocupado || motivoCancelamento.trim().length < 15} onClick={() => void cancelar()}>
             {ocupado ? "Cancelando…" : "Confirmar cancelamento"}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" disabled={ocupado} onClick={() => { setCancelando(false); setMotivoCancelamento(""); }}>
+          </Botao>
+          <Botao variante="fantasma" tamanho="pq" disabled={ocupado} onClick={() => { setCancelando(false); setMotivoCancelamento(""); }}>
             Voltar
-          </Button>
+          </Botao>
         </span>
       ) : null}
     </span>

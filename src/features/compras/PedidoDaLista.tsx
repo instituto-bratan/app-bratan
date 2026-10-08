@@ -1,75 +1,30 @@
-// UM PEDIDO NA LISTA (06/10/2026): a linha que resume, os botões que a pessoa
-// pode usar naquele pedido e, ao abrir, os itens e a linha do tempo ("tudo
-// fica registrado": quem pediu, quem aprovou, quem comprou, quem recebeu).
+// UM PEDIDO NA LISTA (06/10/2026; forma nova em 08/10/2026, redesenho Papel & Musgo).
 //
-// Duas formas: "decisao" (caixa de aprovação — itens, por quê e o estoque à
-// vista, para decidir sem abrir nada) e "lista" (uma linha curta, com o botão
-// do próximo passo). Quem decide o que aparece é acoesDoPedido (pedidoTela.ts).
-import { Link } from "react-router-dom";
-import {
-  CalendarDays,
-  Check,
-  ChevronDown,
-  Clock3,
-  ExternalLink,
-  PackageCheck,
-  PencilLine,
-  ShoppingCart,
-  Undo2,
-  UserRound,
-  X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+// Antes cada pedido era um cartão que abria para baixo, com os itens, o
+// histórico e todos os botões. Na forma aprovada (imagem 02) a lista só RESUME
+// e o pedido inteiro abre no painel ao lado (PainelDoPedido):
+//   · LinhaDoPedido — a linha da caixa "Esperam sua decisão" e do "Falta
+//     comprar": título, setor · quem pediu · prazo, valor e a decisão da linha
+//     (Aprovar, em botão suave; ou "Registrar compra →").
+//   · LinhaDaTabela — a linha da tabela dos outros pedidos: Nº · Pedido ·
+//     Situação (o selo e, embaixo, o próximo passo ou o motivo) · Valor. No
+//     celular a tabela vira lista (o valor sobe para o lado do título).
+// Quem decide o que aparece continua sendo acoesDoPedido (pedidoTela.ts).
+import type { ReactNode } from "react";
+import { Check, ChevronRight, Undo2 } from "lucide-react";
+import { Botao } from "@/components/ui/fundacao";
 import { cn } from "@/lib/utils";
-import type { EstoqueItem, EstoqueMovimento } from "@/features/estoque/estoqueData";
-import type { FinPurchase } from "@/features/financeiro/financeiroData";
-import {
-  nomeDoSetor,
-  numeroDoPedido,
-  pedidoEventoLabels,
-  pedidoStatusClasses,
-  pedidoStatusLabels,
-  tempoEsperandoTexto,
-  type PedidoCompra,
-  type PedidoStatus,
-} from "./comprasData";
-import { dataHora, diaCurto, paraQuandoTexto, prazoEstourado, previsaoTexto, quemCancelou, textoDoEstoque, type AcoesDoPedido } from "./pedidoTela";
+import { nomeDoSetor, numeroDoPedido, type PedidoCompra } from "./comprasData";
+import { AcaoSeta, EtiquetaUrgente, RelogioDoPrazo, SeloDoPedido } from "./pecas";
+import { notaDaSituacao, paraQuandoTexto, pedidoEncerrado, valorDoPedido, type AcoesDoPedido } from "./pedidoTela";
 
 const brl = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const qtdBR = (valor: number) => valor.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
-const linkSeguro = (link: string) => /^https?:\/\//i.test(link.trim());
 
-// Selo do status: texto SEMPRE junto da cor (nunca só a cor), nas famílias do fluxograma.
-// 07/10/2026: as classes moram em comprasData (pedidoStatusClasses) — o selo do
-// Estoque usa as mesmas, todas remapeadas no tema escuro.
-const seloClasses = pedidoStatusClasses;
-const pontoClasses: Record<PedidoStatus, string> = {
-  ENVIADO: "bg-amber-500",
-  DEVOLVIDO: "bg-amber-500",
-  APROVADO: "bg-emerald-600",
-  COMPRADO: "bg-sky-600",
-  RECEBIDO: "bg-brand-musgo",
-  RECUSADO: "bg-rose-600",
-  CANCELADO: "bg-rose-400",
-};
-
-export function SeloDoStatus({ status }: { status: PedidoStatus }) {
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold", seloClasses[status])}>
-      <span className={cn("h-1.5 w-1.5 rounded-full", pontoClasses[status])} aria-hidden="true" />
-      {pedidoStatusLabels[status]}
-    </span>
-  );
-}
-
-function SeloUrgente() {
-  return <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700">Urgente</span>;
-}
-
+/** O que a linha e o painel podem fazer com o pedido (a página liga cada um ao motor). */
 export type AcoesDaLinha = {
   onAprovar: () => void;
-  onDevolver: () => void;
-  onRecusar: () => void;
+  onDevolver: (motivo: string) => void | Promise<unknown>;
+  onRecusar: (motivo: string) => void | Promise<unknown>;
   onDesfazerAprovacao: () => void;
   onComprar: () => void;
   onReceber: () => void;
@@ -77,378 +32,325 @@ export type AcoesDaLinha = {
   onCancelar: () => void;
 };
 
-export function PedidoDaLista({
+/**
+ * Pedaços da meta separados por "·". O ponto mora ANTES de cada pedaço e o
+ * primeiro de cada linha é cortado (clip-path) — quando a linha quebra, nenhum
+ * ponto fica pendurado no começo nem no fim (como na prancha aprovada).
+ */
+export function Pedacos({ partes: todas, className }: { partes: ReactNode[]; className?: string }) {
+  // Vai por prop (e não como filhos): um array de elementos como filho faria o
+  // React cobrar `key` de cada pedaço na linha que chama (08/10/2026).
+  const partes = todas.filter((parte) => parte !== null && parte !== undefined && parte !== false && parte !== "");
+  return (
+    <p className={cn("-ml-5 flex flex-wrap items-center text-[13px] font-medium leading-5 text-tinta-2 [clip-path:inset(-4px_-4px_-4px_16px)]", className)}>
+      {partes.map((parte, i) => (
+        <span
+          key={i}
+          className="relative inline-flex min-w-0 items-center pl-5 before:absolute before:left-0 before:w-5 before:text-center before:font-bold before:text-fio-2 before:content-['·']"
+        >
+          {parte}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/** O valor da linha: o da compra quando já foi comprado; senão o estimado; sem nenhum, "sem preço". */
+function ValorDaLinha({ pedido, comOrigem = false, className }: { pedido: PedidoCompra; comOrigem?: boolean; className?: string }) {
+  const { valor, deOnde } = valorDoPedido(pedido);
+  if (deOnde === "sem") return <span className={cn("whitespace-nowrap text-sm font-medium text-tinta-2", className)}>sem preço</span>;
+  return (
+    <span className={cn("grid justify-items-end whitespace-nowrap", className)}>
+      <span className="text-sm font-bold tabular-nums text-tinta">{brl(valor)}</span>
+      {comOrigem ? <span className="text-xs font-medium text-tinta-2">{deOnde === "compra" ? "na compra" : "estimado"}</span> : null}
+    </span>
+  );
+}
+
+const PASSOS_ABERTOS = new Set(["ENVIADO", "APROVADO", "DEVOLVIDO"]);
+
+/**
+ * A linha da caixa de decisão (e do "Falta comprar"). A linha inteira abre o
+ * pedido no painel; o Aprovar da linha é um toque (com Desfazer), sem abrir nada.
+ * No celular o Aprovar sai da linha: o toque abre a folha com a barra de decisão.
+ */
+export function LinhaDoPedido({
   pedido,
-  variante,
-  acoes,
+  tipo,
   hojeISO,
-  estoqueItens,
-  moves,
-  compras = [],
-  pedidos = [],
-  aberto,
-  onAlternar,
+  acoes,
+  escolhida = false,
   aprovando = false,
   ocupado = false,
-  destaque = false,
-  verCompraNoFinanceiro = false,
+  onAbrir,
   handlers,
 }: {
   pedido: PedidoCompra;
-  variante: "decisao" | "lista";
-  acoes: AcoesDoPedido;
+  /** "decisao": Aprovar na linha; "comprar": "Registrar compra →". */
+  tipo: "decisao" | "comprar";
   hojeISO: string;
-  estoqueItens: EstoqueItem[];
-  moves: EstoqueMovimento[];
-  /**
-   * As compras do estoque e os outros pedidos (07/10/2026): o item já comprado
-   * ou já em outro pedido aparece como tal — quem aprova não compra duas vezes.
-   */
-  compras?: FinPurchase[];
-  pedidos?: PedidoCompra[];
-  aberto: boolean;
-  onAlternar: () => void;
+  acoes: AcoesDoPedido;
+  /** Aberto no painel ao lado (ou veio pela URL). */
+  escolhida?: boolean;
   /** Aprovado há pouco, ainda dentro dos 5 s do "Desfazer". */
   aprovando?: boolean;
   ocupado?: boolean;
-  /** Veio pela URL (?pedido=…): borda para a pessoa achar. */
-  destaque?: boolean;
-  /** Financeiro: o link "ver em Compras" na compra ligada. */
-  verCompraNoFinanceiro?: boolean;
-  handlers: AcoesDaLinha;
+  onAbrir: () => void;
+  handlers: Pick<AcoesDaLinha, "onAprovar" | "onDesfazerAprovacao" | "onComprar">;
 }) {
-  const atrasado = prazoEstourado(pedido, hojeISO);
-  const temValorFinal = pedido.valorFinal !== null && pedido.valorFinal !== undefined;
-  const valor = temValorFinal ? (pedido.valorFinal as number) : pedido.valorEstimado;
-  const itensVisiveis = variante === "decisao";
-  const paraQuando = paraQuandoTexto(pedido.precisaAte, hojeISO);
-  const detalheId = `pedido-detalhe-${pedido.id}`;
-
+  const paraQuando = PASSOS_ABERTOS.has(pedido.status) ? paraQuandoTexto(pedido.precisaAte, hojeISO) : "";
+  const urgente = pedido.urgencia === "URGENTE" && PASSOS_ABERTOS.has(pedido.status);
+  const numero = numeroDoPedido(pedido.numero);
   return (
     <li
       id={`pedido-${pedido.id}`}
+      onClick={onAbrir}
       className={cn(
-        "scroll-mt-28 px-4 py-4 sm:px-5",
-        destaque && "rounded-lg bg-brand-creme/45 ring-2 ring-brand-dourado/60",
-        aprovando && "opacity-90",
+        "grid min-h-16 scroll-mt-28 cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 border-t border-fio px-4 py-3 transition-colors duration-150 ease-papel hover:bg-saber/70",
+        "max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-start",
+        escolhida && "bg-musgo-claro/55 shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))] hover:bg-musgo-claro/70",
       )}
     >
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-            <span className="text-sm font-semibold tabular-nums text-brand-musgo">{numeroDoPedido(pedido.numero)}</span>
-            <span className="text-sm text-brand-tinta/75">{nomeDoSetor(pedido.setor)}</span>
-            {variante === "decisao" ? null : <SeloDoStatus status={pedido.status} />}
-            {pedido.urgencia === "URGENTE" && (pedido.status === "ENVIADO" || pedido.status === "APROVADO" || pedido.status === "DEVOLVIDO") ? <SeloUrgente /> : null}
-          </div>
-          <p className="mt-1 text-base font-semibold leading-snug text-brand-tinta [overflow-wrap:anywhere]">{pedido.titulo}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-            {pedido.solicitanteNome ? (
-              <span className="inline-flex items-center gap-1">
-                <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
-                {pedido.solicitanteNome}
-              </span>
-            ) : null}
-            {pedido.status === "ENVIADO" ? (
-              <span className={cn("inline-flex items-center gap-1", atrasado && "font-semibold text-amber-800")} title={pedido.enviadoEm ? `Enviado em ${dataHora(pedido.enviadoEm)}` : undefined}>
-                <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-                {tempoEsperandoTexto(pedido, hojeISO)}
-                {atrasado ? " · passou do prazo" : ""}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1" title={pedido.enviadoEm ? `Enviado em ${dataHora(pedido.enviadoEm)}` : undefined}>
-                <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-                pedido em {diaCurto(pedido.enviadoEm ?? pedido.createdAt)}
-              </span>
-            )}
-            {paraQuando && (pedido.status === "ENVIADO" || pedido.status === "APROVADO" || pedido.status === "DEVOLVIDO") ? (
-              <span className="inline-flex items-center gap-1">
-                <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                {paraQuando}
-              </span>
-            ) : null}
-            <span>
-              {pedido.itens.length} {pedido.itens.length === 1 ? "item" : "itens"}
-            </span>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5">
+        <p className="text-sm font-bold leading-5 text-tinta [overflow-wrap:anywhere] [text-wrap:pretty]">
+          {urgente ? <EtiquetaUrgente /> : null}
+          <span className="sr-only">{`Pedido ${numero}: `}</span>
+          {pedido.titulo}
+        </p>
+        <Pedacos
+          partes={[
+            nomeDoSetor(pedido.setor),
+            pedido.solicitanteNome || null,
+            tipo === "decisao" && pedido.status === "ENVIADO" ? <RelogioDoPrazo pedido={pedido} hojeISO={hojeISO} /> : null,
+            tipo === "comprar" ? `${pedido.itens.length} ${pedido.itens.length === 1 ? "item" : "itens"}` : null,
+            paraQuando || null,
+          ]}
+        />
+        {aprovando ? (
+          <p role="status" className="mt-1 inline-flex flex-wrap items-center gap-x-2 text-[13px] font-bold leading-5 text-ok">
+            <Check className="h-4 w-4" aria-hidden="true" />
+            {/* 07/10/2026: nada "avisa" o setor — ele vê o Aprovado na lista de pedidos dele. */}
+            Aprovado — o setor vê na lista de pedidos
           </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-base font-semibold tabular-nums text-brand-tinta">{valor > 0 ? brl(valor) : "—"}</p>
-          <p className="text-xs text-muted-foreground">{temValorFinal ? "na compra" : valor > 0 ? "estimado" : "sem estimativa"}</p>
-        </div>
+        ) : null}
+        {tipo === "comprar" && acoes.comprar ? (
+          <AcaoSeta
+            className="mt-1 w-fit md:hidden"
+            disabled={ocupado}
+            onClick={(evento) => {
+              evento.stopPropagation();
+              handlers.onComprar();
+            }}
+          >
+            Registrar compra
+          </AcaoSeta>
+        ) : null}
       </div>
 
-      {itensVisiveis ? <ItensDoPedido pedido={pedido} estoqueItens={estoqueItens} moves={moves} compras={compras} pedidos={pedidos} comEstoque /> : null}
-      {itensVisiveis && pedido.justificativa ? (
-        <p className="mt-3 text-sm leading-6 text-brand-tinta [overflow-wrap:anywhere]">
-          <span className="font-semibold">Por quê: </span>
-          {pedido.justificativa}
-        </p>
-      ) : null}
+      <ValorDaLinha pedido={pedido} />
 
-      {variante === "lista" ? <FaixaDoPasso pedido={pedido} hojeISO={hojeISO} quemCompra={acoes.comprar} /> : null}
-
-      {/* Os botões do próximo passo. No celular, grandes (h-12) e na largura toda. */}
-      {acoes.decidir && aprovando ? (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
-          <span className="inline-flex items-center gap-1.5 font-semibold">
-            <Check className="h-4 w-4" aria-hidden="true" />
-            {/* 07/10/2026: era "o setor é avisado em instantes", mas nada avisa —
-                o setor vê o "Aprovado" na lista de pedidos dele. */}
-            Aprovado — o setor vê na lista de pedidos
-          </span>
-          <Button type="button" variant="outline" className="h-11 sm:h-9" onClick={handlers.onDesfazerAprovacao}>
-            <Undo2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Desfazer
-          </Button>
-        </div>
-      ) : acoes.decidir ? (
-        <div className="mt-4 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-          <Button type="button" variant="outline" disabled={ocupado} onClick={handlers.onRecusar} className="h-12 text-rose-700 hover:text-rose-800 sm:h-10">
-            <X className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Recusar
-          </Button>
-          <Button type="button" variant="outline" disabled={ocupado} onClick={handlers.onDevolver} className="h-12 sm:h-10">
-            <Undo2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Devolver
-          </Button>
-          {/* 07/10/2026: Aprovar é a ação principal da caixa — vai na cor de ação
-              da marca (musgo), não em verde-esmeralda: verde fica para o SELO
-              "Aprovado" (situação), nunca para botão. No escuro o musgo clareia
-              e o papel escurece, então o rótulo continua legível. */}
-          <Button
-            type="button"
+      <div className="flex items-center gap-1 justify-self-end max-md:col-span-2 max-md:justify-self-start max-md:empty:hidden">
+        {tipo === "decisao" && acoes.decidir ? (
+          aprovando ? (
+            <Botao
+              variante="secundario"
+              tamanho="pq"
+              icone={<Undo2 className="h-4 w-4" aria-hidden="true" />}
+              onClick={(evento) => {
+                evento.stopPropagation();
+                handlers.onDesfazerAprovacao();
+              }}
+              className="max-md:h-11"
+            >
+              Desfazer
+            </Botao>
+          ) : (
+            // A cor de ação da casa é o musgo (07/10/2026): verde fica para o SELO "Aprovado", nunca para botão.
+            <Botao
+              variante="suave"
+              tamanho="pq"
+              disabled={ocupado}
+              aria-label={`Aprovar o pedido ${numero}`}
+              onClick={(evento) => {
+                evento.stopPropagation();
+                handlers.onAprovar();
+              }}
+              className="max-md:hidden"
+            >
+              Aprovar
+            </Botao>
+          )
+        ) : null}
+        {tipo === "comprar" && acoes.comprar ? (
+          <AcaoSeta
+            className="max-md:hidden"
             disabled={ocupado}
-            onClick={handlers.onAprovar}
-            className="h-12 border border-brand-musgo/20 bg-brand-musgo text-brand-papel hover:bg-brand-musgo/90 sm:h-10"
+            onClick={(evento) => {
+              evento.stopPropagation();
+              handlers.onComprar();
+            }}
           >
-            <Check className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Aprovar
-          </Button>
-        </div>
-      ) : acoes.comprar || acoes.receber || acoes.ajustar || acoes.cancelar ? (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-          {acoes.cancelar && variante === "lista" ? (
-            <Button type="button" variant="ghost" disabled={ocupado} onClick={handlers.onCancelar} className="order-last h-11 text-rose-700 hover:text-rose-800 sm:order-first sm:mr-auto sm:h-9">
-              Cancelar pedido
-            </Button>
-          ) : null}
-          {acoes.ajustar ? (
-            <Button type="button" variant="outline" disabled={ocupado} onClick={handlers.onAjustar} className="h-12 sm:h-10">
-              <PencilLine className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Ajustar e reenviar
-            </Button>
-          ) : null}
-          {acoes.comprar ? (
-            <Button type="button" variant="outline" disabled={ocupado} onClick={handlers.onComprar} className="h-12 border-brand-musgo/35 text-brand-musgo sm:h-10">
-              <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Registrar compra
-            </Button>
-          ) : null}
-          {/* 07/10/2026: musgo, como o "Registrar compra" — o azul fica só no selo de situação. */}
-          {acoes.receber ? (
-            <Button type="button" variant="outline" disabled={ocupado} onClick={handlers.onReceber} className="h-12 border-brand-musgo/35 text-brand-musgo sm:h-10">
-              <PackageCheck className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              Chegou? Confirmar recebimento
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-
-      <button
-        type="button"
-        onClick={onAlternar}
-        aria-expanded={aberto}
-        aria-controls={detalheId}
-        className="mt-3 inline-flex min-h-11 items-center gap-1 rounded-md text-sm font-semibold text-brand-musgo hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
-      >
-        <ChevronDown className={cn("h-4 w-4 transition-transform", aberto && "rotate-180")} aria-hidden="true" />
-        {aberto ? "Esconder detalhes" : itensVisiveis ? "Ver o histórico" : "Ver itens e histórico"}
-      </button>
-
-      {aberto ? (
-        <div id={detalheId} className="mt-3 grid gap-4 rounded-lg border border-brand-oliva/12 bg-white/55 p-3 sm:p-4">
-          {itensVisiveis ? null : (
-            <div>
-              <ItensDoPedido
-                pedido={pedido}
-                estoqueItens={estoqueItens}
-                moves={moves}
-                compras={compras}
-                pedidos={pedidos}
-                comEstoque={pedido.status === "ENVIADO" || pedido.status === "APROVADO"}
-                semMargem
-              />
-              {pedido.justificativa ? (
-                <p className="mt-3 text-sm leading-6 text-brand-tinta [overflow-wrap:anywhere]">
-                  <span className="font-semibold">Por quê: </span>
-                  {pedido.justificativa}
-                </p>
-              ) : null}
-            </div>
-          )}
-          {pedido.compraRef ? (
-            <div className="text-sm leading-6 text-brand-tinta">
-              <p className="font-semibold">A compra</p>
-              <p className="tabular-nums">
-                {[pedido.fornecedor || "Fornecedor não informado", temValorFinal ? brl(pedido.valorFinal as number) : null, previsaoTexto(pedido.previsaoEntrega, hojeISO)]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-              {verCompraNoFinanceiro ? (
-                <Link to="/financeiro/compras" className="font-semibold text-brand-musgo underline-offset-4 hover:underline">
-                  Ver em Financeiro → Compras
-                </Link>
-              ) : null}
-            </div>
-          ) : null}
-          {pedido.divergencia ? (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 [overflow-wrap:anywhere]">
-              <span className="font-semibold">O que não bateu na entrega: </span>
-              {pedido.divergencia}
-            </p>
-          ) : null}
-          <LinhaDoTempo pedido={pedido} />
-        </div>
-      ) : null}
+            Registrar compra
+          </AcaoSeta>
+        ) : null}
+        <button
+          type="button"
+          aria-label={escolhida ? `Pedido ${numero} aberto ao lado` : `Abrir o pedido ${numero}`}
+          aria-expanded={escolhida}
+          onClick={(evento) => {
+            evento.stopPropagation();
+            onAbrir();
+          }}
+          className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco max-md:hidden"
+        >
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
     </li>
   );
 }
 
-/** A faixa do momento: o que falta, em uma frase (lista curta). */
-function FaixaDoPasso({ pedido, hojeISO, quemCompra }: { pedido: PedidoCompra; hojeISO: string; quemCompra: boolean }) {
-  if (pedido.status === "DEVOLVIDO" && pedido.decisaoNota) {
-    return (
-      <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900 [overflow-wrap:anywhere]">
-        <span className="font-semibold">O que ajustar: </span>
-        {pedido.decisaoNota}
-      </p>
-    );
-  }
-  if (pedido.status === "RECUSADO") {
-    return (
-      <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-700 [overflow-wrap:anywhere]">
-        <span className="font-semibold">Motivo: </span>
-        {pedido.decisaoNota || "sem motivo registrado"}
-      </p>
-    );
-  }
-  // 07/10/2026: o selo diz só "Cancelado"; aqui, quem cancelou e por quê.
-  const cancelamento = quemCancelou(pedido);
-  if (cancelamento) {
-    return (
-      <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-700 [overflow-wrap:anywhere]">
-        <span className="font-semibold">
-          Cancelado{cancelamento.nome ? ` por ${cancelamento.nome}` : ""}
-          {cancelamento.em ? ` em ${diaCurto(cancelamento.em)}` : ""}
-          {cancelamento.motivo ? ": " : ""}
-        </span>
-        {cancelamento.motivo}
-      </p>
-    );
-  }
-  if (pedido.status === "COMPRADO") {
-    return (
-      <p className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-6 text-sky-700">
-        <span className="font-semibold">Comprado{pedido.fornecedor ? ` em ${pedido.fornecedor}` : ""}</span>
-        {" · "}
-        {previsaoTexto(pedido.previsaoEntrega, hojeISO)}
-      </p>
-    );
-  }
-  // Para quem compra, o bloco "Aprovados — falta comprar" já diz isso.
-  if (pedido.status === "APROVADO" && !quemCompra) {
-    return <p className="mt-3 text-sm text-emerald-800">Aprovado — o Financeiro vai comprar.</p>;
-  }
-  if (pedido.status === "RECEBIDO") {
-    return (
-      <p className="mt-3 text-sm text-muted-foreground">
-        Recebido em {diaCurto(pedido.recebidoEm)}
-        {pedido.divergencia ? " · com uma observação na entrega" : ""}
-      </p>
-    );
-  }
-  return null;
-}
-
-function ItensDoPedido({
-  pedido,
-  estoqueItens,
-  moves,
-  compras,
-  pedidos,
-  comEstoque,
-  semMargem = false,
-}: {
-  pedido: PedidoCompra;
-  estoqueItens: EstoqueItem[];
-  moves: EstoqueMovimento[];
-  compras: FinPurchase[];
-  pedidos: PedidoCompra[];
-  /** Mostra "tem X · mínimo Y" e o que já vem (o que o aprovador precisa para decidir). */
-  comEstoque: boolean;
-  semMargem?: boolean;
-}) {
+/** Cabeçalho da tabela dos outros pedidos (no celular some: a tabela vira lista). */
+export function CabecaDaTabela() {
+  const th = "h-10 whitespace-nowrap border-b border-fio-2 px-4 text-left align-middle text-xs font-bold uppercase tracking-[0.06em] text-tinta-2";
   return (
-    <ul className={cn("divide-y divide-brand-oliva/10 rounded-lg border border-brand-oliva/12 bg-white/60", !semMargem && "mt-3")}>
-      {pedido.itens.map((item) => {
-        const estoque = comEstoque ? textoDoEstoque(item.estoqueItemRef, estoqueItens, moves, { compras, pedidos, pedidoAtualId: pedido.id }) : "";
-        const total = item.valorUnitario !== null && item.valorUnitario !== undefined ? item.quantidade * item.valorUnitario : null;
-        return (
-          <li key={item.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-sm text-brand-tinta [overflow-wrap:anywhere]">
-                <span className="font-semibold tabular-nums">
-                  {qtdBR(item.quantidade)} {item.unidade}
-                </span>{" "}
-                × {item.descricao}
-              </p>
-              <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                {estoque ? <span className="tabular-nums">{estoque}</span> : null}
-                {item.valorUnitario !== null && item.valorUnitario !== undefined ? <span className="tabular-nums">{brl(item.valorUnitario)} cada</span> : null}
-                {item.qtdRecebida !== null && item.qtdRecebida !== undefined ? (
-                  <span className={cn("tabular-nums", item.qtdRecebida !== item.quantidade && "font-semibold text-amber-800")}>
-                    chegou {qtdBR(item.qtdRecebida)} {item.unidade}
-                  </span>
-                ) : null}
-                {item.link ? (
-                  linkSeguro(item.link) ? (
-                    <a href={item.link.trim()} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 font-semibold text-brand-musgo underline-offset-4 hover:underline">
-                      <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                      abrir o link
-                    </a>
-                  ) : (
-                    <span className="[overflow-wrap:anywhere]">{item.link}</span>
-                  )
-                ) : null}
-              </p>
-            </div>
-            <span className="shrink-0 text-sm font-semibold tabular-nums text-brand-tinta">{total !== null ? brl(Math.round(total * 100) / 100) : ""}</span>
-          </li>
-        );
-      })}
-    </ul>
+    <thead className="max-md:hidden">
+      <tr>
+        <th scope="col" className={cn(th, "w-16 pl-0")}>
+          Nº
+        </th>
+        <th scope="col" className={cn(th, "w-[38%]")}>
+          Pedido
+        </th>
+        <th scope="col" className={th}>
+          Situação
+        </th>
+        <th scope="col" className={cn(th, "w-28 pr-0 text-right")}>
+          Valor
+        </th>
+      </tr>
+    </thead>
   );
 }
 
-function LinhaDoTempo({ pedido }: { pedido: PedidoCompra }) {
-  if (!pedido.eventos.length) return null;
+/**
+ * Uma linha da tabela dos outros pedidos. A linha abre o pedido no painel; o
+ * próximo passo (Registrar compra, Chegou? Confirmar recebimento, Ajustar e
+ * reenviar) fica embaixo do selo, como link com seta — a decisão em si mora no
+ * painel. Cancelar também fica no painel, longe da lista.
+ */
+export function LinhaDaTabela({
+  pedido,
+  hojeISO,
+  acoes,
+  quemCompra,
+  escolhida = false,
+  aprovando = false,
+  ocupado = false,
+  onAbrir,
+  handlers,
+}: {
+  pedido: PedidoCompra;
+  hojeISO: string;
+  acoes: AcoesDoPedido;
+  /** Para quem compra, o aprovado mostra "Registrar compra →" no lugar da frase. */
+  quemCompra: boolean;
+  escolhida?: boolean;
+  aprovando?: boolean;
+  ocupado?: boolean;
+  onAbrir: () => void;
+  handlers: Pick<AcoesDaLinha, "onComprar" | "onReceber" | "onAjustar" | "onDesfazerAprovacao">;
+}) {
+  const encerrado = pedidoEncerrado(pedido.status);
+  const nota = notaDaSituacao(pedido, hojeISO, { quemCompra: quemCompra && acoes.comprar });
+  const urgente = pedido.urgencia === "URGENTE" && PASSOS_ABERTOS.has(pedido.status);
+  const numero = numeroDoPedido(pedido.numero);
+  const td = "border-b border-fio px-4 py-3 align-top max-md:block max-md:border-0 max-md:p-0";
+  const acao =
+    acoes.comprar ? { rotulo: "Registrar compra", onClick: handlers.onComprar } : acoes.receber ? { rotulo: "Chegou? Confirmar recebimento", onClick: handlers.onReceber } : acoes.ajustar ? { rotulo: "Ajustar e reenviar", onClick: handlers.onAjustar } : null;
   return (
-    <div>
-      <p className="text-sm font-semibold text-brand-tinta">Linha do tempo</p>
-      <ol className="mt-2 space-y-3 border-l border-brand-oliva/25 pl-4">
-        {pedido.eventos.map((evento) => (
-          <li key={evento.id} className="relative">
-            <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-brand-papel bg-brand-oliva" aria-hidden="true" />
-            <p className="text-sm font-semibold text-brand-tinta">{pedidoEventoLabels[evento.tipo] ?? evento.tipo}</p>
-            <p className="text-xs text-muted-foreground">
-              {evento.porNome ? `${evento.porNome} · ` : ""}
-              <time dateTime={evento.em}>{dataHora(evento.em)}</time>
-            </p>
-            {evento.nota ? <p className="mt-0.5 text-sm text-brand-tinta/85 [overflow-wrap:anywhere]">“{evento.nota}”</p> : null}
-          </li>
-        ))}
-      </ol>
-    </div>
+    <tr
+      id={`pedido-${pedido.id}`}
+      onClick={onAbrir}
+      className={cn(
+        "scroll-mt-28 cursor-pointer transition-colors duration-150 ease-papel hover:bg-saber/70",
+        "max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:border-b max-md:border-fio max-md:py-3",
+        escolhida && "bg-musgo-claro/55 shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))] hover:bg-musgo-claro/70",
+      )}
+    >
+      <td className={cn(td, "pl-0 text-sm font-medium tabular-nums text-tinta-2 max-md:hidden", escolhida && "pl-3")}>{numero.replace("#", "")}</td>
+      <td className={td}>
+        <span className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5">
+          <button
+            type="button"
+            onClick={(evento) => {
+              evento.stopPropagation();
+              onAbrir();
+            }}
+            aria-expanded={escolhida}
+            className={cn(
+              "w-fit rounded-sm text-left text-sm leading-5 underline-offset-[3px] [overflow-wrap:anywhere] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco",
+              encerrado ? "font-semibold text-tinta-2" : "font-bold text-tinta",
+            )}
+          >
+            {urgente ? <EtiquetaUrgente /> : null}
+            <span className="sr-only">{`Pedido ${numero}: `}</span>
+            {pedido.titulo}
+          </button>
+          <span className="text-[13px] font-medium leading-5 text-tinta-2">
+            <span className="md:hidden">{numero} · </span>
+            {nomeDoSetor(pedido.setor)}
+            {pedido.solicitanteNome ? ` · ${pedido.solicitanteNome}` : ""}
+          </span>
+        </span>
+      </td>
+      <td className={cn(td, "max-md:col-span-2 max-md:mt-2")}>
+        <span className="grid min-w-0 grid-cols-[minmax(0,1fr)] justify-items-start gap-0.5">
+          <SeloDoPedido status={pedido.status} faltaComprar={pedido.status === "APROVADO" && quemCompra} className="max-w-full whitespace-normal" />
+          {aprovando ? (
+            <span role="status" className="inline-flex items-center gap-2 text-[13px] font-bold leading-5 text-ok">
+              Aprovado agora
+              <button
+                type="button"
+                onClick={(evento) => {
+                  evento.stopPropagation();
+                  handlers.onDesfazerAprovacao();
+                }}
+                className="rounded-sm text-musgo underline underline-offset-[3px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+              >
+                Desfazer
+              </button>
+            </span>
+          ) : pedido.status === "ENVIADO" ? (
+            <RelogioDoPrazo pedido={pedido} hojeISO={hojeISO} />
+          ) : null}
+          {nota ? (
+            <span
+              className={cn(
+                "text-[13px] font-medium leading-5 [overflow-wrap:anywhere]",
+                nota.tom === "atencao" ? "text-atencao" : nota.tom === "erro" ? "text-erro" : "text-tinta-2",
+              )}
+            >
+              {nota.texto}
+            </span>
+          ) : null}
+          {acao ? (
+            <AcaoSeta
+              disabled={ocupado}
+              onClick={(evento) => {
+                evento.stopPropagation();
+                acao.onClick();
+              }}
+              className="mt-0.5 max-md:min-h-11"
+            >
+              {acao.rotulo}
+            </AcaoSeta>
+          ) : null}
+        </span>
+      </td>
+      <td className={cn(td, "pr-0 text-right max-md:col-start-2 max-md:row-start-1")}>
+        <ValorDaLinha pedido={pedido} comOrigem className={encerrado ? "[&>span:first-child]:font-semibold [&>span:first-child]:text-tinta-2" : undefined} />
+      </td>
+    </tr>
   );
 }

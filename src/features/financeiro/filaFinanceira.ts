@@ -10,8 +10,18 @@
 // função monta, a partir das contas e das compras que já existem, o que precisa
 // de ação hoje — em quatro colunas — e uma frase em português que resume tudo.
 // Nada é digitado aqui; é tudo derivado.
+//
+// DIA DE PAGAR (08/10/2026, regra do Lucas): conta que vence em sábado,
+// domingo ou feriado é paga no DIA ÚTIL ANTERIOR. As colunas (vencidas · vence
+// hoje · semana) passam a olhar o `pagarEm` (diaDePagar do vencimento), não o
+// vencimento cru: o aluguel de sábado 10/10 entra em "vence hoje" (pagar hoje)
+// na sexta 09/10 e só vira "vencida" depois desse dia. O contador do Início na
+// casca usa esta mesma função, então muda junto.
 import type { FinExpense, FinPurchase } from "./financeiroData";
 import { configAtual } from "@/lib/configNegocio";
+import { diaDePagar, motivoDePagarAntes } from "./filaFinanceiraDiaDePagar";
+
+export { diaDePagar, ehDiaUtilDePagamento, ehFeriado, FERIADOS_SAO_PAULO, motivoDePagarAntes } from "./filaFinanceiraDiaDePagar";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
@@ -23,8 +33,16 @@ export type ItemFila = {
   titulo: string;
   detalhe: string;
   valor: number;
-  /** Data que manda na coluna: vencimento (conta) ou entrega prevista (compra). */
+  /** Vencimento (conta) ou entrega prevista (compra). */
   data: string;
+  /**
+   * O dia que manda na coluna (08/10/2026): para a conta, o dia de pagar —
+   * o vencimento, ou o dia útil anterior quando ele cai em sábado, domingo ou
+   * feriado; para a compra, a própria data.
+   */
+  pagarEm: string;
+  /** "vence no sábado, 10/10" quando a conta é paga antes do vencimento; senão null. */
+  pagaAntes: string | null;
   alerta?: AlertaFila;
   /** APROVAÇÃO (14/09/2026, proposta 1.7): conta no limite ou acima que ainda não foi aprovada não pode ser paga pela fila. */
   aguardaAprovacao?: boolean;
@@ -83,6 +101,8 @@ function itemDaConta(expense: FinExpense, notasAnexadas: Set<string>, limiteApro
     detalhe: [expense.supplier, expense.method ? expense.method.replace("_", " ").toLowerCase() : ""].filter(Boolean).join(" · "),
     valor: expense.amount || 0,
     data: expense.dueDate,
+    pagarEm: diaDePagar(expense.dueDate),
+    pagaAntes: motivoDePagarAntes(expense.dueDate),
     alerta: recusada ? "RECUSADA" : aguarda ? "AGUARDA_APROVACAO" : semArquivo ? "SEM_ARQUIVO" : undefined,
     aguardaAprovacao: aguarda,
     expense,
@@ -112,12 +132,17 @@ export function buildFilaFinanceira(input: {
   // conferir; ela fica no histórico de Compras, não na fila do dia.
   const compraMaisVelha = somaDias(hoje, -(input.maxCompraDias ?? 60));
   const purchases = input.purchases.filter((purchase) => purchase.purchaseDate >= compraMaisVelha);
-  const porData = (a: ItemFila, b: ItemFila) => a.data.localeCompare(b.data) || b.valor - a.valor;
+  const porData = (a: ItemFila, b: ItemFila) => a.pagarEm.localeCompare(b.pagarEm) || a.data.localeCompare(b.data) || b.valor - a.valor;
 
-  const abertas = expenses.filter((expense) => !expense.paidAt && expense.dueDate);
-  const vencidas = abertas.filter((e) => e.dueDate < hoje && e.dueDate >= maisVelha).map((e) => itemDaConta(e, notasAnexadas, limiteAprovacao)).sort(porData);
-  const vencemHoje = abertas.filter((e) => e.dueDate === hoje).map((e) => itemDaConta(e, notasAnexadas, limiteAprovacao)).sort(porData);
-  const semana = abertas.filter((e) => e.dueDate > hoje && e.dueDate <= limite).map((e) => itemDaConta(e, notasAnexadas, limiteAprovacao)).sort(porData);
+  // A coluna sai do DIA DE PAGAR (08/10/2026): sábado, domingo e feriado pagam
+  // no dia útil anterior. A janela das vencidas (90 dias) continua no vencimento.
+  const abertas = expenses
+    .filter((expense) => !expense.paidAt && expense.dueDate)
+    .map((expense) => ({ expense, pagar: diaDePagar(expense.dueDate) }));
+  const itens = (lista: typeof abertas) => lista.map(({ expense }) => itemDaConta(expense, notasAnexadas, limiteAprovacao)).sort(porData);
+  const vencidas = itens(abertas.filter(({ expense, pagar }) => pagar < hoje && expense.dueDate >= maisVelha));
+  const vencemHoje = itens(abertas.filter(({ pagar }) => pagar === hoje));
+  const semana = itens(abertas.filter(({ pagar }) => pagar > hoje && pagar <= limite));
 
   const pendencias: ItemFila[] = [];
   let pedidosSemNf = 0;
@@ -128,6 +153,7 @@ export function buildFilaFinanceira(input: {
       tipo: "COMPRA" as const,
       titulo: purchase.description,
       valor: purchase.amount || 0,
+      pagaAntes: null,
       purchase,
     };
     if (!purchase.receivedAt && purchase.deliveryEta && purchase.deliveryEta <= hoje) {
@@ -137,6 +163,7 @@ export function buildFilaFinanceira(input: {
         chave: `compra-entrega:${purchase.id}`,
         detalhe: `${purchase.supplier || "sem fornecedor"} · previsto ${purchase.deliveryEta.split("-").reverse().slice(0, 2).join("/")} — chegou?`,
         data: purchase.deliveryEta,
+        pagarEm: purchase.deliveryEta,
         alerta: purchase.deliveryEta < hoje ? "ATRASADO" : "CHEGANDO",
       });
     }
@@ -147,6 +174,7 @@ export function buildFilaFinanceira(input: {
         chave: `compra-nf:${purchase.id}`,
         detalhe: `${purchase.supplier || "sem fornecedor"} · chegou ${purchase.receivedAt.split("-").reverse().slice(0, 2).join("/")} — falta a NF`,
         data: purchase.receivedAt,
+        pagarEm: purchase.receivedAt,
         alerta: "SEM_NF",
       });
     }
@@ -157,6 +185,7 @@ export function buildFilaFinanceira(input: {
         chave: `compra-conta:${purchase.id}`,
         detalhe: `${purchase.supplier || "sem fornecedor"} · boleto sem conta a pagar — não está na P12`,
         data: purchase.purchaseDate,
+        pagarEm: purchase.purchaseDate,
         alerta: "SEM_CONTA",
       });
     }
@@ -184,7 +213,14 @@ export function buildFilaFinanceira(input: {
   };
 
   const partes: string[] = [];
-  if (vencemHoje.length) partes.push(`hoje vencem ${vencemHoje.length} (${brl(totais.vencemHoje)})`);
+  // Com conta de fim de semana/feriado puxada para hoje, a frase diz "pagar hoje" e conta quantas são.
+  const antecipadas = vencemHoje.filter((item) => item.pagaAntes).length;
+  if (vencemHoje.length && !antecipadas) partes.push(`hoje vencem ${vencemHoje.length} (${brl(totais.vencemHoje)})`);
+  if (antecipadas) {
+    partes.push(
+      `pagar hoje ${vencemHoje.length} (${brl(totais.vencemHoje)}; ${antecipadas} ${antecipadas === 1 ? "vence" : "vencem"} no fim de semana ou feriado)`,
+    );
+  }
   if (vencidas.length) partes.push(`${vencidas.length} vencida${vencidas.length > 1 ? "s" : ""} (${brl(totais.vencidas)})`);
   if (!vencemHoje.length && !vencidas.length) partes.push("nada vencido e nada para hoje");
   if (semana.length) partes.push(`${semana.length} nos próximos ${input.diasSemana ?? 7} dias (${brl(totais.semana)})`);

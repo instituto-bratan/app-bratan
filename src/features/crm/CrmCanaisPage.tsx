@@ -9,16 +9,11 @@
 // financeiro, o voucher libera sozinho — ninguém precisa avisar esta tela.
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, CircleDollarSign, Gift, UserPlus, Users } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, UserPlus } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { AvisoSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, FraseDoFluxo } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { canCrmBratan, isCoordenacao } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
@@ -48,11 +43,14 @@ import {
   type ContactChannelsDraft,
 } from "./contactChannels";
 import { confirmar } from "@/components/ui/avisos";
+import { Aviso, Etiqueta, Indicadores, Input, Label, NOME_LINK, TITULO_SECAO, type TomEtiqueta } from "./comercialVisual";
+import { contagem, maiuscula } from "./comercialFrases";
 
-const statusTones: Record<ReferralRewardStatus, string> = {
-  AGUARDANDO: "border-slate-300 bg-slate-50 text-slate-700",
-  A_PAGAR: "border-amber-300 bg-amber-50 text-amber-800",
-  PAGO: "border-emerald-300 bg-emerald-50 text-emerald-800",
+// A palavra vai junto da cor: aguardando (neutro) · a pagar (atenção) · pago (ok).
+const statusTones: Record<ReferralRewardStatus, TomEtiqueta> = {
+  AGUARDANDO: "neutro",
+  A_PAGAR: "atencao",
+  PAGO: "ok",
 };
 
 export function CrmCanaisPage() {
@@ -166,7 +164,7 @@ export function CrmCanaisPage() {
       const referrer = next.contacts.find((item) => item.id === referrerFinalId);
       const referred = next.contacts.find((item) => item.id === targetId);
       setFeedback(
-        `✅ ${contactDisplayName(referrer)} indicou ${contactDisplayName(referred)}. O indicado já está no CRM; quando a consulta dele virar comanda, o voucher de ${moneyCrm(REFERRAL_REWARD_VALUE)} libera sozinho aqui.`,
+        `${contactDisplayName(referrer)} indicou ${contactDisplayName(referred)}. O indicado já está no CRM; quando a consulta dele virar comanda, o voucher de ${moneyCrm(REFERRAL_REWARD_VALUE)} libera sozinho aqui.`,
       );
       return next;
     });
@@ -184,82 +182,80 @@ export function CrmCanaisPage() {
     setFeedback(`Voucher da indicação de ${referredName} marcado como pago.`);
   }
 
+  // CABEÇALHO (08/10/2026, redesenho etapa 3): um cabeçalho só, com o número em
+  // frase ("Três pessoas indicam…"); o placar vira a faixa "para saber"; o
+  // registro e a lista por pessoa moram em folhas (é onde se decide e se age).
+  const fraseDoTopo =
+    totais.indicadores === 0 ? (
+      <>
+        <strong>Nenhuma indicação ainda.</strong> Registre a primeira abaixo.
+      </>
+    ) : (
+      <>
+        <strong>{maiuscula(contagem(totais.indicadores, "pessoa", "pessoas", "f"))}</strong>{" "}
+        {totais.indicadores === 1 ? "indica" : "indicam"}, com {contagem(totais.indicados, "indicado")} no total.
+        {totais.aReceber > 0 ? <span className="alerta"> {moneyCrm(totais.aReceber)} em vouchers para entregar.</span> : null}
+      </>
+    );
+
   return (
     <AccessGate allowed={canCrmBratan} label="CRM · Indicações" module="crm">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 font-sans max-md:gap-4">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Comercial"
+          titulo="Indicações"
+          frase={fraseDoTopo}
+          rodape={
+            <FraseDoFluxo>
+              Quem indica, quem foi indicado e o voucher de {moneyCrm(REFERRAL_REWARD_VALUE)} por paciente que passar com o
+              doutor.{" "}
+              <InfoTip title="Como funciona o voucher">
+                Cada pessoa que indica tem os seus indicados listados aqui. Quando o indicado PASSA COM O DOUTOR (a
+                consulta vira comanda no financeiro), o voucher de {moneyCrm(REFERRAL_REWARD_VALUE)} libera sozinho — a
+                coordenação só marca quando entregar. Indicado registrado aqui já nasce no CRM, sem cadastro duplicado.
+              </InfoTip>
+            </FraseDoFluxo>
+          }
+        />
         <CrmSyncBanner failed={syncFailed} detail={syncErrorDetail} onRetry={retrySync} />
         <AvisoSoVe soVe={telaCrm.soVe} />
-        <motion.header initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Gift className="h-6 w-6 text-brand-musgo" aria-hidden="true" />
-            <h1 className="text-3xl text-brand-musgo">Indicações</h1>
-            <InfoTip title="Como funciona o voucher">
-              Cada pessoa que indica tem os seus indicados listados aqui. Quando o indicado PASSA COM O DOUTOR (a
-              consulta vira comanda no financeiro), o voucher de {moneyCrm(REFERRAL_REWARD_VALUE)} libera sozinho — a
-              coordenação só marca quando entregar. Indicado registrado aqui já nasce no CRM, sem cadastro duplicado.
-            </InfoTip>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Quem indica, quem foi indicado e o voucher de {moneyCrm(REFERRAL_REWARD_VALUE)} por paciente que passar com o
-            doutor.
-          </p>
-        </motion.header>
 
         {feedback ? (
-          <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/70 p-3 text-sm font-medium text-brand-tinta">{feedback}</div>
+          <Aviso tom="ok" icone={<Check aria-hidden="true" />}>
+            {feedback}
+          </Aviso>
         ) : null}
 
         {/* Placar */}
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <Users className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-              <p className="mt-2 text-sm font-semibold text-brand-musgo">Pessoas que indicam</p>
-              <p className="text-2xl font-bold text-brand-tinta">{totais.indicadores}</p>
-              <p className="text-xs text-muted-foreground">{totais.indicados} indicado(s) no total</p>
-            </CardContent>
-          </Card>
-          <Card className={cn(totais.aReceber > 0 && "border-amber-300 bg-amber-50/50")}>
-            <CardContent className="p-4">
-              <Gift className="h-5 w-5 text-amber-600" aria-hidden="true" />
-              <p className="mt-2 text-sm font-semibold text-brand-musgo">Vouchers liberados</p>
-              <p className="text-2xl font-bold text-amber-700">{moneyCrm(totais.aReceber)}</p>
-              <p className="text-xs text-muted-foreground">indicados que já passaram com o Dr.</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <CircleDollarSign className="h-5 w-5 text-emerald-600" aria-hidden="true" />
-              <p className="mt-2 text-sm font-semibold text-brand-musgo">Vouchers pagos</p>
-              <p className="text-2xl font-bold text-emerald-700">{moneyCrm(totais.pago)}</p>
-              <p className="text-xs text-muted-foreground">investimento no canal indicação</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <UserPlus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-              <p className="mt-2 text-sm font-semibold text-brand-musgo">Aguardando consulta</p>
-              <p className="text-2xl font-bold text-brand-tinta">{totais.aguardando}</p>
-              <p className="text-xs text-muted-foreground">indicados que ainda não passaram</p>
-            </CardContent>
-          </Card>
-        </div>
+        <Indicadores
+          rotulo="Placar das indicações"
+          itens={[
+            { rotulo: "Pessoas que indicam", valor: totais.indicadores, frase: `${contagem(totais.indicados, "indicado")} no total` },
+            {
+              rotulo: "Vouchers liberados",
+              valor: moneyCrm(totais.aReceber),
+              frase: "indicados que já passaram com o Dr.",
+              tom: totais.aReceber > 0 ? "atencao" : undefined,
+            },
+            { rotulo: "Vouchers pagos", valor: moneyCrm(totais.pago), frase: "investimento no canal indicação" },
+            { rotulo: "Aguardando consulta", valor: totais.aguardando, frase: "indicados que ainda não passaram" },
+          ]}
+        />
 
         {/* Registrar indicação */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <UserPlus className="h-5 w-5" aria-hidden="true" /> Registrar indicação
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              X indicou Y: busque ou DIGITE o nome completo dos dois — quem não tiver cadastro nasce aqui na hora, já ligado.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleRegister} className="grid gap-3 lg:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label>Quem indicou</Label>
+        <BlocoFolha as="section" respiro aria-labelledby="registrar-indicacao">
+          <h2 id="registrar-indicacao" className={cn(TITULO_SECAO, "flex items-center gap-2")}>
+            <UserPlus className="h-4 w-4 text-oliva" aria-hidden="true" /> Registrar indicação
+          </h2>
+          <p className="mt-1 text-sm font-medium leading-5 text-tinta-2">
+            X indicou Y: busque ou DIGITE o nome completo dos dois — quem não tiver cadastro nasce aqui na hora, já ligado.
+          </p>
+          <form onSubmit={handleRegister} className="mt-5 grid gap-x-6 gap-y-4 lg:grid-cols-3">
+              <div className="min-w-0">
+                <Label htmlFor="indicacao-quem-indicou">Quem indicou</Label>
                 <Input
+                  id="indicacao-quem-indicou"
                   value={referrerQuery}
                   onChange={(event) => {
                     setReferrerQuery(event.target.value);
@@ -268,7 +264,7 @@ export function CrmCanaisPage() {
                   placeholder="Busque pelo nome (2+ letras)"
                 />
                 {referrerSuggestions.length && !referrerId ? (
-                  <div className="rounded-lg border border-brand-oliva/20 bg-white/80">
+                  <div className="mt-1 overflow-hidden rounded-bloco border border-fio bg-folha shadow-flutua">
                     {referrerSuggestions.map((contact) => (
                       <button
                         key={contact.id}
@@ -277,18 +273,19 @@ export function CrmCanaisPage() {
                           setReferrerId(contact.id);
                           setReferrerQuery(contactDisplayName(contact));
                         }}
-                        className="block w-full px-3 py-1.5 text-left text-sm hover:bg-brand-creme/50"
+                        className="block w-full px-3 py-2 text-left text-sm font-medium text-tinta hover:bg-saber focus-visible:bg-saber focus-visible:outline-none [&+&]:border-t [&+&]:border-fio"
                       >
                         {contactDisplayName(contact)}
                       </button>
                     ))}
                   </div>
                 ) : null}
-                {referrerId ? <p className="text-xs font-semibold text-emerald-700">✓ selecionado</p> : null}
+                {referrerId ? <p className="mt-1 text-xs font-bold text-ok">✓ selecionado</p> : null}
               </div>
-              <div className="space-y-1.5">
-                <Label>Quem foi indicado (novo ou existente)</Label>
+              <div className="min-w-0">
+                <Label htmlFor="indicacao-quem-foi-indicado">Quem foi indicado (novo ou existente)</Label>
                 <Input
+                  id="indicacao-quem-foi-indicado"
                   value={referredQuery}
                   onChange={(event) => {
                     setReferredQuery(event.target.value);
@@ -297,7 +294,7 @@ export function CrmCanaisPage() {
                   placeholder="Busque, ou digite o nome completo da pessoa nova"
                 />
                 {referredSuggestions.length && !referredId ? (
-                  <div className="rounded-lg border border-brand-oliva/20 bg-white/80">
+                  <div className="mt-1 overflow-hidden rounded-bloco border border-fio bg-folha shadow-flutua">
                     {referredSuggestions.map((contact) => (
                       <button
                         key={contact.id}
@@ -306,16 +303,16 @@ export function CrmCanaisPage() {
                           setReferredId(contact.id);
                           setReferredQuery(contactDisplayName(contact));
                         }}
-                        className="block w-full px-3 py-1.5 text-left text-sm hover:bg-brand-creme/50"
+                        className="block w-full px-3 py-2 text-left text-sm font-medium text-tinta hover:bg-saber focus-visible:bg-saber focus-visible:outline-none [&+&]:border-t [&+&]:border-fio"
                       >
                         {contactDisplayName(contact)}
                       </button>
                     ))}
                   </div>
                 ) : null}
-                {referredId ? <p className="text-xs font-semibold text-emerald-700">✓ selecionado</p> : null}
+                {referredId ? <p className="mt-1 text-xs font-bold text-ok">✓ selecionado</p> : null}
               </div>
-              <div className="space-y-1.5">
+              <div className="grid min-w-0 gap-3">
                 <ContactChannelsFields
                   value={novoContato}
                   onChange={setNovoContato}
@@ -323,99 +320,90 @@ export function CrmCanaisPage() {
                   bare
                   note="Contato de quem foi indicado (se for pessoa nova, ou se o cadastro estiver sem número)."
                 />
-                <LiquidButton type="submit" size="sm" className="mt-1 w-full" disabled={!telaCrm.podeEditar}>
+                <Botao variante="primario" type="submit" className="w-full" disabled={!telaCrm.podeEditar}>
                   Registrar indicação
-                </LiquidButton>
+                </Botao>
                 {formError ? (
-                  <p className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700">
+                  <p role="alert" className="rounded-controle bg-erro-claro px-3 py-2 text-xs font-bold leading-5 text-erro">
                     {formError}
                   </p>
                 ) : null}
               </div>
-            </form>
-          </CardContent>
-        </Card>
+          </form>
+        </BlocoFolha>
 
         {/* Por pessoa: X indicou Y e Z */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Users className="h-5 w-5" aria-hidden="true" /> Por pessoa ({porIndicador.length})
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Clique na pessoa para abrir os indicados dela.</p>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {porIndicador.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma indicação ainda — registre a primeira acima.</p>
-            ) : (
-              porIndicador.map((grupo) => {
+        <section aria-labelledby="indicacoes-por-pessoa" className="grid gap-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="indicacoes-por-pessoa" className={TITULO_SECAO}>
+              Por pessoa <span className="font-semibold tabular-nums text-tinta-2">· {porIndicador.length}</span>
+            </h2>
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">Clique na pessoa para abrir os indicados dela.</p>
+          </div>
+          {porIndicador.length === 0 ? (
+            <BlocoSaber className="py-4">
+              <p className="text-sm font-medium text-tinta-2">Nenhuma indicação ainda — registre a primeira acima.</p>
+            </BlocoSaber>
+          ) : (
+            <BlocoFolha>
+              {porIndicador.map((grupo) => {
                 const chave = grupo.indicador?.id ?? "?";
                 const aberto = indicadorAberto === chave;
                 return (
-                  <div key={chave} className="rounded-xl border border-brand-oliva/20 bg-white/70">
+                  <div key={chave} className="[&+&]:border-t [&+&]:border-fio">
                     <button
                       type="button"
-                      className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-left"
+                      aria-expanded={aberto}
+                      className="flex min-h-14 w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-3 text-left hover:bg-papel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foco max-md:px-4"
                       onClick={() => setIndicadorAberto((atual) => (atual === chave ? "" : chave))}
                     >
-                      <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-musgo">
-                        {aberto ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
-                        {grupo.indicador ? contactDisplayName(grupo.indicador) : "(indicador removido)"}
+                      <span className="flex min-w-0 items-center gap-2 text-sm font-bold text-tinta">
+                        {aberto ? <ChevronDown className="h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" />}
+                        <span className="min-w-0 truncate">{grupo.indicador ? contactDisplayName(grupo.indicador) : "(indicador removido)"}</span>
                       </span>
-                      <span className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">
+                      <span className="flex flex-wrap items-center gap-2 text-[13px]">
+                        <span className="font-medium tabular-nums text-tinta-2">
                           {grupo.indicacoes.length} indicado(s) · {grupo.passaram} passaram
                         </span>
-                        {grupo.aReceber > 0 ? (
-                          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-bold text-amber-800">
-                            {moneyCrm(grupo.aReceber)} a entregar
-                          </span>
-                        ) : null}
-                        {grupo.vouchersPagos > 0 ? (
-                          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800">
-                            {grupo.vouchersPagos} voucher(s) pago(s)
-                          </span>
-                        ) : null}
+                        {grupo.aReceber > 0 ? <Etiqueta tom="atencao">{moneyCrm(grupo.aReceber)} a entregar</Etiqueta> : null}
+                        {grupo.vouchersPagos > 0 ? <Etiqueta tom="ok">{grupo.vouchersPagos} voucher(s) pago(s)</Etiqueta> : null}
                       </span>
                     </button>
                     {aberto ? (
-                      <div className="space-y-1.5 border-t border-brand-oliva/10 px-3 py-2.5">
+                      <ul className="border-t border-fio bg-papel">
                         {grupo.indicacoes.map((reward) => (
-                          <div key={reward.referred.id} className="flex flex-wrap items-center justify-between gap-2">
+                          <li key={reward.referred.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 pl-11 pr-5 max-md:pl-10 max-md:pr-4 [&+&]:border-t [&+&]:border-fio">
                             <div className="min-w-0 text-sm">
-                              <Link to={crmModuleRoutes.contact(reward.referred.id)} className="font-semibold text-brand-tinta hover:underline">
+                              <Link to={crmModuleRoutes.contact(reward.referred.id)} className={NOME_LINK}>
                                 {contactDisplayName(reward.referred)}
                               </Link>
                               {reward.soldTotal > 0 ? (
-                                <span className="ml-2 text-xs text-muted-foreground">fechou {moneyCrm(reward.soldTotal)}</span>
+                                <span className="ml-2 text-[13px] font-medium tabular-nums text-tinta-2">fechou {moneyCrm(reward.soldTotal)}</span>
                               ) : null}
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
-                              <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", statusTones[reward.status])}>
-                                {referralRewardStatusLabels[reward.status]}
-                              </span>
+                              <Etiqueta tom={statusTones[reward.status]}>{referralRewardStatusLabels[reward.status]}</Etiqueta>
                               {reward.status === "A_PAGAR" && canPay ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
+                                <Botao
+                                  variante="suave"
+                                  tamanho="pq"
                                   disabled={!telaCrm.podeEditar}
                                   onClick={() => handleMarkPaid(reward.referred.id, contactDisplayName(reward.referred))}
                                 >
                                   Voucher entregue
-                                </Button>
+                                </Botao>
                               ) : null}
                             </div>
-                          </div>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     ) : null}
                   </div>
                 );
-              })
-            )}
-          </CardContent>
-        </Card>
+              })}
+            </BlocoFolha>
+          )}
+        </section>
       </div>
     </AccessGate>
   );

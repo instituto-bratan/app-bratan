@@ -13,12 +13,17 @@
 // preenchido em /compras); o "Já comprei" ficou só para o financeiro completo,
 // que é quem o banco deixa gravar compra — para a enfermagem e a recepção ele
 // dava erro de permissão.
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { motion } from "framer-motion";
+//
+// REDESENHO PAPEL & MUSGO (08/10/2026): a mesma tela, na forma aprovada — um
+// cabeçalho só (com a frase do fluxo e o número já explicado), os setores em
+// abas logo abaixo, o placar no tom "saber" (para saber), os blocos que pedem
+// ação em folha (bipar, pedidos do setor, chegadas, validade, posição), a
+// situação do item no selo da fundação e nada de vidro. Os dados, os botões, as
+// permissões e os links (?setor=, ?pedido=&acao=) são os de antes.
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   AlertTriangle,
   Barcode,
-  Boxes,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -28,30 +33,17 @@ import {
   Plus,
   Printer,
   ShoppingCart,
-  Syringe,
   Trash2,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Abas, BlocoFolha, BlocoSaber, Botao, Cabecalho, FraseDoFluxo, LinkSeta, Selo, type EstadoSelo } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, canFinanceiroFull, canSeeModule, isCoordenacao } from "@/lib/access";
 import { useCompras } from "@/features/compras/useCompras";
-import {
-  ehDoSetor,
-  numeroDoPedido,
-  pedidoStatusClasses,
-  pedidoStatusLabels,
-  podePedirPara,
-  podeReceber,
-  type PedidoCompra,
-} from "@/features/compras/comprasData";
+import { ehDoSetor, numeroDoPedido, podePedirPara, podeReceber, type PedidoCompra } from "@/features/compras/comprasData";
+import { AcaoSeta, Campo, CampoSelecao, CampoTexto, Recado, SeloDoPedido } from "@/features/compras/pecas";
 import {
   fraseDoPedidoNoItem,
   linkDoPedido,
@@ -101,17 +93,37 @@ import { perguntar } from "@/components/ui/avisos";
 const diaBR = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 const novoId = (prefixo: string) => `${prefixo}-${crypto.randomUUID()}`;
 
+// A SITUAÇÃO DO ITEM no selo da fundação (08/10/2026, redesenho Papel & Musgo):
+// as 4 marcas contam o caminho da compra do item — nada pedido (zerou, comprar),
+// pedido feito (1), a caminho (3) — e o OK leva as 4 cheias. A palavra vai
+// sempre junto; a cor só reforça. `rotulo` (caixa alta) segue no relatório impresso.
+// 07/10/2026: o "Pedido feito" deixou o violeta (fora da marca); hoje é o ouro do
+// "aguardando aprovação", o mesmo do selo do pedido. Petróleo SÓ no "a caminho".
 const statusChip = {
-  ZERADO: { rotulo: "ZEROU", classe: "border-rose-300 bg-rose-100 text-rose-900" },
-  COMPRAR: { rotulo: "COMPRAR", classe: "border-amber-300 bg-amber-100 text-amber-900" },
-  OK: { rotulo: "OK", classe: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+  ZERADO: { rotulo: "ZEROU", palavra: "Zerou", estado: "recusado", etapas: 0 },
+  COMPRAR: { rotulo: "COMPRAR", palavra: "Comprar", estado: "devolvido", etapas: 0 },
+  OK: { rotulo: "OK", palavra: "OK", estado: "recebido", etapas: 4 },
   // 06/10/2026: o setor já pediu; o pedido espera aprovação ou compra.
-  // 07/10/2026: era violeta (fora da marca, e o tema escuro não remapeia o
-  // violet-100). Âmbar já é o COMPRAR; o "já pedido" usa o creme/dourado da
-  // marca, o mesmo da faixa do pedido no detalhe do item.
-  PEDIDO: { rotulo: "PEDIDO FEITO", classe: "border-brand-dourado/60 bg-brand-creme text-brand-musgo" },
-  A_CAMINHO: { rotulo: "A CAMINHO", classe: "border-sky-300 bg-sky-100 text-sky-900" },
-} as const;
+  PEDIDO: { rotulo: "PEDIDO FEITO", palavra: "Pedido feito", estado: "aguardando", etapas: 1 },
+  A_CAMINHO: { rotulo: "A CAMINHO", palavra: "A caminho", estado: "a-caminho", etapas: 3 },
+} as const satisfies Record<string, { rotulo: string; palavra: string; estado: EstadoSelo; etapas: number }>;
+
+const TH = "h-10 whitespace-nowrap border-b border-fio-2 px-3 text-left align-middle text-xs font-bold uppercase tracking-[0.06em] text-tinta-2";
+const RUBRICA = "text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2";
+
+/** Cabeça de um bloco: título curto, contagem em texto e o "O que é" ao lado. */
+function CabecaDoBloco({ id, titulo, detalhe, dica, acao }: { id?: string; titulo: string; detalhe?: ReactNode; dica?: ReactNode; acao?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pb-3 pt-4">
+      <h2 id={id} className="flex flex-wrap items-center gap-x-2 text-sm font-bold leading-5 text-tinta">
+        {titulo}
+        {detalhe ? <span className="text-[13px] font-medium text-tinta-2">{detalhe}</span> : null}
+        {dica}
+      </h2>
+      {acao}
+    </div>
+  );
+}
 
 /** Sugestões de categoria por setor — só para digitar menos (datalist). */
 const categoriasSugeridas: Record<EstoqueSetor, string[]> = {
@@ -159,14 +171,13 @@ function CompraDoItem({
   onJaComprei: () => void;
 }) {
   if (linha.compraAberta) {
-    // 07/10/2026: text-sky-700 (era sky-900) — o tema escuro só clareia o 700;
-    // com o 900 a confirmação do "Já comprei" ficava azul-escuro no fundo escuro.
+    // Já comprado: é o "a caminho" — a única faixa em petróleo.
     return (
-      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+      <Recado tom="petroleo">
         <strong>Já comprei.</strong> {linha.compraAberta.supplier || "Fornecedor não anotado"} em {diaBR(linha.compraAberta.purchaseDate)}
         {linha.compraAberta.deliveryEta ? `, previsto para ${diaBR(linha.compraAberta.deliveryEta)}` : ""}.
         {" "}Some daqui quando alguém der a entrada da caixa.
-      </div>
+      </Recado>
     );
   }
   if (linha.pedidoAberto?.status === "DEVOLVIDO") {
@@ -175,36 +186,35 @@ function CompraDoItem({
     // pessoa esperar uma entrega que nunca vinha.
     const motivo = pedidoCompleto?.decisaoNota ?? "";
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-        <span className="[overflow-wrap:anywhere]">
-          <strong>{fraseDoPedidoNoItem(linha.pedidoAberto)}.</strong>{" "}
-          {ajustaOPedido ? "Falta você ajustar e reenviar" : "Falta o setor ajustar e reenviar"}
-          {motivo ? `: ${motivo}` : "."}
+      <Recado tom="atencao">
+        <span className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <span className="min-w-0 flex-[1_1_16rem] [overflow-wrap:anywhere]">
+            <strong>{fraseDoPedidoNoItem(linha.pedidoAberto)}.</strong>{" "}
+            {ajustaOPedido ? "Falta você ajustar e reenviar" : "Falta o setor ajustar e reenviar"}
+            {motivo ? `: ${motivo}` : "."}
+          </span>
+          <LinkSeta to={linkDoPedido(linha.pedidoAberto.id, ajustaOPedido ? "ajustar" : undefined)}>{ajustaOPedido ? "Ajustar e reenviar" : "Ver o pedido"}</LinkSeta>
         </span>
-        <Button asChild type="button" size="sm" variant="outline">
-          <Link to={linkDoPedido(linha.pedidoAberto.id, ajustaOPedido ? "ajustar" : undefined)}>{ajustaOPedido ? "Ajustar e reenviar" : "Ver o pedido"}</Link>
-        </Button>
-      </div>
+      </Recado>
     );
   }
   if (linha.pedidoAberto) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/20 bg-white/80 px-3 py-2 text-sm text-brand-tinta">
-        <span>
-          <strong>{fraseDoPedidoNoItem(linha.pedidoAberto)}.</strong> Não precisa pedir de novo: quando chegar, a entrada é dada pelo
-          pedido.
+      <Recado tom="neutro" className="bg-folha">
+        <span className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <span className="min-w-0 flex-[1_1_16rem]">
+            <strong>{fraseDoPedidoNoItem(linha.pedidoAberto)}.</strong> Não precisa pedir de novo: quando chegar, a entrada é dada pelo pedido.
+          </span>
+          <LinkSeta to={linkDoPedido(linha.pedidoAberto.id)}>Ver o pedido</LinkSeta>
         </span>
-        <Button asChild type="button" size="sm" variant="outline">
-          <Link to={linkDoPedido(linha.pedidoAberto.id)}>Ver o pedido</Link>
-        </Button>
-      </div>
+      </Recado>
     );
   }
   if (linha.status === "OK") return null;
   // 07/10/2026: a última palavra sobre o item foi uma recusa — o motivo vem
   // ANTES do "Pedir compra", para ninguém pedir de novo sem saber por quê.
   const avisoDaRecusa = recusa ? (
-    <span className="block text-rose-700 [overflow-wrap:anywhere]">
+    <span className="mb-1 block font-medium text-erro [overflow-wrap:anywhere]">
       <strong>Pedido {recusa.numero} foi recusado</strong>
       {recusa.motivo ? `: ${recusa.motivo}` : "."} Se ainda precisar, peça de novo explicando.
     </span>
@@ -214,27 +224,33 @@ function CompraDoItem({
     // sem conta paga nem categoria. Agora o botão abre a gaveta de compra
     // completa (JaCompreiGaveta): forma de pagamento e, no à vista, a categoria da P12.
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-sm text-brand-tinta">
-        <span>Está em falta. Já comprou? Anote a compra: ela entra no Financeiro e o item fica "a caminho".</span>
-        <Button type="button" size="sm" onClick={onJaComprei}>
-          <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" /> Já comprei
-        </Button>
-      </div>
+      <Recado tom="atencao">
+        <span className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <span className="min-w-0 flex-[1_1_16rem]">
+            <strong>Está em falta.</strong> Já comprou? Anote a compra: ela entra no Financeiro e o item fica "a caminho".
+          </span>
+          <Botao variante="primario" tamanho="pq" icone={<ShoppingCart className="h-4 w-4" aria-hidden="true" />} onClick={onJaComprei} className="max-md:h-11">
+            Já comprei
+          </Botao>
+        </span>
+      </Recado>
     );
   }
   if (!podePedir) {
-    return avisoDaRecusa ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm">{avisoDaRecusa}</div> : null;
+    return avisoDaRecusa ? <Recado tom="erro">{avisoDaRecusa}</Recado> : null;
   }
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-sm text-brand-tinta">
-      <span className="min-w-0 flex-1">
-        {avisoDaRecusa}
-        Está em falta. Peça a compra: o Gestor Financeiro aprova e o Financeiro compra.
+    <Recado tom="atencao">
+      <span className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <span className="min-w-0 flex-[1_1_16rem]">
+          {avisoDaRecusa}
+          <strong>Está em falta.</strong> Peça a compra: o Gestor Financeiro aprova e o Financeiro compra.
+        </span>
+        <Botao variante="primario" tamanho="pq" icone={<ShoppingCart className="h-4 w-4" aria-hidden="true" />} onClick={onPedir} className="max-md:h-11">
+          Pedir compra
+        </Botao>
       </span>
-      <Button type="button" size="sm" onClick={onPedir}>
-        <ShoppingCart className="mr-1.5 h-4 w-4" aria-hidden="true" /> Pedir compra
-      </Button>
-    </div>
+    </Recado>
   );
 }
 
@@ -552,7 +568,7 @@ export function EstoquePage() {
   function imprimirListaDeCompra() {
     const lista = listaDeCompra(estoque.items, estoque.moves, setor, estoque.compras, pedidos);
     if (!lista.length) {
-      setFeedback("Nada para comprar: nenhum item zerado ou abaixo do mínimo. 👌");
+      setFeedback("Nada para comprar: nenhum item zerado ou abaixo do mínimo.");
       return;
     }
     const linhas = lista
@@ -589,71 +605,104 @@ export function EstoquePage() {
     void salvarArquivo(`estoque-${setor.toLowerCase()}-${hoje.slice(0, 7)}.csv`, blob);
   }
 
+  // A frase do cabeçalho (número sempre com frase).
+  const fraseDoSetor = (
+    <>
+      <strong>{setorNomes[setor]}</strong> · quem cuida: {quemCuidaDoSetor(setor)}.{" "}
+      {posicao.length ? `${posicao.length} ${posicao.length === 1 ? "item" : "itens"} no estoque` : "Nenhum item cadastrado ainda"}
+      {falta.semPedido ? (
+        <>
+          {"; "}
+          <span className="alerta">
+            {falta.semPedido} em falta e sem pedido
+          </span>
+        </>
+      ) : posicao.length ? "; nada em falta sem pedido" : ""}
+      .
+    </>
+  );
+  const placar: { rotulo: string; valor: number; frase: string; alerta?: boolean }[] = [
+    { rotulo: "Itens no setor", valor: posicao.length, frase: setorLabels[setor] },
+    {
+      rotulo: "Para comprar",
+      valor: falta.semPedido,
+      // 06/10/2026: o que já foi pedido ou está a caminho não conta como tarefa — só aparece na frase.
+      frase: [
+        "em falta e ainda sem pedido",
+        falta.jaPedidos ? `${falta.jaPedidos} já ${falta.jaPedidos === 1 ? "pedido" : "pedidos"}` : "",
+        falta.aCaminho ? `${falta.aCaminho} a caminho` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      alerta: falta.semPedido > 0,
+    },
+    { rotulo: "Vencendo (60 dias)", valor: alertas.length, frase: "lotes com validade próxima", alerta: alertas.length > 0 },
+    { rotulo: "Chegadas a confirmar", valor: chegadas.length, frase: "compras esperando entrada", alerta: chegadas.length > 0 },
+  ];
+
   return (
     <AccessGate allowed={(c) => canSeeModule({ cargo: c }, "estoque")} label="Estoque" module="estoque">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="gold">Operação 360</Badge>
-            <Badge variant="muted">{estoque.syncMode}</Badge>
-          </div>
-          <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-            <Boxes className="h-8 w-8 text-brand-oliva" aria-hidden="true" />
-            Estoque
-            <InfoTip title="Como este estoque funciona">
-              Toda mudança é um movimento (entrada, saída, ajuste ou contagem) — o saldo é sempre a soma deles, nunca um
-              número digitado. Cada item tem um mínimo: abaixo dele, a tela acusa COMPRAR. Medicação entra com lote e
-              validade, e a saída sugere sempre o lote que vence primeiro. Item em falta: &quot;Pedir compra&quot; abre o
-              pedido já preenchido; o Gestor Financeiro aprova, o Financeiro compra e, quando a caixa chega, confirmar o
-              recebimento do pedido dá a entrada aqui. Compra marcada &quot;vai para o estoque&quot; no Financeiro aparece
-              aqui em cima até alguém confirmar a chegada.
-            </InfoTip>
-          </h1>
-          {/* 06/10/2026: o texto "Dois estoques" ficou para trás — cada cargo virou um setor. */}
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Cada setor cuida do próprio estoque: o que tem, o que falta e o que vence. Quando falta, o setor pede a compra
-            aqui mesmo; o Gestor Financeiro aprova e a entrada cai no estoque ao confirmar a chegada.
-          </p>
-          <p className="mt-1 text-sm text-brand-tinta">
-            <strong>{setorNomes[setor]}</strong> · quem cuida: {quemCuidaDoSetor(setor)}
-          </p>
+      <div className="mx-auto w-full max-w-[1200px] font-sans text-tinta">
+        <Cabecalho
+          sobrancelha="Compras e estoque"
+          titulo="Estoque por setor"
+          frase={
+            <>
+              {fraseDoSetor}{" "}
+              <InfoTip title="Como este estoque funciona" className="align-middle">
+                Toda mudança é um movimento (entrada, saída, ajuste ou contagem) — o saldo é sempre a soma deles, nunca um
+                número digitado. Cada item tem um mínimo: abaixo dele, a tela acusa COMPRAR. Medicação entra com lote e
+                validade, e a saída sugere sempre o lote que vence primeiro. Item em falta: &quot;Pedir compra&quot; abre o
+                pedido já preenchido; o Gestor Financeiro aprova, o Financeiro compra e, quando a caixa chega, confirmar o
+                recebimento do pedido dá a entrada aqui. Compra marcada &quot;vai para o estoque&quot; no Financeiro aparece
+                aqui em cima até alguém confirmar a chegada.
+              </InfoTip>
+            </>
+          }
+          acoes={
+            <>
+              <Botao variante="secundario" tamanho="pq" icone={<Printer className="h-4 w-4" aria-hidden="true" />} onClick={imprimirPosicao} className="max-md:h-11">
+                Imprimir posição
+              </Botao>
+              <Botao variante="secundario" tamanho="pq" icone={<ClipboardList className="h-4 w-4" aria-hidden="true" />} onClick={imprimirListaDeCompra} className="max-md:h-11">
+                Lista de compras
+              </Botao>
+              <Botao variante="secundario" tamanho="pq" icone={<Download className="h-4 w-4" aria-hidden="true" />} onClick={baixarCsv} className="max-md:h-11">
+                CSV do mês
+              </Botao>
+            </>
+          }
+          rodape={
+            // 06/10/2026: o texto "Dois estoques" ficou para trás — cada cargo virou um setor.
+            <FraseDoFluxo link={{ to: "/compras", rotulo: "Ver os pedidos" }}>
+              Cada setor cuida do próprio estoque. Quando falta, o setor pede a compra; o Gestor Financeiro aprova e a entrada cai aqui ao confirmar a chegada.
+            </FraseDoFluxo>
+          }
+        />
 
-          {/* Troca de setor (06/10/2026): os setores da pessoa como botões; com
-              muitos setores (a coordenação vê os 10), o resto vai para um
-              seletor compacto em vez de uma fileira de abas. */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {telaSetores.botoes.map((chave) => (
-              <button
-                key={chave}
-                type="button"
-                onClick={() => setSetor(chave)}
-                aria-pressed={setor === chave}
-                className={cn(
-                  "min-h-9 rounded-full border px-4 py-1.5 text-sm font-semibold transition",
-                  setor === chave
-                    ? "border-brand-musgo bg-brand-musgo text-brand-papel"
-                    : "border-brand-oliva/25 bg-white/60 text-brand-oliva hover:text-brand-musgo",
-                )}
-              >
-                {setorLabels[chave]}
-              </button>
-            ))}
+        {/* Troca de setor (06/10/2026): os setores da pessoa como abas; com
+            muitos setores (a coordenação vê os 10), o resto vai para um
+            seletor compacto em vez de uma fileira de abas. */}
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-fio">
+          <Abas
+            rotulo="Setores do estoque"
+            valor={telaSetores.botoes.includes(setor) ? setor : "__outro__"}
+            onMudar={(id) => {
+              if (ehEstoqueSetor(id)) setSetor(id);
+            }}
+            itens={telaSetores.botoes.map((chave) => ({ id: chave, rotulo: setorLabels[chave] }))}
+            className="min-w-0 border-b-0"
+          />
+          <div className="flex flex-wrap items-center gap-3 pb-2">
             {telaSetores.noSeletor.length ? (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <label className="flex items-center gap-2">
                 <span className="sr-only">Ver outro setor</span>
-                <select
+                <CampoSelecao
                   value={telaSetores.noSeletor.includes(setor) ? setor : ""}
                   onChange={(event) => {
                     if (ehEstoqueSetor(event.target.value)) setSetor(event.target.value);
                   }}
-                  className={cn(
-                    "h-9 rounded-full border bg-white/70 px-3 text-sm font-semibold",
-                    telaSetores.noSeletor.includes(setor) ? "border-brand-musgo text-brand-musgo" : "border-brand-oliva/25 text-brand-oliva",
-                  )}
+                  className={cn("h-9 w-auto", telaSetores.noSeletor.includes(setor) && "border-musgo font-bold text-musgo")}
                 >
                   <option value="">Outros setores ({telaSetores.noSeletor.length})…</option>
                   {telaSetores.noSeletor.map((chave) => (
@@ -661,281 +710,133 @@ export function EstoquePage() {
                       {setorNomes[chave]}
                     </option>
                   ))}
-                </select>
+                </CampoSelecao>
               </label>
             ) : null}
-            <span className="ml-auto flex flex-wrap gap-2">
-              {/* Ficha de aplicação (29/09/2026): a saída de medicação aplicada nasce lá, com paciente e lote. */}
-              {setor === "ENFERMAGEM" && canSeeModule(pessoa, "aplicacoes") ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/estoque/aplicacoes">
-                    <Syringe className="mr-1.5 h-4 w-4" aria-hidden="true" /> Aplicações
-                  </Link>
-                </Button>
-              ) : null}
-              <Button type="button" variant="outline" size="sm" onClick={imprimirPosicao}>
-                <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir posição
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={imprimirListaDeCompra}>
-                <ClipboardList className="mr-1.5 h-4 w-4" aria-hidden="true" /> Lista de compras
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={baixarCsv}>
-                <Download className="mr-1.5 h-4 w-4" aria-hidden="true" /> CSV do mês
-              </Button>
-            </span>
+            {/* Ficha de aplicação (29/09/2026): a saída de medicação aplicada nasce lá, com paciente e lote. */}
+            {setor === "ENFERMAGEM" && canSeeModule(pessoa, "aplicacoes") ? <LinkSeta to="/estoque/aplicacoes">Aplicações</LinkSeta> : null}
           </div>
-        </motion.section>
+        </div>
 
-        {feedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-            {feedback}
-          </div>
-        ) : null}
-        {erro ? (
-          <div className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50/80 px-4 py-3 text-sm font-semibold text-rose-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            {erro}
-          </div>
-        ) : null}
+        <div className="grid gap-6">
+          {feedback ? (
+            <Recado tom="ok" role="status" icone={<CheckCircle2 aria-hidden="true" />}>
+              <strong>{feedback}</strong>
+            </Recado>
+          ) : null}
+          {erro ? (
+            <Recado tom="erro" role="alert" icone={<AlertTriangle aria-hidden="true" />}>
+              <strong>{erro}</strong>
+            </Recado>
+          ) : null}
 
-        {/* MODO BIPE: o leitor USB digita o código e manda Enter — sem integração. */}
-        {podeEditar ? (
-          <Card className="border-brand-musgo/30 bg-white/70 shadow-none">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Barcode className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-                Bipar código de barras
-                <InfoTip title="Como usar o leitor">
-                  Qualquer leitor USB/Bluetooth funciona: ele "digita" o código e dá Enter sozinho — só deixar o cursor
-                  nesta caixa. Nas caixas de medicação, o quadradinho DataMatrix (padrão ANVISA) carrega o produto, o
-                  lote E a validade: um bip preenche a entrada inteira. Código desconhecido? Vincule uma vez e o próximo
-                  bip acha sozinho.
-                </InfoTip>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              <form
-                className="flex flex-wrap gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (bipTexto.trim()) receberBip(bipTexto.trim());
-                }}
-              >
-                <Input
-                  value={bipTexto}
-                  onChange={(event) => setBipTexto(event.target.value)}
-                  placeholder="Clique aqui e bipe (ou digite o código e Enter)"
-                  className="max-w-md font-mono"
-                  autoComplete="off"
-                />
-                <Button type="submit" variant="outline">Ler</Button>
-              </form>
+          {/* Placar: para saber, sem borda. */}
+          <BlocoSaber as="section" aria-label={`Resumo de ${setorNomes[setor]}`} className="grid grid-cols-2 gap-x-6 gap-y-5 lg:grid-cols-4">
+            {placar.map((cartao) => (
+              <div key={cartao.rotulo} className="min-w-0">
+                <p className={RUBRICA}>{cartao.rotulo}</p>
+                <p className={cn("mt-2 font-serifa text-[32px] font-normal leading-none tabular-nums", cartao.alerta ? "text-atencao" : "text-tinta")}>{cartao.valor}</p>
+                <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{cartao.frase}</p>
+              </div>
+            ))}
+          </BlocoSaber>
 
-              {bipItem ? (
-                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
-                  <div className="min-w-0 text-sm">
-                    <p className="font-semibold text-brand-tinta">{bipItem.nome}</p>
-                    <p className="text-xs text-muted-foreground">
-                      saldo {saldoDoItem(estoque.moves, bipItem.id).toLocaleString("pt-BR")} {bipItem.unidade}
-                      {bipLido?.lote ? ` · lote lido: ${bipLido.lote}` : ""}
-                      {bipLido?.validade ? ` · validade lida: ${diaBR(bipLido.validade)}` : ""}
-                    </p>
-                  </div>
-                  <div className="ml-auto flex flex-wrap gap-2">
-                    <Button type="button" size="sm" onClick={() => bipSaida(bipItem)}>Saída de 1 {bipItem.unidade}</Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        const resposta = await perguntar(`Entrada de quantas ${bipItem.unidade} de ${bipItem.nome}?`, { valorInicial: "1", confirmar: "Dar entrada" });
-                        const quantidade = Number((resposta ?? "").replace(",", "."));
-                        if (quantidade > 0) void bipEntrada(bipItem, quantidade);
-                      }}
-                    >
-                      Entrada…
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
+          {/* PEDIR TUDO O QUE ESTÁ EM FALTA (06/10/2026): um pedido só com todos os
+              itens zerados ou abaixo do mínimo que ninguém pediu nem comprou. */}
+          {podePedir && pedirTudo.itens.length ? (
+            <Recado tom="atencao" icone={<ShoppingCart aria-hidden="true" />}>
+              <span className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <span className="min-w-0 flex-[1_1_16rem]">
+                  <strong>
+                    {pedirTudo.itens.length} {pedirTudo.itens.length === 1 ? "item em falta" : "itens em falta"} e sem pedido
+                  </strong>{" "}
+                  em {setorNomes[setor]}. Um pedido só leva todos, com a quantidade sugerida (repõe até 2× o mínimo); dá para ajustar antes de enviar.
+                  {pedirTudo.deFora ? ` Os outros ${pedirTudo.deFora} ficam para um segundo pedido (o limite é 50 itens).` : ""}
+                </span>
+                <Botao variante="primario" onClick={() => navigate(pedirTudo.href)} className="max-md:h-11">
+                  Pedir tudo o que está em falta
+                </Botao>
+              </span>
+            </Recado>
+          ) : null}
 
-              {bipDesconhecido ? (
-                <div className="grid gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-3 py-2.5 text-sm">
-                  <p className="font-semibold text-amber-900">
-                    Código {bipDesconhecido} ainda não está em nenhum item deste setor.
-                  </p>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div>
-                      <Label>Vincular ao item</Label>
-                      <select
-                        value={bipVincularRef}
-                        onChange={(event) => setBipVincularRef(event.target.value)}
-                        className="flex h-9 w-64 rounded-md border border-input bg-white/80 px-3 py-1.5 text-sm"
-                      >
-                        <option value="">— escolha o item —</option>
-                        {estoque.items
-                          .filter((item) => item.setor === setor)
-                          .map((item) => (
-                            <option key={item.id} value={item.id}>{item.nome}</option>
-                          ))}
-                      </select>
-                    </div>
-                    <Button type="button" size="sm" onClick={() => void bipVincular()} disabled={!bipVincularRef}>
-                      Vincular código
-                    </Button>
-                    <span className="text-xs text-muted-foreground">ou crie o item em "Novo item" com este código.</span>
-                  </div>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        ) : null}
+          {/* MODO BIPE: o leitor USB digita o código e manda Enter — sem integração. */}
+          {podeEditar ? (
+            <BlocoFolha as="section" aria-labelledby="estoque-bipar">
+              <CabecaDoBloco
+                id="estoque-bipar"
+                titulo="Bipar código de barras"
+                dica={
+                  <InfoTip title="Como usar o leitor">
+                    Qualquer leitor USB/Bluetooth funciona: ele "digita" o código e dá Enter sozinho — só deixar o cursor
+                    nesta caixa. Nas caixas de medicação, o quadradinho DataMatrix (padrão ANVISA) carrega o produto, o
+                    lote E a validade: um bip preenche a entrada inteira. Código desconhecido? Vincule uma vez e o próximo
+                    bip acha sozinho.
+                  </InfoTip>
+                }
+              />
+              <div className="grid gap-3 px-4 pb-4">
+                <form
+                  className="flex flex-wrap gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (bipTexto.trim()) receberBip(bipTexto.trim());
+                  }}
+                >
+                  <label htmlFor="estoque-bip" className="sr-only">
+                    Código de barras
+                  </label>
+                  <CampoTexto
+                    id="estoque-bip"
+                    value={bipTexto}
+                    onChange={(event) => setBipTexto(event.target.value)}
+                    placeholder="Clique aqui e bipe (ou digite o código e Enter)"
+                    className="max-w-md flex-1 font-mono"
+                    autoComplete="off"
+                  />
+                  <Botao type="submit" variante="secundario" icone={<Barcode className="h-4 w-4" aria-hidden="true" />} className="max-md:h-11">
+                    Ler
+                  </Botao>
+                </form>
 
-        {/* Placar */}
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: "Itens no setor", value: String(posicao.length), hint: setorLabels[setor] },
-            {
-              label: "Para comprar",
-              value: String(falta.semPedido),
-              // 06/10/2026: o que já foi pedido ou está a caminho não conta como tarefa — só aparece na frase.
-              hint: [
-                "em falta e ainda sem pedido",
-                falta.jaPedidos ? `${falta.jaPedidos} já ${falta.jaPedidos === 1 ? "pedido" : "pedidos"}` : "",
-                falta.aCaminho ? `${falta.aCaminho} a caminho` : "",
-              ]
-                .filter(Boolean)
-                .join(" · "),
-              alerta: falta.semPedido > 0,
-            },
-            { label: "Vencendo (60 dias)", value: String(alertas.length), hint: "lotes com validade próxima", alerta: alertas.length > 0 },
-            { label: "Chegadas a confirmar", value: String(chegadas.length), hint: "compras esperando entrada", alerta: chegadas.length > 0 },
-          ].map((cardInfo) => (
-            <Card key={cardInfo.label} className={cn("shadow-none backdrop-blur", cardInfo.alerta ? "border-amber-300 bg-amber-50/70" : "border-brand-oliva/20 bg-white/70")}>
-              <CardContent className="p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{cardInfo.label}</p>
-                <p className={cn("mt-1 text-2xl font-bold tabular-nums", cardInfo.alerta ? "text-amber-900" : "text-brand-tinta")}>{cardInfo.value}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{cardInfo.hint}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
-
-        {/* PEDIR TUDO O QUE ESTÁ EM FALTA (06/10/2026): um pedido só com todos os
-            itens zerados ou abaixo do mínimo que ninguém pediu nem comprou. */}
-        {podePedir && pedirTudo.itens.length ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50/70 px-4 py-3">
-            <ShoppingCart className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
-            <p className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
-              <strong>
-                {pedirTudo.itens.length} {pedirTudo.itens.length === 1 ? "item em falta" : "itens em falta"} e sem pedido
-              </strong>{" "}
-              em {setorNomes[setor]}. Um pedido só leva todos, com a quantidade sugerida (repõe até 2× o mínimo); dá para
-              ajustar antes de enviar.
-              {pedirTudo.deFora ? ` Os outros ${pedirTudo.deFora} ficam para um segundo pedido (o limite é 50 itens).` : ""}
-            </p>
-            <Button type="button" className="min-h-10" onClick={() => navigate(pedirTudo.href)}>
-              Pedir tudo o que está em falta
-            </Button>
-          </div>
-        ) : null}
-
-        {/* Os pedidos de compra deste setor que ainda não chegaram (06/10/2026):
-            o devolvido para ajustar e o comprado para confirmar vêm primeiro. */}
-        {pedidosDoSetor.length ? (
-          <Card className="border-brand-oliva/20 bg-white/70 shadow-none">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ShoppingCart className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                Pedidos de compra deste setor
-                <InfoTip title="De onde vem esta lista">
-                  São os pedidos de {setorNomes[setor]} que ainda não chegaram. O pedido devolvido volta para o setor ajustar e
-                  reenviar; o comprado espera alguém confirmar o recebimento, e é essa confirmação que dá a entrada no estoque.
-                </InfoTip>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {pedidosDoSetor.map((pedido) => (
-                <div key={pedido.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/15 bg-white/80 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-brand-tinta">
-                      <span className="tabular-nums">{numeroDoPedido(pedido.numero)}</span>
-                      <span className="min-w-0 truncate">{pedido.titulo}</span>
-                      <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold", pedidoStatusClasses[pedido.status])}>
-                        {pedidoStatusLabels[pedido.status]}
+                {bipItem ? (
+                  <Recado tom="ok">
+                    <span className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                      <span className="min-w-0 flex-[1_1_16rem]">
+                        <strong className="block">{bipItem.nome}</strong>
+                        <span className="text-[13px] tabular-nums text-tinta-2">
+                          saldo {saldoDoItem(estoque.moves, bipItem.id).toLocaleString("pt-BR")} {bipItem.unidade}
+                          {bipLido?.lote ? ` · lote lido: ${bipLido.lote}` : ""}
+                          {bipLido?.validade ? ` · validade lida: ${diaBR(bipLido.validade)}` : ""}
+                        </span>
                       </span>
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {pedido.status === "DEVOLVIDO" && pedido.decisaoNota
-                        ? `Motivo: ${pedido.decisaoNota}`
-                        : pedido.status === "COMPRADO"
-                          ? [pedido.fornecedor, quandoChega(pedido)].filter(Boolean).join(" · ")
-                          : `Pedido por ${pedido.solicitanteNome || "alguém do setor"}`}
-                    </p>
-                  </div>
-                  {/* ?pedido= abre o pedido certo na tela de pedidos (pedidoTela.lerPedidoDaUrl);
-                      &acao= (07/10/2026) já abre a gaveta do botão — antes caía na lista
-                      sem nada aberto e parecia que o toque não tinha feito nada. */}
-                  {pedido.status === "COMPRADO" && podeConfirmarChegada ? (
-                    <Button type="button" size="sm" onClick={() => navigate(linkDoPedido(pedido.id, "receber"))}>
-                      <PackageCheck className="mr-1.5 h-4 w-4" aria-hidden="true" /> Chegou? Confirmar recebimento
-                    </Button>
-                  ) : pedido.status === "DEVOLVIDO" && podePedir && ehDoSetor(pessoa, pedido) ? (
-                    <Button type="button" size="sm" onClick={() => navigate(linkDoPedido(pedido.id, "ajustar"))}>
-                      Ajustar e reenviar
-                    </Button>
-                  ) : (
-                    <Button asChild type="button" size="sm" variant="outline">
-                      <Link to={linkDoPedido(pedido.id)}>Ver o pedido</Link>
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {/* Chegadas das Compras */}
-        {chegadas.length ? (
-          <Card className="border-sky-300 bg-sky-50/50 shadow-none">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <PackageCheck className="h-5 w-5 text-sky-700" aria-hidden="true" />
-                Chegou? Confirme e a entrada é automática
-                <InfoTip title="De onde vem esta lista">
-                  São as compras que o financeiro marcou como "vai para o estoque" deste setor. Confirmar a chegada dá a
-                  entrada no item E carimba a compra como recebida no Financeiro — um ato só, sem retrabalho.
-                </InfoTip>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {chegadas.map((compra) => (
-                <div key={compra.id} className="rounded-lg border border-sky-200 bg-white/80 px-3 py-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-brand-tinta">{compra.description}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Comprado em {diaBR(compra.purchaseDate)}
-                        {compra.supplier ? ` · ${compra.supplier}` : ""}
-                        {compra.deliveryEta ? ` · previsto ${diaBR(compra.deliveryEta)}` : ""}
-                      </p>
-                    </div>
-                    {podeEditar ? (
-                      <Button type="button" size="sm" variant={chegadaAberta === compra.id ? "secondary" : "default"} onClick={() => setChegadaAberta((atual) => (atual === compra.id ? "" : compra.id))}>
-                        {chegadaAberta === compra.id ? "Fechar" : "Chegou — dar entrada"}
-                      </Button>
-                    ) : null}
-                  </div>
-                  {chegadaAberta === compra.id ? (
-                    <form className="mt-3 grid gap-3 md:grid-cols-[1.4fr_0.6fr_0.8fr_0.8fr_auto]" onSubmit={(event) => confirmarChegada(compra, event)}>
-                      <div>
-                        <Label>Item do estoque</Label>
-                        <select
-                          value={chegadaItemRef}
-                          onChange={(event) => setChegadaItemRef(event.target.value)}
-                          className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm"
+                      <span className="flex flex-wrap gap-2">
+                        <Botao variante="primario" tamanho="pq" onClick={() => bipSaida(bipItem)} className="max-md:h-11">
+                          Saída de 1 {bipItem.unidade}
+                        </Botao>
+                        <Botao
+                          variante="secundario"
+                          tamanho="pq"
+                          className="max-md:h-11"
+                          onClick={async () => {
+                            const resposta = await perguntar(`Entrada de quantas ${bipItem.unidade} de ${bipItem.nome}?`, { valorInicial: "1", confirmar: "Dar entrada" });
+                            const quantidade = Number((resposta ?? "").replace(",", "."));
+                            if (quantidade > 0) void bipEntrada(bipItem, quantidade);
+                          }}
                         >
+                          Entrada…
+                        </Botao>
+                      </span>
+                    </span>
+                  </Recado>
+                ) : null}
+
+                {bipDesconhecido ? (
+                  <Recado tom="atencao">
+                    <strong className="block">Código {bipDesconhecido} ainda não está em nenhum item deste setor.</strong>
+                    <span className="mt-2 flex flex-wrap items-end gap-2">
+                      <Campo id="estoque-bip-vincular" rotulo="Vincular ao item" className="w-64 max-w-full">
+                        <CampoSelecao id="estoque-bip-vincular" value={bipVincularRef} onChange={(event) => setBipVincularRef(event.target.value)}>
                           <option value="">— escolha o item —</option>
                           {estoque.items
                             .filter((item) => item.setor === setor)
@@ -944,107 +845,245 @@ export function EstoquePage() {
                                 {item.nome}
                               </option>
                             ))}
-                        </select>
-                      </div>
-                      <div>
-                        <Label>Quantidade</Label>
-                        <Input value={chegadaQtd} onChange={(event) => setChegadaQtd(event.target.value)} inputMode="decimal" placeholder="Ex.: 10" />
-                      </div>
-                      <div>
-                        <Label>Lote (se tiver)</Label>
-                        <Input value={chegadaLote} onChange={(event) => setChegadaLote(event.target.value)} placeholder="Ex.: L2408" />
-                      </div>
-                      <div>
-                        <Label>Validade</Label>
-                        <Input type="date" value={chegadaValidade} onChange={(event) => setChegadaValidade(event.target.value)} />
-                      </div>
-                      <div className="self-end">
-                        <LiquidButton type="submit" size="default">Confirmar entrada</LiquidButton>
-                      </div>
-                    </form>
-                  ) : null}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
+                        </CampoSelecao>
+                      </Campo>
+                      <Botao variante="primario" onClick={() => void bipVincular()} disabled={!bipVincularRef} className="max-md:h-11">
+                        Vincular código
+                      </Botao>
+                      <span className="text-[13px] text-tinta-2">ou crie o item em "Novo item" com este código.</span>
+                    </span>
+                  </Recado>
+                ) : null}
+              </div>
+            </BlocoFolha>
+          ) : null}
 
-        {/* Vencendo */}
-        {alertas.length ? (
-          <Card className="border-amber-300 bg-amber-50/50 shadow-none">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
-                Validade: use primeiro, troque antes de vencer
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-1 text-sm">
-              {alertas.map((alerta) => (
-                <p key={`${alerta.item.id}-${alerta.lote.lote}-${alerta.lote.validade}`} className={cn(alerta.vencido ? "font-semibold text-rose-800" : "text-amber-900")}>
-                  <strong>{alerta.item.nome}</strong> — lote {alerta.lote.lote || "s/ lote"} ({alerta.lote.saldo} {alerta.item.unidade}) ·{" "}
-                  {alerta.vencido ? `VENCIDO há ${Math.abs(alerta.diasParaVencer)} dia(s) — tirar do estoque com um Ajuste` : `vence em ${alerta.diasParaVencer} dia(s) (${diaBR(alerta.lote.validade)})`}
-                </p>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
+          {/* Os pedidos de compra deste setor que ainda não chegaram (06/10/2026):
+              o devolvido para ajustar e o comprado para confirmar vêm primeiro. */}
+          {pedidosDoSetor.length ? (
+            <BlocoFolha as="section" aria-labelledby="estoque-pedidos">
+              <CabecaDoBloco
+                id="estoque-pedidos"
+                titulo="Pedidos de compra deste setor"
+                detalhe={`${pedidosDoSetor.length} ${pedidosDoSetor.length === 1 ? "pedido" : "pedidos"} ainda sem chegar`}
+                dica={
+                  <InfoTip title="De onde vem esta lista">
+                    São os pedidos de {setorNomes[setor]} que ainda não chegaram. O pedido devolvido volta para o setor ajustar e
+                    reenviar; o comprado espera alguém confirmar o recebimento, e é essa confirmação que dá a entrada no estoque.
+                  </InfoTip>
+                }
+              />
+              <ul>
+                {pedidosDoSetor.map((pedido) => (
+                  <li key={pedido.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-t border-fio px-4 py-3 max-md:grid-cols-1">
+                    <div className="grid min-w-0 gap-0.5">
+                      <p className="text-sm font-bold leading-5 text-tinta [overflow-wrap:anywhere]">
+                        <span className="mr-2 font-semibold tabular-nums text-tinta-2">{numeroDoPedido(pedido.numero)}</span>
+                        {pedido.titulo}
+                      </p>
+                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <SeloDoPedido status={pedido.status} className="whitespace-normal" />
+                        <span className="text-[13px] font-medium leading-5 text-tinta-2 [overflow-wrap:anywhere]">
+                          {pedido.status === "DEVOLVIDO" && pedido.decisaoNota
+                            ? `Motivo: ${pedido.decisaoNota}`
+                            : pedido.status === "COMPRADO"
+                              ? [pedido.fornecedor, quandoChega(pedido)].filter(Boolean).join(" · ")
+                              : `Pedido por ${pedido.solicitanteNome || "alguém do setor"}`}
+                        </span>
+                      </span>
+                    </div>
+                    {/* ?pedido= abre o pedido certo na tela de pedidos (pedidoTela.lerPedidoDaUrl);
+                        &acao= (07/10/2026) já abre a gaveta do botão — antes caía na lista
+                        sem nada aberto e parecia que o toque não tinha feito nada. */}
+                    {pedido.status === "COMPRADO" && podeConfirmarChegada ? (
+                      <Botao variante="primario" tamanho="pq" icone={<PackageCheck className="h-4 w-4" aria-hidden="true" />} onClick={() => navigate(linkDoPedido(pedido.id, "receber"))} className="max-md:h-11 max-md:justify-self-start">
+                        Chegou? Confirmar recebimento
+                      </Botao>
+                    ) : pedido.status === "DEVOLVIDO" && podePedir && ehDoSetor(pessoa, pedido) ? (
+                      <Botao variante="primario" tamanho="pq" onClick={() => navigate(linkDoPedido(pedido.id, "ajustar"))} className="max-md:h-11 max-md:justify-self-start">
+                        Ajustar e reenviar
+                      </Botao>
+                    ) : (
+                      <LinkSeta to={linkDoPedido(pedido.id)} className="max-md:min-h-11">
+                        Ver o pedido
+                      </LinkSeta>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </BlocoFolha>
+          ) : null}
 
-        {/* Posição + novo item */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                Posição — {setorLabels[setor]}
-              </CardTitle>
-              {podeEditar ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => setNovoAberto((valor) => !valor)}>
-                  <Plus className="mr-1 h-4 w-4" aria-hidden="true" /> Novo item
-                </Button>
-              ) : null}
-            </div>
+          {/* Chegadas das Compras */}
+          {chegadas.length ? (
+            <BlocoFolha as="section" aria-labelledby="estoque-chegadas">
+              <CabecaDoBloco
+                id="estoque-chegadas"
+                titulo="Chegou? Confirme e a entrada é automática"
+                detalhe={`${chegadas.length} ${chegadas.length === 1 ? "compra" : "compras"} a caminho`}
+                dica={
+                  <InfoTip title="De onde vem esta lista">
+                    São as compras que o financeiro marcou como "vai para o estoque" deste setor. Confirmar a chegada dá a
+                    entrada no item E carimba a compra como recebida no Financeiro — um ato só, sem retrabalho.
+                  </InfoTip>
+                }
+              />
+              <ul>
+                {chegadas.map((compra) => (
+                  <li key={compra.id} className="border-t border-fio px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                      <div className="grid min-w-0 gap-0.5">
+                        <p className="text-sm font-bold leading-5 text-tinta [overflow-wrap:anywhere]">{compra.description}</p>
+                        <span className="flex flex-wrap items-center gap-x-3">
+                          <Selo estado="a-caminho">A caminho</Selo>
+                          <span className="text-[13px] font-medium leading-5 text-tinta-2">
+                            Comprado em {diaBR(compra.purchaseDate)}
+                            {compra.supplier ? ` · ${compra.supplier}` : ""}
+                            {compra.deliveryEta ? ` · previsto ${diaBR(compra.deliveryEta)}` : ""}
+                          </span>
+                        </span>
+                      </div>
+                      {podeEditar ? (
+                        <Botao
+                          variante={chegadaAberta === compra.id ? "secundario" : "primario"}
+                          tamanho="pq"
+                          aria-expanded={chegadaAberta === compra.id}
+                          onClick={() => setChegadaAberta((atual) => (atual === compra.id ? "" : compra.id))}
+                          className="max-md:h-11"
+                        >
+                          {chegadaAberta === compra.id ? "Fechar" : "Chegou — dar entrada"}
+                        </Botao>
+                      ) : null}
+                    </div>
+                    {chegadaAberta === compra.id ? (
+                      <form className="mt-3 grid gap-3 rounded-bloco bg-saber p-4 md:grid-cols-[1.4fr_0.6fr_0.8fr_0.8fr_auto] md:items-end" onSubmit={(event) => confirmarChegada(compra, event)}>
+                        <Campo id={`chegada-${compra.id}-item`} rotulo="Item do estoque">
+                          <CampoSelecao id={`chegada-${compra.id}-item`} value={chegadaItemRef} onChange={(event) => setChegadaItemRef(event.target.value)}>
+                            <option value="">— escolha o item —</option>
+                            {estoque.items
+                              .filter((item) => item.setor === setor)
+                              .map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.nome}
+                                </option>
+                              ))}
+                          </CampoSelecao>
+                        </Campo>
+                        <Campo id={`chegada-${compra.id}-qtd`} rotulo="Quantidade">
+                          <CampoTexto id={`chegada-${compra.id}-qtd`} value={chegadaQtd} onChange={(event) => setChegadaQtd(event.target.value)} inputMode="decimal" placeholder="Ex.: 10" className="tabular-nums" />
+                        </Campo>
+                        <Campo id={`chegada-${compra.id}-lote`} rotulo="Lote (se tiver)">
+                          <CampoTexto id={`chegada-${compra.id}-lote`} value={chegadaLote} onChange={(event) => setChegadaLote(event.target.value)} placeholder="Ex.: L2408" />
+                        </Campo>
+                        <Campo id={`chegada-${compra.id}-validade`} rotulo="Validade">
+                          <CampoTexto id={`chegada-${compra.id}-validade`} type="date" value={chegadaValidade} onChange={(event) => setChegadaValidade(event.target.value)} />
+                        </Campo>
+                        <Botao type="submit" variante="primario" className="max-md:h-11">
+                          Confirmar entrada
+                        </Botao>
+                      </form>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </BlocoFolha>
+          ) : null}
+
+          {/* Vencendo */}
+          {alertas.length ? (
+            <BlocoFolha as="section" aria-labelledby="estoque-validade">
+              <CabecaDoBloco
+                id="estoque-validade"
+                titulo="Validade: use primeiro, troque antes de vencer"
+                detalhe={`${alertas.length} ${alertas.length === 1 ? "lote" : "lotes"}`}
+              />
+              <ul>
+                {alertas.map((alerta) => (
+                  <li key={`${alerta.item.id}-${alerta.lote.lote}-${alerta.lote.validade}`} className="border-t border-fio px-4 py-2.5 text-sm leading-5">
+                    <strong className="font-bold text-tinta">{alerta.item.nome}</strong>{" "}
+                    <span className="font-medium text-tinta-2">
+                      — lote {alerta.lote.lote || "s/ lote"} ({alerta.lote.saldo} {alerta.item.unidade}) ·{" "}
+                    </span>
+                    <span className={cn("font-bold", alerta.vencido ? "text-erro" : "text-atencao")}>
+                      {alerta.vencido
+                        ? `VENCIDO há ${Math.abs(alerta.diasParaVencer)} dia(s) — tirar do estoque com um Ajuste`
+                        : `vence em ${alerta.diasParaVencer} dia(s) (${diaBR(alerta.lote.validade)})`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </BlocoFolha>
+          ) : null}
+
+          {/* Posição + novo item */}
+          <BlocoFolha as="section" aria-labelledby="estoque-posicao">
+            <CabecaDoBloco
+              id="estoque-posicao"
+              titulo={`Posição — ${setorLabels[setor]}`}
+              detalhe={posicao.length ? `${posicao.length} ${posicao.length === 1 ? "item" : "itens"}` : undefined}
+              acao={
+                podeEditar ? (
+                  <Botao
+                    variante="secundario"
+                    tamanho="pq"
+                    aria-expanded={novoAberto}
+                    icone={<Plus className="h-4 w-4" aria-hidden="true" />}
+                    onClick={() => setNovoAberto((valor) => !valor)}
+                    className="max-md:h-11"
+                  >
+                    Novo item
+                  </Botao>
+                ) : null
+              }
+            />
             {novoAberto && podeEditar ? (
-              <form className="mt-3 grid gap-3 rounded-lg border border-brand-oliva/20 bg-brand-creme/30 p-3 md:grid-cols-[1.4fr_0.9fr_0.45fr_0.9fr_0.55fr_auto]" onSubmit={salvarItem}>
-                <div>
-                  <Label>Nome do item</Label>
-                  <Input value={nome} onChange={(event) => setNome(event.target.value)} placeholder={setor === "ENFERMAGEM" ? "Ex.: Undecilato 250mg" : "Ex.: Papel A4"} autoFocus />
-                </div>
-                <div>
-                  <Label>Categoria</Label>
-                  <Input value={categoria} onChange={(event) => setCategoria(event.target.value)} list={`categorias-${setor}`} placeholder="Ex.: Medicação" />
+              <form
+                className="mx-4 mb-4 grid gap-3 rounded-bloco bg-saber p-4 md:grid-cols-[1.4fr_0.9fr_0.45fr_0.9fr_0.55fr_auto] md:items-end"
+                onSubmit={salvarItem}
+              >
+                <Campo id="novo-item-nome" rotulo="Nome do item">
+                  <CampoTexto id="novo-item-nome" value={nome} onChange={(event) => setNome(event.target.value)} placeholder={setor === "ENFERMAGEM" ? "Ex.: Undecilato 250mg" : "Ex.: Papel A4"} autoFocus />
+                </Campo>
+                <Campo id="novo-item-categoria" rotulo="Categoria">
+                  <CampoTexto id="novo-item-categoria" value={categoria} onChange={(event) => setCategoria(event.target.value)} list={`categorias-${setor}`} placeholder="Ex.: Medicação" />
                   <datalist id={`categorias-${setor}`}>
                     {categoriasSugeridas[setor].map((sugestao) => (
                       <option key={sugestao} value={sugestao} />
                     ))}
                   </datalist>
-                </div>
-                <div>
-                  <Label>Unidade</Label>
-                  <Input value={unidade} onChange={(event) => setUnidade(event.target.value)} placeholder="un, cx, ml" />
-                </div>
-                <div>
-                  <Label>
-                    Código de barras
-                    <InfoTip title="Bipe aqui">Clique no campo e bipe a caixa do produto — o leitor digita o código sozinho. Pode deixar vazio.</InfoTip>
-                  </Label>
-                  <Input value={codigoBarras} onChange={(event) => setCodigoBarras(event.target.value)} placeholder="bipe ou digite" className="font-mono" />
-                </div>
-                <div>
-                  <Label>
-                    Mínimo
-                    <InfoTip title="Ponto de pedido">Quando o saldo chegar neste número, a tela acusa COMPRAR. Deixe 0 para não avisar.</InfoTip>
-                  </Label>
-                  <Input value={minimo} onChange={(event) => setMinimo(event.target.value)} inputMode="decimal" placeholder="Ex.: 5" />
-                </div>
-                <div className="self-end">
-                  <LiquidButton type="submit" size="default">Criar</LiquidButton>
-                </div>
+                </Campo>
+                <Campo id="novo-item-unidade" rotulo="Unidade">
+                  <CampoTexto id="novo-item-unidade" value={unidade} onChange={(event) => setUnidade(event.target.value)} placeholder="un, cx, ml" />
+                </Campo>
+                <Campo
+                  id="novo-item-codigo"
+                  rotulo={
+                    <span className="inline-flex items-center gap-1">
+                      Código de barras
+                      <InfoTip title="Bipe aqui">Clique no campo e bipe a caixa do produto — o leitor digita o código sozinho. Pode deixar vazio.</InfoTip>
+                    </span>
+                  }
+                >
+                  <CampoTexto id="novo-item-codigo" value={codigoBarras} onChange={(event) => setCodigoBarras(event.target.value)} placeholder="bipe ou digite" className="font-mono" />
+                </Campo>
+                <Campo
+                  id="novo-item-minimo"
+                  rotulo={
+                    <span className="inline-flex items-center gap-1">
+                      Mínimo
+                      <InfoTip title="Ponto de pedido">Quando o saldo chegar neste número, a tela acusa COMPRAR. Deixe 0 para não avisar.</InfoTip>
+                    </span>
+                  }
+                >
+                  <CampoTexto id="novo-item-minimo" value={minimo} onChange={(event) => setMinimo(event.target.value)} inputMode="decimal" placeholder="Ex.: 5" className="tabular-nums" />
+                </Campo>
+                <Botao type="submit" variante="primario" className="max-md:h-11">
+                  Criar
+                </Botao>
               </form>
             ) : null}
-          </CardHeader>
-          <CardContent>
             {posicao.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-6 text-center text-sm text-muted-foreground">
+              <p className="mx-4 mb-4 rounded-bloco bg-saber px-4 py-6 text-center text-sm font-medium leading-6 text-tinta-2">
                 {/* 07/10/2026: a parte do Financeiro só para quem entra nele — o
                     marketing e a limpeza editam o próprio estoque, mas não veem o Financeiro. */}
                 {podeEditar
@@ -1057,7 +1096,7 @@ export function EstoquePage() {
                   <>
                     {" "}
                     Precisa comprar algo?{" "}
-                    <Link to={linkPedirCompra(setor)} className="font-semibold text-brand-musgo underline underline-offset-2">
+                    <Link to={linkPedirCompra(setor)} className="font-bold text-musgo underline underline-offset-2">
                       Fazer um pedido de compra
                     </Link>
                     .
@@ -1066,22 +1105,36 @@ export function EstoquePage() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[38rem] border-collapse text-sm">
+                <table className="w-full border-collapse text-left text-sm text-tinta md:min-w-[44rem]">
                   <thead>
-                    <tr className="border-b border-brand-oliva/25 text-left text-xs uppercase tracking-wide text-brand-oliva">
-                      <th className="py-2 pr-3 font-semibold">Item</th>
-                      <th className="py-2 pr-3 font-semibold">Categoria</th>
-                      <th className="py-2 pr-3 text-right font-semibold">Saldo</th>
-                      <th className="py-2 pr-3 text-right font-semibold">Mínimo</th>
-                      <th className="py-2 pr-3 text-right font-semibold">
-                        Cobertura
-                        <InfoTip title="Para quantos dias dá">
-                          Saldo dividido pelo consumo médio dos últimos 60 dias (só saídas). Também sugere o mínimo:
-                          consumo × 7 dias de reposição × 1,5 de segurança.
-                        </InfoTip>
+                    <tr>
+                      <th scope="col" className={cn(TH, "pl-4")}>
+                        Item
                       </th>
-                      <th className="py-2 pr-3 font-semibold">Situação</th>
-                      <th className="py-2 font-semibold">Último mov.</th>
+                      <th scope="col" className={cn(TH, "max-md:hidden")}>
+                        Categoria
+                      </th>
+                      <th scope="col" className={cn(TH, "text-right max-md:hidden")}>
+                        Saldo
+                      </th>
+                      <th scope="col" className={cn(TH, "text-right max-md:hidden")}>
+                        Mínimo
+                      </th>
+                      <th scope="col" className={cn(TH, "text-right max-md:hidden")}>
+                        <span className="inline-flex items-center gap-1">
+                          Cobertura
+                          <InfoTip title="Para quantos dias dá">
+                            Saldo dividido pelo consumo médio dos últimos 60 dias (só saídas). Também sugere o mínimo:
+                            consumo × 7 dias de reposição × 1,5 de segurança.
+                          </InfoTip>
+                        </span>
+                      </th>
+                      <th scope="col" className={TH}>
+                        Situação
+                      </th>
+                      <th scope="col" className={cn(TH, "pr-4 max-md:hidden")}>
+                        Último mov.
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1134,35 +1187,30 @@ export function EstoquePage() {
                             />
                           }
                           formMovimento={
-                            <form className="grid gap-3 md:grid-cols-[0.8fr_0.6fr_0.7fr_0.8fr_1fr_auto]" onSubmit={(event) => lancarMovimento(linha.item, event)}>
-                              <div>
-                                <Label>Tipo</Label>
-                                <select value={movTipo} onChange={(event) => setMovTipo(event.target.value as EstoqueMovTipo)} className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm">
+                            <form className="grid gap-3 md:grid-cols-[0.9fr_0.6fr_0.7fr_0.8fr_1fr_auto] md:items-end" onSubmit={(event) => lancarMovimento(linha.item, event)}>
+                              <Campo id={`mov-${linha.item.id}-tipo`} rotulo="Tipo">
+                                <CampoSelecao id={`mov-${linha.item.id}-tipo`} value={movTipo} onChange={(event) => setMovTipo(event.target.value as EstoqueMovTipo)}>
                                   <option value="SAIDA">Saída (usei/entreguei)</option>
                                   <option value="ENTRADA">Entrada manual</option>
                                   <option value="AJUSTE">Ajuste (± achei/quebrou)</option>
                                   <option value="CONTAGEM">Contagem física</option>
-                                </select>
-                              </div>
-                              <div>
-                                <Label>{movTipo === "CONTAGEM" ? "Contei" : "Qtd"}</Label>
-                                <Input value={movQtd} onChange={(event) => setMovQtd(event.target.value)} inputMode="decimal" placeholder={movTipo === "AJUSTE" ? "+2 ou -1" : "Ex.: 1"} />
-                              </div>
-                              <div>
-                                <Label>Lote</Label>
-                                <Input value={movLote} onChange={(event) => setMovLote(event.target.value)} placeholder={movTipo === "SAIDA" && loteSugerido(estoque.moves, linha.item.id) ? `FEFO: ${loteSugerido(estoque.moves, linha.item.id)?.lote}` : "opcional"} />
-                              </div>
-                              <div>
-                                <Label>Validade</Label>
-                                <Input type="date" value={movValidade} onChange={(event) => setMovValidade(event.target.value)} />
-                              </div>
-                              <div>
-                                <Label>Motivo / paciente</Label>
-                                <Input value={movMotivo} onChange={(event) => setMovMotivo(event.target.value)} placeholder="opcional" />
-                              </div>
-                              <div className="self-end">
-                                <LiquidButton type="submit" size="default">Lançar</LiquidButton>
-                              </div>
+                                </CampoSelecao>
+                              </Campo>
+                              <Campo id={`mov-${linha.item.id}-qtd`} rotulo={movTipo === "CONTAGEM" ? "Contei" : "Qtd"}>
+                                <CampoTexto id={`mov-${linha.item.id}-qtd`} value={movQtd} onChange={(event) => setMovQtd(event.target.value)} inputMode="decimal" placeholder={movTipo === "AJUSTE" ? "+2 ou -1" : "Ex.: 1"} className="tabular-nums" />
+                              </Campo>
+                              <Campo id={`mov-${linha.item.id}-lote`} rotulo="Lote">
+                                <CampoTexto id={`mov-${linha.item.id}-lote`} value={movLote} onChange={(event) => setMovLote(event.target.value)} placeholder={movTipo === "SAIDA" && loteSugerido(estoque.moves, linha.item.id) ? `FEFO: ${loteSugerido(estoque.moves, linha.item.id)?.lote}` : "opcional"} />
+                              </Campo>
+                              <Campo id={`mov-${linha.item.id}-validade`} rotulo="Validade">
+                                <CampoTexto id={`mov-${linha.item.id}-validade`} type="date" value={movValidade} onChange={(event) => setMovValidade(event.target.value)} />
+                              </Campo>
+                              <Campo id={`mov-${linha.item.id}-motivo`} rotulo="Motivo / paciente">
+                                <CampoTexto id={`mov-${linha.item.id}-motivo`} value={movMotivo} onChange={(event) => setMovMotivo(event.target.value)} placeholder="opcional" />
+                              </Campo>
+                              <Botao type="submit" variante="primario" className="max-md:h-11">
+                                Lançar
+                              </Botao>
                             </form>
                           }
                         />
@@ -1172,8 +1220,13 @@ export function EstoquePage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </BlocoFolha>
+        </div>
+
+        {/* Sem banco (prévia), avisa em português; com o banco não há o que dizer. */}
+        {estoque.syncMode === "Somente local" ? (
+          <p className="mt-8 text-center text-[13px] font-medium text-tinta-2">Modo prévia: o estoque fica só neste aparelho.</p>
+        ) : null}
       </div>
 
       {estoque.podeRegistrarCompra ? (
@@ -1192,6 +1245,9 @@ export function EstoquePage() {
 
 // Linha da tabela + detalhe (kardex e lotes). Componente separado só para a
 // tabela principal não virar um bloco ilegível.
+// 08/10/2026 (redesenho Papel & Musgo): a mesma linha, densa e legível — o
+// nome é um botão (teclado e leitor de tela abrem o detalhe), a situação é o
+// selo da fundação e o detalhe aberto fica no tom "saber".
 function FragmentoItem({
   linha,
   cobertura,
@@ -1228,6 +1284,8 @@ function FragmentoItem({
   formCompra: React.ReactNode;
 }) {
   const chip = statusChip[linha.status];
+  const detalheId = `estoque-item-${linha.item.id}`;
+  const td = "border-b border-fio px-3 py-2.5 align-top";
   // "Pedir compra" na própria linha: só o que falta e ninguém pediu nem comprou.
   // 07/10/2026: com o item aberto, o detalhe (CompraDoItem) já tem o "Pedir
   // compra" — dois botões iguais, um embaixo do outro, confundiam.
@@ -1235,87 +1293,115 @@ function FragmentoItem({
     podePedir && !aberto && (linha.status === "COMPRAR" || linha.status === "ZERADO") && !linha.compraAberta && !linha.pedidoAberto;
   return (
     <>
-      <tr className="cursor-pointer border-b border-brand-oliva/10 hover:bg-brand-creme/30" onClick={onToggle}>
-        <td className="py-2 pr-3">
-          <span className="flex items-center gap-1.5 font-semibold text-brand-tinta">
-            {aberto ? <ChevronDown className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 text-brand-oliva" aria-hidden="true" />}
+      <tr className={cn("cursor-pointer transition-colors duration-150 ease-papel hover:bg-saber/70", aberto && "bg-saber")} onClick={onToggle}>
+        <td className={cn(td, "pl-4")}>
+          <button
+            type="button"
+            aria-expanded={aberto}
+            aria-controls={aberto ? detalheId : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle();
+            }}
+            className="flex items-start gap-1.5 rounded-sm text-left font-bold leading-5 text-tinta [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+          >
+            {aberto ? (
+              <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
+            )}
             {linha.item.nome}
+          </button>
+          {/* No celular, saldo e mínimo descem para baixo do nome (a tabela fica com 2 colunas). */}
+          <span className={cn("ml-[22px] block text-[13px] font-medium leading-5 tabular-nums text-tinta-2 md:hidden", linha.status === "ZERADO" && "font-bold text-erro")}>
+            tem {linha.saldo.toLocaleString("pt-BR")} {linha.item.unidade}
+            {linha.item.minimo > 0 ? ` · mínimo ${linha.item.minimo.toLocaleString("pt-BR")}` : ""}
           </span>
         </td>
-        <td className="py-2 pr-3 text-muted-foreground">{linha.item.categoria || "—"}</td>
-        <td className="py-2 pr-3 text-right font-semibold tabular-nums">
+        <td className={cn(td, "font-medium text-tinta-2 max-md:hidden")}>{linha.item.categoria || "—"}</td>
+        <td className={cn(td, "whitespace-nowrap text-right font-bold tabular-nums max-md:hidden", linha.status === "ZERADO" && "text-erro")}>
           {linha.saldo.toLocaleString("pt-BR")} {linha.item.unidade}
         </td>
-        <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">{linha.item.minimo > 0 ? linha.item.minimo.toLocaleString("pt-BR") : "—"}</td>
-        <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
+        <td className={cn(td, "text-right font-medium tabular-nums text-tinta-2 max-md:hidden")}>{linha.item.minimo > 0 ? linha.item.minimo.toLocaleString("pt-BR") : "—"}</td>
+        <td className={cn(td, "whitespace-nowrap text-right font-medium tabular-nums text-tinta-2 max-md:hidden")}>
           {cobertura === null ? "—" : `${cobertura} d`}
           {sugestaoMinimo > 0 && sugestaoMinimo !== linha.item.minimo ? (
-            <span className="ml-1 text-[10px] text-brand-oliva" title="Mínimo sugerido pelo consumo">(mín. sug. {sugestaoMinimo})</span>
-          ) : null}
-        </td>
-        <td className="py-2 pr-3">
-          <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold", chip.classe)}>{chip.rotulo}</span>
-          {/* DESDE QUANDO (21/09/2026): "a caminho" sem data vira desculpa
-              eterna. Com a data, a compra esquecida aparece sozinha. */}
-          {linha.compraAberta ? (
-            <span className="mt-0.5 block text-xs leading-tight text-muted-foreground">
-              comprei {diaBR(linha.compraAberta.purchaseDate)}
-              {linha.compraAberta.deliveryEta ? ` · chega ${diaBR(linha.compraAberta.deliveryEta)}` : ""}
+            <span className="ml-1 text-xs" title="Mínimo sugerido pelo consumo">
+              (mín. sug. {sugestaoMinimo})
             </span>
-          ) : linha.pedidoAberto ? (
-            // 06/10/2026: o pedido diz em que pé está — ninguém pede de novo.
-            <span className="mt-0.5 block text-xs leading-tight text-muted-foreground">{fraseDoPedidoNoItem(linha.pedidoAberto)}</span>
-          ) : recusa ? (
-            // 07/10/2026: a recusa (com o motivo no detalhe) antes do "Pedir compra".
-            <span className="mt-0.5 block text-xs leading-tight text-rose-700">pedido {recusa.numero} recusado</span>
-          ) : null}
-          {mostrarPedir ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="mt-1 h-8 px-2.5 text-xs"
-              onClick={(event) => {
-                event.stopPropagation();
-                onPedir();
-              }}
-            >
-              <ShoppingCart className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Pedir compra
-            </Button>
           ) : null}
         </td>
-        <td className="py-2 text-muted-foreground">{diaBR(linha.ultimoMovimento)}</td>
+        <td className={td}>
+          <span className="grid justify-items-start gap-0.5">
+            <Selo estado={chip.estado} etapas={chip.etapas}>
+              {chip.palavra}
+            </Selo>
+            {/* DESDE QUANDO (21/09/2026): "a caminho" sem data vira desculpa
+                eterna. Com a data, a compra esquecida aparece sozinha. */}
+            {linha.compraAberta ? (
+              <span className="text-[13px] font-medium leading-5 text-tinta-2">
+                comprei {diaBR(linha.compraAberta.purchaseDate)}
+                {linha.compraAberta.deliveryEta ? ` · chega ${diaBR(linha.compraAberta.deliveryEta)}` : ""}
+              </span>
+            ) : linha.pedidoAberto ? (
+              // 06/10/2026: o pedido diz em que pé está — ninguém pede de novo.
+              <span className="text-[13px] font-medium leading-5 text-tinta-2">{fraseDoPedidoNoItem(linha.pedidoAberto)}</span>
+            ) : recusa ? (
+              // 07/10/2026: a recusa (com o motivo no detalhe) antes do "Pedir compra".
+              <span className="text-[13px] font-bold leading-5 text-erro">pedido {recusa.numero} recusado</span>
+            ) : null}
+            {mostrarPedir ? (
+              <AcaoSeta
+                className="mt-0.5 max-md:min-h-11"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPedir();
+                }}
+              >
+                Pedir compra
+              </AcaoSeta>
+            ) : null}
+          </span>
+        </td>
+        <td className={cn(td, "whitespace-nowrap pr-4 font-medium tabular-nums text-tinta-2 max-md:hidden")}>{diaBR(linha.ultimoMovimento)}</td>
       </tr>
       {aberto ? (
-        <tr className="border-b border-brand-oliva/10 bg-brand-creme/20">
-          <td colSpan={7} className="px-3 py-3">
+        <tr id={detalheId} className="bg-saber">
+          <td colSpan={7} className="border-b border-fio px-4 py-4">
             <div className="grid gap-4">
               {podeEditar ? formMovimento : null}
               {/* 06/10/2026: a compra do item não depende de editar o estoque —
                   o componente decide (já comprado, já pedido, Já comprei, Pedir compra). */}
               {formCompra}
               {lotes.length ? (
-                <div className="text-xs">
-                  <p className="mb-1 font-semibold uppercase tracking-wide text-brand-oliva">Lotes na prateleira (o que vence antes, primeiro)</p>
+                <div>
+                  <p className={cn(RUBRICA, "mb-2")}>Lotes na prateleira (o que vence antes, primeiro)</p>
                   <div className="flex flex-wrap gap-2">
                     {lotes.map((lote) => (
-                      <span key={`${lote.lote}-${lote.validade}`} className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1", lote.lote === sugestaoLote ? "border-brand-dourado bg-brand-creme font-semibold" : "border-brand-oliva/25 bg-white/70")}>
+                      <span
+                        key={`${lote.lote}-${lote.validade}`}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-controle border px-2.5 py-1 text-[13px] tabular-nums",
+                          lote.lote === sugestaoLote ? "border-ouro-fio bg-ouro-claro font-bold text-tinta" : "border-fio-2 bg-folha font-medium text-tinta",
+                        )}
+                      >
                         {lote.lote} · {lote.saldo} · val. {diaBR(lote.validade)}
-                        {lote.lote === sugestaoLote ? " ← usar este" : ""}
+                        {lote.lote === sugestaoLote ? <span className="text-ouro"> ← usar este</span> : null}
                       </span>
                     ))}
                   </div>
                 </div>
               ) : null}
-              <div className="text-xs">
-                <p className="mb-1 font-semibold uppercase tracking-wide text-brand-oliva">Últimos movimentos</p>
+              <div>
+                <p className={cn(RUBRICA, "mb-2")}>Últimos movimentos</p>
                 {kardex.length === 0 ? (
-                  <p className="text-muted-foreground">Nenhum movimento ainda.</p>
+                  <p className="text-[13px] font-medium text-tinta-2">Nenhum movimento ainda.</p>
                 ) : (
-                  <ul className="grid gap-0.5">
+                  <ul className="grid gap-1">
                     {kardex.map((mov) => (
-                      <li key={mov.id} className="text-muted-foreground">
-                        {diaBR(mov.movDate)} · <strong className="text-brand-tinta">{movTipoLabels[mov.tipo]}</strong> {mov.quantidade}
+                      <li key={mov.id} className="text-[13px] font-medium leading-5 text-tinta-2">
+                        <span className="tabular-nums">{diaBR(mov.movDate)}</span> · <strong className="font-bold text-tinta">{movTipoLabels[mov.tipo]}</strong>{" "}
+                        <span className="tabular-nums">{mov.quantidade}</span>
                         {mov.lote ? ` · lote ${mov.lote}` : ""}
                         {mov.compraRef ? " · veio da compra" : ""}
                         {mov.motivo ? ` · ${mov.motivo}` : ""}
@@ -1325,9 +1411,18 @@ function FragmentoItem({
                 )}
               </div>
               {podeEditar ? (
-                <button type="button" className="flex w-fit items-center gap-1 text-xs text-rose-700 hover:underline" onClick={(event) => { event.stopPropagation(); onExcluir(); }}>
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Remover item do catálogo
-                </button>
+                <Botao
+                  variante="perigo"
+                  tamanho="pq"
+                  icone={<Trash2 className="h-4 w-4" aria-hidden="true" />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onExcluir();
+                  }}
+                  className="-ml-3 w-fit max-md:h-11"
+                >
+                  Remover item do catálogo
+                </Botao>
               ) : null}
             </div>
           </td>

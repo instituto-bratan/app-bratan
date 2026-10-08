@@ -1,11 +1,21 @@
+// TAREFAS DO DIA — a aba "Tarefas" do Início › Hoje.
+//
+// Execução diária filtrada pelo setor do colaborador (regra do Lucas de
+// 09/07/2026: cada um vê e adiciona APENAS as tarefas do próprio setor).
+//
+// REDESENHO "PAPEL & MUSGO", ETAPA 2 (08/10/2026): um cabeçalho só (com a
+// frase que diz quantas faltam), a lista de cada grupo numa folha (decidir =
+// marcar), e o resumo do dia num bloco "saber" à direita. Sai o anel animado,
+// o vidro e os emojis das opções: a rotina e a tarefa "até concluir" ganham
+// etiqueta escrita (marcaDaTarefa). O que a tela faz não muda: marcar e
+// desmarcar, criar tarefa (só hoje · até concluir · rotina), reiniciar
+// (coordenação), as mesmas consultas e os mesmos textos.
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Check, CheckCircle2, Circle, Plus, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Check, Plus, RotateCcw } from "lucide-react";
+import { BlocoFolha, BlocoSaber } from "@/components/ui/blocos";
+import { Botao } from "@/components/ui/botao";
+import { Cabecalho } from "@/components/ui/cabecalho";
 import { useAuth } from "@/hooks/useAuth";
 import { isCoordenacao } from "@/lib/access";
 import { formatLongDate, formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
@@ -17,46 +27,15 @@ import {
   checklistSummary,
   createChecklistRun,
   filterChecklistItemsByCargo,
+  marcaDaTarefa,
   type ChecklistItem,
 } from "./checklistData";
 
-function ProgressRing({ value }: { value: number }) {
-  const radius = 38;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference - (value / 100) * circumference;
-
-  return (
-    <div className="relative grid h-24 w-24 place-items-center">
-      <svg className="h-24 w-24 -rotate-90" viewBox="0 0 96 96" aria-hidden="true">
-        <circle
-          cx="48"
-          cy="48"
-          r={radius}
-          fill="none"
-          stroke="rgba(122, 137, 94, 0.18)"
-          strokeWidth="8"
-        />
-        <motion.circle
-          cx="48"
-          cy="48"
-          r={radius}
-          fill="none"
-          stroke="var(--bratan-dourado)"
-          strokeLinecap="round"
-          strokeWidth="8"
-          strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: dashOffset }}
-          transition={{ duration: 0.34, ease: [0.4, 0, 0.2, 1] }}
-        />
-      </svg>
-      <div className="absolute text-center">
-        <p className="text-2xl font-bold text-brand-musgo">{value}%</p>
-        <p className="text-[11px] font-semibold uppercase text-brand-oliva">feito</p>
-      </div>
-    </div>
-  );
-}
+/** Campo de formulário com os tokens novos (40 px, borda de campo 3:1, foco em anel musgo). */
+const CAMPO =
+  "h-10 w-full min-w-0 rounded-controle border border-borda-campo bg-folha px-3 font-sans text-sm font-medium leading-5 text-tinta " +
+  "placeholder:text-tinta-2 transition-colors duration-150 hover:border-tinta-2 " +
+  "focus:border-musgo focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foco";
 
 export function ChecklistPage() {
   const { pessoa, session, isPreview } = useAuth();
@@ -182,200 +161,193 @@ export function ChecklistPage() {
     }, {});
   }, [visibleItems]);
 
+  const pendentes = visibleItems.length - doneCount;
+  const frase =
+    visibleItems.length === 0 ? (
+      "Nenhuma tarefa do seu setor hoje."
+    ) : pendentes === 0 ? (
+      <>
+        <strong>Tudo feito:</strong> as {visibleItems.length} tarefas de hoje ({sectorLabel}) estão marcadas.
+      </>
+    ) : (
+      <>
+        <strong>
+          {pendentes} de {visibleItems.length} {visibleItems.length === 1 ? "tarefa" : "tarefas"}
+        </strong>{" "}
+        ainda {pendentes === 1 ? "espera" : "esperam"} por você hoje ({sectorLabel}).
+      </>
+    );
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <motion.section
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-      >
-        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <Badge variant={progress === 100 ? "gold" : "outline"} className="mb-4">
-              {progress === 100 ? "Dia fechado" : "Fechamento em andamento"}
-            </Badge>
-            <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Tarefas do dia</h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Execução diária filtrada pelo setor do colaborador. O histórico do dia fica preservado sem misturar tarefas de outras áreas.
-            </p>
-            <p className="mt-2 text-sm font-semibold capitalize text-brand-oliva">{formatLongDate()}</p>
-            <p className="mt-2 text-sm font-semibold text-brand-tinta">Setor visível: {sectorLabel}</p>
-            {checklistQuery.isError ? (
-              <p className="mt-3 text-sm font-semibold text-destructive">
-                Não foi possível carregar o checklist no Supabase. Confira migrations e permissões.
+    <div className="mx-auto w-full max-w-[1200px] font-sans text-tinta">
+      <Cabecalho
+        sobrancelha="Início · Hoje"
+        titulo="Tarefas do dia"
+        frase={frase}
+        acoes={
+          isCoordenacao(pessoa?.cargo) ? (
+            <Botao variante="fantasma" icone={<RotateCcw className="h-4 w-4" aria-hidden="true" />} carregando={resetMutation.isPending} onClick={resetDay}>
+              {resetMutation.isPending ? "Reiniciando" : "Reiniciar"}
+            </Botao>
+          ) : null
+        }
+      />
+
+      {checklistQuery.isError ? (
+        <p role="alert" className="mb-6 rounded-bloco bg-erro-claro px-4 py-3 text-sm font-bold leading-5 text-erro">
+          Não foi possível carregar o checklist no Supabase. Confira migrations e permissões.
+        </p>
+      ) : null}
+
+      <div className="grid items-start gap-8 max-md:gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          {visibleItems.length === 0 ? (
+            <BlocoSaber>
+              <p className="text-base font-bold leading-6 text-tinta">Nenhuma tarefa vinculada ao seu setor.</p>
+              <p className="mt-1 text-sm font-medium leading-6 text-tinta-2">Confira se o cargo do colaborador está correto em Administração &gt; Colaboradores.</p>
+            </BlocoSaber>
+          ) : null}
+
+          {Object.entries(groupedItems).map(([grupo, groupItems]) => {
+            const feitas = groupItems.filter((item) => item.concluido).length;
+            const idGrupo = `grupo-${grupo.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+            return (
+              <BlocoFolha key={grupo} as="section" aria-labelledby={idGrupo} className="overflow-hidden">
+                <div className="flex min-h-14 items-center justify-between gap-4 px-4 pb-2 pt-5">
+                  <h2 id={idGrupo} className="text-base font-bold leading-6 text-tinta">
+                    {grupo}
+                  </h2>
+                  <span className={cn("whitespace-nowrap text-[13px] font-semibold leading-5 tabular-nums", feitas === groupItems.length ? "text-ok" : "text-tinta-2")}>
+                    {feitas} de {groupItems.length} feitas
+                  </span>
+                </div>
+                <ul>
+                  {groupItems.map((item) => {
+                    const { marca, texto } = marcaDaTarefa(item.descricao);
+                    return (
+                      <li key={item.id} className="border-t border-fio">
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={item.concluido}
+                          disabled={toggleMutation.isPending}
+                          onClick={() => toggleItem(item.id)}
+                          className="grid w-full grid-cols-[24px_minmax(0,1fr)] items-start gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-papel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foco disabled:cursor-progress"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "mt-px grid h-6 w-6 place-items-center rounded-full",
+                              item.concluido ? "bg-musgo text-sobre-musgo" : "border-2 border-borda-campo bg-folha",
+                            )}
+                          >
+                            {item.concluido ? <Check className="h-4 w-4" strokeWidth={2.5} /> : null}
+                          </span>
+                          <span className="min-w-0">
+                            <span className={cn("block text-sm leading-6", item.concluido ? "font-medium text-tinta-2" : "font-semibold text-tinta")}>
+                              {marca ? (
+                                <span className="mr-2 inline-flex h-5 items-center whitespace-nowrap rounded-controle bg-saber px-2 align-[1px] text-xs font-bold leading-5 text-tinta-2">{marca}</span>
+                              ) : null}
+                              {texto}
+                            </span>
+                            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] font-medium leading-5 text-tinta-2">
+                              <span>{item.responsavel}</span>
+                              {item.concluidoEm ? (
+                                <>
+                                  <span aria-hidden="true" className="text-fio-2">
+                                    ·
+                                  </span>
+                                  <span>
+                                    marcado por {item.concluidoPor} às {formatShortTime(item.concluidoEm)}
+                                  </span>
+                                </>
+                              ) : null}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </BlocoFolha>
+            );
+          })}
+
+          {/* A lista vem primeiro (é o que se marca o dia todo); criar tarefa fica embaixo (08/10/2026). */}
+          <BlocoFolha as="section" aria-labelledby="tarefa-nova" respiro>
+            <h2 id="tarefa-nova" className="mb-3 text-[13px] font-bold leading-5 text-tinta">
+              Nova tarefa
+            </h2>
+            <form
+              className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void addCustomTask();
+              }}
+            >
+              <input
+                value={newTask}
+                onChange={(event) => setNewTask(event.target.value)}
+                placeholder="Ex.: conferir entrega da Stin, ligar para paciente X..."
+                aria-label="Nova tarefa"
+                className={cn(CAMPO, "md:col-span-full")}
+              />
+              <select value={newTaskGroup || defaultGroup} onChange={(event) => setNewTaskGroup(event.target.value)} className={CAMPO} aria-label="Setor da tarefa">
+                {(sectorGroups.length ? sectorGroups : allGroups).map((grupo) => (
+                  <option key={grupo} value={grupo}>
+                    {grupo}
+                  </option>
+                ))}
+              </select>
+              <select value={newTaskKind} onChange={(event) => setNewTaskKind(event.target.value as "DIA" | ChecklistTaskKind)} className={CAMPO} aria-label="Duração da tarefa">
+                <option value="DIA">Só hoje</option>
+                <option value="ATE_CONCLUIR">Até concluir (fica todo dia)</option>
+                <option value="ROTINA">Rotina (todos os dias)</option>
+              </select>
+              <Botao type="submit" variante="primario" disabled={!newTask.trim()} icone={<Plus className="h-4 w-4" aria-hidden="true" />}>
+                Adicionar
+              </Botao>
+            </form>
+            {taskFeedback ? (
+              <p role="status" className="mt-3 rounded-controle bg-saber px-3 py-2 text-[13px] font-semibold leading-5 text-tinta">
+                {taskFeedback}
               </p>
             ) : null}
-          </div>
-          <div className="flex items-center gap-4">
-            <ProgressRing value={progress} />
-            <div className="min-w-28">
-              <p className="text-3xl font-bold text-brand-tinta">
-                {doneCount}/{visibleItems.length}
-              </p>
-              <p className="text-sm text-muted-foreground">tarefas concluídas</p>
-              {isCoordenacao(pessoa?.cargo) ? (
-                <Button type="button" variant="ghost" size="sm" className="mt-3" disabled={resetMutation.isPending} onClick={resetDay}>
-                  <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
-                  {resetMutation.isPending ? "Reiniciando" : "Reiniciar"}
-                </Button>
-              ) : null}
-            </div>
-          </div>
+          </BlocoFolha>
         </div>
-      </motion.section>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
-        <section className="space-y-4">
-          {visibleItems.length === 0 ? (
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardContent className="p-6">
-                <p className="text-lg font-semibold text-brand-musgo">Nenhuma tarefa vinculada ao seu setor.</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Confira se o cargo do colaborador está correto em Administração &gt; Colaboradores.
-                </p>
-              </CardContent>
-            </Card>
-          ) : null}
-          <Card className="border-brand-dourado/35 bg-brand-creme/25 shadow-none">
-            <CardContent className="p-4">
-              <form
-                className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(170px,220px)_auto]"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void addCustomTask();
-                }}
-              >
-                <Input
-                  value={newTask}
-                  onChange={(event) => setNewTask(event.target.value)}
-                  placeholder="Adicionar tarefa do dia (ex.: conferir entrega da Stin, ligar para paciente X...)"
-                  aria-label="Nova tarefa"
-                />
-                <select
-                  value={newTaskGroup || defaultGroup}
-                  onChange={(event) => setNewTaskGroup(event.target.value)}
-                  className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                  aria-label="Setor da tarefa"
-                >
-                  {(sectorGroups.length ? sectorGroups : allGroups).map((grupo) => (
-                    <option key={grupo} value={grupo}>{grupo}</option>
-                  ))}
-                </select>
-                <select
-                  value={newTaskKind}
-                  onChange={(event) => setNewTaskKind(event.target.value as "DIA" | ChecklistTaskKind)}
-                  className="h-12 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                  aria-label="Duração da tarefa"
-                >
-                  <option value="DIA">Só hoje</option>
-                  <option value="ATE_CONCLUIR">📌 Até concluir (fica todo dia)</option>
-                  <option value="ROTINA">🔁 Rotina (todos os dias)</option>
-                </select>
-                <Button type="submit" disabled={!newTask.trim()}>
-                  <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                  Adicionar
-                </Button>
-              </form>
-              {taskFeedback ? (
-                <p className="mt-3 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-3 py-2 text-sm font-semibold text-brand-tinta">
-                  {taskFeedback}
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          {Object.entries(groupedItems).map(([grupo, groupItems], groupIndex) => (
-            <motion.div
-              key={grupo}
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.34, delay: groupIndex * 0.05, ease: [0.4, 0, 0.2, 1] }}
+        <BlocoSaber as="aside" aria-labelledby="tarefas-resumo" className="grid gap-4">
+          <h2 id="tarefas-resumo" className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+            Status do fechamento
+          </h2>
+          <div className="grid gap-2">
+            <p className="whitespace-nowrap font-serifa text-[40px] font-normal leading-none tabular-nums text-tinta">
+              {doneCount}
+              <span className="font-sans text-base font-bold tracking-normal text-tinta-2"> de {visibleItems.length} feitas</span>
+            </p>
+            <div
+              role="img"
+              aria-label={`${progress}% das tarefas do dia feitas`}
+              className="relative h-2 overflow-hidden rounded-controle bg-fio"
             >
-              <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <CardTitle className="text-lg">{grupo}</CardTitle>
-                    <Badge variant="muted">
-                      {groupItems.filter((item) => item.concluido).length}/{groupItems.length}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {groupItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      disabled={toggleMutation.isPending}
-                      onClick={() => toggleItem(item.id)}
-                      className={cn(
-                        "grid w-full grid-cols-[auto_1fr] gap-3 rounded-lg border p-3 text-left transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        item.concluido
-                          ? "border-brand-dourado/40 bg-brand-creme/45"
-                          : "border-brand-oliva/18 bg-white/70 hover:border-brand-oliva/45 hover:bg-white",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "mt-0.5 grid h-7 w-7 place-items-center rounded-full border",
-                          item.concluido
-                            ? "border-brand-musgo bg-brand-musgo text-brand-papel"
-                            : "border-brand-oliva/35 text-brand-oliva",
-                        )}
-                      >
-                        {item.concluido ? <Check className="h-4 w-4" aria-hidden="true" /> : <Circle className="h-4 w-4" aria-hidden="true" />}
-                      </span>
-                      <span>
-                        <span className={cn("block text-sm font-semibold", item.concluido && "text-brand-musgo")}>
-                          {item.descricao}
-                        </span>
-                        <span className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <Badge variant="outline">{item.responsavel}</Badge>
-                          {item.concluidoEm ? (
-                            <span>
-                              marcado por {item.concluidoPor} às {formatShortTime(item.concluidoEm)}
-                            </span>
-                          ) : null}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </section>
-
-        <aside className="space-y-4">
-          <Card className="border-brand-oliva/20 bg-white/60 shadow-none backdrop-blur">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <CheckCircle2 className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-                Status do fechamento
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg bg-brand-papel p-4">
-                <p className="text-sm font-semibold text-brand-tinta">
-                  {progress === 100 ? "Tudo certo para encerrar o dia." : "Priorize os grupos ainda pendentes."}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  A marcação é operacional e não substitui auditoria financeira, fiscal ou conferência externa.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-center">
-                <div className="rounded-lg border border-brand-oliva/20 bg-white p-3">
-                  <p className="text-2xl font-bold text-brand-musgo">{visibleItems.length - doneCount}</p>
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">pendentes</p>
-                </div>
-                <div className="rounded-lg border border-brand-oliva/20 bg-white p-3">
-                  <p className="text-2xl font-bold text-brand-musgo">{doneCount}</p>
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">feitas</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </aside>
+              <span className="absolute inset-y-0 left-0 rounded-controle bg-musgo" style={{ width: `${progress}%` }} />
+            </div>
+            <p className={cn("text-[13px] font-bold leading-5", progress === 100 ? "text-ok" : "text-tinta-2")}>
+              {progress === 100 ? "Dia fechado" : "Fechamento em andamento"} · {progress}%
+            </p>
+          </div>
+          <hr className="m-0 h-px border-0 bg-fio-2" />
+          <div className="grid gap-1 text-sm font-medium leading-6 text-tinta-2">
+            <p className="font-bold text-tinta">{progress === 100 ? "Tudo certo para encerrar o dia." : "Priorize os grupos ainda pendentes."}</p>
+            <p>
+              <strong className="font-bold tabular-nums text-tinta">{visibleItems.length - doneCount}</strong> pendentes ·{" "}
+              <strong className="font-bold tabular-nums text-tinta">{doneCount}</strong> feitas
+            </p>
+            <p className="first-letter:uppercase">{formatLongDate()}</p>
+            <p>Setor visível: {sectorLabel}</p>
+          </div>
+          <p className="text-[13px] font-medium leading-5 text-tinta-2">A marcação é operacional e não substitui auditoria financeira, fiscal ou conferência externa.</p>
+        </BlocoSaber>
       </div>
     </div>
   );

@@ -7,9 +7,19 @@
 // fica no topo da casca, não aqui.
 // Embaixo, um opcional: o fio do mês (Início, Financeiro, Resultados) OU a frase
 // do fluxo (Compras e estoque). Nunca os dois.
+//
+// AS ABAS DO ITEM LOGO ABAIXO (revisão de 08/10/2026, imagem 03): quando a tela
+// é uma aba de um item que junta telas (Financeiro › Pagar = Contas · Fatura do
+// cartão · Lembretes), a casca entrega a barra de abas por este contexto e o
+// Cabecalho a desenha embaixo de si. Tela que ainda não tem Cabecalho continua
+// com a barra no alto do conteúdo (a casca a esconde quando acha uma aqui, pelo
+// marcador data-abas-no-cabecalho).
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { LinkSeta } from "./botao";
+
+/** A barra de abas do item, entregue pela casca (null = a tela não tem irmãs). */
+export const ContextoAbasDaPagina = React.createContext<React.ReactNode>(null);
 
 export type CabecalhoProps = {
   /** Rubrica em caixa alta acima do título ("Financeiro · Pagar", "Bom dia, Lucas"). */
@@ -28,6 +38,7 @@ export type CabecalhoProps = {
 };
 
 export function Cabecalho({ sobrancelha, titulo, frase, acoes, rodape, idTitulo, className }: CabecalhoProps) {
+  const abas = React.useContext(ContextoAbasDaPagina);
   return (
     <header
       className={cn(
@@ -62,6 +73,12 @@ export function Cabecalho({ sobrancelha, titulo, frase, acoes, rodape, idTitulo,
       </div>
       {acoes ? <div className="flex flex-wrap justify-end gap-2 pb-0.5 max-md:justify-start">{acoes}</div> : null}
       {rodape ? <div className="col-span-full min-w-0">{rodape}</div> : null}
+      {/* A última linha do cabeçalho: as abas do item, encostadas no que vem embaixo. */}
+      {abas ? (
+        <div data-abas-no-cabecalho="" className="col-span-full min-w-0 pt-2 max-md:pt-0">
+          {abas}
+        </div>
+      ) : null}
     </header>
   );
 }

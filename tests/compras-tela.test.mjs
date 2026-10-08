@@ -620,15 +620,19 @@ test("aprovar tem 'Desfazer' sem mudar o banco: a gravação sai depois da janel
 test("cores da marca (07/10/2026): Aprovar é musgo; verde só no selo de situação; nada de indigo/violeta no módulo", () => {
   // O Aprovar tinha ficado verde-esmeralda cheio. A cor de ação da casa é o
   // musgo; o verde continua só onde é SITUAÇÃO (selo "Aprovado"), não em botão.
+  // 08/10/2026 (redesenho Papel & Musgo): o Aprovar da linha é o Botao "suave"
+  // da fundação (musgo-claro, texto musgo) e o do painel é o Aprovar da barra de
+  // decisão (musgo cheio, texto "sobre musgo" — os dois temas já trocam os tons).
   const linha = ler("src/features/compras/PedidoDaLista.tsx");
-  const aprovar = /<Button[^>]*onClick=\{handlers\.onAprovar\}[\s\S]*?>/.exec(linha)[0];
-  assert.match(aprovar, /bg-brand-musgo/);
-  assert.match(aprovar, /text-brand-papel/, "no escuro o musgo clareia e o papel escurece: rótulo legível");
-  assert.doesNotMatch(aprovar, /emerald/);
-  // 07/10/2026: "Chegou? Confirmar recebimento" também é ação — musgo, não azul.
-  const receber = /<Button[^>]*onClick=\{handlers\.onReceber\}[^>]*>/.exec(linha)[0];
-  assert.match(receber, /brand-musgo/);
-  assert.doesNotMatch(receber, /sky-/);
+  const aprovar = /<Botao\s+variante="suave"[\s\S]*?handlers\.onAprovar\(\)/.exec(linha)?.[0];
+  assert.ok(aprovar, "o Aprovar da linha é um Botao da fundação");
+  assert.doesNotMatch(aprovar, /emerald|bg-ok/);
+  const painel = ler("src/features/compras/PainelDoPedido.tsx");
+  assert.match(painel, /<BarraDecisao[\s\S]*?onAprovar=\{handlers\.onAprovar\}/, "no painel, o Aprovar é o da barra de decisão (musgo)");
+  // 07/10/2026: "Chegou? Confirmar recebimento" também é ação — musgo (botão primário ou link com seta), não azul.
+  assert.match(painel, /rotulo: "Chegou\? Confirmar recebimento"[\s\S]*?onClick: handlers\.onReceber/);
+  assert.match(linha, /rotulo: "Chegou\? Confirmar recebimento", onClick: handlers\.onReceber/);
+  assert.doesNotMatch(painel + linha, /\bsky-\d/);
   // O selo do status (lista e Estoque) só usa tons que o tema escuro remapeia.
   for (const [status, classes] of Object.entries(c.pedidoStatusClasses)) {
     assert.doesNotMatch(classes, /\b(?:bg-sky-100|text-sky-900|border-sky-300|border-amber-300|text-rose-900)\b/, `${status}: tom sem remapeamento no escuro`);
@@ -643,7 +647,9 @@ test("cores da marca (07/10/2026): Aprovar é musgo; verde só no selo de situa�
   }
   // O selo "Pedido feito" do Estoque deixou o violeta (o tema escuro nem o remapeava).
   const estoque = ler("src/features/estoque/EstoquePage.tsx");
-  assert.match(estoque, /PEDIDO: \{ rotulo: "PEDIDO FEITO", classe: "[^"]*brand-/);
+  // 08/10/2026 (redesenho): a situação do item virou o selo da fundação — o
+  // "Pedido feito" usa o ouro do "aguardando aprovação" (token que troca no escuro).
+  assert.match(estoque, /PEDIDO: \{ rotulo: "PEDIDO FEITO", palavra: "Pedido feito", estado: "aguardando"/);
   assert.doesNotMatch(estoque, /\b(?:bg|text|border)-violet-/);
 });
 

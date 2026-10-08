@@ -1,32 +1,85 @@
 // QUADRO DE UMA CADÊNCIA — mesma proporção do Plano de Acompanhamento (08/09/2026,
 // Lucas: "todos os kanbans com a mesma proporção do Plano no modo Executivo").
-// Colunas pela mesma densidade do Plano e cartões desenhados como o ProgramCard:
-// nome grande, faixa de situação com os passos (✓ feito · ● a vez · ⏳ falta) e a
-// linha de botões Perfil · WhatsApp · Fiz o toque. Concluir o passo é o mesmo
-// gesto da Planilha de Cadências; o cartão anda sozinho.
-import { useState } from "react";
+// Concluir o passo é o mesmo gesto da Planilha de Cadências; o cartão anda sozinho.
+//
+// REDESENHO PAPEL & MUSGO (08/10/2026, imagem 04 aprovada): o cabeçalho da
+// coluna deixa de ser a faixa musgo cheia e vira texto — o passo, o canal
+// (WhatsApp, Ligação) e quantos pacientes estão nele. O cartão é uma folha
+// pequena: o nome (que abre a ficha, como o antigo "Perfil"), o próximo toque
+// com a palavra (Hoje · Atrasou 2 dias · Qui, 08/10), quem responde (a inicial
+// do setor) e embaixo "Fiz o toque" (ou "Liguei", na trilha do Gestor) com o
+// botão do WhatsApp ou do telefone ao lado. O passo é a coluna. Os encerrados
+// moram numa zona "para saber", sem cartão e sem botão. Mesmos dados, mesmos
+// botões, o mesmo "Como foi?" — só a forma mudou.
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ChevronLeft, ChevronRight, Phone } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { InfoTip } from "@/components/ui/info-tip";
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Mail, MessageCircle, Phone, Users } from "lucide-react";
+import { Botao } from "@/components/ui/fundacao";
 import { cn } from "@/lib/utils";
 import {
   cadenceSheetStatusLabels,
   gestorCallStatusLabels,
+  moneyCrm,
   type CadenceSheetDStatus,
   type CrmState,
+  type CrmTaskType,
   type GestorCallStatus,
 } from "./crmData";
 import { buildKanbanCadencia, type CartaoCadencia, type ColunaCadencia } from "./cadenciaKanbanData";
-import { densityColumns, type KanbanDensity } from "./kanbanDensidade";
+import type { KanbanDensity } from "./kanbanDensidade";
 import { usePanScroll } from "./usePanScroll";
+import { AvatarMini, BOTAO_CANAL, CartaoDoQuadro, ColunaDoQuadro, LARGURA_DA_COLUNA, LinhaDoSaber, NOME_LINK, VazioDaColuna } from "./comercialVisual";
 
 const statusPlanilha = Object.keys(cadenceSheetStatusLabels) as CadenceSheetDStatus[];
 const statusGestor = Object.keys(gestorCallStatusLabels) as GestorCallStatus[];
 
+const DIAS_DA_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
 function diaCurto(iso: string | null) {
   return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "—";
 }
+/** "Amanhã" ou "Qui, 08/10" — a data do próximo toque em português direto. */
+function diaDoToque(iso: string, hoje: string) {
+  const [a, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const [ah, mh, dh] = hoje.slice(0, 10).split("-").map(Number);
+  const dias = Math.round((Date.UTC(a, m - 1, d) - Date.UTC(ah, mh - 1, dh)) / 86_400_000);
+  if (dias === 1) return "Amanhã";
+  return `${DIAS_DA_SEMANA[new Date(Date.UTC(a, m - 1, d)).getUTCDay()]}, ${diaCurto(iso)}`;
+}
+/**
+ * Ligar e WhatsApp, lado a lado. O canal da vez (ligação para o gestor e nos
+ * passos de ligação; WhatsApp nos outros) vem primeiro e em destaque (borda e
+ * ícone musgo); o outro fica ao lado, discreto.
+ */
+function CanaisDoContato({ telefone, nome, ligarPrimeiro }: { telefone: string; nome: string; ligarPrimeiro: boolean }) {
+  const destaque = "border-musgo text-musgo";
+  const ligar = (
+    <a
+      key="ligar"
+      href={`tel:${telefone.replace(/\D/g, "")}`}
+      className={cn(BOTAO_CANAL, ligarPrimeiro && destaque)}
+      aria-label={`Ligar para ${nome}`}
+      title={ligarPrimeiro ? `Ligar (o canal deste passo) · ${telefone}` : `Ligar · ${telefone}`}
+    >
+      <Phone aria-hidden="true" />
+    </a>
+  );
+  const zap = (
+    <a
+      key="whatsapp"
+      href={whatsapp(telefone)}
+      target="_blank"
+      rel="noreferrer"
+      className={cn(BOTAO_CANAL, !ligarPrimeiro && destaque)}
+      aria-label={`Abrir o WhatsApp de ${nome}`}
+      title={ligarPrimeiro ? "WhatsApp" : "WhatsApp (o canal deste passo)"}
+    >
+      <MessageCircle aria-hidden="true" />
+    </a>
+  );
+  return <>{ligarPrimeiro ? [ligar, zap] : [zap, ligar]}</>;
+}
+
 function whatsapp(telefone: string) {
   const digitos = telefone.replace(/\D/g, "");
   return digitos ? `https://wa.me/55${digitos.replace(/^55/, "")}` : "";
@@ -34,14 +87,37 @@ function whatsapp(telefone: string) {
 function nomeCurtoDoPasso(nome: string) {
   return nome.replace(/^.*? - /, "");
 }
+/** O código do passo ("D1", "D+1", "D60"); sem código no nome, a ordem ("1º"). */
+export function codigoDoPasso(nome: string, ordem: number) {
+  const achado = nome.match(/\bD\s?[+−-]?\s?\d+\b/i);
+  return achado ? achado[0].replace(/\s/g, "").toUpperCase() : `${ordem}º`;
+}
+const ICONE_DO_CANAL: Partial<Record<CrmTaskType, typeof Phone>> = {
+  WHATSAPP: MessageCircle,
+  CALL: Phone,
+  EMAIL: Mail,
+  IN_PERSON: Users,
+};
+const NOME_DO_CANAL: Partial<Record<CrmTaskType, string>> = {
+  WHATSAPP: "WhatsApp",
+  CALL: "Ligação",
+  EMAIL: "E-mail",
+  IN_PERSON: "Presencial",
+};
+
+/** Quais leituras o quadro mostra (os filtros "Todos · Para hoje · Atrasado" da página). */
+export type LeituraDoQuadro = "todos" | "hoje" | "atrasado";
 
 export function CadenciaKanban({
   state,
   cadenceId,
   hoje,
   filtro = "",
+  leitura = "todos",
+  responsavel = "",
   density = "executive",
   readOnly,
+  mostrarValor = false,
   onConcluirPasso,
   onConcluirLigacao,
 }: {
@@ -49,99 +125,108 @@ export function CadenciaKanban({
   cadenceId: string;
   hoje: string;
   filtro?: string;
+  leitura?: LeituraDoQuadro;
+  /** Só os cartões deste setor ("Concierge", "Comercial"); vazio = todos. */
+  responsavel?: string;
   density?: KanbanDensity;
   readOnly: boolean;
+  /** Valor da negociação no cartão — só para quem vê valores (a mesma regra do Plano). */
+  mostrarValor?: boolean;
   onConcluirPasso: (taskId: string, status: CadenceSheetDStatus) => void;
   onConcluirLigacao: (taskId: string, status: GestorCallStatus) => void;
 }) {
   const [aberto, setAberto] = useState<string | null>(null);
   const pan = usePanScroll<HTMLDivElement>();
+  // As setas só aparecem quando o quadro passa da largura da tela.
+  const [transborda, setTransborda] = useState(false);
+  useEffect(() => {
+    const el = pan.ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const mede = () => setTransborda(el.scrollWidth > el.clientWidth + 4);
+    mede();
+    const observador = new ResizeObserver(mede);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [pan.ref, cadenceId]);
   const kanban = buildKanbanCadencia(state, cadenceId, hoje);
-  if (!kanban) return <p className="p-4 text-sm text-muted-foreground">Cadência não encontrada.</p>;
+  if (!kanban) return <p className="p-4 font-sans text-sm text-tinta-2">Cadência não encontrada.</p>;
   const ehGestor = cadenceId === "cad-gestor-5lig";
   const busca = filtro.trim().toLowerCase();
-  const bate = (c: CartaoCadencia) => !busca || c.nome.toLowerCase().includes(busca) || c.motivo.toLowerCase().includes(busca);
+  const bate = (c: CartaoCadencia) =>
+    (!busca || c.nome.toLowerCase().includes(busca) || c.motivo.toLowerCase().includes(busca)) &&
+    (leitura === "todos" || (leitura === "hoje" ? c.venceHoje : c.atrasoDias > 0)) &&
+    (!responsavel || c.responsavel === responsavel);
   const passos = kanban.colunas;
 
-  function Cartao({ cartao, encerrado = false }: { cartao: CartaoCadencia; encerrado?: boolean }) {
-    const atrasado = cartao.atrasoDias > 0 && !encerrado;
-    const podeConcluir = !readOnly && !encerrado && Boolean(cartao.tarefaId);
+  function Cartao({ cartao }: { cartao: CartaoCadencia }) {
+    const atrasado = cartao.atrasoDias > 0;
+    const podeConcluir = !readOnly && Boolean(cartao.tarefaId);
     const abertoAqui = aberto === cartao.enrollmentId;
     const indiceAtual = passos.findIndex((p: ColunaCadencia) => p.stepId === cartao.stepId);
-    const situacao = encerrado
-      ? `${cartao.status === "COMPLETED" ? "Régua concluída" : cartao.status === "PAUSED" ? "Resolvido no setor" : cartao.status === "CANCELED" ? "Cancelada" : "Todos os passos feitos"}${cartao.ultimoResultado ? ` · ${cartao.ultimoResultado}` : ""}`
-      : cartao.vence
-        ? atrasado
-          ? `Toque atrasado há ${cartao.atrasoDias} dia${cartao.atrasoDias > 1 ? "s" : ""} (era ${diaCurto(cartao.vence)})`
-          : cartao.venceHoje
-            ? "Toque de hoje"
-            : `Próximo toque em ${diaCurto(cartao.vence)}`
-        : "O próximo toque nasce quando o anterior for feito";
+    const canalDaVez = passos[indiceAtual]?.canal;
+    const toque = cartao.vence
+      ? atrasado
+        ? `Atrasou ${cartao.atrasoDias} dia${cartao.atrasoDias > 1 ? "s" : ""}`
+        : cartao.venceHoje
+          ? "Hoje"
+          : diaDoToque(cartao.vence, hoje)
+      : "Nasce quando o anterior for feito";
+    const tituloDoToque = cartao.vence
+      ? atrasado
+        ? `Toque atrasado há ${cartao.atrasoDias} dia${cartao.atrasoDias > 1 ? "s" : ""} (era ${diaCurto(cartao.vence)})`
+        : cartao.venceHoje
+          ? "Toque de hoje"
+          : `Próximo toque em ${diaCurto(cartao.vence)}`
+      : "O próximo toque nasce quando o anterior for feito";
+    const ligar = ehGestor || canalDaVez === "CALL";
     return (
-      <article
-        className={cn(
-          "rounded-lg border bg-white/75 shadow-sm backdrop-blur-xl",
-          density === "compact" ? "p-3" : "p-4",
-          encerrado ? "border-brand-oliva/14 opacity-80" : atrasado ? "border-red-300" : cartao.venceHoje ? "border-amber-300" : "border-brand-oliva/14",
-        )}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className={cn("truncate font-semibold text-brand-musgo", density === "executive" && "text-lg")}>{cartao.nome}</p>
-            <p className="mt-1 truncate text-xs text-muted-foreground" title={cartao.motivo}>
-              desde {diaCurto(cartao.inscritoEm)}
-              {cartao.motivo ? ` · ${cartao.motivo}` : ""}
-            </p>
-          </div>
-          <span className="shrink-0 rounded-full bg-brand-papel px-2 py-0.5 text-[11px] font-bold text-brand-oliva" title="passos feitos">
-            {cartao.passosFeitos}/{cartao.totalPassos}
-          </span>
+      <CartaoDoQuadro tom={atrasado ? "atrasado" : "normal"}>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2">
+          <Link to={`/crm/contatos/${cartao.contactId}`} className={NOME_LINK} title={`Abrir a ficha de ${cartao.nome}`}>
+            {cartao.nome}
+          </Link>
+          {mostrarValor && cartao.valor > 0 ? <span className="text-sm font-bold leading-5 tabular-nums text-tinta">{moneyCrm(cartao.valor)}</span> : null}
         </div>
-
-        <div className={cn("mt-3 rounded-md border px-2.5 py-2", atrasado ? "border-red-200 bg-red-50/70" : cartao.venceHoje && !encerrado ? "border-amber-200 bg-amber-50/70" : "border-brand-oliva/15 bg-brand-papel/60")}>
-          <p className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide", atrasado ? "text-red-700" : cartao.venceHoje && !encerrado ? "text-amber-800" : "text-brand-oliva")}>
-            {atrasado ? <AlertTriangle className="h-3 w-3" aria-hidden="true" /> : null}
-            {situacao}
+        {cartao.motivo && density !== "compact" ? (
+          <p className="truncate text-[13px] font-medium leading-5 text-tinta-2" title={cartao.motivo}>
+            desde {diaCurto(cartao.inscritoEm)} · {cartao.motivo}
           </p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {passos.map((passo: ColunaCadencia, i: number) => {
-              const feito = encerrado ? i < cartao.passosFeitos : indiceAtual >= 0 && i < indiceAtual;
-              const aVez = !encerrado && i === indiceAtual;
-              return (
-                <span
-                  key={passo.stepId}
-                  title={passo.nome}
-                  className={cn(
-                    "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                    feito ? "border-emerald-200 bg-emerald-50 text-emerald-800" : aVez ? "border-brand-musgo bg-brand-musgo text-white" : "border-dashed border-slate-300 bg-white text-slate-500",
-                  )}
-                >
-                  <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", feito ? "bg-emerald-500" : aVez ? "bg-white" : "bg-slate-300")} aria-hidden="true" />
-                  <span className="truncate">{nomeCurtoDoPasso(passo.nome)}</span> {feito ? "✓" : aVez ? "●" : "⏳"}
-                </span>
-              );
-            })}
+        ) : null}
+        <div className="flex items-center justify-between gap-2">
+          <span
+            title={tituloDoToque}
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1 truncate text-[13px] leading-5 tabular-nums",
+              atrasado ? "font-bold text-atencao" : cartao.venceHoje ? "font-extrabold text-tinta" : "font-semibold text-tinta-2",
+            )}
+          >
+            {atrasado ? <Clock className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+            {toque}
+          </span>
+          {cartao.responsavel ? <AvatarMini nome={cartao.responsavel} /> : null}
+        </div>
+        {podeConcluir || cartao.telefone ? (
+          <div className="flex gap-2">
+            {podeConcluir ? (
+              <Botao
+                variante={abertoAqui ? "primario" : "suave"}
+                tamanho="pq"
+                className="min-w-0 flex-1"
+                aria-expanded={abertoAqui}
+                onClick={() => setAberto(abertoAqui ? null : cartao.enrollmentId)}
+              >
+                {ehGestor ? "Liguei" : "Fiz o toque"}
+              </Botao>
+            ) : null}
+            {/* Os DOIS canais quando há telefone (revisão de 08/10/2026): o da vez
+                primeiro e em destaque; o outro ao lado — a isca da repescagem sai
+                pelo WhatsApp mesmo quando o passo é ligação. */}
+            {cartao.telefone ? <CanaisDoContato telefone={cartao.telefone} nome={cartao.nome} ligarPrimeiro={ligar} /> : null}
           </div>
-        </div>
-
-        <div className="mt-3 flex gap-2">
-          <Button asChild variant="outline" size="sm" className="flex-1">
-            <Link to={`/crm/contatos/${cartao.contactId}`}>Perfil</Link>
-          </Button>
-          {cartao.telefone ? (
-            <Button asChild variant="outline" size="sm" className="flex-1">
-              <a href={whatsapp(cartao.telefone)} target="_blank" rel="noreferrer">WhatsApp</a>
-            </Button>
-          ) : null}
-          {podeConcluir ? (
-            <Button type="button" size="sm" variant={abertoAqui ? "default" : "outline"} className="flex-1" onClick={() => setAberto(abertoAqui ? null : cartao.enrollmentId)}>
-              {ehGestor ? "Liguei" : "Fiz o toque"}
-            </Button>
-          ) : null}
-        </div>
+        ) : null}
         {abertoAqui && cartao.tarefaId ? (
-          <div className="mt-2 grid gap-1 rounded-md border border-brand-oliva/20 bg-brand-creme/40 p-2">
-            <p className="text-[11px] font-semibold text-brand-tinta">{ehGestor ? "Como foi a ligação?" : "Como foi?"}</p>
+          <div className="grid gap-1 rounded-controle bg-saber p-2">
+            <p className="px-1 text-[13px] font-bold leading-5 text-tinta">{ehGestor ? "Como foi a ligação?" : "Como foi?"}</p>
             {(ehGestor ? statusGestor : statusPlanilha).map((status) => (
               <button
                 key={status}
@@ -151,78 +236,110 @@ export function CadenciaKanban({
                   else onConcluirPasso(cartao.tarefaId!, status as CadenceSheetDStatus);
                   setAberto(null);
                 }}
-                className="rounded-md border border-brand-oliva/25 bg-white px-2 py-1.5 text-left text-xs hover:border-brand-musgo"
+                className="flex min-h-8 items-center gap-1.5 rounded-controle border border-fio-2 bg-folha px-2 py-1.5 text-left text-[13px] font-semibold leading-5 text-tinta hover:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
               >
-                {ehGestor ? <Phone className="mr-1 inline h-3 w-3" aria-hidden="true" /> : null}
+                {ehGestor ? <Phone className="h-3.5 w-3.5 shrink-0 text-oliva" aria-hidden="true" /> : null}
                 {ehGestor ? gestorCallStatusLabels[status as GestorCallStatus] : cadenceSheetStatusLabels[status as CadenceSheetDStatus]}
               </button>
             ))}
           </div>
         ) : null}
-      </article>
+      </CartaoDoQuadro>
     );
   }
 
+  function Encerrado({ cartao }: { cartao: CartaoCadencia }) {
+    const situacao = `${cartao.status === "COMPLETED" ? "Régua concluída" : cartao.status === "PAUSED" ? "Resolvido no setor" : cartao.status === "CANCELED" ? "Cancelada" : "Todos os passos feitos"}`;
+    return (
+      <LinhaDoSaber>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2">
+          <Link to={`/crm/contatos/${cartao.contactId}`} className={NOME_LINK}>
+            {cartao.nome}
+          </Link>
+          {mostrarValor && cartao.valor > 0 ? <span className="text-sm font-bold leading-5 tabular-nums text-tinta">{moneyCrm(cartao.valor)}</span> : null}
+        </div>
+        <p className="text-[13px] font-medium leading-5 text-tinta-2">
+          {situacao}
+          {cartao.passosFeitos ? ` · ${cartao.passosFeitos} de ${cartao.totalPassos} passos` : ""}
+          {cartao.responsavel ? ` · ${cartao.responsavel}` : ""}
+        </p>
+        {cartao.ultimoResultado ? <p className="truncate text-[13px] font-medium leading-5 text-tinta-2" title={cartao.ultimoResultado}>Último toque: {cartao.ultimoResultado}</p> : null}
+        {/* O atalho de WhatsApp que o cartão encerrado tinha antes do redesenho. */}
+        {cartao.telefone ? (
+          <div className="flex gap-2 pt-1">
+            <a href={whatsapp(cartao.telefone)} target="_blank" rel="noreferrer" className={BOTAO_CANAL} aria-label={`Abrir o WhatsApp de ${cartao.nome}`} title="WhatsApp">
+              <MessageCircle aria-hidden="true" />
+            </a>
+          </div>
+        ) : null}
+      </LinhaDoSaber>
+    );
+  }
+
+  const encerrados = kanban.encerrados.filter((c) => !busca || c.nome.toLowerCase().includes(busca) || c.motivo.toLowerCase().includes(busca));
+
   return (
-    <section className="flex h-full min-h-0 w-full flex-col gap-2">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
-        <h2 className="flex items-center gap-1.5 text-sm font-bold text-brand-musgo">
-          {kanban.cadence.name}
-          <InfoTip title="Como ler este quadro">
-            Cada coluna é um passo da régua; o cartão do paciente fica no passo que está esperando ser feito. Vermelho é toque
-            atrasado, amarelo é hoje. &quot;Fiz o toque&quot; registra o resultado (o mesmo da Planilha de Cadências) e o cartão anda sozinho.
-            Arraste em qualquer área vazia para rolar para o lado, ou use as setas.
-          </InfoTip>
-        </h2>
-        <span className="rounded-full bg-brand-papel px-2 py-0.5 font-semibold text-brand-tinta">{kanban.totais.ativos} na régua</span>
-        {kanban.totais.hoje ? <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">{kanban.totais.hoje} hoje</span> : null}
-        {kanban.totais.atrasados ? <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700">{kanban.totais.atrasados} atrasado(s)</span> : null}
-        <span className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => pan.rolar(-1)} className="grid h-7 w-7 place-items-center rounded-md border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Rolar para a esquerda"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>
-          <button type="button" onClick={() => pan.rolar(1)} className="grid h-7 w-7 place-items-center rounded-md border border-brand-oliva/25 bg-white/70 text-brand-oliva hover:bg-white" aria-label="Rolar para a direita"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
-        </span>
-      </div>
-      <div ref={pan.ref} {...pan.handlers} className="kanban-scroll min-h-0 flex-1 cursor-grab touch-pan-x overflow-x-auto pb-1 active:cursor-grabbing">
-        <div className={cn("grid h-full w-max grid-flow-col items-stretch gap-3", densityColumns[density])}>
+    <section className="flex h-full min-h-0 w-full flex-col gap-2" aria-label={`Quadro da cadência ${kanban.cadence.name}`}>
+      {transborda ? (
+        <div className="flex shrink-0 items-center justify-end gap-1 max-md:hidden">
+          <button type="button" onClick={() => pan.rolar(-1)} className={BOTAO_CANAL} aria-label="Rolar o quadro para a esquerda">
+            <ChevronLeft aria-hidden="true" />
+          </button>
+          <button type="button" onClick={() => pan.rolar(1)} className={BOTAO_CANAL} aria-label="Rolar o quadro para a direita">
+            <ChevronRight aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+      <div ref={pan.ref} {...pan.handlers} className="kanban-scroll min-h-0 flex-1 cursor-grab touch-pan-x overflow-x-auto pb-2 active:cursor-grabbing">
+        <div className={cn("grid h-full w-full grid-flow-col items-stretch gap-4 max-xl:gap-3", LARGURA_DA_COLUNA[density])}>
           {kanban.colunas.map((coluna, indice) => {
             const cartoes = coluna.cartoes.filter(bate);
             const atrasados = cartoes.filter((c) => c.atrasoDias > 0).length;
             const proxima = kanban.colunas[indice + 1];
+            const IconeDoCanal = ICONE_DO_CANAL[coluna.canal];
+            const soma = cartoes.reduce((total, cartao) => total + cartao.valor, 0);
             return (
-              <section key={coluna.stepId} className="flex h-full min-h-0 w-full flex-col rounded-lg border border-brand-oliva/14 bg-white/40 p-2 backdrop-blur-xl">
-                <div className="mb-2 shrink-0 rounded-md bg-brand-musgo px-3 py-2 text-brand-papel">
-                  <p className="flex items-center gap-1.5 text-sm font-semibold" title={coluna.nome}>
-                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-papel/20 text-[11px] font-bold">{indice + 1}</span>
-                    <span className="truncate">{coluna.nome}</span>
-                  </p>
-                  <div className="mt-1 flex items-center justify-between text-[11px] text-brand-papel/75">
-                    <span>{cartoes.length} paciente{cartoes.length === 1 ? "" : "s"}</span>
-                    <span>{atrasados ? `${atrasados} atrasado(s)` : proxima ? `→ ${nomeCurtoDoPasso(proxima.nome)}` : "fim da régua"}</span>
-                  </div>
-                </div>
-                <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
-                  {cartoes.length ? (
-                    cartoes.map((cartao) => <Cartao key={cartao.enrollmentId} cartao={cartao} />)
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-brand-oliva/20 bg-white/35 p-3 text-center text-xs text-muted-foreground">Nenhum paciente neste passo</div>
-                  )}
-                </div>
-              </section>
+              <ColunaDoQuadro
+                key={coluna.stepId}
+                rotulo={coluna.nome}
+                titulo={<span title={coluna.nome}>{codigoDoPasso(coluna.nome, indice + 1)}</span>}
+                canal={
+                  <span className="inline-flex min-w-0 items-center gap-1" title={coluna.nome}>
+                    {IconeDoCanal ? <IconeDoCanal className="h-4 w-4 shrink-0 text-oliva" aria-hidden="true" /> : null}
+                    <span className="truncate">{NOME_DO_CANAL[coluna.canal] ?? nomeCurtoDoPasso(coluna.nome)}</span>
+                  </span>
+                }
+                esquerda={
+                  <>
+                    {cartoes.length} paciente{cartoes.length === 1 ? "" : "s"}
+                    {atrasados ? <span className="font-bold text-atencao"> · {atrasados} atrasado{atrasados > 1 ? "s" : ""}</span> : null}
+                  </>
+                }
+                direita={mostrarValor && soma > 0 ? moneyCrm(soma) : proxima ? `→ ${codigoDoPasso(proxima.nome, indice + 2)}` : "fim da régua"}
+              >
+                {cartoes.length ? (
+                  cartoes.map((cartao) => <Cartao key={cartao.enrollmentId} cartao={cartao} />)
+                ) : (
+                  <VazioDaColuna>{leitura === "todos" && !responsavel ? "Nenhum paciente neste passo" : "Ninguém nesta leitura"}</VazioDaColuna>
+                )}
+              </ColunaDoQuadro>
             );
           })}
-          <section className="flex h-full min-h-0 w-full flex-col rounded-lg border border-emerald-200/70 bg-emerald-50/30 p-2 backdrop-blur-xl">
-            <div className="mb-2 shrink-0 rounded-md bg-emerald-700 px-3 py-2 text-white">
-              <p className="text-sm font-semibold">Encerrados</p>
-              <p className="mt-1 text-[11px] text-white/80">{kanban.encerrados.length} nos últimos 30 dias</p>
-            </div>
-            <div className="kanban-column-scroll grid min-h-0 flex-1 auto-rows-min content-start gap-2 overflow-y-auto pr-0.5">
-              {kanban.encerrados.filter(bate).length ? (
-                kanban.encerrados.filter(bate).slice(0, 40).map((cartao) => <Cartao key={cartao.enrollmentId} cartao={cartao} encerrado />)
-              ) : (
-                <div className="rounded-lg border border-dashed border-emerald-300/60 bg-white/35 p-3 text-center text-xs text-muted-foreground">Nenhuma régua encerrada no período</div>
-              )}
-            </div>
-          </section>
+          <ColunaDoQuadro
+            saber
+            rotulo="Encerrados"
+            icone={<CheckCircle2 className="text-ok" aria-hidden="true" />}
+            titulo="Encerrados"
+            canal="últimos 30 dias"
+            esquerda={`${encerrados.length} paciente${encerrados.length === 1 ? "" : "s"}`}
+            direita={mostrarValor && encerrados.some((c) => c.valor > 0) ? moneyCrm(encerrados.reduce((t, c) => t + c.valor, 0)) : undefined}
+          >
+            {encerrados.length ? (
+              encerrados.slice(0, 40).map((cartao) => <Encerrado key={cartao.enrollmentId} cartao={cartao} />)
+            ) : (
+              <VazioDaColuna>Nenhuma régua encerrada no período</VazioDaColuna>
+            )}
+          </ColunaDoQuadro>
         </div>
       </div>
     </section>

@@ -1,11 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
 import {
-  ArrowLeft,
-  CalendarClock,
   CircleDollarSign,
-  FileSignature,
   HeartPulse,
   History,
   MessageCircle,
@@ -13,13 +9,10 @@ import {
   ShieldAlert,
   UserRound,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { Abas, BlocoFolha, BlocoSaber, Botao, Cabecalho, FraseDoFluxo, LinkSeta, botaoClasses } from "@/components/ui/fundacao";
+import { cn } from "@/lib/utils";
+import { Aviso, CampoSelecao, Etiqueta, Indicadores, Input, Label, RUBRICA, TITULO_SECAO } from "./comercialVisual";
 import { useAuth } from "@/hooks/useAuth";
 import { loadInteligencia360State, money360, stageLabels, touchTypeLabels } from "@/features/inteligencia360/inteligencia360Data";
 import {
@@ -62,17 +55,22 @@ const tabLabels: Record<ProfileTab, string> = {
   recebiveis: "Recebíveis",
 };
 
+// Um dado do contato (08/10/2026, Papel & Musgo): rubrica 12/700 e o valor em
+// tinta, num quadrinho saber — sem borda, sem branco translúcido.
 function InfoItem({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-brand-oliva/12 bg-white/55 p-3">
-      <p className="text-[11px] font-semibold uppercase text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-brand-musgo">{value || "Não informado"}</p>
+    <div className="min-w-0 rounded-bloco bg-saber px-3 py-2.5">
+      <dt className={RUBRICA}>{label}</dt>
+      <dd className="mt-1 break-words text-sm font-bold leading-5 text-tinta">{value || "Não informado"}</dd>
     </div>
   );
 }
 
+/** Linha das listas da ficha (linha do tempo, tarefas, cadências, recebíveis). */
+const LINHA_DA_FICHA = "border-t border-fio px-5 py-3 max-md:px-4";
+
 function statusDot(tone: "ok" | "warn" | "danger") {
-  return tone === "ok" ? "bg-emerald-500" : tone === "warn" ? "bg-brand-dourado" : "bg-red-500";
+  return tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-atencao" : "bg-erro";
 }
 
 function CrmContactProfilePageConteudo() {
@@ -176,122 +174,125 @@ function CrmContactProfilePageConteudo() {
 
   if (!contact) {
     return (
-      <Card>
-        <CardContent className="py-10 text-center">
-          <p className="font-semibold text-brand-musgo">Contato não encontrado.</p>
-          <Button asChild className="mt-4">
-            <Link to={crmModuleRoutes.tasks}>Voltar ao CRM</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <BlocoSaber className="mx-auto w-full max-w-3xl py-10 text-center font-sans">
+        <p className="text-base font-bold text-tinta">Contato não encontrado.</p>
+        <LinkSeta to={crmModuleRoutes.tasks} className="mt-4">
+          Voltar ao CRM
+        </LinkSeta>
+      </BlocoSaber>
     );
   }
 
   if (!canAccess) {
     return (
-      <Card>
-        <CardContent className="py-10 text-center">
-          <ShieldAlert className="mx-auto h-10 w-10 text-brand-musgo" />
-          <p className="mt-3 font-semibold text-brand-musgo">Perfil restrito ao seu fluxo.</p>
-          <p className="mt-1 text-sm text-muted-foreground">Você ainda vê suas tarefas, mas este perfil tem detalhes de outro setor.</p>
-        </CardContent>
-      </Card>
+      <BlocoSaber className="mx-auto w-full max-w-3xl py-10 text-center font-sans">
+        <ShieldAlert className="mx-auto h-8 w-8 text-oliva" aria-hidden="true" />
+        <p className="mt-3 text-base font-bold text-tinta">Perfil restrito ao seu fluxo.</p>
+        <p className="mt-1 text-sm font-medium text-tinta-2">Você ainda vê suas tarefas, mas este perfil tem detalhes de outro setor.</p>
+      </BlocoSaber>
     );
   }
 
+  // CABEÇALHO (08/10/2026, redesenho etapa 3): o nome do paciente é o título da
+  // página; a frase diz em que pé ele está (fase, próxima ação, fadiga) e as
+  // seções da ficha viram abas logo abaixo. O que a ficha FAZ não mudou.
+  const abasVisiveis = (Object.keys(tabLabels) as ProfileTab[]).filter((item) =>
+    item === "recebiveis" ? canSeeFinancial : item === "experiencia" || item === "jornada" ? canSeeSensitive : true,
+  );
+  const tarefasAbertas = contactTasks.filter((task) => !["DONE", "CANCELED", "SKIPPED"].includes(task.status)).length;
+  const fraseDoTopo = (
+    <>
+      <strong>{lifecycleLabels[contact.lifecycleStage]}.</strong>{" "}
+      {nextTask ? (
+        <>
+          Próxima ação: <strong>{nextTask.title}</strong>, {formatCrmDateTime(nextTask.dueAt)}.
+        </>
+      ) : (
+        "Sem próxima ação."
+      )}
+      {fatigue?.risk ? <span className="alerta"> Risco de fadiga: revise antes de tocar.</span> : null}
+    </>
+  );
+
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 sm:gap-6">
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-      >
-        <Button asChild variant="ghost" size="sm" className="mb-4">
-          <Link to={crmModuleRoutes.tasks}><ArrowLeft className="mr-2 h-4 w-4" /> CRM</Link>
-        </Button>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="gold">Perfil 360</Badge>
-              <Badge variant="outline">{contact.contactType}</Badge>
-              <Badge variant="muted">{lifecycleLabels[contact.lifecycleStage]}</Badge>
-              {fatigue?.risk ? <Badge className="bg-red-100 text-red-800">Risco de fadiga</Badge> : null}
-            </div>
-            <h1 className="mt-3 flex items-center gap-2 text-4xl leading-tight text-brand-musgo sm:text-5xl">
-              {contactDisplayName(contact)}
-              <InfoTip title="O que é o Perfil 360?">
-                A ficha completa do contato em um só lugar: dados, negociações, tarefas, cadências ativas e a linha do tempo de
-                tudo que já aconteceu — cada evento mostra de onde veio. É a fonte de verdade antes de qualquer contato com o
-                paciente.
-              </InfoTip>
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Perfil comercial e relacional. Não é prontuário médico; reúne execução, jornada, tarefas e alertas sem duplicar cadastro.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <a href={whatsappUrl(contact)} target="_blank" rel="noreferrer">
-                <MessageCircle className="mr-2 h-4 w-4" />
-                WhatsApp
-              </a>
-            </Button>
-            <Button asChild>
-              <Link to={crmModuleRoutes.deals}>Ver Kanban</Link>
-            </Button>
-          </div>
-        </div>
-      </motion.section>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 font-sans max-md:gap-4">
+      <Cabecalho
+        className="mb-0 max-md:mb-0"
+        sobrancelha="Pacientes · Perfil 360"
+        titulo={contactDisplayName(contact)}
+        frase={fraseDoTopo}
+        acoes={
+          <>
+            <a href={whatsappUrl(contact)} target="_blank" rel="noreferrer" className={cn(botaoClasses({ variante: "secundario" }))}>
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              WhatsApp
+            </a>
+            <Link to={crmModuleRoutes.deals} className={cn(botaoClasses({ variante: "primario" }))}>
+              Ver Kanban
+            </Link>
+          </>
+        }
+        rodape={
+          <FraseDoFluxo link={{ to: crmModuleRoutes.tasks, rotulo: "Voltar ao CRM" }}>
+            Perfil comercial e relacional. Não é prontuário médico; reúne execução, jornada, tarefas e alertas sem duplicar cadastro.{" "}
+            <InfoTip title="O que é o Perfil 360?">
+              A ficha completa do contato em um só lugar: dados, negociações, tarefas, cadências ativas e a linha do tempo de
+              tudo que já aconteceu — cada evento mostra de onde veio. É a fonte de verdade antes de qualquer contato com o
+              paciente.
+            </InfoTip>
+          </FraseDoFluxo>
+        }
+      />
 
-      <div className="mobile-scrollbar-none flex gap-2 overflow-x-auto rounded-lg border border-brand-oliva/15 bg-white/45 p-2 backdrop-blur-xl">
-        {(Object.keys(tabLabels) as ProfileTab[])
-          .filter((item) => (item === "recebiveis" ? canSeeFinancial : item === "experiencia" || item === "jornada" ? canSeeSensitive : true))
-          .map((item) => (
-            <Button key={item} type="button" variant={tab === item ? "default" : "outline"} size="sm" onClick={() => setTab(item)}>
-              {tabLabels[item]}
-            </Button>
-          ))}
-      </div>
+      <Abas
+        rotulo="Seções da ficha"
+        valor={tab}
+        onMudar={(id) => setTab(id as ProfileTab)}
+        idDoPainel={() => "ficha-secao"}
+        itens={abasVisiveis.map((item) => ({ id: item, rotulo: tabLabels[item] }))}
+      />
 
+      <div id="ficha-secao" role="tabpanel" className="grid gap-6 max-md:gap-4">
       {tab === "resumo" ? (
-        <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex flex-wrap items-center gap-2">
-                <UserRound className="h-5 w-5" />
+        <div className="grid items-start gap-6 xl:grid-cols-[1.15fr_0.85fr] max-md:gap-4">
+          <BlocoFolha as="section" respiro aria-labelledby="ficha-resumo">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="ficha-resumo" className={cn(TITULO_SECAO, "flex items-center gap-2")}>
+                <UserRound className="h-4 w-4 text-oliva" aria-hidden="true" />
                 Resumo do contato
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto h-8 gap-1.5 px-2.5 text-xs"
+              </h2>
+              <span className="ml-auto flex flex-wrap items-center gap-2">
+                <Etiqueta>{contact.contactType}</Etiqueta>
+                <Etiqueta tom="musgo">{lifecycleLabels[contact.lifecycleStage]}</Etiqueta>
+                {fatigue?.risk ? <Etiqueta tom="erro">Risco de fadiga</Etiqueta> : null}
+                <Botao
+                  tamanho="pq"
+                  icone={<Pencil className="h-4 w-4" aria-hidden="true" />}
                   onClick={() => (editando ? setEditando(false) : abrirEdicao())}
                 >
-                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                   {editando ? "Cancelar" : "Editar cadastro"}
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+                </Botao>
+              </span>
+            </div>
+            <div className="mt-4">
               {semContato && !editando ? (
-                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-brand-dourado/45 bg-brand-creme/45 p-3">
-                  <p className="text-xs font-semibold text-brand-tinta">
-                    Este cadastro está sem telefone e sem e-mail — a cadência não tem para onde ligar nem escrever.
-                  </p>
-                  <Button type="button" size="sm" className="h-8 px-3 text-xs" onClick={abrirEdicao}>
-                    Cadastrar telefone
-                  </Button>
-                </div>
+                <Aviso tom="atencao" className="mb-4 items-center">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p>Este cadastro está sem telefone e sem e-mail — a cadência não tem para onde ligar nem escrever.</p>
+                    <Botao variante="primario" tamanho="pq" onClick={abrirEdicao}>
+                      Cadastrar telefone
+                    </Botao>
+                  </div>
+                </Aviso>
               ) : null}
 
               {editando ? (
-                <div className="mb-4 grid gap-3 rounded-lg border border-brand-oliva/25 bg-white/70 p-3">
+                <div className="mb-4 grid gap-4 rounded-bloco bg-papel p-4 shadow-[inset_0_0_0_1px_rgb(var(--fio-rgb))]">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <Label htmlFor="perfil-nome">Nome completo</Label>
                       <Input
                         id="perfil-nome"
-                        className="mt-1"
                         value={cadastro.fullName}
                         onChange={(event) => setCadastro({ ...cadastro, fullName: event.target.value })}
                       />
@@ -300,7 +301,6 @@ function CrmContactProfilePageConteudo() {
                       <Label htmlFor="perfil-apelido">Apelido (como aparece nos cards)</Label>
                       <Input
                         id="perfil-apelido"
-                        className="mt-1"
                         value={cadastro.preferredName}
                         onChange={(event) => setCadastro({ ...cadastro, preferredName: event.target.value })}
                         placeholder="Opcional"
@@ -310,7 +310,6 @@ function CrmContactProfilePageConteudo() {
                       <Label htmlFor="perfil-phone">WhatsApp / telefone</Label>
                       <Input
                         id="perfil-phone"
-                        className="mt-1"
                         inputMode="tel"
                         autoComplete="tel"
                         placeholder="(11) 98765-4321"
@@ -322,7 +321,6 @@ function CrmContactProfilePageConteudo() {
                       <Label htmlFor="perfil-email">E-mail</Label>
                       <Input
                         id="perfil-email"
-                        className="mt-1"
                         type="email"
                         inputMode="email"
                         autoComplete="email"
@@ -332,23 +330,23 @@ function CrmContactProfilePageConteudo() {
                       />
                     </div>
                   </div>
-                  <p className="text-[11px] leading-snug text-muted-foreground">
+                  <p className="text-xs font-medium leading-5 text-tinta-2">
                     O telefone é a chave única do CRM: ele liga esta pessoa às comandas, aos comprovantes, às dívidas e às
                     cadências — e é o que evita cadastro duplicado.
                   </p>
-                  <div className="flex flex-wrap items-center gap-3 rounded-md border border-brand-oliva/15 bg-brand-papel/60 px-3 py-2">
-                    <label className="flex items-center gap-2 text-sm text-brand-tinta">
-                      <input type="checkbox" checked={cadastro.optIn} onChange={(event) => setCadastro({ ...cadastro, optIn: event.target.checked })} />
+                  <div className="flex flex-wrap items-center gap-3 rounded-bloco bg-saber px-3 py-2">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-tinta">
+                      <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--musgo-rgb))]" checked={cadastro.optIn} onChange={(event) => setCadastro({ ...cadastro, optIn: event.target.checked })} />
                       Aceitou receber mensagens de marketing e resgate
                     </label>
                     {cadastro.optIn ? (
-                      <select value={cadastro.optInCanal} onChange={(event) => setCadastro({ ...cadastro, optInCanal: event.target.value })} className="h-8 rounded-md border border-brand-oliva/25 bg-white px-2 text-xs" aria-label="Como o consentimento foi dado">
+                      <CampoSelecao pequeno value={cadastro.optInCanal} onChange={(event) => setCadastro({ ...cadastro, optInCanal: event.target.value })} className="w-auto" aria-label="Como o consentimento foi dado">
                         {["WhatsApp", "Presencial (ficha)", "Telefone", "E-mail", "Site / formulário"].map((canal) => (
                           <option key={canal} value={canal}>
                             {canal}
                           </option>
                         ))}
-                      </select>
+                      </CampoSelecao>
                     ) : null}
                     <InfoTip title="LGPD">
                       Mensagens de resgate e repescagem (60 dias, 6 meses, 1 ano) são marketing: precisam de consentimento registrado, com data e
@@ -357,20 +355,20 @@ function CrmContactProfilePageConteudo() {
                     </InfoTip>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <LiquidButton type="button" size="sm" onClick={salvarCadastro}>
+                    <Botao variante="primario" type="button" onClick={salvarCadastro}>
                       Salvar cadastro
-                    </LiquidButton>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setEditando(false)}>
+                    </Botao>
+                    <Botao variante="fantasma" onClick={() => setEditando(false)}>
                       Cancelar
-                    </Button>
+                    </Botao>
                     {cadastroFeedback ? (
-                      <p className="text-xs font-semibold text-destructive">{cadastroFeedback}</p>
+                      <p role="alert" className="text-xs font-bold text-erro">{cadastroFeedback}</p>
                     ) : null}
                   </div>
                 </div>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 <InfoItem label="WhatsApp" value={formatPhoneBR(contact.whatsapp || contact.phone)} />
                 <InfoItem label="E-mail" value={contact.email} />
                 <InfoItem label="Opt-in de marketing" value={contact.marketingOptInEm ? `sim · ${contact.marketingOptInCanal || "canal não informado"} · ${contact.marketingOptInEm.slice(8, 10)}/${contact.marketingOptInEm.slice(5, 7)}/${contact.marketingOptInEm.slice(0, 4)}` : "não registrado"} />
@@ -381,7 +379,7 @@ function CrmContactProfilePageConteudo() {
                 <InfoItem label="Dor principal" value={contact.mainPain} />
                 <InfoItem label="Objetivo" value={contact.mainGoal} />
                 <InfoItem label="Último toque" value={lastTouch ? formatCrmDateTime(lastTouch.sentAt) : "Sem toque"} />
-              </div>
+              </dl>
               {useRemoteConsent ? <ConsentimentosDoContato contactRef={contact.id} pessoaId={pessoa?.id ?? null} podeEditar={Boolean(pessoa)} /> : null}
               {useRemoteConsent ? (
                 <div className="mt-4">
@@ -402,127 +400,105 @@ function CrmContactProfilePageConteudo() {
                   />
                 </div>
               ) : null}
-            </CardContent>
-          </Card>
+            </div>
+          </BlocoFolha>
 
           <div className="grid gap-4">
             {/* Ficha de aplicação (29/09/2026): só para enfermagem e gestão — o card some para os demais. */}
             <AplicacoesDoPacienteCard contactRef={contact.id} nomePaciente={contactDisplayName(contact)} />
-            <Card>
-              <CardHeader>
-                <CardTitle>Próxima ação</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {nextTask ? (
-                  <div>
-                    <p className="font-semibold text-brand-musgo">{nextTask.title}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatCrmDateTime(nextTask.dueAt)} - {taskTypeLabels[nextTask.taskType]}</p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Nenhuma tarefa aberta. O contato está sem próximo dono.</p>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Antifadiga</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-start gap-3">
-                  <span className={`mt-1 h-3 w-3 rounded-full ${statusDot(fatigue?.risk ? "danger" : "ok")}`} />
-                  <div>
-                    <p className="font-semibold text-brand-musgo">{fatigue?.risk ? "Revisar antes de tocar" : "Contato saudável"}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{fatigue?.message}</p>
-                  </div>
+            <BlocoSaber as="section" aria-labelledby="ficha-proxima-acao">
+              <h2 id="ficha-proxima-acao" className={RUBRICA}>Próxima ação</h2>
+              {nextTask ? (
+                <div className="mt-2">
+                  <p className="text-sm font-bold leading-5 text-tinta">{nextTask.title}</p>
+                  <p className="mt-1 text-[13px] font-medium leading-5 tabular-nums text-tinta-2">{formatCrmDateTime(nextTask.dueAt)} - {taskTypeLabels[nextTask.taskType]}</p>
                 </div>
-              </CardContent>
-            </Card>
+              ) : (
+                <p className="mt-2 text-sm font-medium leading-5 text-tinta-2">Nenhuma tarefa aberta. O contato está sem próximo dono.</p>
+              )}
+            </BlocoSaber>
+            <BlocoSaber as="section" aria-labelledby="ficha-antifadiga">
+              <h2 id="ficha-antifadiga" className={RUBRICA}>Antifadiga</h2>
+              <div className="mt-2 flex items-start gap-3">
+                <span className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", statusDot(fatigue?.risk ? "danger" : "ok"))} aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-bold leading-5 text-tinta">{fatigue?.risk ? "Revisar antes de tocar" : "Contato saudável"}</p>
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{fatigue?.message}</p>
+                </div>
+              </div>
+            </BlocoSaber>
           </div>
         </div>
       ) : null}
 
       {tab === "timeline" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><History className="h-5 w-5" /> Linha do tempo</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3">
-              {mergedTimeline.map((event) => (
-                <div key={event.id} className="rounded-lg border border-brand-oliva/12 bg-white/58 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-brand-musgo">{event.title}</p>
-                    <Badge variant="outline">{event.source}</Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">{formatCrmDateTime(event.date)}</p>
+        <BlocoFolha as="section" aria-labelledby="ficha-linha-do-tempo">
+          <h2 id="ficha-linha-do-tempo" className={cn(TITULO_SECAO, "flex items-center gap-2 px-5 pt-5 max-md:px-4")}>
+            <History className="h-4 w-4 text-oliva" aria-hidden="true" /> Linha do tempo
+          </h2>
+          <ol className="mt-3">
+            {mergedTimeline.map((event) => (
+              <li key={event.id} className={LINHA_DA_FICHA}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-bold leading-5 text-tinta">{event.title}</p>
+                  <Etiqueta>{event.source}</Etiqueta>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{event.description}</p>
+                <p className="mt-1 text-xs font-semibold tabular-nums text-tinta-2">{formatCrmDateTime(event.date)}</p>
+              </li>
+            ))}
+          </ol>
+        </BlocoFolha>
       ) : null}
 
       {tab === "tarefas" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tarefas do contato</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2">
-              {contactTasks.map((task) => (
-                <div key={task.id} className="rounded-lg border border-brand-oliva/12 bg-white/58 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-brand-musgo">{task.title}</p>
-                    <Badge variant="muted">{taskStatusLabels[task.status]}</Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{taskTypeLabels[task.taskType]} - {formatCrmDateTime(task.dueAt)}</p>
+        <BlocoFolha as="section" aria-labelledby="ficha-tarefas">
+          <h2 id="ficha-tarefas" className={cn(TITULO_SECAO, "px-5 pt-5 max-md:px-4")}>Tarefas do contato</h2>
+          <ul className="mt-3">
+            {contactTasks.map((task) => (
+              <li key={task.id} className={LINHA_DA_FICHA}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-bold leading-5 text-tinta">{task.title}</p>
+                  <Etiqueta>{taskStatusLabels[task.status]}</Etiqueta>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <p className="mt-1 text-[13px] font-medium leading-5 tabular-nums text-tinta-2">{taskTypeLabels[task.taskType]} - {formatCrmDateTime(task.dueAt)}</p>
+              </li>
+            ))}
+          </ul>
+        </BlocoFolha>
       ) : null}
 
       {tab === "cadencias" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Cadências vinculadas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2">
-              {contactEnrollments.map((enrollment) => {
-                const cadence = state.cadences.find((item) => item.id === enrollment.cadenceId);
-                return (
-                  <div key={enrollment.id} className="rounded-lg border border-brand-oliva/12 bg-white/58 p-3">
-                    <p className="font-semibold text-brand-musgo">{cadence?.name ?? "Cadência"}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{enrollment.status} - gatilho em {enrollment.triggerDate}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        <BlocoFolha as="section" aria-labelledby="ficha-cadencias">
+          <h2 id="ficha-cadencias" className={cn(TITULO_SECAO, "px-5 pt-5 max-md:px-4")}>Cadências vinculadas</h2>
+          <ul className="mt-3">
+            {contactEnrollments.map((enrollment) => {
+              const cadence = state.cadences.find((item) => item.id === enrollment.cadenceId);
+              return (
+                <li key={enrollment.id} className={LINHA_DA_FICHA}>
+                  <p className="text-sm font-bold leading-5 text-tinta">{cadence?.name ?? "Cadência"}</p>
+                  <p className="mt-1 text-[13px] font-medium leading-5 tabular-nums text-tinta-2">{enrollment.status} - gatilho em {enrollment.triggerDate}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </BlocoFolha>
       ) : null}
 
       {tab === "comercial" ? (
         <div className="grid gap-3">
           {contactDeals.map((deal) => (
-            <Card key={deal.id}>
-              <CardHeader>
-                <CardTitle>{deal.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <InfoItem label="Etapa" value={dealStageLabels[deal.stage]} />
-                  <InfoItem label="Valor potencial" value={canSeeFinancial ? moneyCrm(deal.estimatedValue) : "Restrito"} />
-                  <InfoItem label="Vendido" value={canSeeFinancial ? moneyCrm(deal.soldAmount) : "Restrito"} />
-                  <InfoItem label="Objeção" value={deal.mainObjection || "Sem objeção"} />
-                  <InfoItem label="Origem" value={deal.sourceChannel} />
-                  <InfoItem label="Status" value={deal.status} />
-                </div>
-              </CardContent>
-            </Card>
+            <BlocoFolha key={deal.id} as="section" respiro>
+              <h2 className={TITULO_SECAO}>{deal.title}</h2>
+              <dl className="mt-3 grid gap-2 sm:grid-cols-3">
+                <InfoItem label="Etapa" value={dealStageLabels[deal.stage]} />
+                <InfoItem label="Valor potencial" value={canSeeFinancial ? moneyCrm(deal.estimatedValue) : "Restrito"} />
+                <InfoItem label="Vendido" value={canSeeFinancial ? moneyCrm(deal.soldAmount) : "Restrito"} />
+                <InfoItem label="Objeção" value={deal.mainObjection || "Sem objeção"} />
+                <InfoItem label="Origem" value={deal.sourceChannel} />
+                <InfoItem label="Status" value={deal.status} />
+              </dl>
+            </BlocoFolha>
           ))}
         </div>
       ) : null}
@@ -530,84 +506,65 @@ function CrmContactProfilePageConteudo() {
       {tab === "jornada" ? (
         <div className="grid gap-3">
           {journeys.length ? journeys.map((journey) => (
-            <Card key={journey.id}>
-              <CardHeader>
-                <CardTitle>{stageLabels[journey.currentStage]}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <InfoItem label="Plano" value={journey.treatmentPlanSummary} />
-                  <InfoItem label="Próximo retorno" value={journey.nextMedicalReturnDate || "Não definido"} />
-                  <InfoItem label="Primeira dose" value={journey.firstDoseScheduled ? "Agendada" : "Pendente"} />
-                  <InfoItem label="Bioimpedância" value={journey.firstBioimpedanceScheduled ? "Agendada" : "Pendente"} />
-                  <InfoItem label="Exames" value={journey.nextExamDueDate || "Não definido"} />
-                </div>
-              </CardContent>
-            </Card>
-          )) : <p className="text-sm text-muted-foreground">Sem jornada consolidada ainda. Um fechamento no Kanban cria este resumo.</p>}
+            <BlocoFolha key={journey.id} as="section" respiro>
+              <h2 className={TITULO_SECAO}>{stageLabels[journey.currentStage]}</h2>
+              <dl className="mt-3 grid gap-2 sm:grid-cols-3">
+                <InfoItem label="Plano" value={journey.treatmentPlanSummary} />
+                <InfoItem label="Próximo retorno" value={journey.nextMedicalReturnDate || "Não definido"} />
+                <InfoItem label="Primeira dose" value={journey.firstDoseScheduled ? "Agendada" : "Pendente"} />
+                <InfoItem label="Bioimpedância" value={journey.firstBioimpedanceScheduled ? "Agendada" : "Pendente"} />
+                <InfoItem label="Exames" value={journey.nextExamDueDate || "Não definido"} />
+              </dl>
+            </BlocoFolha>
+          )) : <BlocoSaber className="py-4"><p className="text-sm font-medium text-tinta-2">Sem jornada consolidada ainda. Um fechamento no Kanban cria este resumo.</p></BlocoSaber>}
         </div>
       ) : null}
 
       {tab === "experiencia" ? (
         <div className="grid gap-3">
           {experiences.length ? experiences.map((experience) => (
-            <Card key={experience.id}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><HeartPulse className="h-5 w-5" /> Experiência</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <InfoItem label="NPS" value={experience.npsScore} />
-                  <InfoItem label="Satisfação" value={experience.satisfactionScore} />
-                  <InfoItem label="Google" value={experience.googleReviewDone ? "Feita" : experience.googleReviewRequested ? "Solicitada" : "Pendente"} />
-                  <InfoItem label="Status" value={experience.status} />
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground">{experience.feedbackText}</p>
-              </CardContent>
-            </Card>
-          )) : <p className="text-sm text-muted-foreground">Sem feedback registrado.</p>}
+            <BlocoFolha key={experience.id} as="section" respiro>
+              <h2 className={cn(TITULO_SECAO, "flex items-center gap-2")}><HeartPulse className="h-4 w-4 text-oliva" aria-hidden="true" /> Experiência</h2>
+              <dl className="mt-3 grid gap-2 sm:grid-cols-4">
+                <InfoItem label="NPS" value={experience.npsScore} />
+                <InfoItem label="Satisfação" value={experience.satisfactionScore} />
+                <InfoItem label="Google" value={experience.googleReviewDone ? "Feita" : experience.googleReviewRequested ? "Solicitada" : "Pendente"} />
+                <InfoItem label="Status" value={experience.status} />
+              </dl>
+              <p className="mt-3 text-sm font-medium leading-6 text-tinta-2">{experience.feedbackText}</p>
+            </BlocoFolha>
+          )) : <BlocoSaber className="py-4"><p className="text-sm font-medium text-tinta-2">Sem feedback registrado.</p></BlocoSaber>}
         </div>
       ) : null}
 
       {tab === "recebiveis" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><CircleDollarSign className="h-5 w-5" /> Recebíveis resumidos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3">
-              {receivables.map((receivable) => (
-                <div key={receivable.id} className="rounded-lg border border-brand-oliva/12 bg-white/58 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-brand-musgo">{money360(receivable.totalAmount)} total</p>
-                    <Badge variant="outline">{receivable.status}</Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">Recebido {money360(receivable.receivedAmount)} - vencimento {receivable.dueDate}</p>
+        <BlocoFolha as="section" aria-labelledby="ficha-recebiveis">
+          <h2 id="ficha-recebiveis" className={cn(TITULO_SECAO, "flex items-center gap-2 px-5 pt-5 max-md:px-4")}>
+            <CircleDollarSign className="h-4 w-4 text-oliva" aria-hidden="true" /> Recebíveis resumidos
+          </h2>
+          <ul className="mt-3">
+            {receivables.map((receivable) => (
+              <li key={receivable.id} className={LINHA_DA_FICHA}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-bold leading-5 tabular-nums text-tinta">{money360(receivable.totalAmount)} total</p>
+                  <Etiqueta>{receivable.status}</Etiqueta>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <p className="mt-1 text-[13px] font-medium leading-5 tabular-nums text-tinta-2">Recebido {money360(receivable.receivedAmount)} - vencimento {receivable.dueDate}</p>
+              </li>
+            ))}
+          </ul>
+        </BlocoFolha>
       ) : null}
-
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-          <CalendarClock className="h-5 w-5 text-brand-musgo" />
-          <p className="mt-2 text-sm font-semibold text-brand-musgo">Tarefas abertas</p>
-          <p className="text-2xl font-bold text-brand-musgo">{contactTasks.filter((task) => !["DONE", "CANCELED", "SKIPPED"].includes(task.status)).length}</p>
-        </div>
-        <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-          <MessageCircle className="h-5 w-5 text-brand-musgo" />
-          <p className="mt-2 text-sm font-semibold text-brand-musgo">Toques registrados</p>
-          <p className="text-2xl font-bold text-brand-musgo">{contactTouchpoints.length + relationshipTouchpoints.length}</p>
-        </div>
-        <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-          <History className="h-5 w-5 text-brand-musgo" />
-          <p className="mt-2 text-sm font-semibold text-brand-musgo">Eventos</p>
-          <p className="text-2xl font-bold text-brand-musgo">{mergedTimeline.length}</p>
-        </div>
       </div>
+
+      <Indicadores
+        rotulo="O contato em números"
+        itens={[
+          { rotulo: "Tarefas abertas", valor: tarefasAbertas, frase: "ainda por fazer" },
+          { rotulo: "Toques registrados", valor: contactTouchpoints.length + relationshipTouchpoints.length, frase: "mensagens e ligações" },
+          { rotulo: "Eventos", valor: mergedTimeline.length, frase: "na linha do tempo" },
+        ]}
+      />
     </div>
   );
 }

@@ -230,3 +230,17 @@ export function checklistSummary(items: ChecklistItem[]) {
     nextItem,
   };
 }
+
+/**
+ * A MARCA DA TAREFA EM PALAVRA (08/10/2026, redesenho etapa 2). A rotina e a
+ * tarefa "até concluir" chegam com um emoji na frente ("🔁 …" e "📌 …" — o
+ * banco monta assim em listRemoteChecklistItems). O app novo não mostra emoji:
+ * a tela troca o símbolo por uma etiqueta escrita, e o texto fica limpo.
+ */
+export function marcaDaTarefa(descricao: string): { marca: "Rotina" | "Até concluir" | null; texto: string } {
+  const texto = String(descricao ?? "");
+  const limpo = (prefixo: string) => texto.slice(prefixo.length).replace(/^[\s\uFE0F]+/, "");
+  if (texto.startsWith("🔁")) return { marca: "Rotina", texto: limpo("🔁") };
+  if (texto.startsWith("📌")) return { marca: "Até concluir", texto: limpo("📌") };
+  return { marca: null, texto };
+}

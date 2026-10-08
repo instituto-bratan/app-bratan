@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+// CONTAS A PAGAR — Financeiro › Pagar › Contas.
+//
+// REDESENHO PAPEL & MUSGO (08/10/2026, imagem 03 aprovada): UM cabeçalho com a
+// frase que explica o número ("Duas contas vencem hoje: R$ 3.420,00"), a fila
+// do dia como lista numa FOLHA (decidir) e, ao lado, o mês em contas num bloco
+// SABER (o número grande em Fraunces, a barra do mês e o razão). Embaixo, o que
+// já existia, na mesma ordem e com as mesmas ações: Lançar rápido, Caixa de
+// entrada, o formulário, a planilha do mês, as provisões e as notas recebidas.
+// Nenhuma regra mudou; mudou a forma. ?novo=1 abre o formulário vazio (a ação
+// "Nova conta a pagar" do ⌘K) e ?valor=1234,56 continua abrindo com o valor.
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Pencil, CalendarClock, CheckCircle2, CircleDollarSign, Copy, Filter, Layers, ListChecks, Package, PiggyBank, Plus, Repeat, Trash2, Undo2, X } from "lucide-react";
+import { Pencil, Copy, Layers, ListChecks, Package, PiggyBank, Plus, Repeat, Trash2, Undo2, X } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, CampoBusca, LinkSeta, Selo, botaoClasses } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -37,15 +41,37 @@ import { lerLinhasDeCsv } from "@/lib/planilhaLeitor";
 import { lerExportacaoPrefeituraSP } from "../../../supabase/functions/_shared/notasRecebidas";
 import { confirmar, perguntar, toast } from "@/components/ui/avisos";
 import { configAtual } from "@/lib/configNegocio";
-import { precisaAprovacao } from "./filaFinanceira";
-import { buildFilaFinanceira, contaParecida } from "./filaFinanceira";
+import { buildFilaFinanceira, contaParecida, diaDePagar, precisaAprovacao } from "./filaFinanceira";
 import { lerDocumento, type LeituraDocumento } from "./leitorDocumento";
 import { diasEntre } from "./recebiveisRede";
 import { extrairTextoArquivo } from "./pdfTexto";
 import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import { setorNomes, setoresEmOrdem, type EstoqueSetor } from "@/features/estoque/estoqueData";
-import { ControleDensidade, TabelaRolavel, cabecalhoGrudado, rodapeGrudado, useDensidade } from "@/components/ui/tabela-densa";
+import { ControleDensidade, useDensidade } from "@/components/ui/tabela-densa";
+import { diasUteisDoMes } from "./lucroInteligente";
+import {
+  AJUDA,
+  AvisoDaTela,
+  CABECA_DA_FOLHA,
+  CAMPO,
+  Campo,
+  Etiqueta,
+  Leitura,
+  MARCAR,
+  NumeroEmReais,
+  RUBRICA,
+  TD,
+  TFOOT_GRUDADO,
+  TH,
+  THEAD_GRUDADO,
+  TituloDoBloco,
+  Vazio,
+  nomeDoMes,
+  nomeDoMesMaiusculo,
+  porExtenso,
+  quantos,
+} from "./pecasDiaPagar";
 import {
   buildProvisionExpenses,
   buildProvisionPlan,
@@ -75,6 +101,13 @@ import {
 const AVISO_DIAS = 3;
 import { BaixarPlanilhaButton } from "./BaixarPlanilhaButton";
 import { useFinanceiro } from "./useFinanceiro";
+import { useContasDaFila } from "./useContasDaFila";
+import { contasDaFilaDaTela } from "./contasDaFila";
+
+const ROTULO_CAMPO = "text-[13px] font-bold leading-5 text-tinta";
+// A planilha do mês tem 9 colunas: 12 px de lado (e não 16) para caber em 1440 sem rolar de lado.
+const TH_PLANILHA = cn(TH, "px-3");
+const TD_PLANILHA = cn(TD, "px-3");
 
 function parseAmount(value: string) {
   const normalized = value.replace(/\./g, "").replace(",", ".");
@@ -152,17 +185,25 @@ export function FinanceiroContasPage() {
   const [amount, setAmount] = useState("");
   // ⌘K "FAZER" (14/09/2026, proposta 4.2): /financeiro/contas?valor=1234,56 abre o
   // formulário já com o valor — a pessoa digitou "1234" no atalho e caiu aqui.
+  // ?novo=1 (08/10/2026, ação "Nova conta a pagar" do ⌘K): abre o formulário vazio.
+  // Olha o endereço a cada troca (não só ao abrir a tela): quem já está em Contas
+  // e pede "Nova conta" no ⌘K também ganha o formulário aberto.
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const valor = searchParams.get("valor");
-    if (!valor) return;
-    setAmount(valor.replace(".", ","));
+    const novo = searchParams.get("novo") === "1";
+    if (!valor && !novo) return;
+    // "Nova conta" com uma conta aberta em correção: larga a correção e começa
+    // do zero (o formulário nunca abre como "Corrigir conta" por este caminho).
+    if (novo && editingExpenseId) resetForm();
+    if (valor) setAmount(valor.replace(".", ","));
     abrirFormulario();
     const next = new URLSearchParams(searchParams);
     next.delete("valor");
+    next.delete("novo");
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
   const [dueDate, setDueDate] = useState(now);
   const [categoryRef, setCategoryRef] = useState("");
   const [method, setMethod] = useState<FinPaymentMethod>("BOLETO");
@@ -189,6 +230,8 @@ export function FinanceiroContasPage() {
   // sozinho quando algo o preenche (Lançar rápido, atalho, virar conta, editar).
   const [formAberto, setFormAberto] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
+  // A planilha do mês: o razão do "saber" filtra e leva a tela até ela.
+  const planilhaRef = useRef<HTMLDivElement>(null);
   // Pagamento em lote: o dia em que se paga 6 boletos no banco vira um clique.
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<"todas" | "pendentes" | "vencidas" | "pagas" | "compras">("todas");
@@ -273,15 +316,26 @@ export function FinanceiroContasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [financeiro.sales, financeiro.expenses, month, versaoDoMotor],
   );
+  // A fila olha a JANELA DE HOJE, não o mês do seletor (revisão de 08/10/2026):
+  // as contas da tela (os anos que o seletor carregou, com as mudanças de agora)
+  // mais as dos anos da janela que a tela não carregou — em 31/12 a conta de
+  // 02/01 que se paga nesse dia; com outubro de 2025 no seletor, a fila de hoje.
+  // As mesmas chaves por ano da casca e do Início ("fin-expenses", ano).
+  const anosDaTela = useMemo(() => [Number(month.slice(0, 4)) - 1, Number(month.slice(0, 4))], [month]);
+  const contasDeFora = useContasDaFila({ hoje: now, ativo: usaRemoto, fora: anosDaTela });
+  const contasDaFila = useMemo(
+    () => (usaRemoto ? contasDaFilaDaTela({ daTela: financeiro.expenses, anosDaTela, deFora: contasDeFora.contas }) : financeiro.expenses),
+    [usaRemoto, financeiro.expenses, anosDaTela, contasDeFora.contas],
+  );
   const fila = useMemo(
     () =>
       buildFilaFinanceira({
-        expenses: financeiro.expenses.filter((expense) => !expense.categoryRef.startsWith("cat-poup-")),
+        expenses: contasDaFila.filter((expense) => !expense.categoryRef.startsWith("cat-poup-")),
         purchases: financeiro.purchases,
         notasAnexadas: notasAnexadasSet,
         hoje: now,
       }),
-    [financeiro.expenses, financeiro.purchases, notasAnexadasSet, now],
+    [contasDaFila, financeiro.purchases, notasAnexadasSet, now],
   );
 
   const monthExpenses = useMemo(
@@ -290,7 +344,8 @@ export function FinanceiroContasPage() {
       .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month)
       .filter((expense) => {
         if (statusFilter === "pendentes") return !expense.paidAt;
-        if (statusFilter === "vencidas") return !expense.paidAt && expense.dueDate < now;
+        // Vencida = passou do DIA DE PAGAR (08/10/2026), a mesma régua da fila do dia.
+        if (statusFilter === "vencidas") return !expense.paidAt && diaDePagar(expense.dueDate) < now;
         if (statusFilter === "pagas") return Boolean(expense.paidAt);
         if (statusFilter === "compras") return compraPorConta.has(expense.id);
         return true;
@@ -323,7 +378,9 @@ export function FinanceiroContasPage() {
 
   const totals = useMemo(() => {
     const all = financeiro.expenses.filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month);
-    const vencidas = all.filter((expense) => !expense.paidAt && expense.dueDate < now);
+    // Pelo DIA DE PAGAR (revisão de 08/10/2026): no sábado, a conta do feriado de
+    // segunda já conta aqui, como na fila e no Início — a tela não se contradiz.
+    const vencidas = all.filter((expense) => !expense.paidAt && diaDePagar(expense.dueDate) < now);
     return {
       total: all.reduce((sum, expense) => sum + expense.amount, 0),
       pending: all.filter((expense) => !expense.paidAt).reduce((sum, expense) => sum + expense.amount, 0),
@@ -341,7 +398,7 @@ export function FinanceiroContasPage() {
     [financeiro.expenses, financeiro.categories, month],
   );
   const avisosLegado = useMemo(
-    () => upcomingExpenses(semProvisoes(financeiro.expenses, financeiro.categories), now, AVISO_DIAS),
+    () => upcomingExpenses(semProvisoes(financeiro.expenses, financeiro.categories), now, AVISO_DIAS, 60, diaDePagar),
     [financeiro.expenses, financeiro.categories, now],
   );
 
@@ -739,37 +796,137 @@ export function FinanceiroContasPage() {
     abrirFormulario();
   }
 
+  // ---- Papel & Musgo (08/10/2026): o que o cabeçalho e o "saber" do mês dizem ----
+  // Tudo derivado do que a tela já calculava (fila e totais); nada novo é gravado.
+  const nomeMes = nomeDoMes(month);
+  const ehMesCorrente = month === now.slice(0, 7);
+  const diasUteisDoMesAtual = useMemo(() => diasUteisDoMes(month), [month]);
+  const diaUtilDeHoje = ehMesCorrente ? diasUteisDoMesAtual.filter((dia) => dia <= now).length : 0;
+  const daquiASete = useMemo(() => {
+    const [ano, mes, dia] = now.split("-").map(Number);
+    const data = new Date(ano, mes - 1, dia + 7);
+    return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}-${String(data.getDate()).padStart(2, "0")}`;
+  }, [now]);
+  const proximosSeteNoMes = useMemo(
+    () =>
+      financeiro.expenses
+        .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === month)
+        // Pelo dia de pagar, para não contar a mesma conta em "vencidas" e aqui.
+        .filter((expense) => !expense.paidAt && diaDePagar(expense.dueDate) >= now && diaDePagar(expense.dueDate) <= daquiASete)
+        .reduce((soma, expense) => soma + expense.amount, 0),
+    [financeiro.expenses, month, now, daquiASete],
+  );
+  const restoDoMes = Math.max(0, totals.pending - totals.overdueValor - proximosSeteNoMes);
+  const pctPago = totals.total > 0 ? (totals.pago / totals.total) * 100 : 0;
+  const pctSemana = totals.total > 0 ? (proximosSeteNoMes / totals.total) * 100 : 0;
+
+  const fraseDoTopo: ReactNode = (() => {
+    const partes: ReactNode[] = [];
+    const nVencidas = fila.vencidas.length;
+    const nHoje = fila.vencemHoje.length;
+    const nSemana = fila.semana.length;
+    // No fim de semana ou feriado, há conta que passou do dia de pagar sem ter
+    // vencido ainda (revisão de 08/10/2026): a frase não diz "venceu" para ela.
+    const aindaNaoVenceram = fila.vencidas.some((item) => item.data >= now);
+    if (nVencidas) {
+      partes.push(
+        <span key="vencidas" className="alerta">
+          {porExtenso(nVencidas)}{" "}
+          {aindaNaoVenceram
+            ? nVencidas === 1
+              ? "conta passou do dia de pagar"
+              : "contas passaram do dia de pagar"
+            : nVencidas === 1
+              ? "conta venceu"
+              : "contas venceram"}{" "}
+          sem pagamento: {moneyFin(fila.totais.vencidas)}.{" "}
+        </span>,
+      );
+    }
+    // Dia de pagar (08/10/2026): com conta de sábado/domingo/feriado puxada para
+    // hoje, a frase diz "para pagar hoje" — "vence hoje" seria falso para ela.
+    const antecipadas = fila.vencemHoje.filter((item) => item.pagaAntes).length;
+    if (nHoje) {
+      partes.push(
+        <span key="hoje">
+          <strong>
+            {porExtenso(nHoje)} {nHoje === 1 ? "conta" : "contas"}
+          </strong>{" "}
+          {antecipadas ? "para pagar" : nHoje === 1 ? "vence" : "vencem"} hoje: {moneyFin(fila.totais.vencemHoje)}
+          {antecipadas ? ` (${antecipadas === nHoje && nHoje === 1 ? "ela vence" : antecipadas === 1 ? "uma vence" : `${antecipadas} vencem`} no fim de semana ou feriado)` : ""}.{" "}
+        </span>,
+      );
+    } else if (!nVencidas) {
+      partes.push(<span key="nada">Nada vencido e nada para pagar hoje. </span>);
+    }
+    if (nSemana) {
+      partes.push(
+        <span key="semana">
+          Nos próximos 7 dias saem mais {moneyFin(fila.totais.semana)} em {quantos(nSemana, "conta")}.
+        </span>,
+      );
+    } else {
+      partes.push(<span key="semana-livre">Os próximos 7 dias estão livres.</span>);
+    }
+    return partes;
+  })();
+
+  const avisoDaTela = feedback ? (
+    <AvisoDaTela
+      tom="info"
+      onFechar={() => {
+        setFeedback("");
+        setDesfazer(null);
+      }}
+      acao={
+        desfazer && desfazer.texto === feedback ? (
+          <Botao
+            variante="secundario"
+            tamanho="pq"
+            icone={<Undo2 className="h-4 w-4" aria-hidden="true" />}
+            onClick={() => {
+              desfazer.acao();
+              setDesfazer(null);
+              setFeedback("Desfeito.");
+            }}
+          >
+            Desfazer
+          </Botao>
+        ) : null
+      }
+    >
+      {feedback}
+    </AvisoDaTela>
+  ) : null;
+
+  /** Filtra a planilha pelo razão do mês e leva a tela até ela. */
+  function filtrarPlanilha(filtro: typeof statusFilter) {
+    setStatusFilter(filtro);
+    window.setTimeout(() => planilhaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
+  const classeLinhaRazao =
+    "flex w-full items-center justify-between gap-3 border-b border-fio py-3 text-left transition-colors hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco";
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Contas a Pagar" module="fin-contas">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">{financeiro.syncMode}</Badge>
-              </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Contas a Pagar
-                <InfoTip title="Por que a categoria é obrigatória?">
-                  A categoria é o elo com a P12: cada conta lançada aqui já soma na célula certa da matriz — o trabalho manual de
-                  "somar na P12 conforme cada item" deixa de existir. Obras e capex ficam marcados à parte, como pede o Plano de Virada.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Boletos, pix e contas recorrentes com categoria P12 obrigatória. Fatura de cartão entra como uma conta única.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" aria-label="Mês" />
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Financeiro · Pagar"
+          titulo="Contas a pagar"
+          frase={fraseDoTopo}
+          acoes={
+            <>
+              <label className="flex items-center gap-2">
+                <span className="sr-only">Mês</span>
+                <input type="month" value={month} onChange={(event) => setMonth(event.target.value || now.slice(0, 7))} className={cn(CAMPO, "w-[176px]")} aria-label="Mês" />
+              </label>
               {/* As saídas do mês em Excel, aqui — não no fim do Painel. */}
               <BaixarPlanilhaButton
                 chave="contas-a-pagar"
                 rotulo="Baixar contas"
+                className={cn(botaoClasses({ variante: "secundario" }), "shadow-none backdrop-blur-none")}
                 dados={{
                   sales: financeiro.sales,
                   expenses: financeiro.expenses,
@@ -780,68 +937,166 @@ export function FinanceiroContasPage() {
                   monthKey: month,
                 }}
               />
-            </div>
-          </div>
-        </motion.section>
+              {readOnly ? null : (
+                <Botao variante="secundario" icone={<Plus className="h-4 w-4" aria-hidden="true" />} onClick={() => abrirFormulario()}>
+                  Nova conta
+                </Botao>
+              )}
+            </>
+          }
+        />
 
-        {/* Quatro números que respondem "como está o mês" — e cada um filtra a planilha ao toque. */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <button type="button" onClick={() => setStatusFilter("todas")} className={cn("rounded-lg border p-4 text-left transition hover:border-brand-musgo/40", statusFilter === "todas" ? "border-brand-musgo/40 bg-white/80" : "border-brand-oliva/14 bg-white/55")}>
-            <CircleDollarSign className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Total do mês</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totals.total)}</p>
-            <p className="text-xs text-muted-foreground">pago {moneyFin(totals.pago)}</p>
-          </button>
-          <button type="button" onClick={() => setStatusFilter("pendentes")} className={cn("rounded-lg border p-4 text-left transition hover:border-brand-musgo/40", statusFilter === "pendentes" ? "border-brand-musgo/40 bg-white/80" : "border-brand-oliva/14 bg-white/55")}>
-            <CalendarClock className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Ainda a pagar</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totals.pending)}</p>
-            <p className="text-xs text-muted-foreground">{monthExpenses.filter((expense) => !expense.paidAt).length || totals.pending ? "toque para ver só as abertas" : "tudo pago"}</p>
-          </button>
-          <button type="button" onClick={() => setStatusFilter("vencidas")} className={cn("rounded-lg border p-4 text-left transition", totals.overdue ? "border-red-200 bg-red-50 hover:border-red-300" : "border-brand-oliva/14 bg-white/55 hover:border-brand-musgo/40", statusFilter === "vencidas" && "ring-2 ring-red-300")}>
-            <CalendarClock className={cn("h-5 w-5", totals.overdue ? "text-red-700" : "text-brand-musgo")} aria-hidden="true" />
-            <p className={cn("mt-2 text-sm font-semibold", totals.overdue ? "text-red-800" : "text-brand-musgo")}>Vencidas sem pagamento</p>
-            <p className={cn("text-2xl font-bold", totals.overdue ? "text-red-800" : "text-brand-tinta")}>{moneyFin(totals.overdueValor)}</p>
-            <p className={cn("text-xs", totals.overdue ? "text-red-800/80" : "text-muted-foreground")}>{totals.overdue ? `${totals.overdue} conta(s) · toque para ver` : "nenhuma"}</p>
-          </button>
-          <div className="rounded-lg border border-brand-oliva/14 bg-white/55 p-4">
-            <ListChecks className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            <p className="mt-2 text-sm font-semibold text-brand-musgo">Próximos 7 dias</p>
-            <p className="text-2xl font-bold text-brand-tinta">{moneyFin(fila.semana.reduce((soma, item) => soma + item.valor, 0) + fila.vencemHoje.reduce((soma, item) => soma + item.valor, 0))}</p>
-            <p className="text-xs text-muted-foreground">{fila.vencemHoje.length + fila.semana.length} conta(s), hoje incluído</p>
-          </div>
+        {!formAberto ? avisoDaTela : null}
+
+        {/* DECIDIR (folha) · SABER (o mês em contas). */}
+        <div className="grid items-start gap-8 max-md:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          <FilaDoDiaCard
+            fila={fila}
+            readOnly={readOnly}
+            onPagar={pagarConta}
+            podeAprovar={podeAprovar && !readOnly}
+            onAprovar={aprovarConta}
+            onAdiar={adiarConta}
+            onEditar={startEditing}
+            onChegou={compraChegou}
+            onVirarConta={compraVirarConta}
+            onAnotarNf={anotarNfDaCompra}
+            categoriaDe={(expense) => categoryById.get(expense.categoryRef)?.name ?? ""}
+          />
+
+          <BlocoSaber as="aside" aria-labelledby="mes-em-contas" className="grid min-w-0 gap-4 xl:sticky xl:top-24">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="mes-em-contas" className={RUBRICA}>
+                {nomeDoMesMaiusculo(month)} em contas
+              </h2>
+              <span className="whitespace-nowrap text-[13px] font-medium text-tinta-2">
+                {ehMesCorrente && diaUtilDeHoje > 0
+                  ? `dia útil ${diaUtilDeHoje} de ${diasUteisDoMesAtual.length}`
+                  : month < now.slice(0, 7)
+                    ? "mês que passou"
+                    : month > now.slice(0, 7)
+                      ? "mês que vem"
+                      : ""}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <NumeroEmReais valor={totals.pending} tamanho="grande" centavos={false} />
+              <span className="text-[13px] font-medium leading-5 text-tinta-2">
+                falta pagar
+                <br />
+                de {moneyFin(totals.total)}
+              </span>
+            </div>
+
+            <div
+              className="flex h-3 overflow-hidden rounded-controle bg-fio"
+              role="img"
+              aria-label={`Pago ${moneyFin(totals.pago)}; próximos 7 dias ${moneyFin(proximosSeteNoMes)}; resto do mês ${moneyFin(restoDoMes)}`}
+            >
+              <span className="h-full bg-musgo" style={{ width: `${Math.min(100, pctPago)}%` }} />
+              <span
+                className="h-full bg-[repeating-linear-gradient(135deg,rgb(var(--oliva-rgb))_0_2px,transparent_2px_5px)] shadow-[inset_0_0_0_1px_rgb(var(--oliva-rgb))]"
+                style={{ width: `${Math.min(100 - Math.min(100, pctPago), pctSemana)}%` }}
+              />
+            </div>
+            <p className="-mt-1 text-sm font-medium leading-5 text-tinta-2 [text-wrap:pretty]">
+              {totals.total > 0
+                ? `${Math.round(pctPago)}% das contas de ${nomeMes} já foram pagas.`
+                : `Nenhuma conta lançada em ${nomeMes}.`}
+            </p>
+
+            {/* O razão do mês: cada linha filtra a planilha de baixo (como os quatro cartões de antes). */}
+            <dl className="border-t border-fio-2">
+              <div>
+                <dt className="sr-only">Já pago</dt>
+                <dd>
+                  <button type="button" className={classeLinhaRazao} onClick={() => filtrarPlanilha("pagas")} aria-pressed={statusFilter === "pagas"}>
+                    <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-tinta-2">
+                      <i className="h-3 w-3 shrink-0 rounded-controle bg-musgo" aria-hidden="true" />
+                      Já pago
+                    </span>
+                    <span className="whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(totals.pago)}</span>
+                  </button>
+                </dd>
+              </div>
+              <div>
+                <dt className="sr-only">Próximos 7 dias</dt>
+                <dd>
+                  <button type="button" className={classeLinhaRazao} onClick={() => filtrarPlanilha("pendentes")}>
+                    <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-tinta-2">
+                      <i
+                        className="h-3 w-3 shrink-0 rounded-controle bg-[repeating-linear-gradient(135deg,rgb(var(--oliva-rgb))_0_2px,transparent_2px_5px)] shadow-[inset_0_0_0_1px_rgb(var(--oliva-rgb))]"
+                        aria-hidden="true"
+                      />
+                      Próximos 7 dias
+                    </span>
+                    <span className="whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(proximosSeteNoMes)}</span>
+                  </button>
+                </dd>
+              </div>
+              <div>
+                <dt className="sr-only">Resto do mês</dt>
+                <dd>
+                  <button type="button" className={classeLinhaRazao} onClick={() => filtrarPlanilha("pendentes")} aria-pressed={statusFilter === "pendentes"}>
+                    <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-tinta-2">
+                      <i className="h-3 w-3 shrink-0 rounded-controle bg-fio shadow-[inset_0_0_0_1px_rgb(var(--fio-2-rgb))]" aria-hidden="true" />
+                      Resto do mês
+                    </span>
+                    <span className="whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(restoDoMes)}</span>
+                  </button>
+                </dd>
+              </div>
+              <div>
+                <dt className="sr-only">Vencidas sem pagamento</dt>
+                <dd>
+                  <button type="button" className={classeLinhaRazao} onClick={() => filtrarPlanilha("vencidas")} aria-pressed={statusFilter === "vencidas"}>
+                    <span className="flex min-w-0 items-center gap-3 text-sm font-medium text-tinta-2">
+                      <i className={cn("h-3 w-3 shrink-0 rounded-controle", totals.overdue ? "bg-atencao" : "bg-ok")} aria-hidden="true" />
+                      Vencidas sem pagamento
+                    </span>
+                    {totals.overdue ? (
+                      <span className="whitespace-nowrap text-base font-bold tabular-nums text-atencao">
+                        {moneyFin(totals.overdueValor)} · {totals.overdue}
+                      </span>
+                    ) : (
+                      <span className="text-sm font-bold text-ok">nenhuma</span>
+                    )}
+                  </button>
+                </dd>
+              </div>
+            </dl>
+
+            <LinkSeta to="/financeiro/lucro">Abrir o Lucro do mês</LinkSeta>
+          </BlocoSaber>
         </div>
 
-        <FilaDoDiaCard
-          fila={fila}
-          readOnly={readOnly}
-          onPagar={pagarConta}
-          podeAprovar={podeAprovar && !readOnly}
-          onAprovar={aprovarConta}
-          onAdiar={adiarConta}
-          onEditar={startEditing}
-          onChegou={compraChegou}
-          onVirarConta={compraVirarConta}
-          onAnotarNf={anotarNfDaCompra}
-        />
         <CompromissosLucroCard
           compromissos={compromissosLucro}
           readOnly={readOnly}
           hoje={now}
           onRegistrar={(conta) => financeiro.addExpense(conta)}
         />
-        {semNotaNoMes.length ? (
-          <p className="rounded-lg border border-brand-dourado/40 bg-brand-creme/40 px-4 py-2 text-xs text-brand-tinta">
-            <strong>{semNotaNoMes.length} conta(s) deste mês sem nota fiscal definida</strong> ({moneyFin(semNotaNoMes.reduce((soma, item) => soma + item.amount, 0))}) — a coluna
-            &quot;Nota fiscal&quot; da planilha resolve em um clique: anexar · vai mandar · não gera nota.
-          </p>
-        ) : null}
-        {avisosLegado.vencidas.length > 12 ? (
-          <p className="text-xs text-muted-foreground">Há {avisosLegado.vencidas.length} contas vencidas no total — a Fila mostra as 12 mais antigas de cada coluna; o resto está na planilha.</p>
+
+        {semNotaNoMes.length || avisosLegado.vencidas.length > 12 ? (
+          <div className="grid gap-2">
+            {semNotaNoMes.length ? (
+              <AvisoDaTela tom="atencao">
+                <strong>{quantos(semNotaNoMes.length, "conta")} deste mês sem nota fiscal definida</strong> (
+                {moneyFin(semNotaNoMes.reduce((soma, item) => soma + item.amount, 0))}). A coluna &quot;Nota fiscal&quot; da planilha resolve em um clique: anexar ·
+                vai mandar · não gera nota.
+              </AvisoDaTela>
+            ) : null}
+            {avisosLegado.vencidas.length > 12 ? (
+              <p className={AJUDA}>
+                Há {avisosLegado.vencidas.length} contas vencidas no total — a fila mostra as 12 mais antigas de cada grupo; o resto está na planilha.
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {readOnly ? null : (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid items-start gap-6 lg:grid-cols-2">
             <LancarRapidoCard hoje={now} readOnly={readOnly} onLeitura={aplicarLeitura} onPreset={aplicarPreset} />
             <CaixaEntradaCard
               itens={inboxItens}
@@ -856,233 +1111,201 @@ export function FinanceiroContasPage() {
           </div>
         )}
 
-        {feedback ? (
-          <div className="flex flex-wrap items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-            <span className="flex-1">{feedback}</span>
-            {desfazer && desfazer.texto === feedback ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs"
+        <div ref={formRef} className={cn("scroll-mt-24", (readOnly || !formAberto) && "hidden")}>
+          <BlocoFolha as="section" aria-labelledby="form-conta-titulo">
+            <div className={CABECA_DA_FOLHA}>
+              <TituloDoBloco id="form-conta-titulo" icone={editingExpenseId ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}>
+                {editingExpenseId ? "Corrigir conta" : "Nova conta"}
+              </TituloDoBloco>
+              <InfoTip title="Por que a categoria é obrigatória?">
+                A categoria é o elo com a P12: cada conta lançada aqui já soma na célula certa da matriz — o trabalho manual de
+                &quot;somar na P12 conforme cada item&quot; deixa de existir. Obras e capex ficam marcados à parte, como pede o Plano de Virada.
+              </InfoTip>
+              <Botao
+                variante="fantasma"
+                tamanho="pq"
+                className="ml-auto"
+                icone={<X className="h-4 w-4" aria-hidden="true" />}
                 onClick={() => {
-                  desfazer.acao();
-                  setDesfazer(null);
-                  setFeedback("Desfeito.");
+                  resetForm();
+                  setFeedback("");
                 }}
               >
-                <Undo2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Desfazer
-              </Button>
-            ) : null}
-            <button type="button" className="text-muted-foreground" aria-label="Fechar aviso" onClick={() => { setFeedback(""); setDesfazer(null); }}>
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-        ) : null}
-
-        {readOnly ? null : !formAberto ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-3">
-            <Button type="button" variant="outline" onClick={() => abrirFormulario()}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Nova conta (digitar à mão)
-            </Button>
-            <p className="text-xs text-muted-foreground">Ou cole o boleto no Lançar rápido acima — ele abre o formulário já preenchido.</p>
-          </div>
-        ) : null}
-        <div ref={formRef} className={cn((readOnly || !formAberto) && "hidden")}>
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                {editingExpenseId ? "Corrigir conta" : "Nova conta"}
-              </CardTitle>
-              <Button type="button" variant="ghost" size="sm" onClick={() => { resetForm(); setFeedback(""); }}>
-                <X className="mr-1 h-4 w-4" aria-hidden="true" /> Fechar
-              </Button>
+                Fechar
+              </Botao>
             </div>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={handleSubmit}>
-              <div className="sm:col-span-2">
-                <Label>Descrição</Label>
-                <Input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ex.: STIN HCG 1/2, Aluguel 512-515..." />
-              </div>
-              <div>
-                <Label>Valor</Label>
-                <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0,00" inputMode="decimal" />
-              </div>
-              <div>
-                <Label>Vencimento</Label>
-                <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
-              </div>
-              <div className="sm:col-span-2">
-                <Label>Categoria P12 (obrigatória)</Label>
-                <select value={categoryRef} onChange={(event) => setCategoryRef(event.target.value)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                  <option value="">Selecione a categoria...</option>
-                  {categoriesByGroup.map((group) => (
-                    <optgroup key={group.groupKey} label={finGroupLabels[group.groupKey]}>
-                      {group.categories.map((category) => (
-                        <option key={category.id} value={category.id}>{category.name}{category.isCapex ? " · CAPEX" : ""}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label>Forma</Label>
-                <select value={method} onChange={(event) => setMethod(event.target.value as FinPaymentMethod)} className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm">
-                  {expensePaymentMethods.map((item) => (
-                    <option key={item} value={item}>{paymentMethodLabels[item]}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label className="flex items-center gap-1">
-                  Parcela (ex.: 1/12)
-                  <InfoTip title="Boleto parcelado">
-                    Escreva a parcela desta conta e o total (1/12, 3/10…). Ao lançar, o app cria TODAS as parcelas
-                    seguintes, uma em cada mês, até a última — cada uma entra na P12 no mês do seu vencimento. Corrigir o
-                    valor de uma parcela oferece ajustar as seguintes que ainda estão em aberto.
-                  </InfoTip>
-                </Label>
-                <Input
-                  value={installment}
-                  onChange={(event) => setInstallment(event.target.value)}
-                  placeholder="Opcional — ex.: 1/12"
-                  inputMode="text"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Label>Fornecedor</Label>
-                <Input value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Opcional" />
-              </div>
-              <div className="sm:col-span-2">
-                <Label>NF / documento</Label>
-                <Input value={documentNote} onChange={(event) => setDocumentNote(event.target.value)} placeholder="Nome do arquivo ou nº da nota (opcional)" />
-              </div>
-              <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6 sm:col-span-2 lg:col-span-4">
-                <input type="checkbox" checked={ehCompra} onChange={(event) => setEhCompra(event.target.checked)} className="mt-1" />
-                <span className="flex-1">
-                  <span className="flex items-center gap-1.5 font-semibold text-brand-tinta">
-                    <Package className="h-4 w-4 text-brand-musgo" aria-hidden="true" /> Também é uma compra (chega mercadoria)
-                  </span>
-                  <span className="text-muted-foreground">
-                    Medicação, pellets, insumos… A compra nasce junto, ligada a esta conta: fica na Fila até chegar e dá entrada no
-                    estoque do setor. Não precisa lançar de novo em Compras.
-                  </span>
-                  {ehCompra ? (
-                    <span className="mt-2 grid gap-2 sm:grid-cols-2">
-                      <span>
-                        <Label>Entrega prevista</Label>
-                        <Input type="date" value={deliveryEta} onChange={(event) => setDeliveryEta(event.target.value)} />
-                      </span>
-                      <span>
-                        <Label>Estoque</Label>
-                        <select
-                          value={estoqueSetor}
-                          onChange={(event) => setEstoqueSetor(event.target.value as "" | EstoqueSetor)}
-                          className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                        >
-                          <option value="">Não é item de estoque</option>
-                          {/* 06/10/2026: todos os setores da tabela `setor` (cada cargo é um setor). */}
-                          {setoresEmOrdem.map((chave) => (
-                            <option key={chave} value={chave}>
-                              {setorNomes[chave]}
-                            </option>
-                          ))}
-                        </select>
-                      </span>
+            <div className="grid gap-4 p-6 max-md:p-4">
+              {formAberto ? avisoDaTela : null}
+              <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={handleSubmit}>
+                <Campo rotulo="Descrição" htmlFor="conta-descricao" className="sm:col-span-2">
+                  <input id="conta-descricao" className={CAMPO} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ex.: STIN HCG 1/2, Aluguel 512-515..." />
+                </Campo>
+                <Campo rotulo="Valor (R$)" htmlFor="conta-valor">
+                  <input id="conta-valor" className={cn(CAMPO, "text-right tabular-nums")} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0,00" inputMode="decimal" />
+                </Campo>
+                <Campo rotulo="Vencimento" htmlFor="conta-vencimento">
+                  <input id="conta-vencimento" className={CAMPO} type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+                </Campo>
+                <Campo rotulo="Categoria P12" htmlFor="conta-categoria" className="sm:col-span-2" ajuda="Obrigatória: é ela que faz o número bater sozinho na P12.">
+                  <select id="conta-categoria" value={categoryRef} onChange={(event) => setCategoryRef(event.target.value)} className={CAMPO}>
+                    <option value="">Selecione a categoria...</option>
+                    {categoriesByGroup.map((group) => (
+                      <optgroup key={group.groupKey} label={finGroupLabels[group.groupKey]}>
+                        {group.categories.map((category) => (
+                          <option key={category.id} value={category.id}>{category.name}{category.isCapex ? " · CAPEX" : ""}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </Campo>
+                <Campo rotulo="Forma" htmlFor="conta-forma">
+                  <select id="conta-forma" value={method} onChange={(event) => setMethod(event.target.value as FinPaymentMethod)} className={CAMPO}>
+                    {expensePaymentMethods.map((item) => (
+                      <option key={item} value={item}>{paymentMethodLabels[item]}</option>
+                    ))}
+                  </select>
+                </Campo>
+                <Campo
+                  rotulo="Parcela"
+                  htmlFor="conta-parcela"
+                  opcional
+                  dica={
+                    <InfoTip title="Boleto parcelado">
+                      Escreva a parcela desta conta e o total (1/12, 3/10…). Ao lançar, o app cria TODAS as parcelas
+                      seguintes, uma em cada mês, até a última — cada uma entra na P12 no mês do seu vencimento. Corrigir o
+                      valor de uma parcela oferece ajustar as seguintes que ainda estão em aberto.
+                    </InfoTip>
+                  }
+                >
+                  <input id="conta-parcela" className={CAMPO} value={installment} onChange={(event) => setInstallment(event.target.value)} placeholder="Ex.: 1/12" inputMode="text" />
+                </Campo>
+                <Campo rotulo="Fornecedor" htmlFor="conta-fornecedor" opcional className="sm:col-span-2">
+                  <input id="conta-fornecedor" className={CAMPO} value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Ex.: Stin Pharma" />
+                </Campo>
+                <Campo rotulo="NF / documento" htmlFor="conta-documento" opcional className="sm:col-span-2">
+                  <input id="conta-documento" className={CAMPO} value={documentNote} onChange={(event) => setDocumentNote(event.target.value)} placeholder="Nome do arquivo ou nº da nota" />
+                </Campo>
+                <label className="flex cursor-pointer items-start gap-3 rounded-controle bg-saber p-4 text-sm leading-6 sm:col-span-2 lg:col-span-4">
+                  <input type="checkbox" checked={ehCompra} onChange={(event) => setEhCompra(event.target.checked)} className={cn(MARCAR, "mt-1")} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 font-bold text-tinta">
+                      <Package className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Também é uma compra (chega mercadoria)
                     </span>
-                  ) : null}
-                </span>
-              </label>
-              <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6 sm:col-span-2 lg:col-span-4">
-                <input
-                  type="checkbox"
-                  checked={recorrente}
-                  onChange={(event) => setRecorrente(event.target.checked)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="flex items-center gap-1.5 font-semibold text-brand-tinta">
-                    <Repeat className="h-4 w-4 text-brand-musgo" aria-hidden="true" /> Repete todo mês
+                    <span className="block text-[13px] font-medium leading-5 text-tinta-2">
+                      Medicação, pellets, insumos… A compra nasce junto, ligada a esta conta: fica na Fila até chegar e dá entrada no
+                      estoque do setor. Não precisa lançar de novo em Compras.
+                    </span>
+                    {ehCompra ? (
+                      <span className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <span className="grid gap-2">
+                          <span className={ROTULO_CAMPO}>Entrega prevista</span>
+                          <input type="date" className={CAMPO} value={deliveryEta} onChange={(event) => setDeliveryEta(event.target.value)} aria-label="Entrega prevista" />
+                        </span>
+                        <span className="grid gap-2">
+                          <span className={ROTULO_CAMPO}>Estoque</span>
+                          <select
+                            value={estoqueSetor}
+                            onChange={(event) => setEstoqueSetor(event.target.value as "" | EstoqueSetor)}
+                            className={CAMPO}
+                            aria-label="Estoque"
+                          >
+                            <option value="">Não é item de estoque</option>
+                            {/* 06/10/2026: todos os setores da tabela `setor` (cada cargo é um setor). */}
+                            {setoresEmOrdem.map((chave) => (
+                              <option key={chave} value={chave}>
+                                {setorNomes[chave]}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                      </span>
+                    ) : null}
                   </span>
-                  <span className="text-muted-foreground">
-                    Aluguel, energia, assinaturas… A conta do mês seguinte nasce sozinha no mesmo dia de vencimento (o valor
-                    pode ser editado depois). Para encerrar, edite a última e desmarque.
-                  </span>
-                </span>
-              </label>
-              {previewParcelas ? (
-                <div className="rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3 text-xs leading-5 sm:col-span-2 lg:col-span-4">
-                  <p className="flex items-center gap-1.5 font-bold text-brand-tinta">
-                    <Layers className="h-4 w-4 text-brand-dourado" aria-hidden="true" />
-                    {previewParcelas.mensagem}
-                  </p>
-                  <p className="mt-0.5 text-muted-foreground">{previewParcelas.detalhe}</p>
-                </div>
-              ) : null}
-              {editingExpenseId && parcelasSeguintesDaEdicao.length ? (
-                <label className="flex items-start gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3 text-sm leading-6 sm:col-span-2 lg:col-span-4">
-                  <input
-                    type="checkbox"
-                    checked={aplicarNasSeguintes}
-                    onChange={(event) => setAplicarNasSeguintes(event.target.checked)}
-                    className="mt-1 h-4 w-4"
-                  />
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 rounded-controle bg-saber p-4 text-sm leading-6 sm:col-span-2 lg:col-span-4">
+                  <input type="checkbox" checked={recorrente} onChange={(event) => setRecorrente(event.target.checked)} className={cn(MARCAR, "mt-1")} />
                   <span>
-                    <span className="font-semibold text-brand-tinta">
-                      Aplicar também às {parcelasSeguintesDaEdicao.length} parcelas seguintes em aberto
+                    <span className="flex items-center gap-2 font-bold text-tinta">
+                      <Repeat className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Repete todo mês
                     </span>
-                    <span className="block text-muted-foreground">
-                      Corrige valor, categoria, forma e vencimento das próximas. Parcela já paga nunca é alterada.
+                    <span className="block text-[13px] font-medium leading-5 text-tinta-2">
+                      Aluguel, energia, assinaturas… A conta do mês seguinte nasce sozinha no mesmo dia de vencimento (o valor
+                      pode ser editado depois). Para encerrar, edite a última e desmarque.
                     </span>
                   </span>
                 </label>
-              ) : null}
-              <div className="sm:col-span-2 lg:col-span-4">
-                <LiquidButton type="submit" size="sm">
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  {editingExpenseId ? "Salvar correção" : "Lançar conta"}
-                </LiquidButton>
-                {editingExpenseId ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => { resetForm(); setFeedback(""); }}>
-                    Cancelar edição
-                  </Button>
+                {previewParcelas ? (
+                  <div className="rounded-controle bg-ouro-claro p-4 text-[13px] leading-5 sm:col-span-2 lg:col-span-4">
+                    <p className="flex items-center gap-2 font-bold text-tinta">
+                      <Layers className="h-4 w-4 text-ouro" aria-hidden="true" />
+                      {previewParcelas.mensagem}
+                    </p>
+                    <p className="mt-1 font-medium text-tinta-2">{previewParcelas.detalhe}</p>
+                  </div>
                 ) : null}
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                {editingExpenseId && parcelasSeguintesDaEdicao.length ? (
+                  <label className="flex cursor-pointer items-start gap-3 rounded-controle bg-saber p-4 text-sm leading-6 sm:col-span-2 lg:col-span-4">
+                    <input
+                      type="checkbox"
+                      checked={aplicarNasSeguintes}
+                      onChange={(event) => setAplicarNasSeguintes(event.target.checked)}
+                      className={cn(MARCAR, "mt-1")}
+                    />
+                    <span>
+                      <span className="font-bold text-tinta">
+                        Aplicar também às {parcelasSeguintesDaEdicao.length} parcelas seguintes em aberto
+                      </span>
+                      <span className="block text-[13px] font-medium leading-5 text-tinta-2">
+                        Corrige valor, categoria, forma e vencimento das próximas. Parcela já paga nunca é alterada.
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4">
+                  <Botao type="submit" variante="primario" icone={editingExpenseId ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}>
+                    {editingExpenseId ? "Salvar correção" : "Lançar conta"}
+                  </Botao>
+                  {editingExpenseId ? (
+                    <Botao
+                      variante="fantasma"
+                      onClick={() => {
+                        resetForm();
+                        setFeedback("");
+                      }}
+                    >
+                      Cancelar edição
+                    </Botao>
+                  ) : null}
+                </div>
+              </form>
+            </div>
+          </BlocoFolha>
         </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-lg">Contas de {month.split("-").reverse().join("/")}</CardTitle>
-              <div className="flex gap-1.5">
-                {(["todas", "pendentes", "vencidas", "pagas", "compras"] as const).map((filter) => (
-                  <Button key={filter} type="button" size="sm" variant={statusFilter === filter ? "default" : "outline"} onClick={() => setStatusFilter(filter)}>
-                    {filter === "todas" ? "Todas" : filter === "pendentes" ? "A pagar" : filter === "vencidas" ? "Vencidas" : filter === "pagas" ? "Pagas" : "Compras"}
-                  </Button>
-                ))}
-              </div>
-            </div>
+        {/* A PLANILHA DO MÊS: filtros, lote e a tabela densa. O BlocoFolha não
+            repassa ref (08/10/2026): a âncora do "levar até a planilha" é o div. */}
+        <div ref={planilhaRef} className="min-w-0 scroll-mt-24">
+        <BlocoFolha as="section" aria-labelledby="planilha-contas-titulo" className="min-w-0 overflow-hidden">
+          <div className={CABECA_DA_FOLHA}>
+            <TituloDoBloco id="planilha-contas-titulo" detalhe={`${quantos(monthExpenses.length, "conta")} · ${moneyFin(totaisFiltrados.total)}`}>
+              Contas de {nomeMes} de {month.slice(0, 4)}
+            </TituloDoBloco>
+            <ControleDensidade densidade={densidade} onEscolher={escolherDensidade} className="ml-auto" />
+          </div>
 
+          <div className="grid gap-3 border-b border-fio px-6 py-4 max-md:px-4">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Mostrar">
+              {(["todas", "pendentes", "vencidas", "pagas", "compras"] as const).map((filter) => (
+                <Leitura key={filter} ativo={statusFilter === filter} onClick={() => setStatusFilter(filter)}>
+                  {filter === "todas" ? "Todas" : filter === "pendentes" ? "A pagar" : filter === "vencidas" ? "Vencidas" : filter === "pagas" ? "Pagas" : "Compras"}
+                </Leitura>
+              ))}
+            </div>
             {/* FILTRO DE CATEGORIA (31/07): por grupo da P12, por obra ou por uma
                 categoria específica — com o total do que ficou na tela. */}
-            <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-              <div>
-                <Label htmlFor="filtro-categoria" className="text-xs">
-                  Filtrar por categoria
-                </Label>
-                <select
-                  id="filtro-categoria"
-                  value={categoryFilter}
-                  onChange={(event) => setCategoryFilter(event.target.value)}
-                  className="mt-1 h-10 w-full rounded-md border border-input bg-white/72 px-2 text-sm"
-                >
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+              <Campo rotulo="Categoria" htmlFor="filtro-categoria">
+                <select id="filtro-categoria" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className={CAMPO}>
                   <option value="todas">Todas as categorias</option>
                   <option value="obra">Obra / investimento (CAPEX)</option>
                   {finGroupOrder.map((groupKey) => (
@@ -1102,25 +1325,14 @@ export function FinanceiroContasPage() {
                     ) : null,
                   )}
                 </select>
-              </div>
-              <div>
-                <Label htmlFor="filtro-busca" className="text-xs">
-                  Buscar por descrição, fornecedor ou NF
-                </Label>
-                <Input
-                  id="filtro-busca"
-                  className="mt-1 h-10"
-                  value={buscaConta}
-                  onChange={(event) => setBuscaConta(event.target.value)}
-                  placeholder="Ex.: Jaziel, aluguel, energia…"
-                />
-              </div>
+              </Campo>
+              <Campo rotulo="Buscar por descrição, fornecedor ou NF">
+                <CampoBusca valor={buscaConta} onMudar={setBuscaConta} placeholder="Ex.: Jaziel, aluguel, energia…" rotulo="Buscar conta" />
+              </Campo>
               {filtroAtivo ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-10"
+                <Botao
+                  variante="fantasma"
+                  icone={<X className="h-4 w-4" aria-hidden="true" />}
                   onClick={() => {
                     setCategoryFilter("todas");
                     setBuscaConta("");
@@ -1128,362 +1340,388 @@ export function FinanceiroContasPage() {
                   }}
                 >
                   Limpar filtros
-                </Button>
+                </Botao>
               ) : null}
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-              <ControleDensidade densidade={densidade} onEscolher={escolherDensidade} />
-            </div>
-
             {filtroAtivo ? (
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-brand-dourado/35 bg-brand-creme/30 px-3 py-2 text-xs">
-                <span className="font-bold text-brand-tinta">
-                  <Filter className="mr-1 inline h-3.5 w-3.5 text-brand-dourado" aria-hidden="true" />
-                  {monthExpenses.length} conta(s){nomeDoFiltro ? ` em ${nomeDoFiltro}` : ""}
+              <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] font-medium leading-5 text-tinta-2">
+                <span className="font-bold text-tinta">
+                  {quantos(monthExpenses.length, "conta")}
+                  {nomeDoFiltro ? ` em ${nomeDoFiltro}` : ""}
                 </span>
-                <span className="text-muted-foreground">
-                  Total <strong className="text-brand-tinta">{moneyFin(totaisFiltrados.total)}</strong>
+                <span>
+                  Total <strong className="tabular-nums text-tinta">{moneyFin(totaisFiltrados.total)}</strong>
                 </span>
-                <span className="text-muted-foreground">
-                  A pagar <strong className="text-brand-tinta">{moneyFin(totaisFiltrados.aPagar)}</strong>
+                <span>
+                  A pagar <strong className="tabular-nums text-tinta">{moneyFin(totaisFiltrados.aPagar)}</strong>
                 </span>
-                <span className="text-muted-foreground">
-                  Já pago <strong className="text-brand-tinta">{moneyFin(totaisFiltrados.pago)}</strong>
+                <span>
+                  Já pago <strong className="tabular-nums text-tinta">{moneyFin(totaisFiltrados.pago)}</strong>
                 </span>
-              </div>
+              </p>
             ) : null}
 
             {/* PAGAMENTO EM LOTE (08/09): marque as contas que pagou no banco e dê baixa em todas de uma vez. */}
             {!readOnly && selecionadasVisiveis.length ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-brand-musgo/30 bg-brand-creme/50 px-3 py-2 text-sm">
-                <ListChecks className="h-4 w-4 text-brand-musgo" aria-hidden="true" />
-                <span className="font-semibold text-brand-tinta">
-                  {selecionadasVisiveis.length} selecionada(s) · {moneyFin(selecionadasVisiveis.reduce((soma, expense) => soma + expense.amount, 0))}
+              <div className="flex flex-wrap items-center gap-3 rounded-controle bg-musgo-claro px-4 py-2">
+                <ListChecks className="h-4 w-4 text-musgo" aria-hidden="true" />
+                <span className="text-sm font-bold tabular-nums text-tinta">
+                  {quantos(selecionadasVisiveis.length, "selecionada")} · {moneyFin(selecionadasVisiveis.reduce((soma, expense) => soma + expense.amount, 0))}
                 </span>
-                <Button type="button" size="sm" onClick={pagarSelecionadas}>
-                  <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" /> Marcar pagas hoje
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setSelecionadas(new Set())}>Limpar</Button>
+                <Botao variante="primario" tamanho="pq" onClick={pagarSelecionadas}>
+                  Marcar pagas hoje
+                </Botao>
+                <Botao variante="fantasma" tamanho="pq" onClick={() => setSelecionadas(new Set())}>
+                  Limpar
+                </Botao>
               </div>
             ) : null}
-          </CardHeader>
-          <CardContent>
-            <TabelaRolavel>
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className={cn("text-xs uppercase text-brand-oliva", cabecalhoGrudado)}>
-                  <tr>
-                    {readOnly ? null : (
-                      <th className="w-8 px-2 py-2">
-                        <input
-                          type="checkbox"
-                          aria-label="Selecionar todas as contas em aberto da lista"
-                          checked={selecionaveis.length > 0 && selecionaveis.every((expense) => selecionadas.has(expense.id))}
-                          disabled={!selecionaveis.length}
-                          onChange={(event) => setSelecionadas(event.target.checked ? new Set(selecionaveis.map((expense) => expense.id)) : new Set())}
-                          className="h-4 w-4"
-                        />
-                      </th>
-                    )}
-                    <th className="px-3 py-2">Vencimento</th>
-                    <th className="px-3 py-2">Descrição</th>
-                    <th className="px-3 py-2">Categoria P12</th>
-                    <th className="px-3 py-2">Forma</th>
-                    <th className="px-3 py-2 text-right">Valor</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Nota fiscal</th>
-                    <th className="px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand-oliva/10">
-                  {monthExpenses.length ? (
-                    monthExpenses.map((expense) => {
-                      const category = categoryById.get(expense.categoryRef);
-                      const overdue = !expense.paidAt && expense.dueDate < now;
-                      const serie = installmentSummary(financeiro.expenses, expense);
-                      return (
-                        <tr key={expense.id} className={cn(overdue && "bg-red-50/60", selecionadas.has(expense.id) && "bg-brand-creme/50")}>
-                          {readOnly ? null : (
-                            <td className={cn("px-2", celula)}>
-                              {!expense.paidAt && !isProvisaoExpense(expense, financeiro.categories) ? (
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Selecionar ${expense.description}`}
-                                  checked={selecionadas.has(expense.id)}
-                                  onChange={() => alternarSelecao(expense.id)}
-                                  className="h-4 w-4"
-                                />
-                              ) : null}
-                            </td>
-                          )}
-                          <td className={cn("px-3 whitespace-nowrap", celula)}>
-                            {expense.dueDate.split("-").reverse().join("/")}
-                            {overdue ? <span className="block text-[11px] font-semibold text-red-700">há {diasEntre(expense.dueDate, now)} dia(s)</span> : null}
+          </div>
+
+          <div className="max-h-[68vh] overflow-auto">
+            <table className="w-full min-w-[760px] border-collapse text-left text-sm text-tinta">
+              <thead className={THEAD_GRUDADO}>
+                <tr>
+                  {readOnly ? null : (
+                    <th className={cn(TH_PLANILHA, "w-10 px-3")}>
+                      <input
+                        type="checkbox"
+                        aria-label="Selecionar todas as contas em aberto da lista"
+                        checked={selecionaveis.length > 0 && selecionaveis.every((expense) => selecionadas.has(expense.id))}
+                        disabled={!selecionaveis.length}
+                        onChange={(event) => setSelecionadas(event.target.checked ? new Set(selecionaveis.map((expense) => expense.id)) : new Set())}
+                        className={MARCAR}
+                      />
+                    </th>
+                  )}
+                  <th className={TH_PLANILHA}>Vencimento</th>
+                  <th className={TH_PLANILHA}>Descrição</th>
+                  <th className={TH_PLANILHA}>Categoria P12</th>
+                  <th className={TH_PLANILHA}>Forma</th>
+                  <th className={cn(TH_PLANILHA, "text-right")}>Valor</th>
+                  <th className={TH_PLANILHA}>Situação</th>
+                  <th className={TH_PLANILHA}>Nota fiscal</th>
+                  <th className={TH_PLANILHA}>
+                    <span className="sr-only">Editar ou excluir</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthExpenses.length ? (
+                  monthExpenses.map((expense) => {
+                    const category = categoryById.get(expense.categoryRef);
+                    const overdue = !expense.paidAt && diaDePagar(expense.dueDate) < now;
+                    const serie = installmentSummary(financeiro.expenses, expense);
+                    const compra = compraPorConta.get(expense.id);
+                    return (
+                      <tr
+                        key={expense.id}
+                        className={cn(
+                          "transition-colors duration-150 hover:bg-saber/70",
+                          overdue && "bg-atencao-claro/50",
+                          selecionadas.has(expense.id) && "bg-musgo-claro/70 shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))]",
+                        )}
+                      >
+                        {readOnly ? null : (
+                          <td className={cn(TD_PLANILHA, "px-3", celula)}>
+                            {!expense.paidAt && !isProvisaoExpense(expense, financeiro.categories) ? (
+                              <input
+                                type="checkbox"
+                                aria-label={`Selecionar ${expense.description}`}
+                                checked={selecionadas.has(expense.id)}
+                                onChange={() => alternarSelecao(expense.id)}
+                                className={MARCAR}
+                              />
+                            ) : null}
                           </td>
-                          <td className={cn("px-3", celula)}>
-                            <div className="flex flex-wrap items-center gap-1.5 font-semibold text-brand-tinta">
-                              <span>
-                                {expense.description}
-                                {expense.installmentNum && expense.installmentTotal ? ` · ${expense.installmentNum}/${expense.installmentTotal}` : ""}
-                              </span>
-                              {expense.recorrencia === "MENSAL" ? (
-                                <Badge className="bg-brand-creme text-brand-tinta">
-                                  <Repeat className="mr-1 h-3 w-3" aria-hidden="true" />Recorrente
-                                </Badge>
-                              ) : null}
-                              {serie ? (
-                                <Badge className="bg-brand-creme text-brand-tinta">
-                                  <Layers className="mr-1 h-3 w-3" aria-hidden="true" />
-                                  {serie.faltamLancar ? `${serie.lancadas} de ${serie.total} lançadas` : `${serie.abertas} em aberto`}
-                                </Badge>
-                              ) : null}
-                              {compraPorConta.get(expense.id) ? (
-                                <Badge
-                                  className={cn("text-brand-tinta", compraPorConta.get(expense.id)!.receivedAt ? "bg-emerald-100 text-emerald-800" : "bg-brand-creme")}
-                                  title={compraPorConta.get(expense.id)!.estoqueSetor ? `estoque: ${setorNomes[compraPorConta.get(expense.id)!.estoqueSetor!] ?? compraPorConta.get(expense.id)!.estoqueSetor}` : undefined}
-                                >
-                                  <Package className="mr-1 h-3 w-3" aria-hidden="true" />
-                                  {compraPorConta.get(expense.id)!.receivedAt ? "compra · chegou" : "compra · a caminho"}
-                                </Badge>
-                              ) : null}
-                            </div>
-                            {expense.supplier || expense.documentNote || linhaDigitavelDaConta(expense) ? (
-                              <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                                {[expense.supplier, expense.documentNote].filter(Boolean).join(" · ")}
-                                {linhaDigitavelDaConta(expense) ? (
-                                  <button
-                                    type="button"
-                                    className="inline-flex items-center gap-1 font-semibold text-brand-oliva underline underline-offset-2"
-                                    onClick={() => void navigator.clipboard.writeText(linhaDigitavelDaConta(expense)).then(() => setFeedback(`Linha digitável de "${expense.description}" copiada.`))}
-                                  >
-                                    <Copy className="h-3 w-3" aria-hidden="true" /> copiar código
-                                  </button>
-                                ) : null}
-                              </p>
+                        )}
+                        <td className={cn(TD_PLANILHA, "whitespace-nowrap tabular-nums", celula)}>
+                          {expense.dueDate.split("-").reverse().join("/")}
+                          {overdue ? <span className="block text-xs font-bold text-atencao">há {diasEntre(expense.dueDate, now)} dia(s)</span> : null}
+                        </td>
+                        <td className={cn(TD_PLANILHA, "min-w-[12rem]", celula)}>
+                          <div className="flex flex-wrap items-center gap-1.5 font-bold text-tinta">
+                            <span>
+                              {expense.description}
+                              {expense.installmentNum && expense.installmentTotal ? ` · ${expense.installmentNum}/${expense.installmentTotal}` : ""}
+                            </span>
+                            {expense.recorrencia === "MENSAL" ? (
+                              <Etiqueta icone={<Repeat className="h-3 w-3" aria-hidden="true" />}>Recorrente</Etiqueta>
                             ) : null}
                             {serie ? (
-                              <p className="text-xs text-muted-foreground">
-                                {serie.faltamLancar ? (
-                                  <>
-                                    Faltam {serie.faltamLancar} parcela(s) sem lançar — os próximos meses estão vazios.
-                                    {readOnly ? null : (
-                                      <button
-                                        type="button"
-                                        onClick={() => lancarParcelasQueFaltam(expense)}
-                                        className="ml-1 font-semibold text-brand-oliva underline underline-offset-2"
-                                      >
-                                        Lançar as que faltam
-                                      </button>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    Parcelamento até {serie.ultimoVencimento.split("-").reverse().join("/")} ·{" "}
-                                    {moneyFin(serie.valorAberto)} ainda a pagar
-                                    {readOnly ? null : (
-                                      <button
-                                        type="button"
-                                        onClick={() => excluirParcelasEmAberto(expense)}
-                                        className="ml-1 font-semibold text-destructive underline underline-offset-2"
-                                      >
-                                        Excluir parcelas em aberto
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                              </p>
+                              <Etiqueta icone={<Layers className="h-3 w-3" aria-hidden="true" />}>
+                                {serie.faltamLancar ? `${serie.lancadas} de ${serie.total} lançadas` : `${serie.abertas} em aberto`}
+                              </Etiqueta>
                             ) : null}
-                          </td>
-                          <td className={cn("px-3 text-xs", celula)}>
-                            {readOnly ? (
-                              <>{category?.name ?? expense.categoryRef}</>
-                            ) : (
-                              // EDIÇÃO NA CÉLULA (16/09/2026, proposta 4.5): trocar a categoria errada
-                              // sem abrir o formulário. É o campo que manda a conta para o grupo da P12.
-                              <select
-                                value={expense.categoryRef}
-                                aria-label={`Categoria P12 de ${expense.description}`}
-                                className="max-w-[15rem] rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs text-brand-tinta transition hover:border-brand-oliva/40 focus:border-brand-musgo focus:bg-white"
-                                onChange={(event) => {
-                                  const novaRef = event.target.value;
-                                  if (novaRef === expense.categoryRef) return;
-                                  const anterior = expense.categoryRef;
-                                  const nomeNovo = categoryById.get(novaRef)?.name ?? novaRef;
-                                  financeiro.updateExpense({ ...expense, categoryRef: novaRef });
-                                  avisar(`"${expense.description}" agora está em ${nomeNovo}.`, () =>
-                                    financeiro.updateExpense({ ...expense, categoryRef: anterior }),
-                                  );
-                                }}
-                              >
-                                {financeiro.categories.map((opcao) => (
-                                  <option key={opcao.id} value={opcao.id}>
-                                    {opcao.name}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                            {expense.isCapex ? <Badge className="ml-1.5 bg-brand-creme text-brand-tinta">CAPEX</Badge> : null}
-                          </td>
-                          <td className={cn("px-3 text-xs", celula)}>{expense.method ? paymentMethodLabels[expense.method] : "—"}</td>
-                          <td className={cn("whitespace-nowrap px-3 text-right font-semibold tabular-nums text-brand-musgo", celula)}>{moneyFin(expense.amount)}</td>
-                          <td className={cn("whitespace-nowrap px-3", celula)}>
-                            {isProvisaoExpense(expense, financeiro.categories) ? (
-                              // Reserva para VÁRIOS impostos/encargos — sai junto com o
-                              // pagamento deles, então não se marca como paga.
-                              <Badge className="bg-brand-creme text-brand-tinta" title="Dinheiro separado para vários impostos/encargos. Sai junto com o pagamento deles — não se marca como paga.">
-                                Provisionado
-                              </Badge>
-                            ) : readOnly ? (
-                              expense.paidAt ? <Badge className="bg-emerald-100 text-emerald-800">Paga</Badge> : <Badge variant="muted">Pendente</Badge>
-                            ) : expense.paidAt ? (
-                              <button type="button" onClick={() => financeiro.setExpensePaid(expense.id, null)} title="Desfazer pagamento">
-                                <Badge className="bg-emerald-100 text-emerald-800">Paga {expense.paidAt.split("-").reverse().slice(0, 2).join("/")}</Badge>
-                              </button>
-                            ) : (
-                              // Mesma porta de pagarConta (29/09/2026, auditoria B2): antes este
-                              // botão chamava setExpensePaid direto e pagava conta acima do
-                              // limite sem aprovação, a regra que a Fila do dia e o "pagar
-                              // selecionadas" já respeitavam.
-                              <Button type="button" size="sm" variant="outline" onClick={() => pagarConta(expense)}>
-                                Marcar paga
-                              </Button>
-                            )}
-                          </td>
-                          {/* NOTA FISCAL DO FORNECEDOR (12/08/2026): anexar aqui manda o
-                              arquivo para a pasta do SharePoint, igual ao comprovante. */}
-                          <td className={cn("px-3", celula)}>
-                            <NotaDaContaCell
-                              expense={expense}
-                              notas={notasDaContas}
-                              pessoaId={pessoa?.id ?? null}
-                              readOnly={readOnly}
-                              habilitado={usaRemoto}
-                            />
-                          </td>
-                          <td className={cn("whitespace-nowrap px-3", celula)}>
-                            {readOnly ? null : (
-                              <>
-                                <Button type="button" variant="ghost" size="icon" aria-label={`Editar ${expense.description}`} onClick={() => startEditing(expense)}>
-                                  <Pencil className="h-4 w-4" aria-hidden="true" />
-                                </Button>
-                                <Button
+                            {compra ? (
+                              <span title={compra.estoqueSetor ? `estoque: ${setorNomes[compra.estoqueSetor] ?? compra.estoqueSetor}` : undefined}>
+                                <Selo estado={compra.receivedAt ? "recebido" : "a-caminho"} etapas={compra.receivedAt ? 4 : 3}>
+                                  {compra.receivedAt ? "Compra · chegou" : "Compra · a caminho"}
+                                </Selo>
+                              </span>
+                            ) : null}
+                          </div>
+                          {expense.supplier || expense.documentNote || linhaDigitavelDaConta(expense) ? (
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] font-medium text-tinta-2">
+                              {[expense.supplier, expense.documentNote].filter(Boolean).join(" · ")}
+                              {linhaDigitavelDaConta(expense) ? (
+                                <button
                                   type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  aria-label={`Excluir ${expense.description}`}
-                                  onClick={async () => {
-                                    if (!(await confirmar(`Excluir a conta "${expense.description}" (${moneyFin(expense.amount)})?`, { corpo: "A P12 se ajusta sozinha.", destrutivo: true, confirmar: "Excluir" }))) return;
-                                    if (editingExpenseId === expense.id) resetForm();
-                                    financeiro.removeExpense(expense.id);
-                                  }}
+                                  className="inline-flex items-center gap-1 rounded-sm font-bold text-musgo underline-offset-[3px] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+                                  onClick={() => void navigator.clipboard.writeText(linhaDigitavelDaConta(expense)).then(() => setFeedback(`Linha digitável de "${expense.description}" copiada.`))}
                                 >
-                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                </Button>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={readOnly ? 8 : 9} className="px-3 py-8 text-center text-muted-foreground">
+                                  <Copy className="h-3.5 w-3.5" aria-hidden="true" /> copiar código
+                                </button>
+                              ) : null}
+                            </p>
+                          ) : null}
+                          {serie ? (
+                            <p className="mt-0.5 text-[13px] font-medium text-tinta-2">
+                              {serie.faltamLancar ? (
+                                <>
+                                  Faltam {serie.faltamLancar} parcela(s) sem lançar — os próximos meses estão vazios.
+                                  {readOnly ? null : (
+                                    <button
+                                      type="button"
+                                      onClick={() => lancarParcelasQueFaltam(expense)}
+                                      className="ml-1 rounded-sm font-bold text-musgo underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+                                    >
+                                      Lançar as que faltam
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  Parcelamento até {serie.ultimoVencimento.split("-").reverse().join("/")} ·{" "}
+                                  {moneyFin(serie.valorAberto)} ainda a pagar
+                                  {readOnly ? null : (
+                                    <button
+                                      type="button"
+                                      onClick={() => excluirParcelasEmAberto(expense)}
+                                      className="ml-1 rounded-sm font-bold text-erro underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+                                    >
+                                      Excluir parcelas em aberto
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className={cn(TD_PLANILHA, "text-[13px]", celula)}>
+                          {readOnly ? (
+                            <>{category?.name ?? expense.categoryRef}</>
+                          ) : (
+                            // EDIÇÃO NA CÉLULA (16/09/2026, proposta 4.5): trocar a categoria errada
+                            // sem abrir o formulário. É o campo que manda a conta para o grupo da P12.
+                            <select
+                              value={expense.categoryRef}
+                              aria-label={`Categoria P12 de ${expense.description}`}
+                              className="h-8 w-[14rem] rounded-controle border border-transparent bg-transparent px-1 text-[13px] font-medium text-tinta transition-colors hover:border-fio-2 focus:border-musgo focus:bg-folha focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-foco"
+                              onChange={(event) => {
+                                const novaRef = event.target.value;
+                                if (novaRef === expense.categoryRef) return;
+                                const anterior = expense.categoryRef;
+                                const nomeNovo = categoryById.get(novaRef)?.name ?? novaRef;
+                                financeiro.updateExpense({ ...expense, categoryRef: novaRef });
+                                avisar(`"${expense.description}" agora está em ${nomeNovo}.`, () =>
+                                  financeiro.updateExpense({ ...expense, categoryRef: anterior }),
+                                );
+                              }}
+                            >
+                              {financeiro.categories.map((opcao) => (
+                                <option key={opcao.id} value={opcao.id}>
+                                  {opcao.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {expense.isCapex ? <Etiqueta tom="ouro" className="ml-1.5">CAPEX</Etiqueta> : null}
+                        </td>
+                        <td className={cn(TD_PLANILHA, "text-[13px] text-tinta-2", celula)}>{expense.method ? paymentMethodLabels[expense.method] : "—"}</td>
+                        <td className={cn(TD_PLANILHA, "whitespace-nowrap text-right font-bold tabular-nums", celula)}>{moneyFin(expense.amount)}</td>
+                        <td className={cn(TD_PLANILHA, "whitespace-nowrap", celula)}>
+                          {isProvisaoExpense(expense, financeiro.categories) ? (
+                            // Reserva para VÁRIOS impostos/encargos — sai junto com o
+                            // pagamento deles, então não se marca como paga.
+                            <Etiqueta title="Dinheiro separado para vários impostos/encargos. Sai junto com o pagamento deles — não se marca como paga.">
+                              Provisionado
+                            </Etiqueta>
+                          ) : readOnly ? (
+                            expense.paidAt ? (
+                              <Selo estado="pago">Paga</Selo>
+                            ) : overdue ? (
+                              // Passou do dia de pagar mas o vencimento é hoje ou depois (fim de semana, feriado).
+                              <Selo estado="vencido">{expense.dueDate >= now ? "Passou do dia de pagar" : "Vencida"}</Selo>
+                            ) : (
+                              <span className="text-[13px] font-semibold text-tinta-2">A pagar</span>
+                            )
+                          ) : expense.paidAt ? (
+                            <button
+                              type="button"
+                              onClick={() => financeiro.setExpensePaid(expense.id, null)}
+                              title="Desfazer pagamento"
+                              aria-label={`Desfazer o pagamento de ${expense.description}`}
+                              className="rounded-controle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+                            >
+                              <Selo estado="pago">Paga {expense.paidAt.split("-").reverse().slice(0, 2).join("/")}</Selo>
+                            </button>
+                          ) : (
+                            // Mesma porta de pagarConta (29/09/2026, auditoria B2): antes este
+                            // botão chamava setExpensePaid direto e pagava conta acima do
+                            // limite sem aprovação, a regra que a Fila do dia e o "pagar
+                            // selecionadas" já respeitavam.
+                            <Botao variante="suave" tamanho="pq" onClick={() => pagarConta(expense)} aria-label={`Marcar ${expense.description} como paga hoje`}>
+                              Paguei
+                            </Botao>
+                          )}
+                        </td>
+                        {/* NOTA FISCAL DO FORNECEDOR (12/08/2026): anexar aqui manda o
+                            arquivo para a pasta do SharePoint, igual ao comprovante. */}
+                        <td className={cn(TD_PLANILHA, celula)}>
+                          <NotaDaContaCell
+                            expense={expense}
+                            notas={notasDaContas}
+                            pessoaId={pessoa?.id ?? null}
+                            readOnly={readOnly}
+                            habilitado={usaRemoto}
+                          />
+                        </td>
+                        <td className={cn(TD_PLANILHA, "whitespace-nowrap px-2", celula)}>
+                          {readOnly ? null : (
+                            <span className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label={`Editar ${expense.description}`}
+                                title="Editar"
+                                onClick={() => startEditing(expense)}
+                                className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+                              >
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Excluir ${expense.description}`}
+                                title="Excluir"
+                                onClick={async () => {
+                                  if (!(await confirmar(`Excluir a conta "${expense.description}" (${moneyFin(expense.amount)})?`, { corpo: "A P12 se ajusta sozinha.", destrutivo: true, confirmar: "Excluir" }))) return;
+                                  if (editingExpenseId === expense.id) resetForm();
+                                  financeiro.removeExpense(expense.id);
+                                }}
+                                className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={readOnly ? 8 : 9}>
+                      <Vazio titulo={filtroAtivo ? "Nenhuma conta com esse filtro" : `Nenhuma conta lançada em ${nomeMes}`}>
                         {filtroAtivo
                           ? `Nenhuma conta ${nomeDoFiltro ? `em ${nomeDoFiltro} ` : ""}neste mês com esse filtro — toque em "Limpar filtros" para ver todas.`
-                          : "Nenhuma conta lançada neste mês."}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-                {monthExpenses.length ? (
-                  <tfoot className={cn("text-sm", rodapeGrudado)}>
-                    <tr>
-                      <td colSpan={readOnly ? 4 : 5} className={cn("px-3 font-semibold text-brand-tinta", celula)}>
-                        {monthExpenses.length} conta{monthExpenses.length === 1 ? "" : "s"} na lista · a pagar {moneyFin(totaisFiltrados.aPagar)} · já pago {moneyFin(totaisFiltrados.pago)}
-                      </td>
-                      <td className={cn("px-3 text-right font-bold text-brand-musgo", celula)}>{moneyFin(totaisFiltrados.total)}</td>
-                      <td colSpan={3} className={cn("px-3", celula)} />
-                    </tr>
-                  </tfoot>
-                ) : null}
-              </table>
-            </TabelaRolavel>
-          </CardContent>
-        </Card>
+                          : "Use “Nova conta” no alto da tela ou cole o boleto no Lançar rápido."}
+                      </Vazio>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {monthExpenses.length ? (
+                <tfoot className={TFOOT_GRUDADO}>
+                  <tr>
+                    <td colSpan={readOnly ? 4 : 5} className={cn("h-12 border-t border-fio-2 px-4 text-[13px] font-semibold text-tinta-2", celula)}>
+                      {monthExpenses.length} conta{monthExpenses.length === 1 ? "" : "s"} na lista · a pagar {moneyFin(totaisFiltrados.aPagar)} · já pago {moneyFin(totaisFiltrados.pago)}
+                    </td>
+                    <td className={cn("h-12 whitespace-nowrap border-t border-fio-2 px-4 text-right font-bold tabular-nums text-tinta", celula)}>{moneyFin(totaisFiltrados.total)}</td>
+                    <td colSpan={3} className={cn("h-12 border-t border-fio-2 px-4", celula)} />
+                  </tr>
+                </tfoot>
+              ) : null}
+            </table>
+          </div>
+        </BlocoFolha>
+        </div>
 
         {/* PROVISÕES DA POUPANÇA — o bloco "de baixo" da planilha CONTAS A PAGAR.
             Lançar aqui faz o custo do mês já sair somado; dar baixa manda o
             dinheiro para o cofre (aba Poupança), sem digitar duas vezes. */}
-        <Card className="border-brand-dourado/40 bg-brand-creme/25">
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <PiggyBank className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
-                Provisões da Poupança — {month.split("-").reverse().join("/")}
-                <InfoTip title="Por que as provisões ficam aqui">
-                  São os valores que a planilha antiga trazia no bloco de baixo: 13º, férias, rescisões, urgências,
-                  início de ano e festa. Lançando aqui, o custo do mês já sai somado (elas entram no grupo "4. Poupanças"
-                  do P12 e reduzem o lucro do mês, que é o certo em competência). Ao dar BAIXA numa provisão, o app
-                  registra sozinho a entrada no cofre da aba Poupança — você não digita duas vezes. Quando o 13º/férias
-                  for pago de verdade, registre SAÍDA na Poupança; não crie outra despesa (senão o custo conta duas vezes).
-                </InfoTip>
-              </CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-brand-musgo">
-                  {provisionPlan.lancadas} de {provisionPlan.lines.length} lançadas · {moneyFin(provisionPlan.total)}/mês
-                </span>
-                {!readOnly && provisionPlan.pendentes > 0 ? (
-                  <LiquidButton type="button" size="sm" onClick={lancarProvisoes}>
-                    <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                    Lançar {provisionPlan.pendentes} provisão(ões) do mês
-                  </LiquidButton>
-                ) : provisionPlan.pendentes === 0 ? (
-                  <Badge variant="gold">Mês provisionado ✓</Badge>
-                ) : null}
-              </div>
+        <BlocoFolha as="section" aria-labelledby="provisoes-titulo" className="min-w-0 overflow-hidden">
+          <div className={CABECA_DA_FOLHA}>
+            <TituloDoBloco
+              id="provisoes-titulo"
+              icone={<PiggyBank className="h-4 w-4" aria-hidden="true" />}
+              detalhe={`${provisionPlan.lancadas} de ${provisionPlan.lines.length} lançadas · ${moneyFin(provisionPlan.total)}/mês`}
+            >
+              Provisões da Poupança — {month.split("-").reverse().join("/")}
+            </TituloDoBloco>
+            <InfoTip title="Por que as provisões ficam aqui">
+              São os valores que a planilha antiga trazia no bloco de baixo: 13º, férias, rescisões, urgências,
+              início de ano e festa. Lançando aqui, o custo do mês já sai somado (elas entram no grupo &quot;4. Poupanças&quot;
+              do P12 e reduzem o lucro do mês, que é o certo em competência). Ao dar BAIXA numa provisão, o app
+              registra sozinho a entrada no cofre da aba Poupança — você não digita duas vezes. Quando o 13º/férias
+              for pago de verdade, registre SAÍDA na Poupança; não crie outra despesa (senão o custo conta duas vezes).
+            </InfoTip>
+            <div className="ml-auto flex items-center gap-2">
+              {!readOnly && provisionPlan.pendentes > 0 ? (
+                <Botao variante="suave" tamanho="pq" icone={<Plus className="h-4 w-4" aria-hidden="true" />} onClick={lancarProvisoes}>
+                  Lançar {provisionPlan.pendentes} provisão(ões) do mês
+                </Botao>
+              ) : provisionPlan.pendentes === 0 ? (
+                <Selo estado="pago">Mês provisionado</Selo>
+              ) : null}
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="mobile-scrollbar-none overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="text-xs uppercase text-brand-oliva">
-                  <tr>
-                    <th className="px-3 py-2">Provisão</th>
-                    <th className="px-3 py-2 text-right">Valor / mês</th>
-                    <th className="px-3 py-2">Vencimento</th>
-                    <th className="px-3 py-2">Situação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {provisionPlan.lines.map((line) => (
-                    <tr key={line.ruleId} className="border-t border-brand-oliva/10">
-                      <td className="px-3 py-2 font-medium text-brand-tinta">{line.name}</td>
-                      <td className="px-3 py-2 text-right font-semibold">{moneyFin(line.amount)}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{monthLastDay(month).split("-").reverse().join("/")}</td>
-                      <td className="px-3 py-2">
-                        {line.paga ? (
-                          <Badge variant="gold">Paga · no cofre</Badge>
-                        ) : line.lancada ? (
-                          <Badge variant="outline">Em Contas a Pagar</Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Não lançada</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="border-t-2 border-brand-dourado/40 bg-brand-creme/40">
-                    <td className="px-3 py-2 font-bold text-brand-musgo">TOTAL provisionado no mês</td>
-                    <td className="px-3 py-2 text-right font-bold text-brand-musgo">{moneyFin(provisionPlan.total)}</td>
-                    <td colSpan={2} className="px-3 py-2 text-xs text-muted-foreground">
-                      Entra no P12 no grupo "4. Poupanças" e soma nos custos do mês
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-left text-sm text-tinta">
+              <thead>
+                <tr>
+                  <th className={TH}>Provisão</th>
+                  <th className={cn(TH, "text-right")}>Valor / mês</th>
+                  <th className={TH}>Vencimento</th>
+                  <th className={TH}>Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {provisionPlan.lines.map((line) => (
+                  <tr key={line.ruleId} className="hover:bg-saber/70">
+                    <td className={cn(TD, "py-3 font-semibold")}>{line.name}</td>
+                    <td className={cn(TD, "py-3 text-right font-bold tabular-nums")}>{moneyFin(line.amount)}</td>
+                    <td className={cn(TD, "py-3 tabular-nums text-tinta-2")}>{monthLastDay(month).split("-").reverse().join("/")}</td>
+                    <td className={cn(TD, "py-3")}>
+                      {line.paga ? (
+                        <Selo estado="pago">Paga · no cofre</Selo>
+                      ) : line.lancada ? (
+                        <Etiqueta tom="musgo">Em Contas a Pagar</Etiqueta>
+                      ) : (
+                        <span className="text-[13px] font-medium text-tinta-2">Não lançada</span>
+                      )}
                     </td>
                   </tr>
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="h-12 border-t border-fio-2 px-4 font-bold">Total provisionado no mês</td>
+                  <td className="h-12 whitespace-nowrap border-t border-fio-2 px-4 text-right font-bold tabular-nums">{moneyFin(provisionPlan.total)}</td>
+                  <td colSpan={2} className="h-12 border-t border-fio-2 px-4 text-[13px] font-medium text-tinta-2">
+                    Entra no P12 no grupo &quot;4. Poupanças&quot; e soma nos custos do mês
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {provisionFeedback ? (
+            <div className="border-t border-fio px-6 py-4 max-md:px-4">
+              <AvisoDaTela tom="ok">{provisionFeedback}</AvisoDaTela>
             </div>
-            {provisionFeedback ? <p className="mt-3 text-sm font-medium text-brand-musgo">{provisionFeedback}</p> : null}
-          </CardContent>
-        </Card>
+          ) : null}
+        </BlocoFolha>
+
         {/* As notas contra o Instituto ficam por último (05/10/2026, Lucas: "a lista é muito longa"). */}
         {usaRemoto && focusLigada ? (
           <NotasRecebidasCard

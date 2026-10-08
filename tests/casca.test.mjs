@@ -280,7 +280,8 @@ test("Avisos: as notas sem CPF no topo, como prioridade, com o caminho para comp
   assert.ok(prioridade > 0 && outros > prioridade, "a prioridade vem antes dos outros avisos");
   assert.match(tela, /const LINK_DO_LOTE = "\/financeiro\/impostos#lote-de-notas";/);
   assert.match(tela, /useContadoresDaTela\(\)/, "a tela lê a MESMA lista que o sino conta");
-  assert.match(ler("src/features/financeiro/LoteDeNotasCard.tsx"), /<Card id="lote-de-notas"/);
+  // 08/10/2026 (redesenho): o lote virou BlocoFolha; a âncora é a mesma.
+  assert.match(ler("src/features/financeiro/LoteDeNotasCard.tsx"), /<(?:Card|BlocoFolha)\b[^>]*\bid="lote-de-notas"/);
   // A casca rola até a âncora quando a tela termina de chegar.
   assert.match(ler("src/layouts/AppLayout.tsx"), /document\.getElementById\(alvo\)/);
 });
@@ -381,7 +382,7 @@ test("⌘K: valor vira conta a pagar com o valor; verbo leva ao ponto exato; só
   const valor = comandos.linhasDaBusca("1250", lucas);
   // (o "R$ 1.250,00" sai com espaço inseparável, para o valor nunca quebrar no meio)
   assert.match(valor[0].rotulo, /^Nova conta a pagar de R\$\s1\.250,00$/);
-  assert.equal(valor[0].href, "/financeiro/contas?valor=1250.00");
+  assert.equal(valor[0].href, "/financeiro/contas?novo=1&valor=1250.00");
   assert.equal(comandos.linhasDaBusca("1250", pessoa("limpeza")).length, 0, "a limpeza não lança conta");
   const contas = comandos.linhasDaBusca("contas", lucas);
   const tela = contas.find((linha) => linha.secao === "telas" && linha.destinoId === "contas");

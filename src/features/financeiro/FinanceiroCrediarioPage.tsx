@@ -1,15 +1,17 @@
+// CREDIÁRIO — Financeiro › Dia › Crediário (o caixa do dinheiro vivo).
+//
+// REDESENHO PAPEL & MUSGO (08/10/2026): UM cabeçalho com a frase que explica o
+// número ("R$ 1.240,00 em dinheiro devem estar no cofre agora"), o cofre num
+// bloco SABER (o saldo grande em Fraunces e o razão do mês), o lançamento e as
+// movimentações em FOLHAS (decidir), e embaixo a conferência do cofre e o
+// "somar no lucro". Nenhuma regra mudou: os mesmos lançamentos, o mesmo estorno,
+// a mesma trava do lucro (valor ≤ o que entrou em dinheiro no mês). Mudou a forma.
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, CircleDollarSign, Plus, ScanLine, Sparkles, Trash2, Wallet } from "lucide-react";
+import { CircleDollarSign, Plus, ScanLine, Sparkles, Trash2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import {
   cofreItemsFromManuais,
   cofreItemsFromRecebimentos,
@@ -39,6 +41,23 @@ import {
 } from "./financeiroData";
 import { useFinanceiro } from "./useFinanceiro";
 import { confirmar } from "@/components/ui/avisos";
+import {
+  AJUDA,
+  AvisoDaTela,
+  CABECA_DA_FOLHA,
+  CAMPO,
+  Campo,
+  Etiqueta,
+  Leitura,
+  NumeroEmReais,
+  RUBRICA,
+  TituloDoBloco,
+  Vazio,
+  diaCurto,
+  nomeDoMes,
+  nomeDoMesMaiusculo,
+  quantos,
+} from "./pecasDiaPagar";
 
 const cashStorageKey = "app-bratan-fin-crediario";
 
@@ -298,445 +317,438 @@ export function FinanceiroCrediarioPage() {
     }
   }
 
+  // ---- Papel & Musgo (08/10/2026): a frase do cabeçalho, derivada dos mesmos totais ----
+  const nomeMes = nomeDoMes(monthKey || todayISO().slice(0, 7));
+  const fraseDoTopo =
+    totals.saldo < 0 ? (
+      <>
+        <span className="alerta">O caixa está negativo: {moneyFin(totals.saldo)}.</span> Saiu mais dinheiro do que entrou — confira os lançamentos e
+        o cofre.
+      </>
+    ) : (
+      <>
+        O cofre deve ter <strong>{moneyFin(totals.saldo)}</strong> em dinheiro agora. Em {nomeMes}, entraram {moneyFin(totals.entradasMes)} e saíram{" "}
+        {moneyFin(totals.saidasMes)}.
+      </>
+    );
+  const diferencaZerada = diferencaCofre !== null && Math.abs(diferencaCofre) < 0.01;
+
   return (
     <AccessGate allowed={canLembretesPagamento} label="Financeiro · Crediário" module="fin-crediario">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">Fora da P12</Badge>
-              </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Crediário (Dinheiro)
-                <InfoTip title="O caixa do dinheiro vivo">
-                  Livro-caixa exclusivo do dinheiro do crediário: registre aqui o que entra e o que sai. Os recebimentos em
-                  dinheiro marcados nos Lembretes entram sozinhos. Nada disto se mistura com a P12 nem com as comandas — é a
-                  visão limpa do caixa físico.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Entradas e saídas do dinheiro, com saldo sempre em dia.
-              </p>
-            </div>
-            <Input
-              type="month"
-              value={monthKey}
-              onChange={(event) => setMonthKey(event.target.value)}
-              onBlur={() => {
-                if (!monthKey) setMonthKey(todayISO().slice(0, 7));
-              }}
-              className="w-44"
-              aria-label="Mês do caixa"
-            />
-          </div>
-        </motion.section>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Financeiro · Dia"
+          titulo="Crediário"
+          frase={fraseDoTopo}
+          acoes={
+            <label className="grid gap-1">
+              <span className="sr-only">Mês do caixa</span>
+              <input
+                type="month"
+                value={monthKey}
+                onChange={(event) => setMonthKey(event.target.value)}
+                onBlur={() => {
+                  if (!monthKey) setMonthKey(todayISO().slice(0, 7));
+                }}
+                className={cn(CAMPO, "w-[176px]")}
+                aria-label="Mês do caixa"
+              />
+            </label>
+          }
+        />
 
         {feedback ? (
-          <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
+          <AvisoDaTela tom={/^(Não|Descreva)/.test(feedback) ? "atencao" : "ok"} onFechar={() => setFeedback("")}>
             {feedback}
-          </div>
+          </AvisoDaTela>
         ) : null}
 
-        <section className="grid gap-3 sm:grid-cols-3">
-          <Card className="border-brand-musgo/25 bg-[#f2f5ec] shadow-none">
-            <CardContent className="p-4">
-              <Wallet className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Saldo em caixa</p>
-              <p className={cn("text-2xl font-bold", totals.saldo < 0 ? "text-destructive" : "text-brand-musgo")}>{moneyFin(totals.saldo)}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-            <CardContent className="p-4">
-              <ArrowUpCircle className="h-5 w-5 text-emerald-600" aria-hidden="true" />
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Entradas no mês</p>
-              <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totals.entradasMes)}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-            <CardContent className="p-4">
-              <ArrowDownCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Saídas no mês</p>
-              <p className="text-2xl font-bold text-brand-tinta">{moneyFin(totals.saidasMes)}</p>
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* CREDIÁRIO NO LUCRO (31/07/2026, pedido do Lucas): botão manual, por mês.
-            Nunca automático — o caixa do crediário segue fora da P12 por padrão. */}
-        <Card className="border-brand-musgo/30 bg-white/70">
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-              <Sparkles className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-              Somar o crediário do mês no lucro
-              <InfoTip title="Quando usar e qual valor">
-                Por padrão o dinheiro do crediário fica FORA do resultado — é caixa físico, separado da P12. No fechamento,
-                escolha o mês e aperte o botão: o valor SOMA NO FATURAMENTO do mês, puxa o % da meta e entra no lucro. A base
-                é o <strong>faturamento do crediário no mês</strong> — tudo que entrou em dinheiro nele (caixa e lembretes) —,
-                e não o saldo do caixa, que é acumulado de vários meses e já descontou o que saiu. O dinheiro continua no
-                cofre — muda o resultado, não o saldo.
+        <div className="grid items-start gap-8 max-md:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          {/* SABER: o cofre. No celular vem primeiro (o número antes da lista). */}
+          <BlocoSaber as="aside" aria-labelledby="cofre-titulo" className="grid min-w-0 gap-4 max-xl:order-first xl:sticky xl:top-24 xl:col-start-2 xl:row-start-1">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="cofre-titulo" className={RUBRICA}>
+                Dinheiro no cofre
+              </h2>
+              <InfoTip title="O caixa do dinheiro vivo">
+                Livro-caixa exclusivo do dinheiro do crediário: registre aqui o que entra e o que sai. Os recebimentos em dinheiro marcados nos
+                Lembretes entram sozinhos. Nada disto se mistura com a P12 nem com as comandas — é a visão limpa do caixa físico.
               </InfoTip>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="lucro-mes">Mês do lucro</Label>
-                <Input
-                  id="lucro-mes"
-                  type="month"
-                  value={lucroMes}
-                  onChange={(event) => {
-                    setLucroMes(event.target.value);
-                    setLucroEditando(false);
-                    setLucroFeedback("");
-                  }}
-                  className="w-44"
-                />
-              </div>
-              <div className="rounded-lg border border-brand-musgo/30 bg-brand-creme/50 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Entrou em dinheiro em {mesBR(lucroMes)}</p>
-                <p className="text-lg font-bold text-brand-tinta">{moneyFin(sugestaoLucro)}</p>
-              </div>
-              <div className="rounded-lg border border-brand-oliva/20 bg-brand-papel/70 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Caixa hoje (acumulado)</p>
-                <p className="text-lg font-bold text-brand-tinta">{moneyFin(totals.saldo)}</p>
-              </div>
-              <div className="rounded-lg border border-brand-oliva/20 bg-brand-papel/70 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Já no lucro (todos os meses)</p>
-                <p className="text-lg font-bold text-brand-tinta">{moneyFin(jaNoLucroTotal)}</p>
-              </div>
-              {mesIncluido ? (
-                <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                    No lucro de {mesBR(lucroMes)}
-                  </p>
-                  <p className="text-lg font-bold text-emerald-800">{moneyFin(jaNoLucroDoMes)}</p>
-                </div>
-              ) : null}
             </div>
-
-            {mesIncluido && !lucroEditando ? (
-              <div className="rounded-lg border border-emerald-300/70 bg-emerald-50/60 p-3">
-                <p className="text-sm font-semibold text-emerald-900">
-                  {mesBR(lucroMes)} já está com {moneyFin(jaNoLucroDoMes)} do crediário somados ao lucro.
-                </p>
-                {registroDoMes?.note ? (
-                  <p className="mt-0.5 text-xs text-muted-foreground">Observação: {registroDoMes.note}</p>
-                ) : null}
-                {registroDoMes?.includedAt ? (
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    Marcado em {dataBR(registroDoMes.includedAt.slice(0, 10))}.
-                  </p>
-                ) : null}
-                {readOnly ? null : (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" variant="outline" onClick={abrirLucro}>
-                      Corrigir o valor
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="border-destructive/40 text-destructive hover:bg-destructive/5"
-                      onClick={removerLucro}
-                    >
-                      Tirar do lucro
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {!mesIncluido && !lucroEditando ? (
-              <div className="grid gap-2">
-                <p className="text-xs leading-5 text-muted-foreground">
-                  {sugestaoLucro > 0 ? (
-                    <>
-                      Em {mesBR(lucroMes)} entraram <strong className="text-brand-tinta">{moneyFin(sugestaoLucro)}</strong> em dinheiro
-                      (caixa do crediário e recebimentos de lembrete). Esse é o faturamento do crediário do mês — é ele que vai para o
-                      lucro, não o saldo do caixa ({moneyFin(totals.saldo)}), que é acumulado de vários meses.
-                    </>
-                  ) : (
-                    <>Nenhuma entrada de dinheiro registrada em {mesBR(lucroMes)} — não há faturamento do crediário para somar.</>
-                  )}
-                </p>
-                {readOnly || sugestaoLucro <= 0 ? null : (
-                  <div>
-                    <LiquidButton type="button" size="sm" onClick={abrirLucro}>
-                      <Sparkles className="h-4 w-4" aria-hidden="true" />
-                      Somar {moneyFin(sugestaoLucro)} no lucro de {mesBR(lucroMes)}
-                    </LiquidButton>
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {lucroEditando ? (
-              <div className="grid gap-3 rounded-lg border border-brand-musgo/30 bg-brand-creme/25 p-3">
-                {suspeitosEmRisco > 0 ? (
-                  <p className="flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs font-semibold text-destructive">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                    A conferência do cofre aponta {moneyFin(suspeitosEmRisco)} que podem estar sobrando no caixa. Resolva ali
-                    antes de somar no lucro, senão o resultado do mês entra inflado.
-                  </p>
-                ) : null}
-                <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-                  <div className="space-y-1">
-                    <Label htmlFor="lucro-valor">Valor a somar</Label>
-                    <Input
-                      id="lucro-valor"
-                      inputMode="decimal"
-                      value={lucroValor}
-                      onChange={(event) => setLucroValor(event.target.value)}
-                      placeholder="10.939,30"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="lucro-nota">Observação (opcional)</Label>
-                    <Input
-                      id="lucro-nota"
-                      value={lucroNota}
-                      onChange={(event) => setLucroNota(event.target.value)}
-                      placeholder="Ex.: fechamento de julho, dinheiro conferido no cofre"
-                    />
-                  </div>
-                </div>
-                <p className="text-[11px] leading-snug text-muted-foreground">
-                  Isto NÃO tira dinheiro do cofre: entra como linha própria no mês escolhido ({mesBR(lucroMes)}), somando
-                  no FATURAMENTO, no % da meta e no lucro — na P12, nas Metas e nos Relatórios. Fica registrado quem marcou
-                  e quando, e dá para desfazer.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <LiquidButton type="button" size="sm" onClick={confirmarLucro}>
-                    Confirmar
-                  </LiquidButton>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setLucroEditando(false)}>
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            {lucroFeedback ? <p className="text-sm font-semibold text-brand-musgo">{lucroFeedback}</p> : null}
-          </CardContent>
-        </Card>
-
-        {/* CONFERÊNCIA DO COFRE — informe o dinheiro contado e o app aponta a
-            diferença e os lançamentos suspeitos (28/07). */}
-        <Card className="border-brand-dourado/40 bg-brand-creme/25">
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-              <ScanLine className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
-              Conferir o cofre
-              <InfoTip title="Para que serve">
-                Conte o dinheiro do cofre e digite aqui. Se der diferença, o app mostra os lançamentos com cara de
-                duplicata (mesmo paciente e mesmo valor lançados mais de uma vez) — geralmente é recebimento refeito
-                porque a forma de pagamento saiu errada na primeira vez. Você estorna o errado e o cofre volta a bater.
-              </InfoTip>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="cofre-contado">Dinheiro contado no cofre</Label>
-                <Input
-                  id="cofre-contado"
-                  inputMode="decimal"
-                  placeholder="Ex.: 10.939,30"
-                  value={cofreContado}
-                  onChange={(event) => setCofreContado(event.target.value)}
-                  className="w-40"
-                />
-              </div>
-              <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Saldo do app</p>
-                <p className="text-lg font-bold text-brand-tinta">{moneyFin(totals.saldo)}</p>
-              </div>
-              {diferencaCofre !== null ? (
-                <div
-                  className={cn(
-                    "rounded-lg border px-3 py-2",
-                    Math.abs(diferencaCofre) < 0.01
-                      ? "border-emerald-300 bg-emerald-50"
-                      : "border-destructive/40 bg-destructive/5",
-                  )}
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">Diferença</p>
-                  <p
-                    className={cn(
-                      "text-lg font-bold",
-                      Math.abs(diferencaCofre) < 0.01 ? "text-emerald-700" : "text-destructive",
-                    )}
-                  >
-                    {Math.abs(diferencaCofre) < 0.01 ? "Bateu ✓" : moneyFin(diferencaCofre)}
-                  </p>
-                  {Math.abs(diferencaCofre) >= 0.01 ? (
-                    <p className="text-[11px] text-muted-foreground">
-                      {diferencaCofre > 0 ? "o app tem MAIS que o cofre" : "o cofre tem MAIS que o app"}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <NumeroEmReais valor={totals.saldo} tamanho="grande" className={totals.saldo < 0 ? "text-erro" : undefined} />
+              <span className="text-[13px] font-medium leading-5 text-tinta-2">
+                saldo de hoje,
+                <br />
+                somando todos os meses
+              </span>
             </div>
+            <p className="text-sm font-medium leading-5 text-tinta-2 [text-wrap:pretty]">Fica fora da P12: só entra no lucro quando você soma o mês (abaixo).</p>
+            <dl className="border-t border-fio-2">
+              <div className="flex items-center justify-between gap-3 border-b border-fio py-3">
+                <dt className="text-sm font-medium text-tinta-2">Entradas em {nomeMes}</dt>
+                <dd className="whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(totals.entradasMes)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-b border-fio py-3">
+                <dt className="text-sm font-medium text-tinta-2">Saídas em {nomeMes}</dt>
+                <dd className="whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(totals.saidasMes)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-b border-fio py-3">
+                <dt className="text-sm font-medium text-tinta-2">Já no lucro (todos os meses)</dt>
+                <dd className="whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(jaNoLucroTotal)}</dd>
+              </div>
+            </dl>
+          </BlocoSaber>
 
-            {suspects.length ? (
-              <div className="rounded-lg border border-destructive/35 bg-destructive/5 p-3">
-                <p className="flex flex-wrap items-center gap-1.5 text-sm font-bold text-destructive">
-                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {suspects.length} ponto(s) para conferir — até {moneyFin(totalEmRisco)} podem estar sobrando no caixa
-                </p>
-                <ul className="mt-2 grid gap-2.5">
-                  {suspects.map((suspect) => (
-                    <li
-                      key={`${suspect.motivo}-${suspect.itens[0].kind}-${suspect.itens[0].id}`}
-                      className="rounded-md border border-brand-oliva/15 bg-white/70 p-2.5"
-                    >
-                      <p className="flex flex-wrap items-center gap-2 text-xs font-bold text-brand-tinta">
-                        {suspect.itens[0].quem}
-                        <span className="rounded bg-brand-papel px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-oliva">
-                          {motivoLabel[suspect.motivo]}
+          <div className="grid min-w-0 gap-8 max-md:gap-6 xl:col-start-1 xl:row-start-1">
+            {/* DECIDIR: o lançamento do dia. */}
+            <BlocoFolha as="section" aria-labelledby="novo-lancamento-titulo">
+              <div className={CABECA_DA_FOLHA}>
+                <TituloDoBloco id="novo-lancamento-titulo" icone={<Plus className="h-4 w-4" aria-hidden="true" />}>
+                  Novo lançamento
+                </TituloDoBloco>
+              </div>
+              <form className="grid gap-4 p-6 max-md:p-4 sm:grid-cols-[minmax(0,10.5rem)_minmax(0,1fr)_minmax(0,9rem)]" onSubmit={handleSubmit}>
+                <div className="grid min-w-0 content-start gap-2 sm:col-span-3">
+                  <span className="text-[13px] font-bold leading-5 text-tinta" id="crediario-tipo">
+                    Tipo
+                  </span>
+                  <div className="flex gap-2 sm:w-[16rem]" role="group" aria-labelledby="crediario-tipo">
+                    {(["ENTRADA", "SAIDA"] as const).map((option) => (
+                      <Leitura key={option} ativo={direction === option} onClick={() => setDirection(option)} className="h-10 flex-1 justify-center text-sm">
+                        {option === "ENTRADA" ? "Entrada" : "Saída"}
+                      </Leitura>
+                    ))}
+                  </div>
+                </div>
+                <Campo rotulo="Data" htmlFor="crediario-data">
+                  <input id="crediario-data" type="date" className={CAMPO} value={entryDate} onChange={(event) => setEntryDate(event.target.value)} />
+                </Campo>
+                <Campo rotulo="Descrição" htmlFor="crediario-descricao">
+                  <input
+                    id="crediario-descricao"
+                    className={CAMPO}
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Ex.: recebido de Fulano · sangria para banco · troco"
+                  />
+                </Campo>
+                <Campo rotulo="Valor (R$)" htmlFor="crediario-valor">
+                  <input
+                    id="crediario-valor"
+                    className={cn(CAMPO, "text-right tabular-nums")}
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    placeholder="500,00"
+                    inputMode="decimal"
+                  />
+                </Campo>
+                <div className="flex flex-wrap items-center gap-3 sm:col-span-3">
+                  <Botao type="submit" variante="primario" icone={<CircleDollarSign className="h-4 w-4" aria-hidden="true" />}>
+                    Lançar
+                  </Botao>
+                  <p className={AJUDA}>Entrada soma no cofre; saída (sangria, troco, depósito no banco) tira.</p>
+                </div>
+              </form>
+            </BlocoFolha>
+
+            {/* As movimentações do mês: data · descrição · valor com sinal. */}
+            <BlocoFolha as="section" aria-labelledby="movimentacoes-titulo" className="min-w-0 overflow-hidden">
+              <div className={CABECA_DA_FOLHA}>
+                <TituloDoBloco id="movimentacoes-titulo" detalhe={quantos(monthEntries.length, "movimentação", "movimentações")}>
+                  Movimentações de {nomeMes}
+                </TituloDoBloco>
+              </div>
+              {monthEntries.length ? (
+                <ul>
+                  {monthEntries.map((entry) => {
+                    const automatico = Boolean((entry as { fromLembrete?: boolean }).fromLembrete);
+                    return (
+                      <li
+                        key={entry.id}
+                        className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-4 border-t border-fio px-6 py-3 first:border-t-0 transition-colors duration-150 hover:bg-saber/70 max-md:px-4"
+                      >
+                        <span className="text-[13px] font-semibold tabular-nums text-tinta-2">{diaCurto(entry.entryDate)}</span>
+                        <div className="grid min-w-0 gap-1">
+                          <p className="text-sm font-bold leading-5 text-tinta [overflow-wrap:anywhere]">{entry.description}</p>
+                          {automatico ? <Etiqueta>automático (Lembretes)</Etiqueta> : null}
+                        </div>
+                        <span className="flex items-center gap-1">
+                          <span className={cn("whitespace-nowrap text-sm font-bold tabular-nums", entry.direction === "ENTRADA" ? "text-ok" : "text-tinta")}>
+                            {entry.direction === "ENTRADA" ? "+" : "−"} {moneyFin(entry.amount)}
+                          </span>
+                          {automatico ? (
+                            <span className="h-8 w-8" aria-hidden="true" />
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={`Excluir ${entry.description}`}
+                              title="Excluir"
+                              onClick={() => removeEntry(entry)}
+                              className="grid h-8 w-8 place-items-center rounded-controle text-tinta-2 transition-colors hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          )}
                         </span>
-                        <span className="text-destructive">sobrando {moneyFin(suspect.valorEmRisco)}</span>
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">{suspect.descricao}</p>
-                      <div className="mt-1.5 grid gap-1">
-                        {suspect.itens.map((item) => (
-                          <div key={`${item.kind}-${item.id}`} className="flex flex-wrap items-center gap-2 text-[11px]">
-                            <span className="font-mono text-brand-oliva">{dataBR(item.data)}</span>
-                            <span className="rounded bg-brand-papel px-1.5 py-0.5 font-semibold">
-                              {item.kind === "MANUAL" ? "lançado à mão" : "lembrete"}
-                            </span>
-                            <span className="font-semibold text-brand-tinta">{moneyFin(item.valor)}</span>
-                            <span className="text-muted-foreground">{item.detalhe}</span>
-                            {item.lembreteApagado ? (
-                              <span className="font-semibold text-destructive">lembrete apagado</span>
-                            ) : item.lembreteStatus === "cancelado" ? (
-                              <span className="font-semibold text-destructive">lembrete cancelado</span>
-                            ) : null}
-                            {!readOnly ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-[11px]"
-                                onClick={() => tirarDoCofre(item)}
-                                disabled={estornoMutation.isPending}
-                              >
-                                {item.kind === "MANUAL" ? "Excluir esta" : "Estornar este"}
-                              </Button>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Estornar devolve o valor para a dívida do paciente (o lembrete reabre) e tira o dinheiro do caixa.
-                  Nada é apagado sem você clicar, e fica registrado quem fez.
+              ) : (
+                <Vazio titulo={`Nenhuma movimentação em ${nomeMes}`}>O que entrar ou sair do cofre aparece aqui, com a data. Recebimento em dinheiro dos Lembretes entra sozinho.</Vazio>
+              )}
+            </BlocoFolha>
+          </div>
+        </div>
+
+        <div className="grid items-start gap-8 max-md:gap-6 lg:grid-cols-2">
+          {/* CONFERÊNCIA DO COFRE — informe o dinheiro contado e o app aponta a
+              diferença e os lançamentos suspeitos (28/07). */}
+          <BlocoFolha as="section" aria-labelledby="conferir-cofre-titulo" className="min-w-0">
+            <div className={CABECA_DA_FOLHA}>
+              <TituloDoBloco id="conferir-cofre-titulo" icone={<ScanLine className="h-4 w-4" aria-hidden="true" />}>
+                Conferir o cofre
+              </TituloDoBloco>
+              <InfoTip title="Para que serve">
+                Conte o dinheiro do cofre e digite aqui. Se der diferença, o app mostra os lançamentos com cara de duplicata (mesmo paciente e mesmo
+                valor lançados mais de uma vez) — geralmente é recebimento refeito porque a forma de pagamento saiu errada na primeira vez. Você estorna
+                o errado e o cofre volta a bater.
+              </InfoTip>
+            </div>
+            <div className="grid gap-4 p-6 max-md:p-4">
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] sm:items-end">
+                <Campo rotulo="Dinheiro contado no cofre" htmlFor="cofre-contado">
+                  <input
+                    id="cofre-contado"
+                    inputMode="decimal"
+                    placeholder="Ex.: 10.939,30"
+                    value={cofreContado}
+                    onChange={(event) => setCofreContado(event.target.value)}
+                    className={cn(CAMPO, "text-right tabular-nums")}
+                  />
+                </Campo>
+                <dl className="grid grid-cols-2 gap-3">
+                  <div className="rounded-controle bg-saber px-3 py-2">
+                    <dt className={RUBRICA}>Saldo do app</dt>
+                    <dd className="mt-1 whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(totals.saldo)}</dd>
+                  </div>
+                  {diferencaCofre !== null ? (
+                    <div className={cn("rounded-controle px-3 py-2", diferencaZerada ? "bg-ok-claro" : "bg-atencao-claro")}>
+                      <dt className={RUBRICA}>Diferença</dt>
+                      <dd className={cn("mt-1 whitespace-nowrap text-base font-bold tabular-nums", diferencaZerada ? "text-ok" : "text-atencao")}>
+                        {diferencaZerada ? "Bateu ✓" : moneyFin(diferencaCofre)}
+                      </dd>
+                      {!diferencaZerada ? (
+                        <dd className="text-xs font-semibold leading-4 text-tinta-2">
+                          {diferencaCofre > 0 ? "o app tem MAIS que o cofre" : "o cofre tem MAIS que o app"}
+                        </dd>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </dl>
+              </div>
+
+              {suspects.length ? (
+                <div className="grid gap-3">
+                  <AvisoDaTela tom="atencao">
+                    {quantos(suspects.length, "ponto")} para conferir — até {moneyFin(totalEmRisco)} podem estar sobrando no caixa.
+                  </AvisoDaTela>
+                  <ul className="grid gap-3">
+                    {suspects.map((suspect) => (
+                      <li key={`${suspect.motivo}-${suspect.itens[0].kind}-${suspect.itens[0].id}`} className="rounded-controle border border-fio p-3">
+                        <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-tinta">
+                          {suspect.itens[0].quem}
+                          <Etiqueta tom="atencao">{motivoLabel[suspect.motivo]}</Etiqueta>
+                          <span className="tabular-nums text-atencao">sobrando {moneyFin(suspect.valorEmRisco)}</span>
+                        </p>
+                        <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{suspect.descricao}</p>
+                        <div className="mt-2 grid gap-2">
+                          {suspect.itens.map((item) => (
+                            <div key={`${item.kind}-${item.id}`} className="flex flex-wrap items-center gap-2 text-[13px]">
+                              <span className="font-semibold tabular-nums text-tinta-2">{dataBR(item.data)}</span>
+                              <Etiqueta>{item.kind === "MANUAL" ? "lançado à mão" : "lembrete"}</Etiqueta>
+                              <span className="font-bold tabular-nums text-tinta">{moneyFin(item.valor)}</span>
+                              <span className="font-medium text-tinta-2">{item.detalhe}</span>
+                              {item.lembreteApagado ? (
+                                <span className="font-bold text-erro">lembrete apagado</span>
+                              ) : item.lembreteStatus === "cancelado" ? (
+                                <span className="font-bold text-erro">lembrete cancelado</span>
+                              ) : null}
+                              {!readOnly ? (
+                                <Botao variante="perigo" tamanho="pq" className="ml-auto" onClick={() => tirarDoCofre(item)} disabled={estornoMutation.isPending}>
+                                  {item.kind === "MANUAL" ? "Excluir esta" : "Estornar este"}
+                                </Botao>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className={AJUDA}>
+                    Estornar devolve o valor para a dívida do paciente (o lembrete reabre) e tira o dinheiro do caixa. Nada é apagado sem você clicar, e
+                    fica registrado quem fez.
+                  </p>
+                </div>
+              ) : (
+                <p className={AJUDA}>
+                  Nenhum lançamento suspeito no momento: nenhum valor repetido, nenhum recebimento pendurado em lembrete apagado ou cancelado.
                 </p>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Nenhum lançamento suspeito no momento: nenhum valor repetido, nenhum recebimento pendurado em lembrete
-                apagado ou cancelado.
-              </p>
-            )}
-            {estornoFeedback ? <p className="text-sm font-semibold text-brand-musgo">{estornoFeedback}</p> : null}
-          </CardContent>
-        </Card>
+              )}
+              {estornoFeedback ? <AvisoDaTela tom={/^(Não|O estorno|Você)/.test(estornoFeedback) ? "atencao" : "ok"}>{estornoFeedback}</AvisoDaTela> : null}
+            </div>
+          </BlocoFolha>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-              Novo lançamento
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 sm:grid-cols-[0.5fr_0.6fr_1.4fr_0.6fr_auto]" onSubmit={handleSubmit}>
-              <div>
-                <Label>Data</Label>
-                <Input type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} />
-              </div>
-              <div>
-                <Label>Tipo</Label>
-                <div className="flex gap-2">
-                  {(["ENTRADA", "SAIDA"] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setDirection(option)}
-                      className={cn(
-                        "h-11 flex-1 rounded-md border px-2 text-sm font-semibold",
-                        direction === option
-                          ? option === "ENTRADA"
-                            ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                            : "border-red-300 bg-red-100 text-red-700"
-                          : "border-brand-oliva/25 bg-white/60 text-brand-oliva",
-                      )}
-                    >
-                      {option === "ENTRADA" ? "Entrada" : "Saída"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <Input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ex.: recebido de Fulano · sangria para banco · troco" />
-              </div>
-              <div>
-                <Label>Valor (R$)</Label>
-                <Input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="500,00" inputMode="decimal" />
-              </div>
-              <div className="flex items-end">
-                <LiquidButton type="submit" size="sm">
-                  <CircleDollarSign className="h-4 w-4" aria-hidden="true" />
-                  Lançar
-                </LiquidButton>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Movimentações de {monthKey.split("-").reverse().join("/")}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {monthEntries.length ? (
-              monthEntries.map((entry) => (
-                <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-brand-tinta">{entry.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {dataBR(entry.entryDate)}
-                      {(entry as { fromLembrete?: boolean }).fromLembrete ? " · automático (Lembretes)" : ""}
-                    </p>
+          {/* CREDIÁRIO NO LUCRO (31/07/2026, pedido do Lucas): botão manual, por mês.
+              Nunca automático — o caixa do crediário segue fora da P12 por padrão. */}
+          <BlocoFolha as="section" aria-labelledby="lucro-crediario-titulo" className="min-w-0">
+            <div className={CABECA_DA_FOLHA}>
+              <TituloDoBloco id="lucro-crediario-titulo" icone={<Sparkles className="h-4 w-4" aria-hidden="true" />}>
+                Somar o crediário do mês no lucro
+              </TituloDoBloco>
+              <InfoTip title="Quando usar e qual valor">
+                Por padrão o dinheiro do crediário fica FORA do resultado — é caixa físico, separado da P12. No fechamento, escolha o mês e aperte o
+                botão: o valor SOMA NO FATURAMENTO do mês, puxa o % da meta e entra no lucro. A base é o <strong>faturamento do crediário no mês</strong>{" "}
+                — tudo que entrou em dinheiro nele (caixa e lembretes) —, e não o saldo do caixa, que é acumulado de vários meses e já descontou o que
+                saiu. O dinheiro continua no cofre — muda o resultado, não o saldo.
+              </InfoTip>
+            </div>
+            <div className="grid gap-4 p-6 max-md:p-4">
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] sm:items-end">
+                <Campo rotulo="Mês do lucro" htmlFor="lucro-mes">
+                  <input
+                    id="lucro-mes"
+                    type="month"
+                    value={lucroMes}
+                    onChange={(event) => {
+                      setLucroMes(event.target.value);
+                      setLucroEditando(false);
+                      setLucroFeedback("");
+                    }}
+                    className={CAMPO}
+                  />
+                </Campo>
+                <dl className="grid grid-cols-2 gap-3">
+                  <div className="rounded-controle bg-saber px-3 py-2">
+                    <dt className={RUBRICA}>Entrou em dinheiro</dt>
+                    <dd className="mt-1 whitespace-nowrap text-base font-bold tabular-nums text-tinta">{moneyFin(sugestaoLucro)}</dd>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={cn("whitespace-nowrap text-sm font-bold tabular-nums", entry.direction === "ENTRADA" ? "text-emerald-700" : "text-red-600")}>
-                      {entry.direction === "ENTRADA" ? "+" : "−"} {moneyFin(entry.amount)}
-                    </span>
-                    {(entry as { fromLembrete?: boolean }).fromLembrete ? null : (
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${entry.description}`} onClick={() => removeEntry(entry)}>
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
+                  <div className={cn("rounded-controle px-3 py-2", mesIncluido ? "bg-ok-claro" : "bg-saber")}>
+                    <dt className={RUBRICA}>No lucro de {nomeDoMes(lucroMes)}</dt>
+                    <dd className={cn("mt-1 whitespace-nowrap text-base font-bold tabular-nums", mesIncluido ? "text-ok" : "text-tinta-2")}>
+                      {mesIncluido ? moneyFin(jaNoLucroDoMes) : "ainda não"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              {mesIncluido && !lucroEditando ? (
+                <div className="grid gap-2 rounded-controle bg-ok-claro p-4">
+                  <p className="text-sm font-bold text-tinta">
+                    {nomeDoMesMaiusculo(lucroMes)} de {lucroMes.slice(0, 4)} já está com {moneyFin(jaNoLucroDoMes)} do crediário somados ao lucro.
+                  </p>
+                  {registroDoMes?.note ? <p className="text-[13px] font-medium text-tinta-2">Observação: {registroDoMes.note}</p> : null}
+                  {registroDoMes?.includedAt ? (
+                    <p className="text-xs font-medium text-tinta-2">Marcado em {dataBR(registroDoMes.includedAt.slice(0, 10))}.</p>
+                  ) : null}
+                  {readOnly ? null : (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <Botao variante="secundario" tamanho="pq" onClick={abrirLucro}>
+                        Corrigir o valor
+                      </Botao>
+                      <Botao variante="perigo" tamanho="pq" className="ml-auto" onClick={removerLucro}>
+                        Tirar do lucro
+                      </Botao>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {!mesIncluido && !lucroEditando ? (
+                <div className="grid gap-3">
+                  <p className="text-sm font-medium leading-[22px] text-tinta-2 [text-wrap:pretty]">
+                    {sugestaoLucro > 0 ? (
+                      <>
+                        Em {mesBR(lucroMes)} entraram <strong className="font-bold text-tinta">{moneyFin(sugestaoLucro)}</strong> em dinheiro (caixa do
+                        crediário e recebimentos de lembrete). Esse é o faturamento do crediário do mês — é ele que vai para o lucro, não o saldo do caixa (
+                        {moneyFin(totals.saldo)}), que é acumulado de vários meses.
+                      </>
+                    ) : (
+                      <>Nenhuma entrada de dinheiro registrada em {mesBR(lucroMes)} — não há faturamento do crediário para somar.</>
                     )}
+                  </p>
+                  {readOnly || sugestaoLucro <= 0 ? null : (
+                    <div>
+                      {/* No celular o rótulo (com o valor e o mês) quebra em duas linhas em vez de sair do botão (08/10/2026). */}
+                      <Botao
+                        variante="primario"
+                        icone={<Sparkles className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                        onClick={abrirLucro}
+                        className="h-auto min-h-10 whitespace-normal py-2.5 text-left leading-5"
+                      >
+                        <span className="tabular-nums">
+                          Somar {moneyFin(sugestaoLucro)} no lucro de {mesBR(lucroMes)}
+                        </span>
+                      </Botao>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              {lucroEditando ? (
+                <div className="grid gap-4 rounded-controle bg-saber p-4">
+                  {suspeitosEmRisco > 0 ? (
+                    <AvisoDaTela tom="atencao" className="bg-folha">
+                      A conferência do cofre aponta {moneyFin(suspeitosEmRisco)} que podem estar sobrando no caixa. Resolva ali antes de somar no lucro,
+                      senão o resultado do mês entra inflado.
+                    </AvisoDaTela>
+                  ) : null}
+                  <div className="grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                    <Campo rotulo="Valor a somar" htmlFor="lucro-valor">
+                      <input
+                        id="lucro-valor"
+                        inputMode="decimal"
+                        value={lucroValor}
+                        onChange={(event) => setLucroValor(event.target.value)}
+                        placeholder="10.939,30"
+                        className={cn(CAMPO, "text-right tabular-nums")}
+                      />
+                    </Campo>
+                    <Campo rotulo="Observação" opcional htmlFor="lucro-nota">
+                      <input
+                        id="lucro-nota"
+                        value={lucroNota}
+                        onChange={(event) => setLucroNota(event.target.value)}
+                        placeholder="Ex.: fechamento de julho, dinheiro conferido no cofre"
+                        className={CAMPO}
+                      />
+                    </Campo>
+                  </div>
+                  <p className={AJUDA}>
+                    Isto NÃO tira dinheiro do cofre: entra como linha própria no mês escolhido ({mesBR(lucroMes)}), somando no FATURAMENTO, no % da meta
+                    e no lucro — na P12, nas Metas e nos Relatórios. Fica registrado quem marcou e quando, e dá para desfazer.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Botao variante="primario" onClick={confirmarLucro}>
+                      Confirmar
+                    </Botao>
+                    <Botao variante="fantasma" onClick={() => setLucroEditando(false)}>
+                      Cancelar
+                    </Botao>
                   </div>
                 </div>
-              ))
-            ) : (
-              <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma movimentação neste mês.</p>
-            )}
-          </CardContent>
-        </Card>
+              ) : null}
+
+              {lucroFeedback ? (
+                <AvisoDaTela tom={/^Removido|somados/.test(lucroFeedback) ? "ok" : "atencao"} onFechar={() => setLucroFeedback("")}>
+                  {lucroFeedback}
+                </AvisoDaTela>
+              ) : null}
+            </div>
+          </BlocoFolha>
+        </div>
       </div>
     </AccessGate>
   );

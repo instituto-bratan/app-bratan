@@ -11,9 +11,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Loader2, Paperclip, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Botao } from "@/components/ui/fundacao";
 import {
   deleteRemoteExpenseNota,
   getRemoteExpenseNotaUrl,
@@ -23,6 +21,7 @@ import {
 } from "@/lib/remoteData";
 import { finNotaStatusLabels, type FinExpense, type FinNotaStatus } from "./financeiroData";
 import { confirmar } from "@/components/ui/avisos";
+import { Etiqueta, type TomEtiqueta } from "./pecasDiaPagar";
 
 export function NotaDaContaCell({
   expense,
@@ -90,17 +89,12 @@ export function NotaDaContaCell({
     }
   }
 
-  const cor =
-    status === "ANEXADA"
-      ? "bg-emerald-100 text-emerald-800"
-      : status === "SEM_NOTA"
-        ? "bg-brand-creme text-brand-tinta"
-        : status === "AGUARDANDO"
-          ? "bg-amber-100 text-amber-900"
-          : "bg-red-50 text-red-800";
+  // Papel & Musgo (08/10/2026): o estado vira etiqueta com tom de token (ok ·
+  // neutro · ouro · atenção) e os atalhos viram botões pequenos de contorno.
+  const tom: TomEtiqueta = status === "ANEXADA" ? "ok" : status === "SEM_NOTA" ? "neutro" : status === "AGUARDANDO" ? "ouro" : "atencao";
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {daConta.length ? (
         daConta.map((nota) => (
           <span key={nota.clientRef} className="flex items-center gap-1">
@@ -108,9 +102,9 @@ export function NotaDaContaCell({
               type="button"
               onClick={() => void abrir(nota)}
               title={`Abrir ${nota.fileName}`}
-              className="inline-flex max-w-[10rem] items-center gap-1 truncate rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 hover:border-emerald-400"
+              className="inline-flex h-6 max-w-[10rem] items-center gap-1 truncate rounded-controle bg-ok-claro px-2 text-xs font-bold text-ok hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
             >
-              <FileText className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">{nota.fileName}</span>
             </button>
             {!readOnly && habilitado ? (
@@ -122,15 +116,15 @@ export function NotaDaContaCell({
                   if (!(await confirmar(`Remover a nota "${nota.fileName}" desta conta?`, { destrutivo: true, confirmar: "Remover" }))) return;
                   apagar.mutate(nota.clientRef);
                 }}
-                className="text-muted-foreground hover:text-destructive"
+                className="grid h-6 w-6 place-items-center rounded-controle text-tinta-2 hover:bg-erro-claro hover:text-erro focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
               >
-                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             ) : null}
           </span>
         ))
       ) : (
-        <Badge className={cn("w-fit", cor)}>{finNotaStatusLabels[status]}</Badge>
+        <Etiqueta tom={tom}>{finNotaStatusLabels[status]}</Etiqueta>
       )}
 
       {!readOnly && habilitado ? (
@@ -148,44 +142,31 @@ export function NotaDaContaCell({
             }}
           />
           <div className="flex flex-wrap items-center gap-1">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 gap-1 px-2 text-[11px]"
+            <Botao
+              variante="secundario"
+              tamanho="pq"
+              className="h-7 px-2 text-xs"
               disabled={anexar.isPending}
+              icone={anexar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />}
               onClick={() => inputArquivo.current?.click()}
             >
-              {anexar.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-              ) : (
-                <Paperclip className="h-3 w-3" aria-hidden="true" />
-              )}
               {daConta.length ? "Outra nota" : "Anexar nota"}
-            </Button>
+            </Botao>
             {status === "PENDENTE" ? (
               <>
-                <button
-                  type="button"
-                  onClick={() => marcar.mutate("AGUARDANDO")}
-                  className="rounded-full border border-brand-oliva/30 px-2 py-0.5 text-[10px] font-semibold text-brand-tinta hover:border-brand-musgo"
-                >
+                <Botao variante="fantasma" tamanho="pq" className="h-7 px-2 text-xs" onClick={() => marcar.mutate("AGUARDANDO")}>
                   vai mandar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => marcar.mutate("SEM_NOTA")}
-                  className="rounded-full border border-brand-oliva/30 px-2 py-0.5 text-[10px] font-semibold text-brand-tinta hover:border-brand-musgo"
-                >
+                </Botao>
+                <Botao variante="fantasma" tamanho="pq" className="h-7 px-2 text-xs" onClick={() => marcar.mutate("SEM_NOTA")}>
                   não gera nota
-                </button>
+                </Botao>
               </>
             ) : null}
             {status === "AGUARDANDO" || status === "SEM_NOTA" ? (
               <button
                 type="button"
                 onClick={() => marcar.mutate("PENDENTE")}
-                className="text-[10px] font-semibold text-brand-oliva underline underline-offset-2"
+                className="rounded-sm text-xs font-bold text-musgo underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
               >
                 desfazer
               </button>
@@ -193,7 +174,7 @@ export function NotaDaContaCell({
           </div>
         </>
       ) : null}
-      {erro ? <span className="text-[10px] font-semibold text-red-700">{erro}</span> : null}
+      {erro ? <span className="text-xs font-bold text-erro">{erro}</span> : null}
     </div>
   );
 }
