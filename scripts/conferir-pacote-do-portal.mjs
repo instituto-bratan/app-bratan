@@ -20,6 +20,12 @@ const SO_DA_EQUIPE = [
 ];
 /** Arquivos públicos que nunca entram no app: os POPs internos e o PWA da equipe. */
 const ARQUIVOS_PROIBIDOS = ["fluxogramas", "pdfjs", "sw.js", "manifest.webmanifest"];
+/**
+ * As fontes da equipe (Fraunces e Manrope, Papel & Musgo) não vão para o app do
+ * paciente, que usa a própria família (08/10/2026): moram em
+ * src/styles/fontes-da-equipe.css, importado só por src/main.tsx.
+ */
+const FONTES_DA_EQUIPE = /(^|[\\/])(fraunces|manrope)-[^\\/]*\.(woff2?|ttf|otf)$/i;
 
 function arquivos(pasta) {
   return fs.readdirSync(pasta, { withFileTypes: true }).flatMap((item) => {
@@ -37,10 +43,17 @@ const problemas = [];
 for (const nome of ARQUIVOS_PROIBIDOS) {
   if (fs.existsSync(path.join(PASTA, nome))) problemas.push(`o pacote leva ${nome}`);
 }
+for (const arquivo of arquivos(PASTA).filter((a) => FONTES_DA_EQUIPE.test(a))) {
+  problemas.push(`o pacote leva a fonte da equipe ${path.relative(PASTA, arquivo)}`);
+}
 for (const arquivo of arquivos(PASTA).filter((a) => /\.(js|css|html)$/.test(a))) {
   const texto = fs.readFileSync(arquivo, "utf8");
   for (const marca of SO_DA_EQUIPE) {
     if (texto.includes(marca)) problemas.push(`${path.relative(PASTA, arquivo)} cita "${marca}"`);
+  }
+  // Mesmo embutida no CSS (data:), a declaração da fonte da equipe não entra (08/10/2026).
+  if (/@font-face\s*\{[^}]*font-family:\s*["']?(Fraunces|Manrope)\b/i.test(texto)) {
+    problemas.push(`${path.relative(PASTA, arquivo)} declara a fonte da equipe (@font-face Fraunces/Manrope)`);
   }
 }
 

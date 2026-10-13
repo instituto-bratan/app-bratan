@@ -20,5 +20,10 @@ tools/estacao-nutri/.env.local
 tools/estacao-nutri/instalador/dist/
 
 # o tsc -b gera estes ao lado das configs: não são código
+# (desde 08/10/2026 o tsconfig.node.json manda a saída para node_modules/.tmp;
+# as linhas ficam para cópias antigas). O Tailwind lê tailwind.config.js ANTES
+# do .ts: uma cópia velha aqui faria a prévia local ignorar o .ts versionado.
 /vite*.config.js
 /vite*.config.d.ts
+/tailwind.config.js
+/tailwind.config.d.ts
