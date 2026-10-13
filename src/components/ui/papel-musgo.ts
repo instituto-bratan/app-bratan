@@ -12,8 +12,12 @@
 
 // ---------------------------------------------------------------- selo
 
-/** Situações que o selo sabe mostrar. As 8 pedidas + "cancelado" (pedido de compra). */
+/**
+ * Situações que o selo sabe mostrar. As 8 pedidas + "cancelado" (pedido de compra)
+ * + "pendente" (08/10/2026, etapa 4): o "ainda não feito" NEUTRO, sem ouro.
+ */
 export type EstadoSelo =
+  | "pendente"
   | "aguardando"
   | "aprovado"
   | "a-caminho"
@@ -41,6 +45,12 @@ type DefinicaoDoSelo = {
 };
 
 export const SELOS: Record<EstadoSelo, DefinicaoDoSelo> = {
+  // Pendente (08/10/2026): o dia do fechamento ainda não conferido, a tarefa que
+  // ninguém começou — nada decidido, ninguém atrasado. Neutro em tinta 2, SEM
+  // ouro: o ouro só marca "o agora" (o que espera decisão de alguém, como
+  // "Aguardando aprovação"). Nenhuma etapa feita; a primeira marca vazada diz
+  // "é a vez dela".
+  pendente: { palavra: "Pendente", etapas: 0, fim: false, texto: "text-tinta-2", fundo: "bg-saber" },
   aguardando: { palavra: "Aguardando aprovação", etapas: 1, fim: false, texto: "text-ouro", fundo: "bg-ouro-claro" },
   aprovado: { palavra: "Aprovado", etapas: 2, fim: false, texto: "text-musgo", fundo: "bg-musgo-claro" },
   "a-caminho": { palavra: "A caminho", etapas: 3, fim: false, texto: "text-petroleo", fundo: "bg-petroleo-claro" },
@@ -60,6 +70,25 @@ export const ESTADOS_DO_SELO = Object.keys(SELOS) as EstadoSelo[];
 export function marcasDoSelo(etapasFeitas: number, fim: boolean): MarcaDeEtapa[] {
   const feitas = Math.max(0, Math.min(4, Math.trunc(etapasFeitas)));
   return [0, 1, 2, 3].map((i) => (i < feitas ? "cheia" : i === feitas && !fim ? "vazada" : "vazia"));
+}
+
+// ---------------------------------------------------------------- barra de decisão
+
+/** O quanto o Recusar "pendura" no respiro da barra quando os três cabem numa linha (o md:-mr-4). */
+export const PENDURA_DO_RECUSAR = 16;
+
+/**
+ * A BarraDecisao cabe numa linha só? (08/10/2026, etapa 4 — o ajuste do painel
+ * estreito que só Pedidos fazia.) Soma a largura natural de cada botão (a que ele
+ * teria sem esticar) mais os vãos, desconta o que o Recusar pendura na margem e
+ * compara com a largura da linha. Não cabe → Aprovar em cima, Devolver | Recusar
+ * embaixo. Meio pixel de folga para o arredondamento do navegador.
+ */
+export function cabeNumaLinha(larguras: number[], vao: number, disponivel: number, comRecusar: boolean): boolean {
+  if (larguras.length < 2) return true;
+  const precisa =
+    larguras.reduce((soma, largura) => soma + largura, 0) + vao * (larguras.length - 1) - (comRecusar ? PENDURA_DO_RECUSAR : 0);
+  return precisa <= disponivel + 0.5;
 }
 
 // ---------------------------------------------------------------- fio do mês

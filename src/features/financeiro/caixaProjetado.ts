@@ -7,13 +7,21 @@
 //    recebíveis das comandas, líquida da taxa, no dia previsto de liquidação);
 //  · ENTRADAS ESTIMADAS — o ritmo de PIX/dinheiro/débito dos últimos 28 dias,
 //    repetido nos dias úteis à frente, com uma faixa de incerteza (± 35%);
-//  · SAÍDAS — as contas em aberto pelo vencimento (as vencidas caem em "hoje"),
+//  · SAÍDAS — as contas em aberto pelo dia de pagar (as vencidas caem em "hoje"),
 //    as contas mensais que ainda não foram lançadas no mês seguinte, e as
 //    transferências previstas do Lucro Inteligente (sócios e médico).
 // Nada é digitado; o saldo do banco vem da Prova do dinheiro quando existe.
 // A alternativa "com antecipação" traz o cartão para o dia útil seguinte e
 // mostra quanto custa (TAD = SELIC a.m. + 0,9%).
+//
+// 08/10/2026 (regra do Lucas): a conta sai do caixa no DIA DE PAGAR, não no
+// vencimento cru — vencimento em sábado, domingo ou feriado é pago no dia útil
+// anterior (filaFinanceiraDiaDePagar.ts). O aluguel do sábado 10/10 sai na
+// sexta 09/10 (e cai na semana certa quando o sábado é o primeiro dia da
+// semana seguinte); só vira "vencida" depois do dia de pagar. Vale também para
+// a conta mensal ainda não lançada.
 import type { FinExpense, FinSale } from "./financeiroData";
+import { diaDePagar } from "./filaFinanceiraDiaDePagar";
 import { agendaRecebiveis, custoAntecipacao, diaUtilSeguinte, diasEntre, ehDiaUtil, SELIC_ANUAL_REFERENCIA, somaDias, taxaDoCartao, taxaPix } from "./recebiveisRede";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
@@ -137,21 +145,29 @@ export function buildCaixaProjetado(input: {
     eventos.push({ dia: r.diaPrevisto, tipo: "CARTAO", label: `${r.paciente} · parcela ${r.parcela}/${r.parcelasTotal}`, valor: r.liquido });
   }
 
-  // Saídas: contas em aberto (vencida cai hoje) e mensais ainda não lançadas.
+  // Saídas: contas em aberto no dia de pagar (a que passou dele cai hoje) e
+  // mensais ainda não lançadas.
   const abertas = expenses.filter((e) => !e.paidAt && e.dueDate);
   for (const e of abertas) {
-    if (e.dueDate > fimHorizonte) continue;
-    const vencida = e.dueDate < hoje;
-    eventos.push({ dia: vencida ? hoje : e.dueDate, tipo: vencida ? "CONTA_VENCIDA" : "CONTA", label: `${e.description}${vencida ? ` (vencida em ${diaCurto(e.dueDate)})` : ""}`, valor: -round2(e.amount || 0) });
+    const pagar = diaDePagar(e.dueDate);
+    if (pagar > fimHorizonte) continue;
+    const vencida = pagar < hoje;
+    // "vencida em 10/09" quando o vencimento já passou; "passou do dia de pagar,
+    // 09/10" quando só o dia de pagar passou (o vencimento é hoje, num sábado).
+    const porQue = !vencida ? "" : e.dueDate < hoje ? ` (vencida em ${diaCurto(e.dueDate)})` : ` (passou do dia de pagar, ${diaCurto(pagar)})`;
+    eventos.push({ dia: vencida ? hoje : pagar, tipo: vencida ? "CONTA_VENCIDA" : "CONTA", label: `${e.description}${porQue}`, valor: -round2(e.amount || 0) });
   }
   const mesDeHoje = hoje.slice(0, 7);
   const descricoesPorMes = new Set(expenses.map((e) => `${(e.dueDate || "").slice(0, 7)}|${e.description.trim().toLowerCase()}`));
   for (const e of expenses) {
     if (e.recorrencia !== "MENSAL" || (e.dueDate || "").slice(0, 7) !== mesDeHoje) continue;
     const proximo = mesmoDiaMesSeguinte(e.dueDate);
-    if (proximo > fimHorizonte) continue;
+    // Se o dia de pagar do mês seguinte já ficou para trás (vence no domingo
+    // 01/11 e hoje é o sábado 31/10), a saída cai hoje em vez de sumir da conta.
+    const pagarProximo = diaDePagar(proximo) < hoje ? hoje : diaDePagar(proximo);
+    if (pagarProximo > fimHorizonte) continue;
     if (descricoesPorMes.has(`${proximo.slice(0, 7)}|${e.description.trim().toLowerCase()}`)) continue;
-    eventos.push({ dia: proximo, tipo: "CONTA_MENSAL", label: `${e.description} (mensal, ainda não lançada)`, valor: -round2(e.amount || 0) });
+    eventos.push({ dia: pagarProximo, tipo: "CONTA_MENSAL", label: `${e.description} (mensal, ainda não lançada)`, valor: -round2(e.amount || 0) });
   }
   for (const t of input.transferenciasPrevistas ?? []) {
     if (t.dia < hoje || t.dia > fimHorizonte || t.valor <= 0) continue;

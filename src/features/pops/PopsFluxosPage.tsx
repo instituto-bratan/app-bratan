@@ -1,289 +1,278 @@
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowUpRight, ClipboardCheck, FileText, FolderOpen, Image as ImageIcon, Search, Sparkles } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+// POPs & FLUXOS — redesenho "Papel & Musgo", etapa 4 (08/10/2026).
+//
+// A tela é um catálogo dos arquivos de public/fluxogramas (popsData.ts). O que
+// ela FAZ não mudou: a mesma busca (sem acento, em título, setor, responsável,
+// categoria, resumo, etapas, tarefas e palavras-chave), o mesmo filtro por
+// setor, o mesmo quadro do setor escolhido (foco, responsáveis e tarefas do
+// dia) e o mesmo "Abrir fluxograma / Abrir POP" em outra aba.
+// Mudou a forma (guia aprovado, seção "Um componente para as 60 telas", exemplo
+// "Simples · Equipe"): um Cabecalho com a frase do número; a busca e os setores
+// como leituras em texto; o setor escolhido num bloco "saber"; e os documentos
+// como LISTA numa folha por setor — itens do mesmo tipo, nunca em cartões. Saíram
+// o vidro (backdrop-blur, LiquidButton), a animação de entrada e as cores com
+// opacidade que não geravam CSS.
+import { useId, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, FileText, SearchX } from "lucide-react";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, CampoBusca } from "@/components/ui/fundacao";
+import { Leitura, LinkSetaExterno } from "@/features/compras/pecas";
 import { cn } from "@/lib/utils";
-import { documentsByArea, fluxogramas, popsAreas, totalPopsTasks, type PopsAreaId } from "./popsData";
+import {
+  contarPorArea,
+  documentsByArea,
+  ehPdf,
+  filtrarDocumentos,
+  fluxogramas,
+  popsAreas,
+  totalPopsTasks,
+  type FiltroDeArea,
+  type FluxogramaDocumento,
+  type PopsArea,
+} from "./popsData";
+import { EstadoVazio, FAIXA_DAS_LEITURAS, Rubrica, TituloDaSecao } from "./pecasDaEquipe";
 
-type AreaFilter = PopsAreaId | "todos";
-
-const areaFilterOptions: { id: AreaFilter; label: string }[] = [
-  { id: "todos", label: "Todos" },
-  ...popsAreas.map((area) => ({ id: area.id, label: area.label })),
-];
-
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
+const plural = (n: number, um: string, varios: string) => `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
 
 export function PopsFluxosPage() {
   const [query, setQuery] = useState("");
-  const [selectedArea, setSelectedArea] = useState<AreaFilter>("todos");
-  const normalizedQuery = normalizeSearch(query.trim());
+  const [selectedArea, setSelectedArea] = useState<FiltroDeArea>("todos");
   const activeArea = selectedArea === "todos" ? null : popsAreas.find((area) => area.id === selectedArea) ?? null;
+  const buscando = query.trim().length > 0;
 
-  const filteredDocs = useMemo(() => {
-    return fluxogramas.filter((documento) => {
-      const matchesArea = selectedArea === "todos" || documento.areaId === selectedArea;
-      const searchableText = normalizeSearch(
-        [
-          documento.titulo,
-          documento.setor,
-          documento.responsavel,
-          documento.categoria,
-          documento.resumo,
-          ...documento.etapas,
-          ...documento.tarefasSugeridas,
-          ...documento.tags,
-        ].join(" "),
-      );
-      const matchesQuery = !normalizedQuery || searchableText.includes(normalizedQuery);
+  const filteredDocs = useMemo(() => filtrarDocumentos(fluxogramas, query, selectedArea), [query, selectedArea]);
+  const contagem = useMemo(() => contarPorArea(fluxogramas, query), [query]);
 
-      return matchesArea && matchesQuery;
-    });
-  }, [normalizedQuery, selectedArea]);
+  // As áreas com documento achado, na ordem do catálogo (área vazia não aparece).
+  const areasWithDocs = useMemo(
+    () =>
+      popsAreas
+        .map((area) => ({ ...area, documentos: filteredDocs.filter((documento) => documento.areaId === area.id) }))
+        .filter((area) => area.documentos.length > 0),
+    [filteredDocs],
+  );
 
-  const areasWithDocs = useMemo(() => {
-    return popsAreas
-      .map((area) => ({
-        ...area,
-        documentos: filteredDocs.filter((documento) => documento.areaId === area.id),
-      }))
-      .filter((area) => selectedArea === "todos" || area.id === selectedArea || area.documentos.length > 0);
-  }, [filteredDocs, selectedArea]);
+  const verTodos = () => {
+    setQuery("");
+    setSelectedArea("todos");
+  };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <motion.section
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="overflow-hidden rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-      >
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-end">
-          <div>
-            <Badge variant="gold" className="mb-4">
-              Biblioteca operacional
-            </Badge>
-            <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">POPs & Fluxos</h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-muted-foreground">
-              Fluxogramas internos organizados por setor, com contexto operacional e tarefas extraídas para a rotina da equipe.
-            </p>
-          </div>
+    <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+      <Cabecalho
+        className="mb-0 max-md:mb-0"
+        sobrancelha="Equipe"
+        titulo="POPs & Fluxos"
+        frase={
+          <>
+            <strong>{plural(fluxogramas.length, "documento", "documentos")}</strong> em {plural(popsAreas.length, "área", "áreas")}. Abra o do seu
+            setor antes de começar uma tarefa nova.
+          </>
+        }
+      />
 
-          <Card className="border-brand-dourado/35 bg-brand-creme/45 shadow-none">
-            <CardContent className="grid grid-cols-3 gap-3 p-4 text-center">
-              <div>
-                <p className="text-3xl font-bold text-brand-musgo">{fluxogramas.length}</p>
-                <p className="text-[11px] font-semibold uppercase text-brand-oliva">fluxos</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-brand-musgo">{popsAreas.length}</p>
-                <p className="text-[11px] font-semibold uppercase text-brand-oliva">setores</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-brand-musgo">{totalPopsTasks}</p>
-                <p className="text-[11px] font-semibold uppercase text-brand-oliva">tarefas</p>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="grid gap-3">
+        <CampoBusca
+          rotulo="Buscar nos POPs e fluxos"
+          placeholder="Buscar por setor, tarefa, documento ou palavra-chave"
+          valor={query}
+          onMudar={setQuery}
+          className="max-w-[560px] max-md:h-11 max-md:max-w-none"
+        />
+        <div role="group" aria-label="Mostrar documentos do setor" className={FAIXA_DAS_LEITURAS}>
+          <Leitura ativa={selectedArea === "todos"} rotulo="Todos" numero={contagem.todos} onClick={() => setSelectedArea("todos")} />
+          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-fio-2" />
+          {popsAreas.map((area) => (
+            <Leitura
+              key={area.id}
+              ativa={selectedArea === area.id}
+              rotulo={area.label}
+              numero={contagem[area.id]}
+              onClick={() => setSelectedArea(selectedArea === area.id ? "todos" : area.id)}
+            />
+          ))}
         </div>
-      </motion.section>
-
-      <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-        <CardContent className="space-y-4 p-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por setor, tarefa, documento ou palavra-chave" className="pl-9" />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {areaFilterOptions.map((area) => (
-              <Button
-                key={area.id}
-                type="button"
-                size="sm"
-                variant={selectedArea === area.id ? "default" : "outline"}
-                onClick={() => setSelectedArea(area.id)}
-              >
-                {area.label}
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {activeArea ? (
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-        >
-          <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-            <CardHeader>
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-xl text-brand-musgo">
-                    <Sparkles className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
-                    {activeArea.label}
-                  </CardTitle>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{activeArea.foco}</p>
-                </div>
-                <Badge variant="outline">{documentsByArea(activeArea.id).length} fluxos</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
-              <div className="rounded-lg border border-brand-oliva/16 bg-brand-papel/60 p-4">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">Responsáveis</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {activeArea.responsaveis.map((responsavel) => (
-                    <Badge key={responsavel} variant="muted">
-                      {responsavel}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-lg border border-brand-oliva/16 bg-white/70 p-4">
-                <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-tinta">
-                  <ClipboardCheck className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-                  Tarefas do setor
-                </p>
-                <div className="grid gap-2 md:grid-cols-2">
-                  {activeArea.tarefasDoDia.map((task) => (
-                    <div key={task} className="rounded-lg bg-brand-papel/55 px-3 py-2 text-sm leading-6 text-brand-tinta">
-                      {task}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.section>
-      ) : null}
-
-      <div className="space-y-6">
-        {areasWithDocs.map((area, areaIndex) => (
-          <motion.section
-            key={area.id}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: areaIndex * 0.04, ease: [0.4, 0, 0.2, 1] }}
-            className={cn(area.documentos.length === 0 && "hidden")}
-          >
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="text-2xl text-brand-musgo">{area.label}</h2>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{area.descricao}</p>
-              </div>
-              <Badge variant="gold">{area.documentos.length} documento{area.documentos.length === 1 ? "" : "s"}</Badge>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              {area.documentos.map((documento, index) => (
-                <motion.article
-                  key={documento.id}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25, delay: index * 0.03, ease: [0.4, 0, 0.2, 1] }}
-                >
-                  <Card className="h-full overflow-hidden border-brand-oliva/20 bg-white/75 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm">
-                    <a href={documento.assetPath} target="_blank" rel="noreferrer" className="block bg-brand-papel/45">
-                      <div className="aspect-[16/9] overflow-hidden border-b border-brand-oliva/12">
-                        {documento.fileName.toLowerCase().endsWith(".pdf") ? (
-                          <div className="grid h-full w-full place-items-center bg-brand-creme/40">
-                            <div className="flex flex-col items-center gap-2 text-brand-musgo">
-                              <FileText className="h-10 w-10" aria-hidden="true" />
-                              <span className="text-sm font-semibold">Documento PDF — clique para abrir</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <img
-                            src={documento.assetPath}
-                            alt={`Fluxograma ${documento.titulo}`}
-                            loading="lazy"
-                            className="h-full w-full object-contain transition duration-500 hover:scale-[1.015]"
-                          />
-                        )}
-                      </div>
-                    </a>
-                    <CardHeader>
-                      <div className="flex items-start gap-3">
-                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-                          <FolderOpen className="h-5 w-5" aria-hidden="true" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            <Badge variant="outline">{documento.categoria}</Badge>
-                            <Badge variant="muted">{documento.setor}</Badge>
-                          </div>
-                          <CardTitle className="text-lg leading-6">{documento.titulo}</CardTitle>
-                          <p className="mt-2 text-sm leading-6 text-muted-foreground">{documento.resumo}</p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div>
-                        <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-brand-tinta">
-                          <FileText className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-                          Etapas principais
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {documento.etapas.map((etapa) => (
-                            <Badge key={etapa} variant="muted">
-                              {etapa}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg border border-brand-oliva/16 bg-brand-papel/55 p-3">
-                        <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-brand-tinta">
-                          <ClipboardCheck className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-                          Tarefas extraídas
-                        </p>
-                        <ul className="space-y-2">
-                          {documento.tarefasSugeridas.map((task) => (
-                            <li key={task} className="grid grid-cols-[auto_1fr] gap-2 text-sm leading-6 text-muted-foreground">
-                              <span className="mt-2 h-1.5 w-1.5 rounded-full bg-brand-dourado" aria-hidden="true" />
-                              <span>{task}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase text-brand-oliva">
-                          <ImageIcon className="h-4 w-4" aria-hidden="true" />
-                          {documento.fileName.toLowerCase().endsWith(".pdf") ? "PDF anexado" : "PNG anexado"}
-                        </div>
-                        <LiquidButton type="button" size="lg" className="h-11 px-5" onClick={() => window.open(documento.assetPath, "_blank", "noopener,noreferrer")}>
-                          {documento.fileName.toLowerCase().endsWith(".pdf") ? "Abrir POP" : "Abrir fluxograma"}
-                          <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-                        </LiquidButton>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.article>
-              ))}
-            </div>
-          </motion.section>
-        ))}
+        {!activeArea ? (
+          <p className="text-[13px] font-medium leading-5 text-tinta-2">
+            Escolha um setor para ver o foco, os responsáveis e as tarefas do dia dele ({plural(totalPopsTasks, "tarefa", "tarefas")} nos{" "}
+            {popsAreas.length} setores).
+          </p>
+        ) : null}
       </div>
 
+      {activeArea ? <SetorEscolhido area={activeArea} /> : null}
+
+      {areasWithDocs.map((area) => (
+        <section key={area.id} aria-labelledby={`pops-area-${area.id}`} className="grid gap-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+            <TituloDaSecao id={`pops-area-${area.id}`} contagem={plural(area.documentos.length, "documento", "documentos")}>
+              {area.label}
+            </TituloDaSecao>
+            <p className="text-[13px] font-medium leading-5 text-tinta-2">{area.descricao}</p>
+          </div>
+          <BlocoFolha as="div">
+            <ul>
+              {area.documentos.map((documento) => (
+                <LinhaDoDocumento key={documento.id} documento={documento} buscando={buscando} />
+              ))}
+            </ul>
+          </BlocoFolha>
+        </section>
+      ))}
+
       {filteredDocs.length === 0 ? (
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardContent className="p-8 text-center">
-            <p className="text-lg font-semibold text-brand-musgo">Nenhum fluxograma encontrado.</p>
-            <p className="mt-2 text-sm text-muted-foreground">Ajuste a busca ou escolha outro setor.</p>
-          </CardContent>
-        </Card>
+        <BlocoFolha as="section" aria-label="Nenhum documento encontrado">
+          <EstadoVazio
+            icone={<SearchX aria-hidden="true" />}
+            titulo="Nenhum fluxograma encontrado."
+            acao={
+              <Botao variante="secundario" onClick={verTodos} className="max-md:h-11">
+                Ver todos os documentos
+              </Botao>
+            }
+          >
+            {buscando ? <>Nada com “{query.trim()}”{activeArea ? ` em ${activeArea.label}` : ""}. </> : null}
+            Ajuste a busca ou escolha outro setor.
+          </EstadoVazio>
+        </BlocoFolha>
       ) : null}
     </div>
+  );
+}
+
+/** O setor escolhido: para saber (foco, responsáveis e as tarefas do dia dele). */
+function SetorEscolhido({ area }: { area: PopsArea }) {
+  const total = documentsByArea(area.id).length;
+  return (
+    <BlocoSaber
+      as="section"
+      aria-labelledby="pops-setor-escolhido"
+      className="grid gap-x-12 gap-y-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
+    >
+      <div className="grid content-start gap-3">
+        <Rubrica as="p">Setor escolhido · {plural(total, "documento", "documentos")}</Rubrica>
+        <h2 id="pops-setor-escolhido" className="text-xl font-bold leading-7 text-tinta">
+          {area.label}
+        </h2>
+        <p className="max-w-[60ch] text-sm font-medium leading-6 text-tinta-2">{area.foco}</p>
+        <div className="mt-2 grid gap-1">
+          <Rubrica as="p">Responsáveis</Rubrica>
+          <p className="text-sm font-semibold leading-6 text-tinta">{area.responsaveis.join(" · ")}</p>
+        </div>
+      </div>
+      <div className="grid content-start gap-2">
+        <Rubrica as="h3">Tarefas do setor · {area.tarefasDoDia.length}</Rubrica>
+        <ol className="grid">
+          {area.tarefasDoDia.map((tarefa, indice) => (
+            <li
+              key={tarefa}
+              className="grid grid-cols-[24px_minmax(0,1fr)] gap-2 border-t border-fio py-2 text-sm font-medium leading-6 text-tinta first:border-t-0 first:pt-0"
+            >
+              <span className="font-bold tabular-nums text-tinta-2">{indice + 1}</span>
+              <span>{tarefa}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </BlocoSaber>
+  );
+}
+
+/**
+ * Um documento na lista: a miniatura (só enfeite: o link de verdade é o "Abrir"),
+ * o título, quem cuida, o resumo, as etapas em trilha e as tarefas tiradas dele.
+ * 13/10/2026: as tarefas começam ABERTAS (como antes do redesenho); o botão só
+ * recolhe. Com busca ficam sempre abertas (a palavra pode estar numa delas).
+ */
+function LinhaDoDocumento({ documento, buscando }: { documento: FluxogramaDocumento; buscando: boolean }) {
+  const [alternado, setAlternado] = useState(false);
+  const aberto = buscando || !alternado;
+  const idTarefas = useId();
+  const pdf = ehPdf(documento);
+  const n = documento.tarefasSugeridas.length;
+
+  return (
+    <li
+      className={cn(
+        "grid grid-cols-[120px_minmax(0,1fr)_auto] items-start gap-x-6 gap-y-3 border-t border-fio px-6 py-5 first:border-t-0",
+        // No celular a miniatura sai (o link de verdade é o "Abrir") e o texto ocupa a largura toda.
+        "max-lg:grid-cols-[96px_minmax(0,1fr)] max-md:grid-cols-1 max-md:gap-y-2 max-md:px-4 max-md:py-4",
+      )}
+    >
+      <a
+        href={documento.assetPath}
+        target="_blank"
+        rel="noreferrer"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="block aspect-[10/7] overflow-hidden rounded-controle border border-fio bg-papel max-md:hidden"
+      >
+        {pdf ? (
+          <span className="grid h-full w-full place-items-center content-center gap-1 text-tinta-2">
+            <FileText className="h-6 w-6 stroke-oliva" aria-hidden="true" />
+            <span className="text-xs font-bold leading-4">PDF</span>
+          </span>
+        ) : (
+          <img src={documento.assetPath} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover object-top" />
+        )}
+      </a>
+
+      <div className="min-w-0">
+        <h3 className="text-base font-bold leading-6 text-tinta [text-wrap:balance]">{documento.titulo}</h3>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] font-medium leading-5 text-tinta-2">
+          <span>{documento.categoria}</span>
+          <span aria-hidden="true" className="text-fio-2">
+            ·
+          </span>
+          <span>{documento.setor}</span>
+          <span aria-hidden="true" className="text-fio-2">
+            ·
+          </span>
+          <span>{documento.responsavel}</span>
+        </p>
+        <p className="mt-2 max-w-[72ch] text-sm font-medium leading-6 text-tinta-2 [text-wrap:pretty]">{documento.resumo}</p>
+
+        <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-[13px] font-bold leading-5 text-tinta">Etapas</span>
+          <ol aria-label="Etapas principais" className="flex flex-wrap items-center gap-x-1 gap-y-1">
+            {documento.etapas.map((etapa, indice) => (
+              <li key={etapa} className="inline-flex items-center gap-1 text-[13px] font-semibold leading-5 text-tinta-2">
+                {indice > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 stroke-oliva" aria-hidden="true" /> : null}
+                {etapa}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        {n > 0 ? (
+          <>
+            <button
+              type="button"
+              aria-expanded={aberto}
+              aria-controls={idTarefas}
+              onClick={() => setAlternado((valor) => !valor)}
+              className="mt-3 inline-flex min-h-8 items-center gap-1 rounded-sm text-left text-[13px] font-bold leading-5 text-musgo underline-offset-[3px] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco max-md:min-h-11"
+            >
+              {aberto ? "Esconder" : "Ver"} as {plural(n, "tarefa tirada", "tarefas tiradas")} deste documento
+              <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-150 ease-papel", aberto && "rotate-180")} aria-hidden="true" />
+            </button>
+            {aberto ? (
+              <ul id={idTarefas} className="mt-2 grid gap-1.5 border-l-2 border-fio-2 pl-4">
+                {documento.tarefasSugeridas.map((tarefa) => (
+                  <li key={tarefa} className="text-sm font-medium leading-6 text-tinta">
+                    {tarefa}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      <div className="grid justify-items-end gap-1 max-lg:col-start-2 max-lg:justify-items-start max-md:col-start-1 max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-3">
+        <LinkSetaExterno href={documento.assetPath} className="max-md:min-h-11">
+          {pdf ? "Abrir POP" : "Abrir fluxograma"}
+        </LinkSetaExterno>
+        <span className="text-xs font-medium leading-4 text-tinta-2">{pdf ? "PDF anexado" : "PNG anexado"}</span>
+      </div>
+    </li>
   );
 }

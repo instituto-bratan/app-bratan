@@ -7,6 +7,7 @@
 // frase e o aviso padrão para quem só vê. As telas desabilitam os botões de
 // gravar com `podeEditar`; o useCrmState({ modulo }) recusa a gravação mesmo
 // que algum botão tenha escapado.
+import { Eye } from "lucide-react";
 import { toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, moduleLevel, type AccessLevel, type ModuleKey } from "@/lib/access";
@@ -33,8 +34,10 @@ export function useNivelDaTela(modulo: ModuleKey): { nivel: AccessLevel; podeEdi
 export function AvisoSoVe({ soVe }: { soVe: boolean }) {
   if (!soVe) return null;
   return (
-    <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900" role="status">
-      {FRASE_SO_VE}
+    // 13/10/2026: faixa de recado da base Papel & Musgo (atenção, sem borda), no lugar do âmbar antigo.
+    <p className="flex items-start gap-3 rounded-bloco bg-atencao-claro px-4 py-3 text-sm font-semibold leading-5 text-tinta" role="status">
+      <Eye className="mt-0.5 h-4 w-4 shrink-0 text-atencao" aria-hidden="true" />
+      <span className="min-w-0">{FRASE_SO_VE}</span>
     </p>
   );
 }

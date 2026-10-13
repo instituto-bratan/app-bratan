@@ -7,10 +7,16 @@
 // falta Z") e a barra de realizado × referência. Embaixo, a agenda das
 // transferências — dias 10 e 25, no dia útil — com o que falta transferir.
 // Regra da casa: número derivado sempre acompanhado da frase que o explica.
+//
+// REDESENHO (08/10/2026, Papel & Musgo): o gráfico ocupa a largura do bloco
+// "saber" (a letra fica legível), com as cores do tema — o escuro troca
+// sozinho; as frases dos envelopes vêm embaixo, em duas colunas, cada uma com a
+// barra fina de realizado × referência; a agenda das transferências fecha o
+// bloco. A conta e as frases são as mesmas.
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { moneyCompact } from "@/lib/chartData";
-import { chartColors } from "@/components/charts/BratanCharts";
+import { BlocoSaber } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
 import { moneyFin } from "./financeiroData";
 import type { MetasBoard } from "./metasData";
@@ -19,7 +25,11 @@ import type { CompromissosDoMes } from "./motorLucroInteligente";
 import { ajustaParaDiaUtil } from "./recebiveisRede";
 import type { TransferenciaPrevista } from "./caixaProjetado";
 import { configAtual } from "@/lib/configNegocio";
+import { BarraFina, CORES_GRAFICO, Legenda, Rubrica } from "./pecasResultados";
 
+const chartColors = CORES_GRAFICO;
+
+/** Cores dos envelopes: as da marca vêm do tema (o escuro troca sozinho); impostos, provisões e reserva são tons de apoio fixos. */
 export const CORES_ENVELOPES = {
   impostos: "#8F7B4E",
   lucro: chartColors.resultado,
@@ -86,9 +96,9 @@ export function EnvelopesVisuais({
   // ---- a barra empilhada ----------------------------------------------------
   const topo = Math.max(1, ...linhas.map((l) => Math.max(l.liquido, l.reservado.impostos + l.reservado.lucro + l.reservado.medicoExecutor + (l.reservado.provisoes ?? 0) + (l.reservado.reserva ?? 0))), ...(board?.days.map((d) => d.dailyGoal) ?? [0]));
   const fundo = Math.min(0, ...linhas.map((l) => Math.min(0, l.reservado.operacional)));
-  const width = 760;
-  const height = 250;
-  const pad = { left: 56, right: 10, top: 14, bottom: 26 };
+  const width = 900;
+  const height = 260;
+  const pad = { left: 80, right: 10, top: 14, bottom: 30 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const escala = plotH / (topo - fundo || 1);
@@ -177,35 +187,40 @@ export function EnvelopesVisuais({
   const proximas = proximasTransferencias(hoje, 2);
 
   return (
-    <section className="rounded-lg border border-brand-oliva/14 bg-white/60 p-4 backdrop-blur">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-lg font-bold text-brand-musgo">
+    <BlocoSaber as="section" aria-labelledby="envelopes-titulo" className="grid gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <h2 id="envelopes-titulo" className="flex items-center gap-2 text-xl font-bold leading-7 text-tinta">
           Os envelopes em um olhar
           <InfoTip title="Como ler">
             Cada barra é um dia: o líquido que entrou, já repartido em impostos, sócios, Dr. Daniel e o que fica para gastar
             (quando o dia não paga a régua, a parte operacional aparece em vermelho abaixo da linha). O traço escuro em cada dia é
-            a meta de faturamento do dia (bruto, das Metas do Mês). Toque num dia para ver os números dele. À direita, cada
-            envelope numa frase: o que a régua separou, o que já saiu e o que falta. A agenda embaixo mostra as próximas datas de
+            a meta de faturamento do dia (bruto, das Metas do Mês). Toque num dia para ver os números dele. Embaixo, cada
+            envelope numa frase: o que a régua separou, o que já saiu e o que falta. A agenda no fim mostra as próximas datas de
             transferência (dias 10 e 25, no dia útil) com o que falta transferir hoje.
           </InfoTip>
         </h2>
-        <p className="text-xs text-muted-foreground">{planilha.diasComMovimento} dia(s) com entrada · líquido {moneyFin(t.liquido)}</p>
+        <p className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+          {planilha.diasComMovimento} dia(s) com entrada · líquido <strong className="font-bold text-tinta">{moneyFin(t.liquido)}</strong>
+        </p>
       </div>
 
-      <div className="mt-3 grid gap-4 lg:grid-cols-[1.15fr_1fr]">
-        <div>
-          {!temAlgo ? (
-            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-brand-oliva/30 bg-brand-papel/60 px-4 text-center text-xs text-muted-foreground">
-              O mês ainda não tem entrada — as barras nascem dia a dia.
-            </div>
-          ) : (
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Envelopes por dia">
+      <div className="grid min-w-0 gap-3">
+        {!temAlgo ? (
+          <p className="grid min-h-40 place-items-center rounded-controle bg-papel px-4 text-center text-[13px] font-medium leading-5 text-tinta-2">
+            O mês ainda não tem entrada — as barras nascem dia a dia.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[900px]" role="img" aria-label="Envelopes por dia">
               {[topo, topo / 2, 0].concat(fundo < 0 ? [fundo] : []).map((valor, indice) => (
                 <g key={`grade-${indice}`}>
-                  <line x1={pad.left} x2={width - pad.right} y1={y(valor)} y2={y(valor)} stroke={valor === 0 ? chartColors.texto : chartColors.grade} strokeOpacity={valor === 0 ? 0.5 : 1} strokeWidth={1} />
-                  <text x={pad.left - 6} y={y(valor) + 3} textAnchor="end" fontSize={10} fill={chartColors.textoSuave} style={{ fontVariantNumeric: "tabular-nums" }}>
-                    {moneyCompact(valor)}
-                  </text>
+                  <line x1={pad.left} x2={width - pad.right} y1={y(valor)} y2={y(valor)} style={{ stroke: valor === 0 ? chartColors.eixo : chartColors.grade }} strokeWidth={valor === 0 ? 1.5 : 1} />
+                  {/* O rótulo do fundo negativo some quando encostaria no do zero (os dois se atropelavam). */}
+                  {valor < 0 && y(valor) - y(0) < 16 ? null : (
+                    <text x={pad.left - 8} y={y(valor) + 4} textAnchor="end" fontSize={12} style={{ fontVariantNumeric: "tabular-nums", fill: chartColors.textoSuave }}>
+                      {moneyCompact(valor)}
+                    </text>
+                  )}
                 </g>
               ))}
               {linhas.map((linha, index) => {
@@ -220,27 +235,55 @@ export function EnvelopesVisuais({
                 const meta = metaPorDia.get(linha.dia) ?? 0;
                 const selecionado = diaAberto === linha.dia;
                 return (
-                  <g key={linha.dia} className="cursor-pointer" onClick={() => setDiaAberto(selecionado ? null : linha.dia)} role="button" tabIndex={0} aria-label={`${diaCurto(linha.dia)}: líquido ${moneyFin(linha.liquido)}`} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setDiaAberto(selecionado ? null : linha.dia); } }}>
-                    <rect x={pad.left + slot * index} y={pad.top} width={slot} height={plotH} fill={selecionado ? "rgba(198,168,98,0.18)" : linha.diaUtil ? "transparent" : "rgba(122,137,94,0.06)"} />
+                  <g
+                    key={linha.dia}
+                    className="cursor-pointer outline-none"
+                    onClick={() => setDiaAberto(selecionado ? null : linha.dia)}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selecionado}
+                    aria-label={`${diaCurto(linha.dia)}: líquido ${moneyFin(linha.liquido)}`}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setDiaAberto(selecionado ? null : linha.dia);
+                      }
+                    }}
+                  >
+                    <rect
+                      x={pad.left + slot * index}
+                      y={pad.top}
+                      width={slot}
+                      height={plotH}
+                      style={{ fill: selecionado ? "var(--ouro-claro)" : linha.diaUtil ? "transparent" : "var(--fio)" }}
+                      opacity={selecionado ? 1 : linha.diaUtil ? 1 : 0.35}
+                    />
                     {partes.map((parte) => {
                       if (parte.valor <= 0.005) return null;
                       const y1 = y(base + parte.valor);
                       const altura = Math.max(1, y(base) - y1);
                       base += parte.valor;
                       return (
-                        <rect key={parte.chave} x={x} y={y1} width={barW} height={altura} fill={parte.cor}>
+                        <rect key={parte.chave} x={x} y={y1} width={barW} height={altura} style={{ fill: parte.cor }}>
                           <title>{`${diaCurto(linha.dia)} — ${parte.nome}: ${moneyFin(parte.valor)}`}</title>
                         </rect>
                       );
                     })}
                     {linha.reservado.operacional < -0.005 ? (
-                      <rect x={x} y={y(0)} width={barW} height={Math.max(1, y(linha.reservado.operacional) - y(0))} fill={CORES_ENVELOPES.negativo}>
+                      <rect x={x} y={y(0)} width={barW} height={Math.max(1, y(linha.reservado.operacional) - y(0))} style={{ fill: CORES_ENVELOPES.negativo }}>
                         <title>{`${diaCurto(linha.dia)} — dia não paga a régua: ${moneyFin(linha.reservado.operacional)}`}</title>
                       </rect>
                     ) : null}
-                    {meta > 0 ? <line x1={x - 2} x2={x + barW + 2} y1={y(meta)} y2={y(meta)} stroke={chartColors.texto} strokeWidth={1.5} /> : null}
+                    {meta > 0 ? <line x1={x - 2} x2={x + barW + 2} y1={y(meta)} y2={y(meta)} style={{ stroke: chartColors.texto }} strokeWidth={1.5} /> : null}
                     {linhas.length <= 31 && (index % (linhas.length > 20 ? 2 : 1) === 0 || linha.dia === hoje) ? (
-                      <text x={x + barW / 2} y={height - 8} textAnchor="middle" fontSize={9} fontWeight={linha.dia === hoje ? 700 : 400} fill={chartColors.textoSuave}>
+                      <text
+                        x={x + barW / 2}
+                        y={height - 10}
+                        textAnchor="middle"
+                        fontSize={12}
+                        fontWeight={linha.dia === hoje ? 700 : 400}
+                        style={{ fill: linha.dia === hoje ? "var(--ouro)" : chartColors.textoSuave, fontVariantNumeric: "tabular-nums" }}
+                      >
                         {linha.dia.slice(8, 10)}
                       </text>
                     ) : null}
@@ -248,84 +291,81 @@ export function EnvelopesVisuais({
                 );
               })}
             </svg>
-          )}
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-            {[
-              ["Impostos", CORES_ENVELOPES.impostos],
-              ["Sócios", CORES_ENVELOPES.lucro],
-              ["Dr. Daniel", CORES_ENVELOPES.medicoExecutor],
-              ["Fica para gastar", CORES_ENVELOPES.operacional],
-              ["Dia que não paga a régua", CORES_ENVELOPES.negativo],
-            ].map(([nome, cor]) => (
-              <span key={nome} className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: cor }} aria-hidden="true" /> {nome}
-              </span>
-            ))}
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-0.5 w-4 bg-brand-tinta" aria-hidden="true" /> meta do dia (bruto)
-            </span>
           </div>
-          {aberta ? (
-            <div className="mt-2 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 px-3 py-2 text-sm text-brand-tinta">
-              <p className="font-semibold">
-                {diaCurto(aberta.dia)}
-                {aberta.dia === hoje ? " (hoje)" : ""} · entrou {moneyFin(aberta.liquido)} líquido{aberta.taxas > 0.005 ? ` (taxas ${moneyFin(aberta.taxas)})` : ""}
-                {metaPorDia.get(aberta.dia) ? ` · meta do dia ${moneyFin(metaPorDia.get(aberta.dia) ?? 0)} (bruto ${moneyFin(aberta.total)})` : ""}
-              </p>
-              <p className="mt-0.5 text-xs">
-                impostos {moneyFin(aberta.reservado.impostos)} · sócios {moneyFin(aberta.reservado.lucro)} · Dr. Daniel {moneyFin(aberta.reservado.medicoExecutor)} →{" "}
-                <strong className={aberta.reservado.operacional < -0.005 ? "text-red-700" : "text-brand-musgo"}>
-                  {aberta.reservado.operacional < -0.005 ? `o dia não paga a régua em ${moneyFin(-aberta.reservado.operacional)}` : `ficam ${moneyFin(aberta.reservado.operacional)} para gastar`}
-                </strong>
-                {aberta.usado.operacional > 0.005 ? ` · contas operacionais pagas no dia ${moneyFin(aberta.usado.operacional)}` : ""}
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="grid gap-2">
-          {envelopes.map((env) => {
-            const pct = env.referencia > 0.005 ? Math.min(100, (env.realizado / env.referencia) * 100) : env.realizado > 0.005 ? 100 : 0;
-            const marcador = env.marcador !== undefined && env.referencia > 0.005 ? Math.min(100, (env.marcador / env.referencia) * 100) : null;
-            return (
-              <div key={env.chave} className="rounded-lg border border-brand-oliva/14 bg-white/75 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: env.cor }} aria-hidden="true" />
-                  <p className="text-sm font-semibold text-brand-tinta">{env.titulo}</p>
-                </div>
-                <p className={cn("mt-1 text-sm leading-snug", env.negativo ? "text-red-700" : "text-brand-tinta")}>{env.frase}</p>
-                <div className="relative mt-1.5 h-2 overflow-hidden rounded-full bg-brand-oliva/12" title={env.rotuloBarra}>
-                  <div className={cn("h-full rounded-full", env.negativo ? "bg-red-400" : "")} style={{ width: `${Math.max(pct > 0 ? 2 : 0, pct)}%`, background: env.negativo ? undefined : env.cor }} />
-                  {marcador !== null ? <div className="absolute inset-y-0 w-0.5 bg-brand-tinta" style={{ left: `${marcador}%` }} aria-hidden="true" /> : null}
-                </div>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">{env.rotuloBarra}</p>
-              </div>
-            );
-          })}
-        </div>
+        )}
+        <Legenda
+          itens={[
+            { nome: "Impostos", cor: CORES_ENVELOPES.impostos },
+            { nome: "Sócios", cor: CORES_ENVELOPES.lucro },
+            { nome: "Dr. Daniel", cor: CORES_ENVELOPES.medicoExecutor },
+            { nome: "Fica para gastar", cor: CORES_ENVELOPES.operacional },
+            { nome: "Dia que não paga a régua", cor: CORES_ENVELOPES.negativo },
+            { nome: "meta do dia (bruto)", cor: "var(--tinta)", traco: true },
+          ]}
+        />
+        {aberta ? (
+          <div className="grid gap-1 rounded-controle bg-folha px-4 py-3 text-sm leading-5 text-tinta">
+            <p className="font-bold tabular-nums">
+              {diaCurto(aberta.dia)}
+              {aberta.dia === hoje ? " (hoje)" : ""} · entrou {moneyFin(aberta.liquido)} líquido{aberta.taxas > 0.005 ? ` (taxas ${moneyFin(aberta.taxas)})` : ""}
+              {metaPorDia.get(aberta.dia) ? ` · meta do dia ${moneyFin(metaPorDia.get(aberta.dia) ?? 0)} (bruto ${moneyFin(aberta.total)})` : ""}
+            </p>
+            <p className="text-[13px] font-medium tabular-nums text-tinta-2">
+              impostos {moneyFin(aberta.reservado.impostos)} · sócios {moneyFin(aberta.reservado.lucro)} · Dr. Daniel {moneyFin(aberta.reservado.medicoExecutor)} →{" "}
+              <strong className={cn("font-bold", aberta.reservado.operacional < -0.005 ? "text-erro" : "text-ok")}>
+                {aberta.reservado.operacional < -0.005 ? `o dia não paga a régua em ${moneyFin(-aberta.reservado.operacional)}` : `ficam ${moneyFin(aberta.reservado.operacional)} para gastar`}
+              </strong>
+              {aberta.usado.operacional > 0.005 ? ` · contas operacionais pagas no dia ${moneyFin(aberta.usado.operacional)}` : ""}
+            </p>
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-3 rounded-lg border border-brand-dourado/40 bg-brand-creme/30 p-3">
-        <p className="text-sm font-semibold text-brand-musgo">Agenda de transferências (dias {(configAtual<number[] | undefined>("transferencias.dias", hoje) ?? [...DIAS_DE_TRANSFERENCIA]).join(" e ")}, no dia útil)</p>
-        <div className="mt-1.5 grid gap-1.5 text-sm text-brand-tinta sm:grid-cols-2">
+      <ul className="grid gap-x-8 border-t border-fio-2 md:grid-cols-2">
+        {envelopes.map((env) => {
+          const pct = env.referencia > 0.005 ? Math.min(100, (env.realizado / env.referencia) * 100) : env.realizado > 0.005 ? 100 : 0;
+          const marcador = env.marcador !== undefined && env.referencia > 0.005 ? Math.min(100, (env.marcador / env.referencia) * 100) : null;
+          return (
+            <li key={env.chave} className="grid content-start gap-2 border-b border-fio py-4">
+              <p className="flex items-center gap-2 text-sm font-bold leading-5 text-tinta">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ background: env.cor }} aria-hidden="true" />
+                {env.titulo}
+              </p>
+              <p className={cn("text-[13px] leading-5 tabular-nums", env.negativo ? "font-bold text-erro" : "font-medium text-tinta")}>{env.frase}</p>
+              <BarraFina valor={Math.max(pct > 0 ? 2 : 0, pct)} marca={marcador} cor={env.negativo ? "var(--erro)" : env.cor} rotulo={`${env.titulo}: ${env.rotuloBarra}`} />
+              <p className="text-xs font-medium leading-4 text-tinta-2">{env.rotuloBarra}</p>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="grid gap-3">
+        <Rubrica as="h3">
+          Agenda de transferências (dias {(configAtual<number[] | undefined>("transferencias.dias", hoje) ?? [...DIAS_DE_TRANSFERENCIA]).join(" e ")}, no dia útil)
+        </Rubrica>
+        <div className="grid gap-3 sm:grid-cols-2">
           {proximas.map((data, indice) => (
-            <div key={data} className="rounded-md bg-white/70 px-3 py-2">
-              <p className="text-[11px] font-semibold uppercase text-brand-oliva">
-                {indice === 0 ? "Próxima" : "Depois"} · {diaCurto(data)}
+            <div key={data} className={cn("grid content-start gap-1 rounded-controle bg-folha px-4 py-3", indice === 0 && "shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))]")}>
+              <p className="text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2">
+                {indice === 0 ? <span className="text-tinta">Próxima</span> : "Depois"} · <span className="tabular-nums">{diaCurto(data)}</span>
               </p>
               {indice === 0 ? (
-                <p className="mt-0.5 leading-snug">
-                  Sócios: {repasses.socios.falta > 0.005 ? <strong>{moneyFin(repasses.socios.falta)}</strong> : "em dia"} · Dr. Daniel:{" "}
-                  {repasses.medicoExecutor.falta > 0.005 ? <strong>{moneyFin(repasses.medicoExecutor.falta)}</strong> : "em dia"}
-                  <span className="block text-xs text-muted-foreground">o que falta transferir hoje; a régua continua separando até lá</span>
-                </p>
+                <>
+                  <p className="text-sm font-medium leading-5 tabular-nums text-tinta">
+                    Sócios: {repasses.socios.falta > 0.005 ? <strong className="font-bold">{moneyFin(repasses.socios.falta)}</strong> : "em dia"} · Dr. Daniel:{" "}
+                    {repasses.medicoExecutor.falta > 0.005 ? <strong className="font-bold">{moneyFin(repasses.medicoExecutor.falta)}</strong> : "em dia"}
+                  </p>
+                  <p className="text-[13px] font-medium leading-5 text-tinta-2">o que falta transferir hoje; a régua continua separando até lá</p>
+                </>
               ) : (
-                <p className="mt-0.5 text-xs text-muted-foreground">Sócios: cota de {moneyFin(planilha.cotaLucroDiaUtil)} por dia útil até lá · Dr. Daniel: 50% do lucro bruto do que for vendido.</p>
+                <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                  Sócios: cota de {moneyFin(planilha.cotaLucroDiaUtil)} por dia útil até lá · Dr. Daniel: 50% do lucro bruto do que for vendido.
+                </p>
               )}
             </div>
           ))}
         </div>
       </div>
-    </section>
+    </BlocoSaber>
   );
 }

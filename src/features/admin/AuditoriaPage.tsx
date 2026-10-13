@@ -1,12 +1,16 @@
+// AUDITORIA — redesenho Papel & Musgo, etapa 4 (08/10/2026).
+//
+// Registro das ações sensíveis do app (financeiro, CRM & 360, acessos,
+// colaboradores, mural, checklist, comprovantes, lembretes e Estalecas). Mudou
+// só a forma: o cabeçalho diz quantas ações e qual foi a última, os filtros
+// viraram leituras com o número ao lado (Financeiro 12), os eventos são uma
+// lista numa folha e o resumo por pessoa fica ao lado, num bloco de leitura.
+// Os mesmos filtros, a mesma busca e o mesmo resumo de antes.
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Activity, Clock3, History, Search, ShieldCheck, UserRound } from "lucide-react";
+import { Activity, History, ShieldCheck, UserRound } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { BlocoFolha, BlocoSaber, Cabecalho, CampoBusca } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao } from "@/lib/access";
 import { listRemoteAuditEvents } from "@/lib/remoteData";
@@ -17,6 +21,8 @@ import {
   formatAuditMetadata,
   type AuditEventRecord,
 } from "./auditoriaData";
+import { contagem } from "./frasesAjustes";
+import { AJUDA, CabecaDaFolha, CampoSelecao, Etiqueta, Leitura, Recado, TituloDoSaber, Vazio } from "./pecasAjustes";
 
 const actionFilters = [
   { label: "Tudo", value: "all" },
@@ -149,220 +155,143 @@ export function AuditoriaPage() {
 
   const lastEvent = visibleEvents[0] ?? events[0] ?? null;
 
+  // Quantos eventos cada leitura mostra (a mesma regra do filtro, só contada).
+  const contagemPorFiltro = useMemo(() => {
+    const porFiltro: Record<string, number> = {};
+    for (const item of actionFilters) porFiltro[item.value] = events.filter((event) => isInsideFilter(event, item.value)).length;
+    return porFiltro;
+  }, [events]);
+  const filtrando = filter !== "all" || person !== "all" || Boolean(query.trim());
+
+  const fraseDoTopo = !useRemote ? (
+    <>Registro de ações sensíveis do app: financeiro, CRM & 360, acessos, colaboradores, mural, checklist, comprovantes, lembretes e Estalecas.</>
+  ) : events.length ? (
+    <>
+      <strong>{contagem(events.length, "ação registrada", "ações registradas")}</strong> nos últimos eventos
+      {filtrando ? `; ${visibleEvents.length} neste filtro` : ""}.
+      {lastEvent ? (
+        <>
+          {" "}
+          Último movimento: {auditActionLabel(lastEvent.action).toLowerCase()}, em <span className="tabular-nums">{formatDateTime(lastEvent.createdAt)}</span>.
+        </>
+      ) : null}
+    </>
+  ) : (
+    <>Nenhum evento registrado ainda. As ações novas aparecem aqui conforme a equipe usar o app.</>
+  );
+
   return (
     <AccessGate allowed={canAdministracao} label="Auditoria">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <Badge variant="gold" className="mb-4">
-                Coordenação
-              </Badge>
-              <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Auditoria</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Registro de ações sensíveis do app: financeiro, CRM & 360, acessos, colaboradores, mural, checklist, comprovantes, lembretes e Estalecas.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-brand-musgo">{events.length}</p>
-                <p className="text-xs font-semibold uppercase text-brand-oliva">{useRemote ? "últimos eventos" : "prévia"}</p>
-              </div>
-              <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/55 px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-brand-musgo">{visibleEvents.length}</p>
-                <p className="text-xs font-semibold uppercase text-brand-oliva">no filtro</p>
-              </div>
-            </div>
-          </div>
-        </motion.section>
-
-        {personSummary.length ? (
-          <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Activity className="h-5 w-5" aria-hidden="true" />
-                Resumo por pessoa
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {personSummary.map((entry) => (
-                <div
-                  key={entry.name}
-                  className="flex flex-col gap-1 rounded-lg border border-brand-oliva/16 bg-white/65 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-                      <UserRound className="h-4 w-4" aria-hidden="true" />
-                    </div>
-                    <p className="truncate font-semibold text-brand-tinta">{entry.name}</p>
-                  </div>
-                  <p className="text-sm leading-6 text-muted-foreground sm:text-right">{entry.description}</p>
-                </div>
-              ))}
-              <p className="text-xs text-muted-foreground">Contagem sobre os eventos carregados no período.</p>
-            </CardContent>
-          </Card>
-        ) : null}
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho className="mb-0 max-md:mb-0" sobrancelha="Ajustes" titulo="Auditoria" frase={fraseDoTopo} />
 
         {!useRemote ? (
-          <Card className="border-brand-dourado/35 bg-brand-creme/35 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-brand-tinta">
-                A auditoria real aparece quando o app está conectado ao Supabase. Na prévia local, as ações não gravam em banco.
-              </p>
-            </CardContent>
-          </Card>
+          <Recado tom="info">A auditoria real aparece quando o app está conectado ao Supabase. Na prévia local, as ações não gravam em banco.</Recado>
         ) : null}
 
         {auditQuery.isError ? (
-          <Card className="border-destructive/30 bg-destructive/5 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-destructive">
-                Não foi possível carregar a auditoria. Confira se a migration de auditoria foi aplicada e se sua conta é coordenação.
-              </p>
-            </CardContent>
-          </Card>
+          <Recado tom="erro">Não foi possível carregar a auditoria. Confira se a migration de auditoria foi aplicada e se sua conta é coordenação.</Recado>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(300px,340px)_minmax(0,1fr)]">
-          <section className="space-y-4">
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Search className="h-5 w-5" aria-hidden="true" />
-                  Filtros
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Input
-                  value={query}
-                  placeholder="Buscar por pessoa, módulo ou ação"
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-                <div>
-                  <label htmlFor="auditoria-pessoa" className="mb-1.5 block text-xs font-semibold uppercase text-brand-oliva">
-                    Pessoa
-                  </label>
-                  <select
-                    id="auditoria-pessoa"
-                    value={person}
-                    onChange={(event) => setPerson(event.target.value)}
-                    className="flex h-12 w-full rounded-md border border-input bg-white/72 px-3.5 py-2 text-base text-foreground shadow-sm backdrop-blur-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-11 sm:text-sm"
-                  >
-                    <option value="all">Todas as pessoas</option>
-                    {actors.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {actionFilters.map((item) => (
-                    <Button
-                      key={item.value}
-                      type="button"
-                      variant={filter === item.value ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setFilter(item.value)}
-                    >
-                      {item.label}
-                    </Button>
+        <div className="grid items-start gap-8 max-md:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+          <BlocoFolha as="section" aria-labelledby="auditoria-eventos" className="min-w-0 overflow-hidden">
+            <CabecaDaFolha
+              id="auditoria-eventos"
+              icone={<History />}
+              titulo="Eventos"
+              resumo={filtrando ? `${visibleEvents.length} de ${events.length}` : contagem(events.length, "evento")}
+            />
+            <div className="grid gap-3 border-t border-fio px-6 py-4 max-md:px-4">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_240px]">
+                <CampoBusca valor={query} onMudar={setQuery} placeholder="Buscar por pessoa, módulo ou ação" rotulo="Buscar na auditoria" />
+                <label htmlFor="auditoria-pessoa" className="sr-only">
+                  Pessoa
+                </label>
+                <CampoSelecao id="auditoria-pessoa" value={person} onChange={(event) => setPerson(event.target.value)}>
+                  <option value="all">Todas as pessoas</option>
+                  {actors.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
                   ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-brand-dourado/45 bg-brand-creme/35 shadow-none">
-              <CardContent className="p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <Clock3 className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-                  <p className="font-semibold text-brand-tinta">Último movimento</p>
-                </div>
-                {lastEvent ? (
-                  <>
-                    <p className="text-sm font-semibold text-brand-tinta">{auditActionLabel(lastEvent.action)}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(lastEvent.createdAt)}</p>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum evento registrado ainda.</p>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-
-          <section className="space-y-3">
-            {visibleEvents.length ? (
-              visibleEvents.map((event, index) => (
-                <motion.article
-                  key={event.id}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.24, delay: index * 0.02, ease: [0.4, 0, 0.2, 1] }}
-                >
-                  <Card className="border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm">
-                    <CardContent className="p-4">
-                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0">
-                          <div className="mb-3 flex flex-wrap items-center gap-2">
-                            <Badge variant="gold">{auditEntityLabel(event.entity)}</Badge>
-                            <Badge variant="outline">{auditActionLabel(event.action)}</Badge>
-                            <span className="text-xs font-semibold uppercase text-brand-oliva">
-                              {formatDateTime(event.createdAt)}
-                            </span>
-                          </div>
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-                              <UserRound className="h-5 w-5" aria-hidden="true" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="truncate font-semibold text-brand-tinta">{event.actorName}</p>
-                              {event.actorEmail ? <p className="truncate text-sm text-muted-foreground">{event.actorEmail}</p> : null}
-                              <p className="mt-2 text-sm leading-6 text-muted-foreground">{formatAuditMetadata(event.metadata)}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {event.entityId ? (
-                          <div className="rounded-lg border border-brand-oliva/16 bg-white/65 px-3 py-2">
-                            <p className="text-xs font-semibold uppercase text-brand-oliva">Registro</p>
-                            <p className="mt-1 max-w-48 truncate text-sm text-muted-foreground">{event.entityId}</p>
-                          </div>
-                        ) : null}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.article>
-              ))
-            ) : (
-              <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-                <CardContent className="grid min-h-64 place-items-center p-8 text-center">
-                  <div>
-                    <History className="mx-auto mb-4 h-10 w-10 text-brand-oliva" aria-hidden="true" />
-                    <p className="font-semibold text-brand-tinta">Nenhum evento encontrado</p>
-                    <p className="mt-2 text-sm text-muted-foreground">As ações novas aparecerão aqui conforme a equipe usar o app.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </section>
-        </div>
-
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-              <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                </CampoSelecao>
+              </div>
+              <div className="-mx-1 flex gap-x-4 gap-y-1 overflow-x-auto px-1 pb-1 md:flex-wrap md:overflow-visible" role="group" aria-label="Área">
+                {actionFilters.map((item) => (
+                  <Leitura key={item.value} ativa={filter === item.value} rotulo={item.label} numero={contagemPorFiltro[item.value]} onClick={() => setFilter(item.value)} />
+                ))}
+              </div>
             </div>
-            <p className="text-sm leading-6 text-muted-foreground">
+
+            {visibleEvents.length ? (
+              <ul>
+                {visibleEvents.map((event) => (
+                  <li key={event.id} className="grid gap-2 border-t border-fio px-6 py-4 max-md:px-4 md:grid-cols-[minmax(0,1fr)_auto] md:gap-6">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold leading-4 tabular-nums text-tinta-2">{formatDateTime(event.createdAt)}</span>
+                        <Etiqueta tom="musgo">{auditEntityLabel(event.entity)}</Etiqueta>
+                      </p>
+                      <p className="mt-1.5 text-[15px] font-bold leading-6 text-tinta">{auditActionLabel(event.action)}</p>
+                      <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-5 text-tinta">
+                        <UserRound className="h-4 w-4 shrink-0 stroke-oliva" aria-hidden="true" />
+                        <span className="truncate">{event.actorName}</span>
+                        {event.actorEmail ? <span className="truncate font-medium text-tinta-2">· {event.actorEmail}</span> : null}
+                      </p>
+                      <p className="mt-1.5 text-[13px] font-medium leading-5 text-tinta-2 [overflow-wrap:anywhere]">{formatAuditMetadata(event.metadata)}</p>
+                    </div>
+
+                    {event.entityId ? (
+                      <div className="min-w-0 md:max-w-48 md:text-right">
+                        <p className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">Registro</p>
+                        <p className="mt-1 truncate font-mono text-xs leading-4 text-tinta-2" title={event.entityId}>
+                          {event.entityId}
+                        </p>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Vazio icone={<History />} titulo="Nenhum evento encontrado" className="border-t border-fio">
+                As ações novas aparecerão aqui conforme a equipe usar o app.
+              </Vazio>
+            )}
+          </BlocoFolha>
+
+          <div className="grid min-w-0 gap-6 xl:sticky xl:top-24">
+            <BlocoSaber as="aside" aria-labelledby="resumo-por-pessoa">
+              <TituloDoSaber id="resumo-por-pessoa">
+                <span className="inline-flex items-center gap-2">
+                  <Activity className="h-4 w-4 stroke-oliva" aria-hidden="true" />
+                  Resumo por pessoa
+                </span>
+              </TituloDoSaber>
+              {personSummary.length ? (
+                <>
+                  <ul className="grid">
+                    {personSummary.map((entry) => (
+                      <li key={entry.name} className="grid gap-0.5 border-t border-fio py-3 first:border-t-0 first:pt-0">
+                        <p className="flex items-baseline justify-between gap-3">
+                          <span className="truncate text-sm font-bold leading-5 text-tinta">{entry.name}</span>
+                          <span className="shrink-0 text-sm font-extrabold tabular-nums text-tinta">{entry.total}</span>
+                        </p>
+                        <p className="text-[13px] font-medium leading-5 text-tinta-2">{entry.description}</p>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className={cn(AJUDA, "mt-3 border-t border-fio pt-3")}>Contagem sobre os eventos carregados no período.</p>
+                </>
+              ) : (
+                <p className="text-sm font-medium leading-6 text-tinta-2">Sem eventos para resumir ainda.</p>
+              )}
+            </BlocoSaber>
+            <p className="flex items-start gap-2 text-[13px] font-medium leading-5 text-tinta-2">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 stroke-oliva" aria-hidden="true" />
               A auditoria é operacional e interna. Ela ajuda a coordenar a rotina, mas não substitui logs técnicos, controles fiscais ou sistemas oficiais externos.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </AccessGate>
   );

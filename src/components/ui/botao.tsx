@@ -7,6 +7,9 @@
 //
 // As classes saem de um mapa fechado (e não do cn/tailwind-merge) de propósito:
 // assim nenhuma variante "come" a classe da outra sem ninguém perceber.
+// 13/10/2026: a COR da borda mora só na variante (a base dá a largura). Antes a
+// base trazia border-transparent e, sem cn(), ele competia com o border-fio-2
+// do "secundario" — a borda sumia em <a> e <Link> que usam botaoClasses().
 import * as React from "react";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -16,7 +19,7 @@ export type VarianteBotao = "primario" | "suave" | "secundario" | "fantasma" | "
 export type TamanhoBotao = "pq" | "padrao" | "toque" | "grande";
 
 const BASE =
-  "inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-controle border border-transparent font-sans font-bold leading-none " +
+  "inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-controle border font-sans font-bold leading-none " +
   "transition-[background-color,border-color,color,transform] duration-150 ease-papel active:translate-y-px " +
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco " +
   "disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-70 aria-disabled:cursor-not-allowed";
@@ -31,18 +34,18 @@ const TAMANHOS: Record<TamanhoBotao, string> = {
 const VARIANTES: Record<VarianteBotao, string> = {
   // A decisão: musgo cheio, texto na cor "sobre musgo" (7,6:1).
   primario:
-    "bg-musgo text-sobre-musgo hover:bg-musgo-forte active:bg-musgo-fundo disabled:bg-fio disabled:text-tinta-2",
+    "border-transparent bg-musgo text-sobre-musgo hover:bg-musgo-forte active:bg-musgo-fundo disabled:bg-fio disabled:text-tinta-2",
   // Decisão na linha (Aprovar ao lado do valor).
-  suave: "bg-musgo-claro text-musgo hover:bg-musgo-claro-2 active:bg-musgo-claro-2 disabled:bg-fio disabled:text-tinta-2",
+  suave: "border-transparent bg-musgo-claro text-musgo hover:bg-musgo-claro-2 active:bg-musgo-claro-2 disabled:bg-fio disabled:text-tinta-2",
   // Outra decisão (Devolver) ou criar/abrir (Nova conta).
   secundario:
     "border-fio-2 bg-folha text-tinta hover:border-borda-campo hover:bg-papel active:bg-saber disabled:border-transparent disabled:bg-fio disabled:text-tinta-2",
   // Ação de apoio (Cancelar, Voltar).
-  fantasma: "bg-transparent text-tinta-2 hover:bg-saber hover:text-tinta active:bg-fio active:text-tinta disabled:text-tinta-2",
+  fantasma: "border-transparent bg-transparent text-tinta-2 hover:bg-saber hover:text-tinta active:bg-fio active:text-tinta disabled:text-tinta-2",
   // Perigo em texto, sem fundo, sempre na ponta oposta ao Aprovar.
-  perigo: "bg-transparent text-erro hover:bg-erro-claro active:bg-erro-claro disabled:text-tinta-2",
+  perigo: "border-transparent bg-transparent text-erro hover:bg-erro-claro active:bg-erro-claro disabled:text-tinta-2",
   // Perigo confirmado (o "Recusar" depois de escrever o motivo).
-  "perigo-cheio": "bg-erro text-folha hover:bg-erro/90 active:bg-erro/80 disabled:bg-fio disabled:text-tinta-2",
+  "perigo-cheio": "border-transparent bg-erro text-folha hover:bg-erro/90 active:bg-erro/80 disabled:bg-fio disabled:text-tinta-2",
 };
 
 export function botaoClasses(opcoes: { variante?: VarianteBotao; tamanho?: TamanhoBotao; bloco?: boolean } = {}) {

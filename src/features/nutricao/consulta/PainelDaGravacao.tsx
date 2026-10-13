@@ -13,7 +13,7 @@
 // Sem estação, a gravação fica guardada e o registro continua à mão.
 import { useEffect, useRef, useState } from "react";
 import { AudioLines, Check, ClipboardPaste, FileAudio, Loader2, Mic, Pause, Play, RefreshCw, Sparkles, Square, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/features/crm/comercialVisual";
 import { cn } from "@/lib/utils";
 import { conteudoDoCampo } from "../dominio/campos";
 import { conferirOrganizacao } from "../dominio/extracao";
@@ -272,14 +272,14 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
           {gravando ? (
             <>
               <Bolinha estado={gravador.estado === "pausado" ? "pausa" : "grava"} />
-              <span className="font-mono text-2xl font-semibold tabular-nums text-brand-tinta" aria-live="polite">
+              <span className="tabular-nums text-2xl font-semibold tabular-nums text-tinta" aria-live="polite">
                 {formatarDuracao(gravador.segundos)}
               </span>
               <Medidor nivel={gravador.nivel} />
-              <span className="text-xs text-muted-foreground">{gravador.estado === "pausado" ? "pausada" : gravador.estado === "pedindo" ? "pedindo o microfone…" : "gravando · guardando neste computador a cada 5 s"}</span>
+              <span className="text-xs text-tinta-2">{gravador.estado === "pausado" ? "pausada" : gravador.estado === "pedindo" ? "pedindo o microfone…" : "gravando · guardando neste computador a cada 5 s"}</span>
             </>
           ) : (
-            <span className="inline-flex items-center gap-2 text-sm font-semibold text-brand-musgo">
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-musgo">
               <AudioLines className="h-4 w-4" aria-hidden="true" />
               {situacao}
             </span>
@@ -363,38 +363,38 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
             aoMudar={(v) => alterar((a) => ({ ...a, consentimentoGravacao: v ? { em: repo.agora(), forma: "verbal" } : null }))}
             rotulo={consentiu ? `Consentimento para gravar registrado (${atendimento.consentimentoGravacao?.forma})` : "A pessoa consentiu com a gravação"}
           />
-          {!saude ? <span className="text-xs text-muted-foreground">Estação local desligada: dá para gravar agora e transcrever depois.</span> : null}
+          {!saude ? <span className="text-xs text-tinta-2">Estação local desligada: dá para gravar agora e transcrever depois.</span> : null}
         </div>
       ) : null}
 
-      {gravador.erro ? <p className="text-sm text-red-800">{gravador.erro}</p> : null}
+      {gravador.erro ? <p className="text-sm text-erro">{gravador.erro}</p> : null}
       {fase.tipo === "enviando" ? (
-        <p className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
+        <p className="inline-flex items-center gap-2 text-sm text-tinta-2" role="status">
           <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" /> Enviando o áudio para a estação local…
         </p>
       ) : null}
       {fase.tipo === "transcrevendo" ? (
         <div className="grid gap-1" role="status">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-tinta-2">
             {fase.etapa}… {fase.progresso}% <span className="text-xs">(uma consulta de 1 hora leva uns 5 minutos)</span>
           </p>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-brand-oliva transition-[width]" style={{ width: `${Math.max(3, fase.progresso)}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-saber">
+            <div className="h-full rounded-full bg-musgo transition-[width]" style={{ width: `${Math.max(3, fase.progresso)}%` }} />
           </div>
         </div>
       ) : null}
       {fase.tipo === "organizando" ? (
-        <p className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
+        <p className="inline-flex items-center gap-2 text-sm text-tinta-2" role="status">
           <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" /> A IA está organizando a consulta nas linhas do roteiro. Leva alguns segundos.
         </p>
       ) : null}
-      {fase.tipo === "aviso" ? <p className="text-sm text-brand-tinta">{fase.texto}</p> : null}
-      {fase.tipo === "erro" ? <p className="text-sm text-red-800">{fase.texto}</p> : null}
+      {fase.tipo === "aviso" ? <p className="text-sm text-tinta">{fase.texto}</p> : null}
+      {fase.tipo === "erro" ? <p className="text-sm text-erro">{fase.texto}</p> : null}
 
       {segmentos.length ? (
         <div className="grid gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" className="text-xs font-semibold text-brand-oliva hover:underline" onClick={() => setVerTranscricao((v) => !v)} aria-expanded={verTranscricao}>
+            <button type="button" className="text-xs font-semibold text-musgo hover:underline" onClick={() => setVerTranscricao((v) => !v)} aria-expanded={verTranscricao}>
               {verTranscricao ? "Esconder a transcrição" : `Ver a transcrição inteira (${segmentos.length} trechos)`}
             </button>
             {verTranscricao ? (
@@ -403,25 +403,25 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
                 onChange={(e) => setFiltro(e.target.value)}
                 placeholder="procurar na transcrição"
                 aria-label="Procurar na transcrição"
-                className="h-8 w-56 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm focus:border-brand-dourado focus:outline-none focus:ring-2 focus:ring-brand-dourado/25"
+                className="h-8 w-56 rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-sm focus-visible:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
               />
             ) : null}
           </div>
           {verTranscricao ? (
-            <ol className="grid max-h-96 gap-1 overflow-y-auto rounded-xl border border-brand-oliva/12 bg-white/60 p-3 text-sm">
+            <ol className="grid max-h-96 gap-1 overflow-y-auto rounded-bloco border border-fio bg-folha p-3 text-sm">
               {segmentosVisiveis.map((s) => {
                 const usado = trechosUsados?.has(s.i) ?? false;
                 return (
-                  <li key={s.i} className={cn("grid grid-cols-[52px_minmax(0,1fr)_auto] items-start gap-2 rounded-lg px-1 py-0.5", usado && "opacity-60")}>
-                    <span className="font-mono text-[11px] text-muted-foreground">{temHora ? minutoDe(s.inicio) : `#${s.i + 1}`}</span>
+                  <li key={s.i} className={cn("grid grid-cols-[52px_minmax(0,1fr)_auto] items-start gap-2 rounded-controle px-1 py-0.5", usado && "opacity-60")}>
+                    <span className="tabular-nums text-xs text-tinta-2">{temHora ? minutoDe(s.inicio) : `#${s.i + 1}`}</span>
                     <span>{s.texto}</span>
                     {editavel && aoUsarTrechoEm ? (
                       usado ? (
-                        <span className="text-[11px] text-muted-foreground">usado</span>
+                        <span className="text-xs text-tinta-2">usado</span>
                       ) : (
                         <select
                           aria-label={`Usar o trecho ${s.i + 1} em`}
-                          className="h-7 rounded-lg border border-brand-oliva/20 bg-white/70 px-1 text-xs"
+                          className="h-7 rounded-controle border border-borda-campo bg-folha text-tinta px-1 text-xs"
                           value=""
                           onChange={(e) => {
                             if (e.target.value) aoUsarTrechoEm(e.target.value as CampoId, s);
@@ -439,7 +439,7 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
                   </li>
                 );
               })}
-              {segmentosVisiveis.length === 0 ? <li className="text-xs text-muted-foreground">Nenhum trecho com “{filtro}”.</li> : null}
+              {segmentosVisiveis.length === 0 ? <li className="text-xs text-tinta-2">Nenhum trecho com “{filtro}”.</li> : null}
             </ol>
           ) : null}
         </div>
@@ -461,7 +461,7 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
           </>
         }
       >
-        <p className="text-muted-foreground">
+        <p className="text-tinta-2">
           O texto original fica guardado junto do atendimento{atendimento.transcricao ? ", depois da transcrição que já existe" : ""}. Cada parágrafo vira um trecho que você pode levar para uma linha.
         </p>
         <textarea
@@ -469,7 +469,7 @@ export function PainelDaGravacao({ atendimento, pessoa, itensUso, anterior, conf
           onChange={(e) => setTextoColado(e.target.value)}
           rows={12}
           autoFocus
-          className="w-full rounded-xl border border-brand-oliva/20 bg-white/80 p-3 text-sm focus:border-brand-dourado focus:outline-none focus:ring-2 focus:ring-brand-dourado/25"
+          className="w-full rounded-controle border border-borda-campo bg-folha text-tinta p-3 text-sm focus-visible:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
           placeholder="Cole aqui o que você anotou ou a transcrição da consulta."
         />
       </Dialogo>

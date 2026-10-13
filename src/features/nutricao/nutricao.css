@@ -8,45 +8,45 @@
      anel Dourado           valor do atendimento anterior, aguardando confirmação
      anel tracejado azul    sugestão da IA ainda não revisada
      cheia vermelho-tijolo  gravando
-   As cores vêm dos tokens da marca; só o azul da IA e o tijolo da gravação são
-   próprios do módulo, e só aparecem nesses dois estados. */
+
+   PAPEL & MUSGO (08/10/2026, redesenho etapa 4): as cores agora são os tokens
+   do app (globals.css), que já trocam sozinhos no tema escuro — por isso quase
+   não há mais bloco ".dark" aqui. Oliva e dourado seguem só como MARCA (a
+   bolinha, o filete), nunca como cor de texto. O azul da IA continua próprio
+   do módulo (5,6:1 no fundo dele) e a gravação usa o vermelho de erro do app.
+   Nada de sombra pesada nem vidro; a folha do prontuário é uma folha comum
+   (borda fio) e a letra é a Manrope, com algarismos alinhados. */
 
 .nutri {
-  --n-ok: var(--bratan-oliva);
-  --n-anterior: var(--bratan-dourado);
-  --n-anterior-fundo: rgba(248, 237, 189, 0.55);
+  --n-ok: rgb(var(--oliva-rgb));
+  --n-anterior: rgb(var(--dourado-rgb));
+  --n-anterior-fundo: rgb(var(--ouro-claro-rgb));
   --n-ia: #4b5f86;
   --n-ia-fundo: #edf0f7;
-  --n-grava: #b24a35;
-  --n-folha: #fffefa;
-  --n-folha-borda: rgba(77, 86, 59, 0.16);
-  --n-folha-linha: rgba(77, 86, 59, 0.07);
-  --n-suave: #6b705f;
+  --n-grava: rgb(var(--erro-rgb));
+  --n-grava-fundo: rgb(var(--erro-claro-rgb));
+  --n-folha: rgb(var(--folha-rgb));
+  --n-folha-borda: rgb(var(--fio-rgb));
+  --n-folha-linha: rgb(var(--fio-rgb));
+  --n-suave: rgb(var(--tinta-2-rgb));
 }
 
 .dark .nutri {
-  --n-anterior-fundo: rgba(214, 187, 119, 0.12);
   --n-ia: #aebce2;
-  --n-ia-fundo: rgba(62, 78, 116, 0.28);
-  --n-grava: #f08a72;
-  --n-folha: #15271e;
-  --n-folha-borda: rgba(198, 232, 214, 0.14);
-  --n-folha-linha: rgba(198, 232, 214, 0.06);
-  --n-suave: #a3ae9f;
+  --n-ia-fundo: #1d2534;
 }
 
 /* ---------------------------------------------------------------- bolinha */
 
 .nutri-bolinha {
   display: inline-block;
-  width: 0.62rem;
-  height: 0.62rem;
+  width: 0.625rem;
+  height: 0.625rem;
   flex-shrink: 0;
   border-radius: 999px;
-  border: 1.5px solid rgba(77, 86, 59, 0.32);
+  border: 1.5px solid rgb(var(--borda-campo-rgb));
   background: transparent;
 }
-.dark .nutri-bolinha { border-color: rgba(198, 232, 214, 0.28); }
 .nutri-bolinha[data-estado="ok"] { background: var(--n-ok); border-color: var(--n-ok); }
 .nutri-bolinha[data-estado="anterior"] { border: 2px solid var(--n-anterior); background: var(--n-anterior-fundo); }
 .nutri-bolinha[data-estado="ia"] { border: 1.5px dashed var(--n-ia); background: var(--n-ia-fundo); }
@@ -55,8 +55,8 @@
 .nutri-bolinha[data-estado="pausa"] { background: transparent; border: 2px solid var(--n-grava); }
 
 @keyframes nutri-pulso {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(178, 74, 53, 0.35); }
-  50% { box-shadow: 0 0 0 6px rgba(178, 74, 53, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--erro-rgb) / 0.35); }
+  50% { box-shadow: 0 0 0 6px rgb(var(--erro-rgb) / 0); }
 }
 
 /* ---------------------------------------------------------------- medidor de voz */
@@ -66,10 +66,9 @@
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(77, 86, 59, 0.16);
+  background: rgb(var(--fio-2-rgb));
   transition: background-color 120ms ease;
 }
-.dark .nutri-medidor > span { background: rgba(198, 232, 214, 0.14); }
 .nutri-medidor > span[data-aceso="1"] { background: var(--n-ok); }
 
 /* ---------------------------------------------------------------- folha do prontuário */
@@ -77,40 +76,43 @@
 .nutri-folha {
   background: var(--n-folha);
   border: 1px solid var(--n-folha-borda);
-  border-radius: 16px;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 18px 44px rgba(43, 46, 36, 0.08);
+  border-radius: 10px;
 }
 .nutri-folha-linhas {
-  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  line-height: 1.65;
+  font-family: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--tinta-rgb));
 }
 .nutri-folha-linha {
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr);
   gap: 10px;
   align-items: baseline;
-  padding: 2px 0;
+  padding: 3px 0;
   border-bottom: 1px solid var(--n-folha-linha);
 }
 .nutri-folha-linha .nutri-bolinha { width: 0.5rem; height: 0.5rem; transform: translateY(-1px); }
 .nutri-folha-linha[data-estado="nao_informado"] .nutri-folha-texto { color: var(--n-suave); }
 .nutri-folha-linha[data-estado="pendente"] .nutri-folha-texto { color: var(--n-suave); font-style: italic; }
-.nutri-folha-linha[data-estado="titulo"] { border-bottom: 0; padding-top: 6px; font-weight: 700; }
+.nutri-folha-linha[data-estado="titulo"] { border-bottom: 0; padding-top: 8px; font-weight: 700; }
 .nutri-folha-linha[data-estado="vazia"] { border-bottom: 0; min-height: 0.8em; }
 .nutri-folha-linha.acendeu { animation: nutri-acende 900ms ease-out; }
 
 @keyframes nutri-acende {
-  from { background: rgba(122, 137, 94, 0.18); }
+  from { background: rgb(var(--musgo-claro-rgb)); }
   to { background: transparent; }
 }
 
 /* ---------------------------------------------------------------- fala de origem, sugestão, anterior */
 
-.nutri-fala { font-family: "Fraunces", Georgia, "Times New Roman", serif; font-style: italic; }
-.nutri-sugestao { border: 1px dashed var(--n-ia); background: var(--n-ia-fundo); border-radius: 12px; }
+/* A fala de origem é citação, não título: Manrope, como o "Por quê" do guia. */
+.nutri-fala { font-style: italic; }
+.nutri-sugestao { border: 1px dashed var(--n-ia); background: var(--n-ia-fundo); border-radius: 10px; }
 .nutri-texto-ia { color: var(--n-ia); }
-.nutri-anterior { border: 1px solid rgba(198, 168, 98, 0.55); background: var(--n-anterior-fundo); border-radius: 12px; }
+.nutri-anterior { border: 1px solid rgb(var(--ouro-fio-rgb)); background: var(--n-anterior-fundo); border-radius: 10px; }
 .nutri-suave { color: var(--n-suave); }
 
 /* campo de texto de uma linha que cresce */
@@ -119,39 +121,43 @@
   resize: none;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 6px;
   background: transparent;
   padding: 6px 10px;
+  font-family: inherit;
   font-size: 14px;
+  font-weight: 500;
   line-height: 1.5;
   color: inherit;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
-.nutri-linha-edicao:hover { border-color: rgba(77, 86, 59, 0.14); }
-.nutri-linha-edicao:focus { outline: none; border-color: rgba(198, 168, 98, 0.7); background: rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 3px rgba(198, 168, 98, 0.18); }
-.dark .nutri-linha-edicao:focus { background: rgba(24, 47, 37, 0.7); }
-.nutri-linha-edicao::placeholder { color: var(--n-suave); opacity: 0.8; }
+.nutri-linha-edicao:hover { border-color: rgb(var(--fio-2-rgb)); }
+.nutri-linha-edicao:focus { outline: 2px solid rgb(var(--foco-rgb)); outline-offset: 2px; border-color: rgb(var(--musgo-rgb)); background: rgb(var(--folha-rgb)); }
+.nutri-linha-edicao:disabled { cursor: not-allowed; }
+.nutri-linha-edicao::placeholder { color: var(--n-suave); opacity: 1; }
 
 .nutri-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border-radius: 999px;
-  border: 1px solid rgba(77, 86, 59, 0.16);
-  padding: 2px 9px;
+  min-height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgb(var(--fio-2-rgb));
+  padding: 3px 10px;
   font-size: 12px;
+  font-weight: 600;
   line-height: 18px;
-  color: var(--n-suave);
-  background: transparent;
-  transition: background-color 120ms ease, color 120ms ease;
+  color: rgb(var(--tinta-2-rgb));
+  background: rgb(var(--folha-rgb));
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.nutri-chip:hover { background: rgba(122, 137, 94, 0.12); color: var(--bratan-musgo); }
-.nutri-chip[aria-pressed="true"] { background: var(--bratan-musgo); border-color: var(--bratan-musgo); color: var(--bratan-papel); }
-.dark .nutri-chip[aria-pressed="true"] { color: #102019; }
-.nutri-chip:focus-visible { outline: 2px solid var(--bratan-dourado); outline-offset: 2px; }
+.nutri-chip:hover:not(:disabled) { border-color: rgb(var(--borda-campo-rgb)); color: rgb(var(--tinta-rgb)); }
+.nutri-chip[aria-pressed="true"] { background: rgb(var(--musgo-claro-rgb)); border-color: rgb(var(--musgo-rgb)); color: rgb(var(--musgo-rgb)); box-shadow: inset 0 0 0 1px rgb(var(--musgo-rgb)); }
+.nutri-chip:disabled { cursor: not-allowed; }
+.nutri-chip:focus-visible { outline: 2px solid rgb(var(--foco-rgb)); outline-offset: 2px; }
 
 /* barra de gravação */
-.nutri-gravacao { border: 1px solid rgba(178, 74, 53, 0.28); background: rgba(178, 74, 53, 0.05); border-radius: 14px; }
+.nutri-gravacao { border: 1px solid rgb(var(--fio-rgb)); background: rgb(var(--folha-rgb)); border-radius: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   .nutri-bolinha[data-estado="grava"] { animation: none; }
@@ -160,38 +166,39 @@
 
 /* ---------------------------------------------------------------- passos da consulta (28/09) */
 
-.nutri-gravacao-ativa { border-color: rgba(178, 74, 53, 0.55); background: rgba(178, 74, 53, 0.09); }
-.nutri-botao-gravar { background: #b24a35; color: #fff; }
-.nutri-botao-gravar:hover:not(:disabled) { background: #9a3f2d; }
+.nutri-gravacao-ativa { border-color: rgb(var(--erro-rgb) / 0.55); background: var(--n-grava-fundo); }
+.nutri-botao-gravar { background: var(--n-grava); color: rgb(var(--folha-rgb)); }
+.nutri-botao-gravar:hover:not(:disabled) { background: rgb(var(--erro-rgb) / 0.9); }
 .nutri-passos {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
+  gap: 6px 16px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 600;
 }
 .nutri-passos li { display: inline-flex; align-items: center; gap: 6px; color: var(--n-suave); }
 .nutri-passo-numero {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   border: 1px solid currentColor;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
-.nutri-passos li[data-estado="feito"] { color: var(--n-ok); }
-.nutri-passos li[data-estado="feito"] .nutri-passo-numero { background: var(--n-ok); border-color: var(--n-ok); color: var(--bratan-papel); }
-.dark .nutri-passos li[data-estado="feito"] .nutri-passo-numero { color: #102019; }
-.nutri-passos li[data-estado="atual"] { color: var(--bratan-musgo); font-weight: 700; }
-.dark .nutri-passos li[data-estado="atual"] { color: var(--bratan-creme); }
-.nutri-passos li[data-estado="atual"] .nutri-passo-numero { border-width: 2px; }
+.nutri-passos li[data-estado="feito"] { color: rgb(var(--ok-rgb)); }
+.nutri-passos li[data-estado="feito"] .nutri-passo-numero { background: rgb(var(--ok-rgb)); border-color: rgb(var(--ok-rgb)); color: rgb(var(--folha-rgb)); }
+.nutri-passos li[data-estado="atual"] { color: rgb(var(--tinta-rgb)); font-weight: 700; }
+.nutri-passos li[data-estado="atual"] .nutri-passo-numero { border: 2px solid rgb(var(--ouro-fio-rgb)); color: rgb(var(--tinta-rgb)); }
 
 /* trechos da gravação embaixo da linha do roteiro */
-.nutri-achados { border-left: 3px solid rgba(122, 137, 94, 0.55); background: rgba(122, 137, 94, 0.08); border-radius: 0 10px 10px 0; }
-.dark .nutri-achados { background: rgba(122, 137, 94, 0.14); }
+.nutri-achados { border-left: 3px solid rgb(var(--oliva-rgb)); background: rgb(var(--saber-rgb)); border-radius: 0 10px 10px 0; }
+
+/* caixas de marcar do módulo na cor da ação (08/10/2026) */
+.nutri input[type="checkbox"] { accent-color: rgb(var(--musgo-rgb)); width: 16px; height: 16px; }

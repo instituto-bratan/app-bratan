@@ -1,0 +1,23 @@
+/* FONTES DA EQUIPE — Fraunces e Manrope (Papel & Musgo, 08/10/2026).
+
+   Servidas pelo próprio app (a CSP só aceita font-src 'self'). Os arquivos vêm
+   do @fontsource, que já está instalado e que a Nutrição usa no plano impresso;
+   o Vite copia para /assets. Só o subconjunto latino: cobre todo o português
+   (á, ç, õ, ·, —). Fraunces só em título, número e data; Manrope no resto.
+
+   POR QUE NUM ARQUIVO À PARTE (08/10/2026): globals.css também é importado pelo
+   app do paciente (src/portal/main.tsx → dist-portal, o app da loja), que usa a
+   própria família (portal.css). Estes @font-face ficam só no app da equipe:
+   importados UMA vez, por src/main.tsx. scripts/conferir-pacote-do-portal.mjs
+   derruba o build:portal se algum arquivo fraunces-/manrope- entrar no pacote. */
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 400; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 500; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 600; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: italic; font-weight: 400; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-400-italic.woff2") format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: italic; font-weight: 500; font-display: swap; src: url("@fontsource/fraunces/files/fraunces-latin-500-italic.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 400; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 500; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 700; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 800; font-display: swap; src: url("@fontsource/manrope/files/manrope-latin-800-normal.woff2") format("woff2"); }
+

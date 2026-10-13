@@ -39,7 +39,9 @@ const ESCURO = {
 function bloco(seletor) {
   const re = /([^{}]+)\{([^{}]*)\}/g;
   for (let m; (m = re.exec(css)); ) {
-    const sel = m[1].replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+    // 08/10/2026: sem os @font-face (foram para fontes-da-equipe.css), o primeiro
+    // bloco vem logo depois dos "@tailwind …;" — o seletor é o que vem depois do último ";".
+    const sel = m[1].replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[\s\S]*;/, "").replace(/\s+/g, "");
     if (sel === seletor) return m[2];
   }
   throw new Error(`bloco ${seletor} não achado em globals.css`);
@@ -121,10 +123,13 @@ test("nomes antigos: text-brand-oliva/dourado viram tinta 2 e ouro (AA); shadcn 
 });
 
 test("fontes self-hosted (CSP font-src 'self'): Fraunces e Manrope saem do @fontsource, sem CDN", () => {
+  // 08/10/2026 (etapa 4): os @font-face saíram do globals.css (que o app do paciente também
+  // importa) para src/styles/fontes-da-equipe.css, importado só pelo app da equipe.
+  const fontes = ler("src/styles/fontes-da-equipe.css");
   for (const arquivo of ["fraunces-latin-400-normal", "fraunces-latin-400-italic", "manrope-latin-500-normal", "manrope-latin-700-normal"]) {
-    assert.match(css, new RegExp(`url\\("@fontsource/(fraunces|manrope)/files/${arquivo}\\.woff2"\\)`), arquivo);
+    assert.match(fontes, new RegExp(`url\\("@fontsource/(fraunces|manrope)/files/${arquivo}\\.woff2"\\)`), arquivo);
   }
-  assert.doesNotMatch(css, /fonts\.googleapis|fonts\.gstatic|https?:\/\/[^"')]*\.woff/);
+  for (const fonte of [css, fontes]) assert.doesNotMatch(fonte, /fonts\.googleapis|fonts\.gstatic|https?:\/\/[^"')]*\.woff/);
 });
 
 // ---- componentes novos ----

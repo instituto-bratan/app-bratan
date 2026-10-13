@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CalendarClock, CheckCircle2, FileText, History, Lock, RotateCcw, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/features/crm/comercialVisual";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule } from "@/lib/access";
 import { aceitarSugestao, confirmarAnterior, editarBio, editarTexto, trazerDoAnterior, valorVazio, usarTrechoDaTranscricao } from "../dominio/campos";
@@ -21,7 +21,7 @@ import { dataCurta, diaMes, normalizarTexto } from "../dominio/texto";
 import type { Atendimento, CampoId, ConferenciaUso } from "../dominio/tipos";
 import { useAtendimento, useAtendimentosDaPessoa, useConfig, useItensUso, useNutricaoPronta, usePessoa, useRascunho } from "../store/hooks";
 import * as repo from "../store/repositorio";
-import { Bolinha, Cartao, Carregando, Dialogo, Interruptor, LinhaQueCresce, Modulo, SeloFicticio, SeloSalvamento, Vazio } from "../ui/basicos";
+import { Bolinha, CabecalhoDaPagina, Cartao, Carregando, Dialogo, Interruptor, LinhaQueCresce, Modulo, SeloFicticio, SeloSalvamento, Vazio } from "../ui/basicos";
 import { ConferenciaDeSuplementos, sugestaoDaConferencia } from "../consulta/ConferenciaDeSuplementos";
 import { FalaDeOrigem } from "../consulta/FalaDeOrigem";
 import { FolhaDoProntuario } from "../consulta/FolhaDoProntuario";
@@ -215,46 +215,54 @@ export function NutricaoConsultaPage() {
 
   return (
     <Modulo>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link to={`/nutricao/pessoas/${pessoa.id}`} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-oliva hover:underline">
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> {pessoa.nome}
+      {/* PAPEL & MUSGO (08/10/2026): o cabeçalho da fundação, como nas outras telas da
+          Nutrição — a volta para a pessoa na rubrica, o atendimento no título, a data
+          e a situação na frase, e as ações à direita; as abas do item logo embaixo. */}
+      <CabecalhoDaPagina
+        sobretitulo={
+          <Link to={`/nutricao/pessoas/${pessoa.id}`} className="inline-flex items-center gap-1 rounded-sm hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Nutrição · {pessoa.nome}
           </Link>
-          <h1 className="mt-1 flex flex-wrap items-center gap-2 text-2xl font-semibold text-brand-musgo">
-            {titulo} <span className="text-base font-normal text-muted-foreground">· {dataCurta(at.data)}</span>
-            {pessoa.ficticia ? <SeloFicticio /> : null}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+        }
+        titulo={
+          <>
+            {titulo} {pessoa.ficticia ? <SeloFicticio /> : null}
+          </>
+        }
+        detalhe={
+          <>
+            <strong className="tabular-nums">{dataCurta(at.data)}</strong> ·{" "}
             {finalizado
               ? `Finalizado em ${dataCurta(at.finalizadoEm?.slice(0, 10))}${at.prazoPlano ? ` · plano até ${diaMes(at.prazoPlano)}` : ""}${at.retificacoes.length ? ` · ${at.retificacoes.length} retificação(ões)` : ""}`
               : anterior
                 ? `Atendimento anterior: ${dataCurta(anterior.data)}`
                 : "Sem atendimento anterior registrado aqui"}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+          </>
+        }
+        acoes={
+        <>
           <SeloSalvamento estado={estado} />
           {estado.tipo === "conflito" ? (
-            <Button type="button" size="sm" variant="outline" onClick={async () => { const doBanco = await repo.lerAtendimento(at.id); if (doBanco) recarregar(doBanco); }}>
+            <Button type="button" variant="outline" onClick={async () => { const doBanco = await repo.lerAtendimento(at.id); if (doBanco) recarregar(doBanco); }}>
               Recarregar a versão gravada
             </Button>
           ) : null}
           {!finalizado && anterior && editavel ? (
-            <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => alterar((a) => repo.trazerTudoDoAnterior(a, anterior))} title="Cada linha vem marcada com a data e só entra no texto depois de confirmada">
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => alterar((a) => repo.trazerTudoDoAnterior(a, anterior))} title="Cada linha vem marcada com a data e só entra no texto depois de confirmada">
               <RotateCcw className="h-4 w-4" aria-hidden="true" /> Trazer o anterior para conferir
             </Button>
           ) : null}
           {finalizado && !retificando && podeEditarModulo ? (
-            <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setEdicao({ campos: at.campos, suplementos: at.suplementos, conduta: at.conduta, linhaPlano: at.linhaPlano })}>
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => setEdicao({ campos: at.campos, suplementos: at.suplementos, conduta: at.conduta, linhaPlano: at.linhaPlano })}>
               <History className="h-4 w-4" aria-hidden="true" /> Retificar
             </Button>
           ) : null}
           {retificando ? (
             <>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setEdicao(null)}>
+              <Button type="button" variant="ghost" onClick={() => setEdicao(null)}>
                 Cancelar retificação
               </Button>
-              <Button type="button" size="sm" onClick={() => setRetificarAberto(true)}>
+              <Button type="button" onClick={() => setRetificarAberto(true)}>
                 Salvar retificação
               </Button>
             </>
@@ -262,7 +270,7 @@ export function NutricaoConsultaPage() {
           {!finalizado && editavel ? (
             <Button
               type="button"
-              size="sm"
+             
               className="gap-1.5"
               disabled={gravacaoOcupada}
               title={gravacaoOcupada ? "Espere a gravação, a transcrição ou a organização terminar" : undefined}
@@ -272,15 +280,16 @@ export function NutricaoConsultaPage() {
             </Button>
           ) : null}
           {finalizado && podeEditarModulo ? (
-            <Button type="button" size="sm" className="gap-1.5" onClick={() => navegar(`/nutricao/pessoas/${pessoa.id}?aba=planos&novoPara=${at.id}`)}>
+            <Button type="button" className="gap-1.5" onClick={() => navegar(`/nutricao/pessoas/${pessoa.id}?aba=planos&novoPara=${at.id}`)}>
               <FileText className="h-4 w-4" aria-hidden="true" /> Montar o plano
             </Button>
           ) : null}
-        </div>
-      </div>
+        </>
+        }
+      />
 
       {retificando ? (
-        <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="mb-4 rounded-bloco border border-atencao/40 bg-atencao-claro px-3 py-2 text-sm text-atencao">
           Retificando. As mudanças só valem quando você salvar com o motivo; o registro de {dataCurta(at.finalizadoEm?.slice(0, 10))} fica guardado como estava.
         </p>
       ) : null}
@@ -303,7 +312,7 @@ export function NutricaoConsultaPage() {
       ) : null}
 
       {org && pendentesSemIncerteza.length > 1 && editavel ? (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-[color:var(--n-ia)] bg-[color:var(--n-ia-fundo)] px-3 py-2 text-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-bloco border border-dashed border-[color:var(--n-ia)] bg-[color:var(--n-ia-fundo)] px-3 py-2 text-sm">
           <span className="inline-flex items-center gap-2">
             <Sparkles className="h-4 w-4 nutri-texto-ia" aria-hidden="true" /> {pendentesSemIncerteza.length} sugestões sem incerteza aguardando revisão.
           </span>
@@ -359,7 +368,7 @@ export function NutricaoConsultaPage() {
 
           {org && org.naoClassificados.some((n) => n.estado === "pendente") ? (
             <Cartao titulo="Mencionado na consulta e sem tema">
-              <p className="mb-2 text-sm text-muted-foreground">Nada do que foi dito fica de fora: leve cada item para uma linha, para a conduta, ou descarte.</p>
+              <p className="mb-2 text-sm text-tinta-2">Nada do que foi dito fica de fora: leve cada item para uma linha, para a conduta, ou descarte.</p>
               <div className="grid gap-2">
                 {org.naoClassificados
                   .filter((n) => n.estado === "pendente")
@@ -369,12 +378,12 @@ export function NutricaoConsultaPage() {
                       <FalaDeOrigem evidencias={n.evidencias} segmentos={at.transcricao?.segmentos ?? []} />
                       {editavel ? (
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <label className="text-xs text-muted-foreground" htmlFor={`destino-${n.id}`}>
+                          <label className="text-xs text-tinta-2" htmlFor={`destino-${n.id}`}>
                             Levar para
                           </label>
                           <select
                             id={`destino-${n.id}`}
-                            className="h-8 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm"
+                            className="h-8 rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-sm"
                             defaultValue=""
                             onChange={(e) => e.target.value && resolverNaoClassificado(n.id, e.target.value as CampoId | "conduta")}
                           >
@@ -403,7 +412,7 @@ export function NutricaoConsultaPage() {
             <div className="grid gap-3">
               {org?.conduta && org.conduta.estado === "pendente" ? (
                 <div className="nutri-sugestao grid gap-1.5 px-3 py-2 text-sm">
-                  <span className="text-[11px] font-bold uppercase tracking-wide nutri-texto-ia">conduta dita na consulta</span>
+                  <span className="text-xs font-bold uppercase tracking-wide nutri-texto-ia">conduta dita na consulta</span>
                   <p>{org.conduta.texto}</p>
                   <FalaDeOrigem evidencias={org.conduta.evidencias} segmentos={at.transcricao?.segmentos ?? []} />
                   {editavel ? (
@@ -419,8 +428,8 @@ export function NutricaoConsultaPage() {
                 </div>
               ) : null}
               <label className="grid gap-1 text-sm" htmlFor="conduta">
-                <span className="font-semibold text-brand-musgo">Conduta e orientações (entra no prontuário)</span>
-                <LinhaQueCresce id="conduta" value={conteudo.conduta} disabled={!editavel} placeholder="O que ficou combinado hoje" onChange={(e) => mudarConteudo((c) => ({ ...c, conduta: e.target.value }))} className="border-brand-oliva/14" />
+                <span className="font-semibold text-musgo">Conduta e orientações (entra no prontuário)</span>
+                <LinhaQueCresce id="conduta" value={conteudo.conduta} disabled={!editavel} placeholder="O que ficou combinado hoje" onChange={(e) => mudarConteudo((c) => ({ ...c, conduta: e.target.value }))} className="border-fio" />
               </label>
               <div className="flex flex-wrap items-center gap-4">
                 <Interruptor
@@ -430,27 +439,27 @@ export function NutricaoConsultaPage() {
                   rotulo="Incluir a linha do plano no prontuário"
                 />
                 <label className="inline-flex items-center gap-2 text-sm" htmlFor="proximo">
-                  <CalendarClock className="h-4 w-4 text-brand-oliva" aria-hidden="true" /> Próximo acompanhamento
+                  <CalendarClock className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Próximo acompanhamento
                   <input
                     id="proximo"
                     type="date"
                     disabled={!editavel || finalizado}
                     value={at.proximoAcompanhamento ?? ""}
                     onChange={(e) => alterar((a) => ({ ...a, proximoAcompanhamento: e.target.value || null }))}
-                    className="h-8 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm"
+                    className="h-8 rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-sm"
                   />
                 </label>
               </div>
               {conteudo.linhaPlano.ativa ? (
-                <LinhaQueCresce value={conteudo.linhaPlano.texto} disabled={!editavel} onChange={(e) => mudarConteudo((c) => ({ ...c, linhaPlano: { ...c.linhaPlano, texto: e.target.value } }))} aria-label="Texto da linha do plano" className="border-brand-oliva/14" />
+                <LinhaQueCresce value={conteudo.linhaPlano.texto} disabled={!editavel} onChange={(e) => mudarConteudo((c) => ({ ...c, linhaPlano: { ...c.linhaPlano, texto: e.target.value } }))} aria-label="Texto da linha do plano" className="border-fio" />
               ) : null}
             </div>
           </Cartao>
 
           {org && org.descartadas.length ? (
-            <details className="rounded-xl border border-brand-oliva/12 px-3 py-2 text-sm">
-              <summary className="cursor-pointer font-semibold text-muted-foreground">{org.descartadas.length} sugestão(ões) descartadas pela conferência automática</summary>
-              <ul className="mt-2 grid gap-1 text-muted-foreground">
+            <details className="rounded-bloco border border-fio px-3 py-2 text-sm">
+              <summary className="cursor-pointer font-semibold text-tinta-2">{org.descartadas.length} sugestão(ões) descartadas pela conferência automática</summary>
+              <ul className="mt-2 grid gap-1 text-tinta-2">
                 {org.descartadas.map((d, i) => (
                   <li key={i}>
                     <strong>{d.onde}:</strong> {d.texto} <em>({d.motivo})</em>
@@ -473,7 +482,7 @@ export function NutricaoConsultaPage() {
           ) : null}
         </div>
 
-        <div className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto lg:rounded-2xl">
+        <div className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:self-start lg:overflow-y-auto lg:rounded-bloco">
           <FolhaDoProntuario atendimento={vista} config={config} aoCopiar={() => (podeEditarModulo && !finalizado ? alterar((a) => ({ ...a, textoCopiadoEm: repo.agora() })) : undefined)} />
         </div>
       </div>
@@ -516,10 +525,10 @@ export function NutricaoConsultaPage() {
                 O plano entra nos prazos com entrega até <strong>{dataCurta(prazoPrevisto)}</strong> ({config.diasUteisPrazoPlano} dias úteis).
               </p>
             ) : null}
-            {!at.textoCopiadoEm ? <p className="text-amber-800">Você ainda não copiou o texto para o iClinic.</p> : null}
+            {!at.textoCopiadoEm ? <p className="text-atencao">Você ainda não copiou o texto para o iClinic.</p> : null}
           </>
         )}
-        {erroAcao ? <p className="text-red-800">{erroAcao}</p> : null}
+        {erroAcao ? <p className="text-erro">{erroAcao}</p> : null}
       </Dialogo>
 
       <Dialogo
@@ -537,9 +546,9 @@ export function NutricaoConsultaPage() {
           </>
         }
       >
-        <p className="text-muted-foreground">Fica registrado com seu nome, a data e o motivo. O texto anterior continua guardado.</p>
-        <LinhaQueCresce value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus placeholder="Por exemplo: o sono foi anotado errado na consulta" className="border-brand-oliva/20" />
-        {erroAcao ? <p className="text-red-800">{erroAcao}</p> : null}
+        <p className="text-tinta-2">Fica registrado com seu nome, a data e o motivo. O texto anterior continua guardado.</p>
+        <LinhaQueCresce value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus placeholder="Por exemplo: o sono foi anotado errado na consulta" className="border-fio" />
+        {erroAcao ? <p className="text-erro">{erroAcao}</p> : null}
       </Dialogo>
 
       <Dialogo
@@ -558,10 +567,10 @@ export function NutricaoConsultaPage() {
           </>
         }
       >
-        <p className="text-muted-foreground">Confira cada linha com a fala de origem. As marcadas como incertas continuam para revisão uma a uma.</p>
+        <p className="text-tinta-2">Confira cada linha com a fala de origem. As marcadas como incertas continuam para revisão uma a uma.</p>
         <ul className="grid gap-2">
           {pendentesSemIncerteza.map((s) => (
-            <li key={s.campo} className="rounded-xl border border-brand-oliva/12 p-2">
+            <li key={s.campo} className="rounded-bloco border border-fio p-2">
               <p>
                 <strong>{rotuloDoCampo(s.campo)}:</strong> {s.campo === "bio" ? "números da bioimpedância" : s.texto}
               </p>

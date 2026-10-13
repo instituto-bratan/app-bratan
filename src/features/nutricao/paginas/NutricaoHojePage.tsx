@@ -5,8 +5,9 @@
 // não terminaram e retornos a organizar.
 import { useMemo, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, CalendarPlus, FileText, LifeBuoy, Send, Stethoscope } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowRight, FileText, Send, Stethoscope } from "lucide-react";
+import { Contador, LinkSeta } from "@/components/ui/fundacao";
+import { Button } from "@/features/crm/comercialVisual";
 import { cn } from "@/lib/utils";
 import { montarPainel } from "../dominio/painel";
 import { feriadosNacionais } from "../dominio/prazos";
@@ -15,26 +16,33 @@ import { capitalizarPrimeira, dataCurta, diaMes } from "../dominio/texto";
 import { useAgenda, useConfig, useNutricaoPronta, usePessoas, useTodosAtendimentos, useTodosPlanos } from "../store/hooks";
 import * as repo from "../store/repositorio";
 import { abrirAtendimentoDeHoje, BotaoNovaConsulta, SeloEstacao } from "../ui/acoes";
-import { CabecalhoDaPagina, Carregando, Modulo, SeloFicticio, Vazio } from "../ui/basicos";
+import { CabecalhoDaPagina, Carregando, Etiqueta, Modulo, RUBRICA_N, SeloFicticio, Vazio } from "../ui/basicos";
+import { fraseDoDia } from "../dominio/frases";
 
 const ROTULO_TIPO = { checkpoint: "Checkpoint", primeira: "Primeira consulta", retorno: "Retorno" } as const;
 
+// PAPEL & MUSGO (08/10/2026): cada coluna é UMA folha com as linhas separadas
+// por fio (itens do mesmo tipo em lista, não em cartõezinhos); o selo de prazo
+// diz a situação com palavra e cor (atrasado em atenção, vence hoje em ouro).
 function Linha({ para, titulo, detalhe, selo, acao }: { para?: string; titulo: ReactNode; detalhe?: ReactNode; selo?: ReactNode; acao?: ReactNode }) {
   const conteudo = (
     <>
       <div className="min-w-0">
-        <p className="font-semibold leading-snug text-brand-tinta">{titulo}</p>
-        {detalhe ? <p className="text-xs text-muted-foreground">{detalhe}</p> : null}
+        <p className="text-sm font-bold leading-5 text-tinta">{titulo}</p>
+        {detalhe ? <p className="mt-0.5 text-[13px] font-medium leading-5 text-tinta-2">{detalhe}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {selo}
-        {acao ?? (para ? <ArrowRight className="h-4 w-4 text-brand-oliva" aria-hidden="true" /> : null)}
+        {acao ?? (para ? <ArrowRight className="h-4 w-4 text-tinta-2" aria-hidden="true" /> : null)}
       </div>
     </>
   );
-  const classe = "flex items-center justify-between gap-3 rounded-xl border border-brand-oliva/12 bg-white/60 px-3 py-2.5 transition-colors hover:border-brand-dourado/50 hover:bg-white/90";
+  const classe = "flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-150 ease-papel";
   return para ? (
-    <Link to={para} className={classe}>
+    <Link
+      to={para}
+      className={cn(classe, "hover:bg-papel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-foco")}
+    >
       {conteudo}
     </Link>
   ) : (
@@ -42,29 +50,25 @@ function Linha({ para, titulo, detalhe, selo, acao }: { para?: string; titulo: R
   );
 }
 
-function Coluna({ titulo, contagem, children, icone: Icone }: { titulo: string; contagem: number; children: ReactNode; icone: typeof FileText }) {
+function Coluna({ titulo, contagem, children, rodape, vazio, icone: Icone }: { titulo: string; contagem: number; children: ReactNode; rodape?: ReactNode; vazio?: ReactNode; icone: typeof FileText }) {
   return (
-    <section className="grid content-start gap-2">
-      <h2 className="flex items-center gap-2 text-[13px] font-bold uppercase tracking-[0.07em] text-brand-oliva">
-        <Icone className="h-4 w-4" aria-hidden="true" /> {titulo}
-        <span className="rounded-full bg-muted px-2 text-[11px] text-muted-foreground">{contagem}</span>
+    <section className="grid min-w-0 content-start gap-3" aria-label={titulo}>
+      <h2 className="flex items-center gap-2 font-sans text-base font-bold leading-6 text-tinta">
+        <Icone className="h-4 w-4 text-oliva" aria-hidden="true" /> {titulo}
+        <Contador valor={contagem} tom="suave" />
       </h2>
-      {children}
+      {contagem === 0 && vazio ? (
+        <p className="rounded-bloco bg-saber px-4 py-4 text-[13px] font-medium leading-5 text-tinta-2">{vazio}</p>
+      ) : (
+        <div className="divide-y divide-fio overflow-hidden rounded-bloco border border-fio bg-folha">{children}</div>
+      )}
+      {rodape}
     </section>
   );
 }
 
 function SeloPrazo({ estado, rotulo }: { estado: "no_prazo" | "vence_hoje" | "atrasado"; rotulo: string }) {
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2 py-0.5 text-[11px] font-bold",
-        estado === "atrasado" ? "bg-red-50 text-red-800" : estado === "vence_hoje" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800",
-      )}
-    >
-      {rotulo}
-    </span>
-  );
+  return <Etiqueta tom={estado === "atrasado" ? "atencao" : estado === "vence_hoje" ? "ouro" : "ok"}>{rotulo}</Etiqueta>;
 }
 
 export function NutricaoHojePage() {
@@ -94,6 +98,11 @@ export function NutricaoHojePage() {
 
   const dataLonga = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${hoje}T12:00:00`));
   const temFicticia = pessoas.some((p) => p.ficticia);
+  const frase = fraseDoDia({
+    consultas: painel.agenda.length,
+    planosAEntregar: painel.aEntregar.length,
+    atrasados: painel.aEntregar.filter((e) => e.situacao.estado === "atrasado").length,
+  });
 
   const abrir = async (pessoaId: string, tipo: keyof typeof ROTULO_TIPO) => {
     const pessoa = pessoas.find((p) => p.id === pessoaId);
@@ -104,60 +113,64 @@ export function NutricaoHojePage() {
   return (
     <Modulo>
       <CabecalhoDaPagina
-        sobretitulo="Nutrição · Hoje"
+        sobretitulo="Pacientes · Nutrição"
         titulo={capitalizarPrimeira(dataLonga)}
         detalhe={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <SeloEstacao detalhado />
-            <Link to="/nutricao/guia" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-oliva hover:underline">
-              <LifeBuoy className="h-3.5 w-3.5" aria-hidden="true" /> Guia de uso
-            </Link>
-          </span>
+          <>
+            <strong>{frase.destaque}</strong> {frase.resto} {frase.alerta ? <span className="alerta">{frase.alerta}</span> : null}
+          </>
         }
         acoes={<BotaoNovaConsulta />}
+        rodape={
+          <>
+            <SeloEstacao detalhado />
+            <LinkSeta to="/nutricao/guia">Guia de uso</LinkSeta>
+          </>
+        }
       />
       {pessoas.length === 0 ? (
-        <div className="mb-6 rounded-2xl border border-brand-dourado/50 bg-brand-creme/40 px-4 py-4">
-          <p className="text-[13px] font-bold uppercase tracking-[0.07em] text-brand-oliva">Primeiros passos</p>
-          <ol className="mt-2 grid gap-1.5 text-sm text-brand-tinta sm:grid-cols-2 lg:grid-cols-4">
-            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">01</span>Cadastre a pessoa em <Link to="/nutricao/pessoas" className="font-semibold text-brand-oliva hover:underline">Pessoas</Link>, com os suplementos dela.</li>
-            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">02</span>Abra a consulta pelo botão Nova consulta e ligue o consentimento.</li>
-            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">03</span>Grave, encerre e espere a transcrição.</li>
-            <li><span className="mr-1.5 font-mono text-[11px] text-muted-foreground">04</span>Leve as falas para as linhas, copie para o iClinic e finalize.</li>
+        <div className="mb-6 rounded-bloco bg-saber p-6 max-md:p-4">
+          <p className={RUBRICA_N}>Primeiros passos</p>
+          <ol className="mt-3 grid gap-3 text-sm font-medium leading-6 text-tinta sm:grid-cols-2 lg:grid-cols-4">
+            <li><span className="mr-1.5 font-bold tabular-nums text-tinta-2">01</span>Cadastre a pessoa em <Link to="/nutricao/pessoas" className="font-semibold text-musgo hover:underline">Pessoas</Link>, com os suplementos dela.</li>
+            <li><span className="mr-1.5 font-bold tabular-nums text-tinta-2">02</span>Abra a consulta pelo botão Nova consulta e ligue o consentimento.</li>
+            <li><span className="mr-1.5 font-bold tabular-nums text-tinta-2">03</span>Grave, encerre e espere a transcrição.</li>
+            <li><span className="mr-1.5 font-bold tabular-nums text-tinta-2">04</span>Leve as falas para as linhas, copie para o iClinic e finalize.</li>
           </ol>
-          <p className="mt-2 text-xs text-muted-foreground">O passo a passo completo está no <Link to="/nutricao/guia" className="font-semibold text-brand-oliva hover:underline">Guia de uso</Link>.</p>
+          <p className="mt-3 text-[13px] font-medium text-tinta-2">
+            O passo a passo completo está no <Link to="/nutricao/guia" className="font-bold text-musgo underline-offset-[3px] hover:underline">Guia de uso</Link>.
+          </p>
         </div>
       ) : null}
       {temFicticia ? (
-        <p className="mb-5 rounded-xl border border-dashed border-brand-dourado/60 bg-brand-creme/40 px-3 py-2 text-xs text-brand-tinta">
+        <p className="mb-6 rounded-bloco bg-ouro-claro px-4 py-3 text-[13px] font-semibold leading-5 text-ouro">
           Piloto com pessoas fictícias. Nomes, falas e quantidades foram inventados para testar o módulo e não são orientação clínica.
         </p>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Coluna titulo="Consultas de hoje" contagem={painel.agenda.length} icone={Stethoscope}>
-          {painel.agenda.length === 0 ? (
-            <Vazio titulo="Nada na agenda de hoje">Use “Nova consulta” quando alguém chegar.</Vazio>
-          ) : (
-            painel.agenda.map((item) => {
+        <Coluna
+          titulo="Consultas de hoje"
+          contagem={painel.agenda.length}
+          icone={Stethoscope}
+          vazio="Nada na agenda de hoje. Use “Nova consulta” quando alguém chegar."
+          rodape={<LinkSeta to="/nutricao/pessoas" className="justify-self-start">Pôr alguém na agenda de hoje</LinkSeta>}
+        >
+          {painel.agenda.map((item) => {
               const at = item.atendimento;
-              const selo = at ? (
-                <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", at.estado === "finalizado" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800")}>
-                  {at.estado === "finalizado" ? "finalizado" : "em registro"}
-                </span>
-              ) : null;
+              const selo = at ? <Etiqueta tom={at.estado === "finalizado" ? "ok" : "ouro"}>{at.estado === "finalizado" ? "finalizado" : "em registro"}</Etiqueta> : null;
               return (
                 <Linha
                   key={item.id}
                   titulo={
-                    <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">{item.hora}</span> {item.pessoa.nome} {item.pessoa.ficticia ? <SeloFicticio /> : null}
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-serifa text-base font-normal tabular-nums text-tinta">{item.hora}</span> {item.pessoa.nome} {item.pessoa.ficticia ? <SeloFicticio /> : null}
                     </span>
                   }
                   detalhe={`${ROTULO_TIPO[item.tipo]}${item.pessoa.faseAcompanhamento ? ` · mês ${item.pessoa.faseAcompanhamento.mes} de ${item.pessoa.faseAcompanhamento.total}` : ""}`}
                   selo={selo}
                   acao={
-                    <div className="flex gap-1.5">
+                    <div className="flex flex-wrap justify-end gap-1.5">
                       <Button asChild size="sm" variant="ghost">
                         <Link to={`/nutricao/pessoas/${item.pessoa.id}?aba=preparo`}>Preparar</Link>
                       </Button>
@@ -168,16 +181,15 @@ export function NutricaoHojePage() {
                   }
                 />
               );
-            })
-          )}
-          <Button asChild variant="ghost" size="sm" className="justify-start gap-2 text-brand-oliva">
-            <Link to="/nutricao/pessoas">
-              <CalendarPlus className="h-4 w-4" aria-hidden="true" /> Pôr alguém na agenda de hoje
-            </Link>
-          </Button>
+          })}
         </Coluna>
 
-        <Coluna titulo="Prazos e rascunhos" contagem={painel.aEntregar.length + painel.checkpointsEmRascunho.length + painel.planosEmRascunho.length} icone={FileText}>
+        <Coluna
+          titulo="Prazos e rascunhos"
+          contagem={painel.aEntregar.length + painel.checkpointsEmRascunho.length + painel.planosEmRascunho.length}
+          icone={FileText}
+          vazio="Nenhum prazo nem rascunho: tudo entregue."
+        >
           {painel.aEntregar.map((e) => (
             <Linha
               key={e.atendimento.id}
@@ -193,18 +205,22 @@ export function NutricaoHojePage() {
               para={`/nutricao/consultas/${atendimento.id}`}
               titulo={`Checkpoint de ${pessoa.nome}`}
               detalhe={`rascunho de ${dataCurta(atendimento.data)}`}
-              selo={<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground">rascunho</span>}
+              selo={<Etiqueta>rascunho</Etiqueta>}
             />
           ))}
           {painel.planosEmRascunho
             .filter((p) => !painel.aEntregar.some((e) => e.plano?.id === p.plano.id))
             .map(({ pessoa, plano }) => (
-              <Linha key={plano.id} para={`/nutricao/planos/${plano.id}`} titulo={`Plano de ${pessoa.nome}`} detalhe={`${tituloDoPlano(plano.mesRef)} · versão ${plano.numero}`} selo={<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground">rascunho</span>} />
+              <Linha key={plano.id} para={`/nutricao/planos/${plano.id}`} titulo={`Plano de ${pessoa.nome}`} detalhe={`${tituloDoPlano(plano.mesRef)} · versão ${plano.numero}`} selo={<Etiqueta>rascunho</Etiqueta>} />
             ))}
-          {painel.aEntregar.length + painel.checkpointsEmRascunho.length + painel.planosEmRascunho.length === 0 ? <Vazio titulo="Nenhum prazo nem rascunho">Tudo entregue.</Vazio> : null}
         </Coluna>
 
-        <Coluna titulo="Entregas e retornos" contagem={painel.pdfNaoCompartilhado.length + painel.semConfirmacao.length + painel.retornos.length} icone={Send}>
+        <Coluna
+          titulo="Entregas e retornos"
+          contagem={painel.pdfNaoCompartilhado.length + painel.semConfirmacao.length + painel.retornos.length}
+          icone={Send}
+          vazio="Nenhuma entrega pendente."
+        >
           {painel.pdfNaoCompartilhado.map(({ pessoa, plano }) => (
             <Linha key={plano.id} para={`/nutricao/planos/${plano.id}`} titulo={`PDF de ${pessoa.nome} ainda não compartilhado`} detalhe={tituloDoPlano(plano.mesRef)} />
           ))}
@@ -214,7 +230,6 @@ export function NutricaoHojePage() {
           {painel.retornos.map(({ pessoa, ultimoAtendimento }) => (
             <Linha key={pessoa.id} para={`/nutricao/pessoas/${pessoa.id}`} titulo={`Retorno de ${pessoa.nome}`} detalhe={`último atendimento em ${dataCurta(ultimoAtendimento)}`} />
           ))}
-          {painel.pdfNaoCompartilhado.length + painel.semConfirmacao.length + painel.retornos.length === 0 ? <Vazio titulo="Nenhuma entrega pendente" /> : null}
         </Coluna>
       </div>
     </Modulo>

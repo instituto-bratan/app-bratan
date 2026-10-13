@@ -10,10 +10,18 @@
 // Christi) mais os feriados de São Paulo capital que não estão lá: 25/01
 // (aniversário da cidade) e 09/07 (Revolução Constitucionalista, feriado do
 // estado). 20/11 (Consciência Negra) já é nacional desde 2024 e Corpus Christi
-// já está no calendário do banco. Lista de 2026 e 2027; para 2028 em diante,
-// acrescente as datas aqui e em FERIADOS_BANCARIOS.
+// já está no calendário do banco. Lista de 2026 a 2028 (2028 entrou em
+// 08/10/2026); para 2029 em diante, acrescente as datas aqui e em
+// FERIADOS_BANCARIOS.
 //
-// Módulo puro (testado com node --test em tests/etapa2-inicio-dia-de-pagar).
+// 08/10/2026 (etapa 4): a regra deixou de ser só da Fila do dia. Vale em todo
+// lugar onde o vencimento decide "vencida" ou "a pagar" — a semana em números
+// do Painel e o caixa projetado do Lucro Inteligente usam passouDoDiaDePagar.
+// 13/10/2026: vale só para as CONTAS que a clínica paga. O que o paciente deve
+// (lembretes de pagamento nos Recebíveis 360) vence na data combinada.
+//
+// Módulo puro (testado com node --test em tests/etapa2-inicio-dia-de-pagar e
+// tests/etapa4-dia-de-pagar*).
 import { FERIADOS_BANCARIOS } from "./recebiveisRede";
 
 /** Feriados municipais e estaduais de São Paulo capital que o calendário do banco não traz. */
@@ -22,6 +30,8 @@ export const FERIADOS_SAO_PAULO = new Set([
   "2026-07-09", // Revolução Constitucionalista (feriado estadual)
   "2027-01-25",
   "2027-07-09",
+  "2028-01-25", // terça
+  "2028-07-09", // domingo
 ]);
 
 function somaDias(iso: string, dias: number) {
@@ -57,6 +67,17 @@ export function diaDePagar(vencimento: string): string {
   // A guarda só existe para nunca travar: não há mais de 10 dias seguidos sem dia útil.
   for (let guarda = 0; guarda < 15 && !ehDiaUtilDePagamento(pagar); guarda += 1) pagar = somaDias(pagar, -1);
   return pagar;
+}
+
+/**
+ * A conta já passou do dia de pagar? (vencimento cru → dia de pagar < hoje.)
+ * A do sábado 10/10 ainda não passou na sexta 09/10 (é o dia de pagar) e passou
+ * no próprio sábado. Sem vencimento: nunca passou.
+ */
+export function passouDoDiaDePagar(vencimento: string | null | undefined, hoje: string): boolean {
+  const dia = String(vencimento ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return false;
+  return diaDePagar(dia) < String(hoje ?? "").slice(0, 10);
 }
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];

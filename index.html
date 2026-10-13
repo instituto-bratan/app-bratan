@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#4A5D3A" />
+    <!-- 08/10/2026: barra do navegador na paleta Papel & Musgo — papel no claro,
+         mesa escura (#0B110D) no escuro. 13/10/2026: uma meta por tema do
+         aparelho, para a barra já nascer certa; src/lib/tema.ts acerta as duas
+         quando a pessoa escolhe o tema à mão. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAF8F1" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B110D" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -11,6 +16,8 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- 13/10/2026: acerta as letras do relógio do iPhone antes da primeira pintura. -->
+    <script src="/tema-inicial.js"></script>
     <meta name="apple-mobile-web-app-title" content="Bratan" />
     <title>APP BRATAN</title>
   </head>

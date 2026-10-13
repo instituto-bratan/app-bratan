@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, CheckCircle2, Copy, Download, FilePlus2, GitCompare, ListPlus, Lock, MessageCircle, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/features/crm/comercialVisual";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule } from "@/lib/access";
 import { calcularPlano } from "../dominio/calculo";
@@ -23,7 +23,7 @@ import { PainelDoCalculo } from "../plano/PainelDoCalculo";
 import { FalaDeOrigem } from "../consulta/FalaDeOrigem";
 import { useAlimentos, useAtendimento, useAtualizarNutricao, useBiblioteca, useConfig, useIdentificacao, useMedidas, useNutricaoPronta, usePessoa, usePlano, usePlanosDaPessoa, useRascunho } from "../store/hooks";
 import * as repo from "../store/repositorio";
-import { Abas, Cartao, Carregando, Dialogo, Modulo, SeloFicticio, SeloSalvamento, Vazio } from "../ui/basicos";
+import { Abas, CAIXA_CAMPO, CabecalhoDaPagina, Cartao, Carregando, Dialogo, Modulo, SeloFicticio, SeloSalvamento, Vazio } from "../ui/basicos";
 
 function mover<T>(lista: T[], indice: number, delta: number): T[] {
   const alvo = indice + delta;
@@ -191,54 +191,59 @@ export function NutricaoPlanoPage() {
 
   return (
     <Modulo className="max-w-[1680px]">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link to={`/nutricao/pessoas/${pessoa.id}?aba=planos`} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-oliva hover:underline">
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> {pessoa.nome}
+      {/* PAPEL & MUSGO (08/10/2026): o cabeçalho da fundação (volta para a pessoa na
+          rubrica, o plano no título, versão e situação na frase, ações à direita). */}
+      <CabecalhoDaPagina
+        sobretitulo={
+          <Link to={`/nutricao/pessoas/${pessoa.id}?aba=planos`} className="inline-flex items-center gap-1 rounded-sm hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Nutrição · {pessoa.nome}
           </Link>
-          <h1 className="mt-1 flex flex-wrap items-center gap-2 text-2xl font-semibold text-brand-musgo">
+        }
+        titulo={
+          <>
             {tituloDoPlano(plano.mesRef)} {pessoa.ficticia ? <SeloFicticio /> : null}
-          </h1>
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>versão {plano.numero}</span>
-            <span>·</span>
-            <span>
-              {plano.estado === "rascunho" ? "rascunho" : plano.estado === "finalizado" ? `finalizado em ${dataCurta(plano.finalizadoEm?.slice(0, 10))}` : `substituído em ${dataCurta(plano.substituidoEm?.slice(0, 10))}`}
-            </span>
+          </>
+        }
+        detalhe={
+          <>
+            <strong>versão {plano.numero}</strong> ·{" "}
+            {plano.estado === "rascunho" ? "rascunho" : plano.estado === "finalizado" ? `finalizado em ${dataCurta(plano.finalizadoEm?.slice(0, 10))}` : `substituído em ${dataCurta(plano.substituidoEm?.slice(0, 10))}`}
             {plano.origem.tipo === "duplicado" && anteriorPlano ? (
               <>
-                <span>·</span>
-                <Link className="hover:underline" to={`/nutricao/planos/${anteriorPlano.id}`}>
+                {" · "}
+                <Link className="underline-offset-[3px] hover:underline" to={`/nutricao/planos/${anteriorPlano.id}`}>
                   a partir da versão {anteriorPlano.numero} ({mesPorExtenso(anteriorPlano.mesRef)})
                 </Link>
               </>
             ) : null}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+          </>
+        }
+        acoes={
+        <>
           <SeloSalvamento estado={estado} />
           {estado.tipo === "conflito" ? (
-            <Button type="button" size="sm" variant="outline" onClick={async () => { const b = await repo.lerPlano(plano.id); if (b) recarregar(b); }}>
+            <Button type="button" variant="outline" onClick={async () => { const b = await repo.lerPlano(plano.id); if (b) recarregar(b); }}>
               Recarregar a versão gravada
             </Button>
           ) : null}
           {anteriorPlano ? (
-            <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setComparacaoAberta(true)}>
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => setComparacaoAberta(true)}>
               <GitCompare className="h-4 w-4" aria-hidden="true" /> {difs.length} mudança(s) desde a versão {anteriorPlano.numero}
             </Button>
           ) : null}
           {editavel ? (
-            <Button type="button" size="sm" className="gap-1.5" onClick={() => setRevisaoAberta(true)}>
+            <Button type="button" className="gap-1.5" onClick={() => setRevisaoAberta(true)}>
               <Lock className="h-4 w-4" aria-hidden="true" /> Revisar e finalizar
             </Button>
           ) : null}
           {plano.estado !== "rascunho" && podeEditarModulo ? (
-            <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => void novaVersao()}>
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => void novaVersao()}>
               <FilePlus2 className="h-4 w-4" aria-hidden="true" /> Nova versão a partir desta
             </Button>
           ) : null}
-        </div>
-      </div>
+        </>
+        }
+      />
 
       {plano.estado === "finalizado" ? (
         <Cartao titulo="Entrega" className="mb-4">
@@ -250,7 +255,7 @@ export function NutricaoPlanoPage() {
                 { ok: Boolean(entrega.compartilhadoEm), rotulo: entrega.compartilhadoEm ? `compartilhado · ${entrega.canal}` : "não compartilhado" },
                 { ok: Boolean(entrega.recebidoEm), rotulo: entrega.recebidoEm ? "recebimento confirmado" : "sem confirmação de recebimento" },
               ].map((etapa, i) => (
-                <li key={i} className={etapa.ok ? "rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-800" : "rounded-full bg-muted px-2.5 py-1 text-muted-foreground"}>
+                <li key={i} className={etapa.ok ? "rounded-controle bg-ok-claro px-2.5 py-1 font-semibold text-ok" : "rounded-controle bg-saber px-2.5 py-1 text-tinta-2"}>
                   {etapa.ok ? <Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" /> : null}
                   {etapa.rotulo}
                 </li>
@@ -291,41 +296,41 @@ export function NutricaoPlanoPage() {
               </Button>
             </div>
             {aguardandoImpressao ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <div className="flex flex-wrap items-center gap-2 rounded-bloco border border-atencao/40 bg-atencao-claro px-3 py-2 text-sm text-atencao">
                 {aguardandoImpressao}: abri a impressão do navegador com as mesmas páginas. Escolha “Salvar como PDF”.
                 <Button type="button" size="sm" variant="outline" disabled={!podeEditarModulo} onClick={() => { setAguardandoImpressao(null); void registrar("pdf_gerado", "impressão do navegador"); }}>
                   Salvei o PDF
                 </Button>
               </div>
             ) : null}
-            {plano.pdf ? <p className="text-[11px] text-muted-foreground">Código de verificação do último PDF: {plano.pdf.hash.slice(0, 16)}… · {plano.pdf.paginas} página(s)</p> : null}
+            {plano.pdf ? <p className="text-xs text-tinta-2">Código de verificação do último PDF: {plano.pdf.hash.slice(0, 16)}… · {plano.pdf.paginas} página(s)</p> : null}
           </div>
         </Cartao>
       ) : null}
-      {aviso ? <p className="mb-3 rounded-xl bg-brand-creme/50 px-3 py-2 text-sm">{aviso}</p> : null}
+      {aviso ? <p className="mb-3 rounded-bloco bg-saber px-3 py-2 text-sm">{aviso}</p> : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(400px,0.85fr)] 2xl:grid-cols-[190px_minmax(0,1fr)_minmax(460px,0.85fr)]">
         <nav className="hidden 2xl:block" aria-label="Estrutura do plano">
           <div className="sticky top-24 grid gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.07em] text-brand-oliva">Refeições</p>
+            <p className="text-xs font-bold uppercase tracking-[0.07em] text-tinta-2">Refeições</p>
             <ol className="grid gap-1 text-sm">
               {plano.refeicoes.map((r) => (
                 <li key={r.id}>
-                  <a href={`#refeicao-${r.id}`} className="flex justify-between gap-2 rounded-lg px-2 py-1 hover:bg-muted">
+                  <a href={`#refeicao-${r.id}`} className="flex justify-between gap-2 rounded-controle px-2 py-1 hover:bg-saber">
                     <span className="truncate">
                       {r.emoji} {r.nome}
                     </span>
-                    <span className="font-mono text-[11px] text-muted-foreground">{r.horario || (r.opcional ? "opc." : "")}</span>
+                    <span className="tabular-nums text-xs text-tinta-2">{r.horario || (r.opcional ? "opc." : "")}</span>
                   </a>
                 </li>
               ))}
             </ol>
-            <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.07em] text-brand-oliva">Blocos</p>
+            <p className="pt-2 text-xs font-bold uppercase tracking-[0.07em] text-tinta-2">Blocos</p>
             <ol className="grid gap-1 text-sm">
               {plano.blocos.map((b) => (
                 <li key={b.id}>
-                  <a href={`#bloco-${b.id}`} className="block truncate rounded-lg px-2 py-1 hover:bg-muted">
-                    {b.titulo} <span className="text-[11px] text-muted-foreground">{b.itens.filter((i) => i.incluido).length}/{b.itens.length}</span>
+                  <a href={`#bloco-${b.id}`} className="block truncate rounded-controle px-2 py-1 hover:bg-saber">
+                    {b.titulo} <span className="text-xs text-tinta-2">{b.itens.filter((i) => i.incluido).length}/{b.itens.length}</span>
                   </a>
                 </li>
               ))}
@@ -336,7 +341,7 @@ export function NutricaoPlanoPage() {
         <div className="grid content-start gap-4">
           {acordos.length && editavel ? (
             <Cartao titulo="Combinados na consulta" acoes={<Sparkles className="h-4 w-4 nutri-texto-ia" aria-hidden="true" />}>
-              <p className="mb-2 text-sm text-muted-foreground">Da gravação de {dataCurta(atendimento?.data)}. “Pôr no plano” cria o alimento na refeição, sem quantidade: a medida é sua.</p>
+              <p className="mb-2 text-sm text-tinta-2">Da gravação de {dataCurta(atendimento?.data)}. “Pôr no plano” cria o alimento na refeição, sem quantidade: a medida é sua.</p>
               <div className="grid gap-2">
                 {acordos.map((a) => (
                   <div key={a.id} className="nutri-sugestao grid gap-1.5 px-3 py-2 text-sm">
@@ -349,7 +354,7 @@ export function NutricaoPlanoPage() {
                         aria-label="Refeição do acordo"
                         value={destinoAcordo[a.id] ?? refeicaoSugerida(a.refeicao)}
                         onChange={(e) => setDestinoAcordo((d) => ({ ...d, [a.id]: e.target.value }))}
-                        className="h-8 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm"
+                        className="h-8 rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-sm"
                       >
                         <option value="">escolha a refeição</option>
                         {plano.refeicoes.map((r) => (
@@ -371,20 +376,20 @@ export function NutricaoPlanoPage() {
             </Cartao>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-brand-oliva/12 bg-white/50 px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3 rounded-bloco border border-fio bg-saber px-4 py-3 text-sm">
             <label className="inline-flex items-center gap-2" htmlFor="nome-documento">
-              <span className="whitespace-nowrap font-semibold text-muted-foreground">Nome no documento</span>
+              <span className="whitespace-nowrap font-semibold text-tinta-2">Nome no documento</span>
               <input
                 id="nome-documento"
                 value={plano.nomeDocumento}
                 disabled={!editavel}
                 onChange={(e) => alterar((p) => ({ ...p, nomeDocumento: e.target.value }))}
-                className="h-8 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 font-semibold"
+                className="h-8 rounded-controle border border-borda-campo bg-folha text-tinta px-2 font-semibold"
               />
             </label>
             <label className="inline-flex items-center gap-2" htmlFor="mes-plano">
-              <span className="font-semibold text-muted-foreground">Mês</span>
-              <input id="mes-plano" type="month" value={plano.mesRef} disabled={!editavel} onChange={(e) => e.target.value && alterar((p) => ({ ...p, mesRef: e.target.value }))} className="h-8 rounded-lg border border-brand-oliva/20 bg-white/70 px-2" />
+              <span className="font-semibold text-tinta-2">Mês</span>
+              <input id="mes-plano" type="month" value={plano.mesRef} disabled={!editavel} onChange={(e) => e.target.value && alterar((p) => ({ ...p, mesRef: e.target.value }))} className="h-8 rounded-controle border border-borda-campo bg-folha text-tinta px-2" />
             </label>
           </div>
 
@@ -411,12 +416,12 @@ export function NutricaoPlanoPage() {
           ) : null}
 
           {plano.blocos.map((b) => (
-            <section key={b.id} id={`bloco-${b.id}`} className="rounded-2xl border border-brand-oliva/14 bg-white/70 p-4 shadow-sm">
+            <section key={b.id} id={`bloco-${b.id}`} className="rounded-bloco border border-fio bg-folha p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <input aria-label="Título do bloco" value={b.titulo} disabled={!editavel} onChange={(e) => mudarBloco({ ...b, titulo: e.target.value })} className="h-8 min-w-[12rem] flex-1 rounded-lg border border-transparent bg-transparent px-2 font-semibold text-brand-musgo hover:border-brand-oliva/15 focus:border-brand-dourado focus:outline-none" />
-                {b.origem ? <span className="text-[11px] text-muted-foreground">cópia da biblioteca · versão {b.origem.versao}</span> : null}
+                <input aria-label="Título do bloco" value={b.titulo} disabled={!editavel} onChange={(e) => mudarBloco({ ...b, titulo: e.target.value })} className="h-8 min-w-[12rem] flex-1 rounded-controle border border-transparent bg-transparent px-2 font-semibold text-musgo hover:border-fio-2 focus-visible:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco" />
+                {b.origem ? <span className="text-xs text-tinta-2">cópia da biblioteca · versão {b.origem.versao}</span> : null}
                 {editavel ? (
-                  <button type="button" className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-800" onClick={() => alterar((p) => ({ ...p, blocos: p.blocos.filter((x) => x.id !== b.id) }))} aria-label={`Tirar o bloco ${b.titulo}`}>
+                  <button type="button" className="rounded p-1 text-tinta-2 hover:bg-erro-claro hover:text-erro" onClick={() => alterar((p) => ({ ...p, blocos: p.blocos.filter((x) => x.id !== b.id) }))} aria-label={`Tirar o bloco ${b.titulo}`}>
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 ) : null}
@@ -437,13 +442,13 @@ export function NutricaoPlanoPage() {
                       disabled={!editavel}
                       aria-label="Texto do item"
                       onChange={(e) => mudarBloco({ ...b, itens: b.itens.map((x) => (x.id === item.id ? { ...x, texto: e.target.value } : x)) })}
-                      className={`h-8 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-sm hover:border-brand-oliva/15 focus:border-brand-dourado focus:outline-none ${item.incluido ? "" : "text-muted-foreground line-through"}`}
+                      className={`h-8 min-w-0 flex-1 rounded-controle border border-transparent bg-transparent px-2 text-sm hover:border-fio-2 focus-visible:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco ${item.incluido ? "" : "text-tinta-2 line-through"}`}
                     />
                   </li>
                 ))}
               </ul>
               {editavel ? (
-                <button type="button" className="mt-1 text-[11px] font-semibold text-brand-oliva hover:underline" onClick={() => mudarBloco({ ...b, itens: [...b.itens, { id: repo.novoId(), texto: "", incluido: true }] })}>
+                <button type="button" className="mt-1 text-xs font-semibold text-musgo hover:underline" onClick={() => mudarBloco({ ...b, itens: [...b.itens, { id: repo.novoId(), texto: "", incluido: true }] })}>
                   + item
                 </button>
               ) : null}
@@ -460,14 +465,14 @@ export function NutricaoPlanoPage() {
           ) : null}
 
           <label className="grid gap-1 text-sm" htmlFor="observacoes-finais">
-            <span className="font-semibold text-muted-foreground">Observações finais (saem no documento)</span>
+            <span className="font-semibold text-tinta-2">Observações finais (saem no documento)</span>
             <textarea
               id="observacoes-finais"
               rows={2}
               value={plano.observacoesFinais}
               disabled={!editavel}
               onChange={(e) => alterar((p) => ({ ...p, observacoesFinais: e.target.value }))}
-              className="rounded-xl border border-brand-oliva/15 bg-white/60 p-2 text-sm focus:border-brand-dourado focus:outline-none"
+              className={`p-2 text-sm ${CAIXA_CAMPO}`}
               placeholder="Por exemplo: Azeite apenas no preparo."
             />
           </label>
@@ -481,7 +486,7 @@ export function NutricaoPlanoPage() {
           <div
             ref={colunaPrevia}
             aria-hidden={aba !== "previa"}
-            className={aba === "previa" ? "max-h-[calc(100vh-9rem)] overflow-y-auto rounded-2xl bg-brand-tinta/[0.04] p-1" : "pointer-events-none fixed -left-[100000px] top-0 w-[480px]"}
+            className={aba === "previa" ? "max-h-[calc(100vh-9rem)] overflow-y-auto rounded-bloco bg-saber p-1" : "pointer-events-none fixed -left-[100000px] top-0 w-[480px]"}
           >
             <DocumentoPlano ref={documentoRef} plano={plano} identificacao={ident} zoom={zoom} aoPaginar={setPaginacao} />
           </div>
@@ -520,22 +525,22 @@ export function NutricaoPlanoPage() {
         <ul className="grid gap-1.5">
           {revisao.itens.map((i) => (
             <li key={i.id} className="flex items-start gap-2">
-              {i.ok ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" /> : <X className={`mt-0.5 h-4 w-4 shrink-0 ${i.bloqueia ? "text-red-700" : "text-amber-700"}`} aria-hidden="true" />}
-              <span className={i.bloqueia ? "text-red-800" : undefined}>{i.texto}</span>
+              {i.ok ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-ok" aria-hidden="true" /> : <X className={`mt-0.5 h-4 w-4 shrink-0 ${i.bloqueia ? "text-erro" : "text-atencao"}`} aria-hidden="true" />}
+              <span className={i.bloqueia ? "text-erro" : undefined}>{i.texto}</span>
             </li>
           ))}
         </ul>
         {difs.length ? (
-          <div className="rounded-xl border border-brand-oliva/12 p-3">
+          <div className="rounded-bloco border border-fio p-3">
             <p className="mb-1 font-semibold">Mudanças desde a versão {anteriorPlano?.numero}</p>
-            <ul className="grid gap-0.5 text-muted-foreground">
+            <ul className="grid gap-0.5 text-tinta-2">
               {difs.map((d, i) => (
                 <li key={i}>• {d.descricao}</li>
               ))}
             </ul>
           </div>
         ) : null}
-        <p className="text-muted-foreground">Finalizar congela esta versão com os valores da tabela de hoje. {anteriorPlano?.estado === "finalizado" ? `A versão ${anteriorPlano.numero} passa a “substituída” e continua guardada.` : ""}</p>
+        <p className="text-tinta-2">Finalizar congela esta versão com os valores da tabela de hoje. {anteriorPlano?.estado === "finalizado" ? `A versão ${anteriorPlano.numero} passa a “substituída” e continua guardada.` : ""}</p>
       </Dialogo>
 
       <Dialogo aberto={comparacaoAberta} aoFechar={() => setComparacaoAberta(false)} titulo={`O que mudou desde a versão ${anteriorPlano?.numero ?? ""}`}>
@@ -546,7 +551,7 @@ export function NutricaoPlanoPage() {
             ))}
           </ul>
         ) : (
-          <p className="text-muted-foreground">Nada mudou ainda em relação à versão anterior.</p>
+          <p className="text-tinta-2">Nada mudou ainda em relação à versão anterior.</p>
         )}
         <Button asChild variant="outline" size="sm" className="justify-self-start gap-1.5">
           <Link to={`/nutricao/planos/${anteriorPlano?.id ?? ""}`}>

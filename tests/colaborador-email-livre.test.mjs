@@ -52,5 +52,6 @@ test('"Cadastros para revisar" lista só quem está sem login', () => {
 
 test("o selo 'e-mail externo' continua existindo como contexto", () => {
   const fonte = ler("src/features/admin/SegurancaPage.tsx");
-  assert.ok(/e-mail externo<\/Badge>/.test(fonte), "quem cair na lista por outro motivo mostra o selo");
+  // 08/10/2026 (redesenho, etapa 4): o Badge antigo virou a Etiqueta de Ajustes — o selo é o mesmo.
+  assert.ok(/e-mail externo<\/(Badge|Etiqueta)>/.test(fonte), "quem cair na lista por outro motivo mostra o selo");
 });

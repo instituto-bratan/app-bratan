@@ -850,3 +850,54 @@ export const totalPopsTasks = popsAreas.reduce((total, area) => total + area.tar
 export function documentsByArea(areaId: PopsAreaId) {
   return fluxogramas.filter((documento) => documento.areaId === areaId);
 }
+
+// ---------------------------------------------------------------- busca e filtro da tela (08/10/2026)
+// Saíram de dentro da PopsFluxosPage no redesenho (etapa 4) para o teste poder
+// conferir: a busca ignora acento e caixa e olha título, setor, responsável,
+// categoria, resumo, etapas, tarefas e palavras-chave — a mesma de antes.
+
+export type FiltroDeArea = PopsAreaId | "todos";
+
+export function normalizarBusca(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+function textoPesquisavel(documento: FluxogramaDocumento) {
+  return normalizarBusca(
+    [
+      documento.titulo,
+      documento.setor,
+      documento.responsavel,
+      documento.categoria,
+      documento.resumo,
+      ...documento.etapas,
+      ...documento.tarefasSugeridas,
+      ...documento.tags,
+    ].join(" "),
+  );
+}
+
+/** Os documentos que batem com a busca e com a área escolhida ("todos" = qualquer área). */
+export function filtrarDocumentos(documentos: FluxogramaDocumento[], busca: string, area: FiltroDeArea) {
+  const termo = normalizarBusca(busca.trim());
+  return documentos.filter((documento) => {
+    const naArea = area === "todos" || documento.areaId === area;
+    return naArea && (!termo || textoPesquisavel(documento).includes(termo));
+  });
+}
+
+/** Quantos documentos cada área tem COM a busca de agora (o número ao lado de cada leitura). */
+export function contarPorArea(documentos: FluxogramaDocumento[], busca: string): Record<FiltroDeArea, number> {
+  const achados = filtrarDocumentos(documentos, busca, "todos");
+  const contagem = { todos: achados.length } as Record<FiltroDeArea, number>;
+  for (const area of popsAreas) contagem[area.id] = achados.filter((documento) => documento.areaId === area.id).length;
+  return contagem;
+}
+
+/** O documento abre como PDF (sem miniatura) ou como imagem do fluxograma. */
+export function ehPdf(documento: Pick<FluxogramaDocumento, "fileName">) {
+  return documento.fileName.toLowerCase().endsWith(".pdf");
+}

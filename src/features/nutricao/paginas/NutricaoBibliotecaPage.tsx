@@ -6,7 +6,7 @@
 // do cálculo e a cópia de segurança dos dados deste computador.
 import { useMemo, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/features/crm/comercialVisual";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule } from "@/lib/access";
 import { CONFIG_PADRAO } from "../dominio/config";
@@ -17,7 +17,8 @@ import { exportarTudo } from "../store/db";
 import { useAlimentos, useAtualizarNutricao, useBiblioteca, useConfig, useIdentificacao, useMedidas, useNutricaoPronta } from "../store/hooks";
 import * as repo from "../store/repositorio";
 import { baixar } from "../documento/exportar";
-import { Abas, CabecalhoDaPagina, Cartao, Carregando, Modulo, NumeroEditavel } from "../ui/basicos";
+import { fraseDaBiblioteca } from "../dominio/frases";
+import { Abas, CAIXA_CAMPO, CabecalhoDaPagina, Cartao, Carregando, Modulo, NumeroEditavel } from "../ui/basicos";
 
 type Aba = "listas" | "alimentos" | "medidas" | "identificacao" | "ajustes";
 type Aviso = { texto: string; erro: boolean };
@@ -32,10 +33,10 @@ function EditorDeBloco({ bloco, editavel }: { bloco: BlocoBiblioteca; editavel: 
   const atualizar = useAtualizarNutricao();
   const mudou = titulo !== bloco.titulo || itens !== bloco.itens.join("\n");
   return (
-    <Cartao titulo={`${bloco.titulo} · versão ${bloco.versao}`} acoes={<span className="text-[11px] text-muted-foreground">fonte: {bloco.fonte}</span>}>
+    <Cartao titulo={`${bloco.titulo} · versão ${bloco.versao}`} acoes={<span className="text-xs text-tinta-2">fonte: {bloco.fonte}</span>}>
       <div className="grid gap-2">
-        <input value={titulo} disabled={!editavel} onChange={(e) => setTitulo(e.target.value)} aria-label="Título da lista" className="h-9 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 font-semibold" />
-        <textarea value={itens} disabled={!editavel} onChange={(e) => setItens(e.target.value)} rows={Math.max(6, bloco.itens.length + 1)} aria-label="Itens, um por linha" className="rounded-xl border border-brand-oliva/20 bg-white/70 p-2 text-sm leading-relaxed" />
+        <input value={titulo} disabled={!editavel} onChange={(e) => setTitulo(e.target.value)} aria-label="Título da lista" className={`${CAIXA_CAMPO} h-10 px-3 text-sm font-semibold`} />
+        <textarea value={itens} disabled={!editavel} onChange={(e) => setItens(e.target.value)} rows={Math.max(6, bloco.itens.length + 1)} aria-label="Itens, um por linha" className={`${CAIXA_CAMPO} p-3 text-sm font-medium leading-relaxed`} />
         {editavel ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -54,7 +55,7 @@ function EditorDeBloco({ bloco, editavel }: { bloco: BlocoBiblioteca; editavel: 
             >
               Salvar nova versão
             </Button>
-            {salvo ? <span className={salvo.erro ? "text-xs font-medium text-red-800" : "text-xs text-emerald-800"} role={salvo.erro ? "alert" : undefined}>{salvo.texto}</span> : <span className="text-xs text-muted-foreground">Um item por linha. Editar aqui não muda nenhum plano já feito.</span>}
+            {salvo ? <span className={salvo.erro ? "text-xs font-medium text-erro" : "text-xs text-ok"} role={salvo.erro ? "alert" : undefined}>{salvo.texto}</span> : <span className="text-xs text-tinta-2">Um item por linha. Editar aqui não muda nenhum plano já feito.</span>}
           </div>
         ) : null}
       </div>
@@ -95,6 +96,7 @@ export function NutricaoBibliotecaPage() {
     setLinhasId(novas);
   };
   const cfg = ajustes ?? config;
+  const fraseBib = fraseDaBiblioteca({ listas: blocos.length, alimentos: alimentos.length, medidas: medidas.length });
   // Guarda os ajustes como estavam ao começar a mexer, para não gravar por cima de outra aba.
   const mudarAjustes = (novo: ConfigNutricao) => {
     if (!ajustes) setBaseAjustes(config);
@@ -102,8 +104,18 @@ export function NutricaoBibliotecaPage() {
   };
 
   return (
-    <Modulo className="max-w-5xl">
-      <CabecalhoDaPagina sobretitulo="Nutrição" titulo="Biblioteca" detalhe="Listas, alimentos, medidas caseiras, identificação e ajustes" />
+    <Modulo>
+      <CabecalhoDaPagina
+        sobretitulo="Pacientes · Nutrição"
+        titulo="Biblioteca"
+        detalhe={
+          <>
+            <strong>{fraseBib.destaque}</strong> {fraseBib.resto}
+          </>
+        }
+      />
+      {/* O módulo tem a largura das outras abas (cabeçalho e abas não pulam); o conteúdo fica em 1024. */}
+      <div className="max-w-5xl">
       <div className="mb-5">
         <Abas
           rotulo="Seções da biblioteca"
@@ -119,7 +131,7 @@ export function NutricaoBibliotecaPage() {
         />
       </div>
       {aviso ? (
-        <p className={aviso.erro ? "mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-800" : "mb-3 rounded-xl bg-brand-creme/50 px-3 py-2 text-sm"} role={aviso.erro ? "alert" : "status"}>
+        <p className={aviso.erro ? "mb-3 rounded-bloco bg-erro-claro px-3 py-2 text-sm font-medium text-erro" : "mb-3 rounded-bloco bg-saber px-3 py-2 text-sm"} role={aviso.erro ? "alert" : "status"}>
           {aviso.texto}
         </p>
       ) : null}
@@ -153,12 +165,12 @@ export function NutricaoBibliotecaPage() {
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar alimento, por exemplo: arroz, frango, banana"
             aria-label="Buscar alimento"
-            className="mb-3 h-10 w-full rounded-xl border border-brand-oliva/20 bg-white/70 px-3 text-sm"
+            className="mb-3 h-10 w-full rounded-controle border border-borda-campo bg-folha text-tinta px-3 text-sm"
           />
           {encontrados.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                <thead className="text-xs uppercase tracking-wide text-tinta-2">
                   <tr>
                     <th className="py-1 text-left">Alimento (por 100 g)</th>
                     <th className="py-1 text-right">kcal</th>
@@ -168,12 +180,12 @@ export function NutricaoBibliotecaPage() {
                     <th className="py-1 text-right">Fibra</th>
                   </tr>
                 </thead>
-                <tbody className="font-mono tabular-nums">
+                <tbody className="tabular-nums">
                   {encontrados.map((a) => (
-                    <tr key={a.id} className="border-t border-brand-oliva/10">
+                    <tr key={a.id} className="border-t border-fio">
                       <td className="py-1.5 pr-2 font-sans">
                         {a.nome}
-                        <span className="block text-[11px] text-muted-foreground">
+                        <span className="block text-xs text-tinta-2">
                           {a.grupo} · {a.fonte.referencia}
                         </span>
                       </td>
@@ -188,14 +200,14 @@ export function NutricaoBibliotecaPage() {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Os valores vêm só da tabela; nada é digitado à mão nem estimado. “Tr” é traço; “*” é valor em reavaliação na própria TACO.</p>
+            <p className="text-sm text-tinta-2">Os valores vêm só da tabela; nada é digitado à mão nem estimado. “Tr” é traço; “*” é valor em reavaliação na própria TACO.</p>
           )}
         </Cartao>
       ) : null}
 
       {aba === "medidas" ? (
         <Cartao titulo="Medidas caseiras validadas por você">
-          <p className="mb-3 text-sm text-muted-foreground">Registre uma vez quanto pesa a medida (por exemplo, “4 colheres de sopa” de arroz = 100 g). Ela aparece como atalho ao vincular o alimento no plano.</p>
+          <p className="mb-3 text-sm text-tinta-2">Registre uma vez quanto pesa a medida (por exemplo, “4 colheres de sopa” de arroz = 100 g). Ela aparece como atalho ao vincular o alimento no plano.</p>
           {editavel ? (
             <form
               className="mb-4 flex flex-wrap items-end gap-2"
@@ -209,11 +221,11 @@ export function NutricaoBibliotecaPage() {
               }}
             >
               <label className="grid gap-0.5 text-xs">
-                <span className="font-semibold text-muted-foreground">Alimento</span>
+                <span className="font-semibold text-tinta-2">Alimento</span>
                 <input list="alimentos-taco" onChange={(e) => {
                   const a = alimentos.find((x) => x.nome === e.target.value);
                   setNovaMedida((m) => ({ ...m, alimentoId: a ? a.id : "" }));
-                }} placeholder="comece a digitar" className="h-9 w-72 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm" />
+                }} placeholder="comece a digitar" className={`${CAIXA_CAMPO} h-10 w-72 max-w-full px-3 text-sm font-medium`} />
                 <datalist id="alimentos-taco">
                   {alimentos.map((a) => (
                     <option key={a.id} value={a.nome} />
@@ -221,12 +233,12 @@ export function NutricaoBibliotecaPage() {
                 </datalist>
               </label>
               <label className="grid gap-0.5 text-xs">
-                <span className="font-semibold text-muted-foreground">Medida (como vai no plano)</span>
-                <input value={novaMedida.texto} onChange={(e) => setNovaMedida((m) => ({ ...m, texto: e.target.value }))} placeholder="4 colheres de sopa" className="h-9 w-48 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm" />
+                <span className="font-semibold text-tinta-2">Medida (como vai no plano)</span>
+                <input value={novaMedida.texto} onChange={(e) => setNovaMedida((m) => ({ ...m, texto: e.target.value }))} placeholder="4 colheres de sopa" className="h-9 w-48 rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-sm" />
               </label>
               <label className="grid gap-0.5 text-xs">
-                <span className="font-semibold text-muted-foreground">Gramas</span>
-                <input value={novaMedida.gramas} onChange={(e) => setNovaMedida((m) => ({ ...m, gramas: e.target.value }))} inputMode="decimal" className="h-9 w-20 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-right text-sm" />
+                <span className="font-semibold text-tinta-2">Gramas</span>
+                <input value={novaMedida.gramas} onChange={(e) => setNovaMedida((m) => ({ ...m, gramas: e.target.value }))} inputMode="decimal" className="h-9 w-20 rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-right text-sm" />
               </label>
               <Button type="submit" size="sm" disabled={!novaMedida.alimentoId}>
                 Guardar medida
@@ -234,14 +246,14 @@ export function NutricaoBibliotecaPage() {
             </form>
           ) : null}
           <ul className="grid gap-1 text-sm">
-            {medidas.length === 0 ? <li className="italic text-muted-foreground">nenhuma medida registrada ainda</li> : null}
+            {medidas.length === 0 ? <li className="italic text-tinta-2">nenhuma medida registrada ainda</li> : null}
             {medidas.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-2 border-t border-brand-oliva/10 py-1.5">
+              <li key={m.id} className="flex items-center justify-between gap-2 border-t border-fio py-1.5">
                 <span>
                   <strong>{m.texto}</strong> = {m.gramas} g · {m.alimentoId ? porId.get(m.alimentoId)?.nome ?? m.alimentoId : "sem alimento"}
                 </span>
                 {editavel ? (
-                  <button type="button" className="rounded p-1 text-muted-foreground hover:text-red-800" onClick={async () => { await repo.apagarMedida(m.id); await atualizar(); }} aria-label={`Apagar ${m.texto}`}>
+                  <button type="button" className="rounded p-1 text-tinta-2 hover:text-erro" onClick={async () => { await repo.apagarMedida(m.id); await atualizar(); }} aria-label={`Apagar ${m.texto}`}>
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 ) : null}
@@ -253,10 +265,10 @@ export function NutricaoBibliotecaPage() {
 
       {aba === "identificacao" ? (
         <Cartao titulo="Identificação no fim do plano">
-          <p className="mb-3 text-sm text-muted-foreground">Texto de identificação, sem valor de assinatura digital. Sai inteiro, na última página.</p>
+          <p className="mb-3 text-sm text-tinta-2">Texto de identificação, sem valor de assinatura digital. Sai inteiro, na última página.</p>
           <div className="grid gap-2">
             {linhas.map((l, i) => (
-              <input key={i} value={l} disabled={!editavel} onChange={(e) => mudarLinhas(linhas.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Linha ${i + 1}`} className="h-9 rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-sm" />
+              <input key={i} value={l} disabled={!editavel} onChange={(e) => mudarLinhas(linhas.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Linha ${i + 1}`} className="h-9 rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-sm" />
             ))}
             {editavel ? (
               <Button
@@ -288,30 +300,30 @@ export function NutricaoBibliotecaPage() {
           <Cartao titulo="Regras do cálculo e do prontuário">
             <div className="grid gap-3 text-sm sm:grid-cols-2">
               <label className="grid gap-0.5">
-                <span className="text-xs font-semibold text-muted-foreground">Azeite de preparo no almoço e no jantar com legumes (g)</span>
-                <NumeroEditavel disabled={!editavel} valor={cfg.azeiteGramas} aoMudar={(n) => mudarAjustes({ ...cfg, azeiteGramas: n !== null && n >= 0 ? n : 0 })} className="h-9 w-24 rounded-lg border border-brand-oliva/20 bg-white/70 px-2" />
+                <span className="text-xs font-semibold text-tinta-2">Azeite de preparo no almoço e no jantar com legumes (g)</span>
+                <NumeroEditavel disabled={!editavel} valor={cfg.azeiteGramas} aoMudar={(n) => mudarAjustes({ ...cfg, azeiteGramas: n !== null && n >= 0 ? n : 0 })} className="h-9 w-24 rounded-controle border border-borda-campo bg-folha text-tinta px-2" />
               </label>
               <label className="grid gap-0.5">
-                <span className="text-xs font-semibold text-muted-foreground">Prazo do plano (dias úteis para “72 horas úteis”)</span>
-                <input inputMode="numeric" disabled={!editavel} value={cfg.diasUteisPrazoPlano} onChange={(e) => mudarAjustes({ ...cfg, diasUteisPrazoPlano: Number(e.target.value) || 3 })} className="h-9 w-24 rounded-lg border border-brand-oliva/20 bg-white/70 px-2" />
+                <span className="text-xs font-semibold text-tinta-2">Prazo do plano (dias úteis para “72 horas úteis”)</span>
+                <input inputMode="numeric" disabled={!editavel} value={cfg.diasUteisPrazoPlano} onChange={(e) => mudarAjustes({ ...cfg, diasUteisPrazoPlano: Number(e.target.value) || 3 })} className="h-9 w-24 rounded-controle border border-borda-campo bg-folha text-tinta px-2" />
               </label>
               <label className="grid gap-0.5">
-                <span className="text-xs font-semibold text-muted-foreground">Sigla da gordura visceral</span>
-                <input disabled={!editavel} value={cfg.siglaVisceral} onChange={(e) => mudarAjustes({ ...cfg, siglaVisceral: e.target.value })} className="h-9 w-24 rounded-lg border border-brand-oliva/20 bg-white/70 px-2" />
+                <span className="text-xs font-semibold text-tinta-2">Sigla da gordura visceral</span>
+                <input disabled={!editavel} value={cfg.siglaVisceral} onChange={(e) => mudarAjustes({ ...cfg, siglaVisceral: e.target.value })} className="h-9 w-24 rounded-controle border border-borda-campo bg-folha text-tinta px-2" />
               </label>
               <label className="grid gap-0.5">
-                <span className="text-xs font-semibold text-muted-foreground">Calorias do total</span>
-                <select disabled={!editavel} value={cfg.caloriasPor} onChange={(e) => mudarAjustes({ ...cfg, caloriasPor: e.target.value as ConfigNutricao["caloriasPor"] })} className="h-9 rounded-lg border border-brand-oliva/20 bg-white/70 px-2">
+                <span className="text-xs font-semibold text-tinta-2">Calorias do total</span>
+                <select disabled={!editavel} value={cfg.caloriasPor} onChange={(e) => mudarAjustes({ ...cfg, caloriasPor: e.target.value as ConfigNutricao["caloriasPor"] })} className="h-9 rounded-controle border border-borda-campo bg-folha text-tinta px-2">
                   <option value="macros">pelos fatores 4, 4 e 9 (percentuais fecham 100)</option>
                   <option value="tabela">pela caloria da tabela</option>
                 </select>
               </label>
               <label className="grid gap-0.5">
-                <span className="text-xs font-semibold text-muted-foreground">Guardar o áudio da consulta por (dias)</span>
-                <input inputMode="numeric" disabled={!editavel} value={cfg.diasRetencaoAudio} onChange={(e) => mudarAjustes({ ...cfg, diasRetencaoAudio: Number(e.target.value) || 7 })} className="h-9 w-24 rounded-lg border border-brand-oliva/20 bg-white/70 px-2" />
+                <span className="text-xs font-semibold text-tinta-2">Guardar o áudio da consulta por (dias)</span>
+                <input inputMode="numeric" disabled={!editavel} value={cfg.diasRetencaoAudio} onChange={(e) => mudarAjustes({ ...cfg, diasRetencaoAudio: Number(e.target.value) || 7 })} className="h-9 w-24 rounded-controle border border-borda-campo bg-folha text-tinta px-2" />
               </label>
               <label className="grid gap-0.5">
-                <span className="text-xs font-semibold text-muted-foreground">Feriados locais (um por linha, AAAA-MM-DD)</span>
+                <span className="text-xs font-semibold text-tinta-2">Feriados locais (um por linha, AAAA-MM-DD)</span>
                 <textarea
                   disabled={!editavel}
                   rows={3}
@@ -320,7 +332,7 @@ export function NutricaoBibliotecaPage() {
                     setFeriadosTexto(e.target.value);
                     mudarAjustes({ ...cfg, feriados: e.target.value.split("\n").map((l) => l.trim()).filter((l) => /^\d{4}-\d{2}-\d{2}$/.test(l)) });
                   }}
-                  className="rounded-lg border border-brand-oliva/20 bg-white/70 p-2 font-mono text-xs"
+                  className="rounded-controle border border-borda-campo bg-folha text-tinta p-2 tabular-nums text-xs"
                 />
               </label>
             </div>
@@ -349,7 +361,7 @@ export function NutricaoBibliotecaPage() {
             ) : null}
           </Cartao>
           <Cartao titulo="Cópia de segurança">
-            <p className="mb-3 text-sm text-muted-foreground">No piloto, os dados ficam neste computador (no navegador). Baixe uma cópia com frequência e guarde em local protegido: ela tem dados de saúde.</p>
+            <p className="mb-3 text-sm text-tinta-2">No piloto, os dados ficam neste computador (no navegador). Baixe uma cópia com frequência e guarde em local protegido: ela tem dados de saúde.</p>
             <Button
               type="button"
               variant="outline"
@@ -364,6 +376,7 @@ export function NutricaoBibliotecaPage() {
           </Cartao>
         </div>
       ) : null}
+      </div>
     </Modulo>
   );
 }

@@ -7,21 +7,25 @@
 // o passo a passo do que o Lucas precisa fazer fora do app, a configuração
 // (JSON editável pela coordenação) e os últimos eventos. Ligar aqui não dispara
 // nada sozinho: só libera os botões nas telas e os crons passam a trabalhar.
+//
+// Redesenho Papel & Musgo, etapa 4 (08/10/2026): as integrações viraram uma
+// lista numa folha (itens do mesmo tipo em lista, não em cartões), com a
+// situação em palavra + cor, os segredos como etiquetas e o passo a passo e a
+// configuração em "detalhes". A ordem sugerida desceu para a faixa do fluxo,
+// embaixo do cabeçalho. Ligar, desligar, salvar e testar fazem o mesmo de antes.
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { CheckCircle2, CircleDashed, Plug, RefreshCw, Save, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Plug, RefreshCw } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { InfoTip } from "@/components/ui/info-tip";
+import { BlocoFolha, Botao, Cabecalho, FraseDoFluxo } from "@/components/ui/fundacao";
 import { confirmar, toast } from "@/components/ui/avisos";
 import { useAuth } from "@/hooks/useAuth";
 import { canManageAcessos, isCoordenacao } from "@/lib/access";
 import { GUIA_ATIVACAO, definirCacheIntegracoes, type ChaveIntegracao, type IntegracaoRecord } from "@/lib/integracoes";
 import { invocarIntegracao, listRemoteIntegracaoEventos, listRemoteIntegracoes, saveRemoteIntegracao, statusSegredosIntegracoes } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
+import { contagem } from "./frasesAjustes";
+import { BOTAO_TEXTO, CAMPO_AREA, CabecaDaFolha, Detalhes, Etiqueta, RUBRICA, Recado, Vazio, TituloComDica } from "./pecasAjustes";
 
 const TESTES: Partial<Record<ChaveIntegracao, { rotulo: string; slug: string; body: (pessoaId: string | null) => Record<string, unknown> }>> = {
   push: { rotulo: "Mandar um aviso de teste para mim", slug: "push-enviar", body: (pessoaId) => ({ pessoaId, teste: true }) },
@@ -96,92 +100,125 @@ function IntegracaoCard({ item, segredos, podeEditar, pessoaId, onMudou }: { ite
   }
 
   return (
-    <Card className={cn("border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur", item.ligada && "border-emerald-300")}>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <Plug className={cn("h-4 w-4", item.ligada ? "text-emerald-700" : "text-brand-oliva")} aria-hidden="true" />
-          {item.nome}
-          <Badge className={item.ligada ? "bg-emerald-100 text-emerald-800" : "bg-brand-papel text-brand-oliva"}>{item.ligada ? "ligada" : "desligada"}</Badge>
-          {semFuncao ? <Badge variant="outline">aguarda contrato</Badge> : null}
-          {podeEditar && !semFuncao ? (
-            <Button type="button" size="sm" variant={item.ligada ? "outline" : "default"} className="ml-auto h-8" disabled={ocupado} onClick={() => void alternar()}>
-              {item.ligada ? "Desligar" : "Ligar"}
-            </Button>
-          ) : null}
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">{item.descricao}</p>
-      </CardHeader>
-      <CardContent className="grid gap-3 text-sm">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">Segredos (só o nome; o valor nunca passa pelo app)</p>
-          <ul className="mt-1 flex flex-wrap gap-1.5">
-            {(segredos?.exigidos ?? guia.segredos).map((nome) => {
-              const falta = segredos ? segredos.faltam.includes(nome) : true;
-              return (
-                <li key={nome} className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-mono", falta ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-300 bg-emerald-50 text-emerald-900")}>
-                  {falta ? <CircleDashed className="h-3 w-3" aria-hidden="true" /> : <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
-                  {nome}
-                </li>
-              );
-            })}
-          </ul>
+    <li className={cn("grid gap-4 border-t border-fio px-6 py-5 max-md:px-4", item.ligada && "shadow-[inset_3px_0_0_rgb(var(--ok-rgb))]")}>
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1 basis-80">
+          <h3 className="flex flex-wrap items-center gap-2 text-base font-bold leading-6 text-tinta">
+            <Plug className={cn("h-4 w-4", item.ligada ? "text-ok" : "stroke-oliva")} aria-hidden="true" />
+            {item.nome}
+            <Etiqueta tom={item.ligada ? "ok" : "neutro"}>{item.ligada ? "ligada" : "desligada"}</Etiqueta>
+            {semFuncao ? <Etiqueta>aguarda contrato</Etiqueta> : null}
+          </h3>
+          <p className="mt-1 text-sm font-medium leading-[22px] text-tinta-2">{item.descricao}</p>
         </div>
-        <details className="rounded-md border border-brand-oliva/15 bg-brand-papel/50 p-2.5">
-          <summary className="cursor-pointer text-sm font-semibold text-brand-tinta">O que o Lucas precisa fazer para ligar</summary>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-brand-tinta">
+        {podeEditar && !semFuncao ? (
+          <Botao variante={item.ligada ? "secundario" : "primario"} tamanho="pq" className="max-md:h-10" disabled={ocupado} onClick={() => void alternar()}>
+            {item.ligada ? "Desligar" : "Ligar"}
+          </Botao>
+        ) : null}
+      </div>
+
+      <div>
+        <p className={RUBRICA}>Segredos (só o nome; o valor nunca passa pelo app)</p>
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {(segredos?.exigidos ?? guia.segredos).map((nome) => {
+            const falta = segredos ? segredos.faltam.includes(nome) : true;
+            return (
+              <li key={nome}>
+                <Etiqueta tom={falta ? "atencao" : "ok"} className="font-mono font-semibold" title={falta ? "falta configurar" : "já existe"}>
+                  {falta ? <CircleDashed aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+                  {nome}
+                  <span className="sr-only">{falta ? " — falta" : " — pronto"}</span>
+                </Etiqueta>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2 lg:gap-6">
+        <Detalhes resumo="O que o Lucas precisa fazer para ligar">
+          <ol className="list-decimal space-y-1 pl-5 text-sm leading-[22px] text-tinta">
             {guia.passos.map((passo) => (
               <li key={passo}>{passo}</li>
             ))}
           </ol>
-          {guia.funcoes.length ? <p className="mt-2 text-xs text-muted-foreground">Funções publicadas: {guia.funcoes.join(", ")}.</p> : null}
-        </details>
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">Configuração</p>
-            {podeEditar ? (
-              editando ? (
-                <div className="flex gap-1.5">
-                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setConfigTexto(JSON.stringify(item.config, null, 2)); setEditando(false); }}>Cancelar</Button>
-                  <Button type="button" size="sm" className="h-7 px-2 text-xs" disabled={ocupado} onClick={() => void salvarConfig()}>
-                    <Save className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Salvar
-                  </Button>
-                </div>
+          {guia.funcoes.length ? <p className="mt-2">Funções publicadas: {guia.funcoes.join(", ")}.</p> : null}
+        </Detalhes>
+        <Detalhes resumo={editando ? "Configuração (editando)" : "Configuração"}>
+          {podeEditar ? (
+            <div className="mb-2 flex justify-end gap-3">
+              {editando ? (
+                <>
+                  <button
+                    type="button"
+                    className={BOTAO_TEXTO}
+                    onClick={() => {
+                      setConfigTexto(JSON.stringify(item.config, null, 2));
+                      setEditando(false);
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <Botao variante="primario" tamanho="pq" carregando={ocupado} onClick={() => void salvarConfig()}>
+                    Salvar
+                  </Botao>
+                </>
               ) : (
-                <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditando(true)}>Editar</Button>
-              )
-            ) : null}
-          </div>
+                <button type="button" className={BOTAO_TEXTO} onClick={() => setEditando(true)}>
+                  Editar
+                </button>
+              )}
+            </div>
+          ) : null}
           {editando ? (
-            <textarea value={configTexto} onChange={(event) => setConfigTexto(event.target.value)} rows={8} className="mt-1 w-full rounded-md border border-brand-oliva/25 bg-white p-2 font-mono text-xs" spellCheck={false} />
+            <textarea
+              value={configTexto}
+              onChange={(event) => setConfigTexto(event.target.value)}
+              rows={8}
+              aria-label={`Configuração de ${item.nome} (JSON)`}
+              className={cn(CAMPO_AREA, "font-mono text-[13px]")}
+              spellCheck={false}
+            />
           ) : (
-            <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-brand-papel/70 p-2 font-mono text-[11px] text-brand-tinta">{JSON.stringify(item.config, null, 2)}</pre>
+            <pre className="max-h-40 overflow-auto rounded-controle bg-saber p-3 font-mono text-xs leading-5 text-tinta">{JSON.stringify(item.config, null, 2)}</pre>
           )}
-        </div>
-        {teste && item.ligada && podeEditar ? (
-          <Button type="button" size="sm" variant="outline" className="w-fit" disabled={ocupado} onClick={() => void rodarTeste()}>
-            <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", ocupado && "animate-spin")} aria-hidden="true" />
-            {teste.rotulo}
-          </Button>
-        ) : null}
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">Últimos eventos</p>
-          {eventosQuery.data?.length ? (
-            <ul className="mt-1 grid gap-1">
-              {eventosQuery.data.map((evento) => (
-                <li key={evento.id} className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="text-muted-foreground tabular-nums">{evento.criadoEm.slice(8, 10)}/{evento.criadoEm.slice(5, 7)} {evento.criadoEm.slice(11, 16)}</span>
-                  <Badge variant="outline" className="text-[10px]">{evento.direcao.toLowerCase()}</Badge>
-                  <span className={cn("font-semibold", evento.status.includes("ERRO") ? "text-red-700" : "text-brand-tinta")}>{evento.status}</span>
-                  <span className="text-brand-tinta">{evento.resumo}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1 text-xs text-muted-foreground">Nenhum evento ainda.</p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        </Detalhes>
+      </div>
+
+      {teste && item.ligada && podeEditar ? (
+        <Botao
+          variante="secundario"
+          tamanho="pq"
+          className="w-fit max-md:h-10"
+          disabled={ocupado}
+          icone={<RefreshCw className={cn("h-4 w-4", ocupado && "animate-spin")} aria-hidden="true" />}
+          onClick={() => void rodarTeste()}
+        >
+          {teste.rotulo}
+        </Botao>
+      ) : null}
+
+      <div>
+        <p className={RUBRICA}>Últimos eventos</p>
+        {eventosQuery.data?.length ? (
+          <ul className="mt-2 grid gap-1">
+            {eventosQuery.data.map((evento) => (
+              <li key={evento.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium leading-5">
+                <span className="tabular-nums text-tinta-2">
+                  {evento.criadoEm.slice(8, 10)}/{evento.criadoEm.slice(5, 7)} {evento.criadoEm.slice(11, 16)}
+                </span>
+                <Etiqueta>{evento.direcao.toLowerCase()}</Etiqueta>
+                <span className={cn("font-bold", evento.status.includes("ERRO") ? "text-erro" : "text-tinta")}>{evento.status}</span>
+                <span className="min-w-0 text-tinta [overflow-wrap:anywhere]">{evento.resumo}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-[13px] font-medium leading-5 text-tinta-2">Nenhum evento ainda.</p>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -200,41 +237,71 @@ export function IntegracoesPage() {
     if (dados) definirCacheIntegracoes(dados);
   }
 
+  const fraseDoTopo = itens.length ? (
+    <>
+      <strong>
+        {ligadas} de {contagem(itens.length, "integração", "integrações")}
+      </strong>{" "}
+      {ligadas === 1 ? "está ligada" : "estão ligadas"}. As outras já estão prontas no código e esperam o que só você faz fora do app.
+    </>
+  ) : (
+    <>Cada integração já tem o código publicado; o que falta é o que só você faz fora do app.</>
+  );
+
   return (
     <AccessGate allowed={(cargo) => isCoordenacao(cargo)} label="Administração · Integrações">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
-        <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="gold">Administração</Badge>
-            <Badge variant="muted">{ligadas} de {itens.length} ligadas</Badge>
-          </div>
-          <h1 className="mt-3 flex items-center gap-2 text-3xl text-brand-musgo">
-            <Plug className="h-7 w-7" aria-hidden="true" />
-            Integrações
-            <InfoTip title="Prontas e desligadas">
-              Todo o código destas integrações já está publicado: as funções no Supabase, as tabelas e os botões nas telas. O que falta é o que só
-              você pode fazer fora do app — contratos, tokens, cadastros nos provedores. Os segredos são gravados pelo script local
-              (supabase secrets set), nunca por aqui; esta tela só mostra se cada um já existe. Enquanto uma integração está desligada,
-              nada dela dispara: os crons passam batido e os botões ficam escondidos.
-            </InfoTip>
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Ordem sugerida: avisos no celular (só precisa gerar as chaves) → WhatsApp oficial → NFS-e → contrato digital → agendas. Itaú e Rede
-            dependem de contrato com o banco e a adquirente.
-          </p>
-          {segredosQuery.isError ? <p className="mt-2 text-xs text-amber-800">Não consegui consultar os segredos agora (a função integracoes-status não respondeu). Os passos e a configuração continuam disponíveis.</p> : null}
-        </motion.section>
-        {integracoesQuery.isLoading ? <p className="text-sm text-muted-foreground">Carregando…</p> : null}
-        {integracoesQuery.isError ? (
-          <p className="flex items-center gap-2 text-sm text-red-700">
-            <XCircle className="h-4 w-4" aria-hidden="true" /> Não consegui ler a tabela de integrações.
-          </p>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Ajustes"
+          titulo={
+            <TituloComDica
+              texto="Integrações"
+              tituloDaDica="Prontas e desligadas"
+              dica={
+                <>
+                  Todo o código destas integrações já está publicado: as funções no Supabase, as tabelas e os botões nas telas. O que falta é o que só
+                  você pode fazer fora do app — contratos, tokens, cadastros nos provedores. Os segredos são gravados pelo script local
+                  (supabase secrets set), nunca por aqui; esta tela só mostra se cada um já existe. Enquanto uma integração está desligada,
+                  nada dela dispara: os crons passam batido e os botões ficam escondidos.
+                </>
+              }
+            />
+          }
+          frase={fraseDoTopo}
+          rodape={
+            <FraseDoFluxo>
+              Ordem sugerida: avisos no celular (só precisa gerar as chaves) → WhatsApp oficial → NFS-e → contrato digital → agendas. Itaú e Rede
+              dependem de contrato com o banco e a adquirente.
+            </FraseDoFluxo>
+          }
+        />
+
+        {segredosQuery.isError ? (
+          <Recado tom="atencao">
+            Não consegui consultar os segredos agora (a função integracoes-status não respondeu). Os passos e a configuração continuam disponíveis.
+          </Recado>
         ) : null}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {itens.map((item) => (
-            <IntegracaoCard key={item.chave} item={item} segredos={segredosQuery.data?.[item.chave]} podeEditar={podeEditar} pessoaId={pessoa?.id ?? null} onMudou={recarregar} />
-          ))}
-        </div>
+        {integracoesQuery.isError ? <Recado tom="erro">Não consegui ler a tabela de integrações.</Recado> : null}
+
+        <BlocoFolha as="section" aria-labelledby="integracoes-lista" className="min-w-0 overflow-hidden">
+          <CabecaDaFolha id="integracoes-lista" icone={<Plug />} titulo="Integrações do app" resumo={itens.length ? `${ligadas} ligadas · ${itens.length - ligadas} desligadas` : undefined} />
+          {integracoesQuery.isLoading ? (
+            <p role="status" className="border-t border-fio px-6 py-6 text-sm font-semibold text-tinta-2 max-md:px-4">
+              Carregando…
+            </p>
+          ) : itens.length ? (
+            <ul>
+              {itens.map((item) => (
+                <IntegracaoCard key={item.chave} item={item} segredos={segredosQuery.data?.[item.chave]} podeEditar={podeEditar} pessoaId={pessoa?.id ?? null} onMudou={recarregar} />
+              ))}
+            </ul>
+          ) : !integracoesQuery.isError ? (
+            <Vazio icone={<Plug />} titulo="Nenhuma integração cadastrada." className="border-t border-fio">
+              A lista vem da tabela de integrações do banco.
+            </Vazio>
+          ) : null}
+        </BlocoFolha>
       </div>
     </AccessGate>
   );

@@ -38,16 +38,16 @@ function Lista({ passos, inicio }: { passos: Passo[]; inicio: number }) {
         const Icone = p.icone;
         return (
           <li key={p.titulo} className="grid grid-cols-[36px_minmax(0,1fr)] gap-3">
-            <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-oliva/12 text-brand-musgo">
+            <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-musgo-claro text-musgo">
               <Icone className="h-4 w-4" aria-hidden="true" />
             </span>
             <div className="grid gap-1">
-              <p className="font-semibold text-brand-musgo">
-                <span className="mr-1.5 font-mono text-[11px] font-normal text-muted-foreground">{String(inicio + i).padStart(2, "0")}</span>
+              <p className="text-sm font-bold leading-6 text-tinta">
+                <span className="mr-1.5 font-bold tabular-nums text-tinta-2">{String(inicio + i).padStart(2, "0")}</span>
                 {p.titulo}
               </p>
-              <p className="text-sm text-brand-tinta">{p.texto}</p>
-              {p.dica ? <p className="text-xs text-muted-foreground">{p.dica}</p> : null}
+              <p className="text-sm font-medium leading-6 text-tinta">{p.texto}</p>
+              {p.dica ? <p className="text-[13px] font-medium leading-5 text-tinta-2">{p.dica}</p> : null}
             </div>
           </li>
         );
@@ -59,51 +59,59 @@ function Lista({ passos, inicio }: { passos: Passo[]; inicio: number }) {
 export function NutricaoGuiaPage() {
   return (
     <Modulo>
-      <CabecalhoDaPagina sobretitulo="Nutrição · Guia" titulo="Da gravação ao plano, passo a passo" detalhe="Uma consulta inteira leva cinco passos. Esta página fica aqui para quando precisar." />
+      <CabecalhoDaPagina
+        sobretitulo="Pacientes · Nutrição"
+        titulo="Da gravação ao plano, passo a passo"
+        detalhe={
+          <>
+            <strong>Uma consulta inteira leva cinco passos.</strong> Esta página fica aqui para quando precisar.
+          </>
+        }
+      />
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="grid content-start gap-6">
-          <Cartao titulo="Antes da consulta">
+          <Cartao tom="saber" titulo="Antes da consulta">
             <Lista passos={ANTES} inicio={1} />
           </Cartao>
-          <Cartao titulo="Durante">
+          <Cartao tom="saber" titulo="Durante">
             <Lista passos={DURANTE} inicio={3} />
           </Cartao>
         </div>
         <div className="grid content-start gap-6">
-          <Cartao titulo="Depois: o prontuário">
+          <Cartao tom="saber" titulo="Depois: o prontuário">
             <Lista passos={DEPOIS} inicio={5} />
           </Cartao>
-          <Cartao titulo="O plano alimentar">
+          <Cartao tom="saber" titulo="O plano alimentar">
             <Lista passos={PLANO} inicio={8} />
           </Cartao>
-          <Cartao titulo="Se algo não funcionar">
-            <div className="grid gap-3 text-sm">
+          <Cartao tom="saber" titulo="Se algo não funcionar">
+            <div className="grid gap-3 text-sm font-medium leading-6">
               <p className="inline-flex items-start gap-2">
-                <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-brand-oliva" aria-hidden="true" />
+                <Wrench className="mt-1 h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
                 <span>
                   <strong>“Estação local desligada”</strong> ou a transcrição não começa: {COMO_RELIGAR_ESTACAO}
                 </span>
               </p>
               <p className="inline-flex items-start gap-2">
-                <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-brand-oliva" aria-hidden="true" />
+                <Wrench className="mt-1 h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
                 <span>
                   <strong>O botão de gravar não aparece:</strong> ligue o consentimento. Se ainda assim não aparecer, seu acesso a esta tela é só de leitura.
                 </span>
               </p>
               <p className="inline-flex items-start gap-2">
-                <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-brand-oliva" aria-hidden="true" />
+                <Wrench className="mt-1 h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
                 <span>
                   <strong>O microfone não grava:</strong> no Chrome, clique no ícone à esquerda do endereço e deixe o microfone em Permitir. No Mac, Ajustes do Sistema → Privacidade e Segurança → Microfone → Google Chrome ligado.
                 </span>
               </p>
               <p className="inline-flex items-start gap-2">
-                <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-brand-oliva" aria-hidden="true" />
+                <Wrench className="mt-1 h-4 w-4 shrink-0 text-oliva" aria-hidden="true" />
                 <span>
                   <strong>A transcrição errou uma palavra:</strong> corrija na linha. A gravação não é editada; o que vale é o texto que você confirma.
                 </span>
               </p>
-              <p className="text-xs text-muted-foreground">
-                Os registros ficam neste Chrome. Uma vez por semana, baixe a cópia de segurança em <Link to="/nutricao/biblioteca" className="font-semibold text-brand-oliva hover:underline">Biblioteca → Ajustes</Link>.
+              <p className="text-[13px] text-tinta-2">
+                Os registros ficam neste Chrome. Uma vez por semana, baixe a cópia de segurança em <Link to="/nutricao/biblioteca" className="font-semibold text-musgo hover:underline">Biblioteca → Ajustes</Link>.
               </p>
             </div>
           </Cartao>

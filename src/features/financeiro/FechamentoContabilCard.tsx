@@ -5,12 +5,17 @@
 //   3. o que entrou da poupança das PROVISÕES (colaboradores, urgências…);
 //   4. o que ficou do mês anterior para pagar os impostos deste mês.
 // O crediário aparece SÓ como visão interna: nunca soma, nunca vai junto.
+//
+// REDESENHO (08/10/2026, Papel & Musgo): leitura no bloco "saber" — os quatro
+// itens numa razão (rótulo → valor), o Faturamento Bruto e o Lucro REAL em
+// Fraunces, a conferência por competência e o crediário interno em tom de
+// apoio. O botão de copiar e o texto copiado são os mesmos.
 import { useMemo, useState } from "react";
 import { FileText, Landmark } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoSaber, Botao } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
+import { RecadoDaTela } from "./pecasBancoFechamento";
+import { Etiqueta, Numero } from "./pecasResultados";
 import { todayISO } from "@/lib/localStore";
 import {
   buildFechamentoContabil,
@@ -82,86 +87,87 @@ export function FechamentoContabilCard({
   }
 
   return (
-    <Card className="border-brand-musgo/30 bg-white/70">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-          <Landmark className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-          Fechamento para a contabilidade — {mesLabel}
-          <InfoTip title="O que vai para a contabilidade">
-            Os 4 itens abaixo se somam sozinhos no Faturamento Bruto. O crediário aparece só como conferência interna e
-            NUNCA entra na soma nem deve ser enviado. A linha de impostos é a provisão separada no mês anterior — a regra
-            da casa: o que se separa em um mês paga os impostos do mês seguinte.
-          </InfoTip>
-          <Button type="button" size="sm" variant="outline" className="ml-auto gap-1.5" onClick={copiar}>
-            <FileText className="h-4 w-4" aria-hidden="true" />
-            Copiar fechamento
-          </Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-1.5">
+    <BlocoSaber as="section" aria-labelledby={`fechamento-contabil-${monthKey}`} className="grid content-start gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id={`fechamento-contabil-${monthKey}`} className="flex items-start gap-2 text-xl font-bold leading-7 text-tinta">
+          <Landmark className="mt-1 h-5 w-5 shrink-0 stroke-oliva" aria-hidden="true" />
+          <span className="min-w-0">
+            Fechamento para a contabilidade — <span className="tabular-nums">{mesLabel}</span>{" "}
+            <InfoTip className="align-middle" title="O que vai para a contabilidade">
+              Os 4 itens abaixo se somam sozinhos no Faturamento Bruto. O crediário aparece só como conferência interna e
+              NUNCA entra na soma nem deve ser enviado. A linha de impostos é a provisão separada no mês anterior — a regra
+              da casa: o que se separa em um mês paga os impostos do mês seguinte.
+            </InfoTip>
+          </span>
+        </h2>
+        <Botao tamanho="pq" icone={<FileText className="h-4 w-4" aria-hidden="true" />} onClick={copiar}>
+          Copiar fechamento
+        </Botao>
+      </div>
+      <dl className="border-t border-fio-2">
         {linhas.map((linha) => (
-          <div key={linha.label} className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2">
-            <span className="flex items-center gap-1.5 text-sm text-brand-tinta">
+          <div key={linha.label} className="flex items-baseline justify-between gap-3 border-b border-fio py-3">
+            <dt className="flex min-w-0 items-center gap-1.5 text-sm font-medium leading-5 text-tinta">
               {linha.label}
               <InfoTip title={linha.label}>{linha.hint}</InfoTip>
-            </span>
-            <span className="text-sm font-bold tabular-nums text-brand-musgo">{moneyFin(linha.valor)}</span>
+            </dt>
+            <dd className="m-0 whitespace-nowrap text-base font-bold leading-6 tabular-nums text-tinta">{moneyFin(linha.valor)}</dd>
           </div>
         ))}
-        <div className="mt-1 flex items-center justify-between gap-3 rounded-lg border border-brand-dourado/45 bg-brand-creme/45 px-3 py-2.5">
-          <span className="text-sm font-bold uppercase tracking-wide text-brand-tinta">Faturamento Bruto (auto-soma)</span>
-          <span className="text-lg font-bold tabular-nums text-brand-musgo">{moneyFin(f.faturamentoBruto)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2">
-          <span className="flex items-center gap-1.5 text-sm text-brand-tinta">
+      </dl>
+      <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-controle bg-folha px-4 py-3">
+        <span className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">Faturamento Bruto (auto-soma)</span>
+        <Numero texto={moneyFin(f.faturamentoBruto)} tamanho="pequeno" />
+      </div>
+      <dl className="border-t border-fio-2">
+        <div className="flex items-baseline justify-between gap-3 border-b border-fio py-3">
+          <dt className="flex min-w-0 items-center gap-1.5 text-sm font-medium leading-5 text-tinta">
             − Custos do mês (contas a pagar)
             <InfoTip title="Custos do mês">
               Todas as despesas com vencimento no mês: operacionais, obra (CAPEX) e a provisão de impostos separada NESTE
               mês (ela é gasto daqui; no mês seguinte volta como faturamento, nunca como gasto de novo).
             </InfoTip>
-          </span>
-          <span className="text-sm font-bold tabular-nums text-brand-tinta">{moneyFin(f.custosDoMes)}</span>
+          </dt>
+          <dd className="m-0 whitespace-nowrap text-base font-bold leading-6 tabular-nums text-tinta">{moneyFin(f.custosDoMes)}</dd>
         </div>
-        {mostraLucroReal ? (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-musgo/45 bg-brand-musgo/8 px-3 py-2.5">
-            <span className="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-brand-tinta">
-              Lucro REAL do mês
-              <InfoTip title="Lucro real (caixa)">
-                Definição da casa: o que SOBROU no banco depois de pagar tudo do mês — sem crediário e sem poupança.
-                Vem do saldo do Itaú digitado na Prova do dinheiro (descontando a reserva de impostos, se ainda estiver
-                na conta). É este o número do mês.
-              </InfoTip>
-            </span>
-            <span className={lucroReal < 0 ? "text-xl font-bold tabular-nums text-red-700" : "text-xl font-bold tabular-nums text-brand-musgo"}>
-              {moneyFin(lucroReal)}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-brand-oliva/25 bg-white/50 px-3 py-2">
-            <span className="text-xs text-muted-foreground">
-              Lucro REAL do mês: digite o saldo do Itaú no card "Prova do dinheiro" logo abaixo.
-            </span>
-          </div>
-        )}
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/50 px-3 py-2">
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      </dl>
+      {mostraLucroReal ? (
+        <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-controle bg-folha px-4 py-3 shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))]">
+          <span className="flex items-center gap-1.5 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta">
+            Lucro REAL do mês
+            <InfoTip title="Lucro real (caixa)">
+              Definição da casa: o que SOBROU no banco depois de pagar tudo do mês — sem crediário e sem poupança.
+              Vem do saldo do Itaú digitado na Prova do dinheiro (descontando a reserva de impostos, se ainda estiver
+              na conta). É este o número do mês.
+            </InfoTip>
+          </span>
+          <Numero texto={moneyFin(lucroReal)} tamanho="medio" tom={lucroReal < 0 ? "RUIM" : "NEUTRO"} />
+        </div>
+      ) : (
+        <p className="rounded-controle border border-dashed border-fio-2 px-4 py-3 text-[13px] font-medium leading-5 text-tinta-2">
+          Lucro REAL do mês: digite o saldo do Itaú no card "Prova do dinheiro".
+        </p>
+      )}
+      <dl className="grid gap-0">
+        <div className="flex items-baseline justify-between gap-3 border-b border-fio py-2">
+          <dt className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium leading-5 text-tinta-2">
             Conferência por competência (faturamento bruto − custos)
             <InfoTip title="Conferência do contador">
               Conta técnica: Faturamento Bruto menos os custos do mês, sem crediário. Serve de conferência para a
               contabilidade — o número oficial do mês é o Lucro REAL (caixa) acima.
             </InfoTip>
-          </span>
-          <span className="text-sm font-semibold tabular-nums text-muted-foreground">{moneyFin(f.lucroContabil)}</span>
+          </dt>
+          <dd className="m-0 whitespace-nowrap text-sm font-bold leading-5 tabular-nums text-tinta-2">{moneyFin(f.lucroContabil)}</dd>
         </div>
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-brand-oliva/30 bg-brand-papel/70 px-3 py-2">
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="muted">visão interna</Badge>
+        <div className="flex items-baseline justify-between gap-3 py-2">
+          <dt className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] font-medium leading-5 text-tinta-2">
+            <Etiqueta>visão interna</Etiqueta>
             Crediário reconhecido no mês — NÃO soma e NÃO vai para a contabilidade
-          </span>
-          <span className="text-sm font-semibold tabular-nums text-muted-foreground">{moneyFin(f.crediarioInterno)}</span>
+          </dt>
+          <dd className="m-0 whitespace-nowrap text-sm font-bold leading-5 tabular-nums text-tinta-2">{moneyFin(f.crediarioInterno)}</dd>
         </div>
-        {copiado ? <p className="text-xs font-semibold text-brand-musgo">{copiado}</p> : null}
-      </CardContent>
-    </Card>
+      </dl>
+      {copiado ? <RecadoDaTela tom={/^Não/.test(copiado) ? "atencao" : "ok"}>{copiado}</RecadoDaTela> : null}
+    </BlocoSaber>
   );
 }

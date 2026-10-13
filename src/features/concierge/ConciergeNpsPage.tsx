@@ -6,28 +6,21 @@
 // contato. Cada linha tem o botão do WhatsApp (mensagem pronta) e as duas
 // carinhas: um toque registra. O resto da tela (mês, dores, PDCA) fica dobrado
 // até o dia 5 — no dia a dia ela só vê a fila e as pendências.
+//
+// PAPEL & MUSGO (08/10/2026, redesenho etapa 4): um cabeçalho só, com a fila
+// explicada em frase ("Quatro pessoas para contatar…"); a fila e as
+// reclamações sem resolução moram em folhas (é onde se decide); o placar do mês
+// vira a faixa "para saber"; os contatos do mês ficam no saber. "Foi bem" é a
+// decisão na linha (musgo suave) e "Reclamou" fica na ponta, em vermelho de
+// texto, longe dela. Sem vidro, sem emoji, sem verde/rosa genéricos.
+// O que a tela FAZ não mudou: mesma fila, mesmos registros, mesma impressão do
+// dia 5 e a mesma permissão (concierge-nps).
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { motion } from "framer-motion";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Frown,
-  HeartHandshake,
-  MessageCircle,
-  Printer,
-  Smile,
-} from "lucide-react";
+import { AlertTriangle, ChevronDown, Frown, MessageCircle, Printer, Smile } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, FraseDoFluxo, botaoClasses } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
 import { canSeeModule, canEditModule } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
@@ -43,6 +36,9 @@ import {
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { PatientPicker, type PatientPickerValue } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
+import { CAMPO, Etiqueta, Indicadores, classeDaEscolha } from "@/features/crm/comercialVisual";
+import { AvisoDaTela, Campo, TituloDoBloco } from "@/features/financeiro/pecasDiaPagar";
+import { fraseDoNps, percentualBR } from "@/features/pacientes/frasesPacientes";
 import {
   canalLabels,
   filaDeContatos,
@@ -65,6 +61,10 @@ const contatosKey = "app-bratan-concierge-nps-contatos";
 const mesKey = (monthKey: string) => `app-bratan-concierge-nps-mes-${monthKey}`;
 const diaBR = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 const novoId = () => `npsc-${crypto.randomUUID()}`;
+
+/** O título de bloco que abre e fecha (o botão mora dentro do h2, não o contrário). */
+const TITULO_QUE_ABRE =
+  "flex w-full items-center gap-2 rounded-controle text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco";
 
 function quandoVeio(diasDesde: number) {
   if (diasDesde === 0) return "veio HOJE";
@@ -148,7 +148,7 @@ export function ConciergeNpsPage() {
     setTriste((prev) => ({ ...prev, [item.contactRef]: "" }));
     setFeedback(
       resultado === "SATISFATORIA"
-        ? `${item.nome}: contato registrado. 😊 Próximo da fila!`
+        ? `${item.nome}: contato registrado. Próximo da fila!`
         : `${item.nome}: insatisfação registrada — ela entra nas pendências até você escrever a resolução.`,
     );
   }
@@ -197,7 +197,7 @@ export function ConciergeNpsPage() {
     if (!texto) return;
     await persistContato({ ...contato, resolucao: texto });
     setResolucaoDraft((prev) => ({ ...prev, [contato.id]: "" }));
-    setFeedback(`Resolução registrada para ${contato.pacienteNome}. 👏`);
+    setFeedback(`Resolução registrada para ${contato.pacienteNome}.`);
   }
 
   // ---------------- mês (dores/elogios/pdca) ----------------
@@ -288,79 +288,81 @@ export function ConciergeNpsPage() {
     janela.document.close();
   }
 
+  // CABEÇALHO (08/10/2026): a fila e as reclamações em aberto numa frase só.
+  const frase = fraseDoNps({ fila: fila.length, pendencias: podeEditar ? pendencias.length : 0 });
+
   return (
     <AccessGate allowed={(c) => canSeeModule({ cargo: c }, "concierge-nps")} label="NPS da Concierge" module="concierge-nps">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <Badge variant="gold">Experiência do Paciente</Badge>
-              <h1 className="mt-2 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                <HeartHandshake className="h-8 w-8 text-brand-oliva" aria-hidden="true" />
-                NPS da Concierge
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                A fila abaixo já é quem passou na clínica e falta contatar. Toque no WhatsApp, converse, e registre com
-                uma carinha. Só isso. 💚
-              </p>
-            </div>
-            <span className="flex items-center gap-2">
-              <Input type="month" value={monthKey} onChange={(event) => setMonthKey(event.target.value)}
-                                                   onBlur={() => {
-                                                     if (!monthKey) setMonthKey(hoje.slice(0, 7));
-                                                   }} className="w-40" aria-label="Mês" />
-              <Button type="button" variant="outline" onClick={imprimir}>
-                <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir (dia 5)
-              </Button>
-            </span>
-          </div>
-        </motion.section>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-6 font-sans text-tinta max-md:gap-4">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Pacientes · Experiência do paciente"
+          titulo="NPS da Concierge"
+          frase={
+            <>
+              <strong>{frase.destaque}</strong>
+              {frase.resto}
+              {frase.alerta ? <span className="alerta">{frase.alerta}</span> : null}
+            </>
+          }
+          acoes={
+            <>
+              <label className="flex items-center">
+                <span className="sr-only">Mês</span>
+                <input
+                  type="month"
+                  value={monthKey}
+                  onChange={(event) => setMonthKey(event.target.value)}
+                  onBlur={() => {
+                    if (!monthKey) setMonthKey(hoje.slice(0, 7));
+                  }}
+                  className={cn(CAMPO, "w-[176px] tabular-nums")}
+                  aria-label="Mês"
+                />
+              </label>
+              <Botao variante="secundario" icone={<Printer className="h-4 w-4" aria-hidden="true" />} onClick={imprimir}>
+                Imprimir (dia 5)
+              </Botao>
+            </>
+          }
+          rodape={
+            <FraseDoFluxo>
+              A fila abaixo já é quem passou na clínica e falta contatar. Toque no WhatsApp, converse, e registre com uma carinha. Só isso.
+            </FraseDoFluxo>
+          }
+        />
 
-        {feedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-            {feedback}
-          </div>
-        ) : null}
-        {erro ? (
-          <div className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50/80 px-4 py-3 text-sm font-semibold text-rose-900">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            {erro}
-          </div>
-        ) : null}
+        {feedback ? <AvisoDaTela tom="ok" onFechar={() => setFeedback("")}>{feedback}</AvisoDaTela> : null}
+        {erro ? <AvisoDaTela tom="erro" onFechar={() => setErro("")}>{erro}</AvisoDaTela> : null}
 
         {/* ================= 1. A FILA ================= */}
-        <Card className="border-brand-musgo/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              Para contatar {fila.length ? <Badge variant="gold">{fila.length}</Badge> : null}
-              <InfoTip title="De onde vem esta lista">
-                De quem passou na clínica: toda comanda dos últimos 14 dias entra aqui até você registrar o contato.
-                Quem veio ontem aparece primeiro (o contato D+1 é o mais quente); quem veio hoje fica para amanhã, no fim
-                da lista.
-              </InfoTip>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {fila.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-brand-oliva/30 bg-white/50 px-4 py-6 text-center text-sm text-muted-foreground">
-                Fila em dia: todo mundo que passou na clínica já recebeu o seu contato. 👏
-              </p>
-            ) : (
-              fila.map((item) => {
+        <BlocoFolha as="section" aria-labelledby="titulo-fila-nps" className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-fio px-5 py-4 max-md:px-4">
+            <TituloDoBloco id="titulo-fila-nps" detalhe={fila.length ? `${fila.length} ${fila.length === 1 ? "pessoa" : "pessoas"}` : undefined}>
+              Para contatar
+            </TituloDoBloco>
+            <InfoTip title="De onde vem esta lista">
+              De quem passou na clínica: toda comanda dos últimos 14 dias entra aqui até você registrar o contato.
+              Quem veio ontem aparece primeiro (o contato D+1 é o mais quente); quem veio hoje fica para amanhã, no fim
+              da lista.
+            </InfoTip>
+          </div>
+          {fila.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm font-medium text-tinta-2 max-md:px-4">
+              Fila em dia: todo mundo que passou na clínica já recebeu o seu contato.
+            </p>
+          ) : (
+            <ul>
+              {fila.map((item) => {
                 const wa = linkWhatsApp(item.telefone, item.nome);
                 const tristeAberto = (triste[item.contactRef] ?? "") !== "" || triste[item.contactRef] === "";
                 const expandiu = Object.prototype.hasOwnProperty.call(triste, item.contactRef);
                 return (
-                  <div key={item.contactRef} className="rounded-xl border border-brand-oliva/15 bg-white/75 px-3 py-2.5">
+                  <li key={item.contactRef} className={cn("border-b border-fio px-5 py-3 last:border-b-0 max-md:px-4", expandiu && "bg-saber")}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-brand-tinta">{item.nome}</p>
-                        <p className={cn("text-xs", item.diasDesde === 1 ? "font-semibold text-brand-musgo" : "text-muted-foreground")}>
+                      <div className="min-w-0 flex-1 basis-48">
+                        <p className="truncate text-sm font-bold leading-5 text-tinta">{item.nome}</p>
+                        <p className={cn("text-[13px] leading-5 tabular-nums", item.diasDesde === 1 ? "font-bold text-tinta" : "font-medium text-tinta-2")}>
                           {quandoVeio(item.diasDesde)} ({diaBR(item.ultimaVisita)})
                         </p>
                       </div>
@@ -370,236 +372,283 @@ export function ConciergeNpsPage() {
                           target="_blank"
                           rel="noreferrer"
                           onClick={() => setWaAbertos((prev) => ({ ...prev, [item.contactRef]: true }))}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                          className={cn(botaoClasses({ variante: "secundario", tamanho: "pq" }))}
                         >
                           <MessageCircle className="h-4 w-4" aria-hidden="true" /> WhatsApp
                         </a>
                       ) : (
-                        <span className="text-xs text-muted-foreground">sem telefone — ligar/presencial</span>
+                        <span className="text-[13px] font-medium text-tinta-2">sem telefone — ligar/presencial</span>
                       )}
                       {podeEditar ? (
                         <>
-                          <button
-                            type="button"
+                          <Botao
+                            tamanho="pq"
+                            variante="suave"
+                            icone={<Smile className="h-4 w-4" aria-hidden="true" />}
                             onClick={() => void registrarDaFila(item, "SATISFATORIA")}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
                             title="Conversa satisfatória — registra e sai da fila"
                           >
-                            <Smile className="h-4 w-4" aria-hidden="true" /> Foi bem
-                          </button>
-                          <button
-                            type="button"
+                            Foi bem
+                          </Botao>
+                          <Botao
+                            tamanho="pq"
+                            variante="perigo"
+                            icone={<Frown className="h-4 w-4" aria-hidden="true" />}
+                            aria-expanded={expandiu}
+                            className={cn(expandiu && "bg-erro-claro")}
                             onClick={() => setTriste((prev) => (Object.prototype.hasOwnProperty.call(prev, item.contactRef) ? (() => { const next = { ...prev }; delete next[item.contactRef]; return next; })() : { ...prev, [item.contactRef]: "" }))}
-                            className={cn(
-                              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold",
-                              expandiu ? "border-rose-400 bg-rose-50 text-rose-800" : "border-rose-300 bg-white text-rose-700 hover:bg-rose-50",
-                            )}
                             title="Teve reclamação — abre o campo para anotar"
                           >
-                            <Frown className="h-4 w-4" aria-hidden="true" /> Reclamou
-                          </button>
+                            Reclamou
+                          </Botao>
                         </>
                       ) : null}
                     </div>
                     {expandiu && tristeAberto ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Input
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <input
                           value={triste[item.contactRef] ?? ""}
                           onChange={(event) => setTriste((prev) => ({ ...prev, [item.contactRef]: event.target.value }))}
                           placeholder="O que houve? (uma linha — vira dor do mês)"
-                          className="min-w-64 flex-1"
+                          aria-label={`O que ${item.nome} relatou`}
+                          className={cn(CAMPO, "min-w-0 flex-1 basis-64")}
                           autoFocus
                         />
-                        <Button type="button" size="sm" onClick={() => void registrarDaFila(item, "INSATISFATORIA")}>
+                        <Botao variante="primario" onClick={() => void registrarDaFila(item, "INSATISFATORIA")}>
                           Registrar reclamação
-                        </Button>
+                        </Botao>
                       </div>
                     ) : null}
-                  </div>
+                  </li>
                 );
-              })
-            )}
-            {podeEditar ? (
-              <button type="button" className="mt-1 w-fit text-xs font-semibold text-brand-oliva hover:text-brand-musgo hover:underline" onClick={() => setManualAberto((valor) => !valor)}>
-                {manualAberto ? "▾ fechar" : "▸ Registrar alguém fora da lista (contato antigo, indicação…)"}
-              </button>
-            ) : null}
-            {manualAberto && podeEditar ? (
-              <form className="grid gap-3 rounded-lg border border-brand-oliva/20 bg-brand-creme/30 p-3" onSubmit={registrarManual}>
-                <div className="grid gap-3 md:grid-cols-[1.4fr_auto]">
-                  <div>
-                    <Label>Com quem foi?</Label>
-                    <PatientPicker contacts={crmState.contacts} value={paciente} onChange={setPaciente} id="nps-paciente" />
-                  </div>
-                  <div>
-                    <Label>Quando</Label>
-                    <Input type="date" value={dataContato} onChange={(event) => setDataContato(event.target.value)} className="w-40" />
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-end gap-3">
-                  <div>
-                    <Label>Por onde</Label>
-                    <div className="mt-1 flex gap-1.5">
-                      {(Object.keys(canalLabels) as NpsCanal[]).map((chave) => (
-                        <button key={chave} type="button" onClick={() => setCanal(chave)} className={cn("rounded-full border px-3 py-1.5 text-sm font-semibold", canal === chave ? "border-brand-musgo bg-brand-musgo text-brand-papel" : "border-brand-oliva/25 bg-white/70 text-brand-oliva")}>
-                          {canalLabels[chave]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Como foi</Label>
-                    <div className="mt-1 flex gap-1.5">
-                      <button type="button" onClick={() => setResultado("SATISFATORIA")} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold", resultado === "SATISFATORIA" ? "border-emerald-400 bg-emerald-50 text-emerald-800" : "border-brand-oliva/25 bg-white/70 text-muted-foreground")}>
-                        <Smile className="h-4 w-4" aria-hidden="true" /> Foi bem
+              })}
+            </ul>
+          )}
+          {podeEditar ? (
+            <div className="border-t border-fio px-5 py-3 max-md:px-4">
+              {/* 13/10/2026: rótulo longo quebra em duas linhas no celular (antes saía cortado nos dois lados). */}
+              <Botao
+                tamanho="pq"
+                variante="fantasma"
+                aria-expanded={manualAberto}
+                className="-ml-3 h-auto min-h-8 justify-start whitespace-normal py-1.5 text-left leading-5 max-md:min-h-11"
+                onClick={() => setManualAberto((valor) => !valor)}
+              >
+                <ChevronDown className={cn("h-4 w-4 transition-transform duration-150 ease-papel", manualAberto ? "rotate-180" : "-rotate-90")} aria-hidden="true" />
+                {manualAberto ? "Fechar" : "Registrar alguém fora da lista (contato antigo, indicação…)"}
+              </Botao>
+            </div>
+          ) : null}
+          {manualAberto && podeEditar ? (
+            <form className="grid gap-4 border-t border-fio bg-saber px-5 py-4 max-md:px-4" onSubmit={registrarManual}>
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_auto]">
+                <Campo rotulo="Com quem foi?" htmlFor="nps-paciente">
+                  <PatientPicker contacts={crmState.contacts} value={paciente} onChange={setPaciente} id="nps-paciente" />
+                </Campo>
+                <Campo rotulo="Quando" htmlFor="nps-quando">
+                  <input id="nps-quando" type="date" value={dataContato} onChange={(event) => setDataContato(event.target.value)} className={cn(CAMPO, "w-[176px] tabular-nums")} />
+                </Campo>
+              </div>
+              <div className="flex flex-wrap items-end gap-4">
+                <fieldset className="grid gap-2">
+                  <legend className="mb-2 font-sans text-[13px] font-bold leading-5 text-tinta">Por onde</legend>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(Object.keys(canalLabels) as NpsCanal[]).map((chave) => (
+                      <button key={chave} type="button" aria-pressed={canal === chave} onClick={() => setCanal(chave)} className={cn(classeDaEscolha(canal === chave), "py-1.5 text-sm font-semibold")}>
+                        {canalLabels[chave]}
                       </button>
-                      <button type="button" onClick={() => setResultado("INSATISFATORIA")} className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold", resultado === "INSATISFATORIA" ? "border-rose-400 bg-rose-50 text-rose-800" : "border-brand-oliva/25 bg-white/70 text-muted-foreground")}>
-                        <Frown className="h-4 w-4" aria-hidden="true" /> Reclamou
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                </div>
-                {resultado === "INSATISFATORIA" ? (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input value={descricao} onChange={(event) => setDescricao(event.target.value)} placeholder="O que houve?" />
-                    <Input value={resolucao} onChange={(event) => setResolucao(event.target.value)} placeholder="O que foi feito? (pode deixar para depois)" />
+                </fieldset>
+                <fieldset className="grid gap-2">
+                  <legend className="mb-2 font-sans text-[13px] font-bold leading-5 text-tinta">Como foi</legend>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button type="button" aria-pressed={resultado === "SATISFATORIA"} onClick={() => setResultado("SATISFATORIA")} className={cn(classeDaEscolha(resultado === "SATISFATORIA"), "flex items-center gap-1.5 py-1.5 text-sm font-semibold")}>
+                      <Smile className="h-4 w-4" aria-hidden="true" /> Foi bem
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={resultado === "INSATISFATORIA"}
+                      onClick={() => setResultado("INSATISFATORIA")}
+                      className={cn(
+                        classeDaEscolha(false),
+                        "flex items-center gap-1.5 py-1.5 text-sm font-semibold",
+                        resultado === "INSATISFATORIA" && "border-erro bg-erro-claro text-erro shadow-[inset_0_0_0_1px_rgb(var(--erro-rgb))]",
+                      )}
+                    >
+                      <Frown className="h-4 w-4" aria-hidden="true" /> Reclamou
+                    </button>
                   </div>
-                ) : null}
-                <div>
-                  <LiquidButton type="submit" size="sm">Registrar</LiquidButton>
+                </fieldset>
+              </div>
+              {resultado === "INSATISFATORIA" ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input value={descricao} onChange={(event) => setDescricao(event.target.value)} placeholder="O que houve?" aria-label="O que houve?" className={CAMPO} />
+                  <input value={resolucao} onChange={(event) => setResolucao(event.target.value)} placeholder="O que foi feito? (pode deixar para depois)" aria-label="O que foi feito?" className={CAMPO} />
                 </div>
-              </form>
-            ) : null}
-          </CardContent>
-        </Card>
+              ) : null}
+              <div>
+                <Botao type="submit" variante="primario">
+                  Registrar
+                </Botao>
+              </div>
+            </form>
+          ) : null}
+        </BlocoFolha>
 
         {/* ================= 2. PENDÊNCIAS ================= */}
         {pendencias.length && podeEditar ? (
-          <Card className="border-amber-300 bg-amber-50/50 shadow-none">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
-                Reclamações esperando a resolução ({pendencias.length})
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">Resolveu com o paciente? Escreva aqui o que foi feito — é isso que fecha o ciclo.</p>
-            </CardHeader>
-            <CardContent className="grid gap-2">
+          <BlocoFolha as="section" aria-labelledby="titulo-pendencias-nps" className="overflow-hidden border-atencao/60">
+            <div className="border-b border-fio px-5 py-4 max-md:px-4">
+              <TituloDoBloco id="titulo-pendencias-nps" icone={<AlertTriangle className="h-4 w-4 text-atencao" aria-hidden="true" />} detalhe={`${pendencias.length} sem resolução`}>
+                Reclamações esperando a resolução
+              </TituloDoBloco>
+              <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">Resolveu com o paciente? Escreva aqui o que foi feito — é isso que fecha o ciclo.</p>
+            </div>
+            <ul>
               {pendencias.map((contato) => (
-                <div key={contato.id} className="grid gap-2 rounded-lg border border-amber-200 bg-white/80 px-3 py-2.5 md:grid-cols-[1fr_1.2fr_auto] md:items-center">
-                  <div className="text-sm">
-                    <p className="font-semibold text-brand-tinta">{contato.pacienteNome}</p>
-                    <p className="text-xs text-muted-foreground">{diaBR(contato.contatoDate)} · {contato.descricao}</p>
+                <li key={contato.id} className="grid gap-2 border-b border-fio px-5 py-3 last:border-b-0 max-md:px-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] md:items-center">
+                  <div className="min-w-0 text-sm">
+                    <p className="font-bold text-tinta">{contato.pacienteNome}</p>
+                    <p className="text-[13px] font-medium text-tinta-2">
+                      <span className="tabular-nums">{diaBR(contato.contatoDate)}</span> · {contato.descricao}
+                    </p>
                   </div>
-                  <Input
+                  <input
                     value={resolucaoDraft[contato.id] ?? ""}
                     onChange={(event) => setResolucaoDraft((prev) => ({ ...prev, [contato.id]: event.target.value }))}
                     placeholder="O que foi feito para resolver?"
+                    aria-label={`Resolução para ${contato.pacienteNome}`}
+                    className={CAMPO}
                   />
-                  <Button type="button" size="sm" onClick={() => void registrarResolucao(contato)} disabled={!(resolucaoDraft[contato.id] ?? "").trim()}>
+                  <Botao variante="suave" onClick={() => void registrarResolucao(contato)} disabled={!(resolucaoDraft[contato.id] ?? "").trim()}>
                     Resolvido ✓
-                  </Button>
-                </div>
+                  </Botao>
+                </li>
               ))}
-            </CardContent>
-          </Card>
+            </ul>
+          </BlocoFolha>
         ) : null}
 
-        {/* ================= 3. PLACAR ================= */}
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: "Contatos no mês", value: String(resumo.total) },
-            { label: "Satisfação", value: resumo.percentualSatisfacao === null ? "—" : `${String(resumo.percentualSatisfacao).replace(".", ",")}%` },
-            { label: "Reclamações", value: String(resumo.insatisfatorias), alerta: resumo.semResolucao > 0, hint: resumo.semResolucao ? `${resumo.semResolucao} sem resolução` : "todas resolvidas" },
-            { label: "Nota do totem", value: totem.media === null ? "—" : String(totem.media).replace(".", ","), hint: `${totem.respostas} resposta(s)` },
-          ].map((cardInfo) => (
-            <Card key={cardInfo.label} className={cn("shadow-none backdrop-blur", cardInfo.alerta ? "border-amber-300 bg-amber-50/70" : "border-brand-oliva/20 bg-white/70")}>
-              <CardContent className="p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{cardInfo.label}</p>
-                <p className={cn("mt-1 text-2xl font-bold tabular-nums", cardInfo.alerta ? "text-amber-900" : "text-brand-tinta")}>{cardInfo.value}</p>
-                {"hint" in cardInfo && cardInfo.hint ? <p className="mt-0.5 text-xs text-muted-foreground">{cardInfo.hint}</p> : null}
-              </CardContent>
-            </Card>
-          ))}
-        </section>
+        {/* ================= 3. PLACAR (para saber) ================= */}
+        <Indicadores
+          rotulo={`O NPS de ${monthLabel} em números`}
+          colunas={4}
+          itens={[
+            { rotulo: "Contatos no mês", valor: resumo.total, frase: `registrados em ${monthLabel}` },
+            { rotulo: "Satisfação", valor: percentualBR(resumo.percentualSatisfacao), frase: resumo.percentualSatisfacao === null ? "sem contato no mês ainda" : "dos contatos foram bem" },
+            {
+              rotulo: "Reclamações",
+              valor: resumo.insatisfatorias,
+              frase: resumo.semResolucao ? `${resumo.semResolucao} sem resolução` : "todas resolvidas",
+              tom: resumo.semResolucao > 0 ? "atencao" : undefined,
+            },
+            { rotulo: "Nota do totem", valor: totem.media === null ? "—" : String(totem.media).replace(".", ","), frase: `${totem.respostas} resposta(s)` },
+          ]}
+        />
 
         {/* ================= 4. DOBRADO: contatos do mês ================= */}
-        <Card className="shadow-none">
-          <CardHeader className="pb-2">
-            <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setListaAberta((valor) => !valor)}>
-              {listaAberta ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
-              <CardTitle className="text-base">Todos os contatos de {monthLabel} ({contatosDoMes.length})</CardTitle>
+        <BlocoSaber as="section" aria-labelledby="titulo-contatos-do-mes" className="py-4 max-md:py-4">
+          <h2 id="titulo-contatos-do-mes" className="font-sans text-base font-bold leading-6 text-tinta">
+            <button type="button" aria-expanded={listaAberta} className={TITULO_QUE_ABRE} onClick={() => setListaAberta((valor) => !valor)}>
+              <ChevronDown className={cn("h-4 w-4 shrink-0 text-tinta-2 transition-transform duration-150 ease-papel", !listaAberta && "-rotate-90")} aria-hidden="true" />
+              Todos os contatos de {monthLabel}
+              <span className="text-sm font-semibold tabular-nums text-tinta-2">{contatosDoMes.length}</span>
             </button>
-          </CardHeader>
+          </h2>
           {listaAberta ? (
-            <CardContent className="grid gap-1.5">
+            <div className="mt-3">
               {contatosDoMes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum contato registrado neste mês ainda.</p>
+                <p className="text-[13px] font-medium text-tinta-2">Nenhum contato registrado neste mês ainda.</p>
               ) : (
-                contatosDoMes.map((contato) => (
-                  <div key={contato.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/12 bg-white/70 px-3 py-2 text-sm">
-                    <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full", contato.resultado === "SATISFATORIA" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>
-                      {contato.resultado === "SATISFATORIA" ? <Smile className="h-4 w-4" aria-hidden="true" /> : <Frown className="h-4 w-4" aria-hidden="true" />}
-                    </span>
-                    <span className="font-semibold text-brand-tinta">{contato.pacienteNome}</span>
-                    <span className="text-xs text-muted-foreground">{diaBR(contato.contatoDate)} · {canalLabels[contato.canal]}</span>
-                    {contato.descricao ? <span className="text-xs text-rose-800">{contato.descricao}</span> : null}
-                    {contato.resolucao ? <span className="text-xs text-emerald-800">✓ {contato.resolucao}</span> : null}
-                    {podeEditar ? (
-                      <button
-                        type="button"
-                        className="ml-auto text-xs text-rose-600 hover:underline"
-                        onClick={async () => {
-                          if (!(await confirmar(`Apagar o contato com ${contato.pacienteNome}?`, { destrutivo: true, confirmar: "Apagar" }))) return;
-                          if (useRemote) void apagarContato.mutateAsync(contato.id).catch(() => toast("Não deu para apagar o contato. Tente de novo.", { tom: "erro" }));
-                          else {
-                            setLocalContatos((prev) => {
-                              const next = prev.filter((existing) => existing.id !== contato.id);
-                              writeLocalValue(contatosKey, next);
-                              return next;
-                            });
-                          }
-                        }}
+                <ul>
+                  {contatosDoMes.map((contato) => (
+                    <li key={contato.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-fio py-2.5 text-sm last:border-b-0">
+                      <span
+                        role="img"
+                        aria-label={contato.resultado === "SATISFATORIA" ? "Foi bem" : "Reclamou"}
+                        className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", contato.resultado === "SATISFATORIA" ? "bg-ok-claro text-ok" : "bg-erro-claro text-erro")}
                       >
-                        apagar
-                      </button>
-                    ) : null}
-                  </div>
-                ))
+                        {contato.resultado === "SATISFATORIA" ? <Smile className="h-4 w-4" aria-hidden="true" /> : <Frown className="h-4 w-4" aria-hidden="true" />}
+                      </span>
+                      <span className="font-bold text-tinta">{contato.pacienteNome}</span>
+                      <span className="text-[13px] font-medium tabular-nums text-tinta-2">
+                        {diaBR(contato.contatoDate)} · {canalLabels[contato.canal]}
+                      </span>
+                      {contato.descricao ? <span className="text-[13px] font-semibold text-erro">{contato.descricao}</span> : null}
+                      {contato.resolucao ? <span className="text-[13px] font-semibold text-ok">✓ {contato.resolucao}</span> : null}
+                      {podeEditar ? (
+                        <Botao
+                          tamanho="pq"
+                          variante="perigo"
+                          className="ml-auto"
+                          onClick={async () => {
+                            if (!(await confirmar(`Apagar o contato com ${contato.pacienteNome}?`, { destrutivo: true, confirmar: "Apagar" }))) return;
+                            if (useRemote) void apagarContato.mutateAsync(contato.id).catch(() => toast("Não deu para apagar o contato. Tente de novo.", { tom: "erro" }));
+                            else {
+                              setLocalContatos((prev) => {
+                                const next = prev.filter((existing) => existing.id !== contato.id);
+                                writeLocalValue(contatosKey, next);
+                                return next;
+                              });
+                            }
+                          }}
+                        >
+                          apagar
+                        </Botao>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               )}
-            </CardContent>
+            </div>
           ) : null}
-        </Card>
+        </BlocoSaber>
 
         {/* ================= 5. DOBRADO: fechar o mês (dia 5) ================= */}
-        <Card className="shadow-none">
-          <CardHeader className="pb-2">
-            <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setMesAberto((valor) => !valor)}>
-              {mesAberto ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
-              <CardTitle className="text-base">Fechar o mês para a reunião do dia 5 (dores, elogios e PDCA)</CardTitle>
+        <BlocoFolha as="section" aria-labelledby="titulo-fechar-mes-nps" respiro className="py-4 max-md:py-4">
+          <h2 id="titulo-fechar-mes-nps" className="font-sans text-base font-bold leading-6 text-tinta">
+            <button type="button" aria-expanded={mesAberto} className={TITULO_QUE_ABRE} onClick={() => setMesAberto((valor) => !valor)}>
+              <ChevronDown className={cn("h-4 w-4 shrink-0 text-tinta-2 transition-transform duration-150 ease-papel", !mesAberto && "-rotate-90")} aria-hidden="true" />
+              Fechar o mês para a reunião do dia 5 (dores, elogios e PDCA)
             </button>
-            {!mesAberto ? <p className="pl-6 text-xs text-muted-foreground">Só precisa abrir aqui uma vez por mês, antes da Reunião de Líderes.</p> : null}
-          </CardHeader>
+          </h2>
+          {!mesAberto ? <p className="pl-6 text-[13px] font-medium text-tinta-2">Só precisa abrir aqui uma vez por mês, antes da Reunião de Líderes.</p> : null}
           {mesAberto ? (
-            <CardContent className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-              <div className="grid gap-4">
+            <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+              <div className="grid content-start gap-5">
                 {(["dores", "elogios"] as const).map((tipo) => (
                   <div key={tipo}>
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">
+                    <p className="mb-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
                       {tipo === "dores" ? "Principais dores → ação proposta" : "Principais elogios → como reforçar"}
                     </p>
-                    <div className="grid gap-1.5">
+                    <div className="grid gap-2">
                       {[0, 1, 2, 3, 4].map((indice) => (
-                        <div key={indice} className="grid gap-1.5 sm:grid-cols-2">
-                          <Input value={mes[tipo][indice]?.texto ?? ""} onChange={(event) => editarLista(tipo, indice, "texto", event.target.value)} placeholder={`${indice + 1}. ${tipo === "dores" ? "dor" : "elogio"}`} disabled={!podeEditar} />
-                          <Input value={mes[tipo][indice]?.acao ?? ""} onChange={(event) => editarLista(tipo, indice, "acao", event.target.value)} placeholder={tipo === "dores" ? "ação proposta" : "como padronizar"} disabled={!podeEditar} />
+                        <div key={indice} className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            value={mes[tipo][indice]?.texto ?? ""}
+                            onChange={(event) => editarLista(tipo, indice, "texto", event.target.value)}
+                            placeholder={`${indice + 1}. ${tipo === "dores" ? "dor" : "elogio"}`}
+                            aria-label={`${tipo === "dores" ? "Dor" : "Elogio"} ${indice + 1}`}
+                            disabled={!podeEditar}
+                            className={CAMPO}
+                          />
+                          <input
+                            value={mes[tipo][indice]?.acao ?? ""}
+                            onChange={(event) => editarLista(tipo, indice, "acao", event.target.value)}
+                            placeholder={tipo === "dores" ? "ação proposta" : "como padronizar"}
+                            aria-label={`${tipo === "dores" ? "Ação proposta para a dor" : "Como padronizar o elogio"} ${indice + 1}`}
+                            disabled={!podeEditar}
+                            className={CAMPO}
+                          />
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">PDCA — experiência do paciente</p>
-                  <div className="grid gap-1.5 sm:grid-cols-2">
+                  <p className="mb-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">PDCA — experiência do paciente</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     {(
                       [
                         ["plan", "PLAN — o que vamos melhorar"],
@@ -608,39 +657,49 @@ export function ConciergeNpsPage() {
                         ["act", "ACT — o que vira padrão"],
                       ] as const
                     ).map(([chave, rotulo]) => (
-                      <Input key={chave} value={mes.pdca[chave]} onChange={(event) => setMes((atual) => ({ ...atual, pdca: { ...atual.pdca, [chave]: event.target.value } }))} placeholder={rotulo} disabled={!podeEditar} />
+                      <input
+                        key={chave}
+                        value={mes.pdca[chave]}
+                        onChange={(event) => setMes((atual) => ({ ...atual, pdca: { ...atual.pdca, [chave]: event.target.value } }))}
+                        placeholder={rotulo}
+                        aria-label={rotulo}
+                        disabled={!podeEditar}
+                        className={CAMPO}
+                      />
                     ))}
                   </div>
                 </div>
                 {podeEditar ? (
-                  <div className="flex gap-2">
-                    <LiquidButton type="button" size="default" onClick={() => void salvarMesAgora()}>Salvar mês</LiquidButton>
-                    <Button type="button" variant="outline" onClick={imprimir}>
-                      <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir
-                    </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Botao variante="primario" onClick={() => void salvarMesAgora()}>
+                      Salvar mês
+                    </Botao>
+                    <Botao variante="secundario" icone={<Printer className="h-4 w-4" aria-hidden="true" />} onClick={imprimir}>
+                      Imprimir
+                    </Botao>
                   </div>
                 ) : null}
               </div>
-              <div>
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-brand-oliva">Comentários do totem em {monthLabel} (matéria-prima)</p>
-                <div className="grid max-h-96 gap-1.5 overflow-y-auto">
+              <div className="min-w-0">
+                <p className="mb-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">Comentários do totem em {monthLabel} (matéria-prima)</p>
+                <div className="max-h-96 overflow-y-auto rounded-bloco bg-saber px-4 py-1">
                   {totem.comentarios.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Nenhum comentário no totem neste mês.</p>
+                    <p className="py-3 text-[13px] font-medium text-tinta-2">Nenhum comentário no totem neste mês.</p>
                   ) : (
                     totem.comentarios.map((comentario, indice) => (
-                      <p key={indice} className="rounded-lg border border-brand-oliva/12 bg-white/70 px-3 py-2 text-sm">
-                        <span className={cn("mr-2 inline-flex rounded-full border px-1.5 text-xs font-bold", comentario.nota >= 9 ? "border-emerald-300 bg-emerald-50 text-emerald-800" : comentario.nota <= 6 ? "border-rose-300 bg-rose-50 text-rose-800" : "border-amber-300 bg-amber-50 text-amber-800")}>
+                      <p key={indice} className="flex items-start gap-2 border-b border-fio py-2.5 text-sm font-medium leading-5 text-tinta last:border-b-0">
+                        <Etiqueta tom={comentario.nota >= 9 ? "ok" : comentario.nota <= 6 ? "erro" : "atencao"} className="mt-px">
                           {comentario.nota}
-                        </span>
-                        {comentario.comentario}
+                        </Etiqueta>
+                        <span className="min-w-0">{comentario.comentario}</span>
                       </p>
                     ))
                   )}
                 </div>
               </div>
-            </CardContent>
+            </div>
           ) : null}
-        </Card>
+        </BlocoFolha>
       </div>
     </AccessGate>
   );

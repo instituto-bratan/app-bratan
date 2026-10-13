@@ -112,62 +112,70 @@ export function MenuLateral({ grupos, caminho, fixados, limiteFixados, onSoltarF
     <aside
       aria-label="Menu principal"
       className={cn(
-        "sticky top-0 hidden h-screen h-dvh min-w-0 flex-col overflow-y-auto border-r border-fio-2 px-3 pb-3 pt-4 md:flex",
+        "sticky top-0 hidden h-screen h-dvh min-w-0 flex-col border-r border-fio-2 pb-3 pt-4 md:flex",
         "bg-[var(--mesa-fundo)] [background-image:var(--mesa-textura)]",
       )}
     >
-      <Link to="/" {...aquecer("/")} aria-label="Instituto Bratan, ir para o Início" className={cn("flex items-center rounded-controle px-2 pb-6 pt-2", FOCO_DENTRO)}>
-        <MarcaCompleta />
-      </Link>
+      {/* 13/10/2026 (revisão da etapa 4): a lista rola e o cartão da pessoa fica
+          preso no rodapé — com Ajustes aberto (11 itens) ele saía cortado. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
+        <Link to="/" {...aquecer("/")} aria-label="Instituto Bratan, ir para o Início" className={cn("flex items-center rounded-controle px-2 pb-6 pt-2", FOCO_DENTRO)}>
+          <MarcaCompleta />
+        </Link>
 
-      <nav aria-label="Grupos" className="flex flex-col gap-0.5">
-        {principais.map((grupo) => (
-          <Grupo key={grupo.id} grupo={grupo} aberto={grupo.id === grupoAberto} caminho={caminho} valorDe={valorDe} />
-        ))}
-      </nav>
-
-      <p className="mt-6 flex items-center justify-between px-2.5 pb-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
-        Fixados
-        <span className="font-semibold normal-case tracking-normal">
-          {fixados.length} de {limiteFixados}
-        </span>
-      </p>
-      {fixados.length ? (
-        <nav aria-label="Fixados" className="flex flex-col gap-0.5">
-          {fixados.map((atalho) => (
-            <div key={atalho.id} className="group relative">
-              <Link
-                to={atalho.href}
-                {...aquecer(atalho.href)}
-                aria-current={rotaAberta === atalho.href ? "page" : undefined}
-                className={cn(LINHA, "pr-9 font-medium text-[color:var(--tinta-menu)] aria-[current=page]:font-bold aria-[current=page]:text-tinta")}
-              >
-                <Icone nome={atalho.icone} className="h-4 w-4 shrink-0 text-tinta-2" />
-                <span className="min-w-0 truncate">{atalho.rotulo}</span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => onSoltarFixado(atalho.id)}
-                aria-label={`Soltar ${atalho.rotulo} dos fixados`}
-                className={cn(
-                  "absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-controle text-tinta-2 opacity-0 transition-opacity duration-150",
-                  "hover:bg-saber hover:text-tinta focus-visible:opacity-100 group-hover:opacity-100",
-                  FOCO_DENTRO,
-                )}
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            </div>
+        <nav aria-label="Grupos" className="flex flex-col gap-0.5">
+          {principais.map((grupo) => (
+            <Grupo key={grupo.id} grupo={grupo} aberto={grupo.id === grupoAberto} caminho={caminho} valorDe={valorDe} />
           ))}
         </nav>
-      ) : (
-        <p className="px-2.5 text-[13px] font-medium leading-5 text-tinta-2">
-          Prenda até {limiteFixados} telas: use o alfinete no topo da tela ou ⌘D na busca.
-        </p>
-      )}
 
-      <div className="mt-auto flex flex-col gap-2 border-t border-fio-2 pt-3">
-        {ajustes ? <Grupo grupo={ajustes} aberto={ajustes.id === grupoAberto} caminho={caminho} valorDe={valorDe} /> : null}
+        <p className="mt-6 flex items-center justify-between px-2.5 pb-2 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+          Fixados
+          <span className="font-semibold normal-case tracking-normal">
+            {fixados.length} de {limiteFixados}
+          </span>
+        </p>
+        {fixados.length ? (
+          <nav aria-label="Fixados" className="flex flex-col gap-0.5">
+            {fixados.map((atalho) => (
+              <div key={atalho.id} className="group relative">
+                <Link
+                  to={atalho.href}
+                  {...aquecer(atalho.href)}
+                  aria-current={rotaAberta === atalho.href ? "page" : undefined}
+                  className={cn(LINHA, "pr-9 font-medium text-[color:var(--tinta-menu)] aria-[current=page]:font-bold aria-[current=page]:text-tinta")}
+                >
+                  <Icone nome={atalho.icone} className="h-4 w-4 shrink-0 text-tinta-2" />
+                  <span className="min-w-0 truncate">{atalho.rotulo}</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => onSoltarFixado(atalho.id)}
+                  aria-label={`Soltar ${atalho.rotulo} dos fixados`}
+                  className={cn(
+                    "absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-controle text-tinta-2 opacity-0 transition-opacity duration-150",
+                    "hover:bg-saber hover:text-tinta focus-visible:opacity-100 group-hover:opacity-100",
+                    FOCO_DENTRO,
+                  )}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </nav>
+        ) : (
+          <p className="px-2.5 text-[13px] font-medium leading-5 text-tinta-2">
+            Prenda até {limiteFixados} telas: use o alfinete no topo da tela ou ⌘D na busca.
+          </p>
+        )}
+
+        {ajustes ? (
+          <div className="mt-auto border-t border-fio-2 pt-3">
+            <Grupo grupo={ajustes} aberto={ajustes.id === grupoAberto} caminho={caminho} valorDe={valorDe} />
+          </div>
+        ) : null}
+      </div>
+      <div className={cn("shrink-0 px-3 pt-2", !ajustes && "border-t border-fio-2 pt-3")}>
         <CartaoDaPessoa {...pessoa} />
       </div>
     </aside>

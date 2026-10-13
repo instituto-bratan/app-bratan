@@ -105,12 +105,21 @@ export function diasEntre(de: string, ate: string) {
  * Carnaval (segunda e terça), Sexta-feira Santa e Corpus Christi. Lucas,
  * 02/09/2026: o "dia útil seguinte" tem que pular feriado — o cartão de
  * sexta de Carnaval só fica disponível na quarta de Cinzas.
+ *
+ * 08/10/2026: entrou 2028. As datas que andam com a Páscoa (16/04/2028) foram
+ * calculadas e o teste confere com o cálculo: Carnaval = Páscoa − 48 e − 47
+ * (28 e 29/02, ano bissexto), Sexta-feira Santa = Páscoa − 2 (14/04) e Corpus
+ * Christi = Páscoa + 60 (15/06). Para 2029 em diante, acrescente aqui e em
+ * FERIADOS_SAO_PAULO (filaFinanceiraDiaDePagar.ts); tests/etapa4-dia-de-pagar-
+ * feriados avisa quando o ano corrente ficar sem calendário.
  */
 export const FERIADOS_BANCARIOS = new Set([
   "2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21", "2026-05-01", "2026-06-04",
   "2026-09-07", "2026-10-12", "2026-11-02", "2026-11-15", "2026-11-20", "2026-12-25",
   "2027-01-01", "2027-02-08", "2027-02-09", "2027-03-26", "2027-04-21", "2027-05-01", "2027-05-27",
   "2027-09-07", "2027-10-12", "2027-11-02", "2027-11-15", "2027-11-20", "2027-12-25",
+  "2028-01-01", "2028-02-28", "2028-02-29", "2028-04-14", "2028-04-21", "2028-05-01", "2028-06-15",
+  "2028-09-07", "2028-10-12", "2028-11-02", "2028-11-15", "2028-11-20", "2028-12-25",
 ]);
 
 export function ehDiaUtil(iso: string) {

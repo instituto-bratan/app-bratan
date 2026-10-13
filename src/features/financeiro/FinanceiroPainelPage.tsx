@@ -18,37 +18,27 @@
 //
 // MODO APRESENTAÇÃO: um botão esconde a navegação, aumenta a tipografia e mostra
 // um bloco por vez com as setas — para apresentar do próprio app, sem PowerPoint.
+//
+// REDESENHO (08/10/2026, Papel & Musgo, etapa 4): um cabeçalho só (o mês, a fase
+// e o fio do mês), a barra da reunião com os botões de trabalho (copiar, salvar,
+// marcar como apresentado, fechar o mês), os nove blocos numerados como a pauta
+// e, no modo apresentação, um bloco por vez num slide de papel com a barra de
+// navegação flutuando. Leitura em BlocoSaber; o que se escreve (explicações,
+// PDCA, resumo de fechamento) em BlocoFolha. Os números, as regras, os botões e
+// a folha impressa do resumo são os mesmos de antes.
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMesesFechados } from "./useMesesFechados";
 import { mesEstaFechado, mesPorExtenso, podeFecharOMes } from "./mesFechado";
 import { fecharRemoteMes } from "@/lib/remote/mesFechado";
 import { confirmar, toast } from "@/components/ui/avisos";
-import { motion } from "framer-motion";
-import {
-  ArrowLeft,
-  ArrowRight,
-  BarChart3,
-  CalendarCheck,
-  ClipboardCheck,
-  Copy,
-  GitMerge,
-  Lightbulb,
-  Maximize2,
-  Minimize2,
-  TrendingDown,
-  TrendingUp,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarCheck, Check, CheckCircle2, Copy, Info, Lock, Maximize2, Minimize2 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { BarsWithLine, CalendarHeatGrid, Donut, RankBars, chartColors } from "@/components/charts/BratanCharts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, FioDoMes } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Label } from "@/components/ui/label";
 import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
 import { useAuth } from "@/hooks/useAuth";
-import { readLocalValue, todayISO } from "@/lib/localStore";
+import { todayISO } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
   buildCalendarHeat,
@@ -69,14 +59,14 @@ import {
   expenseEhCapex,
   moneyFin,
   monthKeyLabel,
-  parseFinAmount,
   previousMonthKey,
   type GestaoIndicador,
 } from "./financeiroData";
 import { LucroDoMesExplicado } from "./LucroDoMesExplicado";
 import { compromissosDoMes } from "./motorLucroInteligente";
+import { diasUteisDoMes } from "./lucroInteligente";
 import { useVersaoDoMotor } from "@/lib/useConfigDoMotor";
-import { buildMetasBoard, buildPainelReuniao, defaultMetasConfig, metasForMonth, type MetasConfig } from "./metasData";
+import { buildMetasBoard, buildPainelReuniao, metasForMonth, type MetasConfig } from "./metasData";
 import { momentoDoMes, projecaoDoMes, tituloDaApresentacao } from "./momentoDoMes";
 import { buildOcupacaoMes, formatHoras, heatDaOcupacao } from "./ocupacaoSala";
 import { buildSemanaEmNumeros } from "./semanaEmNumeros";
@@ -90,6 +80,24 @@ import { useFinanceiro } from "./useFinanceiro";
 import { ResumoFechamentoCard } from "./ResumoFechamentoCard";
 import { fechamentoEscritoVazio, ultimosMeses, type FechamentoEscrito } from "./resumoFechamento";
 import { useMetasConfig } from "./useMetasConfig";
+import { Campo, RecadoDaTela, Selecao, tabela } from "./pecasBancoFechamento";
+import {
+  BarraFina,
+  COR_DO_TOM,
+  CORES_GRAFICO,
+  Etiqueta,
+  Frase,
+  IconeDoTom,
+  Numero,
+  OrigemDosDados,
+  PALAVRA_DO_TOM,
+  Rubrica,
+  TituloDaSecao,
+  Variacao,
+  classeDoTexto,
+  type TomResultado,
+} from "./pecasResultados";
+import { BarrasDoMes, CalendarioDoMes, Participacao, Ranking } from "./graficosResultados";
 
 const PDCA_CAMPOS: { key: string; titulo: string; ajuda: string }[] = [
   { key: "plan", titulo: "PLAN — Planejar", ajuda: "O que vamos fazer no próximo mês para melhorar o número que caiu?" },
@@ -105,14 +113,6 @@ function formatarValor(valor: number, formato: GestaoIndicador["formato"]) {
   if (formato === "numero") return String(Math.round(valor));
   return moneyFin(valor);
 }
-
-/** Cores por tom do ponto — o mesmo vocabulário visual em toda a tela. */
-const tomEstilo = {
-  BOM: { card: "border-emerald-300 bg-emerald-50/70", texto: "text-emerald-900", chip: "bg-emerald-600" },
-  ATENCAO: { card: "border-amber-300 bg-amber-50/70", texto: "text-amber-900", chip: "bg-amber-500" },
-  RUIM: { card: "border-red-300 bg-red-50/70", texto: "text-red-900", chip: "bg-red-600" },
-  NEUTRO: { card: "border-brand-oliva/25 bg-white/75", texto: "text-brand-tinta", chip: "bg-brand-musgo" },
-} as const;
 
 const grupoLabels: Record<PontoDaReuniao["grupo"], string> = {
   RESULTADO: "Resultado",
@@ -204,6 +204,14 @@ export function FinanceiroPainelPage() {
   const metasConfig: MetasConfig = useMetasConfig();
   // MOMENTO DO MÊS (17/08/2026): a apresentação muda com o dia em que estamos.
   const momento = useMemo(() => momentoDoMes(monthKey, hoje), [monthKey, hoje]);
+  // 13/10/2026 (revisão da etapa 4): o FIO do mês usa o calendário com feriado
+  // (o mesmo do Lucro e do Início), para as telas dizerem o mesmo "dia útil N de
+  // M" na reunião. Só a marcação do fio: a fase e a projeção do mês continuam
+  // em momentoDoMes, sem mudar a conta.
+  const fioDiasUteis = useMemo(() => {
+    const dias = diasUteisDoMes(monthKey);
+    return { total: dias.length, hoje: dias.filter((dia) => dia <= hoje).length };
+  }, [monthKey, hoje]);
   const board = useMemo(() => buildMetasBoard(financeiro.sales, metasConfig, monthKey), [financeiro.sales, metasConfig, monthKey]);
   const painelMetas = useMemo(() => buildPainelReuniao(board, hoje), [board, hoje]);
   const projecao = useMemo(() => projecaoDoMes(financeiro.sales, momento, painelMetas.regua), [financeiro.sales, momento, painelMetas.regua]);
@@ -391,176 +399,184 @@ export function FinanceiroPainelPage() {
     { rotulo: "SUPER-SUPERMETA", valor: board.goals.super, atingido: projecao.faturadoAteAgora >= board.goals.super, regua: true },
   ];
 
+  // ---- a forma (08/10/2026): o mês por extenso e o tom de cada número ----------
+  const [rotuloMes, rotuloAno] = monthKeyLabel(monthKey).split("/");
+  const mesMinusculo = (rotuloMes ?? "").toLowerCase();
+  const mesAnteriorCurto = monthKeyLabel(mesAnterior).slice(0, 3).toLowerCase();
+  const mesFechado = mesEstaFechado(monthKey, mesesFechados);
+  const apresentadoEm = registroSalvo?.apresentadoEm ?? null;
+  const tamanhoKpi = apresentando ? "grande" : "medio";
+  /** O tom do número de um KPI: o bom fica em tinta (a palavra ao lado diz que é bom). */
+  const tomDoNumero = (tom: TomResultado): TomResultado => (tom === "BOM" ? "NEUTRO" : tom);
+  const textoMaior = apresentando ? "text-base leading-6" : "text-sm leading-5";
+
+  /** Rubrica + palavra do tom ("bom sinal", "atenção") — a cor nunca fala sozinha. */
+  const RubricaComTom = ({ rotulo, tom }: { rotulo: string; tom: TomResultado }) => (
+    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+      <Rubrica>{rotulo}</Rubrica>
+      {tom !== "NEUTRO" ? (
+        <span className={cn("inline-flex items-center gap-1 text-xs font-bold leading-4", COR_DO_TOM[tom])}>
+          <IconeDoTom tom={tom} className="h-3.5 w-3.5" />
+          {PALAVRA_DO_TOM[tom]}
+        </span>
+      ) : null}
+    </div>
+  );
+
   const blocos = [
     {
       chave: "olhar",
-      titulo: momento.emAndamento ? `1. Onde estamos — ${momento.faseLabel}` : "1. Como o mês fechou",
+      numero: 1,
+      titulo: momento.emAndamento ? `Onde estamos — ${momento.faseLabel}` : "Como o mês fechou",
       corpo: (
         <div className="grid gap-4">
           {/* ONDE ESTAMOS NO MÊS: a barra mostra dias úteis percorridos e o quanto
               do alvo já foi feito — as duas coisas lado a lado deixam na hora
               claro se estamos adiantados ou atrasados. */}
           {momento.emAndamento ? (
-            <div className="rounded-xl border-2 border-brand-musgo/30 bg-brand-papel p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className={cn("font-bold text-brand-musgo", apresentando ? "text-2xl" : "text-lg")}>
-                  {tituloDaApresentacao(momento, projecao)}
-                </p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">
-                  dia {momento.dia} · {momento.diasUteisPassados} de {momento.diasUteisTotais} dias úteis
+            <BlocoSaber className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-center">
+              {/* PROJEÇÃO — o número mais importante do mês em andamento */}
+              <div className="grid content-start gap-3">
+                <Rubrica>Se o ritmo continuar, o mês fecha em</Rubrica>
+                <Numero texto={moneyFin(projecao.projecao)} tamanho={apresentando ? "apresentacao" : "grande"} tom={projecao.noCaminho ? "NEUTRO" : "ATENCAO"} />
+                <p className={cn("flex items-start gap-2 font-medium text-tinta", textoMaior)}>
+                  <IconeDoTom tom={projecao.noCaminho ? "BOM" : "ATENCAO"} className="mt-0.5" />
+                  <span>{projecao.leitura}</span>
                 </p>
               </div>
-              <p className={cn("mt-1 leading-snug text-brand-tinta", apresentando ? "text-base" : "text-sm")}>{momento.foco}</p>
-
-              <div className="mt-3 grid gap-2">
+              <div className="grid content-start gap-5">
                 {[
-                  { rotulo: "O mês já andou", valor: momento.percorrido, texto: `${Math.round(momento.percorrido * 100)}% dos dias úteis`, cor: "bg-brand-oliva/50" },
+                  {
+                    rotulo: "O mês já andou",
+                    valor: momento.percorrido * 100,
+                    texto: `${Math.round(momento.percorrido * 100)}% dos dias úteis`,
+                    tom: "tinta" as const,
+                    marca: null,
+                  },
                   {
                     rotulo: "Já faturamos",
-                    valor: Math.min(1, projecao.alvo > 0 ? projecao.faturadoAteAgora / projecao.alvo : 0),
+                    valor: Math.min(100, projecao.alvo > 0 ? (projecao.faturadoAteAgora / projecao.alvo) * 100 : 0),
                     texto: `${projecao.percentualDoAlvo.toFixed(1).replace(".", ",")}% da régua (${moneyFin(projecao.faturadoAteAgora)})`,
-                    cor: projecao.percentualDoAlvo >= momento.percorrido * 100 ? "bg-emerald-500" : "bg-amber-500",
+                    tom: projecao.percentualDoAlvo >= momento.percorrido * 100 ? ("ok" as const) : ("atencao" as const),
+                    marca: momento.percorrido * 100,
                   },
                 ].map((barra) => (
-                  <div key={barra.rotulo}>
-                    <div className="flex items-baseline justify-between gap-2 text-xs">
-                      <span className="font-semibold text-brand-tinta">{barra.rotulo}</span>
-                      <span className="text-muted-foreground">{barra.texto}</span>
+                  <div key={barra.rotulo} className="grid gap-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                      <span className="text-sm font-bold leading-5 text-tinta">{barra.rotulo}</span>
+                      <span className="text-[13px] font-semibold leading-5 tabular-nums text-tinta-2">{barra.texto}</span>
                     </div>
-                    <div className="mt-1 h-3 overflow-hidden rounded-full bg-brand-oliva/15">
-                      <div className={cn("h-full rounded-full transition-all", barra.cor)} style={{ width: `${Math.max(2, barra.valor * 100)}%` }} />
-                    </div>
+                    <BarraFina valor={barra.valor} tom={barra.tom} marca={barra.marca} alta={apresentando} rotulo={`${barra.rotulo}: ${barra.texto}`} />
                   </div>
                 ))}
+                <p className="text-xs font-medium leading-4 text-tinta-2">O traço na segunda barra é onde o faturamento deveria estar hoje, no ritmo dos dias úteis.</p>
               </div>
-
-              {/* PROJEÇÃO — o número mais importante do mês em andamento */}
-              <div
-                className={cn(
-                  "mt-3 rounded-lg border p-3",
-                  projecao.noCaminho ? "border-emerald-300 bg-emerald-50/70" : "border-amber-300 bg-amber-50/70",
-                )}
-              >
-                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
-                  Se o ritmo continuar, o mês fecha em
-                </p>
-                <p className={cn("font-bold tabular-nums", apresentando ? "text-4xl" : "text-3xl", projecao.noCaminho ? "text-emerald-900" : "text-amber-900")}>
-                  {moneyFin(projecao.projecao)}
-                </p>
-                <p className={cn("mt-1 leading-snug", apresentando ? "text-base" : "text-sm", projecao.noCaminho ? "text-emerald-900" : "text-amber-900")}>
-                  {projecao.leitura}
-                </p>
-              </div>
-            </div>
+            </BlocoSaber>
           ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {kpis.map((kpi) => {
-            const variacao = kpi.antes > 0 ? ((kpi.agora - kpi.antes) / kpi.antes) * 100 : null;
-            const melhorou = variacao === null ? null : kpi.inverso ? variacao < 0 : variacao > 0;
-            return (
-              <div
-                key={kpi.rotulo}
-                className={cn("rounded-xl border px-5 py-4", tomEstilo[kpi.tom].card)}
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{kpi.rotulo}</p>
-                <p className={cn("mt-1 font-bold tabular-nums", apresentando ? "text-4xl" : "text-2xl", tomEstilo[kpi.tom].texto)}>
-                  {kpi.valor}
-                </p>
-                {variacao !== null ? (
-                  <p className={cn("mt-0.5 flex items-center gap-1 text-xs font-semibold", melhorou ? "text-emerald-700" : "text-red-700")}>
-                    {melhorou ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />}
-                    {variacao > 0 ? "+" : ""}
-                    {variacao.toFixed(1).replace(".", ",")}% contra {monthKeyLabel(mesAnterior).slice(0, 3)}
-                  </p>
-                ) : (
-                  <p className="mt-0.5 text-xs text-muted-foreground">sem base de comparação</p>
-                )}
-              </div>
-            );
-          })}
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {kpis.map((kpi) => {
+              const variacao = kpi.antes > 0 ? ((kpi.agora - kpi.antes) / kpi.antes) * 100 : null;
+              const melhorou = variacao === null ? null : kpi.inverso ? variacao < 0 : variacao > 0;
+              return (
+                <div key={kpi.rotulo} className="grid content-start gap-3 rounded-bloco bg-saber p-5 max-md:p-4">
+                  <RubricaComTom rotulo={kpi.rotulo} tom={kpi.tom} />
+                  <Numero texto={kpi.valor} tamanho={tamanhoKpi} tom={tomDoNumero(kpi.tom)} />
+                  <Variacao variacao={variacao} melhorou={melhorou} contra={mesAnteriorCurto} />
+                </div>
+              );
+            })}
           </div>
         </div>
       ),
     },
     {
       chave: "escada",
-      titulo: "2. A escada da meta — a régua é a super-supermeta",
+      numero: 2,
+      titulo: "A escada da meta — a régua é a super-supermeta",
+      ajuda: "Três degraus. A régua da apresentação é o de cima: é nele que a porcentagem da equipe aumenta.",
       corpo: (
-        <div className="grid gap-3">
-          <p className="text-sm text-muted-foreground">
-            Três degraus. A régua da apresentação é o de cima: é nele que a porcentagem da equipe aumenta.
-          </p>
-          <div className="grid gap-2">
-            {degraus.map((degrau) => {
-              const feito = projecao.alvo > 0 ? Math.min(1, projecao.faturadoAteAgora / degrau.valor) : 0;
-              const falta = Math.max(0, degrau.valor - projecao.faturadoAteAgora);
-              return (
-                <button
-                  key={degrau.rotulo}
-                  type="button"
-                  onClick={() => setDegrauAberto((atual) => (atual === degrau.rotulo ? "" : degrau.rotulo))}
-                  className={cn(
-                    "w-full rounded-xl border-2 p-3 text-left transition",
-                    degrau.atingido
-                      ? "border-emerald-400 bg-emerald-50/70"
-                      : degrau.regua
-                        ? "border-brand-dourado bg-brand-creme/50"
-                        : "border-brand-oliva/25 bg-white/70",
-                    degrauAberto === degrau.rotulo && "ring-2 ring-brand-musgo/30",
-                  )}
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className={cn("font-bold", apresentando ? "text-xl" : "text-base", degrau.regua ? "text-brand-musgo" : "text-brand-tinta")}>
-                      {degrau.atingido ? "✓ " : ""}
-                      {degrau.rotulo}
-                    </span>
-                    <span className={cn("font-bold tabular-nums text-brand-musgo", apresentando ? "text-2xl" : "text-lg")}>
-                      {moneyFin(degrau.valor)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-3 overflow-hidden rounded-full bg-brand-oliva/15">
-                    <div
-                      className={cn("h-full rounded-full", degrau.atingido ? "bg-emerald-500" : degrau.regua ? "bg-brand-dourado" : "bg-brand-oliva/50")}
-                      style={{ width: `${Math.max(2, feito * 100)}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {degrau.atingido
-                      ? "Atingido."
-                      : `Faltam ${moneyFin(falta)}${momento.diasUteisRestantes > 0 ? ` · ${moneyFin(falta / momento.diasUteisRestantes)} por dia útil` : ""}`}
-                  </p>
-                  {degrauAberto === degrau.rotulo ? (
-                    <p className="mt-2 rounded-md bg-white/80 p-2 text-xs leading-snug text-brand-tinta">
-                      {degrau.regua
-                        ? "É a régua da reunião. Acima dela a equipe ganha porcentagem maior — foi a decisão da CEO em 14/08."
-                        : degrau.rotulo === "Meta"
-                          ? "O mínimo. Nas palavras da CEO: 'o resto é medíocre, se a gente fizer, amém' — não é o que buscamos."
-                          : "O degrau do meio. Bom, mas não é onde a equipe ganha mais."}
-                    </p>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-4">
+          <BlocoSaber className="overflow-hidden p-0 max-md:p-0">
+            <ul>
+              {degraus.map((degrau) => {
+                const feito = projecao.alvo > 0 ? Math.min(1, projecao.faturadoAteAgora / degrau.valor) : 0;
+                const falta = Math.max(0, degrau.valor - projecao.faturadoAteAgora);
+                const aberto = degrauAberto === degrau.rotulo;
+                return (
+                  <li key={degrau.rotulo} className="border-t border-fio first:border-t-0">
+                    <button
+                      type="button"
+                      onClick={() => setDegrauAberto((atual) => (atual === degrau.rotulo ? "" : degrau.rotulo))}
+                      aria-expanded={aberto}
+                      className={cn(
+                        "grid w-full gap-3 px-6 py-4 text-left transition-colors duration-150 ease-papel hover:bg-fio/40 max-md:px-4",
+                        "focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-foco",
+                        degrau.regua && "shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))]",
+                      )}
+                    >
+                      <span className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                        <span className={cn("flex flex-wrap items-center gap-2 font-bold text-tinta", apresentando ? "text-xl leading-7" : "text-base leading-6")}>
+                          {degrau.atingido ? <CheckCircle2 className="h-4 w-4 text-ok" aria-label="atingido" /> : null}
+                          {degrau.rotulo}
+                          {degrau.regua ? <Etiqueta tom="musgo">a régua da reunião</Etiqueta> : null}
+                        </span>
+                        <span className={cn("whitespace-nowrap font-bold tabular-nums text-tinta", apresentando ? "text-2xl leading-8" : "text-lg leading-7")}>{moneyFin(degrau.valor)}</span>
+                      </span>
+                      <BarraFina
+                        valor={feito * 100}
+                        tom={degrau.atingido ? "ok" : "musgo"}
+                        alta={apresentando}
+                        rotulo={`${degrau.rotulo}: ${Math.round(feito * 100)}% feito`}
+                      />
+                      <span className={cn("text-[13px] font-semibold leading-5", degrau.atingido ? "text-ok" : "text-tinta-2")}>
+                        {degrau.atingido
+                          ? "Atingido."
+                          : `Faltam ${moneyFin(falta)}${momento.diasUteisRestantes > 0 ? ` · ${moneyFin(falta / momento.diasUteisRestantes)} por dia útil` : ""}`}
+                      </span>
+                      {aberto ? (
+                        <span className="block rounded-controle bg-folha px-3 py-2 text-[13px] font-medium leading-5 text-tinta">
+                          {degrau.regua
+                            ? "É a régua da reunião. Acima dela a equipe ganha porcentagem maior — foi a decisão da CEO em 14/08."
+                            : degrau.rotulo === "Meta"
+                              ? "O mínimo. Nas palavras da CEO: 'o resto é medíocre, se a gente fizer, amém' — não é o que buscamos."
+                              : "O degrau do meio. Bom, mas não é onde a equipe ganha mais."}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </BlocoSaber>
+          <div className="grid gap-3 sm:grid-cols-3">
             {[
-              { rotulo: "Ritmo atual", valor: moneyFin(projecao.ritmoAtual), dica: "por dia útil trabalhado" },
+              { rotulo: "Ritmo atual", valor: moneyFin(projecao.ritmoAtual), dica: "por dia útil trabalhado", noCaminho: false },
               {
                 rotulo: "Ritmo necessário",
                 valor: momento.diasUteisRestantes > 0 ? moneyFin(projecao.precisaPorDia) : "—",
                 dica: `para a régua em ${momento.diasUteisRestantes} dia(s)`,
+                noCaminho: false,
               },
               {
                 rotulo: "Aumento necessário",
-                valor: projecao.aumentoNecessario === null ? "no caminho ✓" : `+${projecao.aumentoNecessario.toFixed(0)}%`,
+                // Sem ritmo ainda (nenhuma venda no mês) não há "aumento" a medir: fica o traço,
+                // e não um "no caminho" que o número não sustenta (08/10/2026).
+                valor: projecao.aumentoNecessario === null ? (projecao.noCaminho ? "no caminho" : "—") : `+${projecao.aumentoNecessario.toFixed(0)}%`,
                 dica: "sobre o ritmo de hoje",
+                noCaminho: projecao.aumentoNecessario === null && projecao.noCaminho,
               },
             ].map((item) => (
-              <div key={item.rotulo} className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{item.rotulo}</p>
-                <p className={cn("font-bold tabular-nums text-brand-musgo", apresentando ? "text-2xl" : "text-xl")}>{item.valor}</p>
-                <p className="text-[11px] text-muted-foreground">{item.dica}</p>
+              <div key={item.rotulo} className="grid content-start gap-2 rounded-bloco bg-saber p-5 max-md:p-4">
+                <Rubrica>{item.rotulo}</Rubrica>
+                {item.noCaminho ? (
+                  <p className={cn("flex items-center gap-2 font-bold text-ok", apresentando ? "text-2xl leading-8" : "text-xl leading-7")}>
+                    <Check className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" /> {item.valor}
+                  </p>
+                ) : (
+                  <Numero texto={item.valor} tamanho={apresentando ? "medio" : "pequeno"} />
+                )}
+                <Frase>{item.dica}</Frase>
               </div>
             ))}
           </div>
@@ -569,222 +585,247 @@ export function FinanceiroPainelPage() {
     },
     {
       chave: "pontos",
-      titulo: "3. Pontos para a reunião",
+      numero: 3,
+      titulo: "Pontos para a reunião",
+      ajuda: pontos.length ? `${pontos.length} ${pontos.length === 1 ? "ponto" : "pontos"}, cada um com o número e o que ele quer dizer.` : undefined,
       corpo: (
-        <div className="grid gap-2.5">
+        <div className="grid gap-3">
           {!pontos.length ? (
-            <p className="text-sm text-muted-foreground">Sem dados suficientes neste mês para gerar pontos.</p>
+            <BlocoSaber>
+              <Frase>Sem dados suficientes neste mês para gerar pontos.</Frase>
+            </BlocoSaber>
           ) : null}
-          {pontos.map((ponto, indice) => (
-            <div key={ponto.id} className={cn("rounded-xl border p-4", tomEstilo[ponto.tom].card)}>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={cn("grid h-6 w-6 place-items-center rounded-full text-xs font-bold text-white", tomEstilo[ponto.tom].chip)}>
+          <ol className={cn("grid gap-3", !apresentando && "xl:grid-cols-2")}>
+            {pontos.map((ponto, indice) => (
+              <li key={ponto.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 rounded-bloco bg-saber p-5 max-md:p-4">
+                <span className={cn("font-serifa font-normal leading-none tabular-nums text-tinta-2", apresentando ? "text-[40px]" : "text-[32px]")} aria-hidden="true">
                   {indice + 1}
                 </span>
-                <p className={cn("font-bold", apresentando ? "text-xl" : "text-base", tomEstilo[ponto.tom].texto)}>{ponto.titulo}</p>
-                <Badge variant="muted">{grupoLabels[ponto.grupo]}</Badge>
-              </div>
-              <p className={cn("mt-1.5 font-bold tabular-nums text-brand-musgo", apresentando ? "text-2xl" : "text-lg")}>{ponto.numero}</p>
-              <p className={cn("mt-1 leading-relaxed text-brand-tinta", apresentando ? "text-base" : "text-sm")}>{ponto.leitura}</p>
-            </div>
-          ))}
+                <div className="grid min-w-0 content-start gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className={cn("font-bold text-tinta", apresentando ? "text-xl leading-7" : "text-base leading-6")}>{ponto.titulo}</p>
+                    <Etiqueta>{grupoLabels[ponto.grupo]}</Etiqueta>
+                  </div>
+                  <p className={cn("flex items-start gap-2 font-bold tabular-nums", COR_DO_TOM[ponto.tom], apresentando ? "text-2xl leading-8" : "text-lg leading-7")}>
+                    {ponto.tom !== "NEUTRO" ? <IconeDoTom tom={ponto.tom} className={apresentando ? "mt-2" : "mt-1.5"} /> : null}
+                    <span className="min-w-0">{ponto.numero}</span>
+                    {ponto.tom !== "NEUTRO" ? <span className="sr-only">({PALAVRA_DO_TOM[ponto.tom]})</span> : null}
+                  </p>
+                  <p className={cn("font-medium text-tinta-2", textoMaior)}>{ponto.leitura}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
       ),
     },
     {
       chave: "lucros",
-      titulo: "4. Os três lucros",
+      numero: 4,
+      titulo: "Os três lucros",
+      ajuda: 'A pergunta que sempre aparece: "então quanto a gente ganhou?". Os três números estão certos — medem coisas diferentes.',
       corpo: (
-        <div className="grid gap-2">
-          <p className="text-sm text-muted-foreground">
-            A pergunta que sempre aparece: "então quanto a gente ganhou?". Os três números estão certos — medem coisas
-            diferentes.
-          </p>
+        <div className="grid gap-4">
           {/* O LUCRO DO MÊS EXPLICADO (01/10/2026): a conta linha a linha antes da ponte. */}
           <LucroDoMesExplicado gestao={atual} compromissos={compromissos} apresentando={apresentando} />
           {/* A CASCATA (14/09/2026): o mesmo caminho em barras, clicável. */}
-          <PonteWaterfall passos={ponte} detalhes={detalhesPonte} apresentando={apresentando} />
-          {ponte.map((passo) => (
-            <div
-              key={passo.label}
-              className={cn(
-                "rounded-lg border px-4 py-3",
-                passo.tipo === "base"
-                  ? "border-brand-musgo/30 bg-brand-papel"
-                  : passo.tipo === "total"
-                    ? "border-emerald-300 bg-emerald-50/60"
-                    : "border-brand-oliva/20 bg-white/70",
-              )}
-            >
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className={cn("font-semibold text-brand-tinta", apresentando ? "text-lg" : "text-sm")}>{passo.label}</p>
-                <p className={cn("font-bold tabular-nums text-brand-musgo", apresentando ? "text-2xl" : "text-lg")}>
-                  {moneyFin(passo.valor)}
-                </p>
-              </div>
-              <p className={cn("mt-0.5 leading-snug text-muted-foreground", apresentando ? "text-sm" : "text-xs")}>
-                {passo.explicacao}
-              </p>
-            </div>
-          ))}
+          <BlocoSaber className="grid gap-4">
+            <Rubrica as="h3">A ponte: do lucro operacional ao contábil e ao caixa</Rubrica>
+            <PonteWaterfall passos={ponte} detalhes={detalhesPonte} apresentando={apresentando} />
+          </BlocoSaber>
+          <BlocoSaber className="p-0 max-md:p-0">
+            <dl>
+              {ponte.map((passo) => {
+                const ponta = passo.tipo === "base" || passo.tipo === "total";
+                return (
+                  <div
+                    key={passo.label}
+                    className={cn(
+                      "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-6 border-t border-fio px-6 py-3 first:border-t-0 max-md:px-4",
+                      passo.tipo === "total" && "bg-folha",
+                    )}
+                  >
+                    <dt className="grid min-w-0 gap-1">
+                      <span className={cn("text-tinta", apresentando ? "text-lg leading-7" : "text-sm leading-5", ponta ? "font-bold" : "font-semibold")}>{passo.label}</span>
+                      <span className={cn("max-w-[90ch] font-medium text-tinta-2", apresentando ? "text-sm leading-5" : "text-[13px] leading-5")}>{passo.explicacao}</span>
+                    </dt>
+                    <dd
+                      className={cn(
+                        "m-0 whitespace-nowrap text-right tabular-nums",
+                        ponta ? "font-serifa text-2xl font-normal leading-8" : "text-base font-bold leading-6",
+                        passo.valor < -0.004 && ponta ? "text-erro" : "text-tinta",
+                      )}
+                    >
+                      {moneyFin(passo.valor)}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </BlocoSaber>
         </div>
       ),
     },
     {
       chave: "evolucao",
-      titulo: "5. Evolução dos últimos 6 meses",
+      numero: 5,
+      titulo: "Evolução dos últimos 6 meses",
       corpo: (
-        <div className="grid gap-3">
-          <BarsWithLine
-            labels={evolucao.map((mes) => monthKeyLabel(mes.monthKey).slice(0, 3))}
-            bars={[
-              { name: "Faturamento", values: evolucao.map((mes) => mes.faturamento), color: chartColors.entrada },
-              { name: "Custos", values: evolucao.map((mes) => mes.custosTotais), color: chartColors.saida },
+        <BlocoSaber className="grid gap-6">
+          <BarrasDoMes
+            rotulos={evolucao.map((mes) => monthKeyLabel(mes.monthKey).slice(0, 3))}
+            barras={[
+              { nome: "Faturamento", valores: evolucao.map((mes) => mes.faturamento), cor: CORES_GRAFICO.entrada },
+              { nome: "Custos", valores: evolucao.map((mes) => mes.custosTotais), cor: CORES_GRAFICO.saida },
             ]}
-            line={{ name: "Lucro", values: evolucao.map((mes) => mes.lucroLiquido), color: chartColors.resultado }}
+            linha={{ nome: "Lucro", valores: evolucao.map((mes) => mes.lucroLiquido), cor: CORES_GRAFICO.resultado }}
           />
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[30rem] text-left text-sm">
-              <thead className="text-xs uppercase text-brand-oliva">
+          <div className="-mx-4 overflow-x-auto">
+            <table className={cn(tabela.tabela, "min-w-[34rem]")}>
+              <thead>
                 <tr>
-                  <th className="px-2 py-1.5">Mês</th>
-                  <th className="px-2 py-1.5 text-right">Faturamento</th>
-                  <th className="px-2 py-1.5 text-right">Custos</th>
-                  <th className="px-2 py-1.5 text-right">Lucro</th>
-                  <th className="px-2 py-1.5 text-right">Margem</th>
+                  <th className={tabela.th}>Mês</th>
+                  <th className={tabela.thNum}>Faturamento</th>
+                  <th className={tabela.thNum}>Custos</th>
+                  <th className={tabela.thNum}>Lucro</th>
+                  <th className={tabela.thNum}>Margem</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-brand-oliva/12">
+              <tbody>
                 {evolucao.map((mes) => (
-                  <tr key={mes.monthKey} className={cn(mes.monthKey === monthKey && "bg-brand-creme/40")}>
-                    <td className="px-2 py-1.5 font-semibold text-brand-tinta">{monthKeyLabel(mes.monthKey)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{moneyFin(mes.faturamento)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{moneyFin(mes.custosTotais)}</td>
-                    <td className={cn("px-2 py-1.5 text-right font-bold tabular-nums", mes.lucroLiquido >= 0 ? "text-brand-musgo" : "text-red-800")}>
-                      {moneyFin(mes.lucroLiquido)}
+                  <tr key={mes.monthKey} className={cn(tabela.linha, mes.monthKey === monthKey && "bg-folha shadow-[inset_3px_0_0_rgb(var(--ouro-fio-rgb))]")}>
+                    <td className={cn(tabela.td, "font-bold")}>
+                      {monthKeyLabel(mes.monthKey)}
+                      {mes.monthKey === monthKey ? <span className="ml-2 text-xs font-bold text-ouro">este</span> : null}
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{mes.margem.toFixed(1).replace(".", ",")}%</td>
+                    <td className={tabela.tdNum}>{moneyFin(mes.faturamento)}</td>
+                    <td className={tabela.tdNum}>{moneyFin(mes.custosTotais)}</td>
+                    <td className={cn(tabela.tdNum, "font-bold", mes.lucroLiquido >= 0 ? "text-tinta" : "text-erro")}>{moneyFin(mes.lucroLiquido)}</td>
+                    <td className={tabela.tdNum}>{mes.margem.toFixed(1).replace(".", ",")}%</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </BlocoSaber>
       ),
     },
     {
       chave: "fluxo",
-      titulo: "6. De onde vem e para onde vai",
+      numero: 6,
+      titulo: "De onde vem e para onde vai",
       corpo: (
         <div className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <p className="mb-2 text-sm font-semibold text-brand-tinta">Como o paciente paga</p>
-            <Donut slices={pagamentoDonut} emptyMessage="Sem comandas neste mês." />
-          </div>
-          <div>
-            <p className="mb-2 text-sm font-semibold text-brand-tinta">O que ele compra</p>
-            <Donut slices={itemDonut} emptyMessage="Sem comandas neste mês." />
-          </div>
-          <div>
-            <p className="mb-2 text-sm font-semibold text-brand-tinta">Para onde vai o custo</p>
-            <Donut slices={grupoDonut} emptyMessage="Sem contas neste mês." />
-          </div>
-          <div>
-            <p className="mb-2 text-sm font-semibold text-brand-tinta">As 8 maiores linhas de custo</p>
-            <RankBars points={categoriaRank} emptyMessage="Sem contas neste mês." />
-          </div>
+          <BlocoSaber className="grid content-start gap-4">
+            <Rubrica as="h3">Como o paciente paga</Rubrica>
+            <Participacao partes={pagamentoDonut} cor={CORES_GRAFICO.entrada} vazio="Sem comandas neste mês." />
+          </BlocoSaber>
+          <BlocoSaber className="grid content-start gap-4">
+            <Rubrica as="h3">O que ele compra</Rubrica>
+            <Participacao partes={itemDonut} cor={CORES_GRAFICO.entrada} vazio="Sem comandas neste mês." />
+          </BlocoSaber>
+          <BlocoSaber className="grid content-start gap-4">
+            <Rubrica as="h3">Para onde vai o custo</Rubrica>
+            <Participacao partes={grupoDonut} cor={CORES_GRAFICO.saida} vazio="Sem contas neste mês." />
+          </BlocoSaber>
+          <BlocoSaber className="grid content-start gap-4">
+            <Rubrica as="h3">As 8 maiores linhas de custo</Rubrica>
+            <Ranking pontos={categoriaRank} cor={CORES_GRAFICO.saida} vazio="Sem contas neste mês." />
+          </BlocoSaber>
         </div>
       ),
     },
     {
       chave: "ritmo",
-      titulo: "7. Ritmo do mês",
+      numero: 7,
+      titulo: "Ritmo do mês",
       corpo: (
-        <div className="grid gap-4">
-          <div>
-            <p className="mb-2 text-sm font-semibold text-brand-tinta">Faturamento dia a dia</p>
-            <CalendarHeatGrid heat={heat} />
-          </div>
-          <div>
-            <p className="mb-2 text-sm font-semibold text-brand-tinta">Força por dia da semana</p>
-            <RankBars points={semana} color={chartColors.entrada} emptyMessage="Sem comandas neste mês." />
-          </div>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <BlocoSaber className="grid content-start gap-4">
+            <Rubrica as="h3">Faturamento dia a dia</Rubrica>
+            <CalendarioDoMes calor={heat} vazio="Nenhuma comanda lançada neste mês ainda — o calendário acende conforme o dinheiro entra." />
+          </BlocoSaber>
+          <BlocoSaber className="grid content-start gap-4">
+            <Rubrica as="h3">Força por dia da semana</Rubrica>
+            <Ranking pontos={semana} cor={CORES_GRAFICO.entrada} vazio="Sem comandas neste mês." />
+          </BlocoSaber>
         </div>
       ),
     },
     {
       chave: "ocupacao",
-      titulo: "8. Ocupação das salas — o número mais alavancável",
+      numero: 8,
+      titulo: "Ocupação das salas — o número mais alavancável",
       corpo: (
         <div className="grid gap-4">
-          <div
-            className={cn(
-              "rounded-xl border-2 p-4",
-              ocupacao.percentual >= ocupacao.meta.minima ? "border-emerald-300 bg-emerald-50/70" : ocupacao.percentual >= 40 ? "border-amber-300 bg-amber-50/70" : "border-red-300 bg-red-50/60",
-            )}
-          >
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
-                  Horas de sala vendidas ÷ horas disponíveis{ocupacao.parcial ? ` · até ${ocupacao.ateDia.slice(8, 10)}/${ocupacao.ateDia.slice(5, 7)}` : ""}
-                </p>
-                <p className={cn("font-bold tabular-nums text-brand-tinta", apresentando ? "text-6xl" : "text-5xl")}>
-                  {ocupacao.percentual.toLocaleString("pt-BR")}%
-                </p>
+          <BlocoSaber className="grid gap-5">
+            <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+              <div className="grid gap-3">
+                <RubricaComTom
+                  rotulo={`Horas de sala vendidas ÷ horas disponíveis${ocupacao.parcial ? ` · até ${ocupacao.ateDia.slice(8, 10)}/${ocupacao.ateDia.slice(5, 7)}` : ""}`}
+                  tom={ocupacao.percentual >= ocupacao.meta.minima ? "BOM" : ocupacao.percentual >= 40 ? "ATENCAO" : "RUIM"}
+                />
+                <Numero
+                  texto={`${ocupacao.percentual.toLocaleString("pt-BR")}%`}
+                  tamanho={apresentando ? "apresentacao" : "grande"}
+                  tom={ocupacao.percentual >= ocupacao.meta.minima ? "NEUTRO" : ocupacao.percentual >= 40 ? "ATENCAO" : "RUIM"}
+                />
               </div>
-              <div className="text-right text-sm text-brand-tinta">
-                <p>
-                  <strong className="tabular-nums">{formatHoras(ocupacao.horasVendidas)}</strong> vendidas de{" "}
-                  <strong className="tabular-nums">{formatHoras(ocupacao.horasDisponiveis)}</strong>
+              <div className="grid gap-1 text-right max-sm:text-left">
+                <p className="text-sm font-medium leading-5 text-tinta">
+                  <strong className="font-bold tabular-nums">{formatHoras(ocupacao.horasVendidas)}</strong> vendidas de{" "}
+                  <strong className="font-bold tabular-nums">{formatHoras(ocupacao.horasDisponiveis)}</strong>
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <Frase>
                   {ocupacao.grade.salas} salas × {ocupacao.grade.horasPorDiaPorSala} h × {ocupacao.diasUteis} dia{ocupacao.diasUteis > 1 ? "s" : ""} úteis
-                </p>
+                </Frase>
               </div>
             </div>
             {/* A régua: 0 a 100%, com a faixa saudável (75–85%) marcada. */}
-            <div className="relative mt-3 h-4 overflow-hidden rounded-full bg-white/70">
-              <div
-                className="absolute inset-y-0 bg-emerald-200/80"
-                style={{ left: `${ocupacao.meta.minima}%`, width: `${ocupacao.meta.maxima - ocupacao.meta.minima}%` }}
-                title={`faixa saudável: ${ocupacao.meta.minima} a ${ocupacao.meta.maxima}%`}
+            <div className="grid gap-2">
+              <BarraFina
+                valor={ocupacao.percentual}
+                tom={ocupacao.percentual >= ocupacao.meta.minima ? "ok" : ocupacao.percentual >= 40 ? "atencao" : "erro"}
+                faixa={{ de: ocupacao.meta.minima, ate: ocupacao.meta.maxima }}
+                alta
+                rotulo={`Ocupação ${ocupacao.percentual}%; faixa saudável de ${ocupacao.meta.minima} a ${ocupacao.meta.maxima}%`}
               />
-              <div
-                className={cn("absolute inset-y-0 left-0 rounded-full", ocupacao.percentual >= ocupacao.meta.minima ? "bg-emerald-600" : ocupacao.percentual >= 40 ? "bg-amber-500" : "bg-red-500")}
-                style={{ width: `${Math.min(100, Math.max(1, ocupacao.percentual))}%` }}
-              />
+              <div className="flex justify-between gap-2 text-xs font-medium leading-4 text-tinta-2">
+                <span>0%</span>
+                <span>
+                  faixa saudável {ocupacao.meta.minima}–{ocupacao.meta.maxima}%
+                </span>
+                <span>100%</span>
+              </div>
             </div>
-            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-              <span>0%</span>
-              <span>faixa saudável {ocupacao.meta.minima}–{ocupacao.meta.maxima}%</span>
-              <span>100%</span>
-            </div>
-            <p className={cn("mt-3 leading-snug text-brand-tinta", apresentando ? "text-base" : "text-sm")}>{ocupacao.frase}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className={cn("font-medium text-tinta", textoMaior)}>{ocupacao.frase}</p>
+            <Frase>
               As horas vendidas já absorvem {moneyFin(ocupacao.custoFixoAbsorvido)} do custo fixo ao custo-hora da planilha (R$ 113,78). Horas disponíveis
               seguem a grade da planilha de precificação; quando a agenda estiver espelhada no app, passam a vir dela.
-            </p>
+            </Frase>
             {agendaEspelho.length ? (
-              <p className="mt-1 text-xs text-brand-tinta">
+              <p className="text-[13px] font-semibold leading-5 text-tinta">
                 Agenda espelhada ({agendaEspelho[0].origem}): {agendaEspelho.length} agendamento{agendaEspelho.length > 1 ? "s" : ""} no mês, {formatHoras(agendaMinutos / 60)} de agenda marcada —
                 compare com as horas vendidas para ver falta e sobra de sala.
               </p>
             ) : null}
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div>
-              <p className="mb-2 text-sm font-semibold text-brand-tinta">Horas vendidas dia a dia (cor = % das {ocupacao.grade.salas * ocupacao.grade.horasPorDiaPorSala} h do dia)</p>
-              <CalendarHeatGrid heat={heatOcupacao} formatValue={formatHoras} />
-            </div>
-            <div className="grid gap-4">
-              <div>
-                <p className="mb-2 text-sm font-semibold text-brand-tinta">O que ocupa a sala</p>
-                <RankBars points={ocupacao.porProduto.slice(0, 8).map((p) => ({ label: p.produto, value: p.horas }))} formatValue={formatHoras} emptyMessage="Nenhuma comanda com item de sala neste mês." />
-              </div>
-              <div>
-                <p className="mb-2 text-sm font-semibold text-brand-tinta">Horas vendidas por dia da semana</p>
-                <RankBars points={ocupacao.porDiaDaSemana} formatValue={formatHoras} color={chartColors.entrada} emptyMessage="Sem comandas neste mês." />
-              </div>
+          </BlocoSaber>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <BlocoSaber className="grid content-start gap-4">
+              <Rubrica as="h3">
+                Horas vendidas dia a dia (cor = % das {ocupacao.grade.salas * ocupacao.grade.horasPorDiaPorSala} h do dia)
+              </Rubrica>
+              <CalendarioDoMes calor={heatOcupacao} formatar={formatHoras} vazio="Nenhuma comanda lançada neste mês ainda — o calendário acende conforme a sala é vendida." />
+            </BlocoSaber>
+            <div className="grid content-start gap-4">
+              <BlocoSaber className="grid content-start gap-4">
+                <Rubrica as="h3">O que ocupa a sala</Rubrica>
+                <Ranking pontos={ocupacao.porProduto.slice(0, 8).map((p) => ({ label: p.produto, value: p.horas }))} formatar={formatHoras} vazio="Nenhuma comanda com item de sala neste mês." />
+              </BlocoSaber>
+              <BlocoSaber className="grid content-start gap-4">
+                <Rubrica as="h3">Horas vendidas por dia da semana</Rubrica>
+                <Ranking pontos={ocupacao.porDiaDaSemana} formatar={formatHoras} cor={CORES_GRAFICO.entrada} vazio="Sem comandas neste mês." />
+              </BlocoSaber>
             </div>
           </div>
         </div>
@@ -792,36 +833,40 @@ export function FinanceiroPainelPage() {
     },
     {
       chave: "semana",
-      titulo: `9. A semana em 8 números${semanaNumeros.parcial ? " (em andamento)" : ""}`,
+      numero: 9,
+      titulo: `A semana em 8 números${semanaNumeros.parcial ? " (em andamento)" : ""}`,
       corpo: (
         <div className="grid gap-4">
-          <p className={cn("leading-snug text-brand-tinta", apresentando ? "text-lg" : "text-sm")}>
-            {semanaNumeros.frase}
-            <InfoTip title="Como ler">
+          <p className={cn("font-medium text-tinta", apresentando ? "text-lg leading-7" : "text-sm leading-5")}>
+            {semanaNumeros.frase}{" "}
+            <InfoTip title="Como ler" className="align-middle">
               Oito números da semana de hoje (segunda a domingo), cada um com a frase que explica. A comparação é sempre com os MESMOS dias
               da semana anterior — segunda a quarta contra segunda a quarta — porque semana pela metade não se compara com semana fechada.
               Tudo vem das comandas, das contas, das tarefas do CRM e do totem de NPS.
             </InfoTip>
           </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {semanaNumeros.numeros.map((numero) => (
-              <div key={numero.chave} className={cn("rounded-xl border p-3", tomEstilo[numero.tom].card)}>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-oliva">{numero.rotulo}</p>
-                <p className={cn("mt-1 font-bold tabular-nums", tomEstilo[numero.tom].texto, apresentando ? "text-4xl" : "text-2xl")}>{numero.valor}</p>
-                <p className="mt-1 text-xs leading-snug text-muted-foreground first-letter:uppercase">{numero.frase}</p>
+              <div key={numero.chave} className="grid content-start gap-3 rounded-bloco bg-saber p-5 max-md:p-4">
+                <RubricaComTom rotulo={numero.rotulo} tom={numero.tom} />
+                <Numero texto={numero.valor} tamanho={tamanhoKpi} tom={tomDoNumero(numero.tom)} />
+                <Frase className="first-letter:uppercase">{numero.frase}</Frase>
               </div>
             ))}
           </div>
-          <div>
-            <p className="mb-2 text-sm font-semibold text-brand-tinta">
-              Ritmo do time — toques do CRM concluídos por pessoa{semanaNumeros.parcial ? " (até hoje)" : ""}
-            </p>
+          <BlocoSaber className="grid content-start gap-4">
+            <Rubrica as="h3">Ritmo do time — toques do CRM concluídos por pessoa{semanaNumeros.parcial ? " (até hoje)" : ""}</Rubrica>
             {semanaNumeros.ritmo.length ? (
-              <RankBars points={semanaNumeros.ritmo.map((r) => ({ label: `${r.nome}${r.toquesSemanaAnterior ? ` (semana anterior ${r.toquesSemanaAnterior})` : ""}`, value: r.toques }))} color={chartColors.entrada} formatValue={(v) => `${Math.round(v)} toque${Math.round(v) === 1 ? "" : "s"}`} emptyMessage="Nenhum toque concluído nesta semana." />
+              <Ranking
+                pontos={semanaNumeros.ritmo.map((r) => ({ label: `${r.nome}${r.toquesSemanaAnterior ? ` (semana anterior ${r.toquesSemanaAnterior})` : ""}`, value: r.toques }))}
+                cor={CORES_GRAFICO.resultado}
+                formatar={(v) => `${Math.round(v)} toque${Math.round(v) === 1 ? "" : "s"}`}
+                vazio="Nenhum toque concluído nesta semana."
+              />
             ) : (
-              <p className="text-sm text-muted-foreground">Nenhum toque do CRM concluído nesta semana ainda.</p>
+              <Frase>Nenhum toque do CRM concluído nesta semana ainda.</Frase>
             )}
-          </div>
+          </BlocoSaber>
         </div>
       ),
     },
@@ -843,302 +888,325 @@ export function FinanceiroPainelPage() {
     semanaEm8Numeros: { frase: semanaNumeros.frase, numeros: semanaNumeros.numeros.map((n) => ({ rotulo: n.rotulo, valor: n.valor, frase: n.frase })), ritmoDoTime: semanaNumeros.ritmo },
   };
 
+  async function fecharOuReabrirMes() {
+    const fechado = mesEstaFechado(monthKey, mesesFechados);
+    const nome = mesPorExtenso(monthKey);
+    const ok = await confirmar(fechado ? `Reabrir ${nome}?` : `Fechar ${nome}?`, {
+      corpo: fechado
+        ? "A equipe volta a poder mudar as comandas desse mês. Se o número mudar, avise a contabilidade."
+        : "Depois de fechado, só a gestão financeira muda comandas desse mês. Anexar comprovante continua liberado.",
+      confirmar: fechado ? "Reabrir" : "Fechar o mês",
+    });
+    if (!ok) return;
+    setFechandoMes(true);
+    try {
+      await fecharRemoteMes(monthKey, !fechado);
+      await queryClient.invalidateQueries({ queryKey: ["fin-mes-fechado"] });
+      toast(fechado ? `${nome} reaberto.` : `${nome} fechado. A equipe não muda mais as comandas desse mês.`, { tom: "ok" });
+    } catch (erro) {
+      toast(`Não deu para ${fechado ? "reabrir" : "fechar"} o mês: ${(erro as Error)?.message ?? "erro"}`, { tom: "erro", duracaoMs: 9000 });
+    } finally {
+      setFechandoMes(false);
+    }
+  }
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Painel do Mês" module="fin-gestao">
-      <div className={cn("mx-auto flex w-full flex-col gap-5", apresentando ? "max-w-6xl" : "max-w-6xl")}>
-        {/* ---- cabeçalho ---------------------------------------------------- */}
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="gold">Reunião de Líderes</Badge>
-            <Badge variant="muted">{financeiro.syncMode}</Badge>
-            {momento.emAndamento ? (
-              <Badge variant="outline">
-                dia {momento.dia} · {Math.round(momento.percorrido * 100)}% do mês
-              </Badge>
-            ) : null}
-            {registroSalvo?.apresentadoEm ? <Badge variant="muted">apresentado</Badge> : null}
-          </div>
-          <h1 className={cn("mt-3 flex flex-wrap items-center gap-2 leading-tight text-brand-musgo", apresentando ? "text-5xl" : "text-3xl sm:text-4xl")}>
-            <BarChart3 className={apresentando ? "h-10 w-10" : "h-7 w-7"} aria-hidden="true" />
-            Painel de {monthKeyLabel(monthKey)}
-            {momento.emAndamento ? (
-              <span className={cn("font-normal text-brand-oliva", apresentando ? "text-2xl" : "text-base")}>
-                · {momento.faseLabel}
+      <div className="mx-auto w-full max-w-[1320px]">
+        {/* ---- cabeçalho: o mês, a fase e o fio do mês --------------------- */}
+        <Cabecalho
+          sobrancelha="Resultados · Painel do mês"
+          titulo={
+            <>
+              Painel de <em>{mesMinusculo}</em> de {rotuloAno}{" "}
+              <InfoTip title="A apresentação se ajusta ao dia" className="align-middle">
+                Relatórios e Gestão Mensal viraram este painel. Quando você clica em "Apresentar", ele calcula em que
+                momento do mês estamos (começo, meio, reta final ou fechado) e muda o que enfatiza: no começo, o ritmo
+                necessário; no meio, a PROJEÇÃO de fechamento; na reta final, quanto falta por dia; com o mês fechado, o
+                resultado e a análise. A régua é a SUPER-SUPERMETA.
+              </InfoTip>
+            </>
+          }
+          frase={
+            <>
+              <strong>{tituloDaApresentacao(momento, projecao)}.</strong> {momento.foco}
+            </>
+          }
+          acoes={
+            <div className="flex flex-wrap items-end gap-2">
+              <Campo rotulo="Mês" className="w-48">
+                <Selecao
+                  id="painel-mes"
+                  value={monthKey}
+                  onChange={(event) => {
+                    setMonthKey(event.target.value);
+                    setBloco(0);
+                  }}
+                >
+                  {mesesDisponiveis.map((mes) => (
+                    <option key={mes} value={mes}>
+                      {monthKeyLabel(mes)}
+                    </option>
+                  ))}
+                </Selecao>
+              </Campo>
+              <Botao
+                variante="primario"
+                icone={apresentando ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
+                onClick={() => setApresentando((atual) => !atual)}
+                aria-pressed={apresentando}
+              >
+                {apresentando ? "Sair da apresentação" : "Apresentar"}
+              </Botao>
+            </div>
+          }
+          rodape={
+            momento.emAndamento ? <FioDoMes diasUteis={fioDiasUteis.total} hoje={fioDiasUteis.hoje} mes={rotuloMes} sobre="papel" /> : null
+          }
+        />
+
+        {/* ---- a barra da reunião: o que se faz com o painel ----------------- */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-y border-fio py-3 print:hidden">
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] font-semibold leading-5 text-tinta-2">
+            {apresentadoEm ? (
+              <span className="inline-flex items-center gap-1.5 text-ok">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                Apresentado em {apresentadoEm.slice(8, 10)}/{apresentadoEm.slice(5, 7)}
+              </span>
+            ) : (
+              <span>Ainda não marcado como apresentado.</span>
+            )}
+            {mesFechado ? (
+              <span className="inline-flex items-center gap-1.5 text-tinta">
+                <Lock className="h-4 w-4 text-tinta-2" aria-hidden="true" />
+                {mesPorExtenso(monthKey)} está fechado: as comandas desse mês só mudam pela gestão financeira.
               </span>
             ) : null}
-            <InfoTip title="A apresentação se ajusta ao dia">
-              Relatórios e Gestão Mensal viraram este painel. Quando você clica em "Apresentar", ele calcula em que
-              momento do mês estamos (começo, meio, reta final ou fechado) e muda o que enfatiza: no começo, o ritmo
-              necessário; no meio, a PROJEÇÃO de fechamento; na reta final, quanto falta por dia; com o mês fechado, o
-              resultado e a análise. A régua é a SUPER-SUPERMETA.
-            </InfoTip>
-          </h1>
-
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <div>
-              <Label htmlFor="painel-mes">Mês</Label>
-              <select
-                id="painel-mes"
-                value={monthKey}
-                onChange={(event) => {
-                  setMonthKey(event.target.value);
-                  setBloco(0);
-                }}
-                className="mt-1 block rounded-md border border-brand-oliva/25 bg-white/80 px-3 py-2 text-sm font-semibold text-brand-tinta"
-              >
-                {mesesDisponiveis.map((mes) => (
-                  <option key={mes} value={mes}>
-                    {monthKeyLabel(mes)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button type="button" className="gap-2" onClick={() => setApresentando((atual) => !atual)}>
-              {apresentando ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
-              {apresentando ? "Sair da apresentação" : "Apresentar"}
-            </Button>
-            <Button type="button" variant="outline" className="gap-2" onClick={copiarPontos}>
-              <Copy className="h-4 w-4" aria-hidden="true" /> Copiar os pontos
-            </Button>
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Botao tamanho="pq" icone={<Copy className="h-4 w-4" aria-hidden="true" />} onClick={copiarPontos}>
+              Copiar os pontos
+            </Botao>
             {podeFecharMeses && (mesEstaFechado(monthKey, mesesFechados) || podeFecharOMes(monthKey, hoje)) ? (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={fechandoMes}
-                onClick={async () => {
-                  const fechado = mesEstaFechado(monthKey, mesesFechados);
-                  const nome = mesPorExtenso(monthKey);
-                  const ok = await confirmar(fechado ? `Reabrir ${nome}?` : `Fechar ${nome}?`, {
-                    corpo: fechado
-                      ? "A equipe volta a poder mudar as comandas desse mês. Se o número mudar, avise a contabilidade."
-                      : "Depois de fechado, só a gestão financeira muda comandas desse mês. Anexar comprovante continua liberado.",
-                    confirmar: fechado ? "Reabrir" : "Fechar o mês",
-                  });
-                  if (!ok) return;
-                  setFechandoMes(true);
-                  try {
-                    await fecharRemoteMes(monthKey, !fechado);
-                    await queryClient.invalidateQueries({ queryKey: ["fin-mes-fechado"] });
-                    toast(fechado ? `${nome} reaberto.` : `${nome} fechado. A equipe não muda mais as comandas desse mês.`, { tom: "ok" });
-                  } catch (erro) {
-                    toast(`Não deu para ${fechado ? "reabrir" : "fechar"} o mês: ${(erro as Error)?.message ?? "erro"}`, { tom: "erro", duracaoMs: 9000 });
-                  } finally {
-                    setFechandoMes(false);
-                  }
-                }}
-              >
+              <Botao tamanho="pq" icone={<Lock className="h-4 w-4" aria-hidden="true" />} carregando={fechandoMes} disabled={fechandoMes} onClick={() => void fecharOuReabrirMes()}>
                 {mesEstaFechado(monthKey, mesesFechados) ? "Reabrir o mês" : "Fechar o mês"}
-              </Button>
+              </Botao>
             ) : null}
             {!readOnly ? (
               <>
-                <Button type="button" variant="outline" onClick={() => salvar(false)}>
+                <Botao tamanho="pq" onClick={() => salvar(false)}>
                   Salvar
-                </Button>
-                <Button type="button" variant="outline" className="gap-2" onClick={() => salvar(true)}>
-                  <CalendarCheck className="h-4 w-4" aria-hidden="true" /> Marcar como apresentado
-                </Button>
+                </Botao>
+                <Botao tamanho="pq" icone={<CalendarCheck className="h-4 w-4" aria-hidden="true" />} onClick={() => salvar(true)}>
+                  Marcar como apresentado
+                </Botao>
               </>
             ) : null}
           </div>
-          {feedback ? <p className="mt-3 text-sm font-semibold text-brand-musgo">{feedback}</p> : null}
-          {mesEstaFechado(monthKey, mesesFechados) ? (
-            <p className="mt-3 text-xs font-semibold text-brand-tinta/80">
-              {mesPorExtenso(monthKey)} está fechado: as comandas desse mês só mudam pela gestão financeira.
-            </p>
-          ) : null}
-          {momento.emAndamento ? (
-            <p className="mt-3 rounded-md border border-brand-dourado/40 bg-brand-creme/40 px-3 py-2 text-xs leading-snug text-brand-tinta">
-              Estamos no <strong>{momento.faseLabel}</strong> ({momento.diasUteisPassados} de {momento.diasUteisTotais} dias
-              úteis). As contas do mês inteiro já estão lançadas e o faturamento ainda entra — por isso margem e ponto de
+        </div>
+
+        {feedback ? <RecadoDaTela className="mb-6">{feedback}</RecadoDaTela> : null}
+        {momento.emAndamento ? (
+          <p className="mb-8 flex items-start gap-2 text-[13px] font-medium leading-5 text-tinta-2">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>
+              Estamos no <strong className="font-bold text-tinta">{momento.faseLabel}</strong> ({momento.diasUteisPassados} de {momento.diasUteisTotais} dias
+              úteis{fioDiasUteis.total !== momento.diasUteisTotais ? " na conta da projeção, que vai de segunda a sexta sem tirar feriado" : ""}). As contas do mês inteiro já estão lançadas e o faturamento ainda entra — por isso margem e ponto de
               equilíbrio só aparecem com o mês fechado, e as comparações são feitas no{" "}
-              <strong>mesmo ponto do mês</strong> (dia 1 até hoje, nos dois meses).
-            </p>
-          ) : null}
-        </motion.section>
-
-        {/* ---- IA sobre os agregados (15/09/2026): resumo narrado + perguntar ao 360 ---- */}
-        {financeiro.syncMode !== "local" ? (
-          <div className="grid gap-4">
-            <NarrativaDoMesCard monthKey={monthKey} agregados={agregadosParaIa} podeGerar={!readOnly} apresentando={apresentando} />
-            {!apresentando ? <PerguntarAo360Card contexto={agregadosParaIa} tela="painel" /> : null}
-          </div>
+              <strong className="font-bold text-tinta">mesmo ponto do mês</strong> (dia 1 até hoje, nos dois meses).
+            </span>
+          </p>
         ) : null}
-        {/* ---- MODO APRESENTAÇÃO: um bloco por vez -------------------------- */}
-        {apresentando ? (
-          <>
-            <Card className="border-brand-musgo/30 bg-white/80">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-2xl text-brand-musgo">
-                  {blocoAtual.titulo}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    {bloco + 1} de {blocos.length}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>{blocoAtual.corpo}</CardContent>
-            </Card>
-            <div className="sticky bottom-3 flex items-center justify-between gap-2 rounded-xl border border-brand-oliva/25 bg-brand-papel/95 p-2 shadow-calm backdrop-blur">
-              <Button type="button" variant="outline" className="gap-2" disabled={bloco === 0} onClick={() => setBloco((n) => n - 1)}>
-                <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Anterior
-              </Button>
-              <div className="flex gap-1.5">
-                {blocos.map((item, indice) => (
-                  <button
-                    key={item.chave}
-                    type="button"
-                    aria-label={item.titulo}
-                    onClick={() => setBloco(indice)}
-                    className={cn("h-2.5 w-2.5 rounded-full transition", indice === bloco ? "bg-brand-musgo" : "bg-brand-oliva/30")}
-                  />
-                ))}
-              </div>
-              <Button
-                type="button"
-                className="gap-2"
-                disabled={bloco === blocos.length - 1}
-                onClick={() => setBloco((n) => n + 1)}
-              >
-                Próximo <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* ---- tudo aberto, para trabalhar ----------------------------- */}
-            {blocos.map((item) => (
-              <Card key={item.chave} className="border-brand-oliva/20 bg-white/70">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-                    {item.chave === "pontos" ? <Lightbulb className="h-5 w-5 text-brand-dourado" aria-hidden="true" /> : null}
-                    {item.chave === "lucros" ? <GitMerge className="h-5 w-5 text-brand-musgo" aria-hidden="true" /> : null}
-                    {item.titulo}
-                    {item.chave === "pontos" ? <Badge variant="gold">{pontos.length}</Badge> : null}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>{item.corpo}</CardContent>
-              </Card>
-            ))}
 
-            {/* ---- comparativo com explicações (o trabalho do dia 5) ------- */}
-            {/* NUNCA COMPARAR MÊS PARCIAL COM MÊS FECHADO (regra do Lucas). Até
-                29/09/2026 este card aparecia também com o mês em andamento. */}
-            {momento.emAndamento ? (
-              <Card className="border-brand-oliva/20 bg-white/70">
-                <CardContent className="flex items-start gap-2 p-4 text-sm text-muted-foreground">
-                  <ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-                  O comparativo com {monthKeyLabel(mesAnterior)} aparece quando {monthKeyLabel(monthKey)} fechar. Comparar um mês pela
-                  metade com um mês inteiro faz qualquer número parecer queda.
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="border-brand-oliva/20 bg-white/70">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-                    <ClipboardCheck className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-                    Comparativo com {monthKeyLabel(mesAnterior)} — e a explicação de cada número
-                    <InfoTip title="Como usar">
+        <div className="grid gap-12">
+          {/* ---- IA sobre os agregados (15/09/2026): resumo narrado + perguntar ao 360 ---- */}
+          {financeiro.syncMode !== "local" ? (
+            <div className="grid gap-4">
+              <NarrativaDoMesCard monthKey={monthKey} agregados={agregadosParaIa} podeGerar={!readOnly} apresentando={apresentando} />
+              {!apresentando ? <PerguntarAo360Card contexto={agregadosParaIa} tela="painel" /> : null}
+            </div>
+          ) : null}
+
+          {/* ---- MODO APRESENTAÇÃO: um bloco por vez -------------------------- */}
+          {apresentando ? (
+            <div className="grid gap-4">
+              <section aria-labelledby={`painel-${blocoAtual.chave}`} className="grid gap-6 rounded-painel border border-fio bg-folha p-10 max-md:p-5">
+                <TituloDaSecao
+                  id={`painel-${blocoAtual.chave}`}
+                  numero={blocoAtual.numero}
+                  apresentando
+                  ajuda={blocoAtual.ajuda}
+                  acoes={
+                    <Rubrica className="tabular-nums">
+                      {bloco + 1} de {blocos.length}
+                    </Rubrica>
+                  }
+                >
+                  {blocoAtual.titulo}
+                </TituloDaSecao>
+                {blocoAtual.corpo}
+              </section>
+              <nav
+                aria-label="Blocos da apresentação"
+                className="sticky bottom-3 z-10 flex items-center justify-between gap-2 rounded-painel border border-fio bg-folha p-2 shadow-flutua max-md:bottom-[calc(96px+env(safe-area-inset-bottom))]"
+              >
+                <Botao icone={<ArrowLeft className="h-4 w-4" aria-hidden="true" />} disabled={bloco === 0} onClick={() => setBloco((n) => n - 1)}>
+                  Anterior
+                </Botao>
+                <span className="text-[13px] font-bold tabular-nums text-tinta-2 sm:hidden">
+                  {bloco + 1} de {blocos.length}
+                </span>
+                <div className="flex flex-wrap justify-center max-sm:hidden">
+                  {blocos.map((item, indice) => (
+                    <button
+                      key={item.chave}
+                      type="button"
+                      aria-label={`${item.numero}. ${item.titulo}`}
+                      aria-current={indice === bloco ? "step" : undefined}
+                      onClick={() => setBloco(indice)}
+                      className="grid h-8 w-6 place-items-center rounded-controle focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
+                    >
+                      <span className={cn("block h-2 rounded-full transition-all duration-150 ease-papel", indice === bloco ? "w-4 bg-musgo" : "w-2 bg-fio-2")} />
+                    </button>
+                  ))}
+                </div>
+                <Botao variante="primario" disabled={bloco === blocos.length - 1} onClick={() => setBloco((n) => n + 1)}>
+                  Próximo <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Botao>
+              </nav>
+            </div>
+          ) : (
+            <>
+              {/* ---- tudo aberto, para trabalhar ----------------------------- */}
+              {blocos.map((item) => (
+                <section key={item.chave} aria-labelledby={`painel-${item.chave}`} className="grid gap-4">
+                  <TituloDaSecao id={`painel-${item.chave}`} numero={item.numero} ajuda={item.ajuda}>
+                    {item.titulo}
+                  </TituloDaSecao>
+                  {item.corpo}
+                </section>
+              ))}
+
+              {/* ---- comparativo com explicações (o trabalho do dia 5) ------- */}
+              {/* NUNCA COMPARAR MÊS PARCIAL COM MÊS FECHADO (regra do Lucas). Até
+                  29/09/2026 este card aparecia também com o mês em andamento. */}
+              {momento.emAndamento ? (
+                <BlocoSaber as="section" aria-label="Comparativo com o mês anterior" className="flex items-start gap-3">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" />
+                  <p className="text-sm font-medium leading-5 text-tinta-2">
+                    O comparativo com {monthKeyLabel(mesAnterior)} aparece quando {monthKeyLabel(monthKey)} fechar. Comparar um mês pela
+                    metade com um mês inteiro faz qualquer número parecer queda.
+                  </p>
+                </BlocoSaber>
+              ) : (
+                <section aria-labelledby="painel-comparativo" className="grid gap-4">
+                  <TituloDaSecao id="painel-comparativo">
+                    Comparativo com {monthKeyLabel(mesAnterior)} — e a explicação de cada número{" "}
+                    <InfoTip title="Como usar" className="align-middle">
                       Nenhum número é digitado: todos vêm dos lançamentos. Você escreve só a EXPLICAÇÃO de cada linha — é o
                       que a reunião cobra. O texto fica salvo e todo mundo vê o mesmo.
                     </InfoTip>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2">
-                  {indicadores.map((indicador) => {
-                    const subiu = indicador.variacao > 0;
-                    return (
-                      <div key={indicador.key} className="rounded-lg border border-brand-oliva/16 bg-white/80 p-3">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <p className="text-sm font-semibold text-brand-tinta">{indicador.label}</p>
-                          <p className="flex items-center gap-2 text-sm">
-                            <span className="text-muted-foreground">{formatarValor(indicador.anterior, indicador.formato)}</span>
-                            <span aria-hidden="true">→</span>
-                            <strong className="tabular-nums text-brand-musgo">{formatarValor(indicador.atual, indicador.formato)}</strong>
-                            {indicador.variacao !== 0 ? (
-                              <span className={cn("flex items-center gap-0.5 text-xs font-semibold", subiu ? "text-emerald-700" : "text-red-700")}>
-                                {subiu ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />}
-                                {formatarValor(Math.abs(indicador.variacao), indicador.formato)}
-                                {indicador.variacaoPercent !== null
-                                  ? ` (${indicador.variacaoPercent > 0 ? "+" : ""}${indicador.variacaoPercent.toFixed(1).replace(".", ",")}%)`
-                                  : ""}
-                              </span>
-                            ) : null}
-                          </p>
-                        </div>
-                        <textarea
-                          value={explicacoes[indicador.key] ?? ""}
-                          onChange={(event) => setExplicacoes((atual) => ({ ...atual, [indicador.key]: event.target.value }))}
-                          onBlur={() => (readOnly ? undefined : salvar(false))}
-                          disabled={readOnly}
-                          rows={2}
-                          placeholder="Por que este número mudou?"
-                          className="mt-2 w-full rounded-md border border-input bg-white/72 px-3 py-2 text-sm"
-                        />
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            )}
+                  </TituloDaSecao>
+                  <BlocoFolha className="overflow-hidden">
+                    <ul>
+                      {indicadores.map((indicador) => {
+                        const subiu = indicador.variacao > 0;
+                        return (
+                          <li key={indicador.key} className="grid gap-3 border-t border-fio px-6 py-4 first:border-t-0 max-md:px-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
+                            <div className="grid gap-1">
+                              <label htmlFor={`explicacao-${indicador.key}`} className="text-sm font-bold leading-5 text-tinta">
+                                {indicador.label}
+                              </label>
+                              <p className="flex flex-wrap items-center gap-x-2 text-sm leading-5 tabular-nums">
+                                <span className="font-medium text-tinta-2">{formatarValor(indicador.anterior, indicador.formato)}</span>
+                                <ArrowRight className="h-3.5 w-3.5 text-tinta-2" aria-label="para" />
+                                <strong className="font-bold text-tinta">{formatarValor(indicador.atual, indicador.formato)}</strong>
+                                {indicador.variacao !== 0 ? (
+                                  <span className={cn("text-[13px] font-bold", subiu ? "text-ok" : "text-erro")}>
+                                    {subiu ? "subiu" : "caiu"} {formatarValor(Math.abs(indicador.variacao), indicador.formato)}
+                                    {indicador.variacaoPercent !== null
+                                      ? ` (${indicador.variacaoPercent > 0 ? "+" : ""}${indicador.variacaoPercent.toFixed(1).replace(".", ",")}%)`
+                                      : ""}
+                                  </span>
+                                ) : null}
+                              </p>
+                            </div>
+                            <textarea
+                              id={`explicacao-${indicador.key}`}
+                              value={explicacoes[indicador.key] ?? ""}
+                              onChange={(event) => setExplicacoes((atual) => ({ ...atual, [indicador.key]: event.target.value }))}
+                              onBlur={() => (readOnly ? undefined : salvar(false))}
+                              disabled={readOnly}
+                              rows={2}
+                              placeholder="Por que este número mudou?"
+                              className={classeDoTexto}
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </BlocoFolha>
+                </section>
+              )}
 
-            {/* ---- PDCA --------------------------------------------------- */}
-            <Card className="border-brand-dourado/40 bg-brand-creme/30">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Análise do mês e plano de ação (PDCA)</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-2">
-                {PDCA_CAMPOS.map((campo) => (
-                  <div key={campo.key}>
-                    <Label>{campo.titulo}</Label>
-                    <p className="mb-1 text-[11px] leading-snug text-muted-foreground">{campo.ajuda}</p>
-                    <textarea
-                      value={pdca[campo.key] ?? ""}
-                      onChange={(event) => setPdca((atual) => ({ ...atual, [campo.key]: event.target.value }))}
-                      onBlur={() => (readOnly ? undefined : salvar(false))}
-                      disabled={readOnly}
-                      rows={4}
-                      className="w-full rounded-md border border-input bg-white/72 px-3 py-2 text-sm"
-                    />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+              {/* ---- PDCA --------------------------------------------------- */}
+              <section aria-labelledby="painel-pdca" className="grid gap-4">
+                <TituloDaSecao id="painel-pdca">Análise do mês e plano de ação (PDCA)</TituloDaSecao>
+                <BlocoFolha respiro className="grid gap-6 md:grid-cols-2">
+                  {PDCA_CAMPOS.map((campo) => (
+                    <div key={campo.key} className="grid content-start gap-2">
+                      <label htmlFor={`pdca-${campo.key}`} className="text-[13px] font-bold leading-5 text-tinta">
+                        {campo.titulo}
+                      </label>
+                      <p className="text-[13px] font-medium leading-5 text-tinta-2">{campo.ajuda}</p>
+                      <textarea
+                        id={`pdca-${campo.key}`}
+                        value={pdca[campo.key] ?? ""}
+                        onChange={(event) => setPdca((atual) => ({ ...atual, [campo.key]: event.target.value }))}
+                        onBlur={() => (readOnly ? undefined : salvar(false))}
+                        disabled={readOnly}
+                        rows={4}
+                        className={classeDoTexto}
+                      />
+                    </div>
+                  ))}
+                </BlocoFolha>
+              </section>
 
-            {/* ---- resumo de fechamento (a folha da reunião) --------------- */}
-            <ResumoFechamentoCard
-              sales={financeiro.sales}
-              expenses={financeiro.expensesPorCategoria}
-              categories={financeiro.categories}
-              provisionRules={financeiro.provisionRules}
-              invoices={financeiro.invoices}
-              monthKey={monthKey}
-              meta={metaDoMes}
-              escrito={escrito}
-              onEscritoChange={(proximo) => {
-                setEscrito(proximo);
-                setFeedback("");
-              }}
-              onSalvar={() => salvar(false)}
-              readOnly={readOnly}
-            />
+              {/* ---- resumo de fechamento (a folha da reunião) --------------- */}
+              <ResumoFechamentoCard
+                sales={financeiro.sales}
+                expenses={financeiro.expensesPorCategoria}
+                categories={financeiro.categories}
+                provisionRules={financeiro.provisionRules}
+                invoices={financeiro.invoices}
+                monthKey={monthKey}
+                meta={metaDoMes}
+                escrito={escrito}
+                onEscritoChange={(proximo) => {
+                  setEscrito(proximo);
+                  setFeedback("");
+                }}
+                onSalvar={() => salvar(false)}
+                readOnly={readOnly}
+              />
 
-            {/* ---- arquivos para a contabilidade -------------------------- */}
-            <RelatoriosContabilidadeCard
-              sales={financeiro.sales}
-              expenses={financeiro.expensesPorCategoria}
-              categories={financeiro.categories}
-              savingsMoves={financeiro.savingsMoves}
-              crediarioProfits={financeiro.crediarioProfits}
-              purchases={financeiro.purchases}
-              monthKey={monthKey}
-              mostrarSeletor={false}
-            />
-          </>
-        )}
+              {/* ---- arquivos para a contabilidade -------------------------- */}
+              <RelatoriosContabilidadeCard
+                sales={financeiro.sales}
+                expenses={financeiro.expensesPorCategoria}
+                categories={financeiro.categories}
+                savingsMoves={financeiro.savingsMoves}
+                crediarioProfits={financeiro.crediarioProfits}
+                purchases={financeiro.purchases}
+                monthKey={monthKey}
+                mostrarSeletor={false}
+              />
+
+              <OrigemDosDados modo={financeiro.syncMode} />
+            </>
+          )}
+        </div>
       </div>
     </AccessGate>
   );

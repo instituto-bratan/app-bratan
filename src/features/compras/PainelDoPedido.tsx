@@ -394,19 +394,11 @@ function PeDoPainel({ pedido, acoes, aprovando, ocupado, handlers, naGaveta }: P
         onAprovar={handlers.onAprovar}
         onDevolver={handlers.onDevolver}
         onRecusar={handlers.onRecusar}
-        // Ao lado, no monitor largo (≥ 1400 px), o Recusar encosta o desenho na margem (como na
-        // prancha) para os três caberem numa linha. No painel estreito (1280–1399 px) eles não
-        // cabem: o Aprovar ocupa a linha de cima e Devolver | Recusar dividem a de baixo — o
-        // Recusar continua na ponta, longe do Aprovar, em vez de cair sozinho numa linha (08/10/2026).
-        className={
-          naGaveta
-            ? "border-t-0 bg-transparent p-0 max-md:p-0"
-            : cn(
-                "min-[1400px]:[&>div:last-child>button:last-child]:-mr-4",
-                "max-[1399px]:[&>div:last-child]:grid max-[1399px]:[&>div:last-child]:grid-cols-2",
-                "max-[1399px]:[&>div:last-child>button:first-child]:col-span-2 max-[1399px]:[&>div:last-child>button:last-child]:ml-0",
-              )
-        }
+        // O painel estreito (Aprovar em cima, Devolver | Recusar embaixo) e o Recusar com a palavra
+        // na margem quando os três cabem numa linha moram na própria BarraDecisao desde 08/10/2026
+        // (etapa 4): ela mede os botões em vez de olhar a largura da janela. Na gaveta, o rodapé
+        // já tem moldura e respiro.
+        className={naGaveta ? "border-t-0 bg-transparent p-0 max-md:p-0" : undefined}
       />
     );
   }

@@ -1,18 +1,22 @@
+// PERFIL DO COLABORADOR — redesenho Papel & Musgo, etapa 4 (08/10/2026).
+//
+// Só leitura: o login, as datas do cadastro e o que o CARGO libera. Mudou a
+// forma: um cabeçalho com o nome e a frase do cargo, o acesso num bloco de
+// leitura (saber) e as permissões do cargo numa lista (itens do mesmo tipo em
+// lista, não em cartões). Editar e criar acesso continuam em Colaboradores.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, KeyRound, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, CheckCircle2, LockKeyhole, ShieldCheck, UserRound } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Cabecalho, LinkSeta, botaoClasses } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, cargoGroup, cargoLabels, seededColaboradores } from "@/lib/access";
 import { readLocalValue } from "@/lib/localStore";
 import { listRemoteColaboradores } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import { accessMatrix, allowedModuleCount, colaboradoresStorageKey } from "./colaboradoresData";
+import { CabecaDaFolha, Etiqueta, RUBRICA, Recado, TituloDoSaber, Vazio } from "./pecasAjustes";
 
 function formatDateTime(dateString?: string | null) {
   if (!dateString) return "Não informado";
@@ -39,141 +43,106 @@ export function ColaboradorPerfilPage() {
   const colaboradores = useRemote ? colaboradoresQuery.data ?? [] : localColaboradores;
   const colaborador = colaboradores.find((item) => item.id === id);
 
+  const voltar = (
+    <Link to="/administracao/colaboradores" className={cn(botaoClasses({ variante: "fantasma", tamanho: "pq" }), "w-fit -ml-3 max-md:h-10")}>
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+      Voltar para colaboradores
+    </Link>
+  );
+
+  const liberados = colaborador ? allowedModuleCount(colaborador.cargo) : 0;
+
   return (
     <AccessGate allowed={canAdministracao} label="Perfil do colaborador">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <div>
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/administracao/colaboradores">
-              <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
-              Voltar para colaboradores
-            </Link>
-          </Button>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <div className="grid gap-4">
+          {voltar}
+          {colaboradoresQuery.isError ? (
+            <Recado tom="erro">Não foi possível carregar este perfil do Supabase. Confira RLS e vínculo do usuário.</Recado>
+          ) : null}
+          <Cabecalho
+            className="mb-0 max-md:mb-0"
+            sobrancelha={colaborador ? "Ajustes · Perfil" : "Ajustes · Colaboradores"}
+            titulo={colaborador ? colaborador.nome : "Perfil não encontrado"}
+            frase={
+              colaborador ? (
+                <>
+                  <strong>{cargoLabels[colaborador.cargo]}</strong> ({cargoGroup(colaborador.cargo).toLowerCase()}) · {colaborador.email}. O cargo libera{" "}
+                  <strong>
+                    {liberados} de {accessMatrix.length}
+                  </strong>{" "}
+                  áreas do app.
+                </>
+              ) : (
+                "O colaborador pode ter sido removido ou ainda não foi carregado."
+              )
+            }
+          />
         </div>
 
-        {colaboradoresQuery.isError ? (
-          <Card className="border-destructive/30 bg-destructive/5 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-destructive">
-                Não foi possível carregar este perfil do Supabase. Confira RLS e vínculo do usuário.
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
-
         {!colaborador ? (
-          <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-            <CardContent className="grid min-h-64 place-items-center p-8 text-center">
-              <div>
-                <UserRound className="mx-auto mb-4 h-10 w-10 text-brand-oliva" aria-hidden="true" />
-                <h1 className="text-3xl text-brand-musgo">Perfil não encontrado</h1>
-                <p className="mt-2 text-sm text-muted-foreground">O colaborador pode ter sido removido ou ainda não foi carregado.</p>
-              </div>
-            </CardContent>
-          </Card>
+          <BlocoSaber>
+            <Vazio icone={<UserRound />} titulo="Nada para mostrar aqui.">
+              Volte para a lista de colaboradores e abra o perfil de novo.
+            </Vazio>
+          </BlocoSaber>
         ) : (
-          <>
-            <motion.section
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-              className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-            >
-              <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-                <div>
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    <Badge variant="gold">Perfil</Badge>
-                    <Badge variant="outline">{cargoLabels[colaborador.cargo]}</Badge>
-                    <Badge variant="muted">{cargoGroup(colaborador.cargo)}</Badge>
-                  </div>
-                  <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">{colaborador.nome}</h1>
-                  <p className="mt-3 flex max-w-2xl items-center gap-2 text-base leading-7 text-muted-foreground">
-                    <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    {colaborador.email}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-brand-musgo">{allowedModuleCount(colaborador.cargo)}</p>
-                  <p className="text-xs font-semibold uppercase text-brand-oliva">módulos liberados</p>
-                </div>
+          <div className="grid items-start gap-8 max-md:gap-6 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+            <BlocoSaber as="aside" aria-labelledby="perfil-acesso" className="grid gap-5">
+              <TituloDoSaber id="perfil-acesso" className="mb-0">
+                Acesso
+              </TituloDoSaber>
+              <div>
+                <p className={RUBRICA}>Login</p>
+                <p className="mt-2 flex items-center gap-2 text-[15px] font-bold leading-6 text-tinta">
+                  {colaborador.auth_id ? (
+                    <CheckCircle2 className="h-4 w-4 text-ok" aria-hidden="true" />
+                  ) : (
+                    <LockKeyhole className="h-4 w-4 text-atencao" aria-hidden="true" />
+                  )}
+                  {colaborador.auth_id ? "Acesso ativo" : "Sem acesso criado"}
+                </p>
               </div>
-            </motion.section>
+              <div className="border-t border-fio pt-4">
+                <p className={RUBRICA}>Cadastro</p>
+                <p className="mt-2 text-sm font-medium leading-6 text-tinta-2">
+                  Criado em <span className="tabular-nums text-tinta">{formatDateTime(colaborador.created_at)}</span>
+                </p>
+                <p className="text-sm font-medium leading-6 text-tinta-2">
+                  Atualizado em <span className="tabular-nums text-tinta">{formatDateTime(colaborador.updated_at)}</span>
+                </p>
+              </div>
+              <LinkSeta to="/administracao/colaboradores">Editar dados ou criar acesso</LinkSeta>
+              <p className="border-t border-fio pt-4 text-[13px] font-medium leading-5 text-tinta-2">
+                <span className={cn(RUBRICA, "mb-1 block")}>Regra operacional</span>
+                A coordenação cadastra colaboradores nesta área. A segurança real continua nas políticas RLS do Supabase.
+              </p>
+            </BlocoSaber>
 
-            <div className="grid gap-5 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
-              <section className="space-y-4">
-                <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <KeyRound className="h-5 w-5" aria-hidden="true" />
-                      Acesso
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4">
-                      <p className="text-xs font-semibold uppercase text-brand-oliva">Login</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        {colaborador.auth_id ? (
-                          <CheckCircle2 className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-                        ) : (
-                          <LockKeyhole className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                        )}
-                        <p className="font-semibold text-brand-tinta">{colaborador.auth_id ? "Acesso ativo" : "Sem acesso criado"}</p>
+            <BlocoFolha as="section" aria-labelledby="perfil-permissoes" className="min-w-0 overflow-hidden">
+              <CabecaDaFolha id="perfil-permissoes" icone={<ShieldCheck />} titulo="Permissões do cargo" resumo={`${liberados} liberadas`} />
+              <ul>
+                {accessMatrix.map((item) => {
+                  const allowed = item.allowed(colaborador.cargo);
+
+                  return (
+                    <li key={item.label} className="flex items-start gap-3 border-t border-fio px-6 py-3.5 max-md:px-4">
+                      {allowed ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-ok" aria-hidden="true" />
+                      ) : (
+                        <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className={cn("text-sm font-bold leading-5", allowed ? "text-tinta" : "text-tinta-2")}>{item.label}</p>
+                        <p className="mt-0.5 text-[13px] font-medium leading-5 text-tinta-2">{item.description}</p>
                       </div>
-                    </div>
-                    <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4">
-                      <p className="text-xs font-semibold uppercase text-brand-oliva">Cadastro</p>
-                      <p className="mt-2 text-sm text-muted-foreground">Criado em {formatDateTime(colaborador.created_at)}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Atualizado em {formatDateTime(colaborador.updated_at)}</p>
-                    </div>
-                    <Button asChild variant="outline" className="w-full">
-                      <Link to="/administracao/colaboradores">Editar dados ou criar acesso</Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-brand-dourado/45 bg-brand-creme/35 shadow-none">
-                  <CardContent className="p-4">
-                    <p className="text-xs font-semibold uppercase text-brand-oliva">Regra operacional</p>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      A coordenação cadastra colaboradores nesta área. A segurança real continua nas políticas RLS do Supabase.
-                    </p>
-                  </CardContent>
-                </Card>
-              </section>
-
-              <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-                    Permissões do cargo
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {accessMatrix.map((item) => {
-                      const allowed = item.allowed(colaborador.cargo);
-
-                      return (
-                        <div
-                          key={item.label}
-                          className={cn(
-                            "rounded-lg border p-4 transition",
-                            allowed ? "border-brand-oliva/20 bg-white/70" : "border-brand-oliva/12 bg-muted/35 opacity-75",
-                          )}
-                        >
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <p className="font-semibold text-brand-tinta">{item.label}</p>
-                            <Badge variant={allowed ? "gold" : "muted"}>{allowed ? "Liberado" : "Bloqueado"}</Badge>
-                          </div>
-                          <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </>
+                      <Etiqueta tom={allowed ? "ok" : "neutro"}>{allowed ? "Liberado" : "Bloqueado"}</Etiqueta>
+                    </li>
+                  );
+                })}
+              </ul>
+            </BlocoFolha>
+          </div>
         )}
       </div>
     </AccessGate>

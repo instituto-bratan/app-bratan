@@ -6,14 +6,18 @@
 // CALCULA o que sai dos lançamentos (cinza, sem campo para digitar) e a pessoa
 // só preenche o que é decisão de reunião ou o que só quem olha o banco sabe
 // (fundo creme). No fim, "Imprimir" devolve a folha no formato que ele leva.
+//
+// REDESENHO (08/10/2026, Papel & Musgo): o cartão é uma folha (tem campos para
+// preencher); dentro dela, o que o app calcula mora no "saber" (sem campo, em
+// razão rótulo → valor) e o que se digita fica em campos com rótulo em cima. A
+// folha impressa (imprimir) é exatamente a mesma de antes.
 import { useMemo } from "react";
 import { FileText, Printer } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { BlocoFolha, BlocoSaber, Botao } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { Campo, Razao, classeDoCampo, classeDoCampoNumero, tabela } from "./pecasBancoFechamento";
+import { Numero, Rubrica, classeDoTexto } from "./pecasResultados";
 import {
   moneyFin,
   monthKeyLabel,
@@ -26,7 +30,6 @@ import {
   buildResumoFechamento,
   CATEGORIA_IMPOSTOS_PROVISAO,
   DIVISAO_LUCRO,
-  fechamentoEscritoVazio,
   type FechamentoEscrito,
 } from "./resumoFechamento";
 
@@ -78,7 +81,7 @@ export function ResumoFechamentoCard({
     onBlur: () => (readOnly ? undefined : onSalvar?.()),
     disabled: readOnly,
     rows: 3,
-    className: "mt-1 w-full rounded-md border border-input bg-white/72 px-3 py-2 text-sm",
+    className: classeDoTexto,
   });
 
   const campo = (chave: keyof FechamentoEscrito) => ({
@@ -165,180 +168,184 @@ export function ResumoFechamentoCard({
     janela.document.close();
   }
 
-  const Derivado = ({ rotulo, valor, tom }: { rotulo: string; valor: string; tom?: "bom" | "ruim" }) => (
-    <div className="flex items-baseline justify-between gap-3 border-b border-brand-oliva/12 py-1.5 last:border-0">
-      <span className="text-sm text-muted-foreground">{rotulo}</span>
-      <span className={cn("text-sm font-bold tabular-nums", tom === "bom" ? "text-emerald-700" : tom === "ruim" ? "text-rose-700" : "text-brand-tinta")}>
-        {valor}
-      </span>
-    </div>
-  );
+  const tomDe = (valor: number) => (valor >= 0 ? ("ok" as const) : ("erro" as const));
 
   return (
-    <Card className="border-brand-dourado/40 bg-white/70">
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-            <FileText className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-            Resumo de fechamento — {monthKeyLabel(monthKey)}
-            <InfoTip title="O que é digitado e o que é calculado">
+    <BlocoFolha as="section" aria-labelledby={`resumo-fechamento-${monthKey}`} className="grid gap-6 p-6 max-md:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id={`resumo-fechamento-${monthKey}`} className="flex items-start gap-2 text-xl font-bold leading-7 text-tinta">
+          <FileText className="mt-1 h-5 w-5 shrink-0 stroke-oliva" aria-hidden="true" />
+          <span className="min-w-0">
+            Resumo de fechamento — {monthKeyLabel(monthKey)}{" "}
+            <InfoTip className="align-middle" title="O que é digitado e o que é calculado">
               O que sai dos lançamentos aparece pronto, sem campo: entrada, saída, meta, provisões e o lucro. Você só
               preenche o que o app não tem como saber — os saldos das contas no dia e as decisões da reunião. Este
               fechamento NÃO leva crediário, e o lucro é sempre dividido {Math.round(DIVISAO_LUCRO.andrya * 100)}% Andrya
               / {Math.round(DIVISAO_LUCRO.daniel * 100)}% Daniel.
             </InfoTip>
-          </CardTitle>
-          <Button type="button" variant="outline" size="sm" onClick={imprimir}>
-            <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Imprimir a folha
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {/* ---- saldos: digitados (só quem olha o banco sabe) ---- */}
-        <div className="grid gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/30 p-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">Saldos no dia do fechamento</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div>
-              <Label>Itaú</Label>
-              <Input {...campo("saldoItau")} placeholder="18.614,54" inputMode="decimal" />
-            </div>
-            <div>
-              <Label>Safra</Label>
-              <Input {...campo("saldoSafra")} placeholder="23.885,46" inputMode="decimal" />
-            </div>
-            <div>
-              <Label>Observação do Safra</Label>
-              <Input {...campo("saldoSafraNota")} placeholder="Ex.: poupança de junho e julho" />
-            </div>
-            <div>
-              <Label>Santander</Label>
-              <Input {...campo("saldoSantander")} placeholder="conta inativa" />
-            </div>
-            <div>
-              <Label>Dinheiro</Label>
-              <Input {...campo("dinheiro")} placeholder="0,00" inputMode="decimal" />
-            </div>
-            <div className="flex items-end">
-              <p className="w-full rounded-md border border-brand-oliva/20 bg-white/70 px-3 py-2 text-sm">
-                Somando: <strong className="tabular-nums">{moneyFin(resumo.saldos.total)}</strong>
-              </p>
-            </div>
-          </div>
-        </div>
+          </span>
+        </h2>
+        <Botao tamanho="pq" icone={<Printer className="h-4 w-4" aria-hidden="true" />} onClick={imprimir}>
+          Imprimir a folha
+        </Botao>
+      </div>
 
-        {/* ---- derivado: entrou × saiu × meta ---- */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-brand-oliva/20 bg-white/60 p-3">
-            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-oliva">Entrou × saiu (dos lançamentos)</p>
-            <Derivado rotulo="Entrada total + impostos prov." valor={moneyFin(resumo.entradaTotalComImpostos)} />
-            <Derivado rotulo="Saída total" valor={moneyFin(resumo.saidaTotal)} />
-            <Derivado rotulo="Lucro do mês (sem crediário)" valor={moneyFin(resumo.lucroDoMes)} tom={resumo.lucroDoMes >= 0 ? "bom" : "ruim"} />
-          </div>
-          <div className="rounded-lg border border-brand-oliva/20 bg-white/60 p-3">
-            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-oliva">Meta da equipe</p>
-            <Derivado rotulo="Entrada SEM impostos" valor={moneyFin(resumo.entradaSemImpostos)} />
-            <Derivado rotulo="Meta do mês" valor={moneyFin(resumo.meta)} />
-            <Derivado
-              rotulo={resumo.bateuMeta ? "Passou da meta em" : "Faltou"}
-              valor={moneyFin(Math.abs(resumo.faltaParaMeta))}
-              tom={resumo.bateuMeta ? "bom" : "ruim"}
-            />
+      {/* ---- saldos: digitados (só quem olha o banco sabe) ---- */}
+      <div className="grid gap-3">
+        <Rubrica as="h3">Saldos no dia do fechamento</Rubrica>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <Campo rotulo="Itaú">
+            <input {...campo("saldoItau")} placeholder="18.614,54" inputMode="decimal" className={classeDoCampoNumero} />
+          </Campo>
+          <Campo rotulo="Safra">
+            <input {...campo("saldoSafra")} placeholder="23.885,46" inputMode="decimal" className={classeDoCampoNumero} />
+          </Campo>
+          <Campo rotulo="Observação do Safra">
+            <input {...campo("saldoSafraNota")} placeholder="Ex.: poupança de junho e julho" className={classeDoCampo} />
+          </Campo>
+          <Campo rotulo="Santander">
+            <input {...campo("saldoSantander")} placeholder="conta inativa" className={classeDoCampo} />
+          </Campo>
+          <Campo rotulo="Dinheiro">
+            <input {...campo("dinheiro")} placeholder="0,00" inputMode="decimal" className={classeDoCampoNumero} />
+          </Campo>
+          <div className="grid content-end">
+            <p className="flex h-10 items-center justify-between gap-3 rounded-controle bg-saber px-3 text-sm font-medium text-tinta-2">
+              Somando <strong className="font-bold tabular-nums text-tinta">{moneyFin(resumo.saldos.total)}</strong>
+            </p>
           </div>
         </div>
+      </div>
 
-        {/* ---- provisões: derivadas das regras ---- */}
-        <div className="rounded-lg border border-brand-oliva/20 bg-white/60 p-3">
-          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-oliva">
-            Poupança — impostos e afins
-            <InfoTip title="De onde vem">
-              Os impostos saem das notas fiscais emitidas no mês (alíquotas da aba Impostos &amp; NFs: mensal = ISS +
-              PIS + COFINS, trimestral = IRPJ + CSLL); sem nota registrada, vale a provisão lançada. As outras linhas vêm
-              das regras de provisão cadastradas (13º, férias, rescisão, urgências, início de ano, confraternização).
-            </InfoTip>
-          </p>
-          <Derivado rotulo="IMPOSTOS" valor={moneyFin(resumo.impostosProvisionados)} />
-          {/* IMP MENSAL / IMP TRIMES pelas notas do mês (05/10/2026): o papel pede
-              consulta × procedimento, mensal × trimestral — sai sozinho das notas. */}
-          <table className="mb-2 w-full text-xs tabular-nums">
+      {/* ---- derivado: entrou × saiu × meta ---- */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <BlocoSaber className="grid content-start gap-3">
+          <Rubrica as="h3">Entrou × saiu (dos lançamentos)</Rubrica>
+          <Razao
+            linhas={[
+              { rotulo: "Entrada total + impostos prov.", valor: moneyFin(resumo.entradaTotalComImpostos) },
+              { rotulo: "Saída total", valor: moneyFin(resumo.saidaTotal) },
+              { rotulo: "Lucro do mês (sem crediário)", valor: moneyFin(resumo.lucroDoMes), tom: tomDe(resumo.lucroDoMes) },
+            ]}
+          />
+        </BlocoSaber>
+        <BlocoSaber className="grid content-start gap-3">
+          <Rubrica as="h3">Meta da equipe</Rubrica>
+          <Razao
+            linhas={[
+              { rotulo: "Entrada SEM impostos", valor: moneyFin(resumo.entradaSemImpostos) },
+              { rotulo: "Meta do mês", valor: moneyFin(resumo.meta) },
+              {
+                rotulo: resumo.bateuMeta ? "Passou da meta em" : "Faltou",
+                valor: moneyFin(Math.abs(resumo.faltaParaMeta)),
+                tom: resumo.bateuMeta ? "ok" : "erro",
+              },
+            ]}
+          />
+        </BlocoSaber>
+      </div>
+
+      {/* ---- provisões: derivadas das regras ---- */}
+      <BlocoSaber className="grid content-start gap-3">
+        <Rubrica as="h3" className="flex items-center gap-1">
+          Poupança — impostos e afins
+          <InfoTip title="De onde vem">
+            Os impostos saem das notas fiscais emitidas no mês (alíquotas da aba Impostos &amp; NFs: mensal = ISS +
+            PIS + COFINS, trimestral = IRPJ + CSLL); sem nota registrada, vale a provisão lançada. As outras linhas vêm
+            das regras de provisão cadastradas (13º, férias, rescisão, urgências, início de ano, confraternização).
+          </InfoTip>
+        </Rubrica>
+        <Razao linhas={[{ rotulo: "IMPOSTOS", valor: moneyFin(resumo.impostosProvisionados) }]} />
+        {/* IMP MENSAL / IMP TRIMES pelas notas do mês (05/10/2026): o papel pede
+            consulta × procedimento, mensal × trimestral — sai sozinho das notas. */}
+        <div className="overflow-x-auto">
+          <table className={cn(tabela.tabela, "[&_td]:py-2 [&_th]:h-9")}>
             <thead>
-              <tr className="text-muted-foreground">
-                <th className="py-1 text-left font-semibold">Pelas notas do mês</th>
-                <th className="py-1 text-right font-semibold">Imp. mensal</th>
-                <th className="py-1 text-right font-semibold">Imp. trimestral</th>
+              <tr>
+                <th className={tabela.th}>Pelas notas do mês</th>
+                <th className={tabela.thNum}>Imp. mensal</th>
+                <th className={tabela.thNum}>Imp. trimestral</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td className="py-0.5">Consulta</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.consulta.mensal)}</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.consulta.trimestral)}</td></tr>
-              <tr><td className="py-0.5">Procedimento</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.procedimento.mensal)}</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.procedimento.trimestral)}</td></tr>
-              <tr className="font-bold text-brand-tinta"><td className="py-0.5">Soma</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.mensal)}</td><td className="py-0.5 text-right">{moneyFin(resumo.impostosNotas.trimestral)}</td></tr>
+              <tr>
+                <td className={tabela.td}>Consulta</td>
+                <td className={tabela.tdNum}>{moneyFin(resumo.impostosNotas.consulta.mensal)}</td>
+                <td className={tabela.tdNum}>{moneyFin(resumo.impostosNotas.consulta.trimestral)}</td>
+              </tr>
+              <tr>
+                <td className={tabela.td}>Procedimento</td>
+                <td className={tabela.tdNum}>{moneyFin(resumo.impostosNotas.procedimento.mensal)}</td>
+                <td className={tabela.tdNum}>{moneyFin(resumo.impostosNotas.procedimento.trimestral)}</td>
+              </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <td className={tabela.pe}>Soma</td>
+                <td className={tabela.peNum}>{moneyFin(resumo.impostosNotas.mensal)}</td>
+                <td className={tabela.peNum}>{moneyFin(resumo.impostosNotas.trimestral)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <p className="mb-2 text-[11px] text-muted-foreground">
-            {resumo.impostosNotas.notas} nota(s) emitida(s) no mês.
-            {Math.abs(resumo.impostosLancados - resumo.impostosProvisionados) >= 0.01
-              ? ` A provisão lançada em Contas a Pagar está em ${moneyFin(resumo.impostosLancados)}; ajuste-a para ${moneyFin(resumo.impostosProvisionados)}.`
-              : " A provisão lançada bate com as notas."}
-          </p>
-          {resumo.provisoesFixas.map((linha) => (
-            <Derivado key={linha.nome} rotulo={linha.nome} valor={moneyFin(linha.valor)} />
+        </div>
+        <p className={cn("text-[13px] font-medium leading-5", Math.abs(resumo.impostosLancados - resumo.impostosProvisionados) >= 0.01 ? "font-bold text-atencao" : "text-tinta-2")}>
+          {resumo.impostosNotas.notas} nota(s) emitida(s) no mês.
+          {Math.abs(resumo.impostosLancados - resumo.impostosProvisionados) >= 0.01
+            ? ` A provisão lançada em Contas a Pagar está em ${moneyFin(resumo.impostosLancados)}; ajuste-a para ${moneyFin(resumo.impostosProvisionados)}.`
+            : " A provisão lançada bate com as notas."}
+        </p>
+        <Razao linhas={resumo.provisoesFixas.map((linha) => ({ rotulo: linha.nome, valor: moneyFin(linha.valor) }))} />
+        <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-controle bg-folha px-4 py-3">
+          <span className="text-sm font-bold leading-5 text-tinta">Total a provisionar</span>
+          <Numero texto={moneyFin(resumo.totalProvisoes)} tamanho="pequeno" />
+        </div>
+      </BlocoSaber>
+
+      {/* ---- decisões da reunião: digitadas ---- */}
+      <div className="grid gap-4">
+        <Rubrica as="h3">Decisões da reunião</Rubrica>
+        <Campo rotulo="Adiantamentos">
+          <input {...campo("adiantamentos")} placeholder="Ex.: 2.000,00 — adiantamento da Aline" className={classeDoCampo} />
+        </Campo>
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+          <Campo rotulo="Ficou acordado o provisionamento apenas do:">
+            <textarea {...anotacao("provisionamentoAcordado")} placeholder="Ex.: impostos do mês + 13º dos sócios" />
+          </Campo>
+          <Campo rotulo="Valor provisionado">
+            <input {...campo("provisionamentoValor")} placeholder="0,00" inputMode="decimal" className={classeDoCampoNumero} />
+          </Campo>
+        </div>
+        <Campo rotulo="Distribuição de lucro — pagamentos conta sócia">
+          <textarea {...anotacao("pagamentosContaSocia")} placeholder="Ex.: cartão da CEO 4.200,00 · convênio 1.100,00" />
+        </Campo>
+      </div>
+
+      {/* ---- a divisão, sempre 80/20 ---- */}
+      <BlocoSaber className="grid gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <Rubrica as="h3">Distribuição de lucro real</Rubrica>
+          <Campo rotulo="Total distribuído (em branco = lucro do mês)" className="w-full sm:w-72">
+            <input {...campo("lucroDistribuido")} placeholder={moneyFin(resumo.lucroDoMes)} inputMode="decimal" className={classeDoCampoNumero} />
+          </Campo>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            { nome: "Andrya", pct: DIVISAO_LUCRO.andrya, valor: resumo.divisao.andrya },
+            { nome: "Daniel", pct: DIVISAO_LUCRO.daniel, valor: resumo.divisao.daniel },
+          ].map((socio) => (
+            <div key={socio.nome} className="grid gap-3 rounded-controle bg-folha px-5 py-4">
+              <Rubrica>
+                {socio.nome} — {Math.round(socio.pct * 100)}%
+              </Rubrica>
+              <Numero texto={moneyFin(socio.valor)} tamanho="medio" />
+            </div>
           ))}
-          <div className="mt-2 flex items-baseline justify-between rounded-md bg-brand-creme/60 px-3 py-2">
-            <span className="text-sm font-bold text-brand-tinta">Total a provisionar</span>
-            <span className="text-base font-bold tabular-nums text-brand-musgo">{moneyFin(resumo.totalProvisoes)}</span>
-          </div>
         </div>
-
-        {/* ---- decisões da reunião: digitadas ---- */}
-        <div className="grid gap-3 rounded-lg border border-brand-dourado/35 bg-brand-creme/30 p-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">Decisões da reunião</p>
-          <div>
-            <Label>Adiantamentos</Label>
-            <Input {...campo("adiantamentos")} placeholder="Ex.: 2.000,00 — adiantamento da Aline" />
-          </div>
-          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-            <div>
-              <Label>Ficou acordado o provisionamento apenas do:</Label>
-              <textarea {...anotacao("provisionamentoAcordado")} placeholder="Ex.: impostos do mês + 13º dos sócios" />
-            </div>
-            <div>
-              <Label>Valor provisionado</Label>
-              <Input {...campo("provisionamentoValor")} placeholder="0,00" inputMode="decimal" className="sm:w-40" />
-            </div>
-          </div>
-          <div>
-            <Label>Distribuição de lucro — pagamentos conta sócia</Label>
-            <textarea {...anotacao("pagamentosContaSocia")} placeholder="Ex.: cartão da CEO 4.200,00 · convênio 1.100,00" />
-          </div>
-        </div>
-
-        {/* ---- a divisão, sempre 80/20 ---- */}
-        <div className="grid gap-2 rounded-lg border border-brand-musgo/30 bg-brand-papel p-3">
-          <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-            <p className="text-xs font-bold uppercase tracking-wide text-brand-oliva">Distribuição de lucro real</p>
-            <div>
-              <Label className="text-xs">Total distribuído (em branco = lucro do mês)</Label>
-              <Input {...campo("lucroDistribuido")} placeholder={moneyFin(resumo.lucroDoMes)} inputMode="decimal" className="sm:w-48" />
-            </div>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {[
-              { nome: "Andrya", pct: DIVISAO_LUCRO.andrya, valor: resumo.divisao.andrya },
-              { nome: "Daniel", pct: DIVISAO_LUCRO.daniel, valor: resumo.divisao.daniel },
-            ].map((socio) => (
-              <div key={socio.nome} className="rounded-lg border border-brand-dourado/40 bg-brand-creme/50 px-4 py-3">
-                <p className="text-xs font-semibold uppercase text-brand-oliva">
-                  {socio.nome} — {Math.round(socio.pct * 100)}%
-                </p>
-                <p className="mt-0.5 text-2xl font-bold tabular-nums text-brand-musgo">{moneyFin(socio.valor)}</p>
-              </div>
-            ))}
-          </div>
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            A divisão {Math.round(DIVISAO_LUCRO.andrya * 100)}/{Math.round(DIVISAO_LUCRO.daniel * 100)} é fixa por decisão
-            societária — o app calcula, não deixa digitar errado.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+        <p className="text-[13px] font-medium leading-5 text-tinta-2">
+          A divisão {Math.round(DIVISAO_LUCRO.andrya * 100)}/{Math.round(DIVISAO_LUCRO.daniel * 100)} é fixa por decisão
+          societária — o app calcula, não deixa digitar errado.
+        </p>
+      </BlocoSaber>
+    </BlocoFolha>
   );
 }

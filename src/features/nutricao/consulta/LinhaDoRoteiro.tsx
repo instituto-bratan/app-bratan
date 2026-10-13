@@ -6,7 +6,7 @@
 // fala de origem (anel tracejado azul).
 import { useState, type KeyboardEvent } from "react";
 import { Check, CornerDownLeft, Mic, Pencil, RotateCcw, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/features/crm/comercialVisual";
 import { ATALHOS, acrescentarAtalho, conteudoDoCampo } from "../dominio/campos";
 import type { LinhaDoRoteiro as Linha } from "../dominio/roteiro";
 import { diaMes, formatarNumero } from "../dominio/texto";
@@ -67,7 +67,7 @@ function CampoNumero({ id, rotulo, unidade, valor, casas, editavel, aoMudar }: {
   const exibido = focado ? texto : valor === null ? "" : formatarNumero(valor, casas);
   return (
     <label htmlFor={id} className="inline-flex items-center gap-1.5 text-sm">
-      <span className="text-xs font-semibold text-muted-foreground">{rotulo}</span>
+      <span className="text-xs font-semibold text-tinta-2">{rotulo}</span>
       <input
         id={id}
         aria-label={`${rotulo} (${unidade})`}
@@ -83,9 +83,9 @@ function CampoNumero({ id, rotulo, unidade, valor, casas, editavel, aoMudar }: {
           setTexto(e.target.value);
           aoMudar(numeroOuNulo(e.target.value));
         }}
-        className="h-8 w-[4.5rem] rounded-lg border border-brand-oliva/20 bg-white/70 px-2 text-right font-mono text-sm tabular-nums focus:border-brand-dourado focus:outline-none focus:ring-2 focus:ring-brand-dourado/25 disabled:opacity-70"
+        className="h-8 w-[4.5rem] rounded-controle border border-borda-campo bg-folha text-tinta px-2 text-right tabular-nums text-sm tabular-nums focus-visible:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco disabled:opacity-70"
       />
-      <span className="text-xs text-muted-foreground">{unidade}</span>
+      <span className="text-xs text-tinta-2">{unidade}</span>
     </label>
   );
 }
@@ -118,25 +118,25 @@ export function LinhaDoRoteiro(props: Props) {
   const bio = pendente ? bioVazia : valor.bio ?? bioVazia;
 
   return (
-    <div className="group grid grid-cols-[18px_minmax(0,1fr)] gap-x-3 border-b border-brand-oliva/10 py-3 last:border-b-0" data-campo={linha.id}>
+    <div className="group grid grid-cols-[18px_minmax(0,1fr)] gap-x-3 border-b border-fio py-3 last:border-b-0" data-campo={linha.id}>
       <div className="pt-2.5">
         <Bolinha estado={bolinha} />
       </div>
       <div className="grid min-w-0 gap-1.5">
         <div className="flex items-baseline gap-3">
-          <label htmlFor={idCampo} className="shrink-0 text-sm font-semibold text-brand-musgo">
-            <span className="mr-1.5 font-mono text-[11px] font-normal text-muted-foreground">{String(linha.linha).padStart(2, "0")}</span>
+          <label htmlFor={idCampo} className="shrink-0 text-sm font-semibold text-musgo">
+            <span className="mr-1.5 tabular-nums text-xs font-normal text-tinta-2">{String(linha.linha).padStart(2, "0")}</span>
             {linha.rotulo}
           </label>
           {/* O que ela pergunta nesse tema: aparece ao entrar no campo, no mesmo lugar, sem empurrar nada. */}
           {editavel ? (
-            <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100" title={linha.oQueRegistrar}>
+            <span className="min-w-0 flex-1 truncate text-xs text-tinta-2 opacity-0 transition-opacity group-focus-within:opacity-100" title={linha.oQueRegistrar}>
               {linha.oQueRegistrar}
             </span>
           ) : (
             <span className="flex-1" />
           )}
-          {valor.origem && valor.estado === "preenchido" ? <span className="shrink-0 text-[11px] text-muted-foreground">{ORIGEM[valor.origem]}</span> : null}
+          {valor.origem && valor.estado === "preenchido" ? <span className="shrink-0 text-xs text-tinta-2">{ORIGEM[valor.origem]}</span> : null}
         </div>
 
         {linha.id === "bio" ? (
@@ -144,7 +144,7 @@ export function LinhaDoRoteiro(props: Props) {
             <CampoNumero id={`${idCampo}-peso`} rotulo="Peso" unidade="kg" casas={1} valor={pendente ? null : bio.pesoKg} editavel={editavel} aoMudar={(n) => props.aoEditarBio({ ...bio, pesoKg: n })} />
             <CampoNumero id={`${idCampo}-pgc`} rotulo="PGC" unidade="%" casas={1} valor={pendente ? null : bio.pgc} editavel={editavel} aoMudar={(n) => props.aoEditarBio({ ...bio, pgc: n })} />
             <CampoNumero id={`${idCampo}-visceral`} rotulo={config.siglaVisceral} unidade="nível" casas={0} valor={pendente ? null : bio.visceral} editavel={editavel} aoMudar={(n) => props.aoEditarBio({ ...bio, visceral: n })} />
-            {bio.fonte && !pendente ? <span className="text-[11px] text-muted-foreground">{bio.fonte}</span> : null}
+            {bio.fonte && !pendente ? <span className="text-xs text-tinta-2">{bio.fonte}</span> : null}
           </div>
         ) : null}
 
@@ -172,13 +172,13 @@ export function LinhaDoRoteiro(props: Props) {
 
         {editavel && !pendente && !sugestaoPendente && achadosNovos.length > 0 ? (
           <div className="nutri-achados grid gap-1 px-3 py-2 text-sm">
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-brand-oliva">
+            <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-tinta-2">
               <Mic className="h-3 w-3" aria-hidden="true" /> na gravação
             </span>
             {achadosVisiveis.map((s) => (
               <div key={s.i} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <span className="min-w-0 flex-1 text-[13px] text-brand-tinta">
-                  <span className="mr-1.5 font-mono text-[11px] text-muted-foreground">{temHora ? minutoDe(s.inicio) : `#${s.i + 1}`}</span>
+                <span className="min-w-0 flex-1 text-[13px] text-tinta">
+                  <span className="mr-1.5 tabular-nums text-xs text-tinta-2">{temHora ? minutoDe(s.inicio) : `#${s.i + 1}`}</span>
                   {s.texto}
                 </span>
                 <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => props.aoUsarTrecho(s)}>
@@ -187,7 +187,7 @@ export function LinhaDoRoteiro(props: Props) {
               </div>
             ))}
             {achadosNovos.length > 3 && !verTodosAchados ? (
-              <button type="button" className="justify-self-start text-xs font-semibold text-brand-oliva hover:underline" onClick={() => setVerTodosAchados(true)}>
+              <button type="button" className="justify-self-start text-xs font-semibold text-musgo hover:underline" onClick={() => setVerTodosAchados(true)}>
                 mais {achadosNovos.length - 3} trecho(s)
               </button>
             ) : null}
@@ -197,7 +197,7 @@ export function LinhaDoRoteiro(props: Props) {
         {pendente ? (
           <div className="nutri-anterior flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
             <span>
-              <span className="mr-1.5 text-[11px] font-bold uppercase tracking-wide text-brand-dourado">do atendimento de {diaMes(valor.anteriorDe)}</span>
+              <span className="mr-1.5 text-xs font-bold uppercase tracking-wide text-ouro">do atendimento de {diaMes(valor.anteriorDe)}</span>
               {conteudoDoCampo(linha.id, valor, config)}
             </span>
             {editavel ? (
@@ -216,11 +216,11 @@ export function LinhaDoRoteiro(props: Props) {
         {sugestaoPendente ? (
           <div className="nutri-sugestao grid gap-2 px-3 py-2.5 text-sm">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wide nutri-texto-ia">sugestão da gravação</span>
-              {sugestaoPendente.incerto ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">confira: {sugestaoPendente.motivo}</span> : null}
+              <span className="text-xs font-bold uppercase tracking-wide nutri-texto-ia">sugestão da gravação</span>
+              {sugestaoPendente.incerto ? <span className="rounded-controle bg-atencao-claro px-2 py-0.5 text-xs font-bold text-atencao">confira: {sugestaoPendente.motivo}</span> : null}
             </div>
             {editandoSugestao !== null ? (
-              <LinhaQueCresce value={editandoSugestao} onChange={(e) => setEditandoSugestao(e.target.value)} autoFocus className="bg-white/80" />
+              <LinhaQueCresce value={editandoSugestao} onChange={(e) => setEditandoSugestao(e.target.value)} autoFocus className="bg-folha" />
             ) : (
               <p className="font-medium">
                 {linha.id === "bio" && sugestaoPendente.bio
@@ -267,12 +267,12 @@ export function LinhaDoRoteiro(props: Props) {
         ) : null}
 
         {textoAnterior && !pendente ? (
-          <p id={`${idCampo}-anterior`} className="flex flex-wrap items-center gap-2 pl-2.5 text-xs text-muted-foreground">
+          <p id={`${idCampo}-anterior`} className="flex flex-wrap items-center gap-2 pl-2.5 text-xs text-tinta-2">
             <span>
-              <span className="font-mono">{diaMes(anterior?.data)}</span> · {textoAnterior}
+              <span className="tabular-nums">{diaMes(anterior?.data)}</span> · {textoAnterior}
             </span>
             {editavel && props.permitirAnterior && valor.estado === "vazio" ? (
-              <button type="button" onClick={props.aoTrazerAnterior} className="inline-flex items-center gap-1 rounded-full px-1.5 font-semibold text-brand-oliva hover:bg-muted">
+              <button type="button" onClick={props.aoTrazerAnterior} className="inline-flex items-center gap-1 rounded-full px-1.5 font-semibold text-tinta-2 hover:bg-saber">
                 <RotateCcw className="h-3 w-3" aria-hidden="true" /> trazer para conferir
               </button>
             ) : null}

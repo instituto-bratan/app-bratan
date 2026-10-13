@@ -6,7 +6,13 @@
 // (nunca comparar mês parcial com mês fechado): a semana em curso é comparada
 // com os MESMOS dias da semana anterior (segunda a quarta contra segunda a
 // quarta). Tudo derivado das comandas, das contas, das tarefas do CRM e do NPS.
+//
+// 08/10/2026 (regra do Lucas): "conta vencida em aberto" é a que passou do DIA
+// DE PAGAR — vencimento em sábado, domingo ou feriado se paga no dia útil
+// anterior (filaFinanceiraDiaDePagar.ts). O aluguel do sábado 10/10 já conta
+// como vencido no próprio sábado se não foi pago na sexta 09/10.
 import { saleTotal, saleTotalForTicket, type FinExpense, type FinSale } from "./financeiroData";
+import { passouDoDiaDePagar } from "./filaFinanceiraDiaDePagar";
 import { minutosDoItem } from "./ocupacaoSala";
 
 export type TarefaDaSemana = { ownerUserId: string; status: string; completedAt: string | null };
@@ -130,7 +136,14 @@ export function buildSemanaEmNumeros(entrada: EntradaSemana): SemanaEmNumeros {
   const agora = medir(entrada, inicio, ateDia);
   const antes = medir(entrada, somaDias(inicio, -7), somaDias(ateDia, -7));
 
-  const vencidasAbertas = entrada.expenses.filter((e) => !e.paidAt && e.dueDate && e.dueDate < hoje);
+  // 13/10/2026 (revisão da etapa 4): os mesmos filtros da Fila do dia e do
+  // contador do Início — provisão (cat-poup-*) é reserva, não conta a cobrar, e
+  // vencida há mais de 90 dias (pelo vencimento) é caso da planilha, não da semana.
+  // Assim o "Contas vencidas em aberto" do Painel é o mesmo número do Início.
+  const maisVelha = somaDias(hoje, -90);
+  const vencidasAbertas = entrada.expenses.filter(
+    (e) => !e.paidAt && !String(e.categoryRef ?? "").startsWith("cat-poup-") && Boolean(e.dueDate) && e.dueDate >= maisVelha && passouDoDiaDePagar(e.dueDate, hoje),
+  );
   const valorVencido = round2(vencidasAbertas.reduce((s, e) => s + (e.amount || 0), 0));
 
   const numeros: NumeroDaSemana[] = [
@@ -139,7 +152,7 @@ export function buildSemanaEmNumeros(entrada: EntradaSemana): SemanaEmNumeros {
     { chave: "ticket", rotulo: "Ticket médio", valor: agora.vendas ? brl(agora.ticket) : "—", frase: agora.vendas ? `por venda · ${variacao(antes.ticket, agora.ticket)}.` : "nenhuma venda ainda nesta semana.", antes: antes.ticket, agora: agora.ticket, tom: "NEUTRO" },
     { chave: "sala", rotulo: "Horas de sala vendidas", valor: formatHorasCurto(agora.horasSala), frase: `${variacao(antes.horasSala, agora.horasSala)} (${formatHorasCurto(antes.horasSala)}).`, antes: antes.horasSala, agora: agora.horasSala, tom: agora.horasSala >= antes.horasSala ? "BOM" : "ATENCAO" },
     { chave: "contas-pagas", rotulo: "Contas pagas", valor: brl(agora.contasPagas), frase: `saíram do caixa nesta semana · semana anterior ${brl(antes.contasPagas)}.`, antes: antes.contasPagas, agora: agora.contasPagas, inverso: true, tom: "NEUTRO" },
-    { chave: "vencidas", rotulo: "Contas vencidas em aberto", valor: String(vencidasAbertas.length), frase: vencidasAbertas.length ? `somam ${brl(valorVencido)} — resolver antes de sexta.` : "nenhuma conta passou do vencimento.", tom: vencidasAbertas.length ? (vencidasAbertas.length > 3 ? "RUIM" : "ATENCAO") : "BOM" },
+    { chave: "vencidas", rotulo: "Contas vencidas em aberto", valor: String(vencidasAbertas.length), frase: vencidasAbertas.length ? `somam ${brl(valorVencido)} — resolver antes de sexta.` : "nenhuma conta passou do dia de pagar.", tom: vencidasAbertas.length ? (vencidasAbertas.length > 3 ? "RUIM" : "ATENCAO") : "BOM" },
     { chave: "toques", rotulo: "Toques do CRM feitos", valor: String(agora.toques), frase: `${variacao(antes.toques, agora.toques)} (${antes.toques}).`, antes: antes.toques, agora: agora.toques, tom: agora.toques >= antes.toques ? "BOM" : "ATENCAO" },
     { chave: "nps", rotulo: "NPS da semana", valor: agora.nps === null ? "—" : agora.nps.toLocaleString("pt-BR"), frase: agora.nps === null ? "nenhuma resposta do totem nesta semana." : `média de ${agora.npsRespostas} resposta${agora.npsRespostas > 1 ? "s" : ""} do totem${antes.nps !== null ? ` · semana anterior ${antes.nps.toLocaleString("pt-BR")}` : ""}.`, tom: agora.nps === null ? "NEUTRO" : agora.nps >= 9 ? "BOM" : agora.nps >= 7 ? "ATENCAO" : "RUIM" },
   ];

@@ -20,8 +20,8 @@ export function FalaDeOrigem({ evidencias, segmentos }: { evidencias: Evidencia[
         const seg = segmentos.find((s) => s.i === ev.segmento);
         return (
           <li key={`${ev.segmento}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
-            <span className="nutri-fala text-brand-tinta">“{ev.trecho}”</span>
-            <span className="font-mono text-[11px] nutri-texto-ia">
+            <span className="nutri-fala text-tinta">“{ev.trecho}”</span>
+            <span className="tabular-nums text-xs nutri-texto-ia">
               {seg ? minutoDe(seg.inicio) : "—"} · {QUEM[ev.quem]}
             </span>
           </li>

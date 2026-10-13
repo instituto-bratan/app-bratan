@@ -4,6 +4,7 @@ import { BrowserRouter, HashRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { AuthProvider } from "./hooks/useAuth";
+import "./styles/fontes-da-equipe.css";
 import "./styles/globals.css";
 import { iniciarTema } from "./lib/tema";
 

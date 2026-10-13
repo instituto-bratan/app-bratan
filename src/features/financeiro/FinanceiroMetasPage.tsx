@@ -1,18 +1,22 @@
+// METAS DO MÊS — o Controle de Metas da CEO, sem digitar nada.
+//
+// REDESENHO (08/10/2026, Papel & Musgo, etapa 4 — Resultados › Metas & PDCA):
+// um cabeçalho só, com o mês dito em frase (quanto entrou, quanto falta e por
+// dia) e o fio do mês embaixo; as abas Metas · PDCA logo abaixo (a casca as
+// entrega). À esquerda, para ler: a reunião de líderes (a régua da CEO, semana a
+// semana) e o resumo semanal; à direita, no saber, o mês até agora com os três
+// degraus da meta e a meritocracia. Embaixo, na folha (é onde se decide), o
+// controle diário com o Sim/Não do Dr. Daniel e os valores das metas. Mesmos
+// dados, mesmos botões, mesmas permissões e a mesma URL.
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/avisos";
-import { motion } from "framer-motion";
-import { ClipboardCopy, FileDown, Target, Trophy } from "lucide-react";
+import { ClipboardCopy, FileDown, SlidersHorizontal } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, FioDoMes } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { useAuth } from "@/hooks/useAuth";
-import { canEditModule, canFinanceiroFull, canFinanceiroView } from "@/lib/access";
+import { canEditModule, canFinanceiroView } from "@/lib/access";
 import { exportBrandedPdf } from "@/lib/brandedPdf";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { parseMoneyBR } from "@/lib/money";
@@ -32,11 +36,20 @@ import {
   type MetasMonthGoals,
 } from "./metasData";
 import { useFinanceiro } from "./useFinanceiro";
+import { Campo, OrigemDosDados, Razao, classeDoCampo, classeDoCampoNumero } from "./pecasBancoFechamento";
+import { AvisoDaTela, Etiqueta } from "./pecasDiaPagar";
+import { diasUteisDoMes } from "./lucroInteligente";
+import { NumeroDoIndicador, RUBRICA_RESULTADOS, ReguaDosDegraus, TABELA, TituloDeBloco, mesDaTela } from "./pecasMetasPdca";
 
 const metasStorageKey = "app-bratan-fin-metas-config-v1";
 
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+/** "08/10" a partir de "2026-10-08". */
+function diaMes(iso: string) {
+  return iso.split("-").reverse().slice(0, 2).join("/");
 }
 
 export function FinanceiroMetasPage() {
@@ -98,6 +111,24 @@ export function FinanceiroMetasPage() {
   // do padrão — senão julho apareceria com a régua de agosto.
   const metasDoMes = useMemo(() => metasForMonth(config, monthKey), [config, monthKey]);
   const monthLabel = new Date(`${monthKey}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  // O nome do mês nas frases ("Outubro"; com o ano quando é de outro ano).
+  const nomeDoMes = mesDaTela(monthKey, today);
+  const ehMesAtual = monthKey === today.slice(0, 7);
+  // O fio do mês (só no mês de hoje: num mês passado "hoje é o dia útil 22 de 22" enganaria).
+  const diaUtilDeHoje = board.days.filter((day) => day.date <= today).length;
+  // 13/10/2026 (revisão da etapa 4): o FIO do mês e o "dia útil N de M" usam o
+  // calendário com feriado (o mesmo do Lucro e do Início). A conta da meta
+  // (board, painel) continua seg a sex, como era — só a marcação muda.
+  const fioDiasUteis = useMemo(() => diasUteisDoMes(monthKey), [monthKey]);
+  const fioDiaDeHoje = fioDiasUteis.filter((dia) => dia <= today).length;
+  const metaContaFeriado = fioDiasUteis.length !== board.days.length;
+  // A semana de hoje ganha o fio de ouro na tabela da reunião (o ouro marca o agora).
+  const semanaDeHoje = ehMesAtual ? board.days.find((day) => day.date >= today)?.weekIndex ?? null : null;
+  const inicioDaSemana = useMemo(() => {
+    const mapa = new Map<number, string>();
+    for (const day of board.days) if (!mapa.has(day.weekIndex)) mapa.set(day.weekIndex, day.date);
+    return mapa;
+  }, [board.days]);
 
   function toggleDoctorDay(date: string) {
     if (!canEdit) return;
@@ -179,13 +210,13 @@ export function FinanceiroMetasPage() {
   // Editar aqui muda as metas DESTE mês (guardadas em monthlyGoals), preservando
   // o histórico dos meses anteriores.
   const configField = (label: string, key: keyof MetasMonthGoals & keyof MetasConfig) => (
-    <div className="space-y-1">
-      <Label>{label}</Label>
-      <Input
+    <Campo rotulo={label}>
+      <input
         key={`${monthKey}-${key}`}
         defaultValue={String(metasDoMes[key])}
         inputMode="decimal"
         disabled={!canEdit}
+        className={classeDoCampoNumero}
         onBlur={(event) => {
           const parsed = key === "goalPatients" ? Number(event.target.value) : parseMoneyBR(event.target.value);
           if (!Number.isFinite(parsed) || parsed <= 0) return;
@@ -198,133 +229,256 @@ export function FinanceiroMetasPage() {
           });
         }}
       />
-    </div>
+    </Campo>
   );
+
+  // Os três degraus do mês (as meritocracias combinadas na apresentação de agosto/2026).
+  const degraus = [
+    {
+      nome: NIVEL_META_LABELS.min,
+      rotulo: `${NIVEL_META_LABELS.min} ${moneyFin(metasDoMes.goalMinRevenue)}`,
+      valor: metasDoMes.goalMinRevenue,
+      falta: board.missingToMin,
+      dica: "abaixo dela as meritocracias zeram",
+    },
+    {
+      nome: "Meta",
+      rotulo: `Meta ${moneyFin(metasDoMes.goalTargetRevenue)}`,
+      valor: metasDoMes.goalTargetRevenue,
+      falta: board.missingToTarget,
+      dica: "meritocracia individual + café da manhã",
+    },
+    {
+      nome: "Super meta",
+      rotulo: `Super meta ${moneyFin(metasDoMes.goalSuperRevenue)}`,
+      valor: metasDoMes.goalSuperRevenue,
+      falta: board.missingToSuper,
+      dica:
+        board.meritocracyBonusPerPerson > 0
+          ? `jantar + ${moneyFin(board.meritocracyBonusPerPerson)} por pessoa`
+          : "jantar + R$ 200 cada (+200 a cada 10 mil)",
+    },
+  ];
 
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · Metas do mês" module="fin-metas">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">{financeiro.syncMode}</Badge>
+      <div className="mx-auto grid w-full max-w-[1320px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Resultados · Metas & PDCA"
+          titulo={
+            <>
+              Metas do mês{" "}
+              <InfoTip title="O Controle de Metas da CEO" className="align-middle">
+                O mesmo controle da planilha, sem digitar nada: a meta do dia muda conforme o Dr. Daniel atende, e o
+                faturamento e os pacientes vêm direto das comandas do Lançar Dia. Marque os dias sem Dr. Daniel e o resto
+                se calcula sozinho.
+              </InfoTip>
+            </>
+          }
+          frase={
+            <>
+              <strong className="tabular-nums">{moneyFin(board.accumulatedRevenue)}</strong> faturados em {nomeDoMes.toLowerCase()}. {painel.leitura}
+            </>
+          }
+          acoes={
+            <>
+              <Campo rotulo="Mês" className="w-44">
+                <input
+                  type="month"
+                  value={monthKey}
+                  onChange={(event) => setMonthKey(event.target.value)}
+                  onBlur={() => {
+                    if (!monthKey) setMonthKey(todayISO().slice(0, 7));
+                  }}
+                  className={classeDoCampo}
+                  aria-label="Mês do controle"
+                />
+              </Campo>
+              <Botao variante="secundario" icone={<ClipboardCopy className="h-4 w-4" aria-hidden="true" />} onClick={copyMetaDoDia}>
+                Copiar meta do dia
+              </Botao>
+              <Botao variante="secundario" icone={<FileDown className="h-4 w-4" aria-hidden="true" />} onClick={gerarResumoPdf}>
+                Gerar resumo (PDF)
+              </Botao>
+            </>
+          }
+          rodape={
+            ehMesAtual && board.days.length ? (
+              <div className="grid gap-2">
+                {/* A legenda é desta tela: a conta da reunião conta HOJE entre os dias que faltam
+                    (o dia ainda não acabou), então a frase diz isso em vez do "faltam N" do fio. */}
+                <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px] font-medium leading-5 text-tinta-2">
+                  <strong className="font-bold text-tinta">{nomeDoMes}</strong>
+                  <span>
+                    hoje é o dia útil {fioDiaDeHoje} de {fioDiasUteis.length}
+                  </span>
+                  <span className="ml-auto">
+                    {painel.diasUteisRestantes === 1 ? "só hoje resta" : `${painel.diasUteisRestantes} dias úteis contando hoje`}
+                    {metaContaFeriado ? " na conta da meta (seg a sex, feriado conta)" : ""}
+                  </span>
+                </p>
+                <FioDoMes diasUteis={fioDiasUteis.length} hoje={fioDiaDeHoje} mes={nomeDoMes} legenda={false} sobre="papel" />
               </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Metas do mês
-                <InfoTip title="O Controle de Metas da CEO">
-                  O mesmo controle da planilha, sem digitar nada: a meta do dia muda conforme o Dr. Daniel atende, e o
-                  faturamento e os pacientes vêm direto das comandas do Lançar Dia. Marque os dias sem Dr. Daniel e o resto
-                  se calcula sozinho.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{board.meritocracyStatus}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                type="month"
-                value={monthKey}
-                onChange={(event) => setMonthKey(event.target.value)}
-                onBlur={() => {
-                  if (!monthKey) setMonthKey(todayISO().slice(0, 7));
-                }}
-                className="w-44"
-                aria-label="Mês do controle"
+            ) : undefined
+          }
+        />
+
+        {feedback ? <AvisoDaTela tom="info">{feedback}</AvisoDaTela> : null}
+
+        <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] max-md:gap-6">
+          <div className="grid min-w-0 gap-8 max-md:gap-6">
+            {/* REUNIÃO DE LÍDERES — segunda-feira (reunião de 14/08/2026 com a CEO). Para ler: saber. */}
+            <BlocoSaber as="section" aria-labelledby="metas-reuniao" className="grid gap-5">
+              <TituloDeBloco
+                id="metas-reuniao"
+                titulo={
+                  <span>
+                    Reunião de líderes — a régua é a {NIVEL_META_LABELS.target}{" "}
+                    <InfoTip title="Por que a supermeta" className="align-middle">
+                      Decisão da CEO na reunião de 14/08: "só a supermeta eu quero saber. O resto é medíocre — se a gente fizer,
+                      amém, mas não é isso que a gente vai buscar." Acima dela existe a super-supermeta, onde a porcentagem da
+                      equipe aumenta.
+                    </InfoTip>
+                  </span>
+                }
+                soma={
+                  <Etiqueta tom={painel.nivel === "ABAIXO" ? "neutro" : painel.nivel === "META" ? "musgo" : "ok"}>
+                    {painel.percentualDaSupermeta.toFixed(1).replace(".", ",")}%
+                  </Etiqueta>
+                }
+                ajuda="Semana a semana: quanto entrou contra o ritmo que leva à régua no fim do mês (semana curta é cobrada pelos dias úteis dela)."
               />
-              <Button type="button" variant="outline" size="sm" onClick={copyMetaDoDia}>
-                <ClipboardCopy className="mr-1 h-4 w-4" aria-hidden="true" /> Copiar meta do dia
-              </Button>
-              <LiquidButton type="button" size="sm" onClick={gerarResumoPdf}>
-                <FileDown className="h-4 w-4" aria-hidden="true" /> Gerar resumo (PDF)
-              </LiquidButton>
-            </div>
-          </div>
-        </motion.section>
-
-      {/* REUNIÃO DE LÍDERES — segunda-feira (reunião de 14/08/2026 com a CEO) */}
-      <Card
-        className={cn(
-          "shadow-none",
-          painel.nivel === "SUPER_SUPERMETA"
-            ? "border-brand-dourado bg-brand-creme/60"
-            : painel.nivel === "SUPERMETA"
-              ? "border-emerald-300 bg-emerald-50/60"
-              : "border-brand-oliva/25 bg-white/70",
-        )}
-      >
-        <CardHeader className="pb-2">
-          <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-            <Trophy className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
-            Reunião de líderes — a régua é a {NIVEL_META_LABELS.target}
-            <Badge variant={painel.nivel === "ABAIXO" ? "outline" : "gold"}>
-              {painel.percentualDaSupermeta.toFixed(1).replace(".", ",")}%
-            </Badge>
-            <InfoTip title="Por que a supermeta">
-              Decisão da CEO na reunião de 14/08: "só a supermeta eu quero saber. O resto é medíocre — se a gente fizer,
-              amém, mas não é isso que a gente vai buscar." Acima dela existe a super-supermeta, onde a porcentagem da
-              equipe aumenta.
-            </InfoTip>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <p className="text-sm font-semibold text-brand-musgo">{painel.leitura}</p>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {[
-              { rotulo: "Faturado no mês", valor: moneyFin(painel.faturado) },
-              { rotulo: NIVEL_META_LABELS.target, valor: moneyFin(painel.supermeta) },
-              { rotulo: NIVEL_META_LABELS.super, valor: moneyFin(painel.superSupermeta) },
-            ].map((item) => (
-              <div key={item.rotulo} className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{item.rotulo}</p>
-                <p className="text-xl font-bold text-brand-musgo">{item.valor}</p>
-              </div>
-            ))}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-left text-sm">
-              <thead className="text-xs uppercase text-brand-oliva">
-                <tr>
-                  <th className="px-2 py-1.5">Semana</th>
-                  <th className="px-2 py-1.5">Período</th>
-                  <th className="px-2 py-1.5 text-right">Faturado</th>
-                  <th className="px-2 py-1.5 text-right">Ritmo da supermeta</th>
-                  <th className="px-2 py-1.5 text-right">Diferença</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand-oliva/12">
-                {painel.semanas.map((semana) => (
-                  <tr key={semana.semana} className={cn(semana.noRitmo ? "bg-emerald-50/40" : "bg-red-50/40")}>
-                    <td className="px-2 py-1.5 font-semibold text-brand-tinta">{semana.semana}ª</td>
-                    <td className="px-2 py-1.5 text-xs text-muted-foreground">{semana.periodo}</td>
-                    <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-brand-musgo">{moneyFin(semana.faturado)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{moneyFin(semana.ritmoNecessario)}</td>
-                    <td
-                      className={cn(
-                        "px-2 py-1.5 text-right font-bold tabular-nums",
-                        semana.noRitmo ? "text-emerald-800" : "text-red-800",
-                      )}
-                    >
-                      {semana.diferenca > 0 ? "+" : ""}
-                      {moneyFin(semana.diferenca)}
-                    </td>
-                  </tr>
+              <dl className="grid gap-2 border-y border-fio-2 py-4 sm:grid-cols-3 sm:gap-4">
+                {[
+                  { rotulo: "Faturado no mês", valor: moneyFin(painel.faturado) },
+                  { rotulo: NIVEL_META_LABELS.target, valor: moneyFin(painel.supermeta) },
+                  { rotulo: NIVEL_META_LABELS.super, valor: moneyFin(painel.superSupermeta) },
+                ].map((item) => (
+                  <div key={item.rotulo} className="flex min-w-0 items-baseline justify-between gap-3 sm:block">
+                    <dt className={RUBRICA_RESULTADOS}>{item.rotulo}</dt>
+                    <dd className="m-0 whitespace-nowrap text-base font-bold leading-7 tabular-nums text-tinta sm:mt-1 sm:text-xl">{item.valor}</dd>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+              </dl>
+              <div className={TABELA.rolagem}>
+                <table className={cn(TABELA.tabela, "min-w-[34rem]")}>
+                  <thead>
+                    <tr>
+                      <th className={TABELA.th}>Semana</th>
+                      <th className={TABELA.th}>Período</th>
+                      <th className={TABELA.thNum}>Faturado</th>
+                      <th className={TABELA.thNum}>Ritmo da supermeta</th>
+                      <th className={TABELA.thNum}>Diferença</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {painel.semanas.map((semana) => {
+                      const agora = semana.semana === semanaDeHoje;
+                      // Semana que ainda não começou não está "abaixo": só não aconteceu.
+                      const futura = (inicioDaSemana.get(semana.semana) ?? "") > today;
+                      return (
+                        <tr key={semana.semana} className={cn(agora && "shadow-[inset_3px_0_0_rgb(var(--ouro-fio-rgb))]")}>
+                          <td className={cn(TABELA.td, "font-bold", agora && "pl-3 first:pl-3")}>
+                            {semana.semana}ª{agora ? <span className="ml-2 text-xs font-bold text-ouro">agora</span> : null}
+                          </td>
+                          <td className={cn(TABELA.td, "whitespace-nowrap text-[13px] tabular-nums text-tinta-2")}>{semana.periodo}</td>
+                          <td className={cn(TABELA.tdNum, "font-bold")}>{moneyFin(semana.faturado)}</td>
+                          <td className={cn(TABELA.tdNum, "text-tinta-2")}>{moneyFin(semana.ritmoNecessario)}</td>
+                          <td className={cn(TABELA.tdNum, "font-bold", futura ? "text-tinta-2" : semana.noRitmo ? "text-ok" : "text-atencao")}>
+                            {semana.diferenca > 0 ? "+" : ""}
+                            {moneyFin(semana.diferenca)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </BlocoSaber>
 
-        {feedback ? (
-          <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            {feedback}
+            <BlocoSaber as="section" aria-labelledby="metas-semanal" className="grid gap-4">
+              <TituloDeBloco id="metas-semanal" titulo="Resumo semanal" ajuda="A meta de cada semana é a soma das metas dos dias úteis dela." />
+              <div className={TABELA.rolagem}>
+                <table className={cn(TABELA.tabela, "min-w-[560px]")}>
+                  <thead>
+                    <tr>
+                      <th className={TABELA.th}>Semana</th>
+                      <th className={TABELA.th}>Período</th>
+                      <th className={TABELA.thNum}>Meta</th>
+                      <th className={TABELA.thNum}>Realizado</th>
+                      <th className={TABELA.thNum}>Dif.</th>
+                      <th className={TABELA.thNum}>% Meta</th>
+                      <th className={TABELA.thNum}>Pacientes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {board.weeks.map((week) => (
+                      <tr key={week.weekIndex}>
+                        <td className={cn(TABELA.td, "font-bold")}>{week.weekIndex}</td>
+                        <td className={cn(TABELA.td, "whitespace-nowrap text-[13px] tabular-nums text-tinta-2")}>{week.periodLabel}</td>
+                        <td className={TABELA.tdNum}>{moneyFin(week.weeklyGoal)}</td>
+                        <td className={cn(TABELA.tdNum, "font-bold")}>{week.revenue ? moneyFin(week.revenue) : "—"}</td>
+                        <td className={cn(TABELA.tdNum, week.revenue ? (week.diff < 0 ? "font-bold text-atencao" : "font-bold text-ok") : "text-tinta-2")}>
+                          {week.revenue ? moneyFin(week.diff) : "—"}
+                        </td>
+                        <td className={TABELA.tdNum}>{week.revenue ? percent(week.goalPercent) : "—"}</td>
+                        <td className={TABELA.tdNum}>{week.patients || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </BlocoSaber>
           </div>
-        ) : null}
+
+          {/* SABER — o mês até agora: o faturado, os três degraus e a meritocracia. */}
+          <BlocoSaber as="aside" aria-labelledby="metas-mes" className="grid content-start gap-4 max-xl:order-first">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="metas-mes" className={RUBRICA_RESULTADOS}>
+                {nomeDoMes} até agora
+              </h2>
+              {ehMesAtual && board.days.length ? (
+                <span className="whitespace-nowrap text-[13px] font-medium leading-5 text-tinta-2">
+                  dia útil {fioDiaDeHoje} de {fioDiasUteis.length}
+                </span>
+              ) : null}
+            </div>
+            <div className="grid gap-1">
+              <NumeroDoIndicador tamanho="grande">{moneyFin(board.accumulatedRevenue)}</NumeroDoIndicador>
+              <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                acumulado no mês · <strong className="font-bold tabular-nums text-tinta">{percent(board.superGoalPercent)}</strong> da super meta
+              </p>
+            </div>
+            <ReguaDosDegraus
+              faturado={board.accumulatedRevenue}
+              degraus={degraus.map((degrau) => ({ rotulo: degrau.rotulo, valor: degrau.valor }))}
+              descricao={`Acumulado ${moneyFin(board.accumulatedRevenue)}; ${degraus.map((degrau) => `${degrau.rotulo}${degrau.falta ? `, falta ${moneyFin(degrau.falta)}` : ", batida"}`).join("; ")}`}
+            />
+            <Razao
+              linhas={degraus.map((degrau) => ({
+                rotulo: (
+                  <span className="font-semibold text-tinta">
+                    {degrau.nome} <span className="whitespace-nowrap tabular-nums">{moneyFin(degrau.valor)}</span>
+                  </span>
+                ),
+                detalhe: degrau.dica,
+                valor: degrau.falta ? `falta ${moneyFin(degrau.falta)}` : "batida",
+                tom: degrau.falta ? undefined : "ok",
+                valorMenor: true,
+              }))}
+            />
+            <p className="text-sm font-semibold leading-[22px] text-tinta">{board.meritocracyStatus}</p>
+            <Razao
+              linhas={[
+                { rotulo: "Pacientes no mês", valor: `${board.accumulatedPatients} de ${metasDoMes.goalPatients}`, valorMenor: true },
+                { rotulo: "Ticket médio atual", valor: moneyFin(board.avgTicket), valorMenor: true },
+                { rotulo: "Ticket p/ super meta", valor: moneyFin(board.avgTicketForSuper), valorMenor: true },
+              ]}
+            />
+            <OrigemDosDados modo={financeiro.syncMode} />
+          </BlocoSaber>
+        </div>
 
         <ResumoMesCard
           crediarioProfits={financeiro.crediarioProfits}
@@ -336,179 +490,95 @@ export function FinanceiroMetasPage() {
           monthKey={monthKey}
         />
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: "Acumulado no mês", value: moneyFin(board.accumulatedRevenue), hint: `${percent(board.superGoalPercent)} da super meta` },
-            {
-              label: `${NIVEL_META_LABELS.min} ${moneyFin(metasDoMes.goalMinRevenue)}`,
-              value: board.missingToMin ? `falta ${moneyFin(board.missingToMin)}` : "batida ✓",
-              hint: "abaixo dela as meritocracias zeram",
-            },
-            {
-              label: `Meta ${moneyFin(metasDoMes.goalTargetRevenue)}`,
-              value: board.missingToTarget ? `falta ${moneyFin(board.missingToTarget)}` : "batida ✓",
-              hint: "meritocracia individual + café da manhã",
-            },
-            {
-              label: `Super meta ${moneyFin(metasDoMes.goalSuperRevenue)}`,
-              value: board.missingToSuper ? `falta ${moneyFin(board.missingToSuper)}` : "batida ✓",
-              hint: board.meritocracyBonusPerPerson > 0
-                ? `jantar + ${moneyFin(board.meritocracyBonusPerPerson)} por pessoa`
-                : "jantar + R$ 200 cada (+200 a cada 10 mil)",
-            },
-          ].map((cardInfo) => (
-            <Card key={cardInfo.label} className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardContent className="p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{cardInfo.label}</p>
-                <p className="mt-1 text-xl font-bold text-brand-tinta">{cardInfo.value}</p>
-                <p className="text-xs text-muted-foreground">{cardInfo.hint}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
-
-        <section className="grid gap-3 sm:grid-cols-3">
-          {[
-            { label: "Pacientes no mês", value: `${board.accumulatedPatients} / ${metasDoMes.goalPatients}` },
-            { label: "Ticket médio atual", value: moneyFin(board.avgTicket) },
-            { label: "Ticket p/ super meta", value: moneyFin(board.avgTicketForSuper) },
-          ].map((cardInfo) => (
-            <Card key={cardInfo.label} className="border-brand-musgo/20 bg-[#f2f5ec] shadow-none">
-              <CardContent className="p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">{cardInfo.label}</p>
-                <p className="mt-1 text-xl font-bold text-brand-musgo">{cardInfo.value}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Trophy className="h-5 w-5 text-brand-dourado" aria-hidden="true" />
-              Resumo semanal
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+        {/* DECIDIR — o controle diário: o Sim/Não do Dr. Daniel e os valores das metas (folha). */}
+        <BlocoFolha as="section" aria-labelledby="metas-diario" className="overflow-hidden">
+          <div className="border-b border-fio px-6 py-4 max-md:px-4">
+            <TituloDeBloco
+              id="metas-diario"
+              titulo="Controle diário"
+              ajuda={canEdit ? 'Sextas já vêm como "Não" (Dr. Daniel não atende). Clique em Sim/Não para ajustar qualquer dia.' : undefined}
+              acoes={
+                <Botao
+                  variante={showConfig ? "secundario" : "fantasma"}
+                  tamanho="pq"
+                  icone={<SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}
+                  aria-expanded={showConfig}
+                  onClick={() => setShowConfig((value) => !value)}
+                >
+                  {showConfig ? "Fechar valores das metas" : "Valores das metas"}
+                </Botao>
+              }
+            />
+          </div>
+          {showConfig ? (
+            <div className="grid gap-4 border-b border-fio bg-saber px-6 py-5 sm:grid-cols-2 lg:grid-cols-3 max-md:px-4">
+              {configField(`${NIVEL_META_LABELS.min} (R$)`, "goalMinRevenue")}
+              {configField("Meta (R$)", "goalTargetRevenue")}
+              {configField("Super meta (R$)", "goalSuperRevenue")}
+              {configField("Meta de pacientes", "goalPatients")}
+              {configField("Meta diária com Dr. Daniel (R$)", "dailyGoalWithDoctor")}
+              {configField("Meta diária sem Dr. Daniel (R$)", "dailyGoalWithoutDoctor")}
+            </div>
+          ) : null}
+          <div className="mobile-scrollbar-none overflow-x-auto px-6 pb-2 max-md:px-4">
+            <table className={cn(TABELA.tabela, "min-w-[860px]")}>
               <thead>
-                <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">
-                  <th className="py-2 pr-3">Semana</th>
-                  <th className="py-2 pr-3">Período</th>
-                  <th className="py-2 pr-3">Meta</th>
-                  <th className="py-2 pr-3">Realizado</th>
-                  <th className="py-2 pr-3">Dif.</th>
-                  <th className="py-2 pr-3">% Meta</th>
-                  <th className="py-2">Pacientes</th>
+                <tr>
+                  <th className={TABELA.th}>Data</th>
+                  <th className={TABELA.th}>Dia</th>
+                  <th className={TABELA.th}>Dr. Daniel</th>
+                  <th className={TABELA.thNum}>Meta do dia</th>
+                  <th className={TABELA.thNum}>Faturamento</th>
+                  <th className={TABELA.thNum}>Dif.</th>
+                  <th className={TABELA.thNum}>% Meta</th>
+                  <th className={TABELA.thNum}>Acumulado</th>
+                  <th className={TABELA.thNum}>Pac.</th>
+                  <th className={TABELA.thNum}>Ticket acum.</th>
                 </tr>
               </thead>
               <tbody>
-                {board.weeks.map((week) => (
-                  <tr key={week.weekIndex} className="border-t border-brand-oliva/10">
-                    <td className="py-2 pr-3 font-semibold text-brand-tinta">{week.weekIndex}</td>
-                    <td className="py-2 pr-3">{week.periodLabel}</td>
-                    <td className="py-2 pr-3">{moneyFin(week.weeklyGoal)}</td>
-                    <td className="py-2 pr-3 font-semibold text-brand-musgo">{week.revenue ? moneyFin(week.revenue) : "—"}</td>
-                    <td className={cn("py-2 pr-3", week.diff < 0 ? "text-destructive" : "text-brand-musgo")}>
-                      {week.revenue ? moneyFin(week.diff) : "—"}
-                    </td>
-                    <td className="py-2 pr-3">{week.revenue ? percent(week.goalPercent) : "—"}</td>
-                    <td className="py-2">{week.patients || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Target className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-                Controle diário
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {canEdit ? (
-                  <p className="text-xs text-muted-foreground">
-                    Sextas já vêm como "Não" (Dr. Daniel não atende). Clique em Sim/Não para ajustar qualquer dia.
-                  </p>
-                ) : null}
-                <Button type="button" variant="ghost" size="sm" onClick={() => setShowConfig((value) => !value)}>
-                  {showConfig ? "Fechar valores das metas" : "Valores das metas"}
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {showConfig ? (
-              <div className="mb-4 grid gap-3 rounded-lg border border-brand-dourado/30 bg-brand-creme/40 p-4 sm:grid-cols-3">
-                {configField(`${NIVEL_META_LABELS.min} (R$)`, "goalMinRevenue")}
-                {configField("Meta (R$)", "goalTargetRevenue")}
-                {configField("Super meta (R$)", "goalSuperRevenue")}
-                {configField("Meta de pacientes", "goalPatients")}
-                {configField("Meta diária com Dr. Daniel (R$)", "dailyGoalWithDoctor")}
-                {configField("Meta diária sem Dr. Daniel (R$)", "dailyGoalWithoutDoctor")}
-              </div>
-            ) : null}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-brand-oliva">
-                    <th className="py-2 pr-3">Data</th>
-                    <th className="py-2 pr-3">Dia</th>
-                    <th className="py-2 pr-3">Dr. Daniel</th>
-                    <th className="py-2 pr-3">Meta do dia</th>
-                    <th className="py-2 pr-3">Faturamento</th>
-                    <th className="py-2 pr-3">Dif.</th>
-                    <th className="py-2 pr-3">% Meta</th>
-                    <th className="py-2 pr-3">Acumulado</th>
-                    <th className="py-2 pr-3">Pac.</th>
-                    <th className="py-2">Ticket acum.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {board.days.map((day) => (
-                    <tr
-                      key={day.date}
-                      className={cn(
-                        "border-t border-brand-oliva/10",
-                        day.date === today && "bg-brand-creme/50 font-semibold",
-                      )}
-                    >
-                      <td className="py-2 pr-3">{day.date.split("-").reverse().slice(0, 2).join("/")}</td>
-                      <td className="py-2 pr-3">{day.weekday}</td>
-                      <td className="py-2 pr-3">
+                {board.days.map((day) => {
+                  const ehHoje = day.date === today;
+                  return (
+                    <tr key={day.date} className={cn(ehHoje && "bg-ouro-claro font-bold")} aria-current={ehHoje ? "date" : undefined}>
+                      <td className={cn(TABELA.td, "whitespace-nowrap tabular-nums", ehHoje && "pl-2 first:pl-2 shadow-[inset_3px_0_0_rgb(var(--ouro-fio-rgb))]")}>
+                        {diaMes(day.date)}
+                        {ehHoje ? <span className="ml-2 text-xs font-bold text-ouro">hoje</span> : null}
+                      </td>
+                      <td className={cn(TABELA.td, "text-tinta-2")}>{day.weekday}</td>
+                      <td className={TABELA.td}>
                         <button
                           type="button"
                           disabled={!canEdit}
                           onClick={() => toggleDoctorDay(day.date)}
                           className={cn(
-                            "rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors",
-                            day.withDoctor ? "bg-brand-musgo text-brand-papel" : "bg-brand-creme text-brand-oliva",
-                            canEdit && "hover:opacity-80",
+                            "inline-flex h-7 min-w-12 items-center justify-center rounded-controle px-2.5 text-xs font-bold leading-none transition-colors duration-150 ease-papel",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco",
+                            "disabled:cursor-not-allowed",
+                            day.withDoctor ? "bg-musgo-claro text-musgo" : "bg-folha text-tinta-2 shadow-[inset_0_0_0_1px_rgb(var(--fio-2-rgb))]",
+                            canEdit && (day.withDoctor ? "hover:bg-musgo-claro-2" : "hover:text-tinta"),
                           )}
                           aria-label={`Dr. Daniel ${day.withDoctor ? "atende" : "não atende"} em ${day.date}`}
                         >
                           {day.withDoctor ? "Sim" : "Não"}
                         </button>
                       </td>
-                      <td className="py-2 pr-3">{moneyFin(day.dailyGoal)}</td>
-                      <td className="py-2 pr-3 font-semibold text-brand-musgo">{day.revenue ? moneyFin(day.revenue) : "—"}</td>
-                      <td className={cn("py-2 pr-3", day.diff < 0 ? "text-destructive" : "text-brand-musgo")}>
+                      <td className={TABELA.tdNum}>{moneyFin(day.dailyGoal)}</td>
+                      <td className={cn(TABELA.tdNum, "font-bold")}>{day.revenue ? moneyFin(day.revenue) : "—"}</td>
+                      <td className={cn(TABELA.tdNum, day.revenue ? (day.diff < 0 ? "font-bold text-atencao" : "font-bold text-ok") : "text-tinta-2")}>
                         {day.revenue ? moneyFin(day.diff) : "—"}
                       </td>
-                      <td className="py-2 pr-3">{day.revenue ? percent(day.goalPercent) : "—"}</td>
-                      <td className="py-2 pr-3">{moneyFin(day.accumulatedRevenue)}</td>
-                      <td className="py-2 pr-3">{day.patients || "—"}</td>
-                      <td className="py-2">{day.accumulatedAvgTicket ? moneyFin(day.accumulatedAvgTicket) : "—"}</td>
+                      <td className={TABELA.tdNum}>{day.revenue ? percent(day.goalPercent) : "—"}</td>
+                      <td className={TABELA.tdNum}>{moneyFin(day.accumulatedRevenue)}</td>
+                      <td className={TABELA.tdNum}>{day.patients || "—"}</td>
+                      <td className={TABELA.tdNum}>{day.accumulatedAvgTicket ? moneyFin(day.accumulatedAvgTicket) : "—"}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </BlocoFolha>
       </div>
     </AccessGate>
   );

@@ -1,16 +1,23 @@
+// P12 AO VIVO — a matriz categoria × mês, 100% derivada dos lançamentos.
+//
+// REDESENHO (08/10/2026, Papel & Musgo, etapa 4): um cabeçalho só (o ano, o
+// lucro do ano em frase e o "mandar para o contador"), a escolha do mês como as
+// leituras da imagem 03, o fechamento contábil e a prova do dinheiro lado a
+// lado, e a matriz numa folha com a primeira coluna presa; a "prova viva" de
+// cada célula abre na gaveta da casa. Os números, os filtros e as exportações
+// são os mesmos.
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { BrainCircuit, Eye, EyeOff, X } from "lucide-react";
+import { BrainCircuit, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { BlocoFolha, Botao, Cabecalho } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
 import { canFinanceiroView } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import { lerRemoteSaldoBanco, salvarRemoteSaldoBanco } from "@/lib/remoteData";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { Gaveta } from "@/features/compras/Gaveta";
 import {
   buildP12Matrix,
   moneyFin,
@@ -20,7 +27,7 @@ import {
   type FinCategory,
   type P12Matrix,
 } from "./financeiroData";
-import { defaultMetasConfig, type MetasConfig } from "./metasData";
+import { type MetasConfig } from "./metasData";
 import { ResumoMesCard } from "./ResumoMesCard";
 import { FechamentoContabilCard } from "./FechamentoContabilCard";
 import { ProvaDoDinheiroCard } from "./ProvaDoDinheiroCard";
@@ -29,14 +36,27 @@ import { abaP12 } from "./exportContabilidade";
 import { abaContasAPagar } from "./contabilidadeXlsx";
 import { ExportarPlanilhaBotoes } from "./ExportarPlanilhaBotoes";
 import { useMetasConfig } from "./useMetasConfig";
-
+import { Campo, Leituras, Selecao, tabela } from "./pecasBancoFechamento";
+import { Etiqueta, OrigemDosDados } from "./pecasResultados";
 
 type CellSelection = { category: FinCategory | null; month: number; isRevenue: boolean };
 
-function cellValue(value: number, isRevenue = false) {
-  if (!value) return <span className="text-brand-oliva/30">—</span>;
-  return <span className={isRevenue ? "font-semibold text-brand-musgo" : "text-brand-tinta"}>{moneyFin(value)}</span>;
+// 13/10/2026: `vazioForte` pinta o "—" em tinta nas linhas de fundo musgo-claro
+// (no escuro, tinta-2 sobre musgo-claro dá 4,44:1, abaixo de 4,5:1).
+function cellValue(value: number, isRevenue = false, vazioForte = false) {
+  if (!value) return <span className={vazioForte ? "text-tinta" : "text-tinta-2"}>—</span>;
+  return <span className={isRevenue ? "font-bold text-tinta" : "text-tinta"}>{moneyFin(value)}</span>;
 }
+
+/** O botão de uma célula: abre a prova viva (os lançamentos que formam o número). */
+const classeDaCelula =
+  "rounded-controle px-1.5 py-0.5 tabular-nums transition-colors duration-150 ease-papel hover:bg-musgo-claro " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foco";
+
+/** Célula de número da matriz (algarismos de largura igual, à direita). */
+const td = "whitespace-nowrap border-b border-fio px-2.5 py-2.5 text-right align-middle tabular-nums";
+/** A primeira coluna fica presa ao rolar para o lado; o fundo acompanha a linha. */
+const tdRotulo = "sticky left-0 z-10 whitespace-normal border-b border-fio px-4 py-2.5 text-left align-middle";
 
 export function FinanceiroP12Page() {
   // Saldo do Itaú digitado (Prova do dinheiro) — compartilhado com o card do
@@ -154,315 +174,330 @@ export function FinanceiroP12Page() {
       }));
   }, [selection, financeiro.sales, financeiro.expensesPorCategoria, year]);
 
+  const anoTemMovimento = matrix.revenueYear > 0.005 || matrix.totalExpensesYear > 0.005;
+
   return (
     <AccessGate allowed={canFinanceiroView} label="Financeiro · P12" module="fin-p12">
-      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Financeiro 360</Badge>
-                <Badge variant="muted">{financeiro.syncMode}</Badge>
+      <div className="mx-auto w-full max-w-[1500px]">
+        <Cabecalho
+          sobrancelha="Resultados · P12"
+          titulo={
+            <>
+              P12 <em>ao vivo</em>{" "}
+              <InfoTip title="O que é a P12 ao vivo?" className="align-middle">
+                A matriz categoria × mês 100% derivada dos lançamentos: faturamento vem das comandas e cada categoria soma as
+                contas lançadas nela, SEMPRE no mês do vencimento (conta de junho paga em julho continua em junho). O LUCRO do
+                mês = faturamento + juros do banco − despesas operacionais. A OBRA (investimento) e os APORTES/resgates do cofre
+                NÃO entram no lucro — são movimento de tesouraria (CDB), não caixa do dia a dia. Só o rendimento (juros) conta
+                como receita. O crediário também fica fora, em aba própria. Clique em qualquer valor para ver a "prova viva".
+              </InfoTip>
+            </>
+          }
+          frase={
+            <>
+              {anoTemMovimento ? (
+                <>
+                  Em {year}, o lucro operacional soma{" "}
+                  <strong className={matrix.profitYear < 0 ? "alerta" : undefined}>{moneyFin(matrix.profitYear)}</strong>.{" "}
+                </>
+              ) : null}
+              Nada aqui é digitado: se um número parecer errado, corrija o lançamento de origem.
+            </>
+          }
+          acoes={
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="grid gap-2">
+                <span className="text-[13px] font-bold leading-5 text-tinta">Ano</span>
+                <div className="flex items-center gap-1" role="group" aria-label="Ano da P12">
+                  <Botao tamanho="padrao" variante="fantasma" onClick={() => setYear((value) => value - 1)} aria-label={`Ver ${year - 1}`}>
+                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    {year - 1}
+                  </Botao>
+                  <span className="grid h-10 min-w-[4.5rem] place-items-center rounded-controle border border-borda-campo bg-folha px-3 font-serifa text-xl tabular-nums text-tinta" aria-current="true">
+                    {year}
+                  </span>
+                  <Botao tamanho="padrao" variante="fantasma" onClick={() => setYear((value) => value + 1)} aria-label={`Ver ${year + 1}`}>
+                    {year + 1}
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </Botao>
+                </div>
               </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                P12 ao vivo
-                <InfoTip title="O que é a P12 ao vivo?">
-                  A matriz categoria × mês 100% derivada dos lançamentos: faturamento vem das comandas e cada categoria soma as
-                  contas lançadas nela, SEMPRE no mês do vencimento (conta de junho paga em julho continua em junho). O LUCRO do
-                  mês = faturamento + juros do banco − despesas operacionais. A OBRA (investimento) e os APORTES/resgates do cofre
-                  NÃO entram no lucro — são movimento de tesouraria (CDB), não caixa do dia a dia. Só o rendimento (juros) conta
-                  como receita. O crediário também fica fora, em aba própria. Clique em qualquer valor para ver a "prova viva".
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Nada aqui é digitado: se um número parecer errado, corrija o lançamento de origem.
-              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <Campo rotulo="Mandar para o contador" className="w-48">
+                  <Selecao
+                    value={mesExport === "ANO" ? "ANO" : String(mesExport)}
+                    onChange={(event) => setMesExport(event.target.value === "ANO" ? "ANO" : Number(event.target.value))}
+                    aria-label="Período da P12 para mandar"
+                  >
+                    <option value="ANO">Ano inteiro {year}</option>
+                    {p12MonthLabels.map((label, index) => (
+                      <option key={label} value={index}>
+                        {label}/{year}
+                      </option>
+                    ))}
+                  </Selecao>
+                </Campo>
+                <ExportarPlanilhaBotoes arquivo={arquivoP12} abas={abasExport} className="pb-1" />
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setYear((value) => value - 1)}>{year - 1}</Button>
-              <Badge variant="outline" className="px-3 py-1.5 text-sm">{year}</Badge>
-              <Button type="button" variant="outline" size="sm" onClick={() => setYear((value) => value + 1)}>{year + 1}</Button>
-              <span className="ml-2 inline-flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-brand-oliva">Mandar</span>
-                <select
-                  value={mesExport === "ANO" ? "ANO" : String(mesExport)}
-                  onChange={(event) => setMesExport(event.target.value === "ANO" ? "ANO" : Number(event.target.value))}
-                  className="h-8 rounded-md border border-brand-oliva/25 bg-white/80 px-2 text-xs font-semibold text-brand-tinta"
-                  aria-label="Período da P12 para mandar"
-                >
-                  <option value="ANO">Ano inteiro {year}</option>
-                  {p12MonthLabels.map((label, index) => (
-                    <option key={label} value={index}>
-                      {label}/{year}
-                    </option>
-                  ))}
-                </select>
-                <ExportarPlanilhaBotoes arquivo={arquivoP12} abas={abasExport} />
-              </span>
-            </div>
-          </div>
-        </motion.section>
+          }
+        />
 
-        <section className="flex flex-wrap items-center gap-1.5 rounded-lg border border-brand-oliva/15 bg-white/50 p-2 backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={() => setMonthFilter(null)}
-            className={cn(
-              "ios-pressable rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-              monthFilter === null ? "bg-brand-musgo text-brand-papel" : "text-brand-tinta hover:bg-white/80",
-            )}
-          >
-            Ano inteiro
-          </button>
-          {p12MonthLabels.map((label, index) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => setMonthFilter((current) => (current === index ? null : index))}
-              className={cn(
-                "ios-pressable rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                monthFilter === index ? "bg-brand-musgo text-brand-papel" : "text-brand-tinta hover:bg-white/80",
-                matrix.revenueMonths[index].total === 0 && matrix.totalExpensesMonths[index] === 0 && monthFilter !== index && "text-brand-oliva/40",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-          <span className="mx-1 hidden h-5 w-px bg-brand-oliva/20 sm:block" />
-          <button
-            type="button"
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Leituras
+            rotulo="Mês da P12"
+            valor={monthFilter === null ? "ANO" : String(monthFilter)}
+            onMudar={(valor) => {
+              if (valor === "ANO") setMonthFilter(null);
+              else setMonthFilter((current) => (current === Number(valor) ? null : Number(valor)));
+            }}
+            opcoes={[{ valor: "ANO", rotulo: "Ano inteiro" }, ...p12MonthLabels.map((label, index) => ({ valor: String(index), rotulo: label }))]}
+          />
+          <Botao
+            tamanho="pq"
+            variante="fantasma"
+            icone={hideEmpty ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
             onClick={() => setHideEmpty((value) => !value)}
-            className="ios-pressable flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-brand-tinta hover:bg-white/80"
+            aria-pressed={hideEmpty}
           >
-            {hideEmpty ? <EyeOff className="h-3.5 w-3.5" aria-hidden="true" /> : <Eye className="h-3.5 w-3.5" aria-hidden="true" />}
             {hideEmpty ? "Só categorias com valor" : "Todas as categorias"}
-          </button>
-        </section>
+          </Botao>
+        </div>
 
-        {/* FECHAMENTO PARA A CONTABILIDADE (03/08/2026, regra do Lucas + CEO):
-            4 itens que se auto-somam no Faturamento Bruto; crediário fica FORA. */}
-        <FechamentoContabilCard
-          sales={financeiro.sales}
-          expenses={financeiro.expensesPorCategoria}
-          savingsMoves={financeiro.savingsMoves}
-          crediarioProfits={financeiro.crediarioProfits}
-          monthKey={resumoMonthKey}
-          saldoItau={parseFinAmount(saldoTexto)}
-        />
+        <div className="grid gap-6">
+          <div className="grid items-start gap-6 xl:grid-cols-2">
+            {/* FECHAMENTO PARA A CONTABILIDADE (03/08/2026, regra do Lucas + CEO):
+                4 itens que se auto-somam no Faturamento Bruto; crediário fica FORA. */}
+            <FechamentoContabilCard
+              sales={financeiro.sales}
+              expenses={financeiro.expensesPorCategoria}
+              savingsMoves={financeiro.savingsMoves}
+              crediarioProfits={financeiro.crediarioProfits}
+              monthKey={resumoMonthKey}
+              saldoItau={parseFinAmount(saldoTexto)}
+            />
 
-        {/* PROVA DO DINHEIRO (03/08/2026, pedido do Lucas): saldo do Itaú −
-            reserva de impostos + notas do cofre = dinheiro NA MÃO, agora. */}
-        <ProvaDoDinheiroCard
-          expenses={financeiro.expenses}
-          crediarioProfits={financeiro.crediarioProfits}
-          texto={saldoTexto}
-          atualizadoEm={saldoAtualizadoEm}
-          onSaldoChange={handleSaldoChange}
-        />
+            {/* PROVA DO DINHEIRO (03/08/2026, pedido do Lucas): saldo do Itaú −
+                reserva de impostos + notas do cofre = dinheiro NA MÃO, agora. */}
+            <ProvaDoDinheiroCard
+              expenses={financeiro.expenses}
+              crediarioProfits={financeiro.crediarioProfits}
+              texto={saldoTexto}
+              atualizadoEm={saldoAtualizadoEm}
+              onSaldoChange={handleSaldoChange}
+            />
+          </div>
 
-        <ResumoMesCard
-          crediarioProfits={financeiro.crediarioProfits}
-          sales={financeiro.sales}
-          expenses={financeiro.expensesPorCategoria}
-          categories={financeiro.categories}
-          savingsMoves={financeiro.savingsMoves}
-          metas={metasConfig}
-          monthKey={resumoMonthKey}
-        />
+          <ResumoMesCard
+            crediarioProfits={financeiro.crediarioProfits}
+            sales={financeiro.sales}
+            expenses={financeiro.expensesPorCategoria}
+            categories={financeiro.categories}
+            savingsMoves={financeiro.savingsMoves}
+            metas={metasConfig}
+            monthKey={resumoMonthKey}
+          />
 
-        <section className="overflow-hidden rounded-xl border border-brand-oliva/15 bg-white/60 shadow-calm backdrop-blur-xl">
-          <div className="kanban-scroll overflow-x-auto">
-            <table className={cn("w-full whitespace-nowrap text-right text-sm tabular-nums", monthFilter === null ? "min-w-[1280px]" : "min-w-[560px]")}>
-              <thead>
-                <tr className="border-b border-brand-oliva/18 bg-brand-papel/80 text-[11px] uppercase tracking-wide text-brand-oliva">
-                  <th className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-3 text-left">Categoria</th>
-                  {visibleMonths.map((month) => (
-                    <th key={month} className="px-2.5 py-3">{p12MonthLabels[month]}</th>
-                  ))}
-                  <th className="px-4 py-3">Anual</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-brand-dourado/25 bg-brand-creme/45 font-semibold">
-                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/95 px-4 py-3 text-left text-brand-musgo">FATURAMENTO BRUTO</td>
-                  {visibleMonths.map((month) => (
-                    <td key={month} className="px-2.5 py-3">
-                      <button
-                        type="button"
-                        className="rounded px-1 py-0.5 hover:bg-white/80"
-                        onClick={() => matrix.revenueMonths[month].total && setSelection({ category: null, month, isRevenue: true })}
-                      >
-                        {cellValue(matrix.revenueMonths[month].total, true)}
-                      </button>
+          <BlocoFolha as="section" aria-label={`P12 de ${year}`} className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className={cn(tabela.tabela, "whitespace-nowrap text-right", monthFilter === null ? "min-w-[1280px]" : "min-w-[560px]")}>
+                <thead>
+                  <tr className="bg-saber">
+                    <th className={cn(tabela.th, "sticky left-0 z-20 w-[19rem] min-w-[16rem] bg-saber px-4 max-md:w-[11rem] max-md:min-w-[11rem]")}>Categoria</th>
+                    {visibleMonths.map((month) => (
+                      <th key={month} className={cn(tabela.thNum, "px-2.5")}>
+                        {p12MonthLabels[month]}
+                      </th>
+                    ))}
+                    <th className={cn(tabela.thNum, "px-4 text-tinta")}>Anual</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="bg-musgo-claro font-bold">
+                    <td className={cn(tdRotulo, "whitespace-normal bg-musgo-claro text-tinta")}>FATURAMENTO BRUTO</td>
+                    {visibleMonths.map((month) => (
+                      <td key={month} className={td}>
+                        <button
+                          type="button"
+                          className={classeDaCelula}
+                          onClick={() => matrix.revenueMonths[month].total && setSelection({ category: null, month, isRevenue: true })}
+                        >
+                          {cellValue(matrix.revenueMonths[month].total, true, true)}
+                        </button>
+                      </td>
+                    ))}
+                    <td className={cn(td, "px-4 text-tinta")}>{moneyFin(matrix.revenueYear)}</td>
+                  </tr>
+                  <tr className="bg-folha font-semibold">
+                    <td className={cn(tdRotulo, "whitespace-normal bg-folha text-tinta")}>
+                      Rendimento financeiro (juros)
+                      <span className="ml-1.5 text-xs font-medium text-tinta-2">única entrada de cofre que conta como receita</span>
                     </td>
+                    {visibleMonths.map((month) => (
+                      <td key={month} className={td}>
+                        {cellValue(matrix.financialIncomeMonths[month], true)}
+                      </td>
+                    ))}
+                    <td className={cn(td, "px-4 font-bold text-tinta")}>{moneyFin(matrix.financialIncomeYear)}</td>
+                  </tr>
+                  {/* Crediário reconhecido como lucro: aparece só nos meses em que o
+                      gestor apertou o botão na tela do Crediário (31/07/2026). */}
+                  {matrix.crediarioYear > 0.005 ? (
+                    <tr className="bg-folha font-semibold">
+                      <td className={cn(tdRotulo, "whitespace-normal bg-folha text-tinta")}>
+                        Crediário somado ao faturamento
+                        <span className="ml-1.5 text-xs font-medium text-tinta-2">dinheiro do cofre reconhecido no mês (decisão manual) — soma na meta e no lucro</span>
+                      </td>
+                      {visibleMonths.map((month) => (
+                        <td key={month} className={td}>
+                          {cellValue(matrix.crediarioMonths[month], true)}
+                        </td>
+                      ))}
+                      <td className={cn(td, "px-4 font-bold text-tinta")}>{moneyFin(matrix.crediarioYear)}</td>
+                    </tr>
+                  ) : null}
+
+                  {matrix.groups.map((group) => (
+                    <GroupRows
+                      key={group.groupKey}
+                      group={group}
+                      visibleMonths={visibleMonths}
+                      hideEmpty={hideEmpty}
+                      onSelect={(category, month) => setSelection({ category, month, isRevenue: false })}
+                    />
                   ))}
-                  <td className="px-4 py-3 text-brand-musgo">{moneyFin(matrix.revenueYear)}</td>
-                </tr>
-                <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
-                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
-                    Rendimento financeiro (juros)
-                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">única entrada de cofre que conta como receita</span>
-                  </td>
-                  {visibleMonths.map((month) => (
-                    <td key={month} className="px-2.5 py-2.5">{cellValue(matrix.financialIncomeMonths[month], true)}</td>
-                  ))}
-                  <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.financialIncomeYear)}</td>
-                </tr>
-                {/* Crediário reconhecido como lucro: aparece só nos meses em que o
-                    gestor apertou o botão na tela do Crediário (31/07/2026). */}
-                {matrix.crediarioYear > 0.005 ? (
-                  <tr className="border-b border-brand-oliva/15 bg-brand-creme/25 font-semibold">
-                    <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme/70 px-4 py-2.5 text-left text-brand-musgo">
-                      Crediário somado ao faturamento
-                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-                        dinheiro do cofre reconhecido no mês (decisão manual) — soma na meta e no lucro
+
+                  <tr className="bg-saber font-bold text-tinta">
+                    <td className={cn(tdRotulo, "whitespace-normal border-t-2 border-t-fio-2 bg-saber")}>TOTAL DESPESAS OPERACIONAIS</td>
+                    {visibleMonths.map((month) => (
+                      <td key={month} className={cn(td, "border-t-2 border-t-fio-2")}>
+                        {matrix.totalExpensesMonths[month] ? moneyFin(matrix.totalExpensesMonths[month]) : "—"}
+                      </td>
+                    ))}
+                    <td className={cn(td, "border-t-2 border-t-fio-2 px-4")}>{moneyFin(matrix.totalExpensesYear)}</td>
+                  </tr>
+                  <tr className="bg-folha text-base font-bold">
+                    <td className={cn(tdRotulo, "whitespace-normal bg-folha py-3 text-tinta shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))]")}>
+                      LUCRO OPERACIONAL DO MÊS
+                      <span className="ml-1.5 text-xs font-medium text-tinta-2">
+                        (faturamento + juros{matrix.crediarioYear > 0.005 ? " + crediário reconhecido" : ""} − despesas
+                        operacionais; obra e aportes ficam fora)
                       </span>
                     </td>
                     {visibleMonths.map((month) => (
-                      <td key={month} className="px-2.5 py-2.5">{cellValue(matrix.crediarioMonths[month], true)}</td>
+                      <td key={month} className={cn(td, "py-3", matrix.profitMonths[month] < 0 ? "text-erro" : "text-tinta")}>
+                        {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.financialIncomeMonths[month] || matrix.crediarioMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
+                      </td>
                     ))}
-                    <td className="px-4 py-2.5 text-brand-musgo">{moneyFin(matrix.crediarioYear)}</td>
+                    <td className={cn(td, "px-4 py-3", matrix.profitYear < 0 ? "text-erro" : "text-tinta")}>{moneyFin(matrix.profitYear)}</td>
                   </tr>
-                ) : null}
-
-                {matrix.groups.map((group) => (
-                  <GroupRows
-                    key={group.groupKey}
-                    group={group}
-                    visibleMonths={visibleMonths}
-                    hideEmpty={hideEmpty}
-                    onSelect={(category, month) => setSelection({ category, month, isRevenue: false })}
-                  />
-                ))}
-
-                <tr className="bg-brand-musgo font-semibold text-brand-papel">
-                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-musgo px-4 py-3 text-left">TOTAL DESPESAS OPERACIONAIS</td>
-                  {visibleMonths.map((month) => (
-                    <td key={month} className="px-2.5 py-3">{matrix.totalExpensesMonths[month] ? moneyFin(matrix.totalExpensesMonths[month]) : "—"}</td>
-                  ))}
-                  <td className="px-4 py-3">{moneyFin(matrix.totalExpensesYear)}</td>
-                </tr>
-                <tr className="bg-brand-creme/70 font-bold">
-                  <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme px-4 py-3 text-left text-brand-musgo">
-                    LUCRO OPERACIONAL DO MÊS
-                    <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-                      (faturamento + juros{matrix.crediarioYear > 0.005 ? " + crediário reconhecido" : ""} − despesas
-                      operacionais; obra e aportes ficam fora)
-                    </span>
-                  </td>
-                  {visibleMonths.map((month) => (
-                    <td key={month} className={cn("px-2.5 py-3", matrix.profitMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
-                      {matrix.revenueMonths[month].total || matrix.totalExpensesMonths[month] || matrix.financialIncomeMonths[month] || matrix.crediarioMonths[month] ? moneyFin(matrix.profitMonths[month]) : "—"}
-                    </td>
-                  ))}
-                  <td className={cn("px-4 py-3", matrix.profitYear < 0 ? "text-red-700" : "text-brand-musgo")}>{moneyFin(matrix.profitYear)}</td>
-                </tr>
-                {/* MOTOR DO LUCRO INTELIGENTE (01/10/2026): o lucro acima já conta o médico
-                    executor do mês inteiro (linha própria na folha); aqui sai o lucro dos sócios. */}
-                {matrix.motorMonths.some(Boolean) ? (
-                  <>
-                    <tr className="bg-white/70 text-brand-tinta">
-                      <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-white px-4 py-2.5 text-left">
-                        Lucro dos sócios do mês
-                        <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-                          (régua do Lucro Inteligente: Andrya 25 mil · Dr. Daniel 15 mil; é divisão do lucro, não custo)
-                        </span>
+                  {/* MOTOR DO LUCRO INTELIGENTE (01/10/2026): o lucro acima já conta o médico
+                      executor do mês inteiro (linha própria na folha); aqui sai o lucro dos sócios. */}
+                  {matrix.motorMonths.some(Boolean) ? (
+                    <>
+                      <tr className="bg-folha text-tinta">
+                        <td className={cn(tdRotulo, "whitespace-normal bg-folha")}>
+                          Lucro dos sócios do mês
+                          <span className="ml-1.5 text-xs font-medium text-tinta-2">
+                            (régua do Lucro Inteligente: Andrya 25 mil · Dr. Daniel 15 mil; é divisão do lucro, não custo)
+                          </span>
+                        </td>
+                        {visibleMonths.map((month) => (
+                          <td key={month} className={td}>
+                            {matrix.motorMonths[month] ? `(${moneyFin(matrix.lucroSociosMonths[month])})` : "—"}
+                          </td>
+                        ))}
+                        <td className={cn(td, "px-4")}>({moneyFin(matrix.lucroSociosMonths.reduce((soma, valor) => soma + valor, 0))})</td>
+                      </tr>
+                      <tr className="bg-saber font-bold">
+                        <td className={cn(tdRotulo, "whitespace-normal bg-saber text-tinta")}>
+                          O QUE A EMPRESA GUARDA
+                          <span className="ml-1.5 text-xs font-medium text-tinta-2">(lucro do mês − lucro dos sócios)</span>
+                        </td>
+                        {visibleMonths.map((month) => (
+                          <td key={month} className={cn(td, matrix.resultadoDepoisDosSociosMonths[month] < 0 ? "text-erro" : "text-tinta")}>
+                            {matrix.motorMonths[month] ? moneyFin(matrix.resultadoDepoisDosSociosMonths[month]) : "—"}
+                          </td>
+                        ))}
+                        <td className={cn(td, "px-4")}>
+                          {moneyFin(matrix.motorMonths.reduce((soma, ativo, index) => soma + (ativo ? matrix.resultadoDepoisDosSociosMonths[index] : 0), 0))}
+                        </td>
+                      </tr>
+                    </>
+                  ) : null}
+                  {matrix.capexYear ? (
+                    <tr className="bg-folha text-tinta-2">
+                      <td className={cn(tdRotulo, "whitespace-normal bg-folha")}>
+                        Obra / investimento (pago pelo cofre)
+                        <span className="ml-1.5 text-xs font-medium">fora do lucro operacional</span>
                       </td>
                       {visibleMonths.map((month) => (
-                        <td key={month} className="px-2.5 py-2.5">{matrix.motorMonths[month] ? `(${moneyFin(matrix.lucroSociosMonths[month])})` : "—"}</td>
-                      ))}
-                      <td className="px-4 py-2.5">({moneyFin(matrix.lucroSociosMonths.reduce((soma, valor) => soma + valor, 0))})</td>
-                    </tr>
-                    <tr className="bg-brand-creme/50 font-bold">
-                      <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-creme px-4 py-2.5 text-left text-brand-musgo">
-                        O QUE A EMPRESA GUARDA
-                        <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(lucro do mês − lucro dos sócios)</span>
-                      </td>
-                      {visibleMonths.map((month) => (
-                        <td key={month} className={cn("px-2.5 py-2.5", matrix.resultadoDepoisDosSociosMonths[month] < 0 ? "text-red-700" : "text-brand-musgo")}>
-                          {matrix.motorMonths[month] ? moneyFin(matrix.resultadoDepoisDosSociosMonths[month]) : "—"}
+                        <td key={month} className={td}>
+                          {matrix.capexMonths[month] ? `(${moneyFin(matrix.capexMonths[month])})` : "—"}
                         </td>
                       ))}
-                      <td className="px-4 py-2.5">
-                        {moneyFin(matrix.motorMonths.reduce((soma, ativo, index) => soma + (ativo ? matrix.resultadoDepoisDosSociosMonths[index] : 0), 0))}
-                      </td>
+                      <td className={cn(td, "px-4")}>({moneyFin(matrix.capexYear)})</td>
                     </tr>
-                  </>
-                ) : null}
-                {matrix.capexYear ? (
-                  <tr className="border-t border-brand-dourado/30 bg-brand-papel/70 text-brand-oliva">
-                    <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-2.5 text-left">
-                      Obra / investimento (pago pelo cofre)
-                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">fora do lucro operacional</span>
-                    </td>
-                    {visibleMonths.map((month) => (
-                      <td key={month} className="px-2.5 py-2.5">{matrix.capexMonths[month] ? `(${moneyFin(matrix.capexMonths[month])})` : "—"}</td>
-                    ))}
-                    <td className="px-4 py-2.5">({moneyFin(matrix.capexYear)})</td>
-                  </tr>
-                ) : null}
-                {matrix.savingsInYear - matrix.financialIncomeYear > 0.005 ? (
-                  <tr className="bg-brand-papel/70 text-brand-oliva">
-                    <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-2.5 text-left">
-                      Aportes / entradas no cofre
-                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">tesouraria (trocas de conta, reservas) — fora do lucro</span>
-                    </td>
-                    {visibleMonths.map((month) => {
-                      const aporte = matrix.savingsInMonths[month] - matrix.financialIncomeMonths[month];
-                      return <td key={month} className="px-2.5 py-2.5">{aporte > 0.005 ? moneyFin(aporte) : "—"}</td>;
-                    })}
-                    <td className="px-4 py-2.5">{moneyFin(matrix.savingsInYear - matrix.financialIncomeYear)}</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+                  ) : null}
+                  {matrix.savingsInYear - matrix.financialIncomeYear > 0.005 ? (
+                    <tr className="bg-folha text-tinta-2">
+                      <td className={cn(tdRotulo, "whitespace-normal bg-folha")}>
+                        Aportes / entradas no cofre
+                        <span className="ml-1.5 text-xs font-medium">tesouraria (trocas de conta, reservas) — fora do lucro</span>
+                      </td>
+                      {visibleMonths.map((month) => {
+                        const aporte = matrix.savingsInMonths[month] - matrix.financialIncomeMonths[month];
+                        return (
+                          <td key={month} className={td}>
+                            {aporte > 0.005 ? moneyFin(aporte) : "—"}
+                          </td>
+                        );
+                      })}
+                      <td className={cn(td, "px-4")}>{moneyFin(matrix.savingsInYear - matrix.financialIncomeYear)}</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </BlocoFolha>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="flex items-center gap-2 text-[13px] font-medium leading-5 text-tinta-2">
+              <BrainCircuit className="h-4 w-4 stroke-oliva" aria-hidden="true" />
+              Meta do Plano de Virada: lucro médio de {moneyFin(83333)} por mês para chegar a {moneyFin(1000000)} no ano.
+            </p>
+            <OrigemDosDados modo={financeiro.syncMode} />
           </div>
-        </section>
+        </div>
 
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <BrainCircuit className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-          Meta do Plano de Virada: lucro médio de {moneyFin(83333)} por mês para chegar a {moneyFin(1000000)} no ano.
-        </p>
-
-        {selection ? (
-          <div className="fixed inset-0 z-[70] bg-brand-tinta/28 backdrop-blur-sm" onClick={() => setSelection(null)}>
-            <aside
-              className="ml-auto flex h-full w-[min(30rem,100vw)] flex-col overflow-y-auto border-l border-brand-oliva/20 bg-brand-papel p-4 shadow-2xl sm:p-5"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <Badge variant="gold">Prova viva</Badge>
-                  <h2 className="mt-2 text-xl text-brand-musgo">
-                    {selection.isRevenue ? "Faturamento bruto" : selection.category?.name} · {p12MonthLabels[selection.month]}/{year}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{selectionEntries.length} lançamento(s) compõem esta célula.</p>
+        <Gaveta
+          aberta={selection !== null}
+          sobrancelha="Prova viva"
+          titulo={selection ? `${selection.isRevenue ? "Faturamento bruto" : selection.category?.name} · ${p12MonthLabels[selection.month]}/${year}` : ""}
+          subtitulo={`${selectionEntries.length} lançamento(s) compõem esta célula.`}
+          onFechar={() => setSelection(null)}
+          rodape={
+            <p className="flex items-baseline justify-between gap-3 text-sm font-bold leading-5 text-tinta">
+              <span>Total</span>
+              <span className="text-lg tabular-nums">{moneyFin(selectionEntries.reduce((sum, entry) => sum + entry.amount, 0))}</span>
+            </p>
+          }
+        >
+          <ul className="border-t border-fio-2">
+            {selectionEntries.map((entry) => (
+              <li key={entry.id} className="flex items-center justify-between gap-3 border-b border-fio py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold leading-5 text-tinta">{entry.label}</p>
+                  <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                    <span className="tabular-nums">{entry.date.split("-").reverse().join("/")}</span>
+                    {entry.detail ? ` · ${entry.detail}` : ""}
+                  </p>
                 </div>
-                <Button type="button" variant="ghost" size="icon" onClick={() => setSelection(null)} aria-label="Fechar">
-                  <X className="h-5 w-5" aria-hidden="true" />
-                </Button>
-              </div>
-              <div className="grid gap-2">
-                {selectionEntries.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-brand-tinta">{entry.label}</p>
-                      <p className="text-xs text-muted-foreground">{entry.date.split("-").reverse().join("/")}{entry.detail ? ` · ${entry.detail}` : ""}</p>
-                    </div>
-                    <span className="shrink-0 text-sm font-bold text-brand-musgo">{moneyFin(entry.amount)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 rounded-lg border border-brand-dourado/30 bg-brand-creme/40 px-3 py-2 text-right text-sm font-bold text-brand-musgo">
-                Total: {moneyFin(selectionEntries.reduce((sum, entry) => sum + entry.amount, 0))}
-              </div>
-            </aside>
-          </div>
-        ) : null}
+                <span className="shrink-0 text-sm font-bold tabular-nums text-tinta">{moneyFin(entry.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </Gaveta>
       </div>
     </AccessGate>
   );
@@ -484,31 +519,38 @@ function GroupRows({
 
   return (
     <>
-      <tr className="border-y border-brand-oliva/12 bg-white/85 font-semibold">
-        <td className="cell-wrap sticky left-0 z-10 whitespace-normal bg-brand-papel px-4 py-2.5 text-left">
-          <button type="button" className="flex items-center gap-1.5 text-brand-musgo" onClick={() => setOpen((value) => !value)}>
-            <span className={cn("text-[9px] text-brand-oliva transition-transform", open ? "rotate-90" : "")}>▶</span>
+      <tr className="bg-saber font-bold">
+        <td className={cn(tdRotulo, "whitespace-normal bg-saber")}>
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-controle text-left text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+          >
+            <ChevronRight className={cn("h-4 w-4 shrink-0 text-tinta-2 transition-transform duration-150 ease-papel", open ? "rotate-90" : "")} aria-hidden="true" />
             {group.label}
-            <span className="text-[10px] font-normal text-muted-foreground">({rows.length})</span>
+            <span className="text-xs font-medium tabular-nums text-tinta-2">({rows.length})</span>
           </button>
         </td>
         {visibleMonths.map((month) => (
-          <td key={month} className="px-2.5 py-2.5">{cellValue(group.months[month].total)}</td>
+          <td key={month} className={td}>
+            {cellValue(group.months[month].total)}
+          </td>
         ))}
-        <td className="px-4 py-2.5 font-bold text-brand-musgo">{group.yearTotal ? moneyFin(group.yearTotal) : "—"}</td>
+        <td className={cn(td, "px-4 text-tinta")}>{group.yearTotal ? moneyFin(group.yearTotal) : "—"}</td>
       </tr>
       {open
-        ? rows.map((row, index) => (
-            <tr key={row.category.id} className={cn("text-[11px]", index % 2 === 1 && "bg-brand-papel/60")}>
-              <td className={cn("sticky left-0 z-10 px-4 py-2 pl-8 text-left text-muted-foreground", index % 2 === 1 ? "bg-[#f5f2e8]" : "bg-brand-papel")}>
+        ? rows.map((row) => (
+            <tr key={row.category.id} className={cn(tabela.linha, "bg-folha text-[13px]")}>
+              <td className={cn(tdRotulo, "bg-folha py-2 pl-10 font-medium text-tinta-2")}>
                 {row.category.name}
-                {row.category.isCapex ? <span className="ml-1.5 rounded bg-brand-creme px-1 py-0.5 text-[9px] font-semibold text-brand-tinta">CAPEX</span> : null}
+                {row.category.isCapex ? <Etiqueta className="ml-1.5">CAPEX</Etiqueta> : null}
               </td>
               {visibleMonths.map((month) => (
-                <td key={month} className="px-2.5 py-2">
+                <td key={month} className={cn(td, "py-2")}>
                   <button
                     type="button"
-                    className="rounded px-1 py-0.5 hover:bg-brand-creme/70"
+                    className={classeDaCelula}
                     onClick={() => row.months[month].total && onSelect(row.category, month)}
                     title={row.months[month].count ? `${row.months[month].count} lançamento(s)` : ""}
                   >
@@ -516,7 +558,7 @@ function GroupRows({
                   </button>
                 </td>
               ))}
-              <td className="px-4 py-2 font-semibold text-brand-tinta">{row.yearTotal ? moneyFin(row.yearTotal) : "—"}</td>
+              <td className={cn(td, "px-4 py-2 font-bold text-tinta")}>{row.yearTotal ? moneyFin(row.yearTotal) : "—"}</td>
             </tr>
           ))
         : null}

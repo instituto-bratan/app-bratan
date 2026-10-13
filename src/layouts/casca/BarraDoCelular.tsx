@@ -38,7 +38,8 @@ export function BarraDoCelular({ itens, caminho, ehInicio, aberto, onAcao, valor
     <nav
       aria-label="Navegação"
       className={cn(
-        "fixed inset-x-2 z-40 grid h-16 rounded-painel border border-fio bg-folha/95 shadow-flutua backdrop-blur-md md:hidden",
+        // 13/10/2026 (revisão da etapa 4): folha opaca, sem vidro (blur) nem sombra flutuante.
+        "fixed inset-x-2 z-40 grid h-16 rounded-painel border border-fio-2 bg-folha md:hidden",
         "bottom-[max(8px,calc(env(safe-area-inset-bottom)-10px))]",
       )}
       style={{ gridTemplateColumns: `repeat(${itens.length}, minmax(0, 1fr))` }}

@@ -5,6 +5,10 @@
 // vez dela; marca apagada = ainda não chegou (ou o fluxo acabou). Quem não
 // distingue cor lê a forma e a palavra — a cor nunca fala sozinha.
 // Discreto na lista; "cheio" (com fundo) no painel de detalhe.
+//
+// 08/10/2026 (etapa 4): estado "pendente" — o "ainda não feito" neutro, em
+// tinta 2 e sem ouro (o ouro fica só para "Aguardando aprovação", o agora de
+// alguém). Use-o para o que ninguém começou: o dia do Fechamento não conferido.
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { SELOS, marcasDoSelo, type EstadoSelo, type MarcaDeEtapa } from "./papel-musgo";

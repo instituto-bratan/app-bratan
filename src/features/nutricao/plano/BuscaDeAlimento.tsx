@@ -41,7 +41,7 @@ export function BuscaDeAlimento({ alimentos, medidas, vinculado, sugestaoInicial
       <button
         type="button"
         onClick={() => setAberta(true)}
-        className="inline-flex max-w-full items-center gap-1 truncate rounded-full px-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-brand-musgo"
+        className="inline-flex max-w-full items-center gap-1 truncate rounded-full px-1.5 text-xs text-tinta-2 hover:bg-saber hover:text-tinta"
         title={vinculado ? `${vinculado.nome} · ${vinculado.fonte.tabela}, ${vinculado.fonte.referencia}` : "Vincular a um alimento da tabela para o cálculo"}
       >
         <Link2 className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -51,9 +51,9 @@ export function BuscaDeAlimento({ alimentos, medidas, vinculado, sugestaoInicial
   }
 
   return (
-    <div className="relative z-20 grid gap-1 rounded-xl border border-brand-dourado/50 bg-brand-papel p-2 shadow-ios">
+    <div className="relative z-20 grid gap-1 rounded-bloco border border-ouro-fio bg-papel p-2 shadow-flutua">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-tinta-2" aria-hidden="true" />
         <input
           id={id}
           autoFocus
@@ -68,9 +68,9 @@ export function BuscaDeAlimento({ alimentos, medidas, vinculado, sugestaoInicial
               setAberta(false);
             }
           }}
-          className="h-8 w-full rounded-lg border border-brand-oliva/20 bg-white/80 pl-7 pr-7 text-sm focus:border-brand-dourado focus:outline-none"
+          className="h-8 w-full rounded-controle border border-borda-campo bg-folha text-tinta pl-7 pr-7 text-sm focus-visible:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
         />
-        <button type="button" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted" onClick={() => setAberta(false)} aria-label="Fechar busca">
+        <button type="button" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-tinta-2 hover:bg-saber" onClick={() => setAberta(false)} aria-label="Fechar busca">
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
@@ -78,10 +78,10 @@ export function BuscaDeAlimento({ alimentos, medidas, vinculado, sugestaoInicial
         {resultados.map((a) => {
           const minhas = medidas.filter((m) => m.alimentoId === a.id);
           return (
-            <li key={a.id} className="rounded-lg hover:bg-muted">
+            <li key={a.id} className="rounded-controle hover:bg-saber">
               <button type="button" className="grid w-full gap-0.5 px-2 py-1.5 text-left" onClick={() => { aoEscolher(a, null); setAberta(false); }}>
                 <span className="text-sm font-medium">{a.nome}</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-tinta-2">
                   {a.grupo} · {a.por100g.kcal === null ? "kcal sem dado" : `${formatarNumero(a.por100g.kcal, 0)} kcal`}/100 g · {a.fonte.tabela}
                   {Object.values(a.por100g).some((v) => v === null) ? " · algum valor em reavaliação na tabela" : ""}
                 </span>
@@ -98,10 +98,10 @@ export function BuscaDeAlimento({ alimentos, medidas, vinculado, sugestaoInicial
             </li>
           );
         })}
-        {resultados.length === 0 ? <li className="px-2 py-2 text-xs text-muted-foreground">Nada na tabela com esse nome. Tente uma palavra só, como “frango”.</li> : null}
+        {resultados.length === 0 ? <li className="px-2 py-2 text-xs text-tinta-2">Nada na tabela com esse nome. Tente uma palavra só, como “frango”.</li> : null}
       </ul>
       {vinculado ? (
-        <button type="button" className="justify-self-start text-[11px] font-semibold text-muted-foreground hover:text-red-800" onClick={() => { aoEscolher(null, null); setAberta(false); }}>
+        <button type="button" className="justify-self-start text-xs font-semibold text-tinta-2 hover:text-erro" onClick={() => { aoEscolher(null, null); setAberta(false); }}>
           desvincular da tabela
         </button>
       ) : null}

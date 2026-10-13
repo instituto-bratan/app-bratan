@@ -13,11 +13,17 @@
 // de Acompanhamento para baixo.
 //
 // O motor é puro e mora em inbodyImport.ts; esta tela só mostra e confirma.
+//
+// Papel & Musgo (08/10/2026, redesenho etapa 4): é onde se age (subir o
+// arquivo, dizer de quem é cada nome, salvar), então mora numa folha. A
+// conferência aberta vira um bloco saber; o que pede atenção (nome sem paciente,
+// linha que não leu) usa o laranja e o vermelho do app, sempre com a palavra.
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Scale, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BlocoFolha, Botao } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
+import { CAMPO_PQ } from "@/features/crm/comercialVisual";
 import { toast } from "@/components/ui/avisos";
 import { cn } from "@/lib/utils";
 import { lerAbasDeXlsx, lerLinhasDeCsv } from "@/lib/planilhaLeitor";
@@ -176,17 +182,22 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
   const porPaciente = casamento ? resumoPorPaciente(casamento.prontas) : [];
 
   return (
-    <section className="rounded-lg border border-brand-oliva/20 bg-white/60 backdrop-blur-xl">
+    <BlocoFolha as="section" aria-label="Bioimpedância da InBody" className="font-sans">
       {/* O InfoTip é um <button>: não pode ficar DENTRO do botão que abre o bloco
           (HTML inválido, e o clique na dúvida acabava abrindo/fechando a seção).
           Por isso a faixa é uma div, e quem abre é o botão do título. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-        <span className="flex flex-wrap items-center gap-2">
-          <Scale className="h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-          <button type="button" onClick={() => setAberto((atual) => !atual)} className="text-left text-sm font-bold text-brand-musgo hover:underline">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 max-md:px-4">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <Scale className="h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setAberto((atual) => !atual)}
+            aria-expanded={aberto}
+            className="rounded-sm text-left text-base font-bold leading-6 text-tinta underline-offset-[3px] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+          >
             Bioimpedância da InBody
           </button>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-[13px] font-medium leading-5 text-tinta-2">
             {casamento ? fraseDaImportacao(casamento) : "Suba a planilha do aparelho — de um paciente ou de todos de uma vez."}
           </span>
           <InfoTip title="De onde vem o arquivo">
@@ -197,14 +208,15 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
           type="button"
           onClick={() => setAberto((atual) => !atual)}
           aria-label={aberto ? "Esconder a importação da bioimpedância" : "Abrir a importação da bioimpedância"}
-          className="ios-pressable rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60"
+          aria-expanded={aberto}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-controle text-tinta-2 transition-colors duration-150 ease-papel hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
         >
-          <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", aberto && "rotate-180")} aria-hidden="true" />
+          <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-150 ease-papel", aberto && "rotate-180")} aria-hidden="true" />
         </button>
       </div>
 
       {aberto ? (
-        <div className="space-y-3 border-t border-brand-oliva/15 p-4 pt-3">
+        <div className="grid gap-4 border-t border-fio px-5 py-4 max-md:px-4">
           <div
             onDragOver={(evento) => {
               evento.preventDefault();
@@ -218,12 +230,12 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
               if (arquivo) void lerArquivo(arquivo);
             }}
             className={cn(
-              "flex flex-wrap items-center justify-center gap-3 rounded-lg border-2 border-dashed px-4 py-4 text-center text-sm transition-colors",
-              arrastando ? "border-brand-musgo bg-brand-creme/50" : "border-brand-oliva/30 bg-white/60",
+              "flex flex-wrap items-center justify-center gap-3 rounded-bloco border-2 border-dashed px-4 py-5 text-center text-sm font-medium transition-colors duration-150 ease-papel",
+              arrastando ? "border-musgo bg-musgo-claro" : "border-fio-2 bg-papel",
             )}
           >
-            <Upload className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-            <span className="text-brand-tinta">{lendo ? "Lendo o arquivo — o histórico inteiro leva alguns segundos…" : arquivoNome || "Solte aqui o .xlsx ou .csv da InBody"}</span>
+            <Upload className="h-4 w-4 text-tinta-2" aria-hidden="true" />
+            <span className="text-tinta">{lendo ? "Lendo o arquivo — o histórico inteiro leva alguns segundos…" : arquivoNome || "Solte aqui o .xlsx ou .csv da InBody"}</span>
             <input
               ref={entradaRef}
               type="file"
@@ -235,23 +247,23 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
                 evento.target.value = "";
               }}
             />
-            <Button type="button" size="sm" variant="outline" disabled={lendo || !ativo} onClick={() => entradaRef.current?.click()}>
+            <Botao tamanho="pq" variante="secundario" disabled={lendo || !ativo} onClick={() => entradaRef.current?.click()}>
               Escolher arquivo
-            </Button>
-            {!ativo ? <span className="text-xs text-muted-foreground">Entre com a sua conta para importar.</span> : null}
+            </Botao>
+            {!ativo ? <span className="text-[13px] text-tinta-2">Entre com a sua conta para importar.</span> : null}
           </div>
 
           {casamento ? (
-            <div className="space-y-3 rounded-lg border border-brand-oliva/20 bg-brand-papel/40 p-3 text-sm">
-              <p className="font-semibold text-brand-musgo">{fraseDaImportacao(casamento)}</p>
-              {abaLida ? <p className="-mt-2 text-xs text-muted-foreground">Li a aba <strong>{abaLida}</strong> do arquivo.</p> : null}
+            <div className="grid gap-3 rounded-bloco bg-saber p-4 text-sm">
+              <p className="font-bold text-tinta">{fraseDaImportacao(casamento)}</p>
+              {abaLida ? <p className="-mt-2 text-[13px] text-tinta-2">Li a aba <strong className="font-bold text-tinta">{abaLida}</strong> do arquivo.</p> : null}
 
               {porPaciente.length ? (
-                <ul className="max-h-60 space-y-1 overflow-y-auto pr-1">
+                <ul className="max-h-60 overflow-y-auto rounded-controle border border-fio bg-folha pr-1">
                   {porPaciente.map((paciente) => (
-                    <li key={paciente.contactRef} className="flex flex-wrap items-baseline justify-between gap-x-3 rounded-md bg-white/70 px-2.5 py-1.5">
-                      <strong className="text-brand-tinta">{paciente.contatoNome}</strong>
-                      <span className="text-xs text-muted-foreground">
+                    <li key={paciente.contactRef} className="flex flex-wrap items-baseline justify-between gap-x-3 border-b border-fio px-3 py-2 last:border-b-0">
+                      <strong className="font-bold text-tinta">{paciente.contatoNome}</strong>
+                      <span className="text-[13px] tabular-nums text-tinta-2">
                         {paciente.quantas === 1
                           ? `1 medição em ${diaBR(paciente.primeiroDia)}`
                           : `${paciente.quantas} medições, de ${diaBR(paciente.primeiroDia)} a ${diaBR(paciente.ultimoDia)}`}
@@ -262,25 +274,25 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
               ) : null}
 
               {pendentes.length ? (
-                <div className="rounded-md border border-brand-dourado/40 bg-brand-creme/40 p-2.5">
-                  <p className="font-semibold text-brand-musgo">
+                <div className="rounded-controle border border-atencao/50 bg-folha p-3">
+                  <p className="font-bold text-atencao">
                     {pendentes.length === 1 ? "1 nome precisa de você" : `${pendentes.length} nomes precisam de você`}
                   </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  <p className="mt-0.5 text-[13px] text-tinta-2">
                     O aparelho corta o nome em 30 letras e cada pessoa digita de um jeito. Diga de quem é cada um — ou deixe em branco para não importar.
                   </p>
-                  <ul className="mt-2 space-y-1.5">
+                  <ul className="mt-2">
                     {pendentes.map((pendente) => (
-                      <li key={pendente.nome} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white/70 px-2.5 py-1.5">
+                      <li key={pendente.nome} className="flex flex-wrap items-center justify-between gap-2 border-b border-fio py-2 last:border-b-0">
                         <span className="min-w-0">
-                          <strong className="text-brand-tinta">{pendente.nome}</strong>
-                          <span className="ml-1.5 text-xs text-muted-foreground">
+                          <strong className="font-bold text-tinta">{pendente.nome}</strong>
+                          <span className="ml-1.5 text-[13px] text-tinta-2">
                             {pendente.quantas === 1 ? "1 medição" : `${pendente.quantas} medições`}
                             {pendente.motivo === "AMBIGUO" ? " · mais de uma ficha com esse nome" : " · ficha parecida no CRM"}
                           </span>
                         </span>
                         <select
-                          className="h-8 max-w-full rounded-md border border-brand-oliva/25 bg-white px-2 text-xs text-brand-tinta"
+                          className={cn(CAMPO_PQ, "w-auto max-w-full cursor-pointer")}
                           value={escolhas[pendente.nome] ?? ""}
                           aria-label={`Paciente de ${pendente.nome}`}
                           onChange={(evento) =>
@@ -307,10 +319,10 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
 
               {casamento.semDono.length ? (
                 <details>
-                  <summary className="cursor-pointer font-semibold text-amber-800">
+                  <summary className="cursor-pointer font-bold text-atencao">
                     {casamento.semDono.length} {casamento.semDono.length === 1 ? "nome sem paciente no CRM" : "nomes sem paciente no CRM"}
                   </summary>
-                  <p className="mt-1 max-h-32 overflow-y-auto text-xs text-muted-foreground">
+                  <p className="mt-1 max-h-32 overflow-y-auto text-[13px] text-tinta-2">
                     Cadastre a pessoa (ou confira o nome no aparelho) e importe de novo — nada se perde, o arquivo pode ser subido quantas vezes precisar: {nomesResumidos(casamento.semDono.map((medicao) => medicao.nome))}
                   </p>
                 </details>
@@ -318,10 +330,10 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
 
               {casamento.ambiguas.length ? (
                 <details>
-                  <summary className="cursor-pointer font-semibold text-amber-800">
+                  <summary className="cursor-pointer font-bold text-atencao">
                     {casamento.ambiguas.length} {casamento.ambiguas.length === 1 ? "medição com mais de um paciente do mesmo nome" : "medições com mais de um paciente do mesmo nome"}
                   </summary>
-                  <p className="mt-1 max-h-32 overflow-y-auto text-xs text-muted-foreground">
+                  <p className="mt-1 max-h-32 overflow-y-auto text-[13px] text-tinta-2">
                     Estas precisam ser lançadas na ficha do paciente certo, uma por uma: {nomesResumidos(casamento.ambiguas.map((item) => item.medicao.nome))}
                   </p>
                 </details>
@@ -329,10 +341,10 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
 
               {problemas.length ? (
                 <details>
-                  <summary className="cursor-pointer font-semibold text-red-800">
+                  <summary className="cursor-pointer font-bold text-erro">
                     {problemas.length} {problemas.length === 1 ? "linha que não deu para ler" : "linhas que não deram para ler"}
                   </summary>
-                  <ul className="mt-1 max-h-24 overflow-y-auto text-xs text-muted-foreground">
+                  <ul className="mt-1 max-h-24 overflow-y-auto text-[13px] text-tinta-2">
                     {problemas.slice(0, 20).map((problema) => (
                       <li key={problema.linha}>Linha {problema.linha}: {problema.motivo}</li>
                     ))}
@@ -342,19 +354,19 @@ export function ImportarInBodyCard({ contatos, pessoaId, ativo }: { contatos: Co
               ) : null}
 
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" disabled={!casamento.prontas.length || salvar.isPending} onClick={() => void salvar.mutateAsync(casamento.prontas)}>
+                <Botao variante="primario" disabled={!casamento.prontas.length || salvar.isPending} carregando={salvar.isPending} onClick={() => void salvar.mutateAsync(casamento.prontas)}>
                   {salvar.isPending
                     ? "Salvando…"
                     : `Salvar ${casamento.prontas.length} ${casamento.prontas.length === 1 ? "medição" : "medições"}`}
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={limpar}>
+                </Botao>
+                <Botao variante="fantasma" onClick={limpar}>
                   Cancelar
-                </Button>
+                </Botao>
               </div>
             </div>
           ) : null}
         </div>
       ) : null}
-    </section>
+    </BlocoFolha>
   );
 }

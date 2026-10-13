@@ -1,14 +1,18 @@
 // LISTA DE ESPERA (15/09/2026, proposta 3.2): quando um paciente pede para
 // remarcar (resposta ao toque de confirmação), o horário libera e a recepção
 // chama o próximo daqui. Simples: nome, telefone, preferência.
+//
+// Papel & Musgo (08/10/2026, redesenho etapa 4): é onde se age (pôr na lista,
+// marcar encaixado), então mora numa folha; os campos são os do guia (40 px,
+// rótulo para o leitor de tela) e a contagem vem em frase ao lado do título.
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListPlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, Botao } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/avisos";
+import { CAMPO } from "@/features/crm/comercialVisual";
+import { TituloDoBloco } from "@/features/financeiro/pecasDiaPagar";
 import { addRemoteListaEspera, listRemoteListaEspera, resolverRemoteListaEspera } from "@/lib/remoteData";
 
 export function ListaEsperaCard({ pessoaId, ativo }: { pessoaId: string | null; ativo: boolean }) {
@@ -33,51 +37,58 @@ export function ListaEsperaCard({ pessoaId, ativo }: { pessoaId: string | null; 
     }
   }
 
+  const quantos = query.data?.length ?? 0;
+
   return (
-    <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ListPlus className="h-4 w-4 text-brand-oliva" aria-hidden="true" />
-          Lista de espera ({query.data?.length ?? 0})
-          <InfoTip title="Para que serve">
-            Quem quer ser encaixado antes. Quando um paciente responde “remarcar” ao toque de confirmação, a Fila do dia avisa a recepção que
-            o horário liberou — e o próximo daqui é chamado. Marcar “encaixado” tira da lista.
-          </InfoTip>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3 text-sm">
-        <div className="grid gap-2 sm:grid-cols-[1fr_9rem_1fr_8rem_auto]">
-          <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome" className="h-9" />
-          <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="WhatsApp" className="h-9" inputMode="tel" />
-          <Input value={form.preferencia} onChange={(e) => setForm({ ...form, preferencia: e.target.value })} placeholder="Preferência (ex.: manhãs, terça)" className="h-9" />
-          <Input value={form.profissional} onChange={(e) => setForm({ ...form, profissional: e.target.value })} placeholder="Profissional" className="h-9" />
-          <Button type="button" size="sm" className="h-9" disabled={salvando || !form.nome.trim()} onClick={() => void adicionar()}>
-            Adicionar
-          </Button>
-        </div>
-        {query.data?.length ? (
-          <ul className="grid gap-1">
-            {query.data.map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-oliva/15 bg-brand-papel/50 px-2.5 py-1.5">
-                <span className="text-brand-tinta">
-                  <strong>{item.nome}</strong>
-                  {item.telefone ? ` · ${item.telefone}` : ""}
-                  {item.preferencia ? ` · ${item.preferencia}` : ""}
-                  {item.profissional ? ` · ${item.profissional}` : ""}
-                  <span className="ml-1 text-xs text-muted-foreground">desde {item.criadoEm.slice(8, 10)}/{item.criadoEm.slice(5, 7)}</span>
+    <BlocoFolha as="section" aria-labelledby="titulo-lista-de-espera" respiro className="font-sans">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <TituloDoBloco id="titulo-lista-de-espera" icone={<ListPlus className="h-4 w-4" aria-hidden="true" />} detalhe={quantos === 0 ? undefined : `${quantos} ${quantos === 1 ? "pessoa esperando" : "pessoas esperando"}`}>
+          Lista de espera
+        </TituloDoBloco>
+        <InfoTip title="Para que serve">
+          Quem quer ser encaixado antes. Quando um paciente responde “remarcar” ao toque de confirmação, a Fila do dia avisa a recepção que
+          o horário liberou — e o próximo daqui é chamado. Marcar “encaixado” tira da lista.
+        </InfoTip>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_9rem_1fr_8rem_auto]">
+        <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome" aria-label="Nome" className={CAMPO} />
+        <input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="WhatsApp" aria-label="WhatsApp" className={`${CAMPO} tabular-nums`} inputMode="tel" />
+        <input value={form.preferencia} onChange={(e) => setForm({ ...form, preferencia: e.target.value })} placeholder="Preferência (ex.: manhãs, terça)" aria-label="Preferência" className={CAMPO} />
+        <input value={form.profissional} onChange={(e) => setForm({ ...form, profissional: e.target.value })} placeholder="Profissional" aria-label="Profissional" className={CAMPO} />
+        <Botao variante="secundario" carregando={salvando} disabled={salvando || !form.nome.trim()} onClick={() => void adicionar()}>
+          Adicionar
+        </Botao>
+      </div>
+      {query.data?.length ? (
+        <ul className="mt-4 border-t border-fio">
+          {query.data.map((item) => (
+            <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-fio py-2.5 last:border-b-0">
+              <span className="min-w-0 text-sm font-medium leading-5 text-tinta">
+                <strong className="font-bold">{item.nome}</strong>
+                <span className="tabular-nums">{item.telefone ? ` · ${item.telefone}` : ""}</span>
+                {item.preferencia ? ` · ${item.preferencia}` : ""}
+                {item.profissional ? ` · ${item.profissional}` : ""}
+                <span className="ml-1.5 text-[13px] tabular-nums text-tinta-2">
+                  desde {item.criadoEm.slice(8, 10)}/{item.criadoEm.slice(5, 7)}
                 </span>
-                <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => void resolverRemoteListaEspera(item.id)
+              </span>
+              <Botao
+                tamanho="pq"
+                variante="suave"
+                onClick={() =>
+                  void resolverRemoteListaEspera(item.id)
                     .then(() => queryClient.invalidateQueries({ queryKey: ["lista-espera"] }))
-                    .catch(() => toast("Não deu para tirar da lista de espera. Tente de novo.", { tom: "erro" }))}>
-                  Encaixado
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-muted-foreground">Ninguém esperando encaixe.</p>
-        )}
-      </CardContent>
-    </Card>
+                    .catch(() => toast("Não deu para tirar da lista de espera. Tente de novo.", { tom: "erro" }))
+                }
+              >
+                Encaixado
+              </Botao>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-[13px] font-medium text-tinta-2">Ninguém esperando encaixe.</p>
+      )}
+    </BlocoFolha>
   );
 }

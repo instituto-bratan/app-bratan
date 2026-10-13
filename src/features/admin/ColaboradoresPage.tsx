@@ -1,16 +1,17 @@
+// COLABORADORES — redesenho Papel & Musgo, etapa 4 (08/10/2026).
+//
+// Cadastro da equipe (nome, e-mail, cargo), login inicial, desligar e reativar.
+// No redesenho mudou só a forma: um cabeçalho com a frase da equipe, a lista de
+// pessoas numa folha (itens do mesmo tipo em lista) com a busca e as leituras
+// Ativos · Desligados · Todos, e o formulário numa folha ao lado. As regras (e-mail
+// de qualquer domínio com formato válido, senha inicial de 12+ caracteres, não
+// desligar a si mesmo, o motivo devolvido pela função de criar acesso) continuam.
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Eye, KeyRound, RotateCcw, Save, Search, ShieldCheck, Trash2, UserRoundPlus, UsersRound } from "lucide-react";
-import { Link } from "react-router-dom";
+import { KeyRound, RotateCcw, Save, ShieldCheck, Trash2, UserRoundPlus, UsersRound } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { BlocoFolha, Botao, Cabecalho, CampoBusca, LinkSeta } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, cargoGroup, cargoLabels, cargos, seededColaboradores } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
@@ -25,6 +26,8 @@ import { cn } from "@/lib/utils";
 import type { Cargo, Colaborador } from "@/types/database";
 import { colaboradoresStorageKey } from "./colaboradoresData";
 import { confirmar } from "@/components/ui/avisos";
+import { contagem, nomeParaInicial } from "./frasesAjustes";
+import { AJUDA, CabecaDaFolha, Campo, CampoSelecao, CampoTexto, Etiqueta, Leitura, MARCAR, RUBRICA, Recado, Vazio } from "./pecasAjustes";
 
 type ColaboradorForm = {
   id: string | null;
@@ -364,293 +367,278 @@ export function ColaboradoresPage() {
     );
   }
 
+  const desligadosTotal = colaboradores.length - activeColaboradores.length;
+  const semLoginAtivos = useRemote ? activeColaboradores.filter((colaborador) => !colaborador.auth_id).length : 0;
+  const contagemPorLeitura = { ativos: activeColaboradores.length, desligados: desligadosTotal, todos: colaboradores.length };
+
+  // O número do topo vem numa frase (o Lucas rejeita número solto).
+  const fraseDoTopo = (
+    <>
+      <strong>{contagem(activeColaboradores.length, "pessoa ativa", "pessoas ativas")}</strong>
+      {useRemote ? " no app" : " na prévia"}
+      {semLoginAtivos ? (
+        <>
+          , <span className="alerta">{semLoginAtivos} ainda sem login</span>
+        </>
+      ) : null}
+      {desligadosTotal ? `, ${contagem(desligadosTotal, "desligada", "desligadas")}` : ""}. O cargo de cada uma decide o que ela vê no app.
+    </>
+  );
+
   return (
     <AccessGate allowed={canAdministracao} label="Colaboradores">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <Badge variant="gold" className="mb-4">
-                Administração
-              </Badge>
-              <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Colaboradores</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Cadastre e ajuste nome, e-mail e cargo. O cargo alimenta a matriz de acesso da interface e as políticas RLS do Supabase.
-              </p>
-            </div>
-            <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3 text-center">
-              <p className="text-2xl font-bold text-brand-musgo">{activeColaboradores.length}</p>
-              <p className="text-xs font-semibold uppercase text-brand-oliva">{useRemote ? "ativos no Supabase" : "ativos na prévia"}</p>
-            </div>
-          </div>
-        </motion.section>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho className="mb-0 max-md:mb-0" sobrancelha="Ajustes" titulo="Colaboradores" frase={fraseDoTopo} />
 
         {colaboradoresQuery.isError ? (
-          <Card className="border-destructive/30 bg-destructive/5 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-destructive">
-                Não foi possível carregar colaboradores do Supabase. Verifique RLS, migrations e vínculo do seu usuário.
-              </p>
-            </CardContent>
-          </Card>
+          <Recado tom="erro">Não foi possível carregar colaboradores do Supabase. Verifique RLS, migrations e vínculo do seu usuário.</Recado>
         ) : null}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-          <div className="space-y-4">
-            <Card className="h-fit border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  {form.id ? <Save className="h-5 w-5" aria-hidden="true" /> : <UserRoundPlus className="h-5 w-5" aria-hidden="true" />}
-                  {form.id ? "Editar colaborador" : "Cadastrar colaborador"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-4" onSubmit={submit}>
-                  <div className="space-y-2">
-                    <Label htmlFor="nome">Nome</Label>
-                    <Input
-                      id="nome"
-                      value={form.nome}
-                      placeholder="[Nome do colaborador]"
-                      onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">E-mail</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={form.email}
-                      placeholder="nome@institutobratan.com.br ou e-mail próprio"
-                      onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                    />
-                    <p className="text-xs leading-snug text-muted-foreground">
-                      Pode ser e-mail próprio (Gmail, Outlook…) — é com ele que a pessoa vai entrar no app. Quando não é do
-                      domínio da casa, o e-mail fica marcado em Segurança: a caixa não é nossa, então tirar o acesso é
-                      sempre por aqui, desativando o colaborador.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cargo">Cargo</Label>
-                    <select
-                      id="cargo"
-                      value={form.cargo}
-                      onChange={(event) => setForm((current) => ({ ...current, cargo: event.target.value as Cargo }))}
-                      className="flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {cargos.map((cargo) => (
-                        <option key={cargo} value={cargo}>
-                          {cargoLabels[cargo]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+        {/* No computador: a lista (decidir) à esquerda e o formulário ao lado; no
+            celular o formulário vem primeiro, como antes. */}
+        <div className="grid items-start gap-8 max-md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+          {/* Preso no alto enquanto a lista rola (Editar lá embaixo e o formulário à
+              vista); com o "Criar acesso" aberto fica solto, senão passaria da tela. */}
+          <div className={cn("grid min-w-0 gap-6 lg:col-start-2 lg:row-start-1", !(useRemote && accessTarget) && "lg:sticky lg:top-24")}>
+            <BlocoFolha as="section" aria-labelledby="colaborador-form" respiro>
+              <h2 id="colaborador-form" className="flex items-center gap-2 text-base font-bold leading-6 text-tinta">
+                {form.id ? <Save className="h-4 w-4 stroke-oliva" aria-hidden="true" /> : <UserRoundPlus className="h-4 w-4 stroke-oliva" aria-hidden="true" />}
+                {form.id ? "Editar colaborador" : "Cadastrar colaborador"}
+              </h2>
+              <form className="mt-4 grid gap-4" onSubmit={submit}>
+                <Campo id="nome" rotulo="Nome">
+                  <CampoTexto
+                    id="nome"
+                    value={form.nome}
+                    placeholder="[Nome do colaborador]"
+                    onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))}
+                  />
+                </Campo>
+                <Campo
+                  id="email"
+                  rotulo="E-mail"
+                  ajuda="Pode ser e-mail próprio (Gmail, Outlook…) — é com ele que a pessoa vai entrar no app. Quando não é do domínio da casa, o e-mail fica marcado em Segurança: a caixa não é nossa, então tirar o acesso é sempre por aqui, desativando o colaborador."
+                >
+                  <CampoTexto
+                    id="email"
+                    type="email"
+                    value={form.email}
+                    placeholder="nome@institutobratan.com.br ou e-mail próprio"
+                    onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                  />
+                </Campo>
+                <Campo id="cargo" rotulo="Cargo">
+                  <CampoSelecao id="cargo" value={form.cargo} onChange={(event) => setForm((current) => ({ ...current, cargo: event.target.value as Cargo }))}>
+                    {cargos.map((cargo) => (
+                      <option key={cargo} value={cargo}>
+                        {cargoLabels[cargo]}
+                      </option>
+                    ))}
+                  </CampoSelecao>
+                </Campo>
 
-                  {useRemote && !form.id ? (
-                    <div className="rounded-lg border border-brand-oliva/18 bg-white/60 p-3">
-                      <label className="flex items-start gap-3 text-sm font-medium text-brand-tinta">
-                        <input
-                          type="checkbox"
-                          checked={createAccessNow}
-                          onChange={(event) => setCreateAccessNow(event.target.checked)}
-                          className="mt-1 h-4 w-4 rounded border-brand-oliva/40 text-brand-musgo"
+                {useRemote && !form.id ? (
+                  <div className="grid gap-3 rounded-bloco bg-saber p-4">
+                    <label className="flex items-start gap-3 text-sm font-semibold leading-5 text-tinta">
+                      <input type="checkbox" checked={createAccessNow} onChange={(event) => setCreateAccessNow(event.target.checked)} className={cn(MARCAR, "mt-0.5")} />
+                      <span>Criar login agora</span>
+                    </label>
+                    {createAccessNow ? (
+                      <Campo id="initial-password" rotulo="Senha inicial">
+                        <CampoTexto
+                          id="initial-password"
+                          type="text"
+                          minLength={12}
+                          autoComplete="new-password"
+                          value={initialPassword}
+                          placeholder="mínimo 12 caracteres"
+                          className="font-mono"
+                          onChange={(event) => setInitialPassword(event.target.value)}
                         />
-                        <span>Criar login agora</span>
-                      </label>
-                      {createAccessNow ? (
-                        <div className="mt-3 space-y-2">
-                          <Label htmlFor="initial-password">Senha inicial</Label>
-                          <Input
-                            id="initial-password"
-                            type="text"
-                            minLength={12}
-                            autoComplete="new-password"
-                            value={initialPassword}
-                            placeholder="mínimo 12 caracteres"
-                            onChange={(event) => setInitialPassword(event.target.value)}
-                          />
-                          <Button type="button" variant="outline" size="sm" onClick={fillGeneratedInitialPassword}>
-                            <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
-                            Gerar senha segura
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <LiquidButton type="submit" size="lg" className="w-full" disabled={saveMutation.isPending}>
-                      {saveMutation.isPending ? "Salvando..." : form.id ? "Salvar alterações" : "Cadastrar"}
-                    </LiquidButton>
-                    {form.id ? (
-                      <Button type="button" variant="outline" onClick={resetForm}>
-                        Cancelar
-                      </Button>
+                        <Botao tamanho="pq" variante="secundario" className="w-fit" icone={<ShieldCheck className="h-4 w-4" aria-hidden="true" />} onClick={fillGeneratedInitialPassword}>
+                          Gerar senha segura
+                        </Botao>
+                      </Campo>
                     ) : null}
                   </div>
-                </form>
-              </CardContent>
-            </Card>
+                ) : null}
+
+                {error ? <Recado tom="erro">{error}</Recado> : null}
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Botao type="submit" variante="primario" className="w-full sm:flex-1 max-md:h-11" carregando={saveMutation.isPending}>
+                    {saveMutation.isPending ? "Salvando..." : form.id ? "Salvar alterações" : "Cadastrar"}
+                  </Botao>
+                  {form.id ? (
+                    <Botao variante="fantasma" className="max-md:h-11" onClick={resetForm}>
+                      Cancelar
+                    </Botao>
+                  ) : null}
+                </div>
+              </form>
+            </BlocoFolha>
 
             {useRemote && accessTarget ? (
-              <Card className="border-brand-dourado/45 bg-brand-creme/40 shadow-none backdrop-blur">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <KeyRound className="h-5 w-5" aria-hidden="true" />
-                    Criar acesso
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form className="space-y-4" onSubmit={submitAccess}>
-                    <div className="rounded-lg border border-brand-dourado/30 bg-white/60 px-3 py-2">
-                      <p className="truncate text-sm font-semibold text-brand-tinta">{accessTarget.nome}</p>
-                      <p className="truncate text-xs text-muted-foreground">{accessTarget.email}</p>
-                      <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">{cargoLabels[accessTarget.cargo]}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="access-password">Senha inicial</Label>
-                      <Input
-                        id="access-password"
-                        type="text"
-                        minLength={12}
-                        autoComplete="new-password"
-                        value={accessPassword}
-                        placeholder="mínimo 12 caracteres"
-                        onChange={(event) => setAccessPassword(event.target.value)}
-                      />
-                      <Button type="button" variant="outline" size="sm" onClick={fillGeneratedAccessPassword}>
-                        <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
-                        Gerar senha segura
-                      </Button>
-                    </div>
+              <BlocoFolha as="section" aria-labelledby="criar-acesso" respiro className="border-musgo">
+                <h2 id="criar-acesso" className="flex items-center gap-2 text-base font-bold leading-6 text-tinta">
+                  <KeyRound className="h-4 w-4 stroke-oliva" aria-hidden="true" />
+                  Criar acesso
+                </h2>
+                <form className="mt-4 grid gap-4" onSubmit={submitAccess}>
+                  <div className="min-w-0 rounded-bloco bg-saber px-4 py-3">
+                    <p className="truncate text-sm font-bold leading-5 text-tinta">{accessTarget.nome}</p>
+                    <p className="truncate text-[13px] font-medium leading-5 text-tinta-2">{accessTarget.email}</p>
+                    <p className={cn(RUBRICA, "mt-1")}>{cargoLabels[accessTarget.cargo]}</p>
+                  </div>
+                  <Campo id="access-password" rotulo="Senha inicial">
+                    <CampoTexto
+                      id="access-password"
+                      type="text"
+                      minLength={12}
+                      autoComplete="new-password"
+                      value={accessPassword}
+                      placeholder="mínimo 12 caracteres"
+                      className="font-mono"
+                      onChange={(event) => setAccessPassword(event.target.value)}
+                    />
+                    <Botao tamanho="pq" variante="secundario" className="w-fit" icone={<ShieldCheck className="h-4 w-4" aria-hidden="true" />} onClick={fillGeneratedAccessPassword}>
+                      Gerar senha segura
+                    </Botao>
+                  </Campo>
 
-                    {accessError ? <p className="text-sm text-destructive">{accessError}</p> : null}
+                  {accessError ? <Recado tom="erro">{accessError}</Recado> : null}
 
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <LiquidButton type="submit" size="lg" className="w-full" disabled={accessMutation.isPending}>
-                        {accessMutation.isPending ? "Criando..." : "Ativar login"}
-                      </LiquidButton>
-                      <Button type="button" variant="outline" onClick={closeAccess}>
-                        Cancelar
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Botao type="submit" variante="primario" className="w-full sm:flex-1 max-md:h-11" carregando={accessMutation.isPending}>
+                      {accessMutation.isPending ? "Criando..." : "Ativar login"}
+                    </Botao>
+                    <Botao variante="fantasma" className="max-md:h-11" onClick={closeAccess}>
+                      Cancelar
+                    </Botao>
+                  </div>
+                </form>
+              </BlocoFolha>
             ) : null}
           </div>
 
-          <section className="grid gap-3">
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardContent className="space-y-3 p-4">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                  <Input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Buscar por nome, e-mail ou cargo"
-                    className="pl-9"
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: "ativos", label: "Ativos" },
-                    { id: "desligados", label: "Desligados" },
-                    { id: "todos", label: "Todos" },
-                  ].map((filter) => (
-                    <Button
+          <BlocoFolha as="section" aria-labelledby="equipe-lista" className="min-w-0 overflow-hidden lg:col-start-1 lg:row-start-1">
+            <CabecaDaFolha
+              id="equipe-lista"
+              icone={<UsersRound />}
+              titulo="Equipe"
+              resumo={contagem(sortedColaboradores.length, "pessoa", "pessoas")}
+              acoes={
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  {(
+                    [
+                      { id: "ativos", label: "Ativos" },
+                      { id: "desligados", label: "Desligados" },
+                      { id: "todos", label: "Todos" },
+                    ] as const
+                  ).map((filter) => (
+                    <Leitura
                       key={filter.id}
-                      type="button"
-                      size="sm"
-                      variant={statusFilter === filter.id ? "default" : "outline"}
-                      onClick={() => setStatusFilter(filter.id as typeof statusFilter)}
-                    >
-                      {filter.label}
-                    </Button>
+                      ativa={statusFilter === filter.id}
+                      rotulo={filter.label}
+                      numero={contagemPorLeitura[filter.id]}
+                      onClick={() => setStatusFilter(filter.id)}
+                    />
                   ))}
                 </div>
-              </CardContent>
-            </Card>
+              }
+            />
+            <div className="border-t border-fio px-6 py-3 max-md:px-4">
+              <CampoBusca valor={query} onMudar={setQuery} placeholder="Buscar por nome, e-mail ou cargo" rotulo="Buscar colaborador" />
+            </div>
 
-            {sortedColaboradores.map((colaborador, index) => (
-              <motion.article
-                key={colaborador.id}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, delay: index * 0.03, ease: [0.4, 0, 0.2, 1] }}
-              >
-                <Card
-                  className={cn(
-                    "border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-calm",
-                    form.id === colaborador.id && "border-brand-dourado/60 bg-brand-creme/35",
-                    !colaborador.ativo && "border-muted bg-white/45 opacity-75",
-                  )}
-                >
-                  <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <AvatarBadge pessoaId={colaborador.id} nome={colaborador.nome} className="h-11 w-11" />
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-brand-tinta">{colaborador.nome}</p>
-                        <p className="truncate text-sm text-muted-foreground">{colaborador.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                      <Badge variant="outline">{cargoLabels[colaborador.cargo]}</Badge>
-                      <Badge variant="muted">{cargoGroup(colaborador.cargo)}</Badge>
-                      {!colaborador.ativo ? <Badge variant="muted">Desligado</Badge> : null}
-                      {useRemote ? (
-                        colaborador.ativo && colaborador.auth_id ? (
-                          <Badge variant="gold">Acesso ativo</Badge>
-                        ) : (
-                          <Badge variant="muted">Sem acesso</Badge>
-                        )
-                      ) : null}
-                      {useRemote && colaborador.ativo && !colaborador.auth_id ? (
-                        <Button type="button" variant="outline" size="sm" onClick={() => openAccess(colaborador)}>
-                          Criar acesso
-                        </Button>
-                      ) : null}
-                      <Button asChild variant="outline" size="sm">
-                        <Link to={`/administracao/colaboradores/${colaborador.id}`}>
-                          <Eye className="mr-2 h-4 w-4" aria-hidden="true" />
-                          Perfil
-                        </Link>
-                      </Button>
-                      {colaborador.ativo ? (
-                        <>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => edit(colaborador)}>
-                            Editar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            disabled={deactivateMutation.isPending || colaborador.id === pessoa?.id}
-                            onClick={() => deactivate(colaborador)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                            Desligar
-                          </Button>
-                        </>
-                      ) : (
-                        <Button type="button" variant="outline" size="sm" disabled={reactivateMutation.isPending} onClick={() => reactivate(colaborador)}>
-                          <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
-                          Reativar
-                        </Button>
+            {sortedColaboradores.length ? (
+              <ul>
+                {sortedColaboradores.map((colaborador) => {
+                  const emEdicao = form.id === colaborador.id;
+                  return (
+                    <li
+                      key={colaborador.id}
+                      className={cn(
+                        "flex flex-col gap-3 border-t border-fio px-6 py-4 transition-colors duration-150 ease-papel max-md:px-4 xl:flex-row xl:items-center xl:justify-between",
+                        emEdicao && "bg-saber shadow-[inset_3px_0_0_rgb(var(--musgo-rgb))]",
                       )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.article>
-            ))}
-          </section>
+                    >
+                      <div className={cn("flex min-w-0 items-center gap-3", !colaborador.ativo && "opacity-70")}>
+                        <AvatarBadge pessoaId={colaborador.id} nome={nomeParaInicial(colaborador.nome)} className="h-10 w-10" />
+                        <div className="min-w-0">
+                          <p className="truncate text-[15px] font-bold leading-6 text-tinta">{colaborador.nome}</p>
+                          <p className="truncate text-[13px] font-medium leading-5 text-tinta-2">{colaborador.email}</p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <Etiqueta>{cargoLabels[colaborador.cargo]}</Etiqueta>
+                            <Etiqueta>{cargoGroup(colaborador.cargo)}</Etiqueta>
+                            {!colaborador.ativo ? <Etiqueta>Desligado</Etiqueta> : null}
+                            {useRemote ? (
+                              colaborador.ativo && colaborador.auth_id ? (
+                                <Etiqueta tom="ok">Acesso ativo</Etiqueta>
+                              ) : (
+                                <Etiqueta tom={colaborador.ativo ? "atencao" : "neutro"}>Sem acesso</Etiqueta>
+                              )
+                            ) : null}
+                            {emEdicao ? <Etiqueta tom="musgo">em edição</Etiqueta> : null}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                        {useRemote && colaborador.ativo && !colaborador.auth_id ? (
+                          <Botao tamanho="pq" variante="suave" className="max-md:h-10" icone={<KeyRound className="h-4 w-4" aria-hidden="true" />} onClick={() => openAccess(colaborador)}>
+                            Criar acesso
+                          </Botao>
+                        ) : null}
+                        {colaborador.ativo ? (
+                          <>
+                            <Botao tamanho="pq" variante="secundario" className="max-md:h-10" onClick={() => edit(colaborador)}>
+                              Editar
+                            </Botao>
+                            <LinkSeta to={`/administracao/colaboradores/${colaborador.id}`} className="px-1 text-[13px]">
+                              Perfil
+                            </LinkSeta>
+                            <Botao
+                              tamanho="pq"
+                              variante="perigo"
+                              className="max-md:h-10 xl:ml-2"
+                              disabled={deactivateMutation.isPending || colaborador.id === pessoa?.id}
+                              icone={<Trash2 className="h-4 w-4" aria-hidden="true" />}
+                              onClick={() => deactivate(colaborador)}
+                            >
+                              Desligar
+                            </Botao>
+                          </>
+                        ) : (
+                          <>
+                            <LinkSeta to={`/administracao/colaboradores/${colaborador.id}`} className="px-1 text-[13px]">
+                              Perfil
+                            </LinkSeta>
+                            <Botao
+                              tamanho="pq"
+                              variante="secundario"
+                              className="max-md:h-10"
+                              disabled={reactivateMutation.isPending}
+                              icone={<RotateCcw className="h-4 w-4" aria-hidden="true" />}
+                              onClick={() => reactivate(colaborador)}
+                            >
+                              Reativar
+                            </Botao>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <Vazio icone={<UsersRound />} titulo={query.trim() ? "Ninguém com esse nome, e-mail ou cargo." : "Ninguém nesta leitura."} className="border-t border-fio">
+                {query.trim() ? "Confira a grafia ou troque a leitura (Ativos, Desligados, Todos)." : "Troque a leitura acima para ver as outras pessoas."}
+              </Vazio>
+            )}
+            <p className={cn(AJUDA, "border-t border-fio px-6 py-3 max-md:px-4")}>
+              O cargo alimenta a matriz de acesso da interface e as políticas de segurança do banco (RLS do Supabase).
+            </p>
+          </BlocoFolha>
         </div>
       </div>
     </AccessGate>

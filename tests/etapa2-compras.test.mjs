@@ -186,8 +186,13 @@ test("a forma nova usa as peças da fundação e mantém o que a tela faz", () =
   }
   // As três telas alinham pela mesma largura das telas redesenhadas (1200 px).
   for (const fonte of [estoque, aplicacoes]) assert.match(fonte, /max-w-\[1200px\]/);
-  // No painel estreito (1280–1399 px) Aprovar fica em cima e Devolver | Recusar embaixo — o Recusar segue longe do Aprovar.
-  assert.match(painel, /max-\[1399px\]:\[&>div:last-child>button:first-child\]:col-span-2/);
+  // No painel estreito Aprovar fica em cima e Devolver | Recusar embaixo — o Recusar segue longe do Aprovar.
+  // 08/10/2026 (etapa 4): o ajuste saiu do Pedidos e mora na BarraDecisao, que mede os botões
+  // (tests/etapa4-compartilhados confere a regra); o painel não refaz a barra com seletores próprios.
+  const barra = ler("src/components/ui/botao-decisao.tsx");
+  assert.match(barra, /estreita && "col-span-2"/);
+  assert.match(barra, /estreita \? "ml-0" : "ml-auto md:-mr-4"/);
+  assert.doesNotMatch(painel, /\[&>div:last-child/);
 });
 
 test("telas redesenhadas: nada de vidro, blur, degradê de enfeite nem classe antiga com opacidade (que não gera CSS)", () => {

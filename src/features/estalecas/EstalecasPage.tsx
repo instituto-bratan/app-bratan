@@ -1,24 +1,27 @@
+// MINHAS ESTALECAS (a carteira do colaborador) — redesenho "Papel & Musgo",
+// etapa 4 (08/10/2026).
+//
+// O que a tela FAZ não mudou (a lógica está como era, linha a linha): os mesmos
+// dados (banco com login; aparelho na prévia), o consentimento de check-ins, o
+// check-in de academia e o da igreja com o código do dia (e o link ?checkin=…&
+// code=… que já preenche o código), as conquistas com prova para a coordenação
+// aprovar, o marco de 500 checkpoints, o ranking mensal da academia, o nome de
+// exibição no ranking e o histórico de transações.
+// Mudou a forma: um Cabecalho com a frase do saldo (no lugar do hero com dois
+// selos e do quadro "Saldo atual"); os números do mês numa faixa "saber" (no
+// lugar dos cinco cartõezinhos com ícone); o que pede ação (consentimento,
+// check-ins, enviar conquista, nome no ranking) em folhas; o que é para saber
+// (conquistas enviadas, marco, ranking, histórico) em blocos "saber", como
+// LISTAS; cada situação escrita, com ícone (a cor nunca fala sozinha). Sem
+// vidro, sem degradê, sem as cores com opacidade que não geravam CSS.
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import {
-  BookOpen,
-  CalendarCheck,
-  CheckCircle2,
-  Coins,
-  Dumbbell,
-  History,
-  Medal,
-  ShieldCheck,
-  Trophy,
-  WalletCards,
-} from "lucide-react";
-import { AvatarBadge } from "@/components/ui/avatar-badge";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { BookOpen, CircleCheck, Clock, Dumbbell, History, Hourglass, ImagePlus, Info, Lock, ShieldCheck, Trophy, TriangleAlert, Undo2, X, XCircle } from "lucide-react";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho } from "@/components/ui/fundacao";
+import { Campo, CampoSelecao, CampoTexto, Recado } from "@/features/compras/pecas";
+import { Indicadores } from "@/features/crm/comercialVisual";
+import { AvatarEmArco, EstadoVazio, Rubrica, Situacao, TituloDaSecao } from "@/features/pops/pecasDaEquipe";
 import { useAuth } from "@/hooks/useAuth";
 import { formatShortTime, readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
 import {
@@ -62,6 +65,7 @@ import {
   type EstalecaTransaction,
   type GamificationProfile,
 } from "@/features/estalecas/estalecasData";
+import { TOM_DA_CONQUISTA, TOM_DA_TRANSACAO, fraseDaCarteira, fraseDoMarco, tomDoRecado } from "./carteiraFrases";
 
 function localProfileFor(pessoa: Colaborador, profiles: GamificationProfile[]) {
   return profiles.find((profile) => profile.userId === pessoa.id) ?? {
@@ -98,43 +102,60 @@ function appendLocalGamification(values: {
   }
 }
 
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  detail,
-  tone = "default",
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  detail: string;
-  tone?: "default" | "gold";
-}) {
+
+// ---------------------------------------------------------------- peças da carteira
+
+const ICONE_DO_TOM = {
+  ok: <CircleCheck aria-hidden="true" />,
+  neutro: <Clock aria-hidden="true" />,
+  atencao: <TriangleAlert aria-hidden="true" />,
+  erro: <XCircle aria-hidden="true" />,
+} as const;
+
+// A transação tem cinco situações; expirada e estornada também são neutras, mas com o próprio ícone.
+const ICONE_DA_TRANSACAO = {
+  approved: <CircleCheck aria-hidden="true" />,
+  pending: <Clock aria-hidden="true" />,
+  rejected: <XCircle aria-hidden="true" />,
+  expired: <Hourglass aria-hidden="true" />,
+  reversed: <Undo2 aria-hidden="true" />,
+} as const;
+
+/** O recado da tela (sucesso, aviso ou o que fazer), na cor do que aconteceu. */
+function RecadoDaCarteira({ texto }: { texto: string }) {
+  const tom = tomDoRecado(texto);
   return (
-    <Card className={cn("border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur", tone === "gold" && "border-brand-dourado/45 bg-brand-creme/45")}>
-      <CardContent className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-            <Icon className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <Badge variant={tone === "gold" ? "gold" : "muted"}>{label}</Badge>
-        </div>
-        <p className="text-3xl font-bold leading-tight text-brand-tinta">{value}</p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
-      </CardContent>
-    </Card>
+    <Recado
+      tom={tom}
+      role="status"
+      icone={tom === "ok" ? <CircleCheck className="text-ok" aria-hidden="true" /> : tom === "atencao" ? <TriangleAlert className="text-atencao" aria-hidden="true" /> : <Info className="stroke-oliva" aria-hidden="true" />}
+    >
+      {texto}
+    </Recado>
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
+/** Barra cheia, sem bolinha (o guia: medidor que não parece controle deslizante). */
+function BarraDoMarco({ valor }: { valor: number }) {
   return (
-    <div className="h-3 overflow-hidden rounded-sm border border-brand-oliva/15 bg-white/65">
-      <div className="h-full rounded-sm bg-brand-musgo transition-[width] duration-300" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+    <div aria-hidden="true" className="h-3 overflow-hidden rounded-controle bg-fio">
+      <div className="h-full rounded-controle bg-musgo transition-[width] duration-300 ease-papel" style={{ width: `${Math.min(100, Math.max(0, valor))}%` }} />
     </div>
   );
 }
 
+/** Cabeçalho de um bloco: o título (16/700) com o ícone e, à direita, a situação ou a contagem. */
+function TopoDoBloco({ id, icone, titulo, lado }: { id: string; icone: React.ReactNode; titulo: string; lado?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+      <h2 id={id} className="flex items-center gap-2 text-base font-bold leading-6 text-tinta [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0 [&>svg]:stroke-oliva">
+        {icone}
+        {titulo}
+      </h2>
+      {lado}
+    </div>
+  );
+}
 
 // Conquistas com prova: livro lido, alimentação saudável etc. — entram pendentes e a coordenação aprova.
 function ConquistasSection({ pessoa, useRemote }: { pessoa: Colaborador | null; useRemote: boolean }) {
@@ -166,27 +187,24 @@ function ConquistasSection({ pessoa, useRemote }: { pessoa: Colaborador | null; 
   const config = estalecaClaimConfig[claimType];
   const myClaims = (claimsQuery.data ?? []).filter((claim) => claim.colaboradorId === pessoa?.id).slice(0, 6);
 
+
   return (
-    <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-      <Card className="border-brand-dourado/40 bg-brand-creme/30 shadow-none">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <BookOpen className="h-5 w-5" aria-hidden="true" />
-            Conquistas com prova
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Leu um livro? Manteve a alimentação saudável? Registre com a prova — a coordenação aprova e as Estalecas caem na
-            sua carteira.
+    <section aria-labelledby="conquistas-titulo" className="grid gap-3">
+      <TituloDaSecao id="conquistas-titulo">Conquistas com prova</TituloDaSecao>
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <BlocoFolha as="div" respiro className="grid gap-4">
+          <TopoDoBloco id="conquistas-enviar" icone={<BookOpen aria-hidden="true" />} titulo="Enviar uma conquista" />
+          <p className="-mt-2 text-[13px] font-medium leading-5 text-tinta-2">
+            Leu um livro? Manteve a alimentação saudável? Registre com a prova — a coordenação aprova e as Estalecas caem na sua carteira.
           </p>
           {!useRemote ? (
-            <p className="mt-4 rounded-lg border border-brand-oliva/16 bg-white/60 p-3 text-sm text-muted-foreground">
+            <Recado tom="neutro" icone={<Lock className="stroke-oliva" aria-hidden="true" />}>
               Entre com seu login para enviar conquistas.
-            </p>
+            </Recado>
           ) : (
             <form
-              className="mt-4 grid gap-3"
+              aria-labelledby="conquistas-enviar"
+              className="grid gap-4"
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!pessoa) return;
@@ -203,72 +221,99 @@ function ConquistasSection({ pessoa, useRemote }: { pessoa: Colaborador | null; 
                 });
               }}
             >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>Tipo</Label>
-                  <select
-                    value={claimType}
-                    onChange={(event) => setClaimType(event.target.value as EstalecaClaimType)}
-                    className="mt-1 h-11 w-full rounded-md border border-input bg-white/72 px-3 text-sm"
-                  >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Campo id="conquista-tipo" rotulo="Tipo">
+                  <CampoSelecao id="conquista-tipo" value={claimType} onChange={(event) => setClaimType(event.target.value as EstalecaClaimType)}>
                     {(Object.keys(estalecaClaimConfig) as EstalecaClaimType[]).map((type) => (
                       <option key={type} value={type}>
                         {estalecaClaimConfig[type].label}
                         {estalecaClaimConfig[type].defaultAmount ? ` (+${estalecaClaimConfig[type].defaultAmount})` : ""}
                       </option>
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Foto de prova (opcional)</Label>
-                  <Input type="file" accept="image/*" className="mt-1 pt-2" onChange={(event) => setPhoto(event.target.files?.[0] ?? null)} />
-                </div>
+                  </CampoSelecao>
+                </Campo>
+                <Campo id="conquista-foto" rotulo="Foto de prova (opcional)">
+                  {/* O campo de arquivo do navegador vira um botão com o nome do arquivo escolhido. */}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <label
+                      htmlFor="conquista-foto"
+                      className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-controle border border-fio-2 bg-folha px-3 text-sm font-bold text-tinta transition-colors duration-150 ease-papel hover:border-borda-campo hover:bg-papel has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-foco max-md:h-11"
+                    >
+                      <ImagePlus className="h-4 w-4" aria-hidden="true" />
+                      {photo ? "Trocar" : "Escolher foto"}
+                      <input
+                        id="conquista-foto"
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(event) => setPhoto(event.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    {photo ? (
+                      <span className="flex min-w-0 items-center gap-1 text-[13px] font-medium leading-5 text-tinta-2">
+                        <span className="truncate">{photo.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPhoto(null)}
+                          aria-label="Tirar a foto escolhida"
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded-controle text-tinta-2 hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco"
+                        >
+                          <X className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="truncate text-[13px] font-medium leading-5 text-tinta-2">nenhuma escolhida</span>
+                    )}
+                  </div>
+                </Campo>
               </div>
-              <div>
-                <Label>Título</Label>
-                <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={config.titlePlaceholder} />
-              </div>
-              <div>
-                <Label>Como foi / o que aprendeu</Label>
-                <Input value={description} onChange={(event) => setDescription(event.target.value)} placeholder={config.hint} />
-              </div>
-              <Button type="submit" disabled={createMutation.isPending}>
+              <Campo id="conquista-titulo" rotulo="Título">
+                <CampoTexto id="conquista-titulo" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={config.titlePlaceholder} />
+              </Campo>
+              <Campo id="conquista-como" rotulo="Como foi / o que aprendeu">
+                <CampoTexto id="conquista-como" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={config.hint} />
+              </Campo>
+              <Botao type="submit" variante="secundario" carregando={createMutation.isPending} className="w-fit max-md:h-11 max-md:w-full">
                 {createMutation.isPending ? "Enviando..." : "Enviar para aprovação"}
-              </Button>
-              {message ? <p className="text-sm font-semibold text-brand-musgo">{message}</p> : null}
+              </Botao>
+              {message ? <RecadoDaCarteira texto={message} /> : null}
             </form>
           )}
-        </CardContent>
-      </Card>
+        </BlocoFolha>
 
-      <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-        <CardHeader>
-          <CardTitle className="text-lg">Minhas conquistas enviadas</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2">
+        <BlocoSaber as="div" className="min-w-0 p-0 max-md:p-0">
+          <div className="px-6 pb-3 pt-5 max-md:px-4 max-md:pt-4">
+            <TopoDoBloco
+              id="conquistas-enviadas"
+              icone={<History aria-hidden="true" />}
+              titulo="Minhas conquistas enviadas"
+              lado={myClaims.length ? <span className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">as {myClaims.length} mais recentes</span> : null}
+            />
+          </div>
           {myClaims.length ? (
-            myClaims.map((claim) => (
-              <div key={claim.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/14 bg-white/60 px-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-brand-tinta">{claim.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {estalecaClaimConfig[claim.claimType].label} · {claim.claimDate.split("-").reverse().join("/")}
-                    {claim.reviewNote ? ` · ${claim.reviewNote}` : ""}
-                  </p>
-                </div>
-                <Badge
-                  variant={claim.status === "APPROVED" ? "muted" : claim.status === "REJECTED" ? "outline" : "gold"}
-                  className={cn(claim.status === "REJECTED" && "border-red-300 text-red-800", claim.status === "APPROVED" && "bg-emerald-100 text-emerald-800")}
-                >
-                  {estalecaClaimStatusLabels[claim.status]}
-                </Badge>
-              </div>
-            ))
+            <ul aria-labelledby="conquistas-enviadas">
+              {myClaims.map((claim) => (
+                <li key={claim.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 border-t border-fio px-6 py-3 max-md:grid-cols-1 max-md:px-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold leading-6 text-tinta">{claim.title}</p>
+                    <p className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                      {estalecaClaimConfig[claim.claimType].label} · {claim.claimDate.split("-").reverse().join("/")}
+                      {claim.reviewNote ? ` · ${claim.reviewNote}` : ""}
+                    </p>
+                  </div>
+                  <Situacao tom={TOM_DA_CONQUISTA[claim.status]} icone={ICONE_DO_TOM[TOM_DA_CONQUISTA[claim.status]]} className="mt-0.5">
+                    {estalecaClaimStatusLabels[claim.status]}
+                  </Situacao>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma conquista enviada ainda. Comece pelo livro do mês!</p>
+            <EstadoVazio icone={<BookOpen aria-hidden="true" />} titulo="Nenhuma conquista enviada ainda" className="border-t border-fio">
+              Comece pelo livro do mês!
+            </EstadoVazio>
           )}
-        </CardContent>
-      </Card>
+        </BlocoSaber>
+      </div>
     </section>
   );
 }
@@ -504,280 +549,330 @@ export function EstalecasPage() {
     return null;
   }
 
+
+  const frase = fraseDaCarteira({
+    saldo: snapshot.balance,
+    mes: snapshot.earnedThisMonth,
+    ano: snapshot.earnedThisYear,
+    pendente: snapshot.pendingAmount,
+  });
+
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <section className="rounded-lg border border-brand-oliva/20 bg-white/62 p-5 shadow-calm backdrop-blur sm:p-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-end">
-          <div>
-            <div className="mb-4 flex flex-wrap gap-2">
-              <Badge variant="gold">Minha Carteira Bratan</Badge>
-              <Badge variant="outline">Estalecas não são dinheiro real</Badge>
-            </div>
-            <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Minhas Estalecas</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-              Ganhe Estalecas mantendo sua disciplina e participando das ações Bratan. O saldo é calculado pelo histórico auditável de transações.
-            </p>
-          </div>
+    <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+      <Cabecalho
+        className="mb-0 max-md:mb-0"
+        sobrancelha="Equipe · Minha carteira"
+        titulo="Minhas Estalecas"
+        frase={
+          <>
+            <strong>{frase.destaque}</strong>
+            {frase.resto} Estalecas são pontos internos do Instituto, não dinheiro real.
+          </>
+        }
+      />
 
-          <Card className="border-brand-dourado/45 bg-brand-creme/45 shadow-none">
-            <CardContent className="p-5">
-              <p className="text-xs font-semibold uppercase text-brand-oliva">Saldo atual</p>
-              <p className="mt-2 text-4xl font-bold leading-tight text-brand-tinta sm:text-5xl">{formatEstalecas(snapshot.balance)}</p>
-              <p className="mt-2 text-sm text-muted-foreground">Estalecas aprovadas e não expiradas.</p>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
+      {message ? <RecadoDaCarteira texto={message} /> : null}
 
-      {message ? (
-        <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/35 px-4 py-3 text-sm font-semibold text-brand-tinta">
-          {message}
-        </div>
-      ) : null}
-
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-        <StatTile icon={WalletCards} label="Mês" value={formatEstalecas(snapshot.earnedThisMonth)} detail="Total ganho neste mês." tone="gold" />
-        <StatTile icon={Coins} label="Ano" value={formatEstalecas(snapshot.earnedThisYear)} detail="Total ganho no ano." />
-        <StatTile icon={Dumbbell} label="Treinos" value={`${snapshot.stats.monthlyGymCheckins}`} detail="Check-ins válidos no mês." />
-        <StatTile icon={CalendarCheck} label="Sequência" value={`${snapshot.stats.currentGymStreak}`} detail={`Melhor sequência: ${snapshot.stats.bestGymStreak}`} />
-        <StatTile icon={Trophy} label="Ranking" value={myRanking ? `#${myRanking.position}` : "-"} detail="Posição mensal na academia." />
-      </section>
+      <Indicadores
+        rotulo="Minhas Estalecas em números"
+        itens={[
+          { rotulo: "Saldo atual", valor: formatEstalecas(snapshot.balance), frase: "aprovadas e não expiradas" },
+          { rotulo: "Ganho no mês", valor: formatEstalecas(snapshot.earnedThisMonth), frase: "total que entrou neste mês" },
+          { rotulo: "Ganho no ano", valor: formatEstalecas(snapshot.earnedThisYear), frase: "total que entrou no ano" },
+          {
+            rotulo: "Treinos no mês",
+            valor: `${snapshot.stats.monthlyGymCheckins}`,
+            frase: `check-ins válidos · sequência de ${snapshot.stats.currentGymStreak} (melhor: ${snapshot.stats.bestGymStreak})`,
+          },
+          {
+            rotulo: "Ranking",
+            valor: myRanking ? `${myRanking.position}º` : "—",
+            frase: myRanking ? "posição mensal na academia" : "você ainda não entrou no ranking do mês",
+          },
+        ]}
+      />
 
       {!hasConsent ? (
-        <Card className="border-brand-dourado/40 bg-brand-creme/35 shadow-none">
-          <CardContent className="p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-lg font-semibold text-brand-tinta">Consentimento de check-ins</p>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  Ao usar check-ins, você autoriza o registro dessas atividades para fins de gamificação e recompensas internas. O ranking público não detalha atividades sensíveis.
-                </p>
-              </div>
-              <Button type="button" onClick={() => profileMutation.mutate({ acceptCheckins: true })} disabled={profileMutation.isPending}>
-                Ativar check-ins
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <BlocoFolha as="section" respiro aria-labelledby="estalecas-consentimento" className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div className="min-w-0">
+            <h2 id="estalecas-consentimento" className="text-base font-bold leading-6 text-tinta">
+              Consentimento de check-ins
+            </h2>
+            <p className="mt-1 max-w-[72ch] text-sm font-medium leading-6 text-tinta-2">
+              Ao usar check-ins, você autoriza o registro dessas atividades para fins de gamificação e recompensas internas. O ranking público não detalha
+              atividades sensíveis.
+            </p>
+          </div>
+          <Botao
+            variante="primario"
+            carregando={profileMutation.isPending}
+            disabled={profileMutation.isPending}
+            onClick={() => profileMutation.mutate({ acceptCheckins: true })}
+            className="max-md:h-11 max-md:w-full"
+          >
+            Ativar check-ins
+          </Botao>
+        </BlocoFolha>
       ) : null}
 
-      <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Dumbbell className="h-5 w-5" aria-hidden="true" />
-                Check-in Academia
-              </CardTitle>
-              <Badge variant={gymToday ? "gold" : "muted"}>{gymToday ? "Feito hoje" : "Disponível"}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-muted-foreground">
-              Confirme o treino com o código da semana (a coordenação divulga na academia/mural). Cada check-in válido gera {config.gymCheckinEstalecas} Estalecas e {config.gymCheckinCheckpoints} checkpoint de disciplina.
+      <section aria-labelledby="estalecas-checkins" className="grid gap-3">
+        <TituloDaSecao id="estalecas-checkins">Check-ins de hoje</TituloDaSecao>
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          <BlocoFolha as="div" respiro className="grid gap-4">
+            <TopoDoBloco
+              id="checkin-academia"
+              icone={<Dumbbell aria-hidden="true" />}
+              titulo="Check-in Academia"
+              lado={
+                gymToday ? (
+                  <Situacao tom="ok" icone={<CircleCheck aria-hidden="true" />}>
+                    Feito hoje
+                  </Situacao>
+                ) : (
+                  <Situacao tom="neutro" icone={<Clock aria-hidden="true" />}>
+                    Disponível
+                  </Situacao>
+                )
+              }
+            />
+            <p className="-mt-2 text-[13px] font-medium leading-5 text-tinta-2">
+              Confirme o treino com o código da semana (a coordenação divulga na academia/mural). Cada check-in válido gera{" "}
+              <strong className="font-bold text-tinta">{config.gymCheckinEstalecas} Estalecas</strong> e {config.gymCheckinCheckpoints} checkpoint de
+              disciplina.
             </p>
-            <div className="mt-4 space-y-2">
-              <Label htmlFor="gym-code">Código do treino</Label>
-              <Input
+            <Campo id="gym-code" rotulo="Código do treino">
+              <CampoTexto
                 id="gym-code"
                 value={gymCode}
                 onChange={(event) => setGymCode(event.target.value)}
                 placeholder="Ex.: TREINO-SEMANA"
+                autoComplete="off"
                 disabled={!hasConsent || Boolean(gymToday)}
               />
-            </div>
-            <Button
-              type="button"
-              className="mt-5 w-full"
+            </Campo>
+            <Botao
+              variante="primario"
+              bloco
+              carregando={checkinMutation.isPending && checkinMutation.variables === "gym"}
               disabled={!hasConsent || checkinMutation.isPending || Boolean(gymToday) || !gymCode.trim()}
               onClick={() => checkinMutation.mutate("gym")}
+              className="max-md:h-11"
             >
               Registrar treino de hoje
-            </Button>
-          </CardContent>
-        </Card>
+            </Botao>
+          </BlocoFolha>
 
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-                Check-in Igreja
-              </CardTitle>
-              <Badge variant={churchToday ? "gold" : "muted"}>{churchToday ? "Feito hoje" : "Código do dia"}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-muted-foreground">
+          <BlocoFolha as="div" respiro className="grid gap-4">
+            <TopoDoBloco
+              id="checkin-igreja"
+              icone={<ShieldCheck aria-hidden="true" />}
+              titulo="Check-in Igreja"
+              lado={
+                churchToday ? (
+                  <Situacao tom="ok" icone={<CircleCheck aria-hidden="true" />}>
+                    Feito hoje
+                  </Situacao>
+                ) : (
+                  <Situacao tom="neutro" icone={<Clock aria-hidden="true" />}>
+                    Código do dia
+                  </Situacao>
+                )
+              }
+            />
+            <p className="-mt-2 text-[13px] font-medium leading-5 text-tinta-2">
               Use o código/QR do dia ou evento. O registro é privado e não aparece no ranking público.
             </p>
-            <div className="mt-4 space-y-2">
-              <Label htmlFor="church-code">Código do dia/evento</Label>
-              <Input
+            <Campo id="church-code" rotulo="Código do dia/evento">
+              <CampoTexto
                 id="church-code"
                 value={churchCode}
                 onChange={(event) => setChurchCode(event.target.value)}
                 placeholder="Ex.: BRATAN-DOMINGO"
+                autoComplete="off"
                 disabled={!hasConsent || Boolean(churchToday)}
               />
-            </div>
-            <Button
-              type="button"
-              className="mt-5 w-full"
-              variant="outline"
+            </Campo>
+            <Botao
+              variante="secundario"
+              bloco
+              carregando={checkinMutation.isPending && checkinMutation.variables === "church"}
               disabled={!hasConsent || checkinMutation.isPending || Boolean(churchToday)}
               onClick={() => checkinMutation.mutate("church")}
+              className="max-md:h-11"
             >
               Confirmar presença
-            </Button>
-          </CardContent>
-        </Card>
+            </Botao>
+          </BlocoFolha>
+        </div>
       </section>
 
       <ConquistasSection pessoa={pessoa} useRemote={useRemote} />
 
-      <section className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Medal className="h-5 w-5" aria-hidden="true" />
-              Marco de 500 checkpoints
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-3 flex items-center justify-between text-sm">
-              <span className="font-semibold text-brand-tinta">{snapshot.stats.totalCheckpoints}/500 checkpoints</span>
-              <span className="text-muted-foreground">{snapshot.stats.progressTo500}%</span>
+      <section aria-labelledby="estalecas-disciplina" className="grid gap-3">
+        <TituloDaSecao id="estalecas-disciplina">Disciplina</TituloDaSecao>
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
+          <BlocoSaber as="div" className="grid gap-4">
+            <Rubrica as="h3">Marco de 500 checkpoints</Rubrica>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-serifa text-[32px] font-normal leading-10 tracking-[-0.01em] text-tinta [font-variant-numeric:lining-nums_tabular-nums]">
+                {snapshot.stats.totalCheckpoints}
+              </span>
+              <span className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                de 500 checkpoints · {snapshot.stats.progressTo500}%
+              </span>
             </div>
-            <ProgressBar value={snapshot.stats.progressTo500} />
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              {snapshot.stats.checkpointsTo500 > 0
-                ? `Você está a ${snapshot.stats.checkpointsTo500} checkpoints do marco de 500.`
-                : "Você alcançou 500 checkpoints. Disciplina reconhecida, recompensa desbloqueada."}
-            </p>
-          </CardContent>
-        </Card>
+            <BarraDoMarco valor={snapshot.stats.progressTo500} />
+            <p className="text-sm font-medium leading-6 text-tinta-2">{fraseDoMarco(snapshot.stats.checkpointsTo500)}</p>
+          </BlocoSaber>
 
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Trophy className="h-5 w-5" aria-hidden="true" />
+          <BlocoSaber as="div" className="min-w-0 p-0 max-md:p-0">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-6 pb-3 pt-5 max-md:px-4 max-md:pt-4">
+              <h3 id="estalecas-ranking" className="flex items-center gap-2 text-base font-bold leading-6 text-tinta">
+                <Trophy className="h-4 w-4 shrink-0 stroke-oliva" aria-hidden="true" />
                 Mais Disciplinado da Academia
-              </CardTitle>
-              <Badge variant="muted">Ranking mensal</Badge>
+              </h3>
+              <span className="text-[13px] font-medium leading-5 text-tinta-2">Ranking mensal</span>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
             {ranking.length ? (
-              ranking.slice(0, 6).map((entry) => (
-                <div key={entry.userId} className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-                  <div className={cn("grid h-9 w-9 place-items-center rounded-lg text-sm font-bold", entry.position === 1 ? "bg-brand-creme text-brand-tinta" : "bg-brand-papel text-brand-musgo")}>
-                    {entry.position}
-                  </div>
-                  <AvatarBadge pessoaId={entry.userId} nome={entry.displayName} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-brand-tinta">{entry.displayName}</p>
-                    <p className="text-xs text-muted-foreground">{entry.validGymCheckins} treinos · sequência {entry.currentStreak}</p>
-                  </div>
-                  <p className="text-sm font-bold leading-tight text-brand-musgo">{entry.checkpoints}</p>
-                </div>
-              ))
+              <ol aria-labelledby="estalecas-ranking">
+                {ranking.slice(0, 6).map((entry) => {
+                  const souEu = entry.userId === pessoa.id;
+                  return (
+                    <li
+                      key={entry.userId}
+                      className="grid grid-cols-[28px_auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-fio px-6 py-3 max-md:px-4"
+                    >
+                      <span className="text-center font-serifa text-xl leading-7 text-tinta [font-variant-numeric:lining-nums_tabular-nums]">{entry.position}</span>
+                      <AvatarEmArco pessoaId={entry.userId} nome={entry.displayName} />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold leading-6 text-tinta">
+                          {entry.displayName}
+                          {souEu ? <span className="font-medium text-tinta-2"> · você</span> : null}
+                        </p>
+                        <p className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                          {entry.validGymCheckins === 1 ? "1 treino" : `${entry.validGymCheckins} treinos`} · sequência {entry.currentStreak}
+                        </p>
+                      </div>
+                      <p className="text-right text-sm font-bold leading-5 tabular-nums text-tinta">
+                        {entry.checkpoints}
+                        <span className="block text-xs font-medium leading-4 text-tinta-2">checkpoints</span>
+                      </p>
+                    </li>
+                  );
+                })}
+              </ol>
             ) : (
-              <p className="rounded-lg border border-brand-oliva/16 bg-white/65 p-4 text-sm text-muted-foreground">
+              <EstadoVazio icone={<Trophy aria-hidden="true" />} titulo="O ranking ainda não começou" className="border-t border-fio">
                 O ranking começa quando houver check-ins válidos de academia neste mês.
-              </p>
+              </EstadoVazio>
             )}
             {ranking[0]?.tieBreakNote ? (
-              <p className="text-xs leading-5 text-muted-foreground">{ranking[0].tieBreakNote}</p>
+              <p className="border-t border-fio px-6 py-3 text-[13px] font-medium leading-5 text-tinta-2 max-md:px-4">{ranking[0].tieBreakNote}</p>
             ) : null}
-          </CardContent>
-        </Card>
+          </BlocoSaber>
+        </div>
       </section>
 
-      <section className="grid gap-5 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <CardTitle className="text-lg">Como apareço no ranking</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-sm leading-6 text-muted-foreground">
-              Nome atual: <span className="font-semibold text-brand-tinta">{displayName}</span>
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="display-name">Apelido ou nome de exibição</Label>
-              <Input
-                id="display-name"
-                value={displayNameDraft}
-                onChange={(event) => setDisplayNameDraft(event.target.value)}
-                placeholder="Ex.: Lucas"
-                maxLength={32}
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-4 w-full"
-              disabled={profileMutation.isPending}
-              onClick={() => profileMutation.mutate({ displayName: displayNameDraft })}
-            >
-              Salvar nome
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
+        <BlocoFolha as="section" respiro aria-labelledby="estalecas-nome" className="grid gap-4">
+          <h2 id="estalecas-nome" className="text-base font-bold leading-6 text-tinta">
+            Como apareço no ranking
+          </h2>
+          <p className="-mt-2 text-sm font-medium leading-6 text-tinta-2">
+            Nome atual: <span className="font-bold text-tinta">{displayName}</span>
+          </p>
+          <Campo id="display-name" rotulo="Apelido ou nome de exibição" ajuda="Até 32 letras. O ranking mostra só este nome.">
+            <CampoTexto
+              id="display-name"
+              value={displayNameDraft}
+              onChange={(event) => setDisplayNameDraft(event.target.value)}
+              placeholder="Ex.: Lucas"
+              maxLength={32}
+            />
+          </Campo>
+          <Botao
+            variante="secundario"
+            bloco
+            carregando={profileMutation.isPending && profileMutation.variables?.displayName !== undefined}
+            disabled={profileMutation.isPending}
+            onClick={() => profileMutation.mutate({ displayName: displayNameDraft })}
+            className="max-md:h-11"
+          >
+            Salvar nome
+          </Botao>
+        </BlocoFolha>
 
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <History className="h-5 w-5" aria-hidden="true" />
-                Histórico de transações
-              </CardTitle>
-              <Badge variant="muted">{snapshot.transactions.length} registros</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {snapshot.transactions.length ? (
-              snapshot.transactions.slice(0, 12).map((transaction) => (
-                <div key={transaction.id} className="flex flex-col gap-3 rounded-lg border border-brand-oliva/16 bg-white/65 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <BlocoSaber as="section" aria-labelledby="estalecas-historico" className="min-w-0 p-0 max-md:p-0">
+          <div className="px-6 pb-3 pt-5 max-md:px-4 max-md:pt-4">
+            <TopoDoBloco
+              id="estalecas-historico"
+              icone={<History aria-hidden="true" />}
+              titulo="Histórico de transações"
+              lado={
+                <span className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                  {snapshot.transactions.length === 1 ? "1 registro" : `${snapshot.transactions.length} registros`}
+                  {snapshot.transactions.length > 12 ? " · os 12 mais recentes" : ""}
+                </span>
+              }
+            />
+          </div>
+          {snapshot.transactions.length ? (
+            <ul>
+              {snapshot.transactions.slice(0, 12).map((transaction) => (
+                <li
+                  key={transaction.id}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 border-t border-fio px-6 py-3 max-md:px-4"
+                >
                   <div className="min-w-0">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <Badge variant={transaction.status === "approved" ? "gold" : "muted"}>{estalecaStatusLabels[transaction.status]}</Badge>
-                      <span className="text-xs font-semibold uppercase text-brand-oliva">{estalecaSourceLabels[transaction.source]}</span>
-                    </div>
-                    <p className="text-sm font-semibold text-brand-tinta">{transaction.description}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(transaction.createdAt))} · {formatShortTime(transaction.createdAt)}
+                    <p className="text-sm font-bold leading-6 text-tinta">{transaction.description}</p>
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                      <Situacao
+                        tom={TOM_DA_TRANSACAO[transaction.status]}
+                        icone={ICONE_DA_TRANSACAO[transaction.status]}
+                        className="text-[13px]"
+                      >
+                        {estalecaStatusLabels[transaction.status]}
+                      </Situacao>
+                      <span aria-hidden="true" className="text-fio-2">
+                        ·
+                      </span>
+                      <span>{estalecaSourceLabels[transaction.source]}</span>
+                      <span aria-hidden="true" className="text-fio-2">
+                        ·
+                      </span>
+                      <span>
+                        {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(transaction.createdAt))} ·{" "}
+                        {formatShortTime(transaction.createdAt)}
+                      </span>
                     </p>
                   </div>
-                  <p className={cn("text-lg font-bold", transaction.amount >= 0 ? "text-brand-musgo" : "text-destructive")}>
+                  <p className={cn("whitespace-nowrap text-base font-bold leading-6 tabular-nums", transaction.amount >= 0 ? "text-musgo" : "text-erro")}>
                     {transaction.amount >= 0 ? "+" : ""}
                     {formatEstalecas(transaction.amount)}
                   </p>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-5 text-sm text-muted-foreground">
-                Nenhuma transação ainda. O histórico será preenchido quando você fizer check-ins ou receber recompensas.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EstadoVazio icone={<History aria-hidden="true" />} titulo="Nenhuma transação ainda" className="border-t border-fio">
+              O histórico será preenchido quando você fizer check-ins ou receber recompensas.
+            </EstadoVazio>
+          )}
+        </BlocoSaber>
+      </div>
 
-      <section>
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardContent className="flex flex-col gap-3 p-4 text-sm leading-6 text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-brand-musgo" aria-hidden="true" />
-              <p>
-                Estalecas são créditos/pontos internos do Instituto Bratan. O saldo vem do ledger de transações aprovadas, com suporte a pendências, recusas, expiração e estornos.
-              </p>
-            </div>
-            <span className="shrink-0 font-semibold text-brand-oliva">{checkinTypeLabels.gym} + {checkinTypeLabels.church}</span>
-          </CardContent>
-        </Card>
-      </section>
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-t border-fio pt-4 text-[13px] font-medium leading-5 text-tinta-2">
+        <p className="flex max-w-[90ch] items-start gap-2">
+          <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 stroke-oliva" aria-hidden="true" />
+          <span>
+            Estalecas são créditos/pontos internos do Instituto Bratan. O saldo vem do histórico de transações aprovadas, com pendências, recusas,
+            expiração e estornos.
+          </span>
+        </p>
+        <span className="shrink-0 font-bold text-tinta">
+          {checkinTypeLabels.gym} + {checkinTypeLabels.church}
+        </span>
+      </div>
     </div>
   );
 }

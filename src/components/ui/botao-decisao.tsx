@@ -8,11 +8,23 @@
 // Devolver e Recusar pedem o MOTIVO antes de valer: a barra abre um campo ali
 // mesmo, e a decisão só sai com o motivo escrito. Sem teto para aprovar em lote
 // (decisão do Lucas, 08/10/2026): o teto não mora aqui.
+//
+// LARGURA (08/10/2026, etapa 4 — o ajuste que só Pedidos fazia, agora na peça):
+// · Cabe numa linha → Aprovar · Devolver … Recusar, e o Recusar (só a palavra,
+//   sem moldura) encosta a palavra na margem do conteúdo, como na prancha: o
+//   respiro interno dele "pendura" 16 px no respiro da barra. Quem tira o
+//   respiro da barra (p-0) precisa deixar 16 px livres à direita.
+// · Não cabe (painel estreito) → o Aprovar ocupa a linha de cima e Devolver |
+//   Recusar dividem a de baixo; o Recusar continua na ponta, longe do Aprovar,
+//   em vez de cair sozinho numa linha. A barra MEDE os botões (o valor dentro
+//   do Aprovar muda a largura), não adivinha pela largura da janela.
+// · No celular (< 768 px) vale a ordem do polegar: Devolver | Recusar em cima e
+//   o Aprovar grande embaixo.
 import * as React from "react";
 import { Check, Info, Undo2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Botao, type TamanhoBotao } from "./botao";
-import { formatarReais } from "./papel-musgo";
+import { cabeNumaLinha, formatarReais } from "./papel-musgo";
 
 export type TipoDecisao = "aprovar" | "devolver" | "recusar";
 
@@ -104,6 +116,44 @@ export function BarraDecisao({
   const recusarRef = React.useRef<HTMLButtonElement>(null);
   const idCampo = React.useId();
   const idAjuda = React.useId();
+  const linhaRef = React.useRef<HTMLDivElement>(null);
+  const [estreita, setEstreita] = React.useState(false);
+  const textoDoValor = valor === undefined || valor === null ? "" : String(valor);
+  const temDevolver = Boolean(onDevolver);
+  const temRecusar = Boolean(onRecusar);
+
+  // Painel estreito: mede a largura natural dos botões (sem esticar) e decide se
+  // eles cabem numa linha. Remede quando a barra muda de largura, quando o valor
+  // ou o rótulo do Aprovar mudam e quando as fontes terminam de chegar.
+  React.useLayoutEffect(() => {
+    if (confirmando) return undefined;
+    const linha = linhaRef.current;
+    if (!linha) return undefined;
+    let vivo = true;
+    const medir = () => {
+      if (!vivo) return;
+      const botoes = Array.from(linha.children) as HTMLElement[];
+      const larguras = botoes.map((botao) => {
+        const { width, maxWidth } = botao.style;
+        botao.style.width = "max-content";
+        botao.style.maxWidth = "none";
+        const largura = botao.getBoundingClientRect().width;
+        botao.style.width = width;
+        botao.style.maxWidth = maxWidth;
+        return largura;
+      });
+      const vao = Number.parseFloat(window.getComputedStyle(linha).columnGap) || 8;
+      setEstreita(!cabeNumaLinha(larguras, vao, linha.clientWidth, temRecusar));
+    };
+    medir();
+    const observador = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(medir);
+    observador?.observe(linha);
+    void document.fonts?.ready.then(medir);
+    return () => {
+      vivo = false;
+      observador?.disconnect();
+    };
+  }, [confirmando, textoDoValor, rotuloAprovar, temDevolver, temRecusar]);
 
   React.useEffect(() => {
     if (confirmando) campoRef.current?.focus();
@@ -193,7 +243,11 @@ export function BarraDecisao({
               <span>{nota}</span>
             </p>
           ) : null}
-          <div className="flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-2">
+          <div
+            ref={linhaRef}
+            data-largura={estreita ? "estreita" : "uma-linha"}
+            className={cn("flex flex-wrap items-center gap-2 max-md:grid max-md:grid-cols-2", estreita && "grid grid-cols-2")}
+          >
             <BotaoDecisao
               tipo="aprovar"
               valor={valor}
@@ -201,7 +255,7 @@ export function BarraDecisao({
               disabled={bloqueado}
               carregando={ocupado === "aprovar"}
               onClick={() => void executar("aprovar", onAprovar)}
-              className="max-md:order-3 max-md:col-span-2 max-md:h-[52px] max-md:text-base"
+              className={cn("max-md:order-3 max-md:col-span-2 max-md:h-[52px] max-md:text-base", estreita && "col-span-2")}
             />
             {onDevolver ? (
               <BotaoDecisao ref={devolverRef} tipo="devolver" disabled={bloqueado} onClick={() => setConfirmando("devolver")} className="max-md:h-11" />
@@ -212,7 +266,11 @@ export function BarraDecisao({
                 tipo="recusar"
                 disabled={bloqueado}
                 onClick={() => setConfirmando("recusar")}
-                className="ml-auto max-md:ml-0 max-md:h-11 max-md:shadow-[inset_0_0_0_1px_var(--fio-2)]"
+                className={cn(
+                  "max-md:ml-0 max-md:mr-0 max-md:h-11 max-md:shadow-[inset_0_0_0_1px_var(--fio-2)]",
+                  // Numa linha: na ponta, com a palavra na margem (pendura 16 px). Estreita: a coluna da direita.
+                  estreita ? "ml-0" : "ml-auto md:-mr-4",
+                )}
               />
             ) : null}
           </div>

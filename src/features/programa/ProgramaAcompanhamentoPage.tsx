@@ -1,17 +1,22 @@
+// PLANO DE ACOMPANHAMENTO (caminhada do paciente).
+//
+// PAPEL & MUSGO (08/10/2026, redesenho etapa 4): um cabeçalho só, com o número
+// do plano explicado em frase ("Dez pacientes no plano de acompanhamento, sete
+// em dia. Dois com marco atrasado."); os quatro números viram a faixa "para
+// saber"; a importação da InBody, a conferência e a lista dos pacientes moram
+// em folhas (é onde se age); a pesagem da semana e quem não fechou ficam no
+// saber. Filtros viram leituras com o número de cada canal. Sem vidro, sem
+// animação de entrada, sem verde/vermelho genéricos: ok, atenção e erro do app.
+// O que a tela FAZ não mudou: mesmos filtros, mesmos marcos, mesma trava de
+// quem só vê, mesmo relatório, mesma inscrição e o mesmo resgate.
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Scale, Stethoscope, UserPlus, XCircle } from "lucide-react";
+import { ChevronDown, ClipboardCheck, Copy, FileText, HeartPulse, Plus, Scale, Stethoscope, UserPlus } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho, CampoBusca, FraseDoFluxo } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { canAcompanhamento, canGravarMedicoes, canVerMedicoes } from "@/lib/access";
 import { todayISO } from "@/lib/localStore";
 import { exportBrandedPdf } from "@/lib/brandedPdf";
@@ -25,12 +30,15 @@ import {
   type CrmProgramPhase,
   criarTarefaDeResgatePorRisco,
 } from "@/features/crm/crmData";
+import { CAMPO, CAMPO_PQ, Etiqueta, GrupoDeLeituras, Indicadores, Leitura, NOME_LINK, classeDoChip } from "@/features/crm/comercialVisual";
+import { AvisoDaTela, Campo, TituloDoBloco, Vazio } from "@/features/financeiro/pecasDiaPagar";
 import { useAuth } from "@/hooks/useAuth";
 import { ListaEsperaCard } from "./ListaEsperaCard";
 import { ImportarInBodyCard } from "./ImportarInBodyCard";
 import { useCrmState } from "@/features/crm/useCrmState";
 import { listRemotePacienteMedicoesDesde } from "@/lib/remoteData";
 import { listaParaCobrar, pesagensDaSemana } from "./pesagensSemana";
+import { fraseDoAcompanhamento } from "@/features/pacientes/frasesPacientes";
 import {
   buildPerformanceReportTable,
   buildProgramaBoard,
@@ -68,18 +76,20 @@ function formatBR(dateISO: string) {
 // Contador de marcos em uma linha só. Antes era um bloco de duas linhas com
 // rótulo em cima; com 3 deles por paciente, cada cartão ganhava 60 px de altura
 // sem dizer mais nada (16/09/2026: "tá muito grande, você rola infinitamente").
+// Papel & Musgo (08/10/2026): etiqueta de 24 px, completo em ok, algarismos alinhados.
 function ProgressPill({ label, done, total, icon: Icon }: { label: string; done: number; total: number; icon: typeof HeartPulse }) {
   const complete = done >= total;
   return (
     <span
       title={`${label}: ${done} de ${total}`}
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-bold leading-tight",
-        complete ? "border-emerald-300 bg-emerald-50/70 text-emerald-700" : "border-brand-oliva/16 bg-white/70 text-brand-tinta",
+        "inline-flex h-6 items-center gap-1 rounded-controle px-1.5 font-sans text-xs font-bold leading-none tabular-nums",
+        complete ? "bg-ok-claro text-ok" : "bg-saber text-tinta",
       )}
     >
-      <Icon className={cn("h-3 w-3 shrink-0", complete ? "text-emerald-700" : "text-brand-oliva")} aria-hidden="true" />
+      <Icon className={cn("h-3.5 w-3.5 shrink-0", complete ? "text-ok" : "text-tinta-2")} aria-hidden="true" />
       {done}/{total}
+      <span className="sr-only"> {label}</span>
     </span>
   );
 }
@@ -89,14 +99,16 @@ function MilestoneChip({ milestone, onToggle }: { milestone: ProgramMilestone; o
     <button
       type="button"
       onClick={onToggle}
+      aria-pressed={milestone.done}
       title={`${milestone.label} · responsável: ${milestoneResponsible[milestone.type]} · previsto ${formatBR(milestone.expectedDate)}${milestone.done ? " · FEITO (toque para desfazer)" : milestone.overdue ? " · ATRASADO (toque para marcar feito)" : " · toque para marcar feito"}`}
       className={cn(
-        "ios-pressable rounded-md border px-2 py-1 text-[11px] font-semibold leading-tight transition",
+        "inline-flex min-h-8 items-center gap-1 rounded-controle border px-2.5 font-sans text-xs font-bold leading-none transition-colors duration-150 ease-papel",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco",
         milestone.done
-          ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+          ? "border-transparent bg-ok-claro text-ok"
           : milestone.overdue
-            ? "border-red-300 bg-red-50 text-red-700"
-            : "border-brand-oliva/20 bg-white/70 text-brand-tinta hover:bg-brand-creme/60",
+            ? "border-atencao bg-atencao-claro text-atencao"
+            : "border-fio-2 bg-folha text-tinta hover:border-borda-campo",
       )}
     >
       {milestone.type === "MEDICO" ? `Dr. ${milestone.n}` : `${milestone.type === "CHECK" ? "Check" : "Bio"} ${milestone.n}`}
@@ -223,54 +235,68 @@ export function ProgramaAcompanhamentoPage() {
     window.setTimeout(() => setCopyFeedback(""), 6000);
   }
 
+  // CABEÇALHO (08/10/2026): o número do plano em frase, e o que pede atenção em laranja.
+  const frase = fraseDoAcompanhamento({ pacientes: totals.pacientes, emDia: totals.emDia, atrasados: totals.atrasados, vermelhos });
+  const sincronia = syncError ? "Sem sincronizar" : isSyncing ? "Sincronizando" : syncMode;
+
   return (
     <AccessGate allowed={canAcompanhamento} label="Acompanhamento" module="acompanhamento">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+      <div className="mx-auto grid w-full max-w-[1200px] gap-6 font-sans text-tinta max-md:gap-4">
         <AvisoSoVe soVe={telaAcomp.soVe} />
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="gold">Caminhada do paciente</Badge>
-                <Badge variant="muted">{syncError ? "Sem sincronizar" : isSyncing ? "Sincronizando" : syncMode}</Badge>
-              </div>
-              <h1 className="mt-3 flex items-center gap-2 text-3xl leading-tight text-brand-musgo sm:text-4xl">
-                Acompanhamento
-                <InfoTip title="O que é esta aba?">
-                  A visão única do plano de acompanhamento: todos os pacientes que aderiram, em qual fase estão e a caminhada
-                  de 6 meses de cada um — 6 checkpoints da Assistente de Performance, 6 bioimpedâncias e as 3 consultas do Dr.
-                  Daniel. Cada setor marca o que faz (enfermagem, Performance, médico). No fim, a lista de quem não fechou na
-                  semana, pronta para copiar. As datas previstas contam a partir da adesão; a agenda oficial fica no Feegow.
-                </InfoTip>
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Quem está em qual fase, o que já foi feito, o próximo passo de cada paciente — e quem não fechou na semana.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="rounded-xl border border-brand-oliva/20 bg-white/60 px-4 py-2 text-center">
-                <p className="text-[11px] font-semibold uppercase text-brand-oliva">No plano</p>
-                <p className="text-xl font-bold text-brand-musgo">{totals.pacientes}</p>
-              </div>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-2 text-center">
-                <p className="text-[11px] font-semibold uppercase text-emerald-700">Em dia</p>
-                <p className="text-xl font-bold text-emerald-700">{totals.emDia}</p>
-              </div>
-              <div className={cn("rounded-xl border px-4 py-2 text-center", vermelhos ? "border-red-200 bg-red-50/70" : "border-brand-oliva/20 bg-white/60")} title="Semáforo de adesão: não respondeu, sem retorno, muito tempo sem vir">
-                <p className={cn("text-[11px] font-semibold uppercase", vermelhos ? "text-red-700" : "text-brand-oliva")}>Semáforo vermelho</p>
-                <p className={cn("text-xl font-bold", vermelhos ? "text-red-700" : "text-brand-musgo")}>{vermelhos}</p>
-              </div>
-              <div className={cn("rounded-xl border px-4 py-2 text-center", totals.atrasados ? "border-red-200 bg-red-50/70" : "border-brand-oliva/20 bg-white/60")}>
-                <p className={cn("text-[11px] font-semibold uppercase", totals.atrasados ? "text-red-700" : "text-brand-oliva")}>Com atraso</p>
-                <p className={cn("text-xl font-bold", totals.atrasados ? "text-red-700" : "text-brand-musgo")}>{totals.atrasados}</p>
-              </div>
-            </div>
-          </div>
-        </motion.section>
+        <Cabecalho
+          className="mb-0 max-md:mb-0"
+          sobrancelha="Pacientes · Caminhada do paciente"
+          titulo="Plano de acompanhamento"
+          frase={
+            <>
+              <strong>{frase.destaque}</strong>
+              {frase.resto}
+              {frase.alerta ? <span className="alerta">{frase.alerta}</span> : null}
+            </>
+          }
+          acoes={
+            <>
+              <Botao variante="secundario" icone={<FileText className="h-4 w-4" aria-hidden="true" />} onClick={gerarRelatorio}>
+                Relatório p/ Performance
+              </Botao>
+              <Botao
+                variante="secundario"
+                icone={<UserPlus className="h-4 w-4" aria-hidden="true" />}
+                disabled={semEdicao}
+                aria-expanded={enrollOpen}
+                onClick={() => setEnrollOpen((value) => !value)}
+              >
+                Adicionar paciente ao plano
+              </Botao>
+            </>
+          }
+          rodape={
+            <FraseDoFluxo>
+              Quem está em qual fase, o que já foi feito, o próximo passo de cada paciente — e quem não fechou na semana.{" "}
+              <InfoTip title="O que é esta aba?">
+                A visão única do plano de acompanhamento: todos os pacientes que aderiram, em qual fase estão e a caminhada
+                de 6 meses de cada um — 6 checkpoints da Assistente de Performance, 6 bioimpedâncias e as 3 consultas do Dr.
+                Daniel. Cada setor marca o que faz (enfermagem, Performance, médico). No fim, a lista de quem não fechou na
+                semana, pronta para copiar. As datas previstas contam a partir da adesão; a agenda oficial fica no Feegow.
+              </InfoTip>{" "}
+              <Etiqueta tom={syncError ? "atencao" : "neutro"} className="align-middle">
+                {sincronia}
+              </Etiqueta>
+            </FraseDoFluxo>
+          }
+        />
+
+        {/* Os quatro números, para saber (o que pede atenção pinta de laranja; a frase diz o porquê). */}
+        <Indicadores
+          rotulo="O plano em números"
+          colunas={4}
+          itens={[
+            { rotulo: "No plano", valor: totals.pacientes, frase: totals.pacientes === 1 ? "paciente aderiu" : "pacientes aderiram" },
+            { rotulo: "Em dia", valor: totals.emDia, frase: "nenhum marco passou da data", tom: totals.emDia > 0 && totals.emDia === totals.pacientes ? "ok" : undefined },
+            { rotulo: "Com atraso", valor: totals.atrasados, frase: "algum marco passou da data", tom: totals.atrasados ? "atencao" : undefined },
+            { rotulo: "Semáforo vermelho", valor: vermelhos, frase: "não respondeu, sem retorno ou muito tempo sem vir", tom: vermelhos ? "atencao" : undefined },
+          ]}
+        />
 
         {/* A bioimpedância fica no alto porque é o que a enfermagem vem fazer aqui
             depois de rodar o aparelho (pedido do Lucas, 16/09/2026). Fechado, é
@@ -279,107 +305,80 @@ export function ProgramaAcompanhamentoPage() {
           <ImportarInBodyCard contatos={state.contacts.map((contato) => ({ id: contato.id, name: contato.fullName }))} pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
         ) : null}
 
-        {copyFeedback ? (
-          <div className="flex items-start gap-2 rounded-lg border border-brand-dourado/35 bg-brand-creme/60 px-4 py-3 text-sm font-semibold text-brand-tinta">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-musgo" aria-hidden="true" />
-            {copyFeedback}
-          </div>
-        ) : null}
+        {copyFeedback ? <AvisoDaTela tom="ok">{copyFeedback}</AvisoDaTela> : null}
 
         {/* CONFERÊNCIA — "está tudo linkado? faltou alguém?" (17/08/2026).
             Sem este bloco, essa pergunta não tinha resposta: dava para olhar o
             quadro e não saber quem deveria estar nele e não está. */}
         {pendencias.length ? (
-          <section
-            className={cn(
-              "rounded-lg border-2 p-3 backdrop-blur-xl",
-              pendenciasAltas ? "border-red-300 bg-red-50/60" : "border-brand-dourado/50 bg-brand-creme/40",
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => setConferenciaAberta((atual) => !atual)}
-              className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
-            >
-              <span className="flex flex-wrap items-center gap-2">
-                <ClipboardCheck className={cn("h-4 w-4", pendenciasAltas ? "text-red-700" : "text-brand-musgo")} aria-hidden="true" />
-                <strong className={cn("text-sm", pendenciasAltas ? "text-red-900" : "text-brand-musgo")}>
+          <BlocoFolha as="section" aria-label="Conferência do plano" className={cn(pendenciasAltas ? "border-atencao" : "")}>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 max-md:px-4">
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <ClipboardCheck className={cn("h-4 w-4 shrink-0", pendenciasAltas ? "text-atencao" : "text-tinta-2")} aria-hidden="true" />
+                <strong className={cn("text-sm font-bold leading-5", pendenciasAltas ? "text-atencao" : "text-tinta")}>
                   Conferência: {pendencias.length} ponto(s) para olhar
                 </strong>
                 {pendencias.map((item) => (
-                  <Badge key={item.chave} variant={item.gravidade === "ALTA" ? "outline" : "muted"} className={item.gravidade === "ALTA" ? "border-red-300 text-red-800" : undefined}>
+                  <Etiqueta key={item.chave} tom={item.gravidade === "ALTA" ? "erro" : item.gravidade === "MEDIA" ? "atencao" : "neutro"}>
                     {item.pessoas.length} {item.chave === "SEM_CANAL" ? "sem canal" : item.chave === "GANHOU_FORA" ? "fechou e ficou fora" : item.chave === "PACIENTE_SEM_NEGOCIACAO" ? "sem negociação" : "nome repetido"}
-                  </Badge>
+                  </Etiqueta>
                 ))}
               </span>
-              <span className="text-xs font-semibold text-brand-oliva">{conferenciaAberta ? "esconder" : "ver detalhes"}</span>
-            </button>
+              <Botao tamanho="pq" variante="fantasma" aria-expanded={conferenciaAberta} onClick={() => setConferenciaAberta((atual) => !atual)}>
+                {conferenciaAberta ? "Esconder" : "Ver detalhes"}
+                <ChevronDown className={cn("h-4 w-4 transition-transform duration-150 ease-papel", conferenciaAberta && "rotate-180")} aria-hidden="true" />
+              </Botao>
+            </div>
 
             {conferenciaAberta ? (
-              <div className="mt-3 grid gap-2.5">
+              <ul className="border-t border-fio">
                 {pendencias.map((item) => (
-                  <div key={item.chave} className="rounded-lg border border-brand-oliva/20 bg-white/80 p-3">
-                    <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-brand-tinta">
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white",
-                          item.gravidade === "ALTA" ? "bg-red-600" : item.gravidade === "MEDIA" ? "bg-amber-500" : "bg-brand-oliva",
-                        )}
-                      >
-                        {item.gravidade}
-                      </span>
+                  <li key={item.chave} className="grid gap-1.5 border-b border-fio px-5 py-4 last:border-b-0 max-md:px-4">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-bold leading-5 text-tinta">
+                      <Etiqueta tom={item.gravidade === "ALTA" ? "erro" : item.gravidade === "MEDIA" ? "atencao" : "neutro"}>{item.gravidade}</Etiqueta>
                       {item.titulo}
                     </p>
-                    <p className="mt-1 text-xs leading-snug text-muted-foreground">
-                      <strong className="text-brand-tinta">Por que importa:</strong> {item.porque}
+                    <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                      <strong className="font-bold text-tinta">Por que importa:</strong> {item.porque}
                     </p>
-                    <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                      <strong className="text-brand-tinta">O que fazer:</strong> {item.oQueFazer}
+                    <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                      <strong className="font-bold text-tinta">O que fazer:</strong> {item.oQueFazer}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="mt-1 flex flex-wrap gap-1.5">
                       {item.pessoas.map((pessoa) => (
-                        <Link
-                          key={`${item.chave}-${pessoa.contactId}`}
-                          to={crmModuleRoutes.contact(pessoa.contactId)}
-                          title={pessoa.detalhe}
-                          className="rounded-md border border-brand-oliva/25 bg-white px-2 py-1 text-[11px] font-semibold text-brand-tinta transition hover:border-brand-musgo hover:bg-brand-creme/50"
-                        >
+                        <Link key={`${item.chave}-${pessoa.contactId}`} to={crmModuleRoutes.contact(pessoa.contactId)} title={pessoa.detalhe} className={classeDoChip(false)}>
                           {pessoa.nome}
                         </Link>
                       ))}
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : null}
-          </section>
+          </BlocoFolha>
         ) : null}
 
         {/* PESAGEM DA SEMANA (16/09/2026): a enfermagem vê o que chegou pelo portal e
             quem precisa ser cobrado. Quem passa de 2 semanas sem pesar já pesa no
             semáforo de adesão do cartão, então esta lista e o semáforo contam a mesma história. */}
         {podeVerMedicoes ? (
-          <section className="rounded-lg border border-brand-oliva/20 bg-white/60 px-4 py-2.5 backdrop-blur-xl">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-sm font-bold text-brand-musgo">
-                <button type="button" onClick={() => setPesagemAberta((atual) => !atual)} className="ios-pressable -ml-0.5 rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60" aria-label={pesagemAberta ? "Esconder quem pesou" : "Ver quem pesou"}>
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", pesagemAberta && "rotate-180")} aria-hidden="true" />
-                </button>
-                <Scale className="h-4 w-4" aria-hidden="true" />
-                Pesagem da semana
+          <BlocoSaber as="section" aria-label="Pesagem da semana" className="py-4 max-md:py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <TituloDoBloco icone={<Scale className="h-4 w-4" aria-hidden="true" />}>Pesagem da semana</TituloDoBloco>
                 <InfoTip title="De onde vem esta lista">
                   O paciente manda o peso pelo Meu Bratan, uma vez por semana. A enfermagem também pode lançar pela ficha, no
                   cartão Portal do paciente. A semana começa na segunda. Quem passa de duas semanas sem pesar soma um ponto no
                   semáforo de adesão.
                 </InfoTip>
-              </h2>
+                <span className="text-[13px] font-medium leading-5 text-tinta-2">{medicoes.isLoading ? "Carregando as pesagens…" : pesagens.frase}</span>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground">{medicoes.isLoading ? "Carregando as pesagens…" : pesagens.frase}</span>
                 {pesagens.faltando.length + pesagens.semNenhuma.length > 0 ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
+                  <Botao
+                    tamanho="pq"
+                    variante="secundario"
+                    icone={<Copy className="h-4 w-4" aria-hidden="true" />}
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(listaParaCobrar(pesagens));
@@ -391,28 +390,37 @@ export function ProgramaAcompanhamentoPage() {
                       }
                     }}
                   >
-                    <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
                     Copiar quem falta
-                  </Button>
+                  </Botao>
                 ) : null}
+                <Botao
+                  tamanho="pq"
+                  variante="fantasma"
+                  aria-expanded={pesagemAberta}
+                  aria-label={pesagemAberta ? "Esconder quem pesou" : "Ver quem pesou"}
+                  onClick={() => setPesagemAberta((atual) => !atual)}
+                >
+                  {pesagemAberta ? "Esconder" : "Ver quem pesou"}
+                  <ChevronDown className={cn("h-4 w-4 transition-transform duration-150 ease-papel", pesagemAberta && "rotate-180")} aria-hidden="true" />
+                </Botao>
               </div>
             </div>
 
-            {medicoes.isError ? (
-              <p className="mt-3 text-xs text-red-700">Não consegui ler as pesagens agora. O resto da tela continua valendo.</p>
-            ) : null}
+            {medicoes.isError ? <p className="mt-3 text-[13px] font-semibold text-erro">Não consegui ler as pesagens agora. O resto da tela continua valendo.</p> : null}
 
-            <div className={cn("mt-3 grid gap-3 lg:grid-cols-2", !pesagemAberta && "hidden")}>
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
-                <p className="text-[11px] font-bold uppercase text-emerald-800">Mandaram nesta semana ({pesagens.mandaram.length})</p>
+            <div className={cn("mt-4 grid gap-6 lg:grid-cols-2", !pesagemAberta && "hidden")}>
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+                  Mandaram nesta semana <span className="tabular-nums text-ok">({pesagens.mandaram.length})</span>
+                </p>
                 {pesagens.mandaram.length ? (
-                  <ul className="mt-2 grid gap-1.5">
+                  <ul className="mt-2">
                     {pesagens.mandaram.map((p) => (
-                      <li key={p.contactId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
-                        <Link to={crmModuleRoutes.contact(p.contactId)} className="font-semibold text-brand-tinta hover:underline">
+                      <li key={p.contactId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-fio py-2 text-sm last:border-b-0">
+                        <Link to={crmModuleRoutes.contact(p.contactId)} className={NOME_LINK}>
                           {p.nome}
                         </Link>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-[13px] font-medium tabular-nums text-tinta-2">
                           {p.frase}
                           {p.ultimaOrigem === "ENFERMAGEM" ? " · lançada pela enfermagem" : ""}
                         </span>
@@ -420,88 +428,31 @@ export function ProgramaAcompanhamentoPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">Ninguém pesou ainda nesta semana.</p>
+                  <p className="mt-2 text-[13px] font-medium text-tinta-2">Ninguém pesou ainda nesta semana.</p>
                 )}
               </div>
-              <div className="rounded-lg border border-brand-dourado/40 bg-brand-creme/40 p-3">
-                <p className="text-[11px] font-bold uppercase text-brand-musgo">
-                  Falta cobrar ({pesagens.faltando.length + pesagens.semNenhuma.length})
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">
+                  Falta cobrar <span className="tabular-nums text-atencao">({pesagens.faltando.length + pesagens.semNenhuma.length})</span>
                 </p>
                 {pesagens.faltando.length + pesagens.semNenhuma.length ? (
-                  <ul className="mt-2 grid gap-1.5">
+                  <ul className="mt-2">
                     {[...pesagens.faltando, ...pesagens.semNenhuma].map((p) => (
-                      <li key={p.contactId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
-                        <Link to={crmModuleRoutes.contact(p.contactId)} className="font-semibold text-brand-tinta hover:underline">
+                      <li key={p.contactId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-fio py-2 text-sm last:border-b-0">
+                        <Link to={crmModuleRoutes.contact(p.contactId)} className={NOME_LINK}>
                           {p.nome}
                         </Link>
-                        <span className="text-xs text-muted-foreground">{p.frase}</span>
+                        <span className="text-[13px] font-medium tabular-nums text-tinta-2">{p.frase}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">Todo mundo em dia.</p>
+                  <p className="mt-2 text-[13px] font-medium text-tinta-2">Todo mundo em dia.</p>
                 )}
               </div>
             </div>
-          </section>
+          </BlocoSaber>
         ) : null}
-
-        <section className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-oliva/15 bg-white/50 p-2.5 backdrop-blur-xl">
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar paciente" className="h-10 w-full sm:w-56" aria-label="Buscar paciente" />
-
-          {/* CANAL: o que o paciente fechou. É o filtro que separa quem está em
-              acompanhamento de tratamento de quem está no programa. */}
-          {(["TODOS", "PROGRAMA_ACOMPANHAMENTO", "CLUBE_BRATAN", "SOMENTE_TRATAMENTO", "SEM_CANAL"] as CanalFiltro[])
-            .filter((opcao) => opcao === "TODOS" || porCanal[opcao] > 0)
-            .map((opcao) => (
-              <button
-                key={opcao}
-                type="button"
-                onClick={() => setCanalFiltro(opcao)}
-                className={cn(
-                  "ios-pressable rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                  canalFiltro === opcao
-                    ? opcao === "SEM_CANAL"
-                      ? "border-red-400 bg-red-600 text-white"
-                      : "border-brand-dourado bg-brand-dourado text-brand-tinta"
-                    : opcao === "SEM_CANAL"
-                      ? "border-red-300 bg-red-50 text-red-800 hover:bg-red-100"
-                      : "border-brand-oliva/25 bg-white/70 text-brand-tinta hover:bg-white",
-                )}
-              >
-                {opcao === "TODOS" ? "Todos" : opcao === "SEM_CANAL" ? "Sem canal" : channelShort[opcao as CrmAdhesionChannel]}
-                <span className="ml-1.5 opacity-70">{porCanal[opcao]}</span>
-              </button>
-            ))}
-          <span className="mx-1 hidden h-5 w-px bg-brand-oliva/20 sm:block" />
-
-          <button
-            type="button"
-            onClick={() => setPhaseFilter("TODAS")}
-            className={cn("ios-pressable rounded-full px-3 py-1.5 text-xs font-semibold transition-colors", phaseFilter === "TODAS" ? "bg-brand-musgo text-brand-papel" : "text-brand-tinta hover:bg-white/80")}
-          >
-            Todas as fases
-          </button>
-          {phasesInUse.map((phase) => (
-            <button
-              key={phase}
-              type="button"
-              onClick={() => setPhaseFilter((current) => (current === phase ? "TODAS" : phase))}
-              className={cn("ios-pressable rounded-full px-3 py-1.5 text-xs font-semibold transition-colors", phaseFilter === phase ? "bg-brand-musgo text-brand-papel" : "text-brand-tinta hover:bg-white/80")}
-            >
-              {programPhaseLabels[phase]}
-            </button>
-          ))}
-          <span className="mx-1 hidden h-5 w-px bg-brand-oliva/20 sm:block" />
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={gerarRelatorio}>
-            <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-            Relatório p/ Performance
-          </Button>
-          <Button type="button" variant={enrollOpen ? "default" : "outline"} size="sm" className="gap-1.5" disabled={semEdicao} onClick={() => setEnrollOpen((value) => !value)}>
-            <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
-            Adicionar paciente ao plano
-          </Button>
-        </section>
 
         {enrollOpen && !semEdicao ? (
           <EnrollPanel
@@ -515,76 +466,107 @@ export function ProgramaAcompanhamentoPage() {
           />
         ) : null}
 
+        {/* Busca e filtros: canal (o que o paciente fechou) e fase. */}
+        <div className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <CampoBusca valor={search} onMudar={setSearch} rotulo="Buscar paciente" placeholder="Buscar paciente" className="w-full max-w-[320px] max-md:max-w-none" />
+            {/* CANAL: o que o paciente fechou. É o filtro que separa quem está em
+                acompanhamento de tratamento de quem está no programa. */}
+            <GrupoDeLeituras rotulo="Filtrar por canal">
+              {(["TODOS", "PROGRAMA_ACOMPANHAMENTO", "CLUBE_BRATAN", "SOMENTE_TRATAMENTO", "SEM_CANAL"] as CanalFiltro[])
+                .filter((opcao) => opcao === "TODOS" || porCanal[opcao] > 0)
+                .map((opcao) => (
+                  <Leitura key={opcao} ativa={canalFiltro === opcao} numero={porCanal[opcao]} tom={opcao === "SEM_CANAL" ? "erro" : undefined} onClick={() => setCanalFiltro(opcao)}>
+                    {opcao === "TODOS" ? "Todos" : opcao === "SEM_CANAL" ? "Sem canal" : channelShort[opcao as CrmAdhesionChannel]}
+                  </Leitura>
+                ))}
+            </GrupoDeLeituras>
+          </div>
+          {phasesInUse.length ? (
+            <GrupoDeLeituras rotulo="Filtrar por fase">
+              <span className="text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">Fase</span>
+              <Leitura ativa={phaseFilter === "TODAS"} onClick={() => setPhaseFilter("TODAS")}>
+                Todas as fases
+              </Leitura>
+              {phasesInUse.map((phase) => (
+                <Leitura key={phase} ativa={phaseFilter === phase} onClick={() => setPhaseFilter((current) => (current === phase ? "TODAS" : phase))}>
+                  {programPhaseLabels[phase]}
+                </Leitura>
+              ))}
+            </GrupoDeLeituras>
+          ) : null}
+        </div>
+
         {filtered.length ? (
-          <div className="overflow-hidden rounded-lg border border-brand-oliva/20 bg-white/60 backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-brand-oliva/15 px-3 py-1.5 text-[11px] font-semibold uppercase text-brand-oliva">
-              <span>{filtered.length} {filtered.length === 1 ? "paciente" : "pacientes"} no plano</span>
+          <BlocoFolha as="section" aria-label="Pacientes no plano" className="overflow-hidden">
+            <div className="flex h-10 items-center justify-between gap-3 border-b border-fio-2 px-5 text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2 max-md:px-4">
+              <span className="tabular-nums">{filtered.length} {filtered.length === 1 ? "paciente" : "pacientes"} no plano</span>
               <span className="hidden sm:inline">check · bio · dr. · próximo passo</span>
             </div>
             {filtered.map((card) => (
               <PatientCard key={card.dealId} card={card} onToggle={(key) => toggle(card.dealId, key)} onResgate={semEdicao ? undefined : (c) => { void persist((current) => criarTarefaDeResgatePorRisco(current, c.dealId, c.risco.motivos, pessoa?.id ?? "coordenacao", hoje)); setCopyFeedback(`Tarefa de resgate criada para ${c.patientName} (enfermagem liga hoje).`); }} />
             ))}
-          </div>
+          </BlocoFolha>
         ) : (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          <BlocoFolha>
+            <Vazio titulo={board.length ? "Nenhum paciente com esse filtro." : "Nenhum paciente no plano ainda."}>
               {board.length
-                ? "Nenhum paciente com esse filtro."
-                : "Nenhum paciente no plano ainda. Use \"Adicionar paciente ao plano\" para cadastrar quem já está em acompanhamento, ou feche um negócio no Kanban."}
-            </CardContent>
-          </Card>
+                ? "Troque o canal ou a fase acima para ver os outros."
+                : "Use \"Adicionar paciente ao plano\" para cadastrar quem já está em acompanhamento, ou feche um negócio no Kanban."}
+            </Vazio>
+          </BlocoFolha>
         )}
 
         <ListaEsperaCard pessoaId={pessoa?.id ?? null} ativo={syncMode !== "local"} />
         {/* Não fecharam na semana — a lista que vai para a Assistente de Performance */}
-        <Card>
-          <CardHeader className={cn(naoFecharamAberto ? "pb-3" : "pb-4")}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <button type="button" onClick={() => setNaoFecharamAberto((atual) => !atual)} className="ios-pressable -ml-0.5 rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60" aria-label={naoFecharamAberto ? "Esconder quem não fechou" : "Ver quem não fechou"}>
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", naoFecharamAberto && "rotate-180")} aria-hidden="true" />
-                </button>
-                <XCircle className="h-5 w-5 text-red-600" aria-hidden="true" />
-                Não fecharam ({notClosed.length})
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <select
-                  value={days}
-                  onChange={(event) => setDays(Number(event.target.value))}
-                  className="h-9 rounded-md border border-input bg-white px-2 text-sm"
-                  aria-label="Período de não-fechamento"
-                >
-                  <option value={7}>7 dias</option>
-                  <option value={14}>14 dias</option>
-                  <option value={30}>30 dias</option>
-                </select>
-                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void copyNotClosed()} disabled={!notClosed.length}>
-                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                  Copiar
-                </Button>
-              </div>
+        <BlocoSaber as="section" aria-label="Não fecharam" className="py-4 max-md:py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <TituloDoBloco detalhe={`${notClosed.length} nos últimos ${days} dias`}>Não fecharam</TituloDoBloco>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={days} onChange={(event) => setDays(Number(event.target.value))} className={cn(CAMPO_PQ, "w-[104px]")} aria-label="Período de não-fechamento">
+                <option value={7}>7 dias</option>
+                <option value={14}>14 dias</option>
+                <option value={30}>30 dias</option>
+              </select>
+              <Botao tamanho="pq" variante="secundario" icone={<Copy className="h-4 w-4" aria-hidden="true" />} onClick={() => void copyNotClosed()} disabled={!notClosed.length}>
+                Copiar
+              </Botao>
+              <Botao
+                tamanho="pq"
+                variante="fantasma"
+                aria-expanded={naoFecharamAberto}
+                aria-label={naoFecharamAberto ? "Esconder quem não fechou" : "Ver quem não fechou"}
+                onClick={() => setNaoFecharamAberto((atual) => !atual)}
+              >
+                {naoFecharamAberto ? "Esconder" : "Ver"}
+                <ChevronDown className={cn("h-4 w-4 transition-transform duration-150 ease-papel", naoFecharamAberto && "rotate-180")} aria-hidden="true" />
+              </Botao>
             </div>
-          </CardHeader>
-          <CardContent className={cn("space-y-2", !naoFecharamAberto && "hidden")}>
+          </div>
+          <div className={cn("mt-3", !naoFecharamAberto && "hidden")}>
             {notClosed.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Ninguém em aberto de não-fechamento nesse período. 🎉</p>
+              <p className="text-[13px] font-medium text-tinta-2">Ninguém em aberto de não-fechamento nesse período.</p>
             ) : (
-              notClosed.map((row) => (
-                <div key={row.deal.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-oliva/16 bg-white/70 px-3 py-2">
-                  <div className="min-w-0">
-                    {row.contact ? (
-                      <Link to={crmModuleRoutes.contact(row.contact.id)} className="font-semibold text-brand-musgo hover:underline">{contactDisplayName(row.contact)}</Link>
-                    ) : (
-                      <span className="font-semibold text-brand-musgo">Contato</span>
-                    )}
-                    {row.objection ? <p className="text-xs text-muted-foreground">Objeção: {row.objection}</p> : null}
-                  </div>
-                  <span className="shrink-0 text-xs font-semibold uppercase text-brand-oliva">{formatBR(row.dateISO)}</span>
-                </div>
-              ))
+              <ul>
+                {notClosed.map((row) => (
+                  <li key={row.deal.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-fio py-2.5 last:border-b-0">
+                    <div className="min-w-0">
+                      {row.contact ? (
+                        <Link to={crmModuleRoutes.contact(row.contact.id)} className={NOME_LINK}>
+                          {contactDisplayName(row.contact)}
+                        </Link>
+                      ) : (
+                        <span className="text-sm font-bold text-tinta">Contato</span>
+                      )}
+                      {row.objection ? <p className="text-[13px] font-medium text-tinta-2">Objeção: {row.objection}</p> : null}
+                    </div>
+                    <span className="shrink-0 text-[13px] font-bold tabular-nums text-tinta-2">{formatBR(row.dateISO)}</span>
+                  </li>
+                ))}
+              </ul>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </BlocoSaber>
       </div>
     </AccessGate>
   );
@@ -637,133 +619,130 @@ function EnrollPanel({
   }
 
   return (
-    <Card className="border-brand-dourado/35 bg-brand-creme/30">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <UserPlus className="h-5 w-5 text-brand-oliva" aria-hidden="true" />
-          Adicionar paciente ao plano
-        </CardTitle>
-        <p className="text-xs text-muted-foreground">
-          Para quem já está em acompanhamento (entrou antes do app). Escolha o paciente, a data de adesão e quantos passos já fez.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <form className="grid gap-3" onSubmit={submit}>
-          <div>
-            <Label>Paciente</Label>
-            {selected ? (
-              <div className="flex items-center justify-between gap-2 rounded-md border border-brand-oliva/20 bg-white/80 px-3 py-2">
-                <span className="text-sm font-semibold text-brand-tinta">{contactDisplayName(selected)}</span>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setContactId("")}>Trocar</Button>
-              </div>
-            ) : (
-              <>
-                <Input value={contactSearch} onChange={(event) => setContactSearch(event.target.value)} placeholder="Buscar paciente ativo/fechado..." />
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {matches.length ? (
-                    matches.map((contact) => (
-                      <button
-                        key={contact.id}
-                        type="button"
-                        onClick={() => setContactId(contact.id)}
-                        className="ios-pressable rounded-full border border-brand-oliva/25 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-tinta hover:bg-brand-creme/70"
-                      >
-                        {contactDisplayName(contact)}
-                      </button>
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Nenhum paciente encontrado com esse nome.</p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Data de adesão</Label>
-              <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+    <BlocoFolha as="section" aria-labelledby="titulo-adicionar-ao-plano" respiro>
+      <TituloDoBloco id="titulo-adicionar-ao-plano" icone={<UserPlus className="h-4 w-4" aria-hidden="true" />}>
+        Adicionar paciente ao plano
+      </TituloDoBloco>
+      <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">
+        Para quem já está em acompanhamento (entrou antes do app). Escolha o paciente, a data de adesão e quantos passos já fez.
+      </p>
+      <form className="mt-5 grid gap-5" onSubmit={submit}>
+        <Campo rotulo="Paciente" htmlFor="adesao-paciente">
+          {selected ? (
+            <div className="flex items-center justify-between gap-2 rounded-controle border border-musgo bg-musgo-claro px-3 py-1.5">
+              <span className="truncate text-sm font-bold text-tinta">{contactDisplayName(selected)}</span>
+              <Botao tamanho="pq" variante="fantasma" onClick={() => setContactId("")}>
+                Trocar
+              </Botao>
             </div>
-            <div>
-              <Label>Canal</Label>
-              <select
-                value={channel}
-                onChange={(event) => setChannel(event.target.value as CrmAdhesionChannel)}
-                className="flex h-11 w-full rounded-md border border-input bg-white/80 px-3 text-sm"
-              >
-                {channelOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <Label>Quantos já fez? (deixe 0 se está começando)</Label>
-            <div className="mt-1 grid grid-cols-3 gap-2">
-              <div>
-                <span className="text-[11px] text-muted-foreground">Checkpoints (0–6)</span>
-                <Input value={checksDone} onChange={(event) => setChecksDone(event.target.value)} inputMode="numeric" />
+          ) : (
+            <>
+              <input id="adesao-paciente" value={contactSearch} onChange={(event) => setContactSearch(event.target.value)} placeholder="Buscar paciente ativo/fechado..." className={CAMPO} />
+              <div className="flex flex-wrap gap-1.5">
+                {matches.length ? (
+                  matches.map((contact) => (
+                    <button key={contact.id} type="button" onClick={() => setContactId(contact.id)} className={classeDoChip(false)}>
+                      {contactDisplayName(contact)}
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-[13px] font-medium text-tinta-2">Nenhum paciente encontrado com esse nome.</p>
+                )}
               </div>
-              <div>
-                <span className="text-[11px] text-muted-foreground">Bioimped. (0–6)</span>
-                <Input value={biosDone} onChange={(event) => setBiosDone(event.target.value)} inputMode="numeric" />
-              </div>
-              <div>
-                <span className="text-[11px] text-muted-foreground">Consultas (0–3)</span>
-                <Input value={medicoDone} onChange={(event) => setMedicoDone(event.target.value)} inputMode="numeric" />
-              </div>
-            </div>
+            </>
+          )}
+        </Campo>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Campo rotulo="Data de adesão" htmlFor="adesao-data">
+            <input id="adesao-data" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={cn(CAMPO, "tabular-nums")} />
+          </Campo>
+          <Campo rotulo="Canal" htmlFor="adesao-canal">
+            <select id="adesao-canal" value={channel} onChange={(event) => setChannel(event.target.value as CrmAdhesionChannel)} className={cn(CAMPO, "cursor-pointer")}>
+              {channelOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Campo>
+        </div>
+        <fieldset className="grid gap-2">
+          <legend className="font-sans text-[13px] font-bold leading-5 text-tinta">Quantos já fez? (deixe 0 se está começando)</legend>
+          <div className="grid grid-cols-3 gap-3 max-md:gap-2">
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold text-tinta-2">Checkpoints (0–6)</span>
+              <input value={checksDone} onChange={(event) => setChecksDone(event.target.value)} inputMode="numeric" className={cn(CAMPO, "tabular-nums")} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold text-tinta-2">Bioimped. (0–6)</span>
+              <input value={biosDone} onChange={(event) => setBiosDone(event.target.value)} inputMode="numeric" className={cn(CAMPO, "tabular-nums")} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold text-tinta-2">Consultas (0–3)</span>
+              <input value={medicoDone} onChange={(event) => setMedicoDone(event.target.value)} inputMode="numeric" className={cn(CAMPO, "tabular-nums")} />
+            </label>
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <div>
-            <LiquidButton type="submit" size="sm">
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Adicionar ao plano
-            </LiquidButton>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        </fieldset>
+        {error ? (
+          <p role="alert" className="text-sm font-semibold text-erro">
+            {error}
+          </p>
+        ) : null}
+        <div>
+          <Botao type="submit" variante="primario" icone={<Plus className="h-4 w-4" aria-hidden="true" />}>
+            Adicionar ao plano
+          </Botao>
+        </div>
+      </form>
+    </BlocoFolha>
   );
 }
 
-const corDoRisco = { VERDE: "bg-emerald-500", AMARELO: "bg-amber-500", VERMELHO: "bg-red-600" } as const;
+// O semáforo de adesão: cor + forma + palavra (a cor nunca fala sozinha).
+const corDoRisco = { VERDE: "bg-ok", AMARELO: "bg-atencao", VERMELHO: "bg-erro" } as const;
+const palavraDoRisco = { VERDE: "verde", AMARELO: "amarelo", VERMELHO: "vermelho" } as const;
 
 // UMA LINHA POR PACIENTE (16/09/2026). Era um cartão de ~200 px: título, frase do
 // semáforo, mês, três blocos de progresso e a faixa do próximo passo. Com a
 // clínica inteira no plano, a tela virava rolagem sem fim. Agora cabe tudo em
 // uma linha — nome, fase, semáforo, contadores e o próximo passo — e o detalhe
 // (marcos para marcar, data de adesão, motivo do semáforo) abre no toque.
+// Papel & Musgo (08/10/2026): a linha atrasada ganha um traço laranja na borda
+// (não um fundo vermelho), e o detalhe aberto mora no saber.
 function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; onToggle: (key: string) => void; onResgate?: (card: ProgramPatientCard) => void }) {
   const [open, setOpen] = useState(false);
   const next = card.nextMilestone;
 
   return (
-    <div className={cn("border-b border-brand-oliva/12 last:border-b-0", card.overdueCount > 0 && "bg-red-50/40")}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+    <div className={cn("border-b border-fio last:border-b-0", card.overdueCount > 0 && "shadow-[inset_3px_0_0_rgb(var(--atencao-rgb))]")}>
+      {/* No computador, colunas alinhadas (nome · canal e fase · marcos · próximo passo); no celular, a linha quebra. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5 max-md:px-4 lg:grid lg:grid-cols-[2rem_0.625rem_minmax(0,1.1fr)_minmax(0,1fr)_10.5rem_minmax(0,1.25fr)] lg:gap-x-4">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
           aria-label={open ? `Esconder os marcos de ${card.patientName}` : `Ver os marcos de ${card.patientName}`}
-          className="ios-pressable shrink-0 rounded-md p-0.5 text-brand-oliva transition hover:bg-brand-creme/60"
+          className="-ml-1 grid h-8 w-8 shrink-0 place-items-center rounded-controle text-tinta-2 transition-colors duration-150 ease-papel hover:bg-saber hover:text-tinta focus-visible:outline focus-visible:outline-2 focus-visible:outline-foco"
         >
-          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
+          <ChevronDown className={cn("h-4 w-4 transition-transform duration-150 ease-papel", open && "rotate-180")} aria-hidden="true" />
         </button>
 
         <span
+          role="img"
           title={card.risco.frase}
           className={cn("h-2.5 w-2.5 shrink-0 rounded-full", corDoRisco[card.risco.nivel])}
-          aria-label={`Semáforo ${card.risco.nivel.toLowerCase()}`}
+          aria-label={`Semáforo ${palavraDoRisco[card.risco.nivel]}`}
         />
 
         <Link
           to={`/crm/contatos/${card.contactId}`}
-          className="min-w-[8rem] flex-1 truncate text-sm font-semibold text-brand-tinta hover:underline"
+          className={cn(NOME_LINK, "min-w-[8rem] flex-1")}
           title={`Mês ${card.monthOfProgram}/${card.grade.meses} · adesão ${formatBR(card.startedAt)}`}
         >
           {card.patientName}
         </Link>
 
-        <span className="hidden shrink-0 text-[11px] font-semibold uppercase text-brand-oliva sm:inline">
+        <span className="hidden min-w-0 shrink-0 truncate text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2 sm:inline">
           {card.channel ? `${channelShort[card.channel]} · ` : ""}
           {card.phaseLabel}
         </span>
@@ -775,48 +754,48 @@ function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; 
           {card.grade.CHECK.length > 0 ? <ProgressPill label="Checkpoints" done={card.checksDone} total={card.grade.CHECK.length} icon={ClipboardCheck} /> : null}
           {card.grade.BIO.length > 0 ? <ProgressPill label="Bioimpedâncias" done={card.biosDone} total={card.grade.BIO.length} icon={HeartPulse} /> : null}
           {card.grade.MEDICO.length > 0 ? <ProgressPill label="Consultas com o Dr." done={card.medicoDone} total={card.grade.MEDICO.length} icon={Stethoscope} /> : null}
-          {card.milestones.length === 0 ? <span className="text-[11px] text-muted-foreground">só tratamento</span> : null}
+          {card.milestones.length === 0 ? <span className="text-xs font-semibold text-tinta-2">só tratamento</span> : null}
         </span>
 
-        <span className="min-w-[10rem] flex-1 text-xs sm:text-right">
+        <span className="min-w-[10rem] flex-1 text-[13px] leading-5 sm:text-right lg:min-w-0">
           {next ? (
             <>
-              <span className="text-muted-foreground">{next.label} · </span>
-              <span className={cn("font-semibold", next.overdue ? "text-red-700" : "text-brand-tinta")}>
+              <span className="font-medium text-tinta-2">{next.label} · </span>
+              <span className={cn("font-bold tabular-nums", next.overdue ? "text-atencao" : "text-tinta")}>
                 {formatBR(next.expectedDate)}
                 {next.overdue ? " (atrasado)" : ""}
               </span>
             </>
           ) : card.milestones.length === 0 ? (
-            <span className="text-muted-foreground">sem marcos — acompanhamento do tratamento</span>
+            <span className="font-medium text-tinta-2">sem marcos — acompanhamento do tratamento</span>
           ) : (
-            <span className="font-semibold text-emerald-700">Caminhada completa</span>
+            <span className="font-bold text-ok">Caminhada completa</span>
           )}
         </span>
       </div>
 
       {card.risco.nivel === "VERMELHO" ? (
-        <p className="flex flex-wrap items-center gap-x-2 px-3 pb-2 text-xs text-red-800">
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 pb-3 pl-[5.375rem] text-[13px] lg:pl-[5.875rem] font-semibold leading-5 text-erro max-md:px-4">
           {card.risco.frase}
           {onResgate ? (
-            <button type="button" className="font-semibold underline underline-offset-2" onClick={() => onResgate(card)}>
-              criar tarefa de resgate (ligar hoje)
-            </button>
+            <Botao tamanho="pq" variante="suave" onClick={() => onResgate(card)}>
+              Criar tarefa de resgate (ligar hoje)
+            </Botao>
           ) : null}
         </p>
       ) : null}
 
       {open ? (
-        <div className="grid gap-2 border-t border-brand-oliva/10 bg-brand-papel/40 px-3 py-2.5">
-          <p className="text-xs text-muted-foreground">
+        <div className="grid gap-2.5 border-t border-fio bg-saber px-5 py-4 max-md:px-4">
+          <p className="text-[13px] font-medium leading-5 text-tinta-2">
             Mês {card.monthOfProgram}/{card.grade.meses} · adesão {formatBR(card.startedAt)}
             {card.channel ? ` · ${channelShort[card.channel]}` : ""} · {card.phaseLabel}
             {card.risco.nivel === "AMARELO" ? ` · ${card.risco.frase}` : ""}
           </p>
           {(["CHECK", "BIO", "MEDICO"] as const).map((type) => (
             <div key={type} className="flex flex-wrap items-center gap-1.5">
-              <span className="w-52 shrink-0 text-xs font-semibold uppercase text-brand-oliva">
-                {milestoneTypeLabels[type]} <span className="font-normal normal-case text-muted-foreground">· {milestoneResponsible[type]}</span>
+              <span className="w-52 shrink-0 text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2 max-md:w-full">
+                {milestoneTypeLabels[type]} <span className="font-medium normal-case tracking-normal">· {milestoneResponsible[type]}</span>
               </span>
               {card.milestones
                 .filter((milestone) => milestone.type === type)
@@ -826,7 +805,7 @@ function PatientCard({ card, onToggle, onResgate }: { card: ProgramPatientCard; 
                 ))}
             </div>
           ))}
-          <p className="text-[11px] leading-4 text-muted-foreground">
+          <p className="text-xs font-medium leading-4 text-tinta-2">
             Cada setor marca o que faz (toque para marcar/desfazer). Datas previstas contam da adesão; a agenda oficial fica no Feegow.
           </p>
         </div>

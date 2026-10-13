@@ -1,27 +1,18 @@
+// GESTÃO DE ESTALECAS — redesenho Papel & Musgo, etapa 4 (08/10/2026).
+//
+// Regras das Estalecas, códigos de check-in, lançamentos administrativos,
+// prêmios, cashback, check-ins e o ranking do mês. Mudou só a forma: um
+// cabeçalho com a frase do que espera decisão, os quatro números numa faixa de
+// leitura (saber), os formulários em folhas com os campos do guia e as listas
+// em linhas (itens do mesmo tipo em lista, não em cartões). As decisões seguem a
+// ordem do guia — Aprovar com o valor no rótulo e Recusar na ponta — e todas as
+// travas continuam (motivo obrigatório, saldo nunca negativo, um vencedor por
+// mês, estorno só de aprovado positivo).
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import {
-  BadgeCheck,
-  Calculator,
-  CheckCircle2,
-  Coins,
-  Copy,
-  Dumbbell,
-  Gift,
-  History,
-  KeyRound,
-  RotateCcw,
-  Save,
-  Settings2,
-  ShieldCheck,
-  Trophy,
-  XCircle,
-} from "lucide-react";
+import { BadgeCheck, Calculator, CheckCircle2, Coins, Copy, Dumbbell, Gift, History, KeyRound, RotateCcw, Save, Settings2, ShieldCheck, Trophy, XCircle } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlocoFolha, BlocoSaber, Botao, BotaoDecisao, Cabecalho } from "@/components/ui/fundacao";
 import {
   estalecaClaimConfig,
   estalecaClaimStatusLabels,
@@ -32,8 +23,6 @@ import {
   listRemoteEstalecaClaims,
   reviewRemoteEstalecaClaim,
 } from "@/lib/remoteData";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { canAdministracao, cargoLabels, seededColaboradores } from "@/lib/access";
 import { readLocalValue, todayISO, writeLocalValue } from "@/lib/localStore";
@@ -92,6 +81,23 @@ import {
   type EstalecaTransaction,
   type GamificationProfile,
 } from "@/features/estalecas/estalecasData";
+import { contagem, diaCompleto } from "./frasesAjustes";
+import {
+  AcaoSeta,
+  CabecaDaFolha,
+  Campo,
+  CampoArea,
+  CampoSelecao,
+  CampoTexto,
+  Etiqueta,
+  FaixaDeNumeros,
+  NumeroComFrase,
+  Recado,
+  Segmentado,
+  TituloDaFolha,
+  TituloDoSaber,
+  type TomEtiqueta,
+} from "./pecasAjustes";
 
 type AdjustmentKind = "cashback" | "admin_bonus" | "manual_adjustment";
 
@@ -189,8 +195,23 @@ const transactionStatusOptions: EstalecaTransactionStatus[] = ["pending", "appro
 const rewardStatusOptions: RewardStatus[] = ["pending", "confirmed", "delivered", "cancelled"];
 const manualRewardTypeOptions: RewardType[] = ["manual_prize", "cashback_bonus", "checkin_bonus"];
 
-const selectClass = "flex h-10 w-full rounded-md border border-input bg-white/80 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-const textareaClass = "min-h-24 w-full resize-none rounded-lg border border-input bg-white/80 px-3 py-3 text-sm leading-6 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+// A situação em palavra + cor (a cor nunca fala sozinha).
+const tomDaTransacao: Partial<Record<EstalecaTransactionStatus, TomEtiqueta>> = {
+  pending: "atencao",
+  approved: "ok",
+  rejected: "erro",
+  reversed: "neutro",
+  expired: "neutro",
+};
+/** A situação do check-in em português (antes só o "Válido" era traduzido; o resto saía em inglês). */
+const rotuloDoCheckin: Record<string, string> = { valid: "Válido", invalid: "Inválido", pending: "Pendente", cancelled: "Cancelado" };
+const tomDoPremio: Record<RewardStatus, TomEtiqueta> = { pending: "atencao", confirmed: "musgo", delivered: "ok", cancelled: "neutro" };
+/** O segmento escolhido da situação do prêmio, no tom da situação. */
+const TONS_DO_PREMIO: Partial<Record<RewardStatus, string>> = {
+  pending: "bg-atencao-claro text-atencao shadow-[inset_0_0_0_1px_rgb(var(--atencao-rgb))]",
+  delivered: "bg-ok-claro text-ok shadow-[inset_0_0_0_1px_rgb(var(--ok-rgb))]",
+  cancelled: "bg-folha text-tinta shadow-[inset_0_0_0_1px_rgb(var(--borda-campo-rgb))]",
+};
 
 function createId(prefix: string) {
   return `${prefix}-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -259,34 +280,6 @@ function invalidationSource(checkin: EstalecaCheckin): EstalecaTransactionSource
   return checkin.checkinType === "gym" ? "gym_checkin" : "church_checkin";
 }
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-      <CardContent className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-brand-papel text-brand-musgo">
-            <Icon className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <Badge variant="muted">{label}</Badge>
-        </div>
-        <p className="text-2xl font-bold leading-tight text-brand-musgo">{value}</p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-
 // Fila de aprovação das conquistas com prova (livro, alimentação...).
 function ClaimReviewCard({ pessoa, useRemote }: { pessoa: ReturnType<typeof useAuth>["pessoa"]; useRemote: boolean }) {
   const queryClient = useQueryClient();
@@ -320,78 +313,78 @@ function ClaimReviewCard({ pessoa, useRemote }: { pessoa: ReturnType<typeof useA
   }
 
   return (
-    <Card className="border-brand-dourado/40 bg-brand-creme/25 shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <BadgeCheck className="h-5 w-5" aria-hidden="true" />
-          Conquistas para aprovar
-          {pending.length ? <Badge variant="gold">{pending.length}</Badge> : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        {!useRemote ? (
-          <p className="text-sm text-muted-foreground">Disponível ao entrar com login.</p>
-        ) : pending.length ? (
-          pending.map((claim) => (
-            <div key={claim.id} className="rounded-lg border border-brand-oliva/16 bg-white/70 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-brand-tinta">
-                    {claim.colaboradorNome} · {claim.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {estalecaClaimConfig[claim.claimType].label} · {claim.claimDate.split("-").reverse().join("/")}
-                    {claim.description ? ` — ${claim.description}` : ""}
-                  </p>
+    <BlocoFolha as="section" aria-labelledby="conquistas-aprovar" className="min-w-0 overflow-hidden">
+      <CabecaDaFolha
+        id="conquistas-aprovar"
+        icone={<BadgeCheck />}
+        titulo="Conquistas para aprovar"
+        resumo={pending.length ? contagem(pending.length, "esperando", "esperando") : undefined}
+      />
+      {!useRemote ? (
+        <p className="border-t border-fio px-6 py-4 text-sm font-medium text-tinta-2 max-md:px-4">Disponível ao entrar com login.</p>
+      ) : pending.length ? (
+        <ul>
+          {pending.map((claim) => {
+            const valor = amounts[claim.id] ?? String(claim.amountSuggested);
+            const nota = notes[claim.id] ?? "";
+            return (
+              <li key={claim.id} className="grid gap-3 border-t border-fio px-6 py-4 max-md:px-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold leading-5 text-tinta">
+                      {claim.colaboradorNome} · {claim.title}
+                    </p>
+                    <p className="mt-0.5 text-[13px] font-medium leading-5 text-tinta-2">
+                      {estalecaClaimConfig[claim.claimType].label} · <span className="tabular-nums">{claim.claimDate.split("-").reverse().join("/")}</span>
+                      {claim.description ? ` — ${claim.description}` : ""}
+                    </p>
+                  </div>
+                  {claim.photoPath ? <AcaoSeta onClick={() => void openPhoto(claim)}>Ver foto de prova</AcaoSeta> : <Etiqueta>Sem foto</Etiqueta>}
                 </div>
-                {claim.photoPath ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => void openPhoto(claim)}>
-                    Ver foto de prova
-                  </Button>
-                ) : (
-                  <Badge variant="muted">Sem foto</Badge>
-                )}
-              </div>
-              <div className="mt-2 grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)_auto_auto]">
-                <Input
-                  value={amounts[claim.id] ?? String(claim.amountSuggested)}
-                  onChange={(event) => setAmounts((current) => ({ ...current, [claim.id]: event.target.value }))}
-                  inputMode="decimal"
-                  aria-label="Estalecas a conceder"
-                  className="h-10"
-                />
-                <Input
-                  value={notes[claim.id] ?? ""}
-                  onChange={(event) => setNotes((current) => ({ ...current, [claim.id]: event.target.value }))}
-                  placeholder="Observação (opcional; obrigatória ao recusar)"
-                  className="h-10"
-                />
-                <Button type="button" size="sm" disabled={reviewMutation.isPending} onClick={() => review(claim, true)}>
-                  Aprovar
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="border-red-300 text-red-800 hover:bg-red-50"
-                  disabled={reviewMutation.isPending || !(notes[claim.id] ?? "").trim()}
-                  onClick={() => review(claim, false)}
-                >
-                  Recusar
-                </Button>
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-muted-foreground">Nenhuma conquista aguardando. ✓</p>
-        )}
-        {(claimsQuery.data ?? []).filter((claim) => claim.status !== "PENDING").slice(0, 4).map((claim) => (
-          <p key={claim.id} className="px-1 text-xs text-muted-foreground">
-            {claim.status === "APPROVED" ? "✓" : "✗"} {claim.colaboradorNome} · {claim.title} — {estalecaClaimStatusLabels[claim.status]}
-          </p>
-        ))}
-      </CardContent>
-    </Card>
+                <div className="grid gap-2 sm:grid-cols-[110px_minmax(0,1fr)]">
+                  <CampoTexto
+                    pequeno
+                    value={valor}
+                    onChange={(event) => setAmounts((current) => ({ ...current, [claim.id]: event.target.value }))}
+                    inputMode="decimal"
+                    aria-label="Estalecas a conceder"
+                    className="tabular-nums"
+                  />
+                  <CampoTexto
+                    pequeno
+                    value={nota}
+                    onChange={(event) => setNotes((current) => ({ ...current, [claim.id]: event.target.value }))}
+                    placeholder="Observação (opcional; obrigatória ao recusar)"
+                    aria-label="Observação"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <BotaoDecisao tipo="aprovar" tamanho="pq" valor={`${valor} Estalecas`} disabled={reviewMutation.isPending} onClick={() => review(claim, true)} />
+                  <BotaoDecisao tipo="recusar" tamanho="pq" className="ml-auto" disabled={reviewMutation.isPending || !nota.trim()} onClick={() => review(claim, false)} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="flex items-center gap-2 border-t border-fio px-6 py-4 text-sm font-medium text-tinta-2 max-md:px-4">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" aria-hidden="true" />
+          Nenhuma conquista aguardando.
+        </p>
+      )}
+      {(claimsQuery.data ?? []).filter((claim) => claim.status !== "PENDING").length ? (
+        <ul className="border-t border-fio px-6 py-3 max-md:px-4" aria-label="Últimas decididas">
+          {(claimsQuery.data ?? []).filter((claim) => claim.status !== "PENDING").slice(0, 4).map((claim) => (
+            <li key={claim.id} className="flex items-center gap-2 py-0.5 text-[13px] font-medium leading-5 text-tinta-2">
+              {claim.status === "APPROVED" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" aria-hidden="true" /> : <XCircle className="h-4 w-4 shrink-0 text-erro" aria-hidden="true" />}
+              <span className="min-w-0 truncate">
+                {claim.colaboradorNome} · {claim.title} — {estalecaClaimStatusLabels[claim.status]}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </BlocoFolha>
   );
 }
 
@@ -1168,677 +1161,548 @@ export function EstalecasAdminPage() {
     setMessage("Vencedor mensal registrado na prévia local.");
   }
 
+  // O que espera decisão vem numa frase (o Lucas rejeita número solto).
+  const pendenciasDaFrase = [
+    pendingCashbackCount ? contagem(pendingCashbackCount, "cashback pendente", "cashbacks pendentes") : "",
+    pendingRewards ? contagem(pendingRewards, "prêmio aguardando ação", "prêmios aguardando ação") : "",
+  ].filter(Boolean);
+  const fraseDoTopo = (
+    <>
+      {pendenciasDaFrase.length ? (
+        <span className="alerta">{pendenciasDaFrase.join(" e ")}.</span>
+      ) : (
+        <strong>Nada esperando decisão.</strong>
+      )}{" "}
+      Saldo aprovado da equipe: {formatEstalecas(totalApprovedBalance)} Estalecas{topRanking ? `; líder do mês: ${topRanking.displayName}` : ""}.
+    </>
+  );
+  const colaboradorOpcoes = activeColaboradores.map((colaborador) => (
+    <option key={colaborador.id} value={colaborador.id}>
+      {colaborador.nome} - {cargoLabels[colaborador.cargo]}
+    </option>
+  ));
+  const ocupadoNaTransacao = createTransactionMutation.isPending || transactionStatusMutation.isPending;
+
   return (
     <AccessGate allowed={canAdministracao} label="Gestão de Estalecas">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-          className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-        >
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <Badge variant="gold" className="mb-4">
-                Coordenação
-              </Badge>
-              <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Gestão de Estalecas</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-                Configure regras, aprove cashback, invalide check-ins suspeitos e acompanhe premiações com rastreabilidade.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-2 min-[430px]:grid-cols-2 xl:grid-cols-4">
-              <MetricCard icon={Coins} label="Saldo" value={formatEstalecas(totalApprovedBalance)} detail="Total aprovado no ledger." />
-              <MetricCard icon={History} label="Cashback" value={String(pendingCashbackCount)} detail="Pendências recentes." />
-              <MetricCard icon={Gift} label="Prêmios" value={String(pendingRewards)} detail="Aguardando ação." />
-              <MetricCard icon={Trophy} label="Ranking" value={topRanking ? topRanking.displayName : "-"} detail="Líder do mês." />
-            </div>
-          </div>
-        </motion.section>
+      <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+        <Cabecalho className="mb-0 max-md:mb-0" sobrancelha="Ajustes" titulo="Gestão de Estalecas" frase={fraseDoTopo} />
 
-        {message ? (
-          <Card className="border-brand-oliva/20 bg-brand-papel/70 shadow-none">
-            <CardContent className="flex items-center gap-3 p-4 text-sm font-semibold text-brand-musgo">
-              <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-              {message}
-            </CardContent>
-          </Card>
-        ) : null}
+        <FaixaDeNumeros rotulo="Estalecas em números">
+          <NumeroComFrase rotulo="Saldo" numero={formatEstalecas(totalApprovedBalance)} frase="Total aprovado no extrato de Estalecas." />
+          <NumeroComFrase rotulo="Cashback" numero={pendingCashbackCount} tom={pendingCashbackCount ? "atencao" : undefined} frase="Pendências recentes." />
+          <NumeroComFrase rotulo="Prêmios" numero={pendingRewards} tom={pendingRewards ? "atencao" : undefined} frase="Aguardando ação." />
+          <NumeroComFrase rotulo="Ranking" numero={topRanking ? topRanking.displayName : "-"} frase="Líder do mês." />
+        </FaixaDeNumeros>
 
-        {error ? (
-          <Card className="border-destructive/30 bg-destructive/5 shadow-none">
-            <CardContent className="flex items-center gap-3 p-4 text-sm font-semibold text-destructive">
-              <XCircle className="h-5 w-5" aria-hidden="true" />
-              {error}
-            </CardContent>
-          </Card>
-        ) : null}
+        {message ? <Recado tom="ok">{message}</Recado> : null}
+        {error ? <Recado tom="erro">{error}</Recado> : null}
 
         {!useRemote ? (
-          <Card className="border-brand-dourado/35 bg-brand-creme/35 shadow-none">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-brand-tinta">
-                Você está na prévia local. As ações abaixo ficam salvas no navegador para demonstração; no Supabase, a segurança real continua nas políticas RLS.
-              </p>
-            </CardContent>
-          </Card>
+          <Recado tom="info">
+            Você está na prévia local. As ações abaixo ficam salvas no navegador para demonstração; no Supabase, a segurança real continua nas políticas RLS.
+          </Recado>
         ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
-          <section className="space-y-5">
+        <div className="grid items-start gap-8 max-md:gap-6 xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
+          <section aria-label="Aprovar, configurar e lançar" className="grid min-w-0 gap-6">
             <ClaimReviewCard pessoa={pessoa} useRemote={useRemote} />
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Settings2 className="h-5 w-5" aria-hidden="true" />
-                  Configurações
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-4" onSubmit={submitConfig}>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="gym-estalecas">Academia</Label>
-                      <Input id="gym-estalecas" inputMode="numeric" value={configDraft.gymCheckinEstalecas} onChange={(event) => setConfigNumber("gymCheckinEstalecas", event.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="church-estalecas">Check-in</Label>
-                      <Input id="church-estalecas" inputMode="numeric" value={configDraft.churchCheckinEstalecas} onChange={(event) => setConfigNumber("churchCheckinEstalecas", event.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="gym-checkpoints">Checkpoints academia</Label>
-                      <Input id="gym-checkpoints" inputMode="numeric" value={configDraft.gymCheckinCheckpoints} onChange={(event) => setConfigNumber("gymCheckinCheckpoints", event.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="milestone">Marco 500</Label>
-                      <Input id="milestone" inputMode="numeric" value={configDraft.milestone500Estalecas} onChange={(event) => setConfigNumber("milestone500Estalecas", event.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cashback-percent">Cashback padrão %</Label>
-                      <Input id="cashback-percent" inputMode="decimal" value={configDraft.defaultCashbackPercent} onChange={(event) => setConfigNumber("defaultCashbackPercent", event.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cashback-max">Teto cashback</Label>
-                      <Input id="cashback-max" inputMode="numeric" value={configDraft.maxCashbackEstalecas} onChange={(event) => setConfigNumber("maxCashbackEstalecas", event.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cashback-days">Aprovação em dias</Label>
-                      <Input id="cashback-days" inputMode="numeric" value={configDraft.cashbackApprovalDays} onChange={(event) => setConfigNumber("cashbackApprovalDays", event.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="expiration-days">Validade</Label>
-                      <Input
-                        id="expiration-days"
-                        inputMode="numeric"
-                        placeholder="Sem validade"
-                        value={configDraft.estalecasExpirationDays ?? ""}
-                        onChange={(event) => setConfigDraft((current) => ({ ...current, estalecasExpirationDays: event.target.value ? Number(event.target.value) : null }))}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="categories">Categorias elegíveis</Label>
-                    <Input id="categories" value={categoryText} onChange={(event) => setCategoryText(event.target.value)} />
-                  </div>
-                  <Button type="submit" className="w-full gap-2" disabled={configMutation.isPending}>
-                    <Save className="h-4 w-4" aria-hidden="true" />
-                    Salvar regras
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
 
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <KeyRound className="h-5 w-5" aria-hidden="true" />
+            <BlocoFolha as="section" aria-labelledby="estalecas-config" respiro>
+              <TituloDaFolha id="estalecas-config" icone={<Settings2 />}>
+                Configurações
+              </TituloDaFolha>
+              <form className="mt-4 grid gap-4" onSubmit={submitConfig}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Campo id="gym-estalecas" rotulo="Academia">
+                    <CampoTexto id="gym-estalecas" inputMode="numeric" className="tabular-nums" value={configDraft.gymCheckinEstalecas} onChange={(event) => setConfigNumber("gymCheckinEstalecas", event.target.value)} />
+                  </Campo>
+                  <Campo id="church-estalecas" rotulo="Check-in">
+                    <CampoTexto id="church-estalecas" inputMode="numeric" className="tabular-nums" value={configDraft.churchCheckinEstalecas} onChange={(event) => setConfigNumber("churchCheckinEstalecas", event.target.value)} />
+                  </Campo>
+                  <Campo id="gym-checkpoints" rotulo="Checkpoints academia">
+                    <CampoTexto id="gym-checkpoints" inputMode="numeric" className="tabular-nums" value={configDraft.gymCheckinCheckpoints} onChange={(event) => setConfigNumber("gymCheckinCheckpoints", event.target.value)} />
+                  </Campo>
+                  <Campo id="milestone" rotulo="Marco 500">
+                    <CampoTexto id="milestone" inputMode="numeric" className="tabular-nums" value={configDraft.milestone500Estalecas} onChange={(event) => setConfigNumber("milestone500Estalecas", event.target.value)} />
+                  </Campo>
+                  <Campo id="cashback-percent" rotulo="Cashback padrão %">
+                    <CampoTexto id="cashback-percent" inputMode="decimal" className="tabular-nums" value={configDraft.defaultCashbackPercent} onChange={(event) => setConfigNumber("defaultCashbackPercent", event.target.value)} />
+                  </Campo>
+                  <Campo id="cashback-max" rotulo="Teto cashback">
+                    <CampoTexto id="cashback-max" inputMode="numeric" className="tabular-nums" value={configDraft.maxCashbackEstalecas} onChange={(event) => setConfigNumber("maxCashbackEstalecas", event.target.value)} />
+                  </Campo>
+                  <Campo id="cashback-days" rotulo="Aprovação em dias">
+                    <CampoTexto id="cashback-days" inputMode="numeric" className="tabular-nums" value={configDraft.cashbackApprovalDays} onChange={(event) => setConfigNumber("cashbackApprovalDays", event.target.value)} />
+                  </Campo>
+                  <Campo id="expiration-days" rotulo="Validade">
+                    <CampoTexto
+                      id="expiration-days"
+                      inputMode="numeric"
+                      className="tabular-nums"
+                      placeholder="Sem validade"
+                      value={configDraft.estalecasExpirationDays ?? ""}
+                      onChange={(event) => setConfigDraft((current) => ({ ...current, estalecasExpirationDays: event.target.value ? Number(event.target.value) : null }))}
+                    />
+                  </Campo>
+                </div>
+                <Campo id="categories" rotulo="Categorias elegíveis" ajuda="Separe por vírgula.">
+                  <CampoTexto id="categories" value={categoryText} onChange={(event) => setCategoryText(event.target.value)} />
+                </Campo>
+                <Botao type="submit" variante="primario" bloco className="max-md:h-11" carregando={configMutation.isPending} icone={<Save className="h-4 w-4" aria-hidden="true" />}>
+                  Salvar regras
+                </Botao>
+              </form>
+            </BlocoFolha>
+
+            <BlocoFolha as="section" aria-labelledby="estalecas-codigos" className="min-w-0 overflow-hidden">
+              <div className="p-6 max-md:p-4">
+                <TituloDaFolha id="estalecas-codigos" icone={<KeyRound />}>
                   Códigos de check-in
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <form className="space-y-4" onSubmit={submitEventCode}>
+                </TituloDaFolha>
+                <form className="mt-4 grid gap-4" onSubmit={submitEventCode}>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="code-type">Tipo</Label>
-                      <select
-                        id="code-type"
-                        value={codeForm.checkinType}
-                        onChange={(event) => setCodeForm((current) => ({ ...current, checkinType: event.target.value as CheckinType }))}
-                        className={selectClass}
-                      >
+                    <Campo id="code-type" rotulo="Tipo">
+                      <CampoSelecao id="code-type" value={codeForm.checkinType} onChange={(event) => setCodeForm((current) => ({ ...current, checkinType: event.target.value as CheckinType }))}>
                         <option value="church">{checkinTypeLabels.church}</option>
                         <option value="gym">{checkinTypeLabels.gym}</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="code-date">Data</Label>
-                      <Input id="code-date" type="date" value={codeForm.eventDate} onChange={(event) => setCodeForm((current) => ({ ...current, eventDate: event.target.value }))} />
-                    </div>
+                      </CampoSelecao>
+                    </Campo>
+                    <Campo id="code-date" rotulo="Data">
+                      <CampoTexto id="code-date" type="date" value={codeForm.eventDate} onChange={(event) => setCodeForm((current) => ({ ...current, eventDate: event.target.value }))} />
+                    </Campo>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="code-label">Nome do evento</Label>
-                    <Input id="code-label" value={codeForm.label} onChange={(event) => setCodeForm((current) => ({ ...current, label: event.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="code-value">Código</Label>
+                  <Campo id="code-label" rotulo="Nome do evento">
+                    <CampoTexto id="code-label" value={codeForm.label} onChange={(event) => setCodeForm((current) => ({ ...current, label: event.target.value }))} />
+                  </Campo>
+                  <Campo id="code-value" rotulo="Código">
                     <div className="flex gap-2">
-                      <Input id="code-value" value={codeForm.code} placeholder="BRATAN-..." onChange={(event) => setCodeForm((current) => ({ ...current, code: event.target.value }))} />
-                      <Button type="button" variant="outline" onClick={fillGeneratedCode}>
+                      <CampoTexto id="code-value" className="font-mono" value={codeForm.code} placeholder="BRATAN-..." onChange={(event) => setCodeForm((current) => ({ ...current, code: event.target.value }))} />
+                      <Botao variante="secundario" className="shrink-0 max-md:h-11" onClick={fillGeneratedCode}>
                         Gerar
-                      </Button>
+                      </Botao>
                     </div>
-                  </div>
+                  </Campo>
                   {directCheckinLink ? (
-                    <div className="rounded-lg border border-brand-oliva/16 bg-white/65 p-3">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-brand-tinta">Link direto</p>
-                        <Button type="button" size="sm" variant="outline" className="gap-2" onClick={copyCheckinLink}>
-                          <Copy className="h-4 w-4" aria-hidden="true" />
+                    <div className="grid gap-2 rounded-bloco bg-saber p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[13px] font-bold leading-5 text-tinta">Link direto</p>
+                        <Botao tamanho="pq" variante="secundario" icone={<Copy className="h-4 w-4" aria-hidden="true" />} onClick={copyCheckinLink}>
                           Copiar
-                        </Button>
+                        </Botao>
                       </div>
-                      <p className="break-all text-xs leading-5 text-muted-foreground">{directCheckinLink}</p>
+                      <p className="break-all font-mono text-xs leading-5 text-tinta-2">{directCheckinLink}</p>
                     </div>
                   ) : null}
-                  <div className="space-y-2">
-                    <Label htmlFor="code-expiration">Expira em</Label>
-                    <Input id="code-expiration" type="datetime-local" value={codeForm.expiresAt} onChange={(event) => setCodeForm((current) => ({ ...current, expiresAt: event.target.value }))} />
-                  </div>
-                  <Button type="submit" className="w-full gap-2" disabled={createEventCodeMutation.isPending}>
-                    <KeyRound className="h-4 w-4" aria-hidden="true" />
+                  <Campo id="code-expiration" rotulo="Expira em">
+                    <CampoTexto id="code-expiration" type="datetime-local" value={codeForm.expiresAt} onChange={(event) => setCodeForm((current) => ({ ...current, expiresAt: event.target.value }))} />
+                  </Campo>
+                  <Botao type="submit" variante="primario" bloco className="max-md:h-11" carregando={createEventCodeMutation.isPending} icone={<KeyRound className="h-4 w-4" aria-hidden="true" />}>
                     Criar código
-                  </Button>
+                  </Botao>
                 </form>
+              </div>
 
-                <div className="space-y-2">
+              {eventCodes.length ? (
+                <ul aria-label="Códigos criados">
                   {eventCodes.slice(0, 6).map((code) => (
-                    <div key={code.id} className="rounded-lg border border-brand-oliva/14 bg-white/65 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <Badge variant={code.active ? "gold" : "muted"}>{code.active ? "Ativo" : "Inativo"}</Badge>
-                            <Badge variant="outline">{checkinTypeLabels[code.checkinType]}</Badge>
-                          </div>
-                          <p className="truncate font-semibold text-brand-tinta">{code.label}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {code.eventDate} - final {code.codePreview}
-                          </p>
-                        </div>
-                        <Button type="button" size="sm" variant="outline" onClick={() => updateEventCodeStatus(code, !code.active)}>
-                          {code.active ? "Desativar" : "Ativar"}
-                        </Button>
+                    <li key={code.id} className="flex items-start justify-between gap-3 border-t border-fio px-6 py-3 max-md:px-4">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-1.5">
+                          <Etiqueta tom={code.active ? "ok" : "neutro"}>{code.active ? "Ativo" : "Inativo"}</Etiqueta>
+                          <Etiqueta>{checkinTypeLabels[code.checkinType]}</Etiqueta>
+                        </p>
+                        <p className="mt-1 truncate text-sm font-bold leading-5 text-tinta">{code.label}</p>
+                        <p className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                          {diaCompleto(code.eventDate)} · final {code.codePreview}
+                        </p>
                       </div>
-                    </div>
+                      <Botao tamanho="pq" variante="secundario" className="shrink-0 max-md:h-10" onClick={() => updateEventCodeStatus(code, !code.active)}>
+                        {code.active ? "Desativar" : "Ativar"}
+                      </Botao>
+                    </li>
                   ))}
-                  {!eventCodes.length ? <p className="text-sm text-muted-foreground">Nenhum código criado ainda.</p> : null}
+                </ul>
+              ) : (
+                <p className="border-t border-fio px-6 py-4 text-sm font-medium text-tinta-2 max-md:px-4">Nenhum código criado ainda.</p>
+              )}
+            </BlocoFolha>
+
+            <BlocoFolha as="section" aria-labelledby="estalecas-lancamento" respiro>
+              <TituloDaFolha id="estalecas-lancamento" icone={<ShieldCheck />}>
+                Lançamento administrativo
+              </TituloDaFolha>
+              <form className="mt-4 grid gap-4" onSubmit={submitAdjustment}>
+                <Campo id="target-user" rotulo="Colaborador">
+                  <CampoSelecao id="target-user" value={adjustmentForm.targetUserId} onChange={(event) => setAdjustmentForm((current) => ({ ...current, targetUserId: event.target.value }))}>
+                    <option value="">Selecione</option>
+                    {colaboradorOpcoes}
+                  </CampoSelecao>
+                </Campo>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Campo id="adjustment-kind" rotulo="Tipo">
+                    <CampoSelecao
+                      id="adjustment-kind"
+                      value={adjustmentForm.kind}
+                      onChange={(event) => {
+                        const kind = event.target.value as AdjustmentKind;
+                        setAdjustmentForm((current) => ({ ...current, kind, status: adjustmentPresets[kind].defaultStatus }));
+                      }}
+                    >
+                      {Object.entries(adjustmentPresets).map(([value, preset]) => (
+                        <option key={value} value={value}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </CampoSelecao>
+                  </Campo>
+                  <Campo id="adjustment-status" rotulo="Status">
+                    <CampoSelecao id="adjustment-status" value={adjustmentForm.status} onChange={(event) => setAdjustmentForm((current) => ({ ...current, status: event.target.value as EstalecaTransactionStatus }))}>
+                      {transactionStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {estalecaStatusLabels[status]}
+                        </option>
+                      ))}
+                    </CampoSelecao>
+                  </Campo>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-                  Lançamento administrativo
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-4" onSubmit={submitAdjustment}>
-                  <div className="space-y-2">
-                    <Label htmlFor="target-user">Colaborador</Label>
-                    <select
-                      id="target-user"
-                      value={adjustmentForm.targetUserId}
-                      onChange={(event) => setAdjustmentForm((current) => ({ ...current, targetUserId: event.target.value }))}
-                      className={selectClass}
-                    >
-                      <option value="">Selecione</option>
-                      {activeColaboradores.map((colaborador) => (
-                        <option key={colaborador.id} value={colaborador.id}>
-                          {colaborador.nome} - {cargoLabels[colaborador.cargo]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="adjustment-kind">Tipo</Label>
-                      <select
-                        id="adjustment-kind"
-                        value={adjustmentForm.kind}
-                        onChange={(event) => {
-                          const kind = event.target.value as AdjustmentKind;
-                          setAdjustmentForm((current) => ({ ...current, kind, status: adjustmentPresets[kind].defaultStatus }));
-                        }}
-                        className={selectClass}
-                      >
-                        {Object.entries(adjustmentPresets).map(([value, preset]) => (
-                          <option key={value} value={value}>
-                            {preset.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="adjustment-status">Status</Label>
-                      <select
-                        id="adjustment-status"
-                        value={adjustmentForm.status}
-                        onChange={(event) => setAdjustmentForm((current) => ({ ...current, status: event.target.value as EstalecaTransactionStatus }))}
-                        className={selectClass}
-                      >
-                        {transactionStatusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {estalecaStatusLabels[status]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  {adjustmentForm.kind === "cashback" ? (
-                    <div className="rounded-lg border border-brand-dourado/30 bg-brand-creme/35 p-3">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-brand-tinta">Calculadora de cashback</p>
-                          <p className="text-xs leading-5 text-muted-foreground">
-                            Regra atual: {config.defaultCashbackPercent}% com teto de {formatEstalecas(config.maxCashbackEstalecas)} Estalecas.
-                          </p>
-                        </div>
-                        <div className="grid h-10 w-10 place-items-center rounded-lg bg-white/70 text-brand-musgo">
-                          <Calculator className="h-5 w-5" aria-hidden="true" />
-                        </div>
+                {adjustmentForm.kind === "cashback" ? (
+                  <div className="grid gap-3 rounded-bloco bg-saber p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold leading-5 text-tinta">Calculadora de cashback</p>
+                        <p className="mt-0.5 text-[13px] font-medium leading-5 text-tinta-2">
+                          Regra atual: <span className="tabular-nums">{config.defaultCashbackPercent}%</span> com teto de{" "}
+                          <span className="tabular-nums">{formatEstalecas(config.maxCashbackEstalecas)}</span> Estalecas.
+                        </p>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="cashback-purchase-amount">Valor da compra</Label>
-                          <Input
-                            id="cashback-purchase-amount"
-                            inputMode="decimal"
-                            placeholder="Ex.: 18000"
-                            value={cashbackForm.purchaseAmount}
-                            onChange={(event) => setCashbackForm((current) => ({ ...current, purchaseAmount: event.target.value }))}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="cashback-category">Categoria</Label>
-                          <select
-                            id="cashback-category"
-                            value={cashbackForm.category}
-                            onChange={(event) => setCashbackForm((current) => ({ ...current, category: event.target.value }))}
-                            className={selectClass}
-                          >
-                            {config.eligibleCategories.map((category) => (
-                              <option key={category} value={category}>
-                                {category}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <Label htmlFor="cashback-description">Motivo/compra/tratamento</Label>
-                        <Input
-                          id="cashback-description"
-                          placeholder="Ex.: protocolo premium de longevidade"
-                          value={cashbackForm.purchaseDescription}
-                          onChange={(event) => setCashbackForm((current) => ({ ...current, purchaseDescription: event.target.value }))}
+                      <Calculator className="h-5 w-5 shrink-0 stroke-oliva" aria-hidden="true" />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Campo id="cashback-purchase-amount" rotulo="Valor da compra">
+                        <CampoTexto
+                          id="cashback-purchase-amount"
+                          inputMode="decimal"
+                          className="tabular-nums"
+                          placeholder="Ex.: 18000"
+                          value={cashbackForm.purchaseAmount}
+                          onChange={(event) => setCashbackForm((current) => ({ ...current, purchaseAmount: event.target.value }))}
                         />
-                      </div>
-                      <div className="mt-3 flex flex-col gap-3 rounded-lg bg-white/65 p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-xs font-semibold uppercase text-brand-oliva">Cashback calculado</p>
-                          <p className="text-2xl font-bold text-brand-musgo">{formatEstalecas(cashbackPreview.amount)} Estalecas</p>
-                        </div>
-                        <Button type="button" variant="outline" className="gap-2" onClick={applyCashbackPreview}>
-                          <Calculator className="h-4 w-4" aria-hidden="true" />
-                          Usar cálculo
-                        </Button>
-                      </div>
+                      </Campo>
+                      <Campo id="cashback-category" rotulo="Categoria">
+                        <CampoSelecao id="cashback-category" value={cashbackForm.category} onChange={(event) => setCashbackForm((current) => ({ ...current, category: event.target.value }))}>
+                          {config.eligibleCategories.map((category) => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </CampoSelecao>
+                      </Campo>
                     </div>
-                  ) : null}
-                  <div className="space-y-2">
-                    <Label htmlFor="adjustment-amount">Estalecas</Label>
-                    <Input
-                      id="adjustment-amount"
-                      inputMode="numeric"
-                      placeholder="Ex.: 150"
-                      value={adjustmentForm.amount}
-                      readOnly={adjustmentForm.kind === "cashback"}
-                      onChange={(event) => setAdjustmentForm((current) => ({ ...current, amount: event.target.value }))}
-                    />
+                    <Campo id="cashback-description" rotulo="Motivo/compra/tratamento">
+                      <CampoTexto
+                        id="cashback-description"
+                        placeholder="Ex.: protocolo premium de longevidade"
+                        value={cashbackForm.purchaseDescription}
+                        onChange={(event) => setCashbackForm((current) => ({ ...current, purchaseDescription: event.target.value }))}
+                      />
+                    </Campo>
+                    <div className="flex flex-col gap-3 border-t border-fio pt-3 sm:flex-row sm:items-end sm:justify-between">
+                      <NumeroComFrase rotulo="Cashback calculado" numero={formatEstalecas(cashbackPreview.amount)} frase="Estalecas" />
+                      <Botao variante="secundario" className="max-md:h-11" icone={<Calculator className="h-4 w-4" aria-hidden="true" />} onClick={applyCashbackPreview}>
+                        Usar cálculo
+                      </Botao>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="adjustment-description">Descrição para o histórico</Label>
-                    <Input id="adjustment-description" placeholder="Cashback recebido por tratamento..." value={adjustmentForm.description} onChange={(event) => setAdjustmentForm((current) => ({ ...current, description: event.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="adjustment-reason">Motivo administrativo</Label>
-                    <textarea id="adjustment-reason" className={textareaClass} value={adjustmentForm.reason} onChange={(event) => setAdjustmentForm((current) => ({ ...current, reason: event.target.value }))} />
-                  </div>
-                  <Button type="submit" className="w-full gap-2" disabled={createTransactionMutation.isPending}>
-                    <Coins className="h-4 w-4" aria-hidden="true" />
-                    Registrar lançamento
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+                ) : null}
+                <Campo id="adjustment-amount" rotulo="Estalecas">
+                  <CampoTexto
+                    id="adjustment-amount"
+                    inputMode="numeric"
+                    className="tabular-nums read-only:bg-saber"
+                    placeholder="Ex.: 150"
+                    value={adjustmentForm.amount}
+                    readOnly={adjustmentForm.kind === "cashback"}
+                    onChange={(event) => setAdjustmentForm((current) => ({ ...current, amount: event.target.value }))}
+                  />
+                </Campo>
+                <Campo id="adjustment-description" rotulo="Descrição para o histórico">
+                  <CampoTexto id="adjustment-description" placeholder="Cashback recebido por tratamento..." value={adjustmentForm.description} onChange={(event) => setAdjustmentForm((current) => ({ ...current, description: event.target.value }))} />
+                </Campo>
+                <Campo id="adjustment-reason" rotulo="Motivo administrativo">
+                  <CampoArea id="adjustment-reason" className="resize-none" value={adjustmentForm.reason} onChange={(event) => setAdjustmentForm((current) => ({ ...current, reason: event.target.value }))} />
+                </Campo>
+                <Botao type="submit" variante="primario" bloco className="max-md:h-11" carregando={createTransactionMutation.isPending} icone={<Coins className="h-4 w-4" aria-hidden="true" />}>
+                  Registrar lançamento
+                </Botao>
+              </form>
+            </BlocoFolha>
 
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Gift className="h-5 w-5" aria-hidden="true" />
-                  Prêmio manual
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-4" onSubmit={submitReward}>
-                  <div className="space-y-2">
-                    <Label htmlFor="reward-user">Colaborador</Label>
-                    <select
-                      id="reward-user"
-                      value={rewardForm.targetUserId}
-                      onChange={(event) => setRewardForm((current) => ({ ...current, targetUserId: event.target.value }))}
-                      className={selectClass}
-                    >
-                      <option value="">Selecione</option>
-                      {activeColaboradores.map((colaborador) => (
-                        <option key={colaborador.id} value={colaborador.id}>
-                          {colaborador.nome} - {cargoLabels[colaborador.cargo]}
+            <BlocoFolha as="section" aria-labelledby="estalecas-premio" respiro>
+              <TituloDaFolha id="estalecas-premio" icone={<Gift />}>
+                Prêmio manual
+              </TituloDaFolha>
+              <form className="mt-4 grid gap-4" onSubmit={submitReward}>
+                <Campo id="reward-user" rotulo="Colaborador">
+                  <CampoSelecao id="reward-user" value={rewardForm.targetUserId} onChange={(event) => setRewardForm((current) => ({ ...current, targetUserId: event.target.value }))}>
+                    <option value="">Selecione</option>
+                    {colaboradorOpcoes}
+                  </CampoSelecao>
+                </Campo>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Campo id="reward-type" rotulo="Tipo">
+                    <CampoSelecao id="reward-type" value={rewardForm.rewardType} onChange={(event) => setRewardForm((current) => ({ ...current, rewardType: event.target.value as RewardType }))}>
+                      {manualRewardTypeOptions.map((rewardType) => (
+                        <option key={rewardType} value={rewardType}>
+                          {rewardTypeLabels[rewardType]}
                         </option>
                       ))}
-                    </select>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="reward-type">Tipo</Label>
-                      <select
-                        id="reward-type"
-                        value={rewardForm.rewardType}
-                        onChange={(event) => setRewardForm((current) => ({ ...current, rewardType: event.target.value as RewardType }))}
-                        className={selectClass}
-                      >
-                        {manualRewardTypeOptions.map((rewardType) => (
-                          <option key={rewardType} value={rewardType}>
-                            {rewardTypeLabels[rewardType]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="reward-status">Status inicial</Label>
-                      <select
-                        id="reward-status"
-                        value={rewardForm.status}
-                        onChange={(event) => setRewardForm((current) => ({ ...current, status: event.target.value as RewardStatus }))}
-                        className={selectClass}
-                      >
-                        {rewardStatusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {rewardStatusLabels[status]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reward-title">Título</Label>
-                    <Input
-                      id="reward-title"
-                      placeholder="Ex.: Suplemento premium"
-                      value={rewardForm.title}
-                      onChange={(event) => setRewardForm((current) => ({ ...current, title: event.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reward-description">Descrição</Label>
-                    <Input
-                      id="reward-description"
-                      placeholder="Benefício definido pela coordenação"
-                      value={rewardForm.description}
-                      onChange={(event) => setRewardForm((current) => ({ ...current, description: event.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reward-reason">Motivo administrativo</Label>
-                    <textarea
-                      id="reward-reason"
-                      className={textareaClass}
-                      value={rewardForm.reason}
-                      onChange={(event) => setRewardForm((current) => ({ ...current, reason: event.target.value }))}
-                    />
-                  </div>
-                  <Button type="submit" className="w-full gap-2" disabled={createRewardMutation.isPending}>
-                    <Gift className="h-4 w-4" aria-hidden="true" />
-                    Registrar prêmio
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+                    </CampoSelecao>
+                  </Campo>
+                  <Campo id="reward-status" rotulo="Status inicial">
+                    <CampoSelecao id="reward-status" value={rewardForm.status} onChange={(event) => setRewardForm((current) => ({ ...current, status: event.target.value as RewardStatus }))}>
+                      {rewardStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {rewardStatusLabels[status]}
+                        </option>
+                      ))}
+                    </CampoSelecao>
+                  </Campo>
+                </div>
+                <Campo id="reward-title" rotulo="Título">
+                  <CampoTexto id="reward-title" placeholder="Ex.: Suplemento premium" value={rewardForm.title} onChange={(event) => setRewardForm((current) => ({ ...current, title: event.target.value }))} />
+                </Campo>
+                <Campo id="reward-description" rotulo="Descrição">
+                  <CampoTexto id="reward-description" placeholder="Benefício definido pela coordenação" value={rewardForm.description} onChange={(event) => setRewardForm((current) => ({ ...current, description: event.target.value }))} />
+                </Campo>
+                <Campo id="reward-reason" rotulo="Motivo administrativo">
+                  <CampoArea id="reward-reason" className="resize-none" value={rewardForm.reason} onChange={(event) => setRewardForm((current) => ({ ...current, reason: event.target.value }))} />
+                </Campo>
+                <Botao type="submit" variante="primario" bloco className="max-md:h-11" carregando={createRewardMutation.isPending} icone={<Gift className="h-4 w-4" aria-hidden="true" />}>
+                  Registrar prêmio
+                </Botao>
+              </form>
+            </BlocoFolha>
           </section>
 
-          <section className="space-y-5">
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Trophy className="h-5 w-5" aria-hidden="true" />
+          <section aria-label="Ranking, cashback, check-ins e prêmios" className="grid min-w-0 gap-6">
+            <BlocoSaber as="section" aria-labelledby="estalecas-ranking">
+              <TituloDoSaber id="estalecas-ranking">
+                <span className="inline-flex items-center gap-2">
+                  <Trophy className="h-4 w-4 stroke-oliva" aria-hidden="true" />
                   Mais Disciplinado da Academia
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {topRanking ? (
-                  <div className="rounded-lg border border-brand-dourado/35 bg-brand-creme/45 p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <Badge variant="gold">Líder do mês</Badge>
-                        <p className="mt-3 text-2xl font-bold text-brand-musgo">{topRanking.displayName}</p>
-                        <p className="mt-1 text-sm leading-6 text-muted-foreground">{topRanking.tieBreakNote}</p>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="rounded-lg bg-white/70 px-3 py-2">
-                          <p className="text-xl font-bold text-brand-musgo">{topRanking.validGymCheckins}</p>
-                          <p className="text-xs font-semibold text-brand-oliva">check-ins</p>
-                        </div>
-                        <div className="rounded-lg bg-white/70 px-3 py-2">
-                          <p className="text-xl font-bold text-brand-musgo">{topRanking.bestMonthStreak}</p>
-                          <p className="text-xs font-semibold text-brand-oliva">sequência</p>
-                        </div>
-                        <div className="rounded-lg bg-white/70 px-3 py-2">
-                          <p className="text-xl font-bold text-brand-musgo">{topRanking.invalidCheckins}</p>
-                          <p className="text-xs font-semibold text-brand-oliva">inválidos</p>
-                        </div>
-                      </div>
-                    </div>
-                    <Button type="button" className="mt-4 w-full gap-2" disabled={Boolean(monthlyWinner) || monthlyWinnerMutation.isPending} onClick={registerMonthlyWinner}>
-                      <Gift className="h-4 w-4" aria-hidden="true" />
-                      {monthlyWinner ? "Vencedor já registrado" : "Registrar vencedor do mês"}
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Ainda não há check-ins de academia neste mês.</p>
-                )}
-
-                <div className="space-y-2">
-                  {ranking.slice(0, 5).map((entry) => (
-                    <div key={entry.userId} className="flex items-center justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/65 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-brand-tinta">{entry.position}. {entry.displayName}</p>
-                        <p className="text-xs text-muted-foreground">{entry.validGymCheckins} check-ins validos</p>
-                      </div>
-                      <Badge variant={entry.position === 1 ? "gold" : "muted"}>{entry.checkpoints} pts</Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Coins className="h-5 w-5" aria-hidden="true" />
-                  Cashback e transações
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {managedCashbacks.length ? (
-                  managedCashbacks.map((transaction) => (
-                    <div key={transaction.id} className="rounded-lg border border-brand-oliva/16 bg-white/68 p-3">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <Badge variant={transaction.status === "approved" ? "gold" : "muted"}>{estalecaStatusLabels[transaction.status]}</Badge>
-                            <Badge variant="outline">{formatEstalecas(transaction.amount)} Estalecas</Badge>
-                          </div>
-                          <p className="font-semibold text-brand-tinta">{collaboratorName(colaboradores, transaction.userId)}</p>
-                          <p className="mt-1 text-sm leading-6 text-muted-foreground">{transaction.description}</p>
-                          <p className="mt-1 text-xs font-semibold uppercase text-brand-oliva">{formatDateTime(transaction.createdAt)}</p>
-                        </div>
-                        <div className="w-full space-y-2 md:max-w-xs">
-                          <Input
-                            placeholder="Motivo da decisão"
-                            value={reasonByTransaction[transaction.id] ?? ""}
-                            onChange={(event) => setReasonByTransaction((current) => ({ ...current, [transaction.id]: event.target.value }))}
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            {transaction.status === "pending" ? (
-                              <>
-                                <Button type="button" size="sm" disabled={createTransactionMutation.isPending || transactionStatusMutation.isPending} onClick={() => updateTransactionStatus(transaction, "approved")}>Aprovar</Button>
-                                <Button type="button" size="sm" variant="outline" disabled={createTransactionMutation.isPending || transactionStatusMutation.isPending} onClick={() => updateTransactionStatus(transaction, "rejected")}>Recusar</Button>
-                              </>
-                            ) : null}
-                            {transaction.status === "approved" ? (
-                              reversedTransactionIds.has(transaction.id) ? (
-                                <Badge variant="muted">Estorno registrado</Badge>
-                              ) : (
-                                <Button type="button" size="sm" variant="outline" className="gap-2" disabled={createTransactionMutation.isPending || transactionStatusMutation.isPending} onClick={() => updateTransactionStatus(transaction, "reversed")}>
-                                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                                  Estornar
-                                </Button>
-                              )
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum cashback registrado ainda.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Dumbbell className="h-5 w-5" aria-hidden="true" />
-                  Check-ins recentes
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {visibleCheckins.length ? (
-                  visibleCheckins.map((checkin) => (
-                    <div key={checkin.id} className="rounded-lg border border-brand-oliva/16 bg-white/68 p-3">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <Badge variant={checkin.status === "valid" ? "gold" : "muted"}>{checkin.status === "valid" ? "Válido" : checkin.status}</Badge>
-                            <Badge variant="outline">{checkin.checkinType === "gym" ? "Academia" : "Check-in"}</Badge>
-                          </div>
-                          <p className="font-semibold text-brand-tinta">{collaboratorName(colaboradores, checkin.userId)}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(checkin.createdAt)} - {checkin.estalecasAwarded} Estalecas - {checkin.checkpointsAwarded} checkpoints</p>
-                          {checkin.invalidationReason ? <p className="mt-1 text-sm text-destructive">{checkin.invalidationReason}</p> : null}
-                        </div>
-                        {checkin.status !== "invalid" ? (
-                          <div className="w-full space-y-2 md:max-w-xs">
-                            <Input
-                              placeholder="Motivo da invalidação"
-                              value={reasonByCheckin[checkin.id] ?? ""}
-                              onChange={(event) => setReasonByCheckin((current) => ({ ...current, [checkin.id]: event.target.value }))}
-                            />
-                            <Button type="button" size="sm" variant="outline" onClick={() => invalidateCheckin(checkin)}>
-                              Invalidar check-in
-                            </Button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum check-in registrado ainda.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Gift className="h-5 w-5" aria-hidden="true" />
-                  Prêmios
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {rewards.length ? (
-                  rewards.slice(0, 10).map((reward) => (
-                    <div key={reward.id} className="rounded-lg border border-brand-oliva/16 bg-white/68 p-3">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <Badge variant={reward.status === "delivered" ? "gold" : "muted"}>{rewardStatusLabels[reward.status]}</Badge>
-                            <Badge variant="outline">{rewardTypeLabels[reward.rewardType]}</Badge>
-                          </div>
-                          <p className="font-semibold text-brand-tinta">{reward.title}</p>
-                          <p className="mt-1 text-sm leading-6 text-muted-foreground">{collaboratorName(colaboradores, reward.userId)} - {reward.description}</p>
-                        </div>
-                        <div className="w-full space-y-2 md:max-w-xs">
-                          <Input
-                            placeholder="Motivo da mudança"
-                            value={reasonByReward[reward.id] ?? ""}
-                            onChange={(event) => setReasonByReward((current) => ({ ...current, [reward.id]: event.target.value }))}
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            {rewardStatusOptions.map((status) => (
-                              <Button
-                                key={status}
-                                type="button"
-                                size="sm"
-                                variant={reward.status === status ? "default" : "outline"}
-                                onClick={() => updateRewardStatus(reward, status)}
-                              >
-                                {rewardStatusLabels[status]}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum prêmio registrado ainda.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <History className="h-5 w-5" aria-hidden="true" />
-                  Últimos lançamentos
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {sortedTransactions.slice(0, 8).map((transaction) => (
-                  <div key={transaction.id} className="flex items-start justify-between gap-3 rounded-lg border border-brand-oliva/14 bg-white/65 px-3 py-2">
+                </span>
+              </TituloDoSaber>
+              {topRanking ? (
+                <div className="grid gap-4 rounded-bloco bg-folha p-4 shadow-[inset_0_0_0_1px_rgb(var(--fio-rgb))]">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-brand-tinta">{transaction.description}</p>
-                      <p className="text-xs text-muted-foreground">{collaboratorName(colaboradores, transaction.userId)} - {estalecaTypeLabels[transaction.type]} - {estalecaSourceLabels[transaction.source]}</p>
+                      <Etiqueta tom="musgo">Líder do mês</Etiqueta>
+                      <p className="mt-2 text-xl font-extrabold leading-7 text-tinta">{topRanking.displayName}</p>
+                      <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">{topRanking.tieBreakNote}</p>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className={cn("font-bold", transaction.amount >= 0 ? "text-brand-musgo" : "text-destructive")}>{transaction.amount >= 0 ? "+" : ""}{formatEstalecas(transaction.amount)}</p>
-                      <p className="text-xs text-muted-foreground">{estalecaStatusLabels[transaction.status]}</p>
-                    </div>
+                    <dl className="grid shrink-0 grid-cols-3 gap-px overflow-hidden rounded-controle bg-fio text-center">
+                      {[
+                        { valor: topRanking.validGymCheckins, rotulo: "check-ins" },
+                        { valor: topRanking.bestMonthStreak, rotulo: "sequência" },
+                        { valor: topRanking.invalidCheckins, rotulo: "inválidos" },
+                      ].map((dado) => (
+                        <div key={dado.rotulo} className="bg-saber px-3 py-2">
+                          <dd className="font-serifa text-2xl leading-8 text-tinta [font-variant-numeric:lining-nums_tabular-nums]">{dado.valor}</dd>
+                          <dt className="text-xs font-bold leading-4 text-tinta-2">{dado.rotulo}</dt>
+                        </div>
+                      ))}
+                    </dl>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
+                  <Botao variante="primario" bloco className="max-md:h-11" disabled={Boolean(monthlyWinner) || monthlyWinnerMutation.isPending} icone={<Gift className="h-4 w-4" aria-hidden="true" />} onClick={registerMonthlyWinner}>
+                    {monthlyWinner ? "Vencedor já registrado" : "Registrar vencedor do mês"}
+                  </Botao>
+                </div>
+              ) : (
+                <p className="text-sm font-medium leading-6 text-tinta-2">Ainda não há check-ins de academia neste mês.</p>
+              )}
+
+              {ranking.length ? (
+                <ol className="mt-4 grid">
+                  {ranking.slice(0, 5).map((entry) => (
+                    <li key={entry.userId} className="flex items-center justify-between gap-3 border-t border-fio py-2.5 first:border-t-0">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold leading-5 text-tinta">
+                          <span className="tabular-nums">{entry.position}.</span> {entry.displayName}
+                        </p>
+                        <p className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">{entry.validGymCheckins} check-ins válidos</p>
+                      </div>
+                      <Etiqueta tom={entry.position === 1 ? "musgo" : "neutro"}>{entry.checkpoints} pts</Etiqueta>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </BlocoSaber>
+
+            <BlocoFolha as="section" aria-labelledby="estalecas-cashback" className="min-w-0 overflow-hidden">
+              <CabecaDaFolha
+                id="estalecas-cashback"
+                icone={<Coins />}
+                titulo="Cashback e transações"
+                resumo={pendingCashbackCount ? contagem(pendingCashbackCount, "pendente", "pendentes") : undefined}
+              />
+              {managedCashbacks.length ? (
+                <ul>
+                  {managedCashbacks.map((transaction) => (
+                    <li key={transaction.id} className="grid gap-3 border-t border-fio px-6 py-4 max-md:px-4 md:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] md:gap-6">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-1.5">
+                          <Etiqueta tom={tomDaTransacao[transaction.status] ?? "neutro"}>{estalecaStatusLabels[transaction.status]}</Etiqueta>
+                          <span className="text-xs font-bold leading-4 tabular-nums text-tinta-2">{formatDateTime(transaction.createdAt)}</span>
+                        </p>
+                        <p className="mt-1.5 text-[15px] font-bold leading-6 text-tinta">{collaboratorName(colaboradores, transaction.userId)}</p>
+                        <p className="mt-0.5 text-sm font-medium leading-[22px] text-tinta-2">{transaction.description}</p>
+                        <p className="mt-1 text-base font-extrabold leading-6 tabular-nums text-tinta">{formatEstalecas(transaction.amount)} Estalecas</p>
+                      </div>
+                      <div className="grid content-start gap-2">
+                        <CampoTexto
+                          pequeno
+                          aria-label={`Motivo da decisão — ${collaboratorName(colaboradores, transaction.userId)}`}
+                          placeholder="Motivo da decisão"
+                          value={reasonByTransaction[transaction.id] ?? ""}
+                          onChange={(event) => setReasonByTransaction((current) => ({ ...current, [transaction.id]: event.target.value }))}
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          {transaction.status === "pending" ? (
+                            <>
+                              <BotaoDecisao tipo="aprovar" tamanho="pq" valor={`${formatEstalecas(transaction.amount)} Estalecas`} disabled={ocupadoNaTransacao} onClick={() => updateTransactionStatus(transaction, "approved")} />
+                              <BotaoDecisao tipo="recusar" tamanho="pq" className="ml-auto" disabled={ocupadoNaTransacao} onClick={() => updateTransactionStatus(transaction, "rejected")} />
+                            </>
+                          ) : null}
+                          {transaction.status === "approved" ? (
+                            reversedTransactionIds.has(transaction.id) ? (
+                              <Etiqueta>Estorno registrado</Etiqueta>
+                            ) : (
+                              <Botao tamanho="pq" variante="secundario" className="max-md:h-10" disabled={ocupadoNaTransacao} icone={<RotateCcw className="h-4 w-4" aria-hidden="true" />} onClick={() => updateTransactionStatus(transaction, "reversed")}>
+                                Estornar
+                              </Botao>
+                            )
+                          ) : null}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="border-t border-fio px-6 py-4 text-sm font-medium text-tinta-2 max-md:px-4">Nenhum cashback registrado ainda.</p>
+              )}
+            </BlocoFolha>
+
+            <BlocoFolha as="section" aria-labelledby="estalecas-checkins" className="min-w-0 overflow-hidden">
+              <CabecaDaFolha id="estalecas-checkins" icone={<Dumbbell />} titulo="Check-ins recentes" resumo={visibleCheckins.length ? `${visibleCheckins.length} mais recentes` : undefined} />
+              {visibleCheckins.length ? (
+                <ul>
+                  {visibleCheckins.map((checkin) => (
+                    <li key={checkin.id} className="grid gap-3 border-t border-fio px-6 py-4 max-md:px-4 md:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] md:gap-6">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-1.5">
+                          <Etiqueta tom={checkin.status === "valid" ? "ok" : checkin.status === "invalid" ? "erro" : "neutro"}>{rotuloDoCheckin[checkin.status] ?? checkin.status}</Etiqueta>
+                          <Etiqueta>{checkin.checkinType === "gym" ? "Academia" : "Check-in"}</Etiqueta>
+                        </p>
+                        <p className="mt-1.5 text-[15px] font-bold leading-6 text-tinta">{collaboratorName(colaboradores, checkin.userId)}</p>
+                        <p className="mt-0.5 text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                          {formatDateTime(checkin.createdAt)} · {checkin.estalecasAwarded} Estalecas · {checkin.checkpointsAwarded} checkpoints
+                        </p>
+                        {checkin.invalidationReason ? <p className="mt-1 text-[13px] font-semibold leading-5 text-erro">{checkin.invalidationReason}</p> : null}
+                      </div>
+                      {checkin.status !== "invalid" ? (
+                        <div className="grid content-start gap-2">
+                          <CampoTexto
+                            pequeno
+                            aria-label={`Motivo da invalidação — ${collaboratorName(colaboradores, checkin.userId)}`}
+                            placeholder="Motivo da invalidação"
+                            value={reasonByCheckin[checkin.id] ?? ""}
+                            onChange={(event) => setReasonByCheckin((current) => ({ ...current, [checkin.id]: event.target.value }))}
+                          />
+                          <Botao tamanho="pq" variante="perigo" className="w-fit max-md:h-10" onClick={() => invalidateCheckin(checkin)}>
+                            Invalidar check-in
+                          </Botao>
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="border-t border-fio px-6 py-4 text-sm font-medium text-tinta-2 max-md:px-4">Nenhum check-in registrado ainda.</p>
+              )}
+            </BlocoFolha>
+
+            <BlocoFolha as="section" aria-labelledby="estalecas-premios" className="min-w-0 overflow-hidden">
+              <CabecaDaFolha id="estalecas-premios" icone={<Gift />} titulo="Prêmios" resumo={pendingRewards ? contagem(pendingRewards, "aguardando ação", "aguardando ação") : undefined} />
+              {rewards.length ? (
+                <ul>
+                  {rewards.slice(0, 10).map((reward) => (
+                    <li key={reward.id} className="grid gap-3 border-t border-fio px-6 py-4 max-md:px-4">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-1.5">
+                          <Etiqueta tom={tomDoPremio[reward.status]}>{rewardStatusLabels[reward.status]}</Etiqueta>
+                          <Etiqueta>{rewardTypeLabels[reward.rewardType]}</Etiqueta>
+                        </p>
+                        <p className="mt-1.5 text-[15px] font-bold leading-6 text-tinta">{reward.title}</p>
+                        <p className="mt-0.5 text-sm font-medium leading-[22px] text-tinta-2">
+                          {collaboratorName(colaboradores, reward.userId)} - {reward.description}
+                        </p>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                        <CampoTexto
+                          pequeno
+                          aria-label={`Motivo da mudança — ${reward.title}`}
+                          placeholder="Motivo da mudança"
+                          value={reasonByReward[reward.id] ?? ""}
+                          onChange={(event) => setReasonByReward((current) => ({ ...current, [reward.id]: event.target.value }))}
+                        />
+                        <Segmentado
+                          rotulo={`Situação do prêmio ${reward.title}`}
+                          valor={reward.status}
+                          opcoes={rewardStatusOptions.map((status) => ({ valor: status, rotulo: rewardStatusLabels[status] }))}
+                          tons={TONS_DO_PREMIO}
+                          onEscolher={(status) => updateRewardStatus(reward, status)}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="border-t border-fio px-6 py-4 text-sm font-medium text-tinta-2 max-md:px-4">Nenhum prêmio registrado ainda.</p>
+              )}
+            </BlocoFolha>
+
+            <BlocoSaber as="section" aria-labelledby="estalecas-lancamentos">
+              <TituloDoSaber id="estalecas-lancamentos">
+                <span className="inline-flex items-center gap-2">
+                  <History className="h-4 w-4 stroke-oliva" aria-hidden="true" />
+                  Últimos lançamentos
+                </span>
+              </TituloDoSaber>
+              {sortedTransactions.length ? (
+                <ul className="grid">
+                  {sortedTransactions.slice(0, 8).map((transaction) => (
+                    <li key={transaction.id} className="flex items-start justify-between gap-3 border-t border-fio py-2.5 first:border-t-0 first:pt-0">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold leading-5 text-tinta">{transaction.description}</p>
+                        <p className="text-[13px] font-medium leading-5 text-tinta-2">
+                          {collaboratorName(colaboradores, transaction.userId)} - {estalecaTypeLabels[transaction.type]} - {estalecaSourceLabels[transaction.source]}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={cn("text-sm font-extrabold leading-5 tabular-nums", transaction.amount >= 0 ? "text-tinta" : "text-erro")}>
+                          {transaction.amount >= 0 ? "+" : ""}
+                          {formatEstalecas(transaction.amount)}
+                        </p>
+                        <p className="text-xs font-semibold leading-4 text-tinta-2">{estalecaStatusLabels[transaction.status]}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm font-medium leading-6 text-tinta-2">Nenhum lançamento ainda.</p>
+              )}
+            </BlocoSaber>
           </section>
         </div>
       </div>

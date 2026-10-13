@@ -54,17 +54,18 @@ const FUNDO = { claro: "#F2F2F7", escuro: "#102019" } as const;
 function useIdentidadeDoPortal() {
   useEffect(() => {
     const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-    const tema = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    // 13/10/2026: o index.html do app traz duas metas theme-color (claro/escuro); o portal pinta as duas.
+    const temas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
     const raiz = document.documentElement;
     const barra = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]');
     // O iPhone usa o apple-touch-icon da PÁGINA ao adicionar à tela de início (o
     // manifesto não vale para isso), então o portal troca o do app pelo seu.
     const toque = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
-    const antes = { manifest: manifest?.href ?? "", tema: tema?.content ?? "", titulo: document.title, fundo: raiz.style.backgroundColor, barra: barra?.content ?? "", toque: toque?.getAttribute("href") ?? "" };
+    const antes = { manifest: manifest?.href ?? "", temas: temas.map((meta) => meta.content), titulo: document.title, fundo: raiz.style.backgroundColor, barra: barra?.content ?? "", toque: toque?.getAttribute("href") ?? "" };
     const escuro = window.matchMedia("(prefers-color-scheme: dark)");
     const pintar = () => {
       const cor = escuro.matches ? FUNDO.escuro : FUNDO.claro;
-      if (tema) tema.content = cor;
+      temas.forEach((meta) => (meta.content = cor));
       raiz.style.backgroundColor = cor;
       // instalado na tela de início do iPhone: as horas e a bateria são brancas com
       // "black-translucent" e pretas com "default" — no fundo claro só a segunda dá para ler.
@@ -78,7 +79,7 @@ function useIdentidadeDoPortal() {
     return () => {
       escuro.removeEventListener("change", pintar);
       if (manifest) manifest.href = antes.manifest;
-      if (tema) tema.content = antes.tema;
+      temas.forEach((meta, i) => (meta.content = antes.temas[i] ?? meta.content));
       if (barra) barra.content = antes.barra || "black-translucent";
       if (toque && antes.toque) toque.href = antes.toque;
       raiz.style.backgroundColor = antes.fundo;

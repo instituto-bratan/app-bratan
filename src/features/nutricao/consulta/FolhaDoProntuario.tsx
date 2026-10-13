@@ -5,7 +5,7 @@
 // marcada e fica fora do texto copiado.
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/features/crm/comercialVisual";
 import { cn } from "@/lib/utils";
 import { linhasDaFolha, textoDoProntuario } from "../dominio/resumo";
 import type { Atendimento, ConfigNutricao } from "../dominio/tipos";
@@ -70,9 +70,9 @@ export function FolhaDoProntuario({ atendimento, config, aoCopiar }: { atendimen
   return (
     <aside className="nutri-folha grid gap-3 p-4" aria-label="Texto do prontuário">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[13px] font-bold uppercase tracking-[0.07em] text-brand-oliva">Prontuário · iClinic</h2>
+        <h2 className="text-[13px] font-bold uppercase tracking-[0.07em] text-tinta-2">Prontuário · iClinic</h2>
         {atendimento.textoCopiadoEm ? (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-xs text-tinta-2">
             copiado às {new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(atendimento.textoCopiadoEm))}
           </span>
         ) : null}
@@ -96,7 +96,7 @@ export function FolhaDoProntuario({ atendimento, config, aoCopiar }: { atendimen
           {copiado ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
           {copiado ? "Copiado. Cole no iClinic" : "Copiar para o iClinic"}
         </Button>
-        {pendentes ? <p className="text-xs text-amber-800">{pendentes} linha(s) do atendimento anterior ainda sem confirmação ficam fora do texto.</p> : null}
+        {pendentes ? <p className="text-xs text-atencao">{pendentes} linha(s) do atendimento anterior ainda sem confirmação ficam fora do texto.</p> : null}
       </div>
     </aside>
   );

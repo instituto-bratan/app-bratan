@@ -1,29 +1,43 @@
+// MURAL — redesenho "Papel & Musgo", etapa 4 (08/10/2026).
+//
+// O que a tela FAZ não mudou: a coordenação (canPublishMural) publica um aviso
+// de 8 a 420 letras, Informativo ou Importante, e arquiva; o resto da equipe só
+// lê. Com login, os avisos vêm do banco (listRemoteAvisos/publish/archive); na
+// prévia, do aparelho (muralStorageKey). Mudou a forma: um Cabecalho com a frase
+// que conta os avisos (o selo técnico "Supabase" no lugar do número saiu); os
+// avisos para LER num bloco "saber", em lista, com a data em palavras ("hoje,
+// 09:12"); o publicar — a decisão — numa folha ao lado. Sem vidro, sem animação
+// de entrada, sem as cores com opacidade que não geravam CSS.
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Archive, Megaphone, Send } from "lucide-react";
+import { Archive, Info, Megaphone, Newspaper, Send, TriangleAlert } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { BlocoFolha, BlocoSaber, Botao, Cabecalho } from "@/components/ui/fundacao";
+import { Campo, CampoArea, Recado } from "@/features/compras/pecas";
+import { EstadoVazio, Rubrica } from "@/features/pops/pecasDaEquipe";
 import { useAuth } from "@/hooks/useAuth";
 import { canPublishMural } from "@/lib/access";
-import { formatShortTime, readLocalValue, writeLocalValue } from "@/lib/localStore";
+import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { archiveRemoteAviso, listRemoteAvisos, publishRemoteAviso } from "@/lib/remoteData";
 import { cn } from "@/lib/utils";
 import type { PrioridadeAviso } from "@/types/database";
-import { activeAvisos as getActiveAvisos, initialAvisos, muralStorageKey, type Aviso } from "./muralData";
+import { activeAvisos as getActiveAvisos, fraseDoMural, initialAvisos, muralStorageKey, quandoFoiPublicado, type Aviso } from "./muralData";
+
+const LIMITE_DO_AVISO = 420;
 
 const muralSchema = z.object({
-  corpo: z.string().min(8, "Escreva um aviso um pouco mais completo.").max(420, "Use até 420 caracteres."),
+  corpo: z.string().min(8, "Escreva um aviso um pouco mais completo.").max(LIMITE_DO_AVISO, "Use até 420 caracteres."),
   prioridade: z.enum(["info", "importante"]),
 });
 
 type MuralForm = z.infer<typeof muralSchema>;
+
+const PRIORIDADES: { valor: PrioridadeAviso; rotulo: string; ajuda: string }[] = [
+  { valor: "info", rotulo: "Informativo", ajuda: "Para saber" },
+  { valor: "importante", rotulo: "Importante", ajuda: "Pede atenção" },
+];
 
 export function MuralPage() {
   const { pessoa, session, isPreview } = useAuth();
@@ -46,6 +60,7 @@ export function MuralPage() {
   });
   const avisos = useRemote ? avisosQuery.data ?? [] : localAvisos;
   const activeAvisos = getActiveAvisos(avisos);
+  const carregando = useRemote && avisosQuery.isLoading;
 
   const form = useForm<MuralForm>({
     resolver: zodResolver(muralSchema),
@@ -92,141 +107,189 @@ export function MuralPage() {
     persist(avisos.map((aviso) => (aviso.id === id ? { ...aviso, deletedAt: new Date().toISOString() } : aviso)));
   }
 
+  const frase = fraseDoMural(avisos);
+  const corpo = form.watch("corpo") ?? "";
+  const prioridade = form.watch("prioridade");
+  const erroDoCorpo = form.formState.errors.corpo?.message;
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <motion.section
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="rounded-lg border border-brand-oliva/20 bg-white/60 p-5 shadow-calm backdrop-blur sm:p-6"
-      >
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            <Badge variant="gold" className="mb-4">Comunicação de 1 via</Badge>
-            <h1 className="text-4xl leading-tight text-brand-musgo sm:text-5xl">Mural de avisos</h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Coordenação publica comunicados claros. A equipe acompanha tudo sem depender do ruído do WhatsApp.
-            </p>
-          </div>
-          <div className="rounded-lg border border-brand-oliva/20 bg-white/70 px-4 py-3">
-            <p className="text-2xl font-bold text-brand-musgo">{activeAvisos.length}</p>
-            <p className="text-xs font-semibold uppercase text-brand-oliva">{useRemote ? "Supabase" : "avisos ativos"}</p>
-          </div>
-        </div>
-      </motion.section>
+    <div className="mx-auto grid w-full max-w-[1200px] gap-8 font-sans text-tinta max-md:gap-6">
+      <Cabecalho
+        className="mb-0 max-md:mb-0"
+        sobrancelha="Equipe"
+        titulo="Mural"
+        frase={
+          carregando ? (
+            "Lendo o mural…"
+          ) : (
+            <>
+              {frase.destaque ? <strong>{frase.destaque}</strong> : null}
+              {frase.destaque ? frase.resto : frase.resto.trim()} A coordenação publica; a equipe lê aqui, sem depender do WhatsApp.
+            </>
+          )
+        }
+      />
 
       {avisosQuery.isError ? (
-        <Card className="border-destructive/30 bg-destructive/5 shadow-none">
-          <CardContent className="p-4">
-            <p className="text-sm font-semibold text-destructive">
-              Não foi possível carregar o mural do Supabase. Aplique as migrations e confira o cargo do usuário.
-            </p>
-          </CardContent>
-        </Card>
+        <Recado tom="erro" role="alert" icone={<TriangleAlert className="text-erro" aria-hidden="true" />}>
+          <strong>Não foi possível carregar o mural.</strong> Tente de novo em instantes; se continuar, peça à gestão para conferir o seu cargo.
+        </Recado>
       ) : null}
 
-      {canPublish ? (
-        <Card className="border-brand-oliva/20 bg-white/70 shadow-none backdrop-blur">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Megaphone className="h-5 w-5 text-brand-musgo" aria-hidden="true" />
-              Publicar aviso
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={form.handleSubmit(publish)}>
-              <div className="space-y-2">
-                <Label htmlFor="corpo">Mensagem</Label>
-                <textarea
-                  id="corpo"
-                  rows={4}
-                  className="min-h-28 w-full resize-none rounded-lg border border-input bg-white/80 px-3 py-3 text-sm leading-6 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Escreva um aviso claro para a equipe..."
-                  {...form.register("corpo")}
-                />
-                {form.formState.errors.corpo ? (
-                  <p className="text-sm text-destructive">{form.formState.errors.corpo.message}</p>
-                ) : null}
-              </div>
+      <div className="grid items-start gap-8 max-md:gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        {/* O publicar vem primeiro no celular (é a ação de quem coordena); no computador, ao lado. */}
+        <div className="grid min-w-0 gap-4 xl:order-2">
+          {canPublish ? (
+            <BlocoFolha as="section" respiro aria-labelledby="mural-publicar">
+              <h2 id="mural-publicar" className="flex items-center gap-2 text-base font-bold leading-6 text-tinta">
+                <Megaphone className="h-4 w-4 shrink-0 stroke-oliva" aria-hidden="true" />
+                Publicar aviso
+              </h2>
+              <p className="mt-1 text-[13px] font-medium leading-5 text-tinta-2">Toda a equipe vê o aviso assim que ele sai.</p>
+              <form className="mt-5 grid gap-5" onSubmit={form.handleSubmit(publish)} noValidate>
+                <Campo id="corpo" rotulo="Mensagem">
+                  <CampoArea
+                    id="corpo"
+                    rows={5}
+                    maxLength={LIMITE_DO_AVISO + 80}
+                    aria-invalid={erroDoCorpo ? true : undefined}
+                    aria-describedby="mural-corpo-ajuda"
+                    className="min-h-[132px]"
+                    placeholder="Escreva um aviso claro para a equipe..."
+                    {...form.register("corpo")}
+                  />
+                  <p id="mural-corpo-ajuda" className="flex items-start justify-between gap-3 text-[13px] font-medium leading-5 text-tinta-2">
+                    {erroDoCorpo ? (
+                      <span className="inline-flex items-start gap-1 font-bold text-erro">
+                        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                        {erroDoCorpo}
+                      </span>
+                    ) : (
+                      <span>De 8 a 420 letras.</span>
+                    )}
+                    <span className={cn("shrink-0 tabular-nums", corpo.length > LIMITE_DO_AVISO && "font-bold text-erro")}>
+                      {corpo.length} de {LIMITE_DO_AVISO}
+                    </span>
+                  </p>
+                </Campo>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div className="space-y-2">
-                  <Label>Prioridade</Label>
-                  <div className="grid grid-cols-2 rounded-lg border border-brand-oliva/20 bg-brand-papel p-1">
-                    {(["info", "importante"] as PrioridadeAviso[]).map((prioridade) => (
-                      <button
-                        key={prioridade}
-                        type="button"
-                        onClick={() => form.setValue("prioridade", prioridade, { shouldDirty: true })}
+                <fieldset className="grid gap-2">
+                  <legend className="mb-2 text-[13px] font-bold leading-5 text-tinta">Prioridade</legend>
+                  <div className="grid grid-cols-2 gap-1 rounded-controle bg-saber p-1">
+                    {PRIORIDADES.map((opcao) => (
+                      <label
+                        key={opcao.valor}
                         className={cn(
-                          "rounded-md px-4 py-2 text-sm font-semibold capitalize transition",
-                          form.watch("prioridade") === prioridade
-                            ? "bg-white text-brand-musgo shadow-sm"
-                            : "text-muted-foreground hover:text-brand-tinta",
+                          "flex min-h-10 cursor-pointer flex-col items-center justify-center rounded-[4px] px-3 py-1.5 text-center transition-colors duration-150 ease-papel max-md:min-h-11",
+                          "has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-foco",
+                          prioridade === opcao.valor ? "bg-folha text-tinta shadow-[0_0_0_1px_rgb(var(--fio-2-rgb))]" : "text-tinta-2 hover:text-tinta",
                         )}
                       >
-                        {prioridade === "info" ? "Informativo" : "Importante"}
-                      </button>
+                        <input type="radio" value={opcao.valor} className="sr-only" {...form.register("prioridade")} />
+                        <span className="text-sm font-bold leading-5">{opcao.rotulo}</span>
+                        <span className="text-xs font-medium leading-4 text-tinta-2">{opcao.ajuda}</span>
+                      </label>
                     ))}
                   </div>
-                </div>
-                <LiquidButton type="submit" size="lg" disabled={form.formState.isSubmitting || publishMutation.isPending}>
-                  {publishMutation.isPending ? "Publicando..." : "Publicar aviso"}
-                  <Send className="ml-2 h-4 w-4" aria-hidden="true" />
-                </LiquidButton>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-brand-oliva/20 bg-white/60 shadow-none backdrop-blur">
-          <CardContent className="p-4">
-            <p className="text-sm font-semibold text-brand-musgo">
-              Você está em modo leitura. Novos avisos são publicados pela coordenação.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+                </fieldset>
 
-      <section className="space-y-4">
-        {activeAvisos.map((aviso, index) => (
-          <motion.article
-            key={aviso.id}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.34, delay: index * 0.05, ease: [0.4, 0, 0.2, 1] }}
-          >
-            <Card
-              className={cn(
-                "border-brand-oliva/20 bg-white/72 shadow-none backdrop-blur",
-                aviso.prioridade === "importante" && "border-brand-dourado/60 bg-brand-creme/45",
-              )}
-            >
-              <CardContent className="p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <Badge variant={aviso.prioridade === "importante" ? "gold" : "muted"}>
-                        {aviso.prioridade === "importante" ? "Importante" : "Informativo"}
-                      </Badge>
-                      <span className="text-xs font-semibold uppercase text-brand-oliva">
-                        {aviso.autor} · {formatShortTime(aviso.publicadoEm)}
+                <Botao
+                  type="submit"
+                  variante="primario"
+                  bloco
+                  carregando={publishMutation.isPending}
+                  disabled={form.formState.isSubmitting}
+                  icone={<Send className="h-4 w-4" aria-hidden="true" />}
+                  className="max-md:h-11"
+                >
+                  {publishMutation.isPending ? "Publicando..." : "Publicar aviso"}
+                </Botao>
+              </form>
+            </BlocoFolha>
+          ) : (
+            <Recado tom="neutro" role="status" icone={<Info className="stroke-oliva" aria-hidden="true" />}>
+              Você está em modo leitura. Novos avisos são publicados pela coordenação.
+            </Recado>
+          )}
+        </div>
+
+        <BlocoSaber as="section" aria-labelledby="mural-avisos" className="min-w-0 p-0 max-md:p-0 xl:order-1">
+          <div className="flex items-baseline justify-between gap-3 px-6 pb-2 pt-5 max-md:px-4 max-md:pt-4">
+            <Rubrica id="mural-avisos">Avisos no ar</Rubrica>
+            {activeAvisos.length ? (
+              <span className="text-[13px] font-medium leading-5 tabular-nums text-tinta-2">
+                {activeAvisos.length === 1 ? "1 aviso" : `${activeAvisos.length} avisos`} · o mais novo primeiro
+              </span>
+            ) : null}
+          </div>
+
+          {carregando ? (
+            <ul aria-busy="true" aria-label="Carregando os avisos">
+              {[0, 1, 2].map((i) => (
+                <li key={i} className="grid gap-2 border-t border-fio px-6 py-5 max-md:px-4">
+                  <span className="h-3 w-40 rounded-sm bg-fio motion-safe:animate-pulse" />
+                  <span className="h-4 w-full rounded-sm bg-fio motion-safe:animate-pulse" />
+                  <span className="h-4 w-2/3 rounded-sm bg-fio motion-safe:animate-pulse" />
+                </li>
+              ))}
+            </ul>
+          ) : activeAvisos.length === 0 ? (
+            <EstadoVazio icone={<Newspaper aria-hidden="true" />} titulo="Nenhum aviso no mural" className="border-t border-fio">
+              {canPublish
+                ? "Quando você publicar um comunicado, ele aparece aqui para toda a equipe."
+                : "Quando a coordenação publicar um comunicado, ele aparece aqui."}
+            </EstadoVazio>
+          ) : (
+            <ul>
+              {activeAvisos.map((aviso) => (
+                <li key={aviso.id} className="grid gap-2 border-t border-fio px-6 py-5 max-md:px-4 max-md:py-4">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <EtiquetaDaPrioridade prioridade={aviso.prioridade} />
+                    <span className="text-[13px] font-semibold leading-5 text-tinta-2">
+                      {aviso.autor}
+                      <span aria-hidden="true" className="px-1.5 text-fio-2">
+                        ·
                       </span>
-                    </div>
-                    <p className="text-base leading-7 text-brand-tinta">{aviso.corpo}</p>
+                      <time dateTime={aviso.publicadoEm} title={new Date(aviso.publicadoEm).toLocaleString("pt-BR")} className="tabular-nums">
+                        {quandoFoiPublicado(aviso.publicadoEm)}
+                      </time>
+                    </span>
+                    {canPublish ? (
+                      <Botao
+                        variante="fantasma"
+                        tamanho="pq"
+                        disabled={archiveMutation.isPending}
+                        onClick={() => archive(aviso.id)}
+                        icone={<Archive className="h-4 w-4" aria-hidden="true" />}
+                        className="ml-auto max-md:h-11"
+                      >
+                        Arquivar
+                      </Botao>
+                    ) : null}
                   </div>
-                  {canPublish ? (
-                    <Button type="button" variant="ghost" size="sm" disabled={archiveMutation.isPending} onClick={() => archive(aviso.id)}>
-                      <Archive className="mr-2 h-4 w-4" aria-hidden="true" />
-                      Arquivar
-                    </Button>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.article>
-        ))}
-      </section>
+                  <p className="max-w-[68ch] whitespace-pre-line text-base font-medium leading-7 text-tinta [overflow-wrap:anywhere]">{aviso.corpo}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </BlocoSaber>
+      </div>
     </div>
+  );
+}
+
+/** Importante pede atenção (laranja, com ícone); Informativo fica neutro. A palavra sempre vai junto. */
+function EtiquetaDaPrioridade({ prioridade }: { prioridade: PrioridadeAviso }) {
+  const importante = prioridade === "importante";
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-controle px-2 text-xs font-bold leading-5",
+        importante ? "bg-atencao-claro text-atencao" : "bg-folha text-tinta-2 shadow-[inset_0_0_0_1px_rgb(var(--fio-2-rgb))]",
+      )}
+    >
+      {importante ? <TriangleAlert className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" /> : null}
+      {importante ? "Importante" : "Informativo"}
+    </span>
   );
 }

@@ -40,11 +40,15 @@ function diaDaSemana(day: string) {
   return Number.isNaN(data.getTime()) ? "" : data.toLocaleDateString("pt-BR", { weekday: "long" });
 }
 
-/** O selo da situação do dia: a mesma palavra de sempre, com a forma e a cor do guia. */
+/**
+ * O selo da situação do dia: a mesma palavra de sempre, com a forma e a cor do guia.
+ * 08/10/2026 (etapa 4): o dia ainda não conferido é "pendente" — neutro, sem ouro
+ * (o ouro só marca o agora; antes usava o "aguardando", dourado).
+ */
 function SeloDoDia({ status }: { status: FinReconciliation["status"] }) {
   if (status === "CONFERIDO") return <Selo estado="pago">{reconciliationStatusLabels[status]}</Selo>;
   if (status === "DIVERGENTE") return <Selo estado="vencido">{reconciliationStatusLabels[status]}</Selo>;
-  return <Selo estado="aguardando">{reconciliationStatusLabels[status]}</Selo>;
+  return <Selo estado="pendente">{reconciliationStatusLabels[status]}</Selo>;
 }
 
 function DayRow({
