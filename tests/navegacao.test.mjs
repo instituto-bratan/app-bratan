@@ -203,11 +203,25 @@ function telasAntigas(alguem) {
   return ["/", ...vistas].sort(); // o Início aparecia para todo mundo
 }
 
+// Telas que nasceram DEPOIS do redesenho (a régua "mesmas telas de 07/10" não
+// vale para elas; cada uma tem o seu teste de quem vê).
+const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos"]);
+
 /** Todas as telas que o menu novo mostra (itens + abas, inclusive Ajustes), fora as rotas novas. */
 function telasDoMenuNovo(alguem) {
   const novas = new Set(nav.ROTAS_NOVAS);
   const hrefs = nav.itensDoMenu(alguem).flatMap((grupo) => grupo.itens.flatMap((item) => item.abas.map((aba) => aba.href)));
-  return [...new Set(hrefs)].filter((href) => !novas.has(href)).sort();
+  return [...new Set(hrefs)].filter((href) => !novas.has(href) && !TELAS_DEPOIS_DO_REDESENHO.has(href)).sort();
+}
+
+test("Contratos de medicação (14/10/2026): só coordenação e recepção veem, como no banco (pode_contrato)", () => {
+  const veContratos = (cargo) => telasDoMenuNovoComTudo(pessoa(cargo)).includes("/contratos");
+  for (const cargo of ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "secretaria_executiva", "recepcionista"]) assert.ok(veContratos(cargo), `${cargo} deveria ver Contratos`);
+  for (const cargo of ["enfermeira", "nutricionista", "marketing", "limpeza"]) assert.ok(!veContratos(cargo), `${cargo} não deveria ver Contratos`);
+});
+
+function telasDoMenuNovoComTudo(alguem) {
+  return nav.itensDoMenu(alguem).flatMap((grupo) => grupo.itens.flatMap((item) => item.abas.map((aba) => aba.href)));
 }
 
 /** Cada cargo puro + cada exceção possível da tela Acessos + quem não tem cargo. */

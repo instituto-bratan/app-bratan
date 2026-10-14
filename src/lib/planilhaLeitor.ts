@@ -21,7 +21,7 @@ async function inflar(dados: Uint8Array, comprimido: boolean) {
  * o tamanho real só existe no diretório central. Varrer o começo dava
  * "unexpected end of file" na descompressão.
  */
-export async function abrirXlsx(buffer: ArrayBuffer) {
+export async function abrirZip(buffer: ArrayBuffer): Promise<Map<string, Uint8Array>> {
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
   const arquivos = new Map<string, Uint8Array>();
@@ -34,7 +34,7 @@ export async function abrirXlsx(buffer: ArrayBuffer) {
       break;
     }
   }
-  if (eocd < 0) throw new Error("Arquivo não parece um .xlsx (não achei o índice do ZIP).");
+  if (eocd < 0) throw new Error("Arquivo não parece um .xlsx/.docx (não achei o índice do ZIP).");
 
   const totalEntradas = view.getUint16(eocd + 10, true);
   let cursor = view.getUint32(eocd + 16, true);
@@ -59,6 +59,12 @@ export async function abrirXlsx(buffer: ArrayBuffer) {
     }
     cursor += 46 + tamanhoNome + tamanhoExtra + tamanhoComentario;
   }
+  return arquivos;
+}
+
+/** O .xlsx aberto, com os XMLs como texto (contrato de medicação, 14/10/2026, passou a usar o abrirZip para o .docx). */
+export async function abrirXlsx(buffer: ArrayBuffer) {
+  const arquivos = await abrirZip(buffer);
   const decodificar = (nome: string) => {
     const dados = arquivos.get(nome);
     return dados ? new TextDecoder().decode(dados) : "";

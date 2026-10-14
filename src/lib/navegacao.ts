@@ -26,7 +26,7 @@
 //   do Início chegam na etapa 2; aqui fica só o lugar de cada contador.
 // ---------------------------------------------------------------------------
 import type { Cargo } from "@/types/database";
-import { canAdministracao, canFinanceiroFull, canManageAcessos, canSeeModule, isCoordenacao, type ModuleKey } from "@/lib/access";
+import { canAdministracao, canContratos, canFinanceiroFull, canManageAcessos, canSeeModule, isCoordenacao, type ModuleKey } from "@/lib/access";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -408,6 +408,16 @@ const MAPA: DefGrupo[] = [
             acesso: modulo("crm"),
             lugar: "menu",
             palavras: ["kanban", "vendas", "venda", "funil", "registrar fechamento", "aderiu", "repescagem", "crm", "oportunidade", "negociação"],
+          },
+          {
+            id: "contratos",
+            rotulo: "Contratos de medicação",
+            aba: "Contratos",
+            rota: "/contratos",
+            icone: "FileText",
+            acesso: porCargo("canContratos", canContratos),
+            lugar: "aba",
+            palavras: ["contrato", "contratos", "supersign", "assinatura", "tto", "medicação", "termo"],
           },
         ],
       },

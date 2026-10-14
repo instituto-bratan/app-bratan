@@ -156,6 +156,12 @@ export function canComprovantes(cargo: Cargo | null | undefined) {
   return isCoordenacao(cargo) || cargo === "recepcionista";
 }
 
+// Contrato de medicação (14/10/2026): a mesma regra do banco (pode_contrato,
+// 202610140001). A recepção redige e a coordenação confere; tem CID e CPF.
+export function canContratos(cargo: Cargo | null | undefined) {
+  return isCoordenacao(cargo) || cargo === "recepcionista";
+}
+
 // Financeiro 360 — decisão do Lucas (03/07/2026):
 // acesso total = Lucas (gestor_financeiro), Dr Daniel e Andrya (ceo);
 // gestor só visualiza (e mantém comprovantes/lembretes para lançar);

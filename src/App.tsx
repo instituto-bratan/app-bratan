@@ -40,6 +40,7 @@ const EstoquePage = lazyRoute("estoque");
 const AplicacoesPage = lazyRoute("estoqueAplicacoes");
 const ConciergeNpsPage = lazyRoute("conciergeNps");
 const PacientesPage = lazyRoute("pacientes");
+const ContratosPage = lazyRoute("contratos");
 const PedidosDeCompraPage = lazyRoute("compras");
 const CrmTasksPage = lazyRoute("crmTasks");
 const CrmKanbanPage = lazyRoute("crmKanban");
@@ -135,6 +136,8 @@ export function App() {
               <Route path="/concierge/nps" element={<ConciergeNpsPage />} />
               {/* Aba Pacientes (05/10/2026): busca, ficha e CPF; a porta é o módulo "pacientes". */}
               <Route path="/pacientes" element={<PacientesPage />} />
+              {/* Contrato de medicação (14/10/2026): TTO do doutor → .docx para o SuperSign; a porta é canContratos. */}
+              <Route path="/contratos" element={<ContratosPage />} />
               <Route path="/financeiro" element={<Navigate to="/financeiro/lancar-dia" replace />} />
               {/* Portas NOVAS do Financeiro (08/10/2026): Dia, Pagar e Banco levam à 1ª aba
                   que a pessoa vê. As telas continuam nos endereços de sempre. */}

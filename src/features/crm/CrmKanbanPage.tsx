@@ -58,7 +58,7 @@ import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-t
 import { InfoTip } from "@/components/ui/info-tip";
 import { BlocoFolha, Botao, Cabecalho, CampoBusca, FraseDoFluxo } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
-import { isCoordenacao, podeEmitirNota, recadoNotaNaFila } from "@/lib/access";
+import { canContratos, isCoordenacao, podeEmitirNota, recadoNotaNaFila } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -2229,6 +2229,18 @@ function CrmKanbanPageConteudo() {
                     >
                       Enviar contrato para assinatura
                     </Button>
+                  </div>
+                ) : null}
+                {selectedDeal.adhesionChannel && canContratos(pessoa?.cargo) ? (
+                  <div className="mt-3 rounded-controle border border-fio bg-folha p-3">
+                    <p className="text-xs font-bold leading-4 text-tinta-2">Contrato de medicação</p>
+                    <p className="mt-1 text-sm font-medium leading-5 text-tinta">Solte o TTO do doutor e o contrato sai preenchido, pronto para o SuperSign.</p>
+                    <Link
+                      to={`/contratos?contato=${encodeURIComponent(selectedDeal.contactId)}&deal=${encodeURIComponent(selectedDeal.id)}`}
+                      className="mt-2 inline-flex text-sm font-bold text-musgo underline-offset-[3px] hover:underline"
+                    >
+                      Gerar contrato →
+                    </Link>
                   </div>
                 ) : null}
                 {selectedDeal.adhesionChannel ? (
