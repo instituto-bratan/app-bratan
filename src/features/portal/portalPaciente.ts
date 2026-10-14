@@ -674,7 +674,12 @@ export type EventoDaJornada = {
   detalhe: string;
 };
 
-const um = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+export const um = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** Medição feita na clínica (enfermagem ou importada do InBody): é o "exame" em todo o portal — linha do tempo, história e medalhas. */
+export function ehMedicaoDaClinica(m: Pick<PortalMedicao, "origem">) {
+  return m.origem !== "PACIENTE";
+}
 const capitalizar = (s: string) => s.replace(/^\p{L}/u, (c) => c.toUpperCase());
 
 /**
@@ -697,7 +702,7 @@ export function linhaDoTempo(entrada: { plano: PortalPlano | null; consultas: Po
 
   if (plano) eventos.push({ id: "inicio", dia: plano.inicio, tipo: "INICIO", estado: "feito", quando: diaMes(plano.inicio), titulo: `Você começou o ${nomeDoPlano(plano.canal)}`, detalhe: "" });
 
-  const bios = medicoes.filter((m) => m.origem !== "PACIENTE" && dentroDoPlano(m.dia)).sort((a, b) => a.dia.localeCompare(b.dia));
+  const bios = medicoes.filter((m) => ehMedicaoDaClinica(m) && dentroDoPlano(m.dia)).sort((a, b) => a.dia.localeCompare(b.dia));
   bios.forEach((m, i) => {
     const partes = [m.pesoKg !== null ? `${um(m.pesoKg)} kg` : "", m.gorduraPct !== null ? `${um(m.gorduraPct)}% de gordura` : "", m.inbodyScore ? `InBody ${m.inbodyScore}` : ""].filter(Boolean);
     eventos.push({ id: `bio-${m.id}`, dia: m.dia, tipo: "BIO", estado: "feito", quando: diaMes(m.dia), titulo: i === 0 && plano ? "Primeira bioimpedância" : "Bioimpedância", detalhe: partes.join(" · ") });

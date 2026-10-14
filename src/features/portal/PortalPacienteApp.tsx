@@ -10,7 +10,7 @@
 // portal-paciente.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Activity, CalendarDays, Check, ChevronRight, FileText, Flag, Home, Pause, Play, Route as RouteIcon, Scale, ScanFace, Smartphone, Stethoscope, User } from "lucide-react";
+import { Activity, BookOpen, CalendarDays, Check, ChevronRight, FileText, Flag, Home, Pause, Play, Route as RouteIcon, Scale, ScanFace, Smartphone, Stethoscope, User } from "lucide-react";
 import LoadingState from "@/components/ui/loading-state";
 import { Avisos, toast } from "@/components/ui/avisos";
 import { todayISO } from "@/lib/localStore";
@@ -32,7 +32,14 @@ import { reduzirFoto } from "./redimensionarFoto";
 import { fraseDoCartao, opcoesDoCartao, textoDeCompartilhar, type OpcaoDoCartao } from "./cartaoCompartilhavel";
 import { cartaoParaBlob, compartilharCartao, desenharCartao } from "./desenharCartao";
 import { Confete } from "@/components/ui/motion-confetti";
-import { CountUp } from "@/components/ui/count-up";
+import { capitulosDaHistoria, conquistasDoPaciente, dataDeHoje, periodoDoDia } from "./conquistas";
+import { NumeroQueChega } from "./NumeroQueChega";
+import { apagarAnotacoesDoAparelho } from "./PerguntasDaConsulta";
+import { ConquistasDoPaciente } from "./ConquistasDoPaciente";
+import { HistoriaDoPlano } from "./HistoriaDoPlano";
+import { PerguntasDaConsulta } from "./PerguntasDaConsulta";
+import { ReguaDePeso } from "./ReguaDePeso";
+import { useRevelarAoRolar, vibrar } from "./movimento";
 import { ABAS, abaDaRota, brl, brlCentavos, diaCurto, diaMes, linhaDoTempo, medicoesAntesDoPlano, nomeDoPlano, pacienteDesde, pendenciasDasAbas, proximaConsulta, fraseDoDia, icsDaConsulta, linkDaConcierge, oQueABalancaNaoMostra, resumoDaJornada, resumoDaSemana, resumoEvolucao, resumoFinanceiro, resumoInBody, rotaDaAba, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type AbaDoPortal, type EventoDaJornada, type MarcoDoPlano, type PassoDaTrilha, type PortalDados, type ResumoDaJornada } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
@@ -346,6 +353,19 @@ function MeuPortal() {
   // pesagem em Corpo), a rolagem acontece depois que a aba nova desenhou.
   const [pendenteRolar, setPendenteRolar] = useState<string | null>(null);
   const tituloRef = useRef<HTMLHeadingElement>(null);
+  // O MOVIMENTO (14/10/2026): a aba nova entra do lado para onde a pessoa foi;
+  // as seções abaixo da dobra chegam ao rolar; as boas notícias têm festa.
+  const painelRef = useRef<HTMLDivElement>(null);
+  const abaAnterior = useRef<AbaDoPortal>(aba);
+  const [direcao, setDirecao] = useState(0);
+  const [trocouDeAba, setTrocouDeAba] = useState(false);
+  const [festa, setFesta] = useState(0);
+  // Recarregar com a história aberta a reabre (a entrada do histórico já é dela).
+  // Pesagem longe da última medição: o cartão pergunta antes de enviar (erro de digitação, outra balança).
+  const [pesoParaConferir, setPesoParaConferir] = useState<number | null>(null);
+  const corrigirRef = useRef<HTMLButtonElement>(null);
+  const [historiaAberta, setHistoriaAberta] = useState(() => Boolean((window.history.state as { historia?: boolean } | null)?.historia));
+  const periodo = periodoDoDia(new Date().getHours());
 
   async function salvarSenha(e: FormEvent) {
     e.preventDefault();
@@ -402,9 +422,18 @@ function MeuPortal() {
   }, [dados, aba]);
 
   // Aba nova começa do topo — como um app, não como uma página que continua rolada.
+  // E entra deslizando do lado para onde a pessoa foi (Hoje → Corpo vem da direita).
   useEffect(() => {
     window.scrollTo({ top: 0 });
+    if (abaAnterior.current === aba) return;
+    const de = ABAS.findIndex((a) => a.id === abaAnterior.current);
+    const para = ABAS.findIndex((a) => a.id === aba);
+    setDirecao(para > de ? 1 : -1);
+    setTrocouDeAba(true);
+    abaAnterior.current = aba;
   }, [aba]);
+
+  useRevelarAoRolar(painelRef, `${aba}-${dados ? "com" : "sem"}`);
 
   useEffect(() => {
     if (!pendenteRolar) return;
@@ -441,6 +470,19 @@ function MeuPortal() {
   const balanca = oQueABalancaNaoMostra(evolucao);
   // CARTÃO COMPARTILHÁVEL (21/09/2026, passo 5): só notícia boa; vazio = some.
   const opcoesDeCartao = opcoesDoCartao(evolucao, inbody);
+  // CONQUISTAS e A HISTÓRIA ATÉ AQUI (14/10/2026): do plano para frente, como a curva.
+  const evolucaoDoPlano = dados ? resumoEvolucao(dados.medicoes, hoje, inicioDoPlano ?? undefined) : null;
+  const inbodyDoPlano = dados ? resumoInBody(dados.medicoes, inicioDoPlano ?? undefined) : null;
+  const conquistas = dados ? conquistasDoPaciente({ plano: dados.plano, medicoes: dados.medicoes, evolucao: evolucaoDoPlano, inbody: inbodyDoPlano, jornada, hojeISO: hoje }) : [];
+  const capitulos = dados
+    ? capitulosDaHistoria({ primeiroNome: dados.paciente.primeiroNome, plano: dados.plano, consultas: dados.consultas, medicoes: dados.medicoes, evolucao: evolucaoDoPlano, inbody: inbodyDoPlano, jornada, proximaFrase: jornada && !jornada.concluida ? jornada.proximo : proxima ? `Sua próxima consulta é ${proxima.quando}.` : null, hojeISO: hoje })
+    : [];
+  // A régua parte do último peso medido. Sem nenhum, não há régua: nada de
+  // "80 kg" de mentira pronto para enviar (revisão de 14/10/2026).
+  const pesoDePartida = (() => {
+    const ultimo = dados?.medicoes.filter((m) => typeof m.pesoKg === "number" && (m.pesoKg as number) > 0).sort((a, b) => b.dia.localeCompare(a.dia))[0];
+    return ultimo?.pesoKg ?? null;
+  })();
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
   const pendencias = pendenciasDasAbas(proxima);
@@ -463,9 +505,16 @@ function MeuPortal() {
     navigate(rotaDaAba(destino));
   }
 
-  async function mandarPesagem() {
+  async function mandarPesagem(conferido = false) {
     const valor = Number(peso.replace(",", "."));
     if (!(valor >= 30 && valor <= 300)) return toast("Confira o peso: em quilos, com vírgula (ex.: 82,4).", { tom: "atencao" });
+    // Mais de 3 kg longe da última medição: o cartão pergunta antes de enviar.
+    if (!conferido && pesoDePartida !== null && Math.abs(valor - pesoDePartida) > 3) {
+      setPesoParaConferir(valor);
+      window.setTimeout(() => corrigirRef.current?.focus(), 0);
+      return;
+    }
+    setPesoParaConferir(null);
     setEnviando(true);
     try {
       if (previa) {
@@ -490,11 +539,19 @@ function MeuPortal() {
     try {
       if (previa) {
         setDados((atual) => (atual ? { ...atual, consultas: atual.consultas.map((c) => (c.id === proxima.id ? { ...c, status: resposta === "CONFIRMO" ? "CONFIRMADA" : "REMARCAR" } : c)) } : atual));
+        if (resposta === "CONFIRMO") {
+          setFesta((n) => n + 1);
+          vibrar(12);
+        }
         toast(resposta === "CONFIRMO" ? "Consulta confirmada (exemplo)." : "Pedido de remarcação enviado (exemplo).", { tom: "ok" });
         return;
       }
       const r = await responderConsulta(sessao!, proxima.id, proxima.origem, resposta);
       if (!r.ok) return toast(r.error ?? "Não consegui registrar.", { tom: "erro" });
+      if (resposta === "CONFIRMO") {
+        setFesta((n) => n + 1);
+        vibrar(12);
+      }
       toast(resposta === "CONFIRMO" ? "Consulta confirmada. Até lá!" : "Avisamos a recepção. Ela vai te chamar para combinar outro horário.", { tom: "ok", duracaoMs: 6000 });
       await recarregar();
     } finally {
@@ -521,6 +578,7 @@ function MeuPortal() {
 
   async function sairDeTodos() {
     if (!previa && sessao) await sairDeTodosOsAparelhos(sessao).catch(() => undefined);
+    apagarAnotacoesDoAparelho();
     guardarSessao(null);
     navigate("/meu", { replace: true });
     window.location.reload();
@@ -528,6 +586,7 @@ function MeuPortal() {
 
   async function sair() {
     if (!previa && sessao) await sairDoPortal(sessao).catch(() => undefined);
+    apagarAnotacoesDoAparelho();
     guardarSessao(null);
     navigate("/meu", { replace: true });
     window.location.reload();
@@ -540,7 +599,7 @@ function MeuPortal() {
   // O título e a frase de cada aba: a saudação só em Hoje; as outras dizem o que são.
   const cabecalho = dados
     ? aba === "hoje"
-      ? { titulo: saudacao(dados.paciente.primeiroNome), frase: fraseTopo }
+      ? { titulo: saudacao(dados.paciente.primeiroNome), frase: fraseTopo, sobrancelha: dataDeHoje(hoje) }
       : aba === "corpo"
         ? {
             titulo: "Seu corpo",
@@ -578,7 +637,7 @@ function MeuPortal() {
               {proxima.tipo} com {proxima.profissional} · {proxima.local}
             </p>
             {proxima.status === "CONFIRMADA" ? (
-              <span className="p-pill ok" style={{ justifySelf: "start" }}>
+              <span className="p-pill ok p-confirmou" style={{ justifySelf: "start" }}>
                 <Check size={14} strokeWidth={3} /> você confirmou
               </span>
             ) : proxima.status === "REMARCAR" ? (
@@ -593,6 +652,9 @@ function MeuPortal() {
               <button type="button" className="p-btn plain" style={{ justifySelf: "start" }} onClick={() => porNoCalendario(proxima)}>
                 <CalendarDays size={16} aria-hidden="true" /> Pôr no meu calendário
               </button>
+            ) : null}
+            {dados && proxima.origem !== "PREVISTA" && proxima.id ? (
+              <PerguntasDaConsulta key={dados.paciente.contactRef} contactRef={dados.paciente.contactRef} ehHoje={proxima.dias === 0} />
             ) : null}
             {proxima.podeResponder ? (
               <div className="p-botoes">
@@ -621,18 +683,55 @@ function MeuPortal() {
       <div className="p-card">
         <p className="t-headline">Quanto a balança marcou hoje?</p>
         <form
-          className="p-campo"
+          className="p-campo p-campo-peso"
           onSubmit={(e) => {
             e.preventDefault();
-            void mandarPesagem();
+            void mandarPesagem(false);
           }}
         >
-          <input inputMode="decimal" placeholder="82,4" value={peso} onChange={(e) => setPeso(e.target.value)} aria-label="Peso em quilos" />
+          <input
+            inputMode="decimal"
+            placeholder={pesoDePartida ? fmt1(pesoDePartida) : "0,0"}
+            value={peso}
+            onChange={(e) => {
+              setPeso(e.target.value);
+              setPesoParaConferir(null);
+            }}
+            aria-label="Peso em quilos"
+          />
           <span className="p-unid">kg</span>
           <button type="submit" className="p-btn mini" disabled={enviando || !peso.trim()}>
             {enviando ? "Enviando" : "Enviar"}
           </button>
         </form>
+        {pesoDePartida ? (
+          <ReguaDePeso
+            valor={peso}
+            aoMudar={(texto) => {
+              setPeso(texto);
+              setPesoParaConferir(null);
+            }}
+            partida={pesoDePartida}
+          />
+        ) : null}
+        {pesoParaConferir !== null && pesoDePartida !== null ? (
+          <div className="p-conferir-peso" role="alert">
+            <p className="t-sub">
+              <b>
+                {fmt1(pesoParaConferir)} kg ficou {fmt1(Math.abs(pesoParaConferir - pesoDePartida))} kg {pesoParaConferir < pesoDePartida ? "abaixo" : "acima"} da sua última medição ({fmt1(pesoDePartida)} kg).
+              </b>{" "}
+              Confere o número antes de enviar?
+            </p>
+            <div className="p-conferir-peso-acoes">
+              <button ref={corrigirRef} type="button" className="p-btn tonal mini" onClick={() => setPesoParaConferir(null)}>
+                Corrigir
+              </button>
+              <button type="button" className="p-btn plain mini" disabled={enviando} onClick={() => void mandarPesagem(true)}>
+                Enviar assim mesmo
+              </button>
+            </div>
+          </div>
+        ) : null}
         <p className="t-foot t-2">
           {ultimaPesagemPropria ? `Sua última pesagem foi em ${diaCurto(ultimaPesagemPropria.dia)}: ${fmt1(ultimaPesagemPropria.pesoKg)} kg. ` : ""}
           Uma vez por semana, de manhã, antes do café. A enfermagem vê por aqui e entra em contato se precisar.
@@ -661,7 +760,7 @@ function MeuPortal() {
         </section>
       ) : null}
       <section className="p-sec p-anim wide" aria-label="Onde você está na jornada">
-        <HeroDaJornada jornada={jornada} plano={dados.plano} proxima={proxima} evolucao={evolucao} aoAbrir={() => irPara("jornada")} />
+        <HeroDaJornada jornada={jornada} plano={dados.plano} proxima={proxima} evolucao={evolucao} aoAbrir={() => irPara("jornada")} aoHistoria={capitulos.length ? () => setHistoriaAberta(true) : undefined} />
       </section>
       {cartaoDaConsulta}
       <section className="p-sec p-anim" aria-labelledby="t-corpo-linha">
@@ -673,7 +772,7 @@ function MeuPortal() {
                 <div>
                   <p className="t-foot t-2">hoje · {diaMes(evolucao.ultima.dia)}</p>
                   <p className="p-num">
-                    {fmt1(evolucao.ultima.pesoKg)}
+                    <NumeroQueChega texto={fmt1(evolucao.ultima.pesoKg)} atraso={0.15} />
                     <small>kg</small>
                   </p>
                 </div>
@@ -713,7 +812,7 @@ function MeuPortal() {
               <div>
                 <p className="t-foot t-2">InBody Score</p>
                 <p className="p-num">
-                  <CountUp to={inbody.score} from={Math.max(0, inbody.score - 12)} duration={1.1} digitEffect="slide" />
+                  <NumeroQueChega texto={String(inbody.score)} atraso={0.1} />
                   <small>/100</small>
                 </p>
               </div>
@@ -868,6 +967,20 @@ function MeuPortal() {
 
   const painelJornada = dados ? (
     <>
+      {capitulos.length ? (
+        <section className="p-sec p-anim wide" aria-label="Sua história até aqui">
+          <button type="button" className="p-historia-convite" onClick={() => setHistoriaAberta(true)}>
+            <span className="p-historia-convite-icone" aria-hidden="true">
+              <BookOpen size={20} />
+            </span>
+            <span className="p-cresce">
+              <b>Sua história até aqui</b>
+              <span>{capitulos.length} capítulos · do primeiro dia ao próximo passo</span>
+            </span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </section>
+      ) : null}
       {trilha && dados.plano ? (
         <section id="plano" className="p-sec p-anim" aria-labelledby="t-plano">
           <span className="t-sec" id="t-plano">{nomeDoPlano(dados.plano.canal)}</span>
@@ -899,6 +1012,8 @@ function MeuPortal() {
           )}
         </div>
       </section>
+
+      <ConquistasDoPaciente conquistas={conquistas} contactRef={dados.paciente.contactRef} />
 
       {opcoesDeCartao.length ? <CartaoDaConquista opcoes={opcoesDeCartao} /> : null}
     </>
@@ -1056,6 +1171,7 @@ function MeuPortal() {
           sessao={sessao}
           previa={previa}
           aoTerminar={() => {
+            apagarAnotacoesDoAparelho();
             navigate("/meu", { replace: true });
             window.location.reload();
           }}
@@ -1065,7 +1181,12 @@ function MeuPortal() {
   ) : null;
 
   return (
-    <div className="portal p-app" data-aba={aba}>
+    <div className="portal p-app" data-aba={aba} data-periodo={periodo} data-trocou={trocouDeAba ? "sim" : undefined} style={{ "--dir": direcao } as CSSProperties}>
+      <div className="p-luz" aria-hidden="true" />
+      <div className="p-festa" aria-hidden="true">
+        <Confete disparos={festa} particulas={60} velocidade={22} abertura={130} duracao={2.4} tamanho={0.85} />
+      </div>
+      {historiaAberta && capitulos.length ? <HistoriaDoPlano capitulos={capitulos} aoFechar={() => setHistoriaAberta(false)} /> : null}
       <Avisos />
       <div className="p-bar" data-visivel={barraCompacta} aria-hidden={!barraCompacta}>
         {rotuloDaAba}
@@ -1095,11 +1216,12 @@ function MeuPortal() {
             <div className="p-so-celular">
               <Marca previa={previa} />
             </div>
-            <header className="p-cabeca p-anim" key={`cabeca-${aba}`}>
-              <h1 ref={tituloRef} className="t-large">{cabecalho.titulo}</h1>
+            <header className="p-cabeca p-anim p-troca" key={`cabeca-${aba}`}>
+              {"sobrancelha" in cabecalho && cabecalho.sobrancelha ? <span className="p-cabeca-data">{cabecalho.sobrancelha}</span> : null}
+              <h1 ref={tituloRef} className="t-large t-serif">{cabecalho.titulo}</h1>
               <p className="t-sub t-2">{cabecalho.frase}</p>
             </header>
-            <div className="p-painel p-grid" key={aba} aria-label={rotuloDaAba}>
+            <div ref={painelRef} className="p-painel p-grid p-troca" key={aba} aria-label={rotuloDaAba}>
               {aba === "hoje" ? painelHoje : aba === "corpo" ? painelCorpo : aba === "jornada" ? painelJornada : painelVoce}
             </div>
           </>
@@ -1156,6 +1278,13 @@ function AnelDaJornada({ segmentos, preenchimentos, fracao, mesAtual }: { segmen
   return (
     <div className="p-anel" role="img" aria-label={`Mês ${mesAtual} de ${n} do plano`}>
       <svg viewBox="0 0 120 120" aria-hidden="true">
+        <defs>
+          <linearGradient id="p-anel-folha" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#F6E7B8" />
+            <stop offset=".45" stopColor="#E3C77E" />
+            <stop offset="1" stopColor="#B88D3A" />
+          </linearGradient>
+        </defs>
         {segmentos.map((estado, i) => {
           const offset = -(i * (L + gap));
           // Cada mês enche pelo que foi cumprido nele (29/09/2026), não pelo calendário.
@@ -1171,7 +1300,9 @@ function AnelDaJornada({ segmentos, preenchimentos, fracao, mesAtual }: { segmen
       </svg>
       <div className="p-anel-centro">
         <span className="p-anel-rotulo">mês</span>
-        <span className="p-anel-num">{mesAtual}</span>
+        <span className="p-anel-num">
+          <NumeroQueChega texto={String(mesAtual)} atraso={0.35} />
+        </span>
         <span className="p-anel-de">de {n}</span>
       </div>
     </div>
@@ -1179,10 +1310,11 @@ function AnelDaJornada({ segmentos, preenchimentos, fracao, mesAtual }: { segmen
 }
 
 /** A tese do Hoje: onde a pessoa está na jornada, em um bloco só, na cor da casa. */
-function HeroDaJornada({ jornada, plano, proxima, evolucao, aoAbrir }: { jornada: ResumoDaJornada | null; plano: PortalDados["plano"]; proxima: ReturnType<typeof proximaConsulta>; evolucao: ReturnType<typeof resumoEvolucao>; aoAbrir: () => void }) {
+function HeroDaJornada({ jornada, plano, proxima, evolucao, aoAbrir, aoHistoria }: { jornada: ResumoDaJornada | null; plano: PortalDados["plano"]; proxima: ReturnType<typeof proximaConsulta>; evolucao: ReturnType<typeof resumoEvolucao>; aoAbrir: () => void; aoHistoria?: () => void }) {
   if (jornada && plano) {
     return (
       <div className="p-hero">
+        <i className="p-hero-brilho" aria-hidden="true" />
         <span className="p-hero-eyebrow">{nomeDoPlano(plano.canal)}</span>
         <AnelDaJornada segmentos={jornada.segmentos} preenchimentos={jornada.preenchimentos} fracao={jornada.fracaoDoMes} mesAtual={jornada.mesAtual} />
         <div className="p-hero-texto">
@@ -1191,9 +1323,16 @@ function HeroDaJornada({ jornada, plano, proxima, evolucao, aoAbrir }: { jornada
           <p className="p-hero-sub p-hero-desde">desde {diaMes(plano.inicio)}</p>
         </div>
         <p className="p-hero-prox">{jornada.proximo}</p>
-        <button type="button" className="p-hero-link" onClick={aoAbrir}>
-          Ver a jornada <ChevronRight size={16} />
-        </button>
+        <div className="p-hero-acoes">
+          <button type="button" className="p-hero-link" onClick={aoAbrir}>
+            Ver a jornada <ChevronRight size={16} />
+          </button>
+          {aoHistoria ? (
+            <button type="button" className="p-hero-link ouro" onClick={aoHistoria}>
+              <BookOpen size={15} aria-hidden="true" /> Sua história
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -1204,9 +1343,16 @@ function HeroDaJornada({ jornada, plano, proxima, evolucao, aoAbrir }: { jornada
         <span className="p-hero-eyebrow">Acompanhamento no Instituto Bratan</span>
         <p className="p-hero-titulo">{evolucao && evolucao.pontos.length > 1 ? `Acompanhando há ${evolucao.semanas} semanas` : "Seu espaço no Instituto"}</p>
         <p className="p-hero-sub">{proxima ? `Sua próxima consulta ${proxima.quando}, ${proxima.titulo}${proxima.hora ? `, às ${proxima.hora}` : ""}.` : "Quando a recepção marcar a sua próxima consulta, ela aparece aqui e você confirma com um toque."}</p>
-        <button type="button" className="p-hero-link" onClick={aoAbrir}>
-          Ver a jornada <ChevronRight size={16} />
-        </button>
+        <div className="p-hero-acoes">
+          <button type="button" className="p-hero-link" onClick={aoAbrir}>
+            Ver a jornada <ChevronRight size={16} />
+          </button>
+          {aoHistoria ? (
+            <button type="button" className="p-hero-link ouro" onClick={aoHistoria}>
+              <BookOpen size={15} aria-hidden="true" /> Sua história
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
