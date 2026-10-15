@@ -32,6 +32,7 @@ import type {
   FinSavingsMove,
 } from "@/features/financeiro/financeiroData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
+import { ehProfissional } from "@/features/financeiro/profissionais";
 import {
   deriveInteligencia360FromCrm,
   diffCrmStates,
@@ -2946,7 +2947,7 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("fin_sales")
-    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, adhesion, created_at, tipo_atendimento, plano_ou_avulsa, origem_indicacao, nota_instrucao, nota_quando, consulta_agendada_em, lancado_por_setor, aguardando_explicacao, fin_sale_items(client_ref, item_type, amount, description), fin_sale_payments(client_ref, method, amount, installments, card_machine, comprovante_status, comprovante_ref)")
+    .select("client_ref, sale_date, patient_name, crm_contact_ref, notes, adhesion, created_at, tipo_atendimento, plano_ou_avulsa, origem_indicacao, nota_instrucao, nota_quando, consulta_agendada_em, lancado_por_setor, aguardando_explicacao, fin_sale_items(client_ref, item_type, amount, description, profissional), fin_sale_payments(client_ref, method, amount, installments, card_machine, comprovante_status, comprovante_ref)")
     .gte("sale_date", `${year}-01-01`)
     .lte("sale_date", `${year}-12-31`)
     .is("deleted_at", null)
@@ -2979,6 +2980,8 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
       itemType: item.item_type as FinSale["items"][number]["itemType"],
       amount: Number(item.amount ?? 0),
       description: String(item.description ?? ""),
+      // Quem executou (15/10/2026). Vazio no banco = Dr. Daniel.
+      profissional: ehProfissional(item.profissional) ? item.profissional : null,
     })),
     payments: ((row.fin_sale_payments ?? []) as Record<string, unknown>[]).map((payment) => ({
       id: String(payment.client_ref),
@@ -3065,6 +3068,7 @@ export async function createRemoteFinSale(sale: FinSale, createdBy: string | nul
         item_type: item.itemType,
         amount: item.amount,
         description: item.description,
+        profissional: item.profissional ?? null,
       })),
     );
     if (itemsError) throw itemsError;
@@ -3120,6 +3124,7 @@ export async function updateRemoteFinSale(sale: FinSale) {
         item_type: item.itemType,
         amount: item.amount,
         description: item.description,
+        profissional: item.profissional ?? null,
       })),
     );
     if (itemsError) throw itemsError;

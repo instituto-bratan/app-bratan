@@ -9,7 +9,7 @@
 // contas e permissões são as mesmas de antes.
 import { useMemo, useRef, useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, Info, Landmark, Pencil, PiggyBank, Scale, SlidersHorizontal, Stethoscope, TrendingUp, Trophy, Wallet } from "lucide-react";
+import { Check, Info, Landmark, Pencil, PiggyBank, Scale, Sparkles, SlidersHorizontal, Stethoscope, TrendingUp, Trophy, Wallet } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { BlocoFolha, BlocoSaber, Botao, Cabecalho, FioDoMes, Selo } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -55,6 +55,7 @@ import { AntecipacaoComparador } from "./AntecipacaoComparadorCard";
 import { EnvelopesVisuais, transferenciasPrevistas } from "./EnvelopesVisuais";
 import { CaixaProjetadoCard } from "./CaixaProjetadoCard";
 import { configAtual } from "@/lib/configNegocio";
+import { PROFISSIONAIS, type ProfissionalId } from "./profissionais";
 import { perguntar } from "@/components/ui/avisos";
 import { useMetasConfig } from "./useMetasConfig";
 import { Campo, RecadoDaTela, Selecao, classeDoCampo, classeDoCampoNumero, tabela } from "./pecasBancoFechamento";
@@ -66,11 +67,13 @@ const marcasStorageKey = "app-bratan-fin-lucro-dias";
 /** Piso do caixa projetado (por aparelho; vira configuração quando a proposta 7.3 for aprovada). */
 const pisoCaixaStorageKey = "app-bratan-fin-caixa-piso-v1";
 
-const reguaLabels: Record<"impostos" | "lucroMensal" | "medicoExecutor", string> = {
+const reguaLabels: Record<"impostos" | "lucroMensal" | "medicoExecutor" | "moises", string> = {
   impostos: "Impostos (% do líquido)",
   lucroMensal: "Lucro dos sócios (R$ por mês)",
-  medicoExecutor: "Médico executor (% do lucro bruto do produto — col. S)",
+  medicoExecutor: "Dr. Daniel (% do lucro bruto do produto — col. S)",
+  moises: "Dr. Moisés (% do lucro bruto dos procedimentos dele — col. Q)",
 };
+const CAMPOS_DA_REGUA = ["impostos", "lucroMensal", "medicoExecutor", "moises"] as const;
 
 function pct(value: number) {
   return `${value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`;
@@ -106,7 +109,7 @@ function valorDoCampo(regua: ReguaLucro, campo: keyof ReguaLucro) {
 }
 
 function descreveRegua(regua: ReguaLucro) {
-  return `impostos ${pct(regua.impostos)} do líquido · lucro ${moneyFin(regua.lucroMensal)}/mês · médico executor ${pct(regua.medicoExecutor)} do lucro bruto do produto`;
+  return `impostos ${pct(regua.impostos)} do líquido · lucro ${moneyFin(regua.lucroMensal)}/mês · Dr. Daniel ${pct(regua.medicoExecutor)} do lucro bruto do produto · Dr. Moisés ${pct(regua.moises)} dos procedimentos dele`;
 }
 
 export function FinanceiroLucroPage() {
@@ -235,7 +238,7 @@ export function FinanceiroLucroPage() {
   const cotaHoje = diasUteisHoje ? reguaHoje.lucroMensal / diasUteisHoje : 0;
   const linhaDeHoje = planilha.linhas.find((linha) => linha.dia === hoje) ?? null;
   const degrauMaisRecente = [...config.degraus].sort((a, b) => a.desde.localeCompare(b.desde)).at(-1) ?? config.degraus[0];
-  const comprometido = planilha.totais.reservado.impostos + planilha.totais.reservado.lucro + planilha.totais.reservado.medicoExecutor;
+  const comprometido = planilha.totais.reservado.impostos + planilha.totais.reservado.lucro + planilha.totais.reservado.medicoExecutor + planilha.totais.reservado.moises;
   const saldoOperacional = planilha.totais.saldo.operacional;
 
   function editaDegrau(campo: keyof ReguaLucro, valor: string) {
@@ -325,6 +328,7 @@ export function FinanceiroLucroPage() {
       compromissosLucro.ativo
         ? {
             medicoExecutor: { ...repasses.medicoExecutor, provisionado: compromissosLucro.executor.devidoNoMes, transferido: compromissosLucro.executor.pagoNoMes, dividasPagas: 0, falta: compromissosLucro.executor.faltaNoMes },
+            moises: { ...repasses.moises, provisionado: compromissosLucro.moises.devidoNoMes, transferido: compromissosLucro.moises.pagoNoMes, dividasPagas: 0, falta: compromissosLucro.moises.faltaNoMes },
             socios: { ...repasses.socios, provisionado: compromissosLucro.socios.devido, transferido: compromissosLucro.socios.pagoNoMes, dividasPagas: 0, falta: compromissosLucro.socios.falta },
           }
         : repasses,
@@ -333,14 +337,19 @@ export function FinanceiroLucroPage() {
   // ---- PLANILHA SIMPLES POR PADRÃO (10/09, Lucas: "está muita informação").
   const [detalhado, setDetalhado] = useState(false);
   // A CONTA DO MÉDICO ABERTA (10/09/2026, Lucas: "pras minhas contas está um pouco
-  // menos… preciso que você disserte como chegou nesses valores").
-  const [mostrarConta, setMostrarConta] = useState(false);
+  // menos… preciso que você disserte como chegou nesses valores"). Desde 15/10 há
+  // uma conta por executor: a do Dr. Daniel e a do Dr. Moisés.
+  const [contaDe, setContaDe] = useState<ProfissionalId | null>(null);
+  const mostrarConta = contaDe !== null;
+  const quemDaConta: ProfissionalId = contaDe ?? "daniel";
+  const nomeDaConta = PROFISSIONAIS[quemDaConta].nome;
   const [diaDaConta, setDiaDaConta] = useState<string | null>(null);
   const diaExplicado = diaDaConta ?? destaque?.dia ?? hoje;
   const explicacao = useMemo(() => {
     const linhaDoDia = planilha.linhas.find((linha) => linha.dia === diaExplicado);
-    return explicarMedicoDoDia(financeiro.sales, diaExplicado, linhaDoDia?.regua ?? reguaHoje);
-  }, [financeiro.sales, diaExplicado, planilha.linhas, reguaHoje]);
+    return explicarMedicoDoDia(financeiro.sales, diaExplicado, linhaDoDia?.regua ?? reguaHoje, quemDaConta);
+  }, [financeiro.sales, diaExplicado, planilha.linhas, reguaHoje, quemDaConta]);
+  const alternaConta = (quem: ProfissionalId) => setContaDe((atual) => (atual === quem ? null : quem));
   const diasComVenda = useMemo(() => planilha.linhas.filter((linha) => linha.total > 0.005).map((linha) => linha.dia), [planilha.linhas]);
 
   // ---- OS ENVELOPES EM UM OLHAR + CAIXA PROJETADO (14/09/2026, aprovados pelo Lucas).
@@ -364,9 +373,9 @@ export function FinanceiroLucroPage() {
         piso: pisoCaixa,
         comAntecipacao,
         selicAnual: selicDaConfig(config),
-        transferenciasPrevistas: transferenciasPrevistas(hoje, repassesDaTela),
+        transferenciasPrevistas: transferenciasPrevistas(hoje, repassesDaTela, compromissosLucro),
       }),
-    [financeiro.sales, financeiro.expenses, hoje, saldoItau, pisoCaixa, comAntecipacao, config, repasses],
+    [financeiro.sales, financeiro.expenses, hoje, saldoItau, pisoCaixa, comAntecipacao, config, repassesDaTela, compromissosLucro],
   );
 
   // ---- a forma (08/10/2026): o fio do mês, o "hoje" dos destaques e as células --
@@ -403,8 +412,9 @@ export function FinanceiroLucroPage() {
           frase={
             <>
               <strong>Régua de hoje:</strong> impostos {pct(reguaHoje.impostos)} do líquido · lucro {moneyFin(reguaHoje.lucroMensal)}/mês (
-              <strong>{moneyFin(cotaHoje)} por dia útil</strong>, {diasUteisHoje} em {mesLongo(hoje.slice(0, 7))}) · médico executor{" "}
-              {pct(reguaHoje.medicoExecutor)} do lucro bruto de cada produto (coluna S da precificação) → o que sobra fica para gastar.
+              <strong>{moneyFin(cotaHoje)} por dia útil</strong>, {diasUteisHoje} em {mesLongo(hoje.slice(0, 7))}) · Dr. Daniel{" "}
+              {pct(reguaHoje.medicoExecutor)} do lucro bruto de cada produto dele (coluna S) · Dr. Moisés {pct(reguaHoje.moises)} do lucro bruto de cada
+              procedimento dele (coluna Q) → o que sobra fica para gastar.
             </>
           }
           acoes={
@@ -483,8 +493,8 @@ export function FinanceiroLucroPage() {
               <div className="grid gap-4 lg:grid-cols-2">
                 <BlocoSaber className="grid content-start gap-4">
                   <Rubrica as="h3">Decisão de hoje</Rubrica>
-                  <div className="grid items-end gap-3 sm:grid-cols-3">
-                    {(["impostos", "lucroMensal", "medicoExecutor"] as const).map((campo) => (
+                  <div className="grid items-end gap-3 sm:grid-cols-2">
+                    {CAMPOS_DA_REGUA.map((campo) => (
                       <Campo key={campo} rotulo={reguaLabels[campo]}>
                         <input
                           key={`${degrauMaisRecente?.desde}-${campo}-${degrauMaisRecente?.[campo]}`}
@@ -504,8 +514,8 @@ export function FinanceiroLucroPage() {
                 </BlocoSaber>
                 <BlocoSaber className="grid content-start gap-4">
                   <Rubrica as="h3">Alvo (onde queremos chegar)</Rubrica>
-                  <div className="grid items-end gap-3 sm:grid-cols-3">
-                    {(["impostos", "lucroMensal", "medicoExecutor"] as const).map((campo) => (
+                  <div className="grid items-end gap-3 sm:grid-cols-2">
+                    {CAMPOS_DA_REGUA.map((campo) => (
                       <Campo key={campo} rotulo={reguaLabels[campo]}>
                         <input
                           key={`alvo-${campo}-${config.alvo[campo]}`}
@@ -522,7 +532,9 @@ export function FinanceiroLucroPage() {
                     O médico recebe a coluna S da planilha de precificação: 50% do lucro bruto do produto (preço − imposto/cartão − comissão 10% −
                     consumíveis − repasse nutri − custo de sala). O app reconhece o produto pela descrição e pelo preço do item da comanda
                     (Plano 6.997 → 1.738,37 · consulta 2.500 → 743,11 · dose 590 → 130 a 226; planilha OFICIAL de 15/09); item sem
-                    produto reconhecido usa a fração do produto de referência do tipo.
+                    produto reconhecido usa a fração do produto de referência do tipo. O Dr. Moisés recebe a coluna Q da aba dele: 20% do lucro
+                    bruto de cada procedimento dele (Botox 2.500 → 206,78 · avaliação 550 → 58,28), pago em três parcelas no dia 20 dos três
+                    meses seguintes.
                   </p>
                 </BlocoSaber>
               </div>
@@ -556,8 +568,10 @@ export function FinanceiroLucroPage() {
           ) : null}
 
           {/* O DIA EM NÚMEROS GRANDES (08/09/2026, Lucas: "tem que ficar bem exposto o que o
-              Dr. Daniel vai receber em cada dia e o lucro também"). */}
-          <section aria-label="O dia em números" className="grid gap-4 lg:grid-cols-3">
+              Dr. Daniel vai receber em cada dia e o lucro também"). Desde 15/10/2026 o
+              Dr. Moisés tem o cartão dele ao lado: "para a gente saber qual que vai ser o
+              salário do Dr. Moisés e qual que está sendo o salário do Dr. Daniel". */}
+          <section aria-label="O dia em números" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <BlocoSaber className="grid content-start gap-3">
               <div className="flex items-center justify-between gap-3">
                 <Rubrica as="h2" className="flex items-center gap-2">
@@ -571,8 +585,29 @@ export function FinanceiroLucroPage() {
               </Frase>
               <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-fio-2 pt-3">
                 <p className="text-sm font-bold leading-5 tabular-nums text-tinta">No mês: {moneyFin(planilha.totais.reservado.medicoExecutor)}</p>
-                <Botao tamanho="pq" variante="fantasma" onClick={() => setMostrarConta((atual) => !atual)} aria-expanded={mostrarConta}>
-                  {mostrarConta ? "Fechar a conta" : "Como cheguei neste valor"}
+                <Botao tamanho="pq" variante="fantasma" onClick={() => alternaConta("daniel")} aria-expanded={contaDe === "daniel"}>
+                  {contaDe === "daniel" ? "Fechar a conta" : "Como cheguei neste valor"}
+                </Botao>
+              </div>
+            </BlocoSaber>
+            <BlocoSaber className="grid content-start gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <Rubrica as="h2" className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 stroke-oliva" aria-hidden="true" /> Dr. Moisés recebe
+                </Rubrica>
+                <Etiqueta tom={destaqueEhHoje ? "ouro" : "neutro"}>{quandoDestaque}</Etiqueta>
+              </div>
+              <Numero texto={destaque ? moneyFin(destaque.reservado.moises) : "—"} tamanho="grande" />
+              <Frase>
+                {pct(reguaHoje.moises)} do lucro bruto dos procedimentos dele no dia{destaque?.lucroBrutoMoises ? ` (${moneyFin(destaque.lucroBrutoMoises)})` : ""}
+              </Frase>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-fio-2 pt-3">
+                <p className="text-sm font-bold leading-5 tabular-nums text-tinta">
+                  No mês: {moneyFin(planilha.totais.reservado.moises)}
+                  <span className="block text-[13px] font-medium text-tinta-2">vendido dele: {moneyFin(planilha.totais.vendidoMoises)}</span>
+                </p>
+                <Botao tamanho="pq" variante="fantasma" onClick={() => alternaConta("moises")} aria-expanded={contaDe === "moises"}>
+                  {contaDe === "moises" ? "Fechar a conta" : "Como cheguei neste valor"}
                 </Botao>
               </div>
             </BlocoSaber>
@@ -610,7 +645,7 @@ export function FinanceiroLucroPage() {
                 tamanho="grande"
                 tom={destaque && destaque.reservado.operacional < -0.005 ? "RUIM" : "NEUTRO"}
               />
-              <Frase>o que sobrou do dia depois de impostos, médico e lucro</Frase>
+              <Frase>o que sobrou do dia depois de impostos, Dr. Daniel, Dr. Moisés e lucro</Frase>
               <p
                 className={cn(
                   "mt-1 flex items-start gap-2 border-t border-fio-2 pt-3 text-sm font-bold leading-5 tabular-nums",
@@ -630,8 +665,8 @@ export function FinanceiroLucroPage() {
             <BlocoSaber as="section" aria-labelledby="lucro-conta-medico" className="grid gap-4 p-0 max-md:p-0">
               <div className="flex flex-wrap items-end justify-between gap-3 px-6 pt-5 max-md:px-4 max-md:pt-4">
                 <h2 id="lucro-conta-medico" className="flex items-center gap-2 text-xl font-bold leading-7 text-tinta">
-                  <Stethoscope className="h-5 w-5 stroke-oliva" aria-hidden="true" />
-                  A conta do Dr. Daniel, item por item
+                  {quemDaConta === "moises" ? <Sparkles className="h-5 w-5 stroke-oliva" aria-hidden="true" /> : <Stethoscope className="h-5 w-5 stroke-oliva" aria-hidden="true" />}
+                  A conta do {nomeDaConta}, item por item
                 </h2>
                 <Campo rotulo="Dia" className="w-40">
                   <Selecao value={diaExplicado} onChange={(event) => setDiaDaConta(event.target.value)} aria-label="Dia da conta">
@@ -648,8 +683,18 @@ export function FinanceiroLucroPage() {
                 Cada item da comanda é procurado na tabela de preços (pelo nome exato que o Fechamento grava; se não, por palavra-chave ou
                 pelo preço). A tabela traz o <strong className="font-bold">lucro bruto do produto</strong> (coluna P: preço − nota fiscal − comissão − custo da
                 sala − material). Se o paciente pagou um valor diferente da tabela, <strong className="font-bold">o valor pago entra no lugar do preço</strong> (coluna F)
-                e a planilha recalcula: imposto e comissão acompanham o valor pago; consumíveis, repasse e sala ficam fixos. O Dr. Daniel recebe{" "}
-                {pct(explicacao.percentual)} desse lucro bruto (coluna S). Itens de nutri, psicóloga e "outro" não entram.
+                e a planilha recalcula: imposto e comissão acompanham o valor pago; consumíveis, repasse e sala ficam fixos.{" "}
+                {quemDaConta === "moises" ? (
+                  <>
+                    O Dr. Moisés recebe {pct(explicacao.percentual)} desse lucro bruto (coluna Q da aba dele). Só entram os itens marcados como dele na
+                    comanda — os procedimentos da aba &quot;Dr. Moisés&quot; já nascem com essa marca.
+                  </>
+                ) : (
+                  <>
+                    O Dr. Daniel recebe {pct(explicacao.percentual)} desse lucro bruto (coluna S). Itens de nutri, psicóloga e &quot;outro&quot; não entram,
+                    nem os itens do Dr. Moisés (esses estão na conta dele).
+                  </>
+                )}
               </p>
               {explicacao.comandas.length ? (
                 <div className="overflow-x-auto px-3 max-md:px-1">
@@ -662,7 +707,9 @@ export function FinanceiroLucroPage() {
                         <th className={tabela.thNum}>Tabela: preço → lucro bruto</th>
                         <th className={tabela.thNum}>Qtd.</th>
                         <th className={tabela.thNum}>Lucro bruto do item</th>
-                        <th className={tabela.thNum}>{pct(explicacao.percentual)} Dr. Daniel</th>
+                        <th className={tabela.thNum}>
+                          {pct(explicacao.percentual)} {nomeDaConta}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -708,19 +755,22 @@ export function FinanceiroLucroPage() {
                   </table>
                 </div>
               ) : (
-                <p className="px-6 text-sm font-medium leading-5 text-tinta-2 max-md:px-4">Nenhuma comanda lançada neste dia.</p>
+                <p className="px-6 text-sm font-medium leading-5 text-tinta-2 max-md:px-4">Nenhum item do {nomeDaConta} lançado neste dia.</p>
               )}
               {explicacao.comandas.length ? (
                 <div className="mx-6 mb-6 grid gap-2 rounded-controle bg-folha p-4 text-sm font-medium leading-6 text-tinta max-md:mx-4 max-md:mb-4">
                   <p className="font-bold">Para conferir com a sua conta</p>
                   <p>
-                    Coluna P dos itens do dia {moneyFin(explicacao.lucroBruto)} → coluna S (Dr. Daniel) <strong className="font-bold">{moneyFin(explicacao.parteMedico)}</strong>.
-                    Planilha OFICIAL de 02/09/2026.
+                    Coluna P dos itens do dia {moneyFin(explicacao.lucroBruto)} → {quemDaConta === "moises" ? "coluna Q" : "coluna S"} ({nomeDaConta}){" "}
+                    <strong className="font-bold">{moneyFin(explicacao.parteMedico)}</strong>.{" "}
+                    {quemDaConta === "moises"
+                      ? "Aba \"Precificação Dr. Moisés\" (hora de sala de 15/09/2026, atualizada em 15/10/2026)."
+                      : "Planilha OFICIAL de 15/09/2026."}
                   </p>
                   {/* A RÉGUA DA AULA (Dr. Thiago Volpi, 42:35): "passar para você como médico executor algo entre 20 e 30%
                       do que você fatura… da receita que você tem"; no Espaço dele são 28%. Aqui a parte do médico sai da
                       coluna S da planilha, então o % da receita é consequência — e é o que dá para comparar com a aula. */}
-                  {planilha.totais.liquido > 0.005 ? (
+                  {quemDaConta === "daniel" && planilha.totais.liquido > 0.005 ? (
                     <p className="border-t border-fio pt-2">
                       <strong className="font-bold">Comparado com a aula:</strong> no mês, a parte do Dr. Daniel ({moneyFin(planilha.totais.reservado.medicoExecutor)}) está em{" "}
                       <strong className="font-bold">{Math.round((planilha.totais.reservado.medicoExecutor / planilha.totais.liquido) * 1000) / 10}%</strong> do que entrou líquido
@@ -773,15 +823,18 @@ export function FinanceiroLucroPage() {
               </Rubrica>
               <Numero texto={moneyFin(comprometido)} />
               <Frase>
-                impostos {moneyFin(planilha.totais.reservado.impostos)} · lucro {moneyFin(planilha.totais.reservado.lucro)} · médico{" "}
-                {moneyFin(planilha.totais.reservado.medicoExecutor)} ({pct(reguaHoje.medicoExecutor)} do lucro bruto de {moneyFin(planilha.totais.lucroBrutoProdutos)} nos produtos)
+                impostos {moneyFin(planilha.totais.reservado.impostos)} · lucro {moneyFin(planilha.totais.reservado.lucro)} · Dr. Daniel{" "}
+                {moneyFin(planilha.totais.reservado.medicoExecutor)} ({pct(reguaHoje.medicoExecutor)} do lucro bruto de {moneyFin(planilha.totais.lucroBrutoProdutos)} nos produtos dele)
+                {planilha.totais.reservado.moises > 0.005
+                  ? ` · Dr. Moisés ${moneyFin(planilha.totais.reservado.moises)} (${pct(reguaHoje.moises)} do lucro bruto de ${moneyFin(planilha.totais.lucroBrutoMoises)} nos procedimentos dele)`
+                  : ""}
               </Frase>
             </div>
             <div className="grid content-start gap-3 rounded-bloco bg-saber p-5 max-md:p-4">
               <Rubrica as="h2" className="flex items-center gap-2">
                 <Wallet className="h-4 w-4 stroke-oliva" aria-hidden="true" /> Cabe gastar no mês
                 <InfoTip title="Cabe gastar × contas pagas">
-                  &quot;Cabe gastar&quot; é a soma do que sobrou para o operacional em cada dia (líquido − impostos − parte do médico − cota do lucro).
+                  &quot;Cabe gastar&quot; é a soma do que sobrou para o operacional em cada dia (líquido − impostos − parte do Dr. Daniel − parte do Dr. Moisés − cota do lucro).
                   &quot;Contas pagas&quot; são as contas operacionais que já saíram no mês (sem obra, impostos, sócios, empréstimos e repasse do médico —
                   esses têm envelope próprio). Se as contas passam do que cabe, o número fica vermelho: é a despesa acima da régua que a aula manda enxugar.
                 </InfoTip>
@@ -815,7 +868,7 @@ export function FinanceiroLucroPage() {
                 <InfoTip title="Avaliação instantânea">
                   &quot;Antes de mudar qualquer coisa, você precisa saber onde está.&quot; Os últimos meses fechados, com a
                   porcentagem exata de cada envelope sobre o que entrou. Impostos = imposto pago (competência); médico
-                  executor = só as transferências do Lucro Inteligente ao Dr. Daniel; sócios = transferências do Lucro Inteligente + distribuição
+                  executor = só as transferências do Lucro Inteligente ao Dr. Daniel; Dr. Moisés = os pagamentos registrados a ele; sócios = transferências do Lucro Inteligente + distribuição
                   de lucro; operacional = todas as outras contas fora obra e empréstimos — inclusive o salário fixo do médico, o salário da CEO e o
                   pró-labore, que são conta fixa e não lucro (Lucas, 10/09). <strong>Lucro</strong> é o que sobrou depois de impostos, médico e
                   operacional — inclui o que os sócios já levaram. Obra, empréstimos e investimento ficam à parte: a aula
@@ -868,6 +921,7 @@ export function FinanceiroLucroPage() {
                       [
                         ["impostos", "Impostos pagos"],
                         ["medicoExecutor", "Médico executor (Dr. Daniel)"],
+                        ["moises", "Dr. Moisés (biomédico)"],
                         ["operacional", "Despesas operacionais"],
                         ["lucro", "Lucro (sobrou p/ os sócios)"],
                       ] as const
@@ -894,12 +948,14 @@ export function FinanceiroLucroPage() {
                         <td className={cn(cellNumTabela, "font-bold text-tinta")}>
                           {campo === "impostos" ? pct(reguaHoje.impostos) : null}
                           {campo === "medicoExecutor" ? `${pct(reguaHoje.medicoExecutor)} da col. P` : null}
+                          {campo === "moises" ? `${pct(reguaHoje.moises)} da col. P dele` : null}
                           {campo === "lucro" ? `${moneyFin(reguaHoje.lucroMensal)}/mês` : null}
                           {campo === "operacional" ? "o que sobra" : null}
                         </td>
                         <td className={cn(cellNumTabela, "font-bold text-tinta")}>
                           {campo === "impostos" ? pct(config.alvo.impostos) : null}
                           {campo === "medicoExecutor" ? `${pct(config.alvo.medicoExecutor)} da col. P` : null}
+                          {campo === "moises" ? `${pct(config.alvo.moises)} da col. P dele` : null}
                           {campo === "lucro" ? `${moneyFin(config.alvo.lucroMensal)}/mês` : null}
                           {campo === "operacional" ? "o que sobra" : null}
                         </td>
@@ -1008,7 +1064,7 @@ export function FinanceiroLucroPage() {
 
           {/* PLANILHA DO DIA A DIA — SIMPLES POR PADRÃO (10/09/2026, Lucas: "está
               muito confusa... muita informação"). Sete colunas contam a história:
-              quanto entrou, o que a régua separou (impostos, sócios, Dr. Daniel),
+              quanto entrou, o que a régua separou (impostos, sócios, Dr. Daniel, Dr. Moisés),
               o que sobrou e se já foi separado. O resto (PIX/dinheiro/cartão,
               taxas, disponível, contas pagas, fechamento) abre em "Ver detalhes". */}
           <BlocoFolha as="section" aria-labelledby="lucro-planilha" className="grid gap-4 overflow-hidden">
@@ -1019,7 +1075,8 @@ export function FinanceiroLucroPage() {
                   <InfoTip title="Como ler a planilha">
                     <strong>Entrou</strong> é o que ficou das comandas do dia depois das taxas da maquininha e do PIX.{" "}
                     <strong>Impostos</strong> é a % do líquido. <strong>Sócios</strong> é o lucro do mês dividido pelos dias úteis — vale todo dia útil,
-                    mesmo sem entrada. <strong>Dr. Daniel</strong> é a coluna S da precificação: 50% do lucro bruto de cada produto vendido no dia.{" "}
+                    mesmo sem entrada. <strong>Dr. Daniel</strong> é a coluna S da precificação: 50% do lucro bruto de cada produto dele vendido no dia.{" "}
+                    <strong>Dr. Moisés</strong> é a coluna Q da aba dele: 20% do lucro bruto de cada procedimento dele.{" "}
                     <strong>Fica para gastar</strong> é o que sobra (vermelho quando o dia não paga a régua). Marque <strong>Separado</strong> quando as
                     transferências do dia forem feitas. Em &quot;Ver detalhes&quot;: PIX, dinheiro, débito, crédito, bruto, taxas (débito 0,7% · crédito à
                     vista 1,7% · parcelado 2,39% · PIX 0,6% teto R$ 150), disponível (PIX/dinheiro do dia + cartão do dia útil anterior, e o custo de
@@ -1038,7 +1095,7 @@ export function FinanceiroLucroPage() {
               <p className="px-6 pb-6 text-center text-sm font-medium leading-5 text-tinta-2">Mês ainda não começou — a planilha nasce dia a dia.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className={cn(tabela.tabela, "text-[13px]", detalhado ? "min-w-[1400px]" : "min-w-[760px]")}>
+                <table className={cn(tabela.tabela, "text-[13px]", detalhado ? "min-w-[1500px]" : "min-w-[860px]")}>
                   <thead>
                     <tr>
                       <th className={cn(tabela.th, "sticky left-0 z-10 bg-folha px-3")}>Dia</th>
@@ -1057,6 +1114,7 @@ export function FinanceiroLucroPage() {
                       <th className={cn(tabela.thNum, "px-3")}>Impostos</th>
                       <th className={cn(tabela.thNum, "bg-musgo-claro px-3 text-tinta")}>Sócios</th>
                       <th className={cn(tabela.thNum, "bg-ouro-claro px-3 text-tinta")}>Dr. Daniel</th>
+                      <th className={cn(tabela.thNum, "bg-ouro-claro px-3 text-tinta")}>Dr. Moisés</th>
                       <th className={cn(tabela.thNum, "px-3 text-tinta")}>Fica p/ gastar</th>
                       {detalhado ? (
                         <>
@@ -1112,6 +1170,14 @@ export function FinanceiroLucroPage() {
                             {detalhado && linha.lucroBrutoProdutos ? (
                               <span className="block text-xs font-medium text-tinta-2" title="lucro bruto dos produtos do dia (coluna P) · itens do médico pelo preço">
                                 col. P {moneyFin(linha.lucroBrutoProdutos)} · itens {moneyFin(linha.prescrito)}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className={cn(cellNumTabela, "bg-ouro-claro/60 font-bold text-tinta")}>
+                            {linha.reservado.moises ? moneyFin(linha.reservado.moises) : "—"}
+                            {detalhado && linha.lucroBrutoMoises ? (
+                              <span className="block text-xs font-medium text-tinta-2" title="lucro bruto dos procedimentos do Dr. Moisés no dia (coluna P) · o que foi vendido dele">
+                                col. P {moneyFin(linha.lucroBrutoMoises)} · vendido {moneyFin(linha.vendidoMoises)}
                               </span>
                             ) : null}
                           </td>
@@ -1197,6 +1263,10 @@ export function FinanceiroLucroPage() {
                       <td className={cn(tabela.peNum, "bg-ouro-claro px-3")}>
                         {moneyFin(planilha.totais.reservado.medicoExecutor)}
                         {detalhado ? <span className="block text-xs font-medium text-tinta-2">col. P {moneyFin(planilha.totais.lucroBrutoProdutos)}</span> : null}
+                      </td>
+                      <td className={cn(tabela.peNum, "bg-ouro-claro px-3")}>
+                        {moneyFin(planilha.totais.reservado.moises)}
+                        {detalhado ? <span className="block text-xs font-medium text-tinta-2">col. P {moneyFin(planilha.totais.lucroBrutoMoises)}</span> : null}
                       </td>
                       <td className={cn(tabela.peNum, "px-3", planilha.totais.reservado.operacional < -0.005 ? "text-erro" : "text-tinta")}>{moneyFin(planilha.totais.reservado.operacional)}</td>
                       {detalhado ? (

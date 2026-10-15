@@ -246,7 +246,9 @@ test("Lucro: régua, marcas, sincronização e permissões continuam", () => {
   assert.match(src, /onBlur=\{\(event\) => editaSelic\(event\.target\.value\)\}/);
   assert.match(src, /onBlur=\{\(event\) => registraConferenciaRede\(event\.target\.value\)\}/);
   assert.match(src, /\{detalhado \? "Ver resumo" : "Ver detalhes"\}/);
-  assert.match(src, /\{mostrarConta \? "Fechar a conta" : "Como cheguei neste valor"\}/);
+  // 15/10/2026: uma conta por executor (Dr. Daniel e Dr. Moisés), o mesmo botão em cada cartão.
+  assert.match(src, /\{contaDe === "daniel" \? "Fechar a conta" : "Como cheguei neste valor"\}/);
+  assert.match(src, /\{contaDe === "moises" \? "Fechar a conta" : "Como cheguei neste valor"\}/);
   assert.match(src, /\{month === hoje\.slice\(0, 7\) \? \(\s*<CaixaProjetadoCard/, "o caixa projetado só no mês corrente");
   assert.match(src, /<CompromissosLucroCard compromissos=\{compromissosLucro\} readOnly=\{!canEdit\}/);
 });

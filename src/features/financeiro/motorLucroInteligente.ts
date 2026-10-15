@@ -20,11 +20,20 @@
 // turnos" e "SALÁRIO Médico (atendimentos)": elas e as transferências do Lucro
 // Inteligente contavam o mesmo dinheiro em dobro.
 //
+// DR. MOISÉS (15/10/2026): o motor ganhou um segundo executor. Cada item da
+// comanda diz de quem é (profissionais.ts); o Dr. Daniel fica com 50% da coluna P
+// dos itens DELE (as mesmas duas parcelas de sempre) e o Dr. Moisés com 20% da
+// coluna P dos itens dele, em TRÊS parcelas no dia 20 dos três meses seguintes
+// ("a primeira parcela vai ser paga no dia 20 do mês seguinte, para a gente ter o
+// maior fluxo de caixa"). As funções de antes continuam devolvendo o Dr. Daniel
+// quando ninguém diz o profissional — nada do que já estava calculado mudou.
+//
 // Módulo puro (sem React) e sem importar valores de financeiroData — quem
 // importa é ele, para o lucro do mês sair igual em todas as telas.
 import type { FinExpense, FinSale } from "./financeiroData";
-import { lucroBrutoDoItem } from "./catalogoPrecificacao";
+import { lucroBrutoDoItem, profissionalDoItem } from "./catalogoPrecificacao";
 import { ehDiaUtil } from "./recebiveisRede";
+import { LISTA_DE_PROFISSIONAIS, PROFISSIONAIS, type ProfissionalId } from "./profissionais";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
@@ -37,7 +46,8 @@ export const nomeDoSocio: Record<SocioDoMotor, string> = {
   daniel: "Dr. Daniel",
 };
 
-export type DegrauDoMotor = { desde: string; medicoExecutor: number; lucroMensal: number };
+/** medicoExecutor = % do Dr. Daniel; moises = % do Dr. Moisés (15/10/2026). */
+export type DegrauDoMotor = { desde: string; medicoExecutor: number; lucroMensal: number; moises: number };
 
 export type ConfigDoMotor = {
   /** Primeiro mês (AAAA-MM) em que o motor vale. Antes dele, o lucro segue a regra antiga. */
@@ -52,7 +62,7 @@ export type ConfigDoMotor = {
 
 export const CONFIG_PADRAO_DO_MOTOR: ConfigDoMotor = {
   inicio: "2026-09",
-  degraus: [{ desde: "2026-09-01", medicoExecutor: 50, lucroMensal: 40000 }],
+  degraus: [{ desde: "2026-09-01", medicoExecutor: 50, lucroMensal: 40000, moises: PROFISSIONAIS.moises.percentualPadrao }],
   divisaoSocios: { andrya: 62.5, daniel: 37.5 },
   parcelasExecutor: 2,
 };
@@ -62,7 +72,7 @@ let versao = 0;
 const ouvintes = new Set<() => void>();
 
 type ConfigParcial = {
-  degraus?: Array<{ desde?: string; medicoExecutor?: number; lucroMensal?: number }>;
+  degraus?: Array<{ desde?: string; medicoExecutor?: number; lucroMensal?: number; moises?: number }>;
   divisaoSocios?: Partial<Record<SocioDoMotor, number>>;
   parcelasExecutor?: number;
   motorDesde?: string;
@@ -79,6 +89,8 @@ export function definirConfigDoMotor(parcial: ConfigParcial) {
       desde: String(degrau.desde),
       medicoExecutor: Number.isFinite(Number(degrau.medicoExecutor)) ? Number(degrau.medicoExecutor) : CONFIG_PADRAO_DO_MOTOR.degraus[0].medicoExecutor,
       lucroMensal: Number.isFinite(Number(degrau.lucroMensal)) ? Number(degrau.lucroMensal) : CONFIG_PADRAO_DO_MOTOR.degraus[0].lucroMensal,
+      // Degrau gravado antes de 15/10 não tem o campo: vale o padrão (20%).
+      moises: degrau.moises !== undefined && degrau.moises !== null && Number.isFinite(Number(degrau.moises)) ? Number(degrau.moises) : PROFISSIONAIS.moises.percentualPadrao,
     }));
   const andrya = Number(parcial?.divisaoSocios?.andrya);
   const parcelas = Math.round(Number(parcial?.parcelasExecutor));
@@ -119,6 +131,12 @@ function degrauNoDia(cfg: ConfigDoMotor, dia: string): DegrauDoMotor {
   return vigente;
 }
 
+/** O % do lucro bruto que vai para o profissional no degrau (Dr. Daniel 50 · Dr. Moisés 20). */
+export function percentualDoProfissional(degrau: Pick<DegrauDoMotor, "medicoExecutor"> & { moises?: number }, quem: ProfissionalId) {
+  if (quem === "moises") return Number.isFinite(Number(degrau.moises)) ? Number(degrau.moises) : PROFISSIONAIS.moises.percentualPadrao;
+  return degrau.medicoExecutor;
+}
+
 // ---- Calendário ----------------------------------------------------------------
 
 export function mesSeguinte(monthKey: string, quantos = 1) {
@@ -141,6 +159,43 @@ export function ultimoDiaUtilDoMes(monthKey: string) {
   return `${monthKey}-01`;
 }
 
+/**
+ * Dia fixo de vencimento (o 20 do Dr. Moisés). Em fim de semana ou feriado
+ * bancário, paga no dia útil ANTERIOR — a regra da casa para contas (08/10).
+ */
+export function diaUtilAteODia(monthKey: string, dia: number) {
+  const [ano, mes] = monthKey.split("-").map(Number);
+  const ultimo = new Date(ano, mes, 0).getDate();
+  for (let d = Math.min(dia, ultimo); d >= 1; d -= 1) {
+    const iso = `${monthKey}-${String(d).padStart(2, "0")}`;
+    if (ehDiaUtil(iso)) return iso;
+  }
+  return `${monthKey}-${String(Math.min(dia, ultimo)).padStart(2, "0")}`;
+}
+
+/** Em quantas parcelas o trabalho de um mês do profissional é pago (o Dr. Daniel segue a configuração). */
+export function parcelasDoProfissional(quem: ProfissionalId, cfg: ConfigDoMotor = configAtual) {
+  return quem === "daniel" ? cfg.parcelasExecutor : PROFISSIONAIS[quem].parcelas;
+}
+
+/**
+ * Quando vence a parcela N do trabalho do mês M. Dr. Daniel: último dia útil de
+ * M, depois de M+1. Dr. Moisés: dia 20 de M+1, M+2 e M+3.
+ */
+export function vencimentoDaParcela(quem: ProfissionalId, mesDoTrabalho: string, numero: number) {
+  const regra = PROFISSIONAIS[quem];
+  const mes = mesSeguinte(mesDoTrabalho, regra.primeiraParcelaDepoisDe + numero - 1);
+  return regra.vencimento === "ultimo-dia-util" ? ultimoDiaUtilDoMes(mes) : diaUtilAteODia(mes, regra.vencimento.dia);
+}
+
+/** Primeiro mês de trabalho que o motor olha para o profissional. */
+function inicioDoProfissional(quem: ProfissionalId, cfg: ConfigDoMotor, desde?: string) {
+  let inicio = cfg.inicio;
+  if (desde && desde > inicio) inicio = desde;
+  if (PROFISSIONAIS[quem].desde > inicio) inicio = PROFISSIONAIS[quem].desde;
+  return inicio;
+}
+
 function mesesEntre(de: string, ate: string) {
   const meses: string[] = [];
   for (let mes = de; mes <= ate; mes = mesSeguinte(mes)) meses.push(mes);
@@ -150,19 +205,28 @@ function mesesEntre(de: string, ate: string) {
 // ---- Valores do mês ------------------------------------------------------------
 
 /**
- * Envelope do médico executor do mês — o mesmo número da tela do Lucro
- * Inteligente: por dia, a soma do lucro bruto das comandas × o % do degrau.
+ * Envelope do executor do mês — o mesmo número da tela do Lucro Inteligente:
+ * por dia, a soma do lucro bruto dos itens DELE nas comandas × o % do degrau.
+ * Sem `quem`, é o Dr. Daniel (como sempre foi).
  */
-export function executorDoMes(sales: FinSale[], monthKey: string, cfg: ConfigDoMotor = configAtual) {
+export function executorDoMes(sales: FinSale[], monthKey: string, cfg: ConfigDoMotor = configAtual, quem: ProfissionalId = "daniel") {
   const lucroBrutoPorDia = new Map<string, number>();
   for (const sale of sales) {
     if (sale.saleDate.slice(0, 7) !== monthKey) continue;
-    const daComanda = round2(sale.items.reduce((soma, item) => soma + lucroBrutoDoItem(item), 0));
+    const daComanda = round2(sale.items.reduce((soma, item) => soma + (profissionalDoItem(item) === quem ? lucroBrutoDoItem(item) : 0), 0));
+    if (!daComanda) continue;
     lucroBrutoPorDia.set(sale.saleDate, round2((lucroBrutoPorDia.get(sale.saleDate) ?? 0) + daComanda));
   }
   let total = 0;
-  for (const [dia, lucroBruto] of lucroBrutoPorDia) total += round2((lucroBruto * degrauNoDia(cfg, dia).medicoExecutor) / 100);
+  for (const [dia, lucroBruto] of lucroBrutoPorDia) total += round2((lucroBruto * percentualDoProfissional(degrauNoDia(cfg, dia), quem)) / 100);
   return round2(total);
+}
+
+/** O trabalho do mês de cada executor e a soma (é a soma que é custo da operação). */
+export function executoresDoMes(sales: FinSale[], monthKey: string, cfg: ConfigDoMotor = configAtual) {
+  const daniel = executorDoMes(sales, monthKey, cfg, "daniel");
+  const moises = monthKey >= PROFISSIONAIS.moises.desde ? executorDoMes(sales, monthKey, cfg, "moises") : 0;
+  return { daniel, moises, total: round2(daniel + moises) };
 }
 
 /** Lucro dos sócios do mês pela régua, já dividido entre a Andrya e o Dr. Daniel. */
@@ -174,8 +238,12 @@ export function lucroSociosDoMes(monthKey: string, cfg: ConfigDoMotor = configAt
 
 // ---- Compromissos e pagamentos ---------------------------------------------------
 
-/** Pagamentos ao médico executor: a categoria própria do Lucro Inteligente. */
-export const CATEGORIA_PAGAMENTO_EXECUTOR = "cat-lucro-inteligente-medico";
+/** Pagamentos ao médico executor (Dr. Daniel): a categoria própria do Lucro Inteligente. */
+export const CATEGORIA_PAGAMENTO_EXECUTOR = PROFISSIONAIS.daniel.categoriaPagamento;
+/** Pagamentos ao Dr. Moisés (15/10/2026). */
+export const CATEGORIA_PAGAMENTO_MOISES = PROFISSIONAIS.moises.categoriaPagamento;
+/** Todas as categorias que são baixa de parcela de executor (nunca custo novo). */
+export const CATEGORIAS_PAGAMENTO_EXECUTORES = new Set(LISTA_DE_PROFISSIONAIS.map((profissional) => profissional.categoriaPagamento));
 /** Pagamentos do lucro aos sócios: Lucro Inteligente e a distribuição de lucro. */
 export const CATEGORIAS_PAGAMENTO_SOCIOS = new Set(["cat-lucro-inteligente-socios", "cat-distribuicao-lucro-socios"]);
 /**
@@ -191,6 +259,8 @@ export function socioDoPagamento(expense: Pick<FinExpense, "supplier" | "descrip
 
 export type ParcelaDoExecutor = {
   id: string;
+  /** De quem é a parcela (15/10/2026). */
+  profissional: ProfissionalId;
   /** Mês em que o trabalho foi feito (o custo é deste mês). */
   mesDoTrabalho: string;
   numero: number;
@@ -237,16 +307,21 @@ function valorDaParcela(total: number, numero: number, de: number) {
  * app carrega um ano (ou dois) de lançamentos: antes disso não há comanda para
  * calcular, e o motor não inventa compromisso sem dado.
  */
-export function parcelasDoExecutor(sales: FinSale[], ateMes: string, cfg: ConfigDoMotor = configAtual, desde?: string): ParcelaDoExecutor[] {
-  const inicio = desde && desde > cfg.inicio ? desde : cfg.inicio;
+export function parcelasDoExecutor(sales: FinSale[], ateMes: string, cfg: ConfigDoMotor = configAtual, desde?: string, quem: ProfissionalId = "daniel"): ParcelaDoExecutor[] {
+  const inicio = inicioDoProfissional(quem, cfg, desde);
   if (ateMes < inicio) return [];
   const parcelas: ParcelaDoExecutor[] = [];
+  const de = parcelasDoProfissional(quem, cfg);
   for (const mes of mesesEntre(inicio, ateMes)) {
-    const total = executorDoMes(sales, mes, cfg);
-    const de = cfg.parcelasExecutor;
+    const total = executorDoMes(sales, mes, cfg, quem);
+    // Dr. Moisés: mês sem atendimento dele não gera parcela de zero. O Dr. Daniel
+    // continua com as parcelas de todo mês, como sempre foi (o cartão diz "ainda
+    // sem venda neste mês").
+    if (quem !== "daniel" && total <= 0.005) continue;
     for (let numero = 1; numero <= de; numero += 1) {
       const valor = valorDaParcela(total, numero, de);
-      parcelas.push({ id: `executor-${mes}-${numero}`, mesDoTrabalho: mes, numero, de, vence: ultimoDiaUtilDoMes(mesSeguinte(mes, numero - 1)), valor, pago: 0, falta: valor });
+      const id = quem === "daniel" ? `executor-${mes}-${numero}` : `${quem}-${mes}-${numero}`;
+      parcelas.push({ id, profissional: quem, mesDoTrabalho: mes, numero, de, vence: vencimentoDaParcela(quem, mes, numero), valor, pago: 0, falta: valor });
     }
   }
   return parcelas;
@@ -262,26 +337,32 @@ function pagamentosDoMotor(expenses: FinExpense[], filtro: (expense: FinExpense)
     .sort((a, b) => a.dia.localeCompare(b.dia) || a.id.localeCompare(b.id));
 }
 
+export type CompromissoDoExecutor = {
+  profissional: ProfissionalId;
+  /** Custo do mês (competência): o envelope inteiro do mês. */
+  doMes: number;
+  /** Parcelas de meses anteriores que venceram e não foram pagas inteiras. */
+  atrasadas: ParcelaDoExecutor[];
+  /** Parcelas que vencem neste mês (Dr. Daniel: a 2ª do mês anterior e a 1ª deste; Dr. Moisés: as dos três meses anteriores). */
+  vencemNoMes: ParcelaDoExecutor[];
+  devidoNoMes: number;
+  faltaNoMes: number;
+  /** Pagamentos registrados com data neste mês. */
+  pagamentosNoMes: PagamentoDoMotor[];
+  pagoNoMes: number;
+  /** As parcelas que vencem depois deste mês (o trabalho deste mês e, no Dr. Moisés, o que ainda falta dos meses anteriores). */
+  proximas: ParcelaDoExecutor[];
+  /** Pago a mais do que todas as parcelas até aqui (adiantamento). */
+  adiantado: number;
+};
+
 export type CompromissosDoMes = {
   mes: string;
   ativo: boolean;
-  executor: {
-    /** Custo do mês (competência): o envelope inteiro do mês. */
-    doMes: number;
-    /** Parcelas de meses anteriores que venceram e não foram pagas inteiras. */
-    atrasadas: ParcelaDoExecutor[];
-    /** Parcelas que vencem neste mês: a 2ª do mês anterior e a 1ª deste. */
-    vencemNoMes: ParcelaDoExecutor[];
-    devidoNoMes: number;
-    faltaNoMes: number;
-    /** Pagamentos registrados com data neste mês. */
-    pagamentosNoMes: PagamentoDoMotor[];
-    pagoNoMes: number;
-    /** As parcelas do trabalho deste mês que vencem nos meses seguintes. */
-    proximas: ParcelaDoExecutor[];
-    /** Pago a mais do que todas as parcelas até aqui (adiantamento). */
-    adiantado: number;
-  };
+  /** O médico executor, Dr. Daniel (o nome ficou de antes do Dr. Moisés). */
+  executor: CompromissoDoExecutor;
+  /** O Dr. Moisés (15/10/2026): 20% em três parcelas no dia 20. */
+  moises: CompromissoDoExecutor;
   socios: {
     total: number;
     porSocio: Array<CompromissoDoSocio & { nome: string; pagamentosNoMes: PagamentoDoMotor[]; pagoNoMes: number; adiantado: number }>;
@@ -296,6 +377,47 @@ export type CompromissosDoMes = {
  * lucro de cada sócio. Os pagamentos de todos os meses desde o início abatem
  * sempre o que vence primeiro, então o que sobrou de um mês aparece como falta.
  */
+const executorVazio = (profissional: ProfissionalId): CompromissoDoExecutor => ({
+  profissional,
+  doMes: 0,
+  atrasadas: [],
+  vencemNoMes: [],
+  devidoNoMes: 0,
+  faltaNoMes: 0,
+  pagamentosNoMes: [],
+  pagoNoMes: 0,
+  proximas: [],
+  adiantado: 0,
+});
+
+/**
+ * As parcelas de UM executor até o mês, abatidas pelos pagamentos dele (a
+ * categoria própria de cada um), sempre o que vence primeiro.
+ */
+function compromissoDoExecutor(quem: ProfissionalId, input: { sales: FinSale[]; expenses: FinExpense[]; monthKey: string; desde?: string }, cfg: ConfigDoMotor): CompromissoDoExecutor {
+  const { monthKey } = input;
+  const inicio = inicioDoProfissional(quem, cfg, input.desde);
+  if (monthKey < inicio) return executorVazio(quem);
+  const parcelas = parcelasDoExecutor(input.sales, monthKey, cfg, input.desde, quem);
+  const categoria = PROFISSIONAIS[quem].categoriaPagamento;
+  const pagamentos = pagamentosDoMotor(input.expenses, (expense) => expense.categoryRef === categoria, inicio, monthKey);
+  const adiantado = abater(parcelas, pagamentos.reduce((soma, pagamento) => soma + pagamento.valor, 0));
+  const vencemNoMes = parcelas.filter((parcela) => parcela.vence.slice(0, 7) === monthKey);
+  const pagamentosNoMes = pagamentos.filter((pagamento) => pagamento.dia.slice(0, 7) === monthKey);
+  return {
+    profissional: quem,
+    doMes: executorDoMes(input.sales, monthKey, cfg, quem),
+    atrasadas: parcelas.filter((parcela) => parcela.vence.slice(0, 7) < monthKey && parcela.falta > 0.005),
+    vencemNoMes,
+    devidoNoMes: round2(vencemNoMes.reduce((soma, parcela) => soma + parcela.valor, 0)),
+    faltaNoMes: round2(parcelas.filter((parcela) => parcela.vence.slice(0, 7) <= monthKey).reduce((soma, parcela) => soma + parcela.falta, 0)),
+    pagamentosNoMes,
+    pagoNoMes: round2(pagamentosNoMes.reduce((soma, pagamento) => soma + pagamento.valor, 0)),
+    proximas: parcelas.filter((parcela) => parcela.vence.slice(0, 7) > monthKey),
+    adiantado,
+  };
+}
+
 export function compromissosDoMes(input: { sales: FinSale[]; expenses: FinExpense[]; monthKey: string; cfg?: ConfigDoMotor; desde?: string }): CompromissosDoMes {
   const cfg = input.cfg ?? configAtual;
   const { monthKey } = input;
@@ -304,20 +426,15 @@ export function compromissosDoMes(input: { sales: FinSale[]; expenses: FinExpens
   const vazio: CompromissosDoMes = {
     mes: monthKey,
     ativo,
-    executor: { doMes: 0, atrasadas: [], vencemNoMes: [], devidoNoMes: 0, faltaNoMes: 0, pagamentosNoMes: [], pagoNoMes: 0, proximas: [], adiantado: 0 },
+    executor: executorVazio("daniel"),
+    moises: executorVazio("moises"),
     socios: { total: 0, porSocio: [], devido: 0, falta: 0, pagoNoMes: 0 },
   };
   if (!ativo) return vazio;
 
-  // Executor: todas as parcelas que vencem até o fim deste mês, mais as que o trabalho deste mês gera.
-  const parcelas = parcelasDoExecutor(input.sales, monthKey, cfg, inicio);
-  const pagamentosExecutor = pagamentosDoMotor(input.expenses, (expense) => expense.categoryRef === CATEGORIA_PAGAMENTO_EXECUTOR, inicio, monthKey);
-  const totalPagoExecutor = pagamentosExecutor.reduce((soma, pagamento) => soma + pagamento.valor, 0);
-  const adiantadoExecutor = abater(parcelas, totalPagoExecutor);
-  const vencemNoMes = parcelas.filter((parcela) => parcela.vence.slice(0, 7) === monthKey);
-  const atrasadas = parcelas.filter((parcela) => parcela.vence.slice(0, 7) < monthKey && parcela.falta > 0.005);
-  const proximas = parcelas.filter((parcela) => parcela.mesDoTrabalho === monthKey && parcela.vence.slice(0, 7) > monthKey);
-  const pagamentosNoMes = pagamentosExecutor.filter((pagamento) => pagamento.dia.slice(0, 7) === monthKey);
+  // Executores: todas as parcelas que vencem até o fim deste mês, mais as que ainda vão vencer.
+  const executor = compromissoDoExecutor("daniel", input, cfg);
+  const moises = compromissoDoExecutor("moises", input, cfg);
 
   // Sócios: o lucro de cada mês do motor, por sócio, abatido pelos pagamentos de cada um.
   const porSocio = (["andrya", "daniel"] as SocioDoMotor[]).map((socio) => {
@@ -345,17 +462,8 @@ export function compromissosDoMes(input: { sales: FinSale[]; expenses: FinExpens
   return {
     mes: monthKey,
     ativo,
-    executor: {
-      doMes: executorDoMes(input.sales, monthKey, cfg),
-      atrasadas,
-      vencemNoMes,
-      devidoNoMes: round2(vencemNoMes.reduce((soma, parcela) => soma + parcela.valor, 0)),
-      faltaNoMes: round2(parcelas.filter((parcela) => parcela.vence.slice(0, 7) <= monthKey).reduce((soma, parcela) => soma + parcela.falta, 0)),
-      pagamentosNoMes,
-      pagoNoMes: round2(pagamentosNoMes.reduce((soma, pagamento) => soma + pagamento.valor, 0)),
-      proximas,
-      adiantado: adiantadoExecutor,
-    },
+    executor,
+    moises,
     socios: {
       total: lucro.total,
       porSocio,
@@ -366,17 +474,31 @@ export function compromissosDoMes(input: { sales: FinSale[]; expenses: FinExpens
   };
 }
 
-/** Soma das parcelas do executor que vencem no mês (2ª do mês anterior + 1ª do mês). */
-export function parcelasQueVencemNoMes(sales: FinSale[], monthKey: string, cfg: ConfigDoMotor = configAtual) {
+/**
+ * Soma das parcelas de UM executor que vencem no mês. Dr. Daniel (padrão): 2ª do
+ * mês anterior + 1ª do mês. Dr. Moisés: 1ª do mês anterior + 2ª do retrasado +
+ * 3ª de três meses antes.
+ */
+export function parcelasQueVencemNoMes(sales: FinSale[], monthKey: string, cfg: ConfigDoMotor = configAtual, quem: ProfissionalId = "daniel") {
   if (!motorValeNoMes(monthKey, cfg)) return 0;
+  const regra = PROFISSIONAIS[quem];
+  const de = parcelasDoProfissional(quem, cfg);
+  const inicio = inicioDoProfissional(quem, cfg);
   let soma = 0;
-  // A parcela N do mês do trabalho W vence no mês W + (N − 1).
-  for (let numero = 1; numero <= cfg.parcelasExecutor; numero += 1) {
-    const mesDoTrabalho = mesSeguinte(monthKey, -(numero - 1));
-    if (mesDoTrabalho < cfg.inicio) continue;
-    soma += valorDaParcela(executorDoMes(sales, mesDoTrabalho, cfg), numero, cfg.parcelasExecutor);
+  // A parcela N do mês do trabalho W vence no mês W + atraso + (N − 1).
+  for (let numero = 1; numero <= de; numero += 1) {
+    const mesDoTrabalho = mesSeguinte(monthKey, -(regra.primeiraParcelaDepoisDe + numero - 1));
+    if (mesDoTrabalho < inicio) continue;
+    soma += valorDaParcela(executorDoMes(sales, mesDoTrabalho, cfg, quem), numero, de);
   }
   return round2(soma);
+}
+
+/** As parcelas de todos os executores que vencem no mês (o que sai do caixa para eles). */
+export function parcelasDeTodosQueVencemNoMes(sales: FinSale[], monthKey: string, cfg: ConfigDoMotor = configAtual) {
+  const daniel = parcelasQueVencemNoMes(sales, monthKey, cfg, "daniel");
+  const moises = parcelasQueVencemNoMes(sales, monthKey, cfg, "moises");
+  return { daniel, moises, total: round2(daniel + moises) };
 }
 
 /** Frase curta de uma parcela: "2ª parcela de setembro · vence 30/10". */

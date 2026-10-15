@@ -267,6 +267,13 @@ export function abaResumo(dados: DadosContabilidade): XlsxSheet {
       ? [
           ["  Médico executor do mês (50% do lucro bruto dos produtos vendidos no mês)", g.medicoExecutor, "tela LUCRO INTELIGENTE"],
           ["    parcelas do executor que vencem no mês (1ª deste mês + 2ª do mês anterior)", g.medicoExecutorParcelasDoMes, "Contas a Pagar — compromissos"],
+          // DR. MOISÉS (15/10/2026): o trabalho dele e as parcelas que vencem no dia 20.
+          ...(g.executorMoises > 0.005 || g.executorMoisesParcelasDoMes > 0.005
+            ? [
+                ["  Dr. Moisés do mês (20% do lucro bruto dos procedimentos dele)", g.executorMoises, "tela LUCRO INTELIGENTE"],
+                ["    parcelas do Dr. Moisés que vencem no mês (dia 20, trabalho dos 3 meses anteriores)", g.executorMoisesParcelasDoMes, "Contas a Pagar — compromissos"],
+              ]
+            : []),
         ]
       : []),
     ["Obra / CAPEX (investimento, fora do lucro)", g.obra, "aba CONTAS A PAGAR — tipo OBRA"],

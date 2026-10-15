@@ -18,6 +18,12 @@
 // em 13,33% / 7,93% / 3,84% e em comissão de 1%; quem manda são as células do topo
 // e as colunas, que é o que este catálogo copia.
 //
+// DR. MOISÉS (15/10/2026): os procedimentos do biomédico Dr. Moisés entram
+// no mesmo catálogo, vindos da aba "Precificação Dr. Moisés" da planilha "… (com
+// Dr. Moises) AT - dossies 08 a 10 (3).xlsx" que o Lucas mandou em 15/10. Mesmas
+// colunas e mesma fórmula; o que muda é de quem é o produto (`profissional`) e a
+// parte dele: 20% da coluna P (coluna Q da aba dele), não 50%. Ver profissionais.ts.
+//
 // A planilha tem todos os procedimentos com preço oficial (coluna F) e o LUCRO BRUTO DO
 // PRODUTO (coluna P = preço − imposto/cartão − comissão comercial − consumíveis
 // − repasse nutri/psi − custo hora-sala). A coluna R, "Valor Médico", é 50% desse
@@ -31,6 +37,7 @@
 //  · o LUCRO INTELIGENTE, que reconhece o item pelo nome exato, por palavra-chave
 //    na descrição ou pelo preço, e aplica a metade do médico.
 import type { FinSaleItem, FinSaleItemType } from "./financeiroData";
+import { ehProfissional, type ProfissionalId } from "./profissionais";
 
 const round2 = (value: number) => Math.round((value || 0) * 100) / 100;
 
@@ -82,6 +89,12 @@ export type ProdutoPrecificado = {
    */
   tipos: FinSaleItemType[];
   padrao?: RegExp;
+  /**
+   * Quem executa o produto (15/10/2026). Sem o campo = Dr. Daniel. É o que a
+   * comanda grava no item quando o produto é escolhido na lista, e é por ele
+   * que o Lucro Inteligente sabe se a parte é de 50% (Dr. Daniel) ou 20% (Dr. Moisés).
+   */
+  profissional?: ProfissionalId;
 };
 
 export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
@@ -138,13 +151,64 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   { nome: "Dra. Géssica (nutricionista) — Pix", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 120.22, imposto: 0.26, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
   { nome: "Dra. Géssica (nutricionista) — débito/3x", secao: "Nutrição e psicologia", preco: 650, lucroBruto: 127.26, imposto: 0.2984, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"] },
   { nome: "Dra. Bárbara (psicóloga) — 4 sessões", secao: "Nutrição e psicologia", preco: 790, lucroBruto: 50.49, imposto: 0.26, comissao: 0.1, custoFixo: 455.114517, minutosSala: 240, tipos: ["PSICOLOGA"], padrao: /b[aá]rbara|psic/i },
+  // ---- DR. MOISÉS (biomédico) — 15/10/2026 ---------------------------------------
+  // Copiado da aba "Precificação Dr. Moisés" (26 linhas, conferidas uma a uma: o
+  // preço cheio reproduz a coluna P e 20% dela é a coluna Q, no comentário de cada
+  // linha). Como a planilha calcula: avaliação com o imposto de CONSULTA (13,33%,
+  // célula G1) e procedimento com o de PROCEDIMENTO (7,93%, I1); comissão comercial
+  // 13%; consumíveis do dossiê (+ aluguel do laser no Lavieen e na depilação) e sala
+  // produtiva a R$ 1,896310/min = R$ 113,78/h. HORA DE SALA: o Lucas pediu em 15/10
+  // a atualizada ("o custo hora sala está desatualizado, use o atualizado e atualize
+  // na planilha") — a planilha dele vinha com a de 02/09 (R$ 101,33/h) e foi
+  // atualizada para a de 15/09, a mesma do Dr. Daniel ("… hora-sala atualizada
+  // 15-10.xlsx"). ATENÇÃO: o imposto da aba dele ainda é o de antes de 15/09 (NF
+  // 13,33%/7,93%); o Dr. Daniel, no app, usa 26%/11,48%. Ficou como a planilha
+  // manda — decisão do Lucas.
+  // Palavra-chave: só serve para item do Dr. Moisés digitado à mão; produto dele
+  // nunca é reconhecido num item do Dr. Daniel (ver produtoDoItem).
+  { nome: "Avaliação capilar (com tricoscopia)", secao: "Dr. Moisés · Avaliações", preco: 550, lucroBruto: 291.41, imposto: 0.1333, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /capilar|tricosc/i },  // linha 6 · Q 58.28
+  { nome: "Avaliação facial", secao: "Dr. Moisés · Avaliações", preco: 550, lucroBruto: 291.41, imposto: 0.1333, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /facial/i },  // linha 7 · Q 58.28
+  { nome: "Toxina botulínica facial — Botox 100U", secao: "Dr. Moisés · Toxina botulínica (1 frasco por paciente)", preco: 2500, lucroBruto: 1033.9, imposto: 0.0793, comissao: 0.13, custoFixo: 942.847944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /botox/i },  // linha 10 · Q 206.78
+  { nome: "Toxina botulínica facial — Dysport 300U", secao: "Dr. Moisés · Toxina botulínica (1 frasco por paciente)", preco: 2500, lucroBruto: 896.9, imposto: 0.0793, comissao: 0.13, custoFixo: 1079.847944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /dysport/i },  // linha 11 · Q 179.38
+  { nome: "Preenchimento ácido hialurônico — Juvéderm Volux (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 968.32, imposto: 0.0793, comissao: 0.13, custoFixo: 613.078629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /volux|juv[eé]derm/i },  // linha 14 · Q 193.66
+  { nome: "Preenchimento ácido hialurônico — Restylane Defyne (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 818.26, imposto: 0.0793, comissao: 0.13, custoFixo: 763.138629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /restylane|defyne/i },  // linha 15 · Q 163.65
+  { nome: "Preenchimento ácido hialurônico — Belotero Intense Lido (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 1118.82, imposto: 0.0793, comissao: 0.13, custoFixo: 462.578629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /belotero/i },  // linha 16 · Q 223.76
+  { nome: "Microagulhamento facial (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 900, lucroBruto: 515.29, imposto: 0.0793, comissao: 0.13, custoFixo: 196.340867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /microagulhamento.*facial|facial.*microagulhamento/i },  // linha 19 · Q 103.06
+  { nome: "Microagulhamento capilar (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 600, lucroBruto: 292.54, imposto: 0.0793, comissao: 0.13, custoFixo: 181.880867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /microagulhamento.*capilar|capilar.*microagulhamento/i },  // linha 20 · Q 58.51
+  { nome: "Intradermoterapia capilar (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 800, lucroBruto: 463.55, imposto: 0.0793, comissao: 0.13, custoFixo: 169.012419, minutosSala: 40, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /intradermo|mesoterapia/i },  // linha 21 · Q 92.71
+  { nome: "Lavieen facial (sessão)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 1500, lucroBruto: 803.41, imposto: 0.0793, comissao: 0.13, custoFixo: 382.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /lavieen/i },  // linha 24 · Q 160.68
+  { nome: "Lavieen + ativo premium (sessão)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 1800, lucroBruto: 980.62, imposto: 0.0793, comissao: 0.13, custoFixo: 442.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /lavieen.*(ativo|premium)/i },  // linha 25 · Q 196.12
+  { nome: "Jornada Lavieen + peeling (2 encontros)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 2350, lucroBruto: 1375.51, imposto: 0.0793, comissao: 0.13, custoFixo: 482.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peeling|jornada/i },  // linha 26 · Q 275.1
+  { nome: "Depilação a laser — full face", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 290, lucroBruto: 116.16, imposto: 0.0793, comissao: 0.13, custoFixo: 113.140867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /full ?face|rosto/i },  // linha 29 · Q 23.23
+  { nome: "Depilação a laser — axilas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 220, lucroBruto: 83.66, imposto: 0.0793, comissao: 0.13, custoFixo: 90.29621, minutosSala: 20, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /axila/i },  // linha 30 · Q 16.73
+  { nome: "Depilação a laser — virilha completa", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 390, lucroBruto: 159.47, imposto: 0.0793, comissao: 0.13, custoFixo: 148.903972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /virilha/i },  // linha 31 · Q 31.89
+  { nome: "Depilação a laser — barba + pescoço", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 290, lucroBruto: 108.84, imposto: 0.0793, comissao: 0.13, custoFixo: 120.459315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /barba|pesco[cç]o/i },  // linha 32 · Q 21.77
+  { nome: "Depilação a laser — braços completos", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 139.49, imposto: 0.0793, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /bra[cç]o/i },  // linha 33 · Q 27.9
+  { nome: "Depilação a laser — peitoral", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 139.49, imposto: 0.0793, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peitoral/i },  // linha 34 · Q 27.9
+  { nome: "Depilação a laser — abdômen", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 139.49, imposto: 0.0793, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /abd[oô]men/i },  // linha 35 · Q 27.9
+  { nome: "Depilação a laser — peitoral + abdômen", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 173.31, imposto: 0.0793, comissao: 0.13, custoFixo: 182.503972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peitoral.*abd[oô]men|abd[oô]men.*peitoral/i },  // linha 36 · Q 34.66
+  { nome: "Depilação a laser — costas completas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 173.31, imposto: 0.0793, comissao: 0.13, custoFixo: 182.503972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /costas/i },  // linha 37 · Q 34.66
+  { nome: "Depilação a laser — pernas completas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 184.96, imposto: 0.0793, comissao: 0.13, custoFixo: 170.859315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /perna/i },  // linha 38 · Q 36.99
+  { nome: "Avaliação corporal (Abdominal Sculpt)", secao: "Dr. Moisés · Abdominal Sculpt", preco: 550, lucroBruto: 291.41, imposto: 0.1333, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /corporal/i },  // linha 41 · Q 58.28
+  { nome: "Abdominal Sculpt — sessão Base", secao: "Dr. Moisés · Abdominal Sculpt", preco: 1290, lucroBruto: 824.25, imposto: 0.0793, comissao: 0.13, custoFixo: 195.748629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /sculpt.*base|base.*sculpt/i },  // linha 42 · Q 164.85
+  { nome: "Abdominal Sculpt — sessão Intensive", secao: "Dr. Moisés · Abdominal Sculpt", preco: 1290, lucroBruto: 824.25, imposto: 0.0793, comissao: 0.13, custoFixo: 195.748629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /intensive/i },  // linha 43 · Q 164.85
 ];
 
-/** As seções na ordem da planilha, cada uma com os seus produtos — para montar o seletor. */
-export function secoesDoCatalogo() {
+/** De quem é o produto (sem o campo = Dr. Daniel). */
+export function profissionalDoProduto(produto: ProdutoPrecificado): ProfissionalId {
+  return produto.profissional ?? "daniel";
+}
+
+/**
+ * As seções na ordem da planilha, cada uma com os seus produtos — para montar o
+ * seletor. Com `profissional`, só as seções dele (o Kanban mostra uma aba por
+ * profissional para a lista não virar um paredão de botões).
+ */
+export function secoesDoCatalogo(profissional?: ProfissionalId) {
   const ordem: string[] = [];
   const porSecao = new Map<string, ProdutoPrecificado[]>();
   for (const produto of CATALOGO_PRECIFICACAO) {
+    if (profissional && profissionalDoProduto(produto) !== profissional) continue;
     if (!porSecao.has(produto.secao)) {
       porSecao.set(produto.secao, []);
       ordem.push(produto.secao);
@@ -172,12 +236,41 @@ export const LUCRO_BRUTO_PADRAO_POR_TIPO: Partial<Record<FinSaleItemType, number
   BIOIMPEDANCIA: 138.08 / 200,
 };
 
-export function produtoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }): ProdutoPrecificado | null {
+/**
+ * O mesmo para o item do DR. MOISÉS que não é produto da tabela (digitado à
+ * mão): a média da coluna P ÷ preço dos procedimentos dele (23 linhas, 46,7%)
+ * e das três avaliações (53,0%). Os tipos que ele não usa ficam de fora.
+ */
+export const LUCRO_BRUTO_PADRAO_MOISES: Partial<Record<FinSaleItemType, number>> = {
+  TRATAMENTO: 0.467396,
+  CONSULTA: 0.52983,
+};
+
+type ItemParaReconhecer = { itemType: FinSaleItemType; amount: number; description?: string; profissional?: ProfissionalId | null };
+
+/**
+ * QUEM EXECUTOU O ITEM (15/10/2026). A marca gravada no item vale; sem ela, o
+ * produto da tabela com o MESMO nome diz (é como o Fechamento e o Lançar Dia
+ * gravam); sem isso, é do Dr. Daniel — todo item antigo é dele.
+ */
+export function profissionalDoItem(item: { description?: string; profissional?: ProfissionalId | null }): ProfissionalId {
+  if (ehProfissional(item.profissional)) return item.profissional;
+  const descricao = (item.description ?? "").trim();
+  const exato = descricao ? CATALOGO_PRECIFICACAO.find((produto) => produto.nome === descricao) : null;
+  return exato ? profissionalDoProduto(exato) : "daniel";
+}
+
+export function produtoDoItem(item: ItemParaReconhecer): ProdutoPrecificado | null {
   const descricao = (item.description ?? "").trim();
   // 1. Nome exato — é assim que o Fechamento e o Lançar Dia gravam quando o
   //    produto é escolhido na lista. Zero chute.
   const exato = descricao ? CATALOGO_PRECIFICACAO.find((produto) => produto.nome === descricao) : null;
   if (exato) return exato;
+  // Daqui para baixo é palpite (palavra-chave e preço) — e o palpite fica SEMPRE
+  // dentro da tabela de quem executou (15/10/2026). Sem isso, um item antigo do
+  // Dr. Daniel digitado à mão a R$ 900 viraria "microagulhamento facial" do Dr.
+  // Moisés só pelo preço, e o salário de um iria para o outro.
+  const quem = profissionalDoItem(item);
   // 2 e 3 rodam primeiro entre os produtos DO TIPO do item e, só se aí não sair
   // nada, no catálogo inteiro.
   //
@@ -187,7 +280,7 @@ export function produtoDoItem(item: { itemType: FinSaleItemType; amount: number;
   // BIOIMPEDANCIA. Sem este passe, um Plano de R$ 6.997 lançado em agosto
   // deixaria de ser encontrado, e o Lucro Inteligente perderia a coluna P de
   // meses inteiros — em silêncio, que é como esse tipo de erro sempre aparece.
-  const candidatos = CATALOGO_PRECIFICACAO.filter((produto) => produto.tipos.includes(item.itemType));
+  const candidatos = CATALOGO_PRECIFICACAO.filter((produto) => profissionalDoProduto(produto) === quem && produto.tipos.includes(item.itemType));
   if (!candidatos.length) return null;
   // 2. Palavra-chave na descrição; entre os que batem (as quatro tirzepatidas), o preço mais próximo decide.
   const porPalavra = candidatos.filter((produto) => produto.padrao && produto.padrao.test(descricao));
@@ -231,7 +324,7 @@ export function custoFixoDoProduto(produto: ProdutoPrecificado) {
  * B = 1 reproduz a coluna P da tabela exatamente. Item sem produto na tabela usa
  * a fração padrão do tipo sobre o valor cobrado.
  */
-export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: number; description?: string }) {
+export function lucroBrutoDoItem(item: ItemParaReconhecer) {
   const amount = item.amount || 0;
   if (amount <= 0 || !itemEhDoMedico(item.itemType)) return 0;
   const produto = produtoDoItem(item);
@@ -239,8 +332,13 @@ export function lucroBrutoDoItem(item: { itemType: FinSaleItemType; amount: numb
     const quantidade = quantidadeDoItem(amount, produto.preco);
     return round2(amount * (1 - produto.imposto - produto.comissao) - custoFixoDoProduto(produto) * quantidade - (produto.repasse ?? 0));
   }
-  const fracao = LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
+  const fracao = fracaoPadraoDoItem(item);
   return fracao ? round2(fracao * amount) : 0;
+}
+
+/** A fração do preço que vira lucro bruto quando o item não é produto da tabela — a de quem executou. */
+export function fracaoPadraoDoItem(item: ItemParaReconhecer): number | undefined {
+  return profissionalDoItem(item) === "moises" ? LUCRO_BRUTO_PADRAO_MOISES[item.itemType] : LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
 }
 
 /** Itens que têm parte do médico executor (os mesmos tipos do catálogo/padrão). */
@@ -260,6 +358,8 @@ export type ItemFechado = {
   quantidade: number;
   /** Valor total da linha (já × quantidade), como digitado. */
   valorTexto: string;
+  /** Quem executa (15/10/2026): vem do produto; no item livre, quem fecha escolhe. */
+  profissional: ProfissionalId;
 };
 
 export function itemFechadoDoProduto(produto: ProdutoPrecificado, quantidade = 1): ItemFechado {
@@ -269,11 +369,12 @@ export function itemFechadoDoProduto(produto: ProdutoPrecificado, quantidade = 1
     descricao: produto.nome,
     quantidade,
     valorTexto: formataValor(produto.preco * quantidade),
+    profissional: profissionalDoProduto(produto),
   };
 }
 
-export function itemFechadoLivre(itemType: FinSaleItemType = "TRATAMENTO"): ItemFechado {
-  return { produtoNome: null, itemType, descricao: "", quantidade: 1, valorTexto: "" };
+export function itemFechadoLivre(itemType: FinSaleItemType = "TRATAMENTO", profissional: ProfissionalId = "daniel"): ItemFechado {
+  return { produtoNome: null, itemType, descricao: "", quantidade: 1, valorTexto: "", profissional };
 }
 
 /**
@@ -347,5 +448,7 @@ export function itensDaComanda(
     itemType: item.itemType,
     amount: valores[index],
     description: item.descricao.trim() || item.produtoNome || "",
+    // A marca de quem executou viaja com o item: é dela que sai o salário de cada um.
+    profissional: item.profissional ?? "daniel",
   }));
 }

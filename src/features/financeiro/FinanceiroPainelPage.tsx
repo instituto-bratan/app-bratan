@@ -64,6 +64,7 @@ import {
 } from "./financeiroData";
 import { LucroDoMesExplicado } from "./LucroDoMesExplicado";
 import { compromissosDoMes } from "./motorLucroInteligente";
+import { PROFISSIONAIS } from "./profissionais";
 import { diasUteisDoMes } from "./lucroInteligente";
 import { useVersaoDoMotor } from "@/lib/useConfigDoMotor";
 import { buildMetasBoard, buildPainelReuniao, metasForMonth, type MetasConfig } from "./metasData";
@@ -347,6 +348,19 @@ export function FinanceiroPainelPage() {
       agora: atual.faturamento,
       tom: "NEUTRO" as const,
     },
+    // DR. MOISÉS (15/10/2026): "diferenciar o dinheiro que está entrando do Dr.
+    // Daniel e o dinheiro que está entrando do Dr. Moisés". Já está dentro do faturamento.
+    ...(monthKey >= PROFISSIONAIS.moises.desde
+      ? [
+          {
+            rotulo: "Vendido do Dr. Moisés",
+            valor: moneyFin(atual.vendasMoises),
+            antes: anterior.vendasMoises,
+            agora: atual.vendasMoises,
+            tom: "NEUTRO" as const,
+          },
+        ]
+      : []),
     {
       rotulo: "Custos do mês",
       valor: moneyFin(atual.custosTotais),

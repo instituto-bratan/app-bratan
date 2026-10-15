@@ -26,6 +26,7 @@ import { ajustaParaDiaUtil } from "./recebiveisRede";
 import type { TransferenciaPrevista } from "./caixaProjetado";
 import { configAtual } from "@/lib/configNegocio";
 import { BarraFina, CORES_GRAFICO, Legenda, Rubrica } from "./pecasResultados";
+import { PROFISSIONAIS } from "./profissionais";
 
 const chartColors = CORES_GRAFICO;
 
@@ -34,6 +35,8 @@ export const CORES_ENVELOPES = {
   impostos: "#8F7B4E",
   lucro: chartColors.resultado,
   medicoExecutor: chartColors.entrada,
+  /** Dr. Moisés (15/10/2026): um tom próprio, legível nos dois temas. */
+  moises: "#7d6b91",
   operacional: chartColors.apoio,
   provisoes: "#8b6f47",
   reserva: "#4f6d7a",
@@ -63,13 +66,27 @@ export function proximasTransferencias(hoje: string, quantas = 2): string[] {
   return datas;
 }
 
-/** O que está previsto sair nas próximas datas (para o caixa projetado): o que falta transferir hoje, na próxima data. */
-export function transferenciasPrevistas(hoje: string, repasses: Record<Beneficiario, ResumoRepasse>): TransferenciaPrevista[] {
+/**
+ * O que está previsto sair nas próximas datas (para o caixa projetado): o que
+ * falta transferir hoje, na próxima data. O Dr. Moisés (15/10/2026) entra no DIA
+ * DO VENCIMENTO de cada parcela (dia 20): a regra dele existe para segurar o caixa
+ * até lá, e antecipar na projeção mostraria o caixa mais apertado do que é.
+ */
+export function transferenciasPrevistas(hoje: string, repasses: Record<Beneficiario, ResumoRepasse>, motor?: CompromissosDoMes | null): TransferenciaPrevista[] {
   const proxima = proximasTransferencias(hoje, 1)[0];
-  if (!proxima) return [];
   const lista: TransferenciaPrevista[] = [];
-  if (repasses.socios.falta > 0.005) lista.push({ dia: proxima, label: `Transferência aos sócios (dia ${Number(proxima.slice(8, 10))})`, valor: repasses.socios.falta });
-  if (repasses.medicoExecutor.falta > 0.005) lista.push({ dia: proxima, label: `Transferência ao Dr. Daniel (dia ${Number(proxima.slice(8, 10))})`, valor: repasses.medicoExecutor.falta });
+  if (proxima && repasses.socios.falta > 0.005) lista.push({ dia: proxima, label: `Transferência aos sócios (dia ${Number(proxima.slice(8, 10))})`, valor: repasses.socios.falta });
+  if (proxima && repasses.medicoExecutor.falta > 0.005) lista.push({ dia: proxima, label: `Transferência ao Dr. Daniel (dia ${Number(proxima.slice(8, 10))})`, valor: repasses.medicoExecutor.falta });
+  if (motor?.ativo) {
+    for (const parcela of [...motor.moises.atrasadas, ...motor.moises.vencemNoMes, ...motor.moises.proximas]) {
+      if (parcela.falta <= 0.005) continue;
+      const dia = parcela.vence > hoje ? parcela.vence : hoje;
+      const mesDoTrabalho = new Date(`${parcela.mesDoTrabalho}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" });
+      lista.push({ dia, label: `Dr. Moisés — ${parcela.numero}ª parcela de ${mesDoTrabalho} (vence ${diaCurto(parcela.vence)})`, valor: parcela.falta });
+    }
+  } else if (proxima && (repasses.moises?.falta ?? 0) > 0.005) {
+    lista.push({ dia: proxima, label: `Transferência ao Dr. Moisés (dia ${Number(proxima.slice(8, 10))})`, valor: repasses.moises.falta });
+  }
   return lista;
 }
 
@@ -94,7 +111,7 @@ export function EnvelopesVisuais({
   const metaPorDia = useMemo(() => new Map((board?.days ?? []).map((dia) => [dia.date, dia.dailyGoal])), [board]);
 
   // ---- a barra empilhada ----------------------------------------------------
-  const topo = Math.max(1, ...linhas.map((l) => Math.max(l.liquido, l.reservado.impostos + l.reservado.lucro + l.reservado.medicoExecutor + (l.reservado.provisoes ?? 0) + (l.reservado.reserva ?? 0))), ...(board?.days.map((d) => d.dailyGoal) ?? [0]));
+  const topo = Math.max(1, ...linhas.map((l) => Math.max(l.liquido, l.reservado.impostos + l.reservado.lucro + l.reservado.medicoExecutor + (l.reservado.moises ?? 0) + (l.reservado.provisoes ?? 0) + (l.reservado.reserva ?? 0))), ...(board?.days.map((d) => d.dailyGoal) ?? [0]));
   const fundo = Math.min(0, ...linhas.map((l) => Math.min(0, l.reservado.operacional)));
   const width = 900;
   const height = 260;
@@ -145,6 +162,22 @@ export function EnvelopesVisuais({
       referencia: motor?.ativo ? motor.executor.devidoNoMes || motor.executor.doMes : t.reservado.medicoExecutor,
       rotuloBarra: "transferido ÷ separado",
     },
+    // DR. MOISÉS (15/10/2026): só aparece a partir do mês em que ele começou a atender.
+    ...(planilha.monthKey >= PROFISSIONAIS.moises.desde
+      ? [
+          {
+            chave: "moises",
+            titulo: "Dr. Moisés (biomédico)",
+            cor: CORES_ENVELOPES.moises,
+            frase: motor?.ativo
+              ? `Trabalho do mês ${moneyFin(motor.moises.doMes)} (${(reguaHoje.moises ?? 20).toLocaleString("pt-BR")}% do lucro bruto de ${moneyFin(t.lucroBrutoMoises)} nos procedimentos dele, vendidos ${moneyFin(t.vendidoMoises)}), pago em três parcelas no dia 20 dos meses seguintes · vencem neste mês ${moneyFin(motor.moises.devidoNoMes)} · pago ${moneyFin(motor.moises.pagoNoMes)} → ${motor.moises.faltaNoMes > 0.005 ? `falta ${moneyFin(motor.moises.faltaNoMes)}` : "em dia"}.`
+              : `Separados ${moneyFin(t.reservado.moises)} (${(reguaHoje.moises ?? 20).toLocaleString("pt-BR")}% do lucro bruto de ${moneyFin(t.lucroBrutoMoises)} nos procedimentos dele) · transferidos ${moneyFin(repasses.moises?.transferido ?? 0)}.`,
+            realizado: motor?.ativo ? motor.moises.pagoNoMes : repasses.moises?.transferido ?? 0,
+            referencia: motor?.ativo ? motor.moises.devidoNoMes || motor.moises.doMes : t.reservado.moises,
+            rotuloBarra: "pago ÷ o que vence no mês",
+          },
+        ]
+      : []),
     {
       chave: "operacional",
       titulo: "Operacional (o que fica para gastar)",
@@ -192,7 +225,7 @@ export function EnvelopesVisuais({
         <h2 id="envelopes-titulo" className="flex items-center gap-2 text-xl font-bold leading-7 text-tinta">
           Os envelopes em um olhar
           <InfoTip title="Como ler">
-            Cada barra é um dia: o líquido que entrou, já repartido em impostos, sócios, Dr. Daniel e o que fica para gastar
+            Cada barra é um dia: o líquido que entrou, já repartido em impostos, sócios, Dr. Daniel, Dr. Moisés e o que fica para gastar
             (quando o dia não paga a régua, a parte operacional aparece em vermelho abaixo da linha). O traço escuro em cada dia é
             a meta de faturamento do dia (bruto, das Metas do Mês). Toque num dia para ver os números dele. Embaixo, cada
             envelope numa frase: o que a régua separou, o que já saiu e o que falta. A agenda no fim mostra as próximas datas de
@@ -229,6 +262,7 @@ export function EnvelopesVisuais({
                   { chave: "impostos", valor: linha.reservado.impostos, cor: CORES_ENVELOPES.impostos, nome: "Impostos" },
                   { chave: "lucro", valor: linha.reservado.lucro, cor: CORES_ENVELOPES.lucro, nome: "Sócios" },
                   { chave: "medico", valor: linha.reservado.medicoExecutor, cor: CORES_ENVELOPES.medicoExecutor, nome: "Dr. Daniel" },
+                  { chave: "moises", valor: linha.reservado.moises ?? 0, cor: CORES_ENVELOPES.moises, nome: "Dr. Moisés" },
                   { chave: "operacional", valor: Math.max(0, linha.reservado.operacional), cor: CORES_ENVELOPES.operacional, nome: "Fica para gastar" },
                 ];
                 let base = 0;
@@ -298,6 +332,7 @@ export function EnvelopesVisuais({
             { nome: "Impostos", cor: CORES_ENVELOPES.impostos },
             { nome: "Sócios", cor: CORES_ENVELOPES.lucro },
             { nome: "Dr. Daniel", cor: CORES_ENVELOPES.medicoExecutor },
+            ...(planilha.monthKey >= PROFISSIONAIS.moises.desde ? [{ nome: "Dr. Moisés", cor: CORES_ENVELOPES.moises }] : []),
             { nome: "Fica para gastar", cor: CORES_ENVELOPES.operacional },
             { nome: "Dia que não paga a régua", cor: CORES_ENVELOPES.negativo },
             { nome: "meta do dia (bruto)", cor: "var(--tinta)", traco: true },
@@ -311,7 +346,8 @@ export function EnvelopesVisuais({
               {metaPorDia.get(aberta.dia) ? ` · meta do dia ${moneyFin(metaPorDia.get(aberta.dia) ?? 0)} (bruto ${moneyFin(aberta.total)})` : ""}
             </p>
             <p className="text-[13px] font-medium tabular-nums text-tinta-2">
-              impostos {moneyFin(aberta.reservado.impostos)} · sócios {moneyFin(aberta.reservado.lucro)} · Dr. Daniel {moneyFin(aberta.reservado.medicoExecutor)} →{" "}
+              impostos {moneyFin(aberta.reservado.impostos)} · sócios {moneyFin(aberta.reservado.lucro)} · Dr. Daniel {moneyFin(aberta.reservado.medicoExecutor)}
+              {(aberta.reservado.moises ?? 0) > 0.005 ? ` · Dr. Moisés ${moneyFin(aberta.reservado.moises)}` : ""} →{" "}
               <strong className={cn("font-bold", aberta.reservado.operacional < -0.005 ? "text-erro" : "text-ok")}>
                 {aberta.reservado.operacional < -0.005 ? `o dia não paga a régua em ${moneyFin(-aberta.reservado.operacional)}` : `ficam ${moneyFin(aberta.reservado.operacional)} para gastar`}
               </strong>
@@ -354,12 +390,19 @@ export function EnvelopesVisuais({
                   <p className="text-sm font-medium leading-5 tabular-nums text-tinta">
                     Sócios: {repasses.socios.falta > 0.005 ? <strong className="font-bold">{moneyFin(repasses.socios.falta)}</strong> : "em dia"} · Dr. Daniel:{" "}
                     {repasses.medicoExecutor.falta > 0.005 ? <strong className="font-bold">{moneyFin(repasses.medicoExecutor.falta)}</strong> : "em dia"}
+                    {planilha.monthKey >= PROFISSIONAIS.moises.desde ? (
+                      <>
+                        {" "}· Dr. Moisés: {(repasses.moises?.falta ?? 0) > 0.005 ? <strong className="font-bold">{moneyFin(repasses.moises.falta)}</strong> : "em dia"}
+                        <span className="text-tinta-2"> (paga no dia 20)</span>
+                      </>
+                    ) : null}
                   </p>
                   <p className="text-[13px] font-medium leading-5 text-tinta-2">o que falta transferir hoje; a régua continua separando até lá</p>
                 </>
               ) : (
                 <p className="text-[13px] font-medium leading-5 text-tinta-2">
-                  Sócios: cota de {moneyFin(planilha.cotaLucroDiaUtil)} por dia útil até lá · Dr. Daniel: 50% do lucro bruto do que for vendido.
+                  Sócios: cota de {moneyFin(planilha.cotaLucroDiaUtil)} por dia útil até lá · Dr. Daniel: 50% do lucro bruto do que for vendido dele
+                  {planilha.monthKey >= PROFISSIONAIS.moises.desde ? " · Dr. Moisés: 20% do lucro bruto dos procedimentos dele, pago no dia 20" : ""}.
                 </p>
               )}
             </div>

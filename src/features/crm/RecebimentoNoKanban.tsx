@@ -14,7 +14,7 @@
 //
 // Um componente só, usado pelo cadastro do paciente E pelo fechamento: assim os
 // dois caminhos têm a mesma cara e a mesma explicação.
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, Check, FileText, Paperclip, Plus, X } from "lucide-react";
 import {
   formataValor,
@@ -50,6 +50,7 @@ import {
   type TipoRecebimento,
 } from "./recebimentoKanbanData";
 import { NotaNoFechamentoCard } from "./NotaNoFechamentoCard";
+import { LISTA_DE_PROFISSIONAIS, PROFISSIONAIS, type ProfissionalId } from "@/features/financeiro/profissionais";
 import type { SinalEmAberto } from "@/features/financeiro/sinaisDoPaciente";
 import type { NotaDoFechamento } from "./notaNoFechamento";
 import { todayISO } from "@/lib/localStore";
@@ -144,6 +145,10 @@ export function RecebimentoNoKanban({
   valorDaNota?: number;
 }) {
   const inputArquivo = useRef<HTMLInputElement>(null);
+  // DR. MOISÉS (15/10/2026): a tabela tem uma aba por profissional — os
+  // procedimentos do Dr. Moisés ficam na aba dele. A aba só filtra os botões: a
+  // mesma comanda pode levar itens dos dois, e cada item guarda de quem é.
+  const [abaProfissional, setAbaProfissional] = useState<ProfissionalId>(() => (itens.some((item) => item.profissional === "moises") ? "moises" : "daniel"));
   // Tocar num produto adiciona a linha; tocar de novo soma mais um (duas doses).
   function adicionaProduto(nome: string) {
     const produto = produtoPorNome(nome);
@@ -197,9 +202,23 @@ export function RecebimentoNoKanban({
           O que o paciente fechou (tabela de preços)
         </p>
         <div className="grid gap-3 rounded-bloco border border-fio bg-folha p-3">
-          {secoesDoCatalogo().map((grupo) => (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Tabela de qual profissional">
+            {LISTA_DE_PROFISSIONAIS.map((profissional) => (
+              <button
+                key={profissional.id}
+                type="button"
+                onClick={() => setAbaProfissional(profissional.id)}
+                aria-pressed={abaProfissional === profissional.id}
+                className={classeDoChip(abaProfissional === profissional.id)}
+              >
+                {profissional.nome} <span className="ml-1 font-medium text-tinta-2">· {profissional.papel}</span>
+              </button>
+            ))}
+          </div>
+          {secoesDoCatalogo(abaProfissional).map((grupo) => (
             <div key={grupo.secao}>
-              <p className="text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2">{grupo.secao}</p>
+              {/* Dentro da aba do profissional, a seção não repete o nome dele. */}
+              <p className="text-xs font-bold uppercase leading-4 tracking-[0.06em] text-tinta-2">{grupo.secao.replace(/^Dr\. Moisés · /, "")}</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {grupo.produtos.map((produto) => {
                   const escolhido = itens.some((item) => item.produtoNome === produto.nome);
@@ -219,8 +238,8 @@ export function RecebimentoNoKanban({
               </div>
             </div>
           ))}
-          <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => onItensChange([...itens, itemFechadoLivre(itemTipo)])}>
-            <Plus className="h-4 w-4" aria-hidden="true" /> outro item (fora da tabela)
+          <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => onItensChange([...itens, itemFechadoLivre(itemTipo, abaProfissional)])}>
+            <Plus className="h-4 w-4" aria-hidden="true" /> outro item (fora da tabela) do {PROFISSIONAIS[abaProfissional].nome}
           </Button>
         </div>
         {itens.length ? (
@@ -234,14 +253,24 @@ export function RecebimentoNoKanban({
                     <span className="text-sm font-semibold text-tinta">
                       {produto.nome}{" "}
                       <span className="text-[13px] font-medium text-tinta-2">
-                        · {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}
+                        · {PROFISSIONAIS[item.profissional ?? "daniel"].nome} · {saleItemTypeLabels[item.itemType]} · tabela {moneyFin(produto.preco)}
                         {Math.abs(parseFinAmount(item.valorTexto) - produto.preco * item.quantidade) > 0.005 && parseFinAmount(item.valorTexto) > 0 ? (
                           <strong className="text-musgo"> · cobrado {moneyFin(parseFinAmount(item.valorTexto))}</strong>
                         ) : null}
                       </span>
                     </span>
                   ) : (
-                    <div className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                    <div className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,0.7fr)_minmax(0,1.2fr)]">
+                      <select
+                        value={item.profissional ?? "daniel"}
+                        onChange={(event) => atualiza({ profissional: event.target.value as ProfissionalId })}
+                        className={cn(CAMPO_PQ, "h-9 cursor-pointer")}
+                        aria-label="Quem executa o item"
+                      >
+                        {LISTA_DE_PROFISSIONAIS.map((profissional) => (
+                          <option key={profissional.id} value={profissional.id}>{profissional.nome}</option>
+                        ))}
+                      </select>
                       <select
                         value={item.itemType}
                         onChange={(event) => atualiza({ itemType: event.target.value as FinSaleItemType })}

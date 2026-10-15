@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { RecadoDaTela } from "./pecasBancoFechamento";
 import { Rubrica } from "./pecasResultados";
 import { mesLongoLabels, moneyFin, type GestaoMensal } from "./financeiroData";
-import type { CompromissosDoMes } from "./motorLucroInteligente";
+import type { CompromissoDoExecutor, CompromissosDoMes } from "./motorLucroInteligente";
 
 const nomeDoMes = (monthKey: string) => (mesLongoLabels[Number(monthKey.slice(5, 7)) - 1] ?? "").toLowerCase();
 const diaCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -42,8 +42,19 @@ export function LucroDoMesExplicado({
       sinal: "−",
       rotulo: `Médico executor de ${mes}`,
       valor: gestao.medicoExecutor,
-      frase: `50% do lucro bruto dos produtos vendidos em ${mes}. Conta inteiro neste mês porque o trabalho é deste mês, mesmo sendo pago em duas parcelas.`,
+      frase: `50% do lucro bruto dos produtos do Dr. Daniel vendidos em ${mes}. Conta inteiro neste mês porque o trabalho é deste mês, mesmo sendo pago em duas parcelas.`,
     },
+    // DR. MOISÉS (15/10/2026): só aparece quando ele tem trabalho no mês.
+    ...(gestao.executorMoises > 0.005
+      ? [
+          {
+            sinal: "−" as const,
+            rotulo: `Dr. Moisés de ${mes}`,
+            valor: gestao.executorMoises,
+            frase: `20% do lucro bruto dos procedimentos dele vendidos em ${mes} (vendidos ${moneyFin(gestao.vendasMoises)}). Conta inteiro neste mês, mesmo sendo pago em três parcelas no dia 20 dos meses seguintes.`,
+          },
+        ]
+      : []),
     { sinal: "−", rotulo: "Custos variáveis", valor: gestao.custosVariaveis, frase: "Medicações, faturas do cartão, impostos pagos, mentoria e o resto que varia." },
     { sinal: "−", rotulo: "Provisões", valor: gestao.provisoes, frase: "13º, férias, rescisão e impostos guardados para os próximos meses." },
     { sinal: "=", rotulo: `Lucro da empresa em ${mes}`, valor: gestao.lucroLiquido, frase: "É o resultado da operação, antes de separar o lucro dos sócios.", destaque: true },
@@ -61,7 +72,7 @@ export function LucroDoMesExplicado({
       destaque: true,
     },
   ];
-  const { executor } = compromissos;
+  const { executor, moises } = compromissos;
 
   const textoDaLinha = apresentando ? "text-lg leading-7" : "text-sm leading-5";
   const textoDaFrase = apresentando ? "text-sm leading-5" : "text-[13px] leading-5";
@@ -162,6 +173,52 @@ export function LucroDoMesExplicado({
           Todo mês vencem a 2ª parcela do mês anterior e a 1ª do mês atual. Os pagamentos e o lucro de cada sócio estão no Contas a Pagar.
         </p>
       </div>
+      {moises.doMes > 0.005 || moises.vencemNoMes.length || moises.atrasadas.length ? <ParcelasDoMoises mes={mes} moises={moises} /> : null}
     </BlocoSaber>
+  );
+}
+
+/** As parcelas do Dr. Moisés no caixa do mês (15/10/2026): três, no dia 20 dos meses seguintes ao trabalho. */
+function ParcelasDoMoises({ mes, moises }: { mes: string; moises: CompromissoDoExecutor }) {
+  return (
+    <div className="grid gap-2 px-6 pb-5 max-md:px-4 max-md:pb-4">
+      <Rubrica as="h3">No caixa de {mes}: as parcelas do Dr. Moisés</Rubrica>
+      <ul className="border-t border-fio-2">
+        {moises.atrasadas.map((parcela) => (
+          <li key={parcela.id} className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-b border-fio py-2 text-sm font-bold leading-5 text-erro">
+            <span>
+              {parcela.numero}ª parcela de {nomeDoMes(parcela.mesDoTrabalho)} · venceu {diaCurto(parcela.vence)} e está atrasada
+            </span>
+            <span className="tabular-nums">falta {moneyFin(parcela.falta)}</span>
+          </li>
+        ))}
+        {moises.vencemNoMes.length ? (
+          moises.vencemNoMes.map((parcela) => (
+            <li key={parcela.id} className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-b border-fio py-2 text-sm font-medium leading-5 text-tinta">
+              <span>
+                {parcela.numero}ª parcela de {nomeDoMes(parcela.mesDoTrabalho)} · vence {diaCurto(parcela.vence)}
+              </span>
+              <span className="font-bold tabular-nums">
+                {moneyFin(parcela.valor)} · {parcela.falta <= 0.005 ? <span className="text-ok">paga</span> : `falta ${moneyFin(parcela.falta)}`}
+              </span>
+            </li>
+          ))
+        ) : (
+          <li className="border-b border-fio py-2 text-sm font-medium leading-5 text-tinta-2">Nenhuma parcela dele vence neste mês.</li>
+        )}
+        {moises.proximas.map((parcela) => (
+          <li key={parcela.id} className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-b border-fio py-2 text-[13px] font-medium leading-5 text-tinta-2">
+            <span>
+              {parcela.numero}ª parcela de {nomeDoMes(parcela.mesDoTrabalho)} · vence {diaCurto(parcela.vence)}
+            </span>
+            <span className="tabular-nums">{moneyFin(parcela.valor)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[13px] font-medium leading-5 text-tinta-2">
+        O trabalho de cada mês é pago em três parcelas: no dia 20 do mês seguinte e no dia 20 dos dois meses depois (dia 20 em fim de semana ou
+        feriado paga no dia útil anterior).
+      </p>
+    </div>
   );
 }

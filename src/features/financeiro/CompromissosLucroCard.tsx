@@ -12,8 +12,14 @@
 // da cor); o formulário do pagamento abre embaixo, com rótulo em cima de cada
 // campo. Aparece igual no Contas a Pagar e no Lucro Inteligente. A regra das
 // duas parcelas, a baixa e o que é gravado são os mesmos.
-import { useMemo, useState } from "react";
-import { ArrowRightLeft, Stethoscope, Trophy } from "lucide-react";
+//
+// DR. MOISÉS (15/10/2026): uma terceira seção, com a regra dele — 20% do lucro
+// bruto dos procedimentos dele, em três parcelas no dia 20 dos três meses
+// seguintes ao atendimento. O pagamento a ele é baixa das parcelas dele, como o
+// do Dr. Daniel, e nasce com "falta a nota" (ele não é sócio: a contabilidade
+// precisa da nota ou do recibo).
+import { useMemo, useState, type ReactNode } from "react";
+import { ArrowRightLeft, Sparkles, Stethoscope, Trophy } from "lucide-react";
 import { BlocoFolha, Botao } from "@/components/ui/fundacao";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
@@ -21,13 +27,14 @@ import { Campo, RecadoDaTela, Selecao, classeDoCampo, classeDoCampoNumero } from
 import { Etiqueta, Rubrica } from "./pecasResultados";
 import { mesLongoLabels, moneyFin, type FinExpense } from "./financeiroData";
 import { novaTransferencia } from "./lucroInteligente";
-import type { CompromissosDoMes, ParcelaDoExecutor, SocioDoMotor } from "./motorLucroInteligente";
+import type { CompromissoDoExecutor, CompromissosDoMes, ParcelaDoExecutor, SocioDoMotor } from "./motorLucroInteligente";
+import { PROFISSIONAIS } from "./profissionais";
 
 const nomeDoMes = (monthKey: string) => (mesLongoLabels[Number(monthKey.slice(5, 7)) - 1] ?? "").toLowerCase();
 const diaCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const parseValor = (texto: string) => Number(String(texto).replace(/\./g, "").replace(",", ".").trim());
 
-type Destino = "executor" | SocioDoMotor;
+type Destino = "executor" | "moises" | SocioDoMotor;
 
 function LinhaDaParcela({ parcela, futura, atrasada }: { parcela: ParcelaDoExecutor; futura?: boolean; atrasada?: boolean }) {
   const semValor = parcela.valor <= 0.005;
@@ -41,13 +48,17 @@ function LinhaDaParcela({ parcela, futura, atrasada }: { parcela: ParcelaDoExecu
         ) : (
           <span className="text-[13px] font-medium tabular-nums text-tinta-2">
             vence {diaCurto(parcela.vence)}
-            {futura ? " · mês que vem" : ""}
+            {futura ? ` · em ${nomeDoMes(parcela.vence.slice(0, 7))}` : ""}
           </span>
         )}
       </p>
       <p className={cn("whitespace-nowrap text-right text-sm font-bold leading-5 tabular-nums", futura ? "text-tinta-2" : "text-tinta")}>{moneyFin(parcela.valor)}</p>
       {futura ? (
-        <p className="col-span-2 text-[13px] font-medium leading-5 text-tinta-2">Ainda não vence: entra no caixa do mês seguinte, junto com a 1ª parcela daquele mês.</p>
+        <p className="col-span-2 text-[13px] font-medium leading-5 text-tinta-2">
+          Ainda não vence: entra no caixa de {nomeDoMes(parcela.vence.slice(0, 7))}
+          {parcela.profissional === "daniel" ? ", junto com a 1ª parcela daquele mês" : ""}.
+          {parcela.pago > 0.005 ? ` Já adiantado ${moneyFin(parcela.pago)}.` : ""}
+        </p>
       ) : semValor ? (
         <p className="col-span-2 text-[13px] font-medium leading-5 text-tinta-2">Ainda sem venda neste mês: a parcela cresce a cada comanda.</p>
       ) : (
@@ -72,15 +83,18 @@ export function CompromissosLucroCard({
   onRegistrar: (conta: FinExpense) => void;
   className?: string;
 }) {
-  const { executor, socios } = compromissos;
+  const { executor, moises, socios } = compromissos;
   const mes = nomeDoMes(compromissos.mes);
+  // O Dr. Moisés aparece a partir do mês em que começou a atender (outubro de 2026).
+  const temMoises = compromissos.mes >= PROFISSIONAIS.moises.desde;
   const faltaPor = useMemo(
     () => ({
       executor: executor.faltaNoMes,
+      moises: moises.faltaNoMes,
       andrya: socios.porSocio.find((s) => s.socio === "andrya")?.falta ?? 0,
       daniel: socios.porSocio.find((s) => s.socio === "daniel")?.falta ?? 0,
     }),
-    [executor.faltaNoMes, socios.porSocio],
+    [executor.faltaNoMes, moises.faltaNoMes, socios.porSocio],
   );
   const [form, setForm] = useState<{ para: Destino; forma: "ITAU" | "PIX_PACIENTE"; dia: string; valor: string; observacao: string } | null>(null);
   const [aviso, setAviso] = useState("");
@@ -105,15 +119,23 @@ export function CompromissosLucroCard({
       return;
     }
     const conta = novaTransferencia({
-      para: form.para === "executor" ? "medicoExecutor" : "socios",
-      socio: form.para === "executor" ? "daniel" : form.para,
+      para: form.para === "executor" ? "medicoExecutor" : form.para === "moises" ? "moises" : "socios",
+      socio: form.para === "executor" ? "daniel" : form.para === "moises" ? undefined : form.para,
       dia: form.dia,
       valor,
-      forma: form.forma,
+      // O Dr. Moisés não é sócio: PIX de paciente na conta dele não é forma de pagamento aqui.
+      forma: form.para === "moises" ? "ITAU" : form.forma,
       observacao: form.observacao,
     });
     onRegistrar(conta);
-    const quem = form.para === "executor" ? "à parcela do médico executor" : form.para === "andrya" ? "ao lucro da Andrya" : "ao lucro do Dr. Daniel";
+    const quem =
+      form.para === "executor"
+        ? "à parcela do médico executor"
+        : form.para === "moises"
+          ? "à parcela do Dr. Moisés (no Contas a Pagar fica marcado \"falta a nota\" até chegar a nota ou o recibo dele)"
+          : form.para === "andrya"
+            ? "ao lucro da Andrya"
+            : "ao lucro do Dr. Daniel";
     setAviso(`Pagamento de ${moneyFin(valor)} registrado ${quem}. Ele abate o que vence primeiro.`);
     setForm(null);
   }
@@ -128,6 +150,8 @@ export function CompromissosLucroCard({
             <strong>Médico executor:</strong> 50% do lucro bruto dos produtos vendidos no mês, o mesmo envelope da tela do Lucro
             Inteligente. O valor do mês é pago em duas parcelas: a 1ª vence no último dia útil do próprio mês e a 2ª no último dia útil do
             mês seguinte. Por isso, todo mês vencem a 2ª parcela do mês anterior e a 1ª do mês atual.{" "}
+            <strong>Dr. Moisés:</strong> 20% do lucro bruto dos procedimentos dele no mês (coluna Q da aba dele), pago em três parcelas no dia 20
+            dos três meses seguintes (dia 20 em fim de semana ou feriado paga no dia útil anterior).{" "}
             <strong>Lucro dos sócios:</strong> os 40 mil da régua, 25 mil da Andrya e 15 mil do Dr. Daniel.{" "}
             <strong>Pagamento:</strong> transferência do Itaú ou PIX de paciente que caiu na conta do sócio. Cada pagamento abate o que vence
             primeiro e nunca vira custo de novo. A falta de um mês passa para o seguinte.
@@ -136,52 +160,48 @@ export function CompromissosLucroCard({
         <Etiqueta className="mt-1">uma vez só · pagamento é baixa</Etiqueta>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <section aria-label="Médico executor" className="grid content-start gap-3">
-          <Rubrica as="h3" className="flex items-center gap-2">
-            <Stethoscope className="h-4 w-4 stroke-oliva" aria-hidden="true" />
-            Médico executor · Dr. Daniel
-          </Rubrica>
-          <p className="text-sm font-medium leading-5 text-tinta">
-            O trabalho de {mes}
-            {hoje.slice(0, 7) === compromissos.mes ? " até hoje" : ""} vale <strong className="font-bold tabular-nums">{moneyFin(executor.doMes)}</strong>, pago em
-            duas parcelas.
-          </p>
-          <ul className="border-t border-fio-2">
-            {executor.atrasadas.map((parcela) => (
-              <LinhaDaParcela key={parcela.id} parcela={parcela} atrasada />
-            ))}
-            {executor.vencemNoMes.length ? (
-              executor.vencemNoMes.map((parcela) => <LinhaDaParcela key={parcela.id} parcela={parcela} />)
-            ) : (
-              <li className="border-b border-fio py-3 text-[13px] font-medium leading-5 text-tinta-2">Nenhuma parcela vence neste mês.</li>
-            )}
-            {executor.proximas.map((parcela) => (
-              <LinhaDaParcela key={parcela.id} parcela={parcela} futura />
-            ))}
-          </ul>
-          <p className={cn("text-sm font-bold leading-5 tabular-nums", executor.faltaNoMes > 0.005 ? "text-tinta" : "text-ok")}>
-            {executor.faltaNoMes > 0.005 ? `Falta pagar até o fim de ${mes}: ${moneyFin(executor.faltaNoMes)}` : `Em dia até o fim de ${mes}.`}
-          </p>
-          {executor.adiantado > 0.005 ? <p className="text-[13px] font-bold leading-5 text-ok">Pago a mais: {moneyFin(executor.adiantado)}. Abate a próxima parcela.</p> : null}
-          {executor.pagamentosNoMes.length ? (
-            <ul className="rounded-controle bg-saber px-3 text-[13px] leading-5">
-              {executor.pagamentosNoMes.map((pagamento) => (
-                <li key={pagamento.id} className="flex justify-between gap-3 border-b border-fio py-2 last:border-b-0">
-                  <span className="min-w-0 truncate font-medium text-tinta">
-                    <span className="tabular-nums text-tinta-2">{diaCurto(pagamento.dia)}</span> · {pagamento.descricao}
-                  </span>
-                  <span className="font-bold tabular-nums text-tinta">{moneyFin(pagamento.valor)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {readOnly ? null : (
+      <div className={cn("grid gap-8 lg:grid-cols-2", temMoises && "xl:grid-cols-3")}>
+        <SecaoDoExecutor
+          rotulo="Médico executor"
+          titulo={<>Médico executor · Dr. Daniel</>}
+          icone={<Stethoscope className="h-4 w-4 stroke-oliva" aria-hidden="true" />}
+          comp={executor}
+          mes={mes}
+          frase={
+            <>
+              O trabalho de {mes}
+              {hoje.slice(0, 7) === compromissos.mes ? " até hoje" : ""} vale <strong className="font-bold tabular-nums">{moneyFin(executor.doMes)}</strong>, pago em
+              duas parcelas.
+            </>
+          }
+          botao={readOnly ? null : (
             <Botao tamanho="pq" className="justify-self-start" onClick={() => abrir("executor")}>
               Registrar pagamento ao executor
             </Botao>
           )}
-        </section>
+        />
+        {temMoises ? (
+          <SecaoDoExecutor
+            rotulo="Dr. Moisés"
+            titulo={<>Biomédico · Dr. Moisés</>}
+            icone={<Sparkles className="h-4 w-4 stroke-oliva" aria-hidden="true" />}
+            comp={moises}
+            mes={mes}
+            frase={
+              <>
+                O trabalho de {mes}
+                {hoje.slice(0, 7) === compromissos.mes ? " até hoje" : ""} vale <strong className="font-bold tabular-nums">{moneyFin(moises.doMes)}</strong> (20% do
+                lucro bruto dos procedimentos dele), pago em três parcelas no dia 20 dos três meses seguintes.
+              </>
+            }
+            vazio="Nenhuma parcela do Dr. Moisés vence neste mês: a 1ª de cada mês vence no dia 20 do mês seguinte."
+            botao={readOnly ? null : (
+              <Botao tamanho="pq" className="justify-self-start" onClick={() => abrir("moises")}>
+                Registrar pagamento ao Dr. Moisés
+              </Botao>
+            )}
+          />
+        ) : null}
 
         <section aria-label="Lucro dos sócios" className="grid content-start gap-3">
           <Rubrica as="h3" className="flex items-center gap-2">
@@ -236,14 +256,15 @@ export function CompromissosLucroCard({
                 aria-label="Para quem"
               >
                 <option value="executor">Parcela do médico executor</option>
+                {temMoises ? <option value="moises">Parcela do Dr. Moisés</option> : null}
                 <option value="andrya">Lucro da Andrya</option>
                 <option value="daniel">Lucro do Dr. Daniel</option>
               </Selecao>
             </Campo>
             <Campo rotulo="Como foi pago">
-              <Selecao value={form.forma} onChange={(event) => setForm({ ...form, forma: event.target.value as "ITAU" | "PIX_PACIENTE" })} aria-label="Como foi pago">
+              <Selecao value={form.para === "moises" ? "ITAU" : form.forma} onChange={(event) => setForm({ ...form, forma: event.target.value as "ITAU" | "PIX_PACIENTE" })} aria-label="Como foi pago">
                 <option value="ITAU">Transferência do Itaú</option>
-                <option value="PIX_PACIENTE">PIX de paciente na conta do sócio</option>
+                {form.para === "moises" ? null : <option value="PIX_PACIENTE">PIX de paciente na conta do sócio</option>}
               </Selecao>
             </Campo>
             <Campo rotulo="Data">
@@ -274,5 +295,66 @@ export function CompromissosLucroCard({
       ) : null}
       {aviso ? <RecadoDaTela tom={/^Informe/.test(aviso) ? "atencao" : "ok"}>{aviso}</RecadoDaTela> : null}
     </BlocoFolha>
+  );
+}
+
+/** Uma seção de executor: as parcelas atrasadas, as que vencem no mês, as próximas e os pagamentos. */
+function SecaoDoExecutor({
+  rotulo,
+  titulo,
+  icone,
+  comp,
+  mes,
+  frase,
+  vazio = "Nenhuma parcela vence neste mês.",
+  botao,
+}: {
+  rotulo: string;
+  titulo: ReactNode;
+  icone: ReactNode;
+  comp: CompromissoDoExecutor;
+  mes: string;
+  frase: ReactNode;
+  vazio?: string;
+  botao: ReactNode;
+}) {
+  return (
+    <section aria-label={rotulo} className="grid content-start gap-3">
+      <Rubrica as="h3" className="flex items-center gap-2">
+        {icone}
+        {titulo}
+      </Rubrica>
+      <p className="text-sm font-medium leading-5 text-tinta">{frase}</p>
+      <ul className="border-t border-fio-2">
+        {comp.atrasadas.map((parcela) => (
+          <LinhaDaParcela key={parcela.id} parcela={parcela} atrasada />
+        ))}
+        {comp.vencemNoMes.length ? (
+          comp.vencemNoMes.map((parcela) => <LinhaDaParcela key={parcela.id} parcela={parcela} />)
+        ) : (
+          <li className="border-b border-fio py-3 text-[13px] font-medium leading-5 text-tinta-2">{vazio}</li>
+        )}
+        {comp.proximas.map((parcela) => (
+          <LinhaDaParcela key={parcela.id} parcela={parcela} futura />
+        ))}
+      </ul>
+      <p className={cn("text-sm font-bold leading-5 tabular-nums", comp.faltaNoMes > 0.005 ? "text-tinta" : "text-ok")}>
+        {comp.faltaNoMes > 0.005 ? `Falta pagar até o fim de ${mes}: ${moneyFin(comp.faltaNoMes)}` : `Em dia até o fim de ${mes}.`}
+      </p>
+      {comp.adiantado > 0.005 ? <p className="text-[13px] font-bold leading-5 text-ok">Pago a mais: {moneyFin(comp.adiantado)}. Abate a próxima parcela.</p> : null}
+      {comp.pagamentosNoMes.length ? (
+        <ul className="rounded-controle bg-saber px-3 text-[13px] leading-5">
+          {comp.pagamentosNoMes.map((pagamento) => (
+            <li key={pagamento.id} className="flex justify-between gap-3 border-b border-fio py-2 last:border-b-0">
+              <span className="min-w-0 truncate font-medium text-tinta">
+                <span className="tabular-nums text-tinta-2">{diaCurto(pagamento.dia)}</span> · {pagamento.descricao}
+              </span>
+              <span className="font-bold tabular-nums text-tinta">{moneyFin(pagamento.valor)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {botao}
+    </section>
   );
 }

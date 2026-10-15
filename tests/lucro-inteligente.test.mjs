@@ -225,7 +225,9 @@ test("Kanban: os produtos da tabela são o PASSO 1 do registrar fechamento, vis�
   assert.ok(produtos > 0 && comprovante > 0 && quantoEntrou > 0 && gate > 0, "os quatro trechos existem");
   assert.ok(produtos < comprovante && produtos < quantoEntrou, "produtos primeiro");
   assert.ok(produtos < gate, "fora do trecho que depende do valor");
-  assert.ok(fonte.includes("secoesDoCatalogo().map"), "todas as seções da tabela aparecem como botões");
+  // 15/10/2026: uma aba por profissional (Dr. Daniel · Dr. Moisés); cada aba mostra todas as seções dele.
+  assert.ok(fonte.includes("secoesDoCatalogo(abaProfissional).map"), "todas as seções da tabela aparecem como botões, por profissional");
+  assert.ok(fonte.includes("LISTA_DE_PROFISSIONAIS.map"), "as abas dos profissionais estão acima dos botões");
   assert.ok(fonte.includes("adicionaProduto("), "tocar no produto adiciona a linha");
 });
 
@@ -255,7 +257,8 @@ test("normalizaConfig: a forma antiga (lucro em %) vira a régua nova sem quebra
   assert.equal(nova.selicAnual, 15);
   assert.deepEqual(plain(li.normalizaConfig(null).degraus), plain(li.defaultLucroConfig.degraus), "vazio vira o padrão");
   const atual = li.normalizaConfig({ degraus: [{ desde: "2026-09-01", impostos: 13.33, lucroMensal: 35000, medicoExecutor: 45 }], alvo: { impostos: 13.33, lucroMensal: 35000, medicoExecutor: 45 }, selicAnual: 12 });
-  assert.deepEqual(plain(atual.degraus[0]), { desde: "2026-09-01", impostos: 13.33, lucroMensal: 35000, medicoExecutor: 45 }, "a forma nova passa intacta");
+  // 15/10/2026: régua gravada sem o Dr. Moisés ganha o padrão dele (20%); o resto passa intacto.
+  assert.deepEqual(plain(atual.degraus[0]), { desde: "2026-09-01", impostos: 13.33, lucroMensal: 35000, medicoExecutor: 45, moises: 20 }, "a forma nova passa intacta");
 });
 
 test("dia útil bancário pula fim de semana E feriado (Carnaval, 7 de setembro)", () => {
@@ -349,7 +352,7 @@ test("planilha do dia: contas pagas caem no envelope certo; obra, provisão e ta
   assert.equal(dia.taxas, 0, "dinheiro não tem taxa");
   // Lucas (10/09): salário CEO e salário fixo do médico são conta FIXA (operacional); só a transferência do
   // Lucro Inteligente (e a distribuição) abate o envelope. Empréstimo continua saindo do lucro (aula).
-  assert.deepEqual(plain(dia.usado), { impostos: 700, lucro: 1900, medicoExecutor: 600, operacional: 5300, provisoes: 0, reserva: 0 }, "1.500 LI sócios + 400 empréstimo = 1.900 no lucro; 600 LI médico; aluguel 3.000 + CEO 1.500 + médico fixo 800 = 5.300 operacional; obra, VISA-OBRA, provisão de impostos e Rede fora");
+  assert.deepEqual(plain(dia.usado), { impostos: 700, lucro: 1900, medicoExecutor: 600, moises: 0, operacional: 5300, provisoes: 0, reserva: 0 }, "1.500 LI sócios + 400 empréstimo = 1.900 no lucro; 600 LI médico; aluguel 3.000 + CEO 1.500 + médico fixo 800 = 5.300 operacional; obra, VISA-OBRA, provisão de impostos e Rede fora");
   assert.equal(dia.reservado.provisoes, 0, "sem % configurado, o envelope de provisões fica desligado");
   assert.equal(dia.reservado.reserva, 0, "idem reserva");
   assert.equal(dia.reservado.medicoExecutor, 2972.44, "consulta de 10.000: lucro bruto 59,4% → metade do médico");
@@ -400,7 +403,7 @@ test("avaliação instantânea (Passo 1): onde a clínica está, sem maquiar, co
   assert.equal(mes.sociosPagos, 15000, "só a transferência do Lucro Inteligente aos sócios");
   assert.equal(mes.lucro, -2000, "receita − impostos − executor − operacional: negativo, sem maquiar");
   assert.equal(mes.investimento, 37000, "obra + empréstimo, à parte");
-  assert.deepEqual(plain(mes.percentuais), { impostos: 13, lucro: -2, medicoExecutor: 12, operacional: 77, sociosPagos: 15 });
+  assert.deepEqual(plain(mes.percentuais), { impostos: 13, lucro: -2, medicoExecutor: 12, moises: 0, operacional: 77, sociosPagos: 15 });
   assert.equal(a.consolidado.receita, 100000);
   assert.equal(a.consolidado.prescrito, 100000);
   assert.deepEqual(plain(li.mesesAnteriores("2026-09", 3)), ["2026-06", "2026-07", "2026-08"]);
@@ -440,7 +443,7 @@ test("configuração padrão: a régua do Lucas (02/09) — 16,6% · R$ 40 mil/m
   assert.equal(degrau.impostos, 16.6, "imposto da aula, acima da nossa alíquota de propósito");
   assert.equal(degrau.lucroMensal, 40000, "'quarenta mil, que é mais ou menos o lucro'");
   assert.equal(degrau.medicoExecutor, 50, "coluna S da planilha: 50% do lucro bruto do produto");
-  assert.deepEqual(plain(li.defaultLucroConfig.alvo), { impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 }, "alvo = decisão");
+  assert.deepEqual(plain(li.defaultLucroConfig.alvo), { impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50, moises: 20 }, "alvo = decisão (Dr. Moisés: 20%, 15/10/2026)");
   assert.equal(li.selicDaConfig({ degraus: [], alvo: degrau }), 0.15, "sem SELIC gravada vale a referência de 15% a.a.");
   assert.equal(li.selicDaConfig({ degraus: [], alvo: degrau, selicAnual: 12.5 }), 0.125);
   assert.equal(li.EXEMPLO_DA_AULA.operacional, 30.4, "o exemplo da aula fica só como referência de texto");
@@ -505,7 +508,7 @@ test("registrar transferência cria a conta PAGA na categoria certa (mesmo dinhe
 // ---- ENVELOPES PROVISÕES / RESERVA (14/09/2026, proposta 5.3) ------------------
 test("repartir com provisões e reserva: saem do líquido antes do operacional; poupança de 13º cai em provisões", () => {
   const r = li.repartir(10000, 4000, { impostos: 10, lucroMensal: 0, medicoExecutor: 50, provisoesPct: 5, reservaPct: 2 }, 1000);
-  assert.deepEqual(plain(r), { impostos: 1000, lucro: 1000, medicoExecutor: 2000, operacional: 5300, provisoes: 500, reserva: 200 });
+  assert.deepEqual(plain(r), { impostos: 1000, lucro: 1000, medicoExecutor: 2000, moises: 0, operacional: 5300, provisoes: 500, reserva: 200 });
   assert.equal(li.envelopeDaConta({ id: "x", categoryRef: "cat-poup-13-colaboradores", amount: 1, description: "", supplier: "", dueDate: "2026-09-01", paidAt: "2026-09-01", method: "PIX", documentNote: "", isCapex: false, notes: "" }, null), "provisoes");
   assert.equal(li.envelopeDaConta({ id: "y", categoryRef: "cat-poup-impostos-mensais", amount: 1, description: "", supplier: "", dueDate: "2026-09-01", paidAt: "2026-09-01", method: "PIX", documentNote: "", isCapex: false, notes: "" }, null), null, "a poupança de impostos continua fora (o envelope de impostos já cobre)");
 });

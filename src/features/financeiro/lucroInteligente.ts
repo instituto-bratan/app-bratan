@@ -25,6 +25,11 @@
 //     o item da comanda é reconhecido pela descrição e pelo preço.
 //   · operacional = o que sobra (pode ficar negativo num dia fraco).
 //
+// DR. MOISÉS (15/10/2026): um segundo executor, com envelope próprio. Os itens da
+// comanda dizem de quem são; o Dr. Daniel fica com 50% da coluna P dos itens dele
+// (nada mudou para ele) e o Dr. Moisés com 20% da coluna P dos itens dele (coluna
+// Q da aba "Precificação Dr. Moisés"). O que fica para gastar desconta os dois.
+//
 // A aula sugere subir devagar ("regra do 1%"); a configuração guarda DEGRAUS
 // com data para isso — o valor de cada dia é o do degrau vigente naquele dia.
 //
@@ -38,7 +43,8 @@
 // antecipação (TAD) se a clínica puxar antes dos 31 dias; a decisão é da
 // clínica, e o app mostra quanto custaria puxar hoje.
 import { createFinId, expenseEhCapex, crediarioProfitOfMonth, saleTotal, type FinCategory, type FinCrediarioProfit, type FinExpense, type FinReconciliation, type FinReconciliationStatus, type FinSale, type FinSaleItem, type FinSaleItemType } from "./financeiroData";
-import { custoFixoDoProduto, itemEhDoMedico, lucroBrutoDoItem, produtoDoItem, quantidadeDoItem } from "./catalogoPrecificacao";
+import { custoFixoDoProduto, itemEhDoMedico, lucroBrutoDoItem, produtoDoItem, profissionalDoItem, quantidadeDoItem } from "./catalogoPrecificacao";
+import { PROFISSIONAIS, type ProfissionalId } from "./profissionais";
 import {
   agendaRecebiveis,
   ajustaParaDiaUtil,
@@ -69,6 +75,8 @@ export type ReguaLucro = {
   lucroMensal: number;
   /** % do LUCRO BRUTO DOS PRODUTOS do dia que vai para o Dr. Daniel (coluna S da planilha: 50%). */
   medicoExecutor: number;
+  /** % do lucro bruto dos procedimentos do Dr. Moisés que vai para ele (coluna Q da aba dele: 20%). 15/10/2026. */
+  moises: number;
   /**
    * ENVELOPES OPCIONAIS (14/09/2026, proposta 5.3 — Profit First completo):
    * provisões (13º, férias, IRPJ/CSLL trimestral) e reserva de emergência, em %
@@ -115,8 +123,8 @@ export const EXEMPLO_DA_AULA = { impostos: 16.6, lucro: 25, medicoExecutor: 28, 
  *  · médico executor 50% do lucro bruto do produto (coluna S da planilha).
  */
 export const defaultLucroConfig: LucroConfig = {
-  degraus: [{ desde: "2026-09-01", impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 }],
-  alvo: { impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 },
+  degraus: [{ desde: "2026-09-01", impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50, moises: PROFISSIONAIS.moises.percentualPadrao }],
+  alvo: { impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50, moises: PROFISSIONAIS.moises.percentualPadrao },
   selicAnual: SELIC_ANUAL_REFERENCIA * 100,
 };
 
@@ -126,6 +134,7 @@ export const defaultLucroConfig: LucroConfig = {
  */
 export function normalizaConfig(raw: unknown): LucroConfig {
   const bruto = (raw ?? {}) as Partial<LucroConfig> & { degraus?: Array<Partial<DegrauLucro> & { lucro?: number }>; alvo?: Partial<ReguaLucro> & { lucro?: number } };
+  const numero = (valor: unknown) => (valor === null || valor === undefined || valor === "" ? NaN : Number(valor));
   const converte = (item: (Partial<ReguaLucro> & { lucro?: number }) | undefined, padrao: ReguaLucro): ReguaLucro => {
     if (!item) return padrao;
     const formaAntiga = item.lucroMensal === undefined && item.lucro !== undefined;
@@ -133,6 +142,8 @@ export function normalizaConfig(raw: unknown): LucroConfig {
       impostos: Number.isFinite(Number(item.impostos)) ? Number(item.impostos) : padrao.impostos,
       lucroMensal: Number.isFinite(Number(item.lucroMensal)) ? Number(item.lucroMensal) : padrao.lucroMensal,
       medicoExecutor: formaAntiga || !Number.isFinite(Number(item.medicoExecutor)) ? padrao.medicoExecutor : Number(item.medicoExecutor),
+      // Régua gravada antes de 15/10/2026 não tem o Dr. Moisés: vale o padrão (20%).
+      moises: Number.isFinite(numero(item.moises)) ? numero(item.moises) : padrao.moises,
     };
   };
   const degraus = (bruto.degraus ?? []).map((degrau) => ({ ...converte(degrau, defaultLucroConfig.degraus[0]), desde: degrau.desde ?? defaultLucroConfig.degraus[0].desde }));
@@ -147,10 +158,20 @@ export function normalizaConfig(raw: unknown): LucroConfig {
 /** O degrau que vale num dia: o último cujo "desde" já chegou (ou o primeiro, antes de todos). */
 export function reguaNoDia(config: LucroConfig, dia: string): ReguaLucro {
   const ordenados = [...config.degraus].sort((a, b) => a.desde.localeCompare(b.desde));
-  if (!ordenados.length) return { impostos: 0, lucroMensal: 0, medicoExecutor: 0 };
+  if (!ordenados.length) return { impostos: 0, lucroMensal: 0, medicoExecutor: 0, moises: 0 };
   let vigente = ordenados[0];
   for (const degrau of ordenados) if (degrau.desde <= dia) vigente = degrau;
-  return { impostos: vigente.impostos, lucroMensal: vigente.lucroMensal, medicoExecutor: vigente.medicoExecutor };
+  return {
+    impostos: vigente.impostos,
+    lucroMensal: vigente.lucroMensal,
+    medicoExecutor: vigente.medicoExecutor,
+    moises: Number.isFinite(Number(vigente.moises)) ? Number(vigente.moises) : PROFISSIONAIS.moises.percentualPadrao,
+  };
+}
+
+/** O % do executor na régua do dia (Dr. Daniel: medicoExecutor · Dr. Moisés: moises). */
+export function percentualNaRegua(regua: ReguaLucro, quem: ProfissionalId) {
+  return quem === "moises" ? regua.moises : regua.medicoExecutor;
 }
 
 /** Dias úteis do mês (segunda a sexta, sem feriado bancário) — a base da cota diária do lucro. */
@@ -194,14 +215,24 @@ export {
   type ProdutoPrecificado,
 } from "./catalogoPrecificacao";
 
-/** Itens da comanda que têm parte do médico executor (os mesmos tipos do catálogo/padrão). */
-export function prescritoNaComanda(sale: FinSale) {
-  return round2(sale.items.filter((item) => itemEhDoMedico(item.itemType)).reduce((soma, item) => soma + (item.amount || 0), 0));
+/**
+ * Itens da comanda que têm parte do executor (os mesmos tipos do catálogo/padrão),
+ * pelo valor cobrado. Sem `quem`, os do Dr. Daniel — é o "prescrito" de sempre.
+ */
+export function prescritoNaComanda(sale: FinSale, quem: ProfissionalId = "daniel") {
+  return round2(
+    sale.items.filter((item) => itemEhDoMedico(item.itemType) && profissionalDoItem(item) === quem).reduce((soma, item) => soma + (item.amount || 0), 0),
+  );
 }
 
-/** Soma da coluna P dos itens da comanda — a base dos 50% do médico. */
-export function lucroBrutoNaComanda(sale: FinSale) {
-  return round2(sale.items.reduce((soma, item) => soma + lucroBrutoDoItem(item), 0));
+/** Soma da coluna P dos itens do executor na comanda — a base da parte dele (Dr. Daniel por padrão). */
+export function lucroBrutoNaComanda(sale: FinSale, quem: ProfissionalId = "daniel") {
+  return round2(sale.items.reduce((soma, item) => soma + (profissionalDoItem(item) === quem ? lucroBrutoDoItem(item) : 0), 0));
+}
+
+/** Tudo o que foi vendido de um profissional na comanda (todos os itens dele, pelo valor cobrado). */
+export function vendidoNaComanda(sale: FinSale, quem: ProfissionalId) {
+  return round2(sale.items.filter((item) => profissionalDoItem(item) === quem).reduce((soma, item) => soma + (item.amount || 0), 0));
 }
 
 // ---- Explicação item a item da parte do médico -------------------------------
@@ -271,12 +302,18 @@ function saleItemTypeLabelFallback(itemType: FinSaleItemType) {
   return itemType.charAt(0) + itemType.slice(1).toLowerCase();
 }
 
-/** Abre a conta do médico executor de um dia: comanda por comanda, item por item. */
-export function explicarMedicoDoDia(sales: FinSale[], dia: string, regua: ReguaLucro): ExplicacaoMedicoDia {
+/**
+ * Abre a conta de um executor num dia: comanda por comanda, item por item. Sem
+ * `quem`, o Dr. Daniel (como sempre). Só entram os itens de quem foi pedido — uma
+ * comanda com Plano do Dr. Daniel e Botox do Dr. Moisés aparece nas duas contas,
+ * cada uma com o seu item.
+ */
+export function explicarMedicoDoDia(sales: FinSale[], dia: string, regua: ReguaLucro, quem: ProfissionalId = "daniel"): ExplicacaoMedicoDia {
+  const percentual = percentualNaRegua(regua, quem);
   const comandas: ComandaExplicada[] = sales
-    .filter((sale) => sale.saleDate === dia)
+    .filter((sale) => sale.saleDate === dia && sale.items.some((item) => profissionalDoItem(item) === quem))
     .map((sale) => {
-      const itens = sale.items.map((item) => explicarItemDoMedico(item, regua.medicoExecutor));
+      const itens = sale.items.filter((item) => profissionalDoItem(item) === quem).map((item) => explicarItemDoMedico(item, percentual));
       return {
         saleId: sale.id,
         paciente: sale.patientName,
@@ -289,13 +326,13 @@ export function explicarMedicoDoDia(sales: FinSale[], dia: string, regua: ReguaL
   const lucroBruto = round2(comandas.reduce((soma, comanda) => soma + comanda.lucroBruto, 0));
   return {
     dia,
-    percentual: regua.medicoExecutor,
+    percentual,
     comandas,
     cobrado: round2(comandas.reduce((soma, comanda) => soma + comanda.cobrado, 0)),
     lucroBruto,
     // O total do dia é a soma da coluna P × percentual (é assim que a planilha
     // reparte); somar as partes arredondadas pode diferir em 1 centavo.
-    parteMedico: round2((lucroBruto * regua.medicoExecutor) / 100),
+    parteMedico: round2((lucroBruto * percentual) / 100),
   };
 }
 
@@ -315,6 +352,8 @@ export const CATEGORIAS_PROVISAO_IMPOSTOS = new Set(["cat-poup-impostos-mensais"
 export const CATEGORIA_LUCRO_INTELIGENTE_MEDICO = "cat-lucro-inteligente-medico";
 export const CATEGORIA_LUCRO_INTELIGENTE_SOCIOS = "cat-lucro-inteligente-socios";
 export const CATEGORIAS_MEDICO_EXECUTOR = new Set([CATEGORIA_LUCRO_INTELIGENTE_MEDICO]);
+/** Pagamentos ao Dr. Moisés (15/10/2026): abatem o envelope dele. */
+export const CATEGORIA_LUCRO_INTELIGENTE_MOISES = PROFISSIONAIS.moises.categoriaPagamento;
 export const CATEGORIAS_LUCRO_SOCIOS = new Set([CATEGORIA_LUCRO_INTELIGENTE_SOCIOS, "cat-distribuicao-lucro-socios"]);
 /** Taxas das maquininhas: já saem do "entrou" na coluna Taxas — contá-las de novo como gasto seria dobrar. */
 export const CATEGORIAS_TAXAS_MAQUININHA = new Set(["cat-tarifa-bancaria-rede", "cat-tarifa-bancaria-safra"]);
@@ -327,10 +366,11 @@ export const CATEGORIAS_TAXAS_MAQUININHA = new Set(["cat-tarifa-bancaria-rede", 
  */
 export const CATEGORIAS_DIVIDAS_INVESTIMENTO = new Set(["cat-giro-pronamp-carro-emprestimo"]);
 
-export type EnvelopeKey = "impostos" | "lucro" | "medicoExecutor" | "operacional" | "provisoes" | "reserva";
+/** medicoExecutor = Dr. Daniel (o nome ficou de antes); moises = Dr. Moisés (15/10/2026). */
+export type EnvelopeKey = "impostos" | "lucro" | "medicoExecutor" | "moises" | "operacional" | "provisoes" | "reserva";
 export type Envelopes = Record<EnvelopeKey, number>;
 
-const zeroEnvelopes = (): Envelopes => ({ impostos: 0, lucro: 0, medicoExecutor: 0, operacional: 0, provisoes: 0, reserva: 0 });
+const zeroEnvelopes = (): Envelopes => ({ impostos: 0, lucro: 0, medicoExecutor: 0, moises: 0, operacional: 0, provisoes: 0, reserva: 0 });
 
 /** Contas que abastecem o envelope de provisões: as poupanças de 13º, férias, rescisão, urgências… (não a de impostos, que já tem envelope próprio). */
 export function ehProvisao(categoryRef: string) {
@@ -346,24 +386,27 @@ export function envelopeDaConta(expense: FinExpense, category?: FinCategory | nu
   if (ehProvisao(expense.categoryRef)) return "provisoes";
   if (CATEGORIAS_TAXAS_MAQUININHA.has(expense.categoryRef)) return null;
   if (CATEGORIAS_MEDICO_EXECUTOR.has(expense.categoryRef)) return "medicoExecutor";
+  if (expense.categoryRef === CATEGORIA_LUCRO_INTELIGENTE_MOISES) return "moises";
   if (expenseEhCapex(expense, category)) return null;
   return "operacional";
 }
 
 /**
- * Reparte o dia: impostos = % do líquido; médico executor = % do lucro bruto
- * dos produtos (coluna S); lucro = a cota fixa do dia; operacional = o que
- * sobra (centavo a centavo, para os quatro fecharem o líquido — e negativo
- * quando o dia não paga a régua).
+ * Reparte o dia: impostos = % do líquido; Dr. Daniel = % do lucro bruto dos
+ * produtos dele (coluna S); Dr. Moisés = % do lucro bruto dos procedimentos dele
+ * (coluna Q da aba dele); lucro = a cota fixa do dia; operacional = o que sobra
+ * (centavo a centavo, para os envelopes fecharem o líquido — e negativo quando o
+ * dia não paga a régua).
  */
-export function repartir(liquido: number, lucroBrutoProdutos: number, regua: ReguaLucro, cotaLucro: number): Envelopes {
+export function repartir(liquido: number, lucroBrutoProdutos: number, regua: ReguaLucro, cotaLucro: number, lucroBrutoMoises = 0): Envelopes {
   const impostos = round2((liquido * regua.impostos) / 100);
   const medicoExecutor = round2((lucroBrutoProdutos * regua.medicoExecutor) / 100);
+  const moises = round2((lucroBrutoMoises * (regua.moises ?? PROFISSIONAIS.moises.percentualPadrao)) / 100);
   const lucro = round2(cotaLucro);
   const provisoes = round2((liquido * (regua.provisoesPct ?? 0)) / 100);
   const reserva = round2((liquido * (regua.reservaPct ?? 0)) / 100);
-  const operacional = round2(liquido - impostos - medicoExecutor - lucro - provisoes - reserva);
-  return { impostos, lucro, medicoExecutor, operacional, provisoes, reserva };
+  const operacional = round2(liquido - impostos - medicoExecutor - moises - lucro - provisoes - reserva);
+  return { impostos, lucro, medicoExecutor, moises, operacional, provisoes, reserva };
 }
 
 // ---- A planilha do dia a dia -------------------------------------------------
@@ -389,10 +432,14 @@ export type LinhaDiaLucro = {
   taxas: number;
   /** total − taxas: o que entrou de verdade. */
   liquido: number;
-  /** Itens do médico lançados no dia (tratamento, consulta, sinal, mapeamento), pelo preço. */
+  /** Itens do Dr. Daniel lançados no dia (tratamento, consulta, sinal, mapeamento), pelo valor cobrado. */
   prescrito: number;
-  /** Coluna P da planilha somada nos itens do dia — a base dos 50% do médico executor. */
+  /** Coluna P da planilha somada nos itens do Dr. Daniel no dia — a base dos 50% dele. */
   lucroBrutoProdutos: number;
+  /** O que foi vendido do Dr. Moisés no dia (itens dele, pelo valor cobrado). 15/10/2026. */
+  vendidoMoises: number;
+  /** Coluna P somada nos itens do Dr. Moisés no dia — a base dos 20% dele. */
+  lucroBrutoMoises: number;
   /** O que já dá para mexer no dia: PIX/dinheiro/outros do dia (líquidos) + o cartão do dia útil anterior (líquido da taxa). */
   disponivel: number;
   /** Só a parte do cartão dentro de `disponivel`. */
@@ -422,6 +469,8 @@ export type PlanilhaLucro = {
     liquido: number;
     prescrito: number;
     lucroBrutoProdutos: number;
+    vendidoMoises: number;
+    lucroBrutoMoises: number;
     disponivel: number;
     antecipacao: number;
     reservado: Envelopes;
@@ -446,6 +495,7 @@ function somaEnvelopes(a: Envelopes, b: Envelopes): Envelopes {
     provisoes: round2((a.provisoes ?? 0) + (b.provisoes ?? 0)),
     reserva: round2((a.reserva ?? 0) + (b.reserva ?? 0)),
     medicoExecutor: round2(a.medicoExecutor + b.medicoExecutor),
+    moises: round2((a.moises ?? 0) + (b.moises ?? 0)),
     operacional: round2(a.operacional + b.operacional),
   };
 }
@@ -457,6 +507,7 @@ function subtraiEnvelopes(a: Envelopes, b: Envelopes): Envelopes {
     provisoes: round2((a.provisoes ?? 0) - (b.provisoes ?? 0)),
     reserva: round2((a.reserva ?? 0) - (b.reserva ?? 0)),
     medicoExecutor: round2(a.medicoExecutor - b.medicoExecutor),
+    moises: round2((a.moises ?? 0) - (b.moises ?? 0)),
     operacional: round2(a.operacional - b.operacional),
   };
 }
@@ -551,6 +602,8 @@ export function buildPlanilhaLucro(input: {
       liquido: 0,
       prescrito: 0,
       lucroBrutoProdutos: 0,
+      vendidoMoises: 0,
+      lucroBrutoMoises: 0,
       disponivel: 0,
       cartaoDisponivel: 0,
       antecipacao: 0,
@@ -566,8 +619,10 @@ export function buildPlanilhaLucro(input: {
     let taxasPix = 0;
     for (const sale of sales) {
       if (sale.saleDate !== dia) continue;
-      linha.prescrito += prescritoNaComanda(sale);
-      linha.lucroBrutoProdutos += lucroBrutoNaComanda(sale);
+      linha.prescrito += prescritoNaComanda(sale, "daniel");
+      linha.lucroBrutoProdutos += lucroBrutoNaComanda(sale, "daniel");
+      linha.vendidoMoises += vendidoNaComanda(sale, "moises");
+      linha.lucroBrutoMoises += lucroBrutoNaComanda(sale, "moises");
       for (const payment of sale.payments) {
         const amount = payment.amount || 0;
         if (payment.method === "PIX") {
@@ -591,6 +646,8 @@ export function buildPlanilhaLucro(input: {
     linha.outros = round2(linha.outros);
     linha.prescrito = round2(linha.prescrito);
     linha.lucroBrutoProdutos = round2(linha.lucroBrutoProdutos);
+    linha.vendidoMoises = round2(linha.vendidoMoises);
+    linha.lucroBrutoMoises = round2(linha.lucroBrutoMoises);
     linha.taxas = round2(linha.taxas + taxasPix);
     linha.total = round2(linha.pix + linha.dinheiro + linha.debito + linha.credito + linha.outros);
     linha.liquido = round2(linha.total - linha.taxas);
@@ -598,7 +655,7 @@ export function buildPlanilhaLucro(input: {
     linha.cartaoDisponivel = cartaoHoje.liquido;
     linha.antecipacao = cartaoHoje.antecipacao;
     linha.disponivel = round2(linha.pix - taxasPix + linha.dinheiro + linha.outros + cartaoHoje.liquido);
-    linha.reservado = repartir(linha.liquido, linha.lucroBrutoProdutos, linha.regua, linha.regua.cotaLucro);
+    linha.reservado = repartir(linha.liquido, linha.lucroBrutoProdutos, linha.regua, linha.regua.cotaLucro, linha.lucroBrutoMoises);
 
     acumuladoReservado = somaEnvelopes(acumuladoReservado, linha.reservado);
     acumuladoUsado = somaEnvelopes(acumuladoUsado, linha.usado);
@@ -628,6 +685,8 @@ export function buildPlanilhaLucro(input: {
       liquido: soma((linha) => linha.liquido),
       prescrito: soma((linha) => linha.prescrito),
       lucroBrutoProdutos: soma((linha) => linha.lucroBrutoProdutos),
+      vendidoMoises: soma((linha) => linha.vendidoMoises),
+      lucroBrutoMoises: soma((linha) => linha.lucroBrutoMoises),
       disponivel: soma((linha) => linha.disponivel),
       antecipacao: soma((linha) => linha.antecipacao),
       reservado: acumuladoReservado,
@@ -654,6 +713,8 @@ export type MesAvaliado = {
   lucroBrutoProdutos: number;
   impostos: number;
   medicoExecutor: number;
+  /** Pago ao Dr. Moisés no mês (transferências do Lucro Inteligente). 15/10/2026. */
+  moises: number;
   operacional: number;
   /** Salário CEO + pró-labore + distribuição: o que os sócios já levaram. */
   sociosPagos: number;
@@ -661,7 +722,7 @@ export type MesAvaliado = {
   lucro: number;
   /** Obra, parcelas de empréstimo e investimento (sem a distribuição): a aula manda tratar como lucro reinvestido. */
   investimento: number;
-  percentuais: { impostos: number; lucro: number; medicoExecutor: number; operacional: number; sociosPagos: number };
+  percentuais: { impostos: number; lucro: number; medicoExecutor: number; moises: number; operacional: number; sociosPagos: number };
 };
 
 export type AvaliacaoInstantanea = {
@@ -683,6 +744,7 @@ function avaliaMes(
   const lucroBrutoProdutos = round2(vendasDoMes.reduce((soma, sale) => soma + lucroBrutoNaComanda(sale), 0));
   let impostos = 0;
   let medicoExecutor = 0;
+  let moises = 0;
   let operacional = 0;
   let sociosPagos = 0;
   let investimento = 0;
@@ -695,10 +757,11 @@ function avaliaMes(
     else if (CATEGORIAS_IMPOSTOS.has(expense.categoryRef)) impostos += amount;
     else if (CATEGORIAS_PROVISAO_IMPOSTOS.has(expense.categoryRef) || ehProvisao(expense.categoryRef)) continue;
     else if (CATEGORIAS_MEDICO_EXECUTOR.has(expense.categoryRef)) medicoExecutor += amount;
+    else if (expense.categoryRef === CATEGORIA_LUCRO_INTELIGENTE_MOISES) moises += amount;
     else if (CATEGORIAS_DIVIDAS_INVESTIMENTO.has(expense.categoryRef) || expenseEhCapex(expense, category)) investimento += amount;
     else operacional += amount;
   }
-  const lucro = round2(receita - impostos - medicoExecutor - operacional);
+  const lucro = round2(receita - impostos - medicoExecutor - moises - operacional);
   const pct = (valor: number) => (receita > 0 ? round2((valor / receita) * 100) : 0);
   return {
     monthKey,
@@ -707,6 +770,7 @@ function avaliaMes(
     lucroBrutoProdutos,
     impostos: round2(impostos),
     medicoExecutor: round2(medicoExecutor),
+    moises: round2(moises),
     operacional: round2(operacional),
     sociosPagos: round2(sociosPagos),
     lucro,
@@ -715,6 +779,7 @@ function avaliaMes(
       impostos: pct(impostos),
       lucro: pct(lucro),
       medicoExecutor: pct(medicoExecutor),
+      moises: pct(moises),
       operacional: pct(operacional),
       sociosPagos: pct(sociosPagos),
     },
@@ -735,6 +800,7 @@ export function avaliacaoInstantanea(
   const pct = (valor: number) => (receita > 0 ? round2((valor / receita) * 100) : 0);
   const impostos = soma((mes) => mes.impostos);
   const medicoExecutor = soma((mes) => mes.medicoExecutor);
+  const moises = soma((mes) => mes.moises);
   const operacional = soma((mes) => mes.operacional);
   const sociosPagos = soma((mes) => mes.sociosPagos);
   const lucro = soma((mes) => mes.lucro);
@@ -747,6 +813,7 @@ export function avaliacaoInstantanea(
       lucroBrutoProdutos: soma((mes) => mes.lucroBrutoProdutos),
       impostos,
       medicoExecutor,
+      moises,
       operacional,
       sociosPagos,
       lucro,
@@ -755,6 +822,7 @@ export function avaliacaoInstantanea(
         impostos: pct(impostos),
         lucro: pct(lucro),
         medicoExecutor: pct(medicoExecutor),
+        moises: pct(moises),
         operacional: pct(operacional),
         sociosPagos: pct(sociosPagos),
       },
@@ -900,7 +968,7 @@ export function resumoPublicoDoMes(planilha: PlanilhaLucro, hoje: string, lucroM
 // (distribuição de lucro, pró-labore, salário CEO). Registrar uma transferência
 // aqui = lançar uma conta paga nessa categoria — por isso Contas a Pagar, P12 e
 // esta tela contam o mesmo dinheiro.
-export type Beneficiario = "medicoExecutor" | "socios";
+export type Beneficiario = "medicoExecutor" | "moises" | "socios";
 
 export type Transferencia = {
   id: string;
@@ -926,11 +994,13 @@ export type ResumoRepasse = {
 
 export const CATEGORIA_TRANSFERENCIA: Record<Beneficiario, string> = {
   medicoExecutor: CATEGORIA_LUCRO_INTELIGENTE_MEDICO,
+  moises: CATEGORIA_LUCRO_INTELIGENTE_MOISES,
   socios: CATEGORIA_LUCRO_INTELIGENTE_SOCIOS,
 };
 
 export const beneficiarioLabels: Record<Beneficiario, string> = {
   medicoExecutor: "Dr. Daniel (médico executor)",
+  moises: "Dr. Moisés (biomédico)",
   socios: "Sócios (lucro)",
 };
 
@@ -952,12 +1022,15 @@ export function resumoDosRepasses(planilha: PlanilhaLucro, expenses: FinExpense[
   const ultima = planilha.linhas.at(-1);
   const ateDia = ultima?.dia ?? `${planilha.monthKey}-01`;
   const medico = transferenciasDoMes(expenses, planilha.monthKey, CATEGORIAS_MEDICO_EXECUTOR);
+  const moises = transferenciasDoMes(expenses, planilha.monthKey, new Set([CATEGORIA_LUCRO_INTELIGENTE_MOISES]));
   const socios = transferenciasDoMes(expenses, planilha.monthKey, CATEGORIAS_LUCRO_SOCIOS);
   const dividas = transferenciasDoMes(expenses, planilha.monthKey, CATEGORIAS_DIVIDAS_INVESTIMENTO);
   const soma = (lista: Transferencia[]) => round2(lista.reduce((total, item) => total + item.valor, 0));
   const provMedico = planilha.totais.reservado.medicoExecutor;
+  const provMoises = planilha.totais.reservado.moises ?? 0;
   const provSocios = planilha.totais.reservado.lucro;
   const transfMedico = soma(medico);
+  const transfMoises = soma(moises);
   const transfSocios = soma(socios);
   const dividasPagas = soma(dividas);
   return {
@@ -969,6 +1042,15 @@ export function resumoDosRepasses(planilha: PlanilhaLucro, expenses: FinExpense[
       dividasPagas: 0,
       falta: round2(provMedico - transfMedico),
       transferencias: medico,
+    },
+    moises: {
+      para: "moises",
+      ateDia,
+      provisionado: provMoises,
+      transferido: transfMoises,
+      dividasPagas: 0,
+      falta: round2(provMoises - transfMoises),
+      transferencias: moises,
     },
     socios: {
       para: "socios",
@@ -984,7 +1066,7 @@ export function resumoDosRepasses(planilha: PlanilhaLucro, expenses: FinExpense[
 
 /** Frase única, na fala do Lucas: "provisionado X · transferido Y · falta Z para bater com hoje". */
 export function fraseDoRepasse(resumo: ResumoRepasse, formata: (valor: number) => string) {
-  const quem = resumo.para === "medicoExecutor" ? "para o Dr. Daniel" : "para os sócios";
+  const quem = resumo.para === "medicoExecutor" ? "para o Dr. Daniel" : resumo.para === "moises" ? "para o Dr. Moisés" : "para os sócios";
   const base = `Provisionado até ${resumo.ateDia.slice(8, 10)}/${resumo.ateDia.slice(5, 7)}: ${formata(resumo.provisionado)} · já transferido ${quem}: ${formata(resumo.transferido)}`;
   const dividas = resumo.dividasPagas > 0.005 ? ` · dívidas pagas com este envelope: ${formata(resumo.dividasPagas)}` : "";
   if (resumo.falta > 0.005) return `${base}${dividas} → falta transferir ${formata(resumo.falta)} para bater com hoje.`;
@@ -1011,6 +1093,29 @@ export function novaTransferencia(input: {
 }): FinExpense {
   const [ano, mes, dia] = input.dia.split("-");
   const data = `${dia}/${mes}/${ano}`;
+  // DR. MOISÉS (15/10/2026): não é sócio, então o pagamento a ele é de prestador
+  // de serviço — nasce com "falta a nota" para a contabilidade receber a nota ou
+  // o recibo dele, como qualquer fornecedor.
+  if (input.para === "moises") {
+    const moises = PROFISSIONAIS.moises;
+    return {
+      id: createFinId("fexp"),
+      description: `Pagamento ao ${moises.nome} (${moises.papel}) — ${data}`,
+      categoryRef: CATEGORIA_TRANSFERENCIA.moises,
+      amount: round2(input.valor),
+      dueDate: input.dia,
+      paidAt: input.dia,
+      method: "TRANSFERENCIA",
+      supplier: moises.nomeCompleto,
+      installmentNum: null,
+      installmentTotal: null,
+      documentNote: (input.comprovante || "").trim(),
+      isCapex: false,
+      notes: ["Registrada no Lucro Inteligente (parcela do Dr. Moisés: 20% do lucro bruto dos procedimentos dele).", (input.observacao || "").trim()].filter(Boolean).join(" "),
+      createdAt: new Date().toISOString(),
+      notaStatus: "PENDENTE",
+    };
+  }
   const executor = input.para === "medicoExecutor";
   const socio = executor ? "daniel" : input.socio;
   const quem = executor || socio === "daniel" ? "Dr. Daniel Bratan" : socio === "andrya" ? "Andrya Bratan (sócia)" : "Sócios";

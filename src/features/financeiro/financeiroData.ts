@@ -1,8 +1,12 @@
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import type { EstoqueSetor } from "@/features/estoque/estoqueData";
 import { itemContaComoVenda, naturezaDoItem } from "./naturezaItem";
+import { profissionalDoItem } from "./catalogoPrecificacao";
+import type { ProfissionalId } from "./profissionais";
 import {
   CATEGORIA_PAGAMENTO_EXECUTOR,
+  CATEGORIA_PAGAMENTO_MOISES,
+  CATEGORIAS_PAGAMENTO_EXECUTORES,
   CATEGORIAS_PAGAMENTO_SOCIOS,
   CATEGORIAS_SALARIO_ANTIGO_DOS_SOCIOS,
   compromissosDoMes,
@@ -48,6 +52,12 @@ export type FinSaleItem = {
   itemType: FinSaleItemType;
   amount: number;
   description: string;
+  /**
+   * Quem executa o item (15/10/2026, chegada do Dr. Moisés). Vazio = Dr. Daniel:
+   * é o que vale para todas as comandas até outubro de 2026. O salário de cada
+   * um no Lucro Inteligente sai dos itens dele.
+   */
+  profissional?: ProfissionalId | null;
 };
 
 /**
@@ -645,6 +655,8 @@ export type P12Matrix = {
 
 /** Linha da P12 que o motor calcula (não é conta do Contas a Pagar). */
 export const LINHA_MOTOR_EXECUTOR_ID = "motor-medico-executor";
+/** Linha própria do Dr. Moisés na folha da P12 (15/10/2026). */
+export const LINHA_MOTOR_MOISES_ID = "motor-dr-moises";
 
 function monthIndex(dateString: string) {
   const month = Number(dateString.slice(5, 7));
@@ -716,8 +728,9 @@ export function buildP12Matrix(
     if (month < 0) continue;
     const categoryRow = rowByRef.get(expense.categoryRef);
     if (!categoryRow) continue;
-    // MOTOR: pagamento ao médico executor é baixa da parcela; o custo é a linha do motor.
-    if (expense.categoryRef === CATEGORIA_PAGAMENTO_EXECUTOR && motorValeNoMes(`${year}-${String(month + 1).padStart(2, "0")}`)) {
+    // MOTOR: pagamento ao médico executor (Dr. Daniel ou Dr. Moisés) é baixa da
+    // parcela; o custo é a linha do motor de cada um.
+    if (CATEGORIAS_PAGAMENTO_EXECUTORES.has(expense.categoryRef) && motorValeNoMes(`${year}-${String(month + 1).padStart(2, "0")}`)) {
       executorPagoMonths[month] += expense.amount || 0;
       continue;
     }
@@ -741,6 +754,20 @@ export function buildP12Matrix(
     months: executorMotorMonths.map((total) => ({ total, count: total > 0.005 ? 1 : 0 })),
     yearTotal: executorMotorMonths.reduce((soma, valor) => soma + valor, 0),
   };
+  // DR. MOISÉS (15/10/2026): o trabalho dele no mês é custo do mês, como o do Dr. Daniel.
+  const moisesMotorMonths = motorMonths.map((ativo, index) => (ativo ? executorDoMes(sales, `${year}-${String(index + 1).padStart(2, "0")}`, undefined, "moises") : 0));
+  const linhaDoMoises: P12Row = {
+    category: {
+      id: LINHA_MOTOR_MOISES_ID,
+      groupKey: "MAO_DE_OBRA",
+      name: "Dr. Moisés do mês (20% do lucro bruto dos procedimentos dele, motor do Lucro Inteligente)",
+      sortOrder: 9999,
+      isCapex: false,
+      active: true,
+    },
+    months: moisesMotorMonths.map((total) => ({ total, count: total > 0.005 ? 1 : 0 })),
+    yearTotal: moisesMotorMonths.reduce((soma, valor) => soma + valor, 0),
+  };
   const groups: P12Group[] = finGroupOrder.map((groupKey) => {
     // Categorias CAPEX (obra) saem dos grupos: são investimento pago pelo cofre,
     // não custo operacional — não podem pesar no lucro do mês.
@@ -749,6 +776,7 @@ export function buildP12Matrix(
       .map((category) => rowByRef.get(category.id)!);
     // MOTOR: o médico executor do mês entra como linha própria da folha.
     if (groupKey === "MAO_DE_OBRA" && linhaDoMotor.yearTotal > 0.005) rows.push(linhaDoMotor);
+    if (groupKey === "MAO_DE_OBRA" && linhaDoMoises.yearTotal > 0.005) rows.push(linhaDoMoises);
     const months = emptyCells();
     let yearTotal = 0;
     for (const row of rows) {
@@ -894,15 +922,16 @@ export function buildResumoMes(
   // MOTOR: o executor do mês está nos custos pela competência; o que ainda não
   // foi pago dele (as duas parcelas deste mês) entra no "a pagar".
   const motor = motorValeNoMes(monthKey) ? compromissosDoMes({ sales, expenses, monthKey, desde: `${year - 1}-01` }) : null;
+  // Dr. Daniel e Dr. Moisés: o que ainda falta pagar do trabalho DESTE mês.
   const executorAPagar = motor
-    ? [...motor.executor.vencemNoMes, ...motor.executor.proximas]
+    ? [...motor.executor.vencemNoMes, ...motor.executor.proximas, ...motor.moises.vencemNoMes, ...motor.moises.proximas]
         .filter((parcela) => parcela.mesDoTrabalho === monthKey)
         .reduce((soma, parcela) => soma + parcela.falta, 0)
     : 0;
   const aPagar = executorAPagar + expenses
     .filter((expense) => {
       if (!operationalRefs.has(expense.categoryRef) || expense.paidAt) return false;
-      if (motor && expense.categoryRef === CATEGORIA_PAGAMENTO_EXECUTOR) return false;
+      if (motor && CATEGORIAS_PAGAMENTO_EXECUTORES.has(expense.categoryRef)) return false;
       // Lançamento marcado como obra em categoria comum já saiu do custo do
       // mês na matriz; tem que sair do "a pagar" também, ou o "já pago" quebra.
       if (expense.isCapex) return false;
@@ -1087,6 +1116,8 @@ export const seedFinCategories: FinCategory[] = ([
   // LUCRO INTELIGENTE (10/09/2026): as transferências "a mais" do dia — separadas
   // do salário fixo do médico e do pró-labore/salário CEO, que continuam acima.
   ["cat-lucro-inteligente-medico", "MAO_DE_OBRA", "Lucro Inteligente — médico executor (transferência)", 15, false],
+  // DR. MOISÉS (15/10/2026): os pagamentos dele, separados do Dr. Daniel.
+  ["cat-lucro-inteligente-moises", "MAO_DE_OBRA", "Lucro Inteligente — Dr. Moisés (biomédico, transferência)", 16, false],
   ["cat-horas-extras-13-ferias-bonificacoes", "MAO_DE_OBRA", "Horas extras / 13º / férias / bonificações", 5, false],
   ["cat-contratacao-rescisao-fgts", "MAO_DE_OBRA", "Contratação / Rescisão / FGTS rescisão", 6, false],
   ["cat-gestor", "MAO_DE_OBRA", "Gestor", 7, false],
@@ -1402,6 +1433,8 @@ export type FechamentoContabil = {
   motorAtivo: boolean;
   lucroSociosDoMes: number;
   medicoExecutorParcelasDoMes: number;
+  /** Parcelas do Dr. Moisés que vencem no mês (15/10/2026). */
+  moisesParcelasDoMes: number;
 };
 
 export function buildFechamentoContabil(
@@ -1456,13 +1489,16 @@ export function buildFechamentoContabil(
   const motorAtivo = motorValeNoMes(monthKey);
   const lucroSociosMes = motorAtivo ? lucroSociosDoMes(monthKey).total : 0;
   const parcelasExecutorMes = motorAtivo ? parcelasQueVencemNoMes(sales, monthKey) : 0;
+  // DR. MOISÉS (15/10/2026): as parcelas dele que vencem no mês entram do mesmo jeito.
+  const parcelasMoisesMes = motorAtivo ? parcelasQueVencemNoMes(sales, monthKey, undefined, "moises") : 0;
   const custosDoMes =
     expenses
       .filter((expense) => (expense.dueDate || expense.paidAt || "").slice(0, 7) === monthKey)
-      .filter((expense) => !motorAtivo || (expense.categoryRef !== CATEGORIA_PAGAMENTO_EXECUTOR && !CATEGORIAS_PAGAMENTO_SOCIOS.has(expense.categoryRef)))
+      .filter((expense) => !motorAtivo || (!CATEGORIAS_PAGAMENTO_EXECUTORES.has(expense.categoryRef) && !CATEGORIAS_PAGAMENTO_SOCIOS.has(expense.categoryRef)))
       .reduce((sum, expense) => sum + (expense.amount || 0), 0) +
     lucroSociosMes +
-    parcelasExecutorMes;
+    parcelasExecutorMes +
+    parcelasMoisesMes;
   const lucroContabil = Math.round((faturamentoBruto - custosDoMes) * 100) / 100;
 
   return {
@@ -1478,6 +1514,7 @@ export function buildFechamentoContabil(
     motorAtivo,
     lucroSociosDoMes: Math.round(lucroSociosMes * 100) / 100,
     medicoExecutorParcelasDoMes: parcelasExecutorMes,
+    moisesParcelasDoMes: parcelasMoisesMes,
   };
 }
 
@@ -2409,6 +2446,14 @@ export type GestaoMensal = {
   medicoExecutorParcelasDoMes: number;
   /** Pagamentos ao executor registrados no mês (abatem as parcelas; não são custo de novo). */
   medicoExecutorPago: number;
+  /** DR. MOISÉS (15/10/2026): o trabalho dele no mês (20% do lucro bruto dos procedimentos dele). Já está em custosTotais. */
+  executorMoises: number;
+  /** Parcelas do Dr. Moisés que VENCEM no mês (dia 20, trabalho dos três meses anteriores). */
+  executorMoisesParcelasDoMes: number;
+  /** Pagamentos ao Dr. Moisés registrados no mês. */
+  executorMoisesPago: number;
+  /** O que foi vendido dos procedimentos do Dr. Moisés no mês (itens dele nas comandas). Já está no faturamento. */
+  vendasMoises: number;
   /** Lucro dos sócios do mês pela régua (40.000: Andrya 25.000 · Dr. Daniel 15.000). Fora do custo da operação. */
   lucroSociosDoMes: number;
   /** Lucro da empresa depois de separar o lucro dos sócios. */
@@ -2453,6 +2498,7 @@ export function buildGestaoMensal(
   // (competência). Os pagamentos ao executor são baixa das parcelas, não custo.
   const motorAtivo = motorValeNoMes(monthKey);
   let medicoExecutorPago = 0;
+  let executorMoisesPago = 0;
   let contasAntigasDosSocios = 0;
   for (const expense of expenses) {
     if ((expense.dueDate || expense.paidAt || "").slice(0, 7) !== monthKey) continue;
@@ -2461,6 +2507,10 @@ export function buildGestaoMensal(
     if (!category) continue;
     if (motorAtivo && expense.categoryRef === CATEGORIA_PAGAMENTO_EXECUTOR) {
       medicoExecutorPago += valor;
+      continue;
+    }
+    if (motorAtivo && expense.categoryRef === CATEGORIA_PAGAMENTO_MOISES) {
+      executorMoisesPago += valor;
       continue;
     }
     // Salário fixo dos sócios do modelo antigo: continua contando (não some em
@@ -2484,8 +2534,10 @@ export function buildGestaoMensal(
     else if (category.groupKey === "POUPANCA") provisoes += valor;
   }
   const medicoExecutor = motorAtivo ? executorDoMes(sales, monthKey) : 0;
+  const executorMoises = motorAtivo ? executorDoMes(sales, monthKey, undefined, "moises") : 0;
   const lucroSociosMes = motorAtivo ? lucroSociosDoMes(monthKey).total : 0;
-  const custosTotais = custosFixos + folhaMeritocracia + custosVariaveis + provisoes + medicoExecutor;
+  const custosTotais = custosFixos + folhaMeritocracia + custosVariaveis + provisoes + medicoExecutor + executorMoises;
+  const vendasMoises = doMes.reduce((soma, sale) => soma + sale.items.filter((item) => profissionalDoItem(item) === "moises").reduce((s, item) => s + (item.amount || 0), 0), 0);
   const lucroLiquido = faturamento - custosTotais;
   const cents = (valor: number) => Math.round(valor * 100) / 100;
   return {
@@ -2507,6 +2559,10 @@ export function buildGestaoMensal(
     medicoExecutor: cents(medicoExecutor),
     medicoExecutorParcelasDoMes: motorAtivo ? parcelasQueVencemNoMes(sales, monthKey) : 0,
     medicoExecutorPago: cents(medicoExecutorPago),
+    executorMoises: cents(executorMoises),
+    executorMoisesParcelasDoMes: motorAtivo ? parcelasQueVencemNoMes(sales, monthKey, undefined, "moises") : 0,
+    executorMoisesPago: cents(executorMoisesPago),
+    vendasMoises: cents(vendasMoises),
     lucroSociosDoMes: cents(lucroSociosMes),
     resultadoDepoisDosSocios: cents(lucroLiquido - lucroSociosMes),
     contasAntigasDosSocios: cents(contasAntigasDosSocios),
@@ -2700,6 +2756,7 @@ export function buildResumoContabilCsv(gestao: GestaoMensal, fechamento: Fechame
     ["Custos variáveis", gestao.custosVariaveis],
     ["Provisões (13º, férias, impostos)", gestao.provisoes],
     ...(gestao.motorAtivo ? [["Médico executor do mês (competência, motor do Lucro Inteligente)", gestao.medicoExecutor]] : []),
+    ...(gestao.motorAtivo && gestao.executorMoises > 0.005 ? [["Dr. Moisés do mês (competência, 20% do lucro bruto dos procedimentos dele)", gestao.executorMoises]] : []),
     ["TOTAL DOS CUSTOS OPERACIONAIS", gestao.custosTotais],
     [],
     ["RESULTADO"],
@@ -2799,6 +2856,20 @@ export function buildPonteLucro(gestao: GestaoMensal, fechamento: FechamentoCont
                   valor: Math.round(Math.abs(gestao.medicoExecutor - gestao.medicoExecutorParcelasDoMes) * 100) / 100,
                   tipo: gestao.medicoExecutor >= gestao.medicoExecutorParcelasDoMes ? ("mais" as const) : ("menos" as const),
                   explicacao: `O lucro do mês conta o executor inteiro do mês do trabalho (${moneyFin(gestao.medicoExecutor)}). A contabilidade conta só as parcelas que vencem no mês (${moneyFin(gestao.medicoExecutorParcelasDoMes)}): a 1ª deste mês e a 2ª do mês anterior.`,
+                },
+              ]
+            : []),
+          // DR. MOISÉS (15/10/2026): três parcelas no dia 20 dos meses seguintes.
+          ...(Math.abs(gestao.executorMoises - gestao.executorMoisesParcelasDoMes) > 0.005
+            ? [
+                {
+                  label:
+                    gestao.executorMoises >= gestao.executorMoisesParcelasDoMes
+                      ? "+ Dr. Moisés: parcelas deste mês que vencem nos meses seguintes"
+                      : "− Dr. Moisés: parcelas de meses anteriores que vencem neste mês",
+                  valor: Math.round(Math.abs(gestao.executorMoises - gestao.executorMoisesParcelasDoMes) * 100) / 100,
+                  tipo: gestao.executorMoises >= gestao.executorMoisesParcelasDoMes ? ("mais" as const) : ("menos" as const),
+                  explicacao: `O lucro do mês conta o trabalho do Dr. Moisés inteiro no mês do atendimento (${moneyFin(gestao.executorMoises)}). A contabilidade conta só as parcelas que vencem no mês (${moneyFin(gestao.executorMoisesParcelasDoMes)}): ele recebe em três parcelas, no dia 20 dos três meses seguintes.`,
                 },
               ]
             : []),

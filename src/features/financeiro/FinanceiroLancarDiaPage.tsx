@@ -27,7 +27,8 @@ import {
 } from "@/features/crm/contactChannels";
 import { extractPersonName } from "@/features/crm/nameMatch";
 import { quandoNotaLabels, type QuandoNota } from "@/features/crm/recebimentoKanbanData";
-import { produtoPorNome, ratearValores, secoesDoCatalogo } from "./catalogoPrecificacao";
+import { produtoPorNome, profissionalDoItem, profissionalDoProduto, ratearValores, secoesDoCatalogo } from "./catalogoPrecificacao";
+import { LISTA_DE_PROFISSIONAIS, type ProfissionalId } from "./profissionais";
 import { PatientPicker } from "@/features/crm/PatientPicker";
 import { useCrmState } from "@/features/crm/useCrmState";
 import {
@@ -96,7 +97,8 @@ import {
   quantos,
 } from "./pecasDiaPagar";
 
-type DraftItem = { itemType: FinSaleItemType; amount: string; description: string };
+/** profissional: quem executa o item (15/10/2026) — vem do produto da tabela; no item livre, escolhe-se. */
+type DraftItem = { itemType: FinSaleItemType; amount: string; description: string; profissional: ProfissionalId };
 type DraftPayment = { method: FinPaymentMethod; amount: string; installments: string; cardMachine: FinCardMachine
   comprovanteStatus?: ComprovanteStatus;
 };
@@ -110,7 +112,7 @@ function parseAmount(value: string) {
 // usam a MESMA grade do cabeçalho de colunas (que só aparece do tablet para cima).
 // No celular: item = produto | tipo · valor · lixeira | detalhe; pagamento = forma | valor · parcelas | maquininha · lixeira.
 const GRADE_ITEM =
-  "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem] items-center gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.75fr)_minmax(0,1.1fr)_2.5rem]";
+  "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem] items-center gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,0.75fr)_minmax(0,1.1fr)_2.5rem]";
 const GRADE_PAGAMENTO =
   "grid grid-cols-2 items-center gap-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.75fr)_minmax(0,0.55fr)_minmax(0,0.8fr)_2.5rem]";
 const BOTAO_ICONE_PERIGO =
@@ -149,7 +151,7 @@ export function FinanceiroLancarDiaPage() {
   // Telefone/e-mail do paciente novo (29/07): a comanda criava contato mudo.
   const [patientChannels, setPatientChannels] = useState<ContactChannelsDraft>(emptyContactChannels);
   const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<DraftItem[]>([{ itemType: "CONSULTA", amount: "", description: "" }]);
+  const [items, setItems] = useState<DraftItem[]>([{ itemType: "CONSULTA", amount: "", description: "", profissional: "daniel" }]);
   const [payments, setPayments] = useState<DraftPayment[]>([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }]);
   const [adhesion, setAdhesion] = useState<FinAdhesion>("ABERTO");
   const [feedback, setFeedback] = useState("");
@@ -232,7 +234,7 @@ export function FinanceiroLancarDiaPage() {
   const divisaoDoRascunho = useMemo(
     () =>
       separarDinheiro(
-        items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount), description: item.description })).filter((item) => item.amount > 0),
+        items.map((item) => ({ itemType: item.itemType, amount: parseAmount(item.amount), description: item.description, profissional: item.profissional })).filter((item) => item.amount > 0),
         payments.map((payment) => ({ method: payment.method, amount: parseAmount(payment.amount) })),
       ),
     [items, payments],
@@ -346,7 +348,7 @@ export function FinanceiroLancarDiaPage() {
     setNotes("");
     setNotaInstrucao("");
     setNotaQuando("COM_A_CONSULTA");
-    setItems([{ itemType: "CONSULTA", amount: "", description: "" }]);
+    setItems([{ itemType: "CONSULTA", amount: "", description: "", profissional: "daniel" }]);
     setPayments([{ method: "PIX", amount: "", installments: "1", cardMachine: "ITAU", comprovanteStatus: "PENDENTE" }]);
   }
 
@@ -362,7 +364,7 @@ export function FinanceiroLancarDiaPage() {
     setNotaInstrucao(sale.notaInstrucao ?? "");
     setNotaQuando(sale.notaQuando ?? "COM_A_CONSULTA");
     setAdhesion(sale.adhesion ?? "ABERTO");
-    setItems(sale.items.map((item) => ({ itemType: item.itemType, amount: amountToDraft(item.amount), description: item.description })));
+    setItems(sale.items.map((item) => ({ itemType: item.itemType, amount: amountToDraft(item.amount), description: item.description, profissional: profissionalDoItem(item) })));
     setPayments(
       sale.payments.map((payment) => ({
         method: payment.method,
@@ -413,7 +415,7 @@ export function FinanceiroLancarDiaPage() {
     if (travaDaNota) return setFeedback(travaDaNota);
     const validItems: FinSaleItem[] = items
       .filter((item) => parseAmount(item.amount) > 0)
-      .map((item) => ({ id: createFinId("fitem"), itemType: item.itemType, amount: parseAmount(item.amount), description: item.description.trim() }));
+      .map((item) => ({ id: createFinId("fitem"), itemType: item.itemType, amount: parseAmount(item.amount), description: item.description.trim(), profissional: item.profissional }));
     const validPayments: FinSalePayment[] = payments
       .filter((payment) => parseAmount(payment.amount) > 0)
       .map((payment) => ({
@@ -813,13 +815,14 @@ export function FinanceiroLancarDiaPage() {
                       variante="fantasma"
                       tamanho="pq"
                       icone={<Plus className="h-4 w-4" aria-hidden="true" />}
-                      onClick={() => setItems((current) => [...current, { itemType: "TRATAMENTO", amount: "", description: "" }])}
+                      onClick={() => setItems((current) => [...current, { itemType: "TRATAMENTO", amount: "", description: "", profissional: current.at(-1)?.profissional ?? "daniel" }])}
                     >
                       Item
                     </Botao>
                   </div>
                   <div className={cn(GRADE_ITEM, "max-sm:hidden")} aria-hidden="true">
                     <span className={RUBRICA}>Produto da tabela</span>
+                    <span className={RUBRICA}>Profissional</span>
                     <span className={RUBRICA}>Tipo</span>
                     <span className={cn(RUBRICA, "text-right")}>Valor</span>
                     <span className={RUBRICA}>Detalhe</span>
@@ -836,7 +839,11 @@ export function FinanceiroLancarDiaPage() {
                             const produto = produtoPorNome(event.target.value);
                             if (!produto) return;
                             setItems((current) =>
-                              current.map((it, i) => (i === index ? { ...it, itemType: produto.tipos[0], description: produto.nome, amount: amountToDraft(produto.preco) } : it)),
+                              current.map((it, i) =>
+                                i === index
+                                  ? { ...it, itemType: produto.tipos[0], description: produto.nome, amount: amountToDraft(produto.preco), profissional: profissionalDoProduto(produto) }
+                                  : it,
+                              ),
                             );
                           }}
                           className={cn(CAMPO, "max-sm:col-span-3")}
@@ -851,6 +858,20 @@ export function FinanceiroLancarDiaPage() {
                                 </option>
                               ))}
                             </optgroup>
+                          ))}
+                        </select>
+                        {/* QUEM EXECUTA (15/10/2026): é daqui que sai o salário de cada um no Lucro Inteligente. */}
+                        <select
+                          value={item.profissional}
+                          onChange={(event) => setItems((current) => current.map((it, i) => (i === index ? { ...it, profissional: event.target.value as ProfissionalId } : it)))}
+                          className={cn(CAMPO, "max-sm:col-span-3")}
+                          aria-label="Profissional que executa o item"
+                        >
+                          {/* Sem o "Dr." na caixa estreita: o título da coluna já diz "Profissional". */}
+                          {LISTA_DE_PROFISSIONAIS.map((profissional) => (
+                            <option key={profissional.id} value={profissional.id}>
+                              {profissional.nome.replace(/^Dr\.\s*/, "")}
+                            </option>
                           ))}
                         </select>
                         <select
@@ -885,7 +906,7 @@ export function FinanceiroLancarDiaPage() {
                           aria-label="Remover item"
                           title="Remover item"
                           onClick={() => setItems((current) => current.filter((_, i) => i !== index))}
-                          className={cn(BOTAO_ICONE_PERIGO, "max-sm:col-start-3 max-sm:row-start-2")}
+                          className={cn(BOTAO_ICONE_PERIGO, "max-sm:col-start-3 max-sm:row-start-3")}
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </button>
@@ -1188,7 +1209,10 @@ export function FinanceiroLancarDiaPage() {
                       <div className="grid min-w-0 justify-items-start gap-1.5">
                         <p className="text-sm font-bold leading-5 text-tinta">{sale.patientName}</p>
                         <p className="text-[13px] font-medium leading-5 text-tinta-2">
-                          {sale.items.map((item) => `${saleItemTypeLabels[item.itemType]} ${moneyFin(item.amount)}`).join(" · ")}
+                          {/* De quem é cada item (15/10/2026): "(Dr. Moisés)" só aparece nos itens dele. */}
+                          {sale.items
+                            .map((item) => `${saleItemTypeLabels[item.itemType]} ${moneyFin(item.amount)}${profissionalDoItem(item) === "moises" ? " (Dr. Moisés)" : ""}`)
+                            .join(" · ")}
                           {sale.notes ? ` — ${sale.notes}` : ""}
                         </p>
                         {(() => {
