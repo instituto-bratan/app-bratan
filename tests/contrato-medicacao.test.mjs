@@ -130,3 +130,74 @@ test("o XML do modelo: lista repete o parágrafo, tabela repete as linhas, campo
   assert.doesNotMatch(saida, /\{\{/);
   assert.throws(() => xml.preencherXml(`${modelo}${p("{{NOVO}}")}`, { campos: { NOME: "X" }, listas: { CONTEMPLA: [] }, grupos: [] }, { comCorpo: true }), /\{\{NOVO\}\}/);
 });
+
+// 15/10/2026: "se for para escrever tudo, a gente já faz isso". Pagamento da
+// comanda + lembretes e a ficha guardada preenchem o contrato. Dados fictícios.
+test("a cláusula 4 sai da comanda do fechamento e dos lembretes em aberto", () => {
+  const comanda = {
+    ref: "venda-1",
+    dia: "2026-10-13",
+    pagamentos: [
+      { metodo: "PIX", valor: 1000, parcelas: 1 },
+      { metodo: "CARTAO_CREDITO", valor: 3102, parcelas: 6 },
+      { metodo: "DINHEIRO", valor: 0, parcelas: 1 },
+    ],
+  };
+  const lembretes = [
+    { valor: 1500, dataPrevista: "2026-11-20", observacao: "resto no boleto" },
+    { valor: 500, dataPrevista: "2026-10-30", observacao: "3x no link" },
+    { valor: 300, dataPrevista: "2026-12-01", observacao: "combinado com a paciente" },
+  ];
+  const r = mont.pagamentoSugerido(comanda, lembretes);
+  assert.equal(r.valorTotal, 6402);
+  assert.deepEqual(
+    [...r.pagamentos].map((p) => [p.valor, p.meio, p.parcelas, p.data]),
+    [
+      [1000, "PIX", 1, "2026-10-13"],
+      [3102, "CARTÃO DE CRÉDITO", 6, "2026-10-13"],
+      [500, "LINK DE PAGAMENTO", 3, "2026-10-30"],
+      [1500, "BOLETO", 1, "2026-11-20"],
+      [300, "PIX", 1, "2026-12-01"],
+    ],
+  );
+  // O lembrete sem forma escrita entra como PIX, mas avisa para conferir.
+  assert.equal(r.avisos.length, 1);
+  assert.match(r.avisos[0], /01\/12\/2026/);
+  // Só lembretes (sem comanda) também monta; nada = nada.
+  assert.equal(mont.pagamentoSugerido(null, [lembretes[0]]).valorTotal, 1500);
+  assert.equal(mont.pagamentoSugerido(null, []).pagamentos.length, 0);
+});
+
+test("a forma de pagamento do lembrete sai do que a recepção escreveu", () => {
+  const meio = (t) => ({ ...mont.meioDoLembrete(t) });
+  assert.deepEqual(meio("6x no cartão"), { meio: "CARTÃO DE CRÉDITO", parcelas: 6 });
+  assert.deepEqual(meio("Pix dia 20"), { meio: "PIX", parcelas: 1 });
+  assert.deepEqual(meio("link 10 x"), { meio: "LINK DE PAGAMENTO", parcelas: 10 });
+  assert.deepEqual(meio(""), { meio: null, parcelas: 1 });
+});
+
+test("a ficha guardada completa o contratante sem apagar o que já foi digitado", () => {
+  const base = mont.dadosVazios("2026-10-15");
+  base.paciente.nome = "MARIA DE TESTE FICTICIA";
+  base.paciente.rg = "11.111.111-1";
+  const ficha = {
+    rg: "22.222.222-2",
+    profissao: "professora",
+    estadoCivil: "casada",
+    nascimento: "1980-05-04",
+    municipio: "Santo André",
+    uf: "sp",
+    email: "Maria@Exemplo.com",
+    cep: "09000-000",
+  };
+  const p = mont.completarComFicha(base, ficha).paciente;
+  assert.equal(p.rg, "11.111.111-1", "o que já foi digitado vence");
+  assert.equal(p.profissao, "PROFESSORA");
+  assert.equal(p.estadoCivil, "CASADA");
+  assert.equal(p.nascimento, "1980-05-04");
+  assert.equal(p.municipio, "SANTO ANDRÉ", "o padrão da tela (São Paulo) cede para a ficha");
+  assert.equal(p.uf, "SP");
+  assert.equal(p.email, "Maria@Exemplo.com", "e-mail não vira maiúscula");
+  assert.equal(p.cep, "09000-000");
+  assert.equal(p.nome, "MARIA DE TESTE FICTICIA");
+});

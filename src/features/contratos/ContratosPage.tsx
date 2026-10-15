@@ -8,7 +8,7 @@
 // e clica em "Gerar contrato". O app grava o número (único por ano) e devolve o
 // .docx igual ao modelo de sempre, pronto para subir no SuperSign. O envio pelo
 // SuperSign continua à mão até a API ser contratada (plano de ação, fase 2).
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Download, FilePlus2, FileUp, Plus, Trash2 } from "lucide-react";
@@ -18,8 +18,16 @@ import { BlocoFolha, Botao, Cabecalho } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
 import { canContratos } from "@/lib/access";
 import { parseMoneyBR } from "@/lib/money";
-import { lerRemoteCpfDoContato } from "@/lib/remote/compliance";
-import { baixarRemoteModeloContrato, listRemoteContratos, mudarStatusRemoteContrato, salvarRemoteContrato, type ContratoGerado } from "@/lib/remote/contratos";
+import {
+  baixarRemoteModeloContrato,
+  lerRemoteCadastroDoContrato,
+  listRemoteContratos,
+  listarRemotePagamentosDoContato,
+  mudarStatusRemoteContrato,
+  salvarRemoteCadastroDoContrato,
+  salvarRemoteContrato,
+  type ContratoGerado,
+} from "@/lib/remote/contratos";
 import { mensagemDoSalvamento, salvarArquivo } from "@/lib/salvarArquivo";
 import { cn } from "@/lib/utils";
 import { todayISO } from "@/lib/localStore";
@@ -34,12 +42,16 @@ import {
   MEIOS_DE_PAGAMENTO,
   VIAS,
   avisosDoContrato,
+  completarComFicha,
   dadosDoTto,
+  pagamentoSugerido,
   dadosVazios,
   pendenciasDoContrato,
   prazoSugerido,
   tipoSugerido,
+  type ComandaParaContrato,
   type DadosDoContrato,
+  type LembreteParaContrato,
   type ProtocoloDoContrato,
 } from "./montarContrato";
 
@@ -222,6 +234,14 @@ function FormularioDoContrato({
   const [lendo, setLendo] = useState(false);
   const [lido, setLido] = useState<string | null>(null);
   const [mostrarResponsavel, setMostrarResponsavel] = useState(false);
+  // O que veio sozinho (15/10/2026): a ficha guardada e a comanda/lembretes do paciente.
+  const [doCadastro, setDoCadastro] = useState<string | null>(null);
+  const [comandas, setComandas] = useState<ComandaParaContrato[]>([]);
+  const [lembretes, setLembretes] = useState<LembreteParaContrato[]>([]);
+  const [comandaRef, setComandaRef] = useState<string>("");
+  const [avisosDoPagamento, setAvisosDoPagamento] = useState<string[]>([]);
+  // Respostas do banco que chegam depois de trocar de paciente são descartadas.
+  const pacienteDaVez = useRef<string | null>(null);
 
   // Veio do Kanban (?contato=&deal=): liga o paciente e traz o valor fechado.
   useEffect(() => {
@@ -245,7 +265,14 @@ function FormularioDoContrato({
 
   function escolherPaciente(valor: PatientPickerValue) {
     setPaciente(valor);
+    pacienteDaVez.current = valor.ref || null;
+    setDoCadastro(null);
+    setComandas([]);
+    setLembretes([]);
+    setComandaRef("");
+    setAvisosDoPagamento([]);
     if (!valor.ref) return;
+    const ref = valor.ref;
     const contato = crm.contacts.find((c) => c.id === valor.ref);
     if (contato) {
       setD((x) => ({
@@ -264,11 +291,39 @@ function FormularioDoContrato({
       const valorFechado = deal.soldAmount || deal.prescribedAmount;
       if (valorFechado > 0) setValorTotalTexto((t) => t || reais(valorFechado));
     }
-    lerRemoteCpfDoContato(valor.ref)
-      .then((doc) => {
-        if (doc?.cpf) setD((x) => ({ ...x, paciente: { ...x.paciente, cpf: x.paciente.cpf || doc.cpf } }));
+    // A ficha guardada nos contratos anteriores preenche o contratante inteiro.
+    lerRemoteCadastroDoContrato(ref)
+      .then(({ temCpfGuardado, ...ficha }) => {
+        if (pacienteDaVez.current !== ref) return;
+        setD((x) => completarComFicha(x, ficha));
+        const partes = [
+          ficha.rg || ficha.endereco ? "Contratante preenchido pelo cadastro do paciente. Confira se algo mudou." : "Contato veio do CRM. O que você completar aqui (RG, endereço, profissão…) fica salvo para os próximos contratos.",
+          temCpfGuardado && !ficha.cpf ? "O CPF já está no cadastro, mas só a coordenação o vê: digite o do documento." : "",
+        ];
+        setDoCadastro(partes.filter(Boolean).join(" "));
       })
       .catch(() => undefined);
+    // A comanda do fechamento e os lembretes em aberto montam o valor e a forma de pagamento.
+    const desde = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
+    listarRemotePagamentosDoContato(ref, desde)
+      .then(({ comandas: lista, lembretes: abertos }) => {
+        if (pacienteDaVez.current !== ref) return;
+        setComandas(lista);
+        setLembretes(abertos);
+        const comPagamento = lista.find((c) => c.pagamentos.some((p) => p.valor > 0));
+        if (comPagamento || abertos.length) aplicarPagamento(comPagamento ?? null, abertos, true);
+      })
+      .catch(() => undefined);
+  }
+
+  /** Valor total e forma de pagamento a partir da comanda escolhida + lembretes em aberto. */
+  function aplicarPagamento(comanda: ComandaParaContrato | null, abertos: LembreteParaContrato[], soSeVazio: boolean) {
+    const sugestao = pagamentoSugerido(comanda, abertos);
+    if (!sugestao.pagamentos.length) return;
+    setComandaRef(comanda?.ref ?? "");
+    setAvisosDoPagamento(sugestao.avisos);
+    setPagamentos((atual) => (soSeVazio && atual.some((p) => p.valor.trim()) ? atual : sugestao.pagamentos.map((p) => ({ valor: reais(p.valor), meio: p.meio, parcelas: String(p.parcelas), data: p.data }))));
+    setValorTotalTexto((t) => (soSeVazio && t.trim() ? t : reais(sugestao.valorTotal)));
   }
 
   async function lerArquivo(arquivo: File | undefined) {
@@ -315,10 +370,28 @@ function FormularioDoContrato({
     mutationFn: async () => {
       const salvo = await salvarRemoteContrato(dados, { dealRef, contactRef: paciente.ref || null });
       await baixarContrato(salvo.dados);
-      return salvo;
+      // O que foi preenchido aqui volta para o cadastro do paciente (próximo contrato vem pronto).
+      let cadastro: "ok" | "cpf-mantido" | "falhou" | null = null;
+      if (paciente.ref) {
+        try {
+          const r = await salvarRemoteCadastroDoContrato(paciente.ref, dados.paciente);
+          cadastro = r.cpf === "mantido" ? "cpf-mantido" : "ok";
+        } catch {
+          cadastro = "falhou";
+        }
+      }
+      return { salvo, cadastro };
     },
-    onSuccess: (salvo) => {
-      toast(`Contrato ${salvo.numero}/${salvo.ano} gerado. Suba o arquivo no SuperSign e marque "Enviei" na lista.`, { tom: "ok" });
+    onSuccess: ({ salvo, cadastro }) => {
+      const doCadastroTexto =
+        cadastro === "ok"
+          ? " e cadastro do paciente atualizado"
+          : cadastro === "cpf-mantido"
+            ? " e cadastro atualizado (o CPF digitado é diferente do guardado: avise a coordenação para conferir)"
+            : cadastro === "falhou"
+              ? " (o cadastro do paciente não foi atualizado; o contrato está salvo)"
+              : "";
+      toast(`Contrato ${salvo.numero}/${salvo.ano} gerado${doCadastroTexto}. Suba o arquivo no SuperSign e marque "Enviei" na lista.`, { tom: "ok", duracaoMs: 8000 });
       onGerado();
     },
     onError: (erro) => toast(erro instanceof Error ? erro.message : String(erro), { tom: "erro" }),
@@ -349,6 +422,7 @@ function FormularioDoContrato({
       </Secao>
 
       <Secao titulo="2. Contratante">
+        {doCadastro ? <Aviso tom="ok">{doCadastro}</Aviso> : null}
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <CampoRotulado rotulo="Nome completo" className="md:col-span-2">
             <Campo value={d.paciente.nome} onChange={(e) => mudarPaciente("nome", e.target.value)} />
@@ -513,6 +587,37 @@ function FormularioDoContrato({
       </Secao>
 
       <Secao titulo="4. Valor e pagamento">
+        {comandas.length || lembretes.length ? (
+          <div className="grid gap-2">
+            {comandas.length ? (
+              <CampoRotulado rotulo="Puxar valor e formas de pagamento da comanda" className="max-w-md">
+                <CampoSelecao
+                  value={comandaRef}
+                  onChange={(e) => {
+                    const escolhida = comandas.find((c) => c.ref === e.target.value) ?? null;
+                    aplicarPagamento(escolhida, lembretes, false);
+                    if (!escolhida) setComandaRef("");
+                  }}
+                >
+                  <option value="">{lembretes.length ? "Só os lembretes em aberto" : "Nenhuma (digitar)"}</option>
+                  {comandas.map((c) => {
+                    const total = c.pagamentos.reduce((t, p) => t + p.valor, 0);
+                    return (
+                      <option key={c.ref} value={c.ref}>
+                        Comanda de {c.dia.split("-").reverse().join("/")} · {moedaDoContrato(total)}
+                      </option>
+                    );
+                  })}
+                </CampoSelecao>
+              </CampoRotulado>
+            ) : null}
+            <Aviso tom="ok">
+              {comandaRef ? "Valor e formas de pagamento vieram da comanda do fechamento" : "Valor e formas de pagamento vieram dos lembretes de pagamento"}
+              {comandaRef && lembretes.length ? ` + ${lembretes.length === 1 ? "o lembrete em aberto" : `${lembretes.length} lembretes em aberto`}` : ""}. Confira antes de gerar.
+            </Aviso>
+            {avisosDoPagamento.length ? <Aviso tom="info">{avisosDoPagamento.join(" ")}</Aviso> : null}
+          </div>
+        ) : null}
         <CampoRotulado rotulo="Valor total do contrato (R$)" className="max-w-xs">
           <Campo value={valorTotalTexto} onChange={(e) => setValorTotalTexto(e.target.value)} inputMode="decimal" placeholder="6.102,00" />
         </CampoRotulado>

@@ -254,3 +254,65 @@ export function avisosDoContrato(d: DadosDoContrato): string[] {
   if (!d.tipo.imediato && !d.tipo.curto && !d.tipo.medio) avisos.push("nenhum tipo de tratamento marcado");
   return avisos;
 }
+
+// ---------------------------------------------------------------------------
+// O PAGAMENTO QUE O SISTEMA JÁ CONHECE (15/10/2026). Lucas: "se for para
+// escrever tudo, a gente já faz isso". A cláusula 4 sai da comanda do
+// fechamento (o que já foi pago, com forma e parcelas) e dos lembretes em
+// aberto (o que foi combinado para depois). A recepção só confere.
+// ---------------------------------------------------------------------------
+
+export type ComandaParaContrato = { ref: string; dia: string; pagamentos: { metodo: string; valor: number; parcelas: number }[] };
+export type LembreteParaContrato = { valor: number; dataPrevista: string; observacao: string };
+
+const MEIO_DO_METODO: Record<string, string> = {
+  PIX: "PIX",
+  CARTAO_CREDITO: "CARTÃO DE CRÉDITO",
+  CARTAO_DEBITO: "CARTÃO DE DÉBITO",
+  DINHEIRO: "DINHEIRO",
+  TRANSFERENCIA: "TRANSFERÊNCIA",
+  BOLETO: "BOLETO",
+};
+
+/** A forma do lembrete sai da observação que a recepção escreveu ("6x no link", "pix dia 20"). */
+export function meioDoLembrete(observacao: string): { meio: string | null; parcelas: number } {
+  const t = (observacao || "").toLowerCase();
+  const parcelas = Number(t.match(/(\d{1,2})\s*x\b/)?.[1] ?? 1) || 1;
+  if (/\blink\b/.test(t)) return { meio: "LINK DE PAGAMENTO", parcelas };
+  if (/cart[aã]o|cr[eé]dito/.test(t)) return { meio: "CARTÃO DE CRÉDITO", parcelas };
+  if (/boleto/.test(t)) return { meio: "BOLETO", parcelas };
+  if (/\bpix\b/.test(t)) return { meio: "PIX", parcelas };
+  return { meio: null, parcelas };
+}
+
+export function pagamentoSugerido(comanda: ComandaParaContrato | null, lembretes: LembreteParaContrato[]): { valorTotal: number; pagamentos: PagamentoDoContrato[]; avisos: string[] } {
+  const pagamentos: PagamentoDoContrato[] = [];
+  const avisos: string[] = [];
+  for (const p of comanda?.pagamentos ?? []) {
+    if (!(p.valor > 0)) continue;
+    pagamentos.push({ valor: p.valor, meio: MEIO_DO_METODO[p.metodo] ?? p.metodo, parcelas: Math.max(1, p.parcelas || 1), data: comanda!.dia });
+  }
+  for (const l of [...lembretes].sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista))) {
+    if (!(l.valor > 0)) continue;
+    const { meio, parcelas } = meioDoLembrete(l.observacao);
+    if (!meio) avisos.push(`A forma do pagamento de ${l.dataPrevista.split("-").reverse().join("/")} não está escrita no lembrete: confira.`);
+    pagamentos.push({ valor: l.valor, meio: meio ?? "PIX", parcelas, data: l.dataPrevista });
+  }
+  const valorTotal = Math.round(pagamentos.reduce((s, p) => s + p.valor, 0) * 100) / 100;
+  return { valorTotal, pagamentos, avisos };
+}
+
+/** A ficha guardada vira os campos do contratante (só preenche o que estiver vazio). */
+export type FichaDoContato = Partial<Pick<DadosDoContrato["paciente"], "nacionalidade" | "estadoCivil" | "profissao" | "rg" | "nascimento" | "endereco" | "numeroEnd" | "bairro" | "municipio" | "uf" | "cep" | "cpf" | "email" | "telefone">>;
+
+export function completarComFicha(base: DadosDoContrato, ficha: FichaDoContato): DadosDoContrato {
+  const p = { ...base.paciente };
+  const padrao: Partial<Record<keyof typeof p, string>> = { nacionalidade: "BRASILEIRA", municipio: "SÃO PAULO", uf: "SP" };
+  for (const [k, v] of Object.entries(ficha) as [keyof typeof p, string | undefined][]) {
+    if (!v) continue;
+    const atual = (p[k] ?? "").trim();
+    // Vazio, ou ainda com o valor padrão da tela: a ficha vence.
+    if (!atual || atual === padrao[k]) p[k] = k === "email" || k === "nascimento" || k === "cep" || k === "telefone" ? v : v.toUpperCase();
+  }
+  return { ...base, paciente: p };
+}
