@@ -117,7 +117,9 @@ test("sinal de R$ 200 existe no catálogo, ao lado do de R$ 500 (áudio da CEO)"
   assert.deepEqual(j(sinais.map((p) => [p.nome, p.preco])), [["Sinal de consulta", 500], ["Sinal de consulta (R$ 200)", 200]]);
   const duzentos = cat.produtoPorNome("Sinal de consulta (R$ 200)");
   assert.equal(duzentos.preco, 200);
-  // mesma FÓRMULA da planilha OFICIAL (linha do sinal): 200 − NF 13,33% (26,66) − comissão 10% (20,00) − 15 min de sala (25,51)
-  assert.equal(duzentos.lucroBruto, 99.56);
+  // mesma FÓRMULA da planilha OFICIAL (linha do sinal): 200 − NF 26% − comissão 13% (desde 01/10/2026) − 15 min de poltrona
+  assert.equal(duzentos.lucroBruto, 93.56);
+  // Comanda de setembro continua com a comissão de 10% de antes (99,56).
+  assert.equal(cat.lucroBrutoDaTabela(duzentos, "2026-09-20"), 99.56);
   assert.ok(cat.secoesDoCatalogo().some((g) => g.produtos.some((p) => p.nome === "Sinal de consulta (R$ 200)")), "aparece no seletor");
 });

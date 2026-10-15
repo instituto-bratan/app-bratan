@@ -19,8 +19,9 @@
 //     Médico" (Lucas, 02/09: "50% de quê? está na coluna S") = 50% do LUCRO
 //     BRUTO DO PRODUTO — preço − imposto/cartão − comissão comercial −
 //     consumíveis − repasse nutri/psi − custo hora-sala. Plano de R$ 6.997 →
-//     lucro bruto 3.476,74 (planilha OFICIAL de 15/09: NF de consulta a 26% e
-//     hora de sala a R$ 113,78) → R$ 1.738,37 para o médico (24,8% do preço). O
+//     lucro bruto 3.266,83 (planilha OFICIAL de 15/09: NF de consulta a 26% e
+//     hora de sala a R$ 113,78; comissão de 13% desde 01/10/2026) → R$ 1.633,42
+//     para o médico (23,3% do preço). O
 //     catálogo abaixo guarda o lucro bruto de cada produto da tabela oficial;
 //     o item da comanda é reconhecido pela descrição e pelo preço.
 //   · operacional = o que sobra (pode ficar negativo num dia fraco).
@@ -43,7 +44,7 @@
 // antecipação (TAD) se a clínica puxar antes dos 31 dias; a decisão é da
 // clínica, e o app mostra quanto custaria puxar hoje.
 import { createFinId, expenseEhCapex, crediarioProfitOfMonth, saleTotal, type FinCategory, type FinCrediarioProfit, type FinExpense, type FinReconciliation, type FinReconciliationStatus, type FinSale, type FinSaleItem, type FinSaleItemType } from "./financeiroData";
-import { custoFixoDoProduto, itemEhDoMedico, lucroBrutoDoItem, produtoDoItem, profissionalDoItem, quantidadeDoItem } from "./catalogoPrecificacao";
+import { comissaoNoDia, custoFixoDoProduto, itemEhDoMedico, lucroBrutoDaTabela, lucroBrutoDoItem, produtoDoItem, profissionalDoItem, quantidadeDoItem } from "./catalogoPrecificacao";
 import { PROFISSIONAIS, type ProfissionalId } from "./profissionais";
 import {
   agendaRecebiveis,
@@ -227,7 +228,7 @@ export function prescritoNaComanda(sale: FinSale, quem: ProfissionalId = "daniel
 
 /** Soma da coluna P dos itens do executor na comanda — a base da parte dele (Dr. Daniel por padrão). */
 export function lucroBrutoNaComanda(sale: FinSale, quem: ProfissionalId = "daniel") {
-  return round2(sale.items.reduce((soma, item) => soma + (profissionalDoItem(item) === quem ? lucroBrutoDoItem(item) : 0), 0));
+  return round2(sale.items.reduce((soma, item) => soma + (profissionalDoItem(item) === quem ? lucroBrutoDoItem(item, sale.saleDate) : 0), 0));
 }
 
 /** Tudo o que foi vendido de um profissional na comanda (todos os itens dele, pelo valor cobrado). */
@@ -269,14 +270,14 @@ export type ExplicacaoMedicoDia = {
   parteMedico: number;
 };
 
-export function explicarItemDoMedico(item: FinSaleItem, percentual: number): ItemExplicado {
+export function explicarItemDoMedico(item: FinSaleItem, percentual: number, dia?: string | null): ItemExplicado {
   const cobrado = round2(item.amount || 0);
   const base = { descricao: (item.description || "").trim() || saleItemTypeLabelFallback(item.itemType), itemType: item.itemType, cobrado };
   if (!itemEhDoMedico(item.itemType) || cobrado <= 0) {
     return { ...base, reconhecido: "não é do médico", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, taxaVariavel: null, custoFixo: null, lucroBruto: 0, parteMedico: 0 };
   }
   const produto = produtoDoItem(item);
-  const lucroBruto = lucroBrutoDoItem(item);
+  const lucroBruto = lucroBrutoDoItem(item, dia);
   const parteMedico = round2((lucroBruto * percentual) / 100);
   if (!produto) {
     return { ...base, reconhecido: "padrão do tipo", produto: null, precoTabela: null, lucroBrutoTabela: null, quantidade: null, taxaVariavel: null, custoFixo: null, lucroBruto, parteMedico };
@@ -289,9 +290,9 @@ export function explicarItemDoMedico(item: FinSaleItem, percentual: number): Ite
     reconhecido,
     produto: produto.nome,
     precoTabela: produto.preco,
-    lucroBrutoTabela: produto.lucroBruto,
+    lucroBrutoTabela: lucroBrutoDaTabela(produto, dia),
     quantidade: quantidadeDoItem(cobrado, produto.preco),
-    taxaVariavel: Math.round((produto.imposto + produto.comissao) * 10000) / 10000,
+    taxaVariavel: Math.round((produto.imposto + comissaoNoDia(produto, dia)) * 10000) / 10000,
     custoFixo: round2(custoFixoDoProduto(produto) * quantidadeDoItem(cobrado, produto.preco) + (produto.repasse ?? 0)),
     lucroBruto,
     parteMedico,
@@ -313,7 +314,7 @@ export function explicarMedicoDoDia(sales: FinSale[], dia: string, regua: ReguaL
   const comandas: ComandaExplicada[] = sales
     .filter((sale) => sale.saleDate === dia && sale.items.some((item) => profissionalDoItem(item) === quem))
     .map((sale) => {
-      const itens = sale.items.filter((item) => profissionalDoItem(item) === quem).map((item) => explicarItemDoMedico(item, percentual));
+      const itens = sale.items.filter((item) => profissionalDoItem(item) === quem).map((item) => explicarItemDoMedico(item, percentual, sale.saleDate));
       return {
         saleId: sale.id,
         paciente: sale.patientName,

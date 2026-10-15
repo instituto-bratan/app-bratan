@@ -403,7 +403,7 @@ export function FinanceiroLucroPage() {
                 mês, dividido pelos dias úteis (Lucas: &quot;não é em porcentagem, é sempre esse valor&quot;) — e o{" "}
                 <strong>médico executor</strong>: a coluna S da planilha de precificação, &quot;Margem Líquida Médico&quot; = 50% do
                 lucro bruto de cada produto (preço − imposto/cartão − comissão − consumíveis − repasse nutri − custo de sala;
-                Plano de R$ 6.997 → R$ 1.738,37). O que sobra é o único dinheiro para gastar. Lucro e impostos vão para
+                Plano de R$ 6.997 → R$ 1.633,42, com a comissão de 13% desde 01/10/2026). O que sobra é o único dinheiro para gastar. Lucro e impostos vão para
                 contas de difícil acesso. &quot;Não é meta, é decisão.&quot; (Exemplo da aula, só para referência: 25%
                 lucro · 16,6% impostos · 28% executor → sobram 30,4%.)
               </InfoTip>
@@ -529,11 +529,12 @@ export function FinanceiroLucroPage() {
                     ))}
                   </div>
                   <p className="text-[13px] font-medium leading-5 text-tinta-2">
-                    O médico recebe a coluna S da planilha de precificação: 50% do lucro bruto do produto (preço − imposto/cartão − comissão 10% −
+                    O médico recebe a coluna S da planilha de precificação: 50% do lucro bruto do produto (preço − imposto/cartão − comissão 13% −
                     consumíveis − repasse nutri − custo de sala). O app reconhece o produto pela descrição e pelo preço do item da comanda
-                    (Plano 6.997 → 1.738,37 · consulta 2.500 → 743,11 · dose 590 → 130 a 226; planilha OFICIAL de 15/09); item sem
+                    (Plano 6.997 → 1.633,42 · consulta 2.500 → 705,61 · dose 590 → 121,73 a 216,83; planilha OFICIAL de 15/09 com comissão de 13% desde
+                    01/10/2026 — as comandas de setembro seguem com a de 10%); item sem
                     produto reconhecido usa a fração do produto de referência do tipo. O Dr. Moisés recebe a coluna Q da aba dele: 20% do lucro
-                    bruto de cada procedimento dele (Botox 2.500 → 206,78 · avaliação 550 → 58,28), pago em três parcelas no dia 20 dos três
+                    bruto de cada procedimento dele (Botox 2.500 → 189,03 · avaliação 550 → 44,34), pago em três parcelas no dia 20 dos três
                     meses seguintes.
                   </p>
                 </BlocoSaber>

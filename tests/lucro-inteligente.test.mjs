@@ -101,20 +101,29 @@ test("cota do lucro: R$ 40 mil ÷ dias úteis do mês (setembro/2026 tem 21, sem
 
 test("planilha de precificação no motor: o item da comanda vira a coluna P (lucro bruto) e a S é 50% dela", () => {
   const item = (itemType, amount, description = "") => ({ itemType, amount, description });
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses")), 3476.74, "Plano (planilha OFICIAL de 15/09): 6.997 − 1.819,22 imposto 26% − 699,70 comissão 10% − 660 nutri − 341,34 sala");
+  // COMISSÃO 13% DESDE 01/10/2026 (Lucas, 15/10): os números abaixo são os de
+  // SETEMBRO (comissão de 10%), que continuam valendo para as comandas daquele mês.
+  const SET = "2026-09-15";
+  const lb = (i) => li.lucroBrutoDoItem(i, SET);
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses")), 3266.83, "Plano hoje: 6.997 − 1.819,22 imposto 26% − 909,61 comissão 13% − 660 nutri − 341,34 sala");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses"), "2026-10-01"), 3266.83, "a partir de 01/10/2026, 13%");
+  assert.equal(lb(item("TRATAMENTO", 6997, "Programa de acompanhamento 6 meses")), 3476.74, "Plano (planilha OFICIAL de 15/09): 6.997 − 1.819,22 imposto 26% − 699,70 comissão 10% − 660 nutri − 341,34 sala");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un"), "2026-10-15"), 279.05, "tirzepatida até 49 un continua com 1% em outubro");
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 6997, "")).nome, "Plano de Acompanhamento · 6 meses", "6.997 é só do Plano (o Club virou Consulta Black a 1.500)");
   assert.equal(li.produtoDoItem(item("CONSULTA", 1500, "Club Bratan")).nome, "Consulta Black (5% de desconto em tratamentos) — Pix", "quem ainda escreve 'club' cai na Consulta Black");
-  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1500, "Consulta Black")), 846.22);
-  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 1100, "Consulta Diamond")), 590.22, "Diamond (OFICIAL): 1.100 − 286 NF 26% − 110 comissão (10%) − 113,78 sala");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 3900, "Teste genético")), 2458.07, "teste genético ainda sem o custo do kit (OFICIAL, comissão 10%)");
+  assert.equal(lb(item("CONSULTA", 1500, "Consulta Black")), 846.22);
+  assert.equal(lb(item("CONSULTA", 1100, "Consulta Diamond")), 590.22, "Diamond (OFICIAL): 1.100 − 286 NF 26% − 110 comissão (10%) − 113,78 sala");
+  assert.equal(lb(item("TRATAMENTO", 3900, "Teste genético")), 2458.07, "teste genético ainda sem o custo do kit (OFICIAL, comissão 10%)");
   assert.equal(li.produtoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")).nome, "Tirzepatida · 31 a 49 un", "entre as tirzepatidas, o preço mais próximo decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 279.05, "tirzepatida até 49 un continua com comissão de 1%");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1990, "")), 1053.58, "1.990 só pode ser Ferinject: preço decide");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 557.66, "valor fora da tabela = planilha com F = 1.000 e B = 2: 1.000 × (1 − 11,48% − 10%) − 2 × (106,66 consumível + 7,11 poltrona)");
-  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 800, "Soro especial")), 397.51, "produto desconhecido: fração do Plano (49,7%)");
-  assert.equal(li.lucroBrutoDoItem(item("CONSULTA", 2500, "")), 1486.22, "consulta avulsa Pix");
-  assert.equal(li.lucroBrutoDoItem(item("SINAL", 500, "")), 291.56);
-  assert.equal(li.lucroBrutoDoItem(item("BIOIMPEDANCIA", 200, "")), 138.08, "mapeamento corporal");
+  assert.equal(lb(item("TRATAMENTO", 590, "Tirzepatida 40 un")), 279.05, "tirzepatida até 49 un continua com comissão de 1%");
+  assert.equal(lb(item("TRATAMENTO", 1990, "")), 1053.58, "1.990 só pode ser Ferinject: preço decide");
+  assert.equal(lb(item("TRATAMENTO", 1000, "Testosterona blend 3ml")), 557.66, "valor fora da tabela = planilha com F = 1.000 e B = 2: 1.000 × (1 − 11,48% − 10%) − 2 × (106,66 consumível + 7,11 poltrona)");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 1000, "Testosterona blend 3ml"), "2026-10-15"), 527.66, "em outubro, 3 pontos a menos de comissão sobre os 1.000");
+  assert.equal(lb(item("TRATAMENTO", 800, "Soro especial")), 397.51, "produto desconhecido: fração do Plano (49,7%)");
+  assert.equal(li.lucroBrutoDoItem(item("TRATAMENTO", 800, "Soro especial"), "2026-10-15"), 373.51, "em outubro, a fração do Plano é 46,7%");
+  assert.equal(lb(item("CONSULTA", 2500, "")), 1486.22, "consulta avulsa Pix");
+  assert.equal(lb(item("SINAL", 500, "")), 291.56);
+  assert.equal(lb(item("BIOIMPEDANCIA", 200, "")), 138.08, "mapeamento corporal");
   assert.equal(li.lucroBrutoDoItem(item("NUTRICIONISTA", 600, "Dra. Géssica")), 0, "nutri e psi estão no seletor, mas não são do médico executor");
   assert.equal(li.lucroBrutoDoItem(item("PSICOLOGA", 790, "Dra. Bárbara (psicóloga) — 4 sessões")), 0);
   assert.equal(li.lucroBrutoDoItem(item("RETORNO", 0, "")), 0);
@@ -205,8 +214,9 @@ test("catálogo compartilhado: o Fechamento grava o nome oficial e a comanda fec
 
   // É o nome exato que o Lucro Inteligente lê primeiro.
   assert.equal(li.produtoDoItem({ itemType: "CONSULTA", amount: 1500, description: "Consulta Black (5% de desconto em tratamentos) — Pix" }).nome, "Consulta Black (5% de desconto em tratamentos) — Pix");
-  assert.equal(li.lucroBrutoDoItem(cheio[0]), 3476.74, "o item gravado pelo Fechamento cai na coluna P do Plano");
-  assert.equal(li.lucroBrutoDoItem(cheio[2]), 871.31, "2 vitaminas D pelo preço cheio = 2 × 435,66, igual à planilha com B = 2");
+  assert.equal(li.lucroBrutoDoItem(cheio[0], "2026-09-15"), 3476.74, "o item gravado pelo Fechamento cai na coluna P do Plano (setembro, comissão 10%)");
+  assert.equal(li.lucroBrutoDoItem(cheio[0]), 3266.83, "hoje (comissão 13% desde 01/10/2026)");
+  assert.equal(li.lucroBrutoDoItem(cheio[2], "2026-09-15"), 871.31, "2 vitaminas D pelo preço cheio = 2 × 435,66, igual à planilha com B = 2");
   assert.equal(cat.itensDaComanda([], 1000, parse, criarId).length, 0, "sem produto escolhido, o fechamento segue com o item único de antes");
   assert.ok(cat.secoesDoCatalogo().length >= 6, "o seletor agrupa por seção da planilha");
   assert.equal(cat.secoesDoCatalogo()[0].secao, "Plano de Acompanhamento");

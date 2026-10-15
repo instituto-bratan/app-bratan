@@ -18,6 +18,16 @@
 // em 13,33% / 7,93% / 3,84% e em comissão de 1%; quem manda são as células do topo
 // e as colunas, que é o que este catálogo copia.
 //
+// COMISSÃO 13% (15/10/2026, Lucas: "na comissão pode mudar o do Daniel para 13%
+// também" — a mesma dos procedimentos do Dr. Moisés). Tudo que estava em 10%
+// passou para 13%; as tirzepatidas de 1% (frasco, até 30 un, 31 a 49 un) ficam
+// como estavam. Vale para as comandas a partir de 01/10/2026 (MUDANCA_DE_COMISSAO):
+// setembro já foi fechado e mandado à contabilidade, então o salário do Dr. Daniel
+// daquele mês não muda sozinho. Plano de R$ 6.997: lucro bruto 3.476,74 → 3.266,83
+// (50% = 1.738,37 → 1.633,42). A planilha "… impostos 15-09 e comissao 13 (15-10)
+// .xlsx" está igual a este catálogo (39 produtos conferidos; o sinal de R$ 200 só
+// existe aqui).
+//
 // DR. MOISÉS (15/10/2026): os procedimentos do biomédico Dr. Moisés entram
 // no mesmo catálogo, vindos da aba "Precificação Dr. Moisés" da planilha "… (com
 // Dr. Moises) AT - dossies 08 a 10 (3).xlsx" que o Lucas mandou em 15/10. Mesmas
@@ -101,97 +111,96 @@ export const CATALOGO_PRECIFICACAO: ProdutoPrecificado[] = [
   // APP DO DR. DANIEL — itens do plano
   // Só o Plano custa R$ 6.997 (Lucas, 02/09: "o clube virou Consulta Black" — a
   // R$ 1.500, com 5% de desconto em tratamentos; está na esteira de consultas).
-  { nome: "Plano de Acompanhamento · 6 meses", secao: "Plano de Acompanhamento", preco: 6997, lucroBruto: 3476.74, imposto: 0.26, comissao: 0.1, repasse: 660, custoFixo: 341.335887, minutosSala: 180, tipos: ["CONSULTA", "TRATAMENTO"], natureza: "PLANO", padrao: /programa|acompanhamento|plano/i },
-  { nome: "Testosterona base / cipionato / enantato", secao: "Hormonais (por dose)", preco: 490, lucroBruto: 324.31, imposto: 0.1148, comissao: 0.1, custoFixo: 60.441164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
-  { nome: "Testosterona blend", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 349.5, imposto: 0.1148, comissao: 0.1, custoFixo: 113.771164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /blend/i },
-  { nome: "Testosterona + HCG", secao: "Hormonais (por dose)", preco: 790, lucroBruto: 392.73, imposto: 0.1148, comissao: 0.1, custoFixo: 227.581552, minutosSala: 20, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
-  { nome: "Undecilato de testosterona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 404.66, imposto: 0.1148, comissao: 0.1, custoFixo: 58.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /undecilato|nebido/i },
-  { nome: "Nandrolona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 419.66, imposto: 0.1148, comissao: 0.1, custoFixo: 43.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /nandrolona|deca/i },
-  { nome: "HCG (frasco)", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 261.16, imposto: 0.1148, comissao: 0.1, custoFixo: 202.111164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /hcg/i },
-  { nome: "Vitamina D 600.000 UI", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 435.66, imposto: 0.1148, comissao: 0.1, custoFixo: 27.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /vitamina d\b|vit\.? ?d\b|colecalciferol/i },
-  { nome: "Metilcobalamina · B12", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 439.06, imposto: 0.1148, comissao: 0.1, custoFixo: 24.211164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /b12|cobalamina/i },
-  { nome: "Metilfolato · B9", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 439.26, imposto: 0.1148, comissao: 0.1, custoFixo: 24.011164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /\bb9\b|folato/i },
-  { nome: "Piridoxina · B6", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 451.36, imposto: 0.1148, comissao: 0.1, custoFixo: 11.911164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /\bb6\b|piridoxina/i },
-  { nome: "NADH", secao: "Vitalidade e performance", preco: 590, lucroBruto: 396.96, imposto: 0.1148, comissao: 0.1, custoFixo: 66.311164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /nadh/i },
-  { nome: "Coenzima Q10", secao: "Vitalidade e performance", preco: 590, lucroBruto: 430.66, imposto: 0.1148, comissao: 0.1, custoFixo: 32.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /q10|coenzima/i },
-  { nome: "Ferinject", secao: "Vitalidade e performance", preco: 1990, lucroBruto: 1053.58, imposto: 0.1148, comissao: 0.1, custoFixo: 508.963105, minutosSala: 40, tipos: ["TRATAMENTO"], padrao: /ferinject|carboximaltose/i },
+  { nome: "Plano de Acompanhamento · 6 meses", secao: "Plano de Acompanhamento", preco: 6997, lucroBruto: 3266.83, imposto: 0.26, comissao: 0.13, repasse: 660, custoFixo: 341.335887, minutosSala: 180, tipos: ["CONSULTA", "TRATAMENTO"], natureza: "PLANO", padrao: /programa|acompanhamento|plano/i },
+  { nome: "Testosterona base / cipionato / enantato", secao: "Hormonais (por dose)", preco: 490, lucroBruto: 309.61, imposto: 0.1148, comissao: 0.13, custoFixo: 60.441164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /cipionato|enantato|testosterona base|testo base/i },
+  { nome: "Testosterona blend", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 331.8, imposto: 0.1148, comissao: 0.13, custoFixo: 113.771164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /blend/i },
+  { nome: "Testosterona + HCG", secao: "Hormonais (por dose)", preco: 790, lucroBruto: 369.03, imposto: 0.1148, comissao: 0.13, custoFixo: 227.581552, minutosSala: 20, tipos: ["TRATAMENTO"], padrao: /testo\w*.*hcg|hcg.*testo/i },
+  { nome: "Undecilato de testosterona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 386.96, imposto: 0.1148, comissao: 0.13, custoFixo: 58.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /undecilato|nebido/i },
+  { nome: "Nandrolona", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 401.96, imposto: 0.1148, comissao: 0.13, custoFixo: 43.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /nandrolona|deca/i },
+  { nome: "HCG (frasco)", secao: "Hormonais (por dose)", preco: 590, lucroBruto: 243.46, imposto: 0.1148, comissao: 0.13, custoFixo: 202.111164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /hcg/i },
+  { nome: "Vitamina D 600.000 UI", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 417.96, imposto: 0.1148, comissao: 0.13, custoFixo: 27.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /vitamina d\b|vit\.? ?d\b|colecalciferol/i },
+  { nome: "Metilcobalamina · B12", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 421.36, imposto: 0.1148, comissao: 0.13, custoFixo: 24.211164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /b12|cobalamina/i },
+  { nome: "Metilfolato · B9", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 421.56, imposto: 0.1148, comissao: 0.13, custoFixo: 24.011164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /\bb9\b|folato/i },
+  { nome: "Piridoxina · B6", secao: "Vitaminas IM (por dose)", preco: 590, lucroBruto: 433.66, imposto: 0.1148, comissao: 0.13, custoFixo: 11.911164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /\bb6\b|piridoxina/i },
+  { nome: "NADH", secao: "Vitalidade e performance", preco: 590, lucroBruto: 379.26, imposto: 0.1148, comissao: 0.13, custoFixo: 66.311164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /nadh/i },
+  { nome: "Coenzima Q10", secao: "Vitalidade e performance", preco: 590, lucroBruto: 412.96, imposto: 0.1148, comissao: 0.13, custoFixo: 32.611164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /q10|coenzima/i },
+  { nome: "Ferinject", secao: "Vitalidade e performance", preco: 1990, lucroBruto: 993.88, imposto: 0.1148, comissao: 0.13, custoFixo: 508.963105, minutosSala: 40, tipos: ["TRATAMENTO"], padrao: /ferinject|carboximaltose/i },
   { nome: "Tirzepatida · frasco", secao: "Composição corporal e peso", preco: 3170, lucroBruto: 1662.27, imposto: 0.1148, comissao: 0.01, custoFixo: 1112.111164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /(tirze|mounjaro|zepbound).*frasco|frasco.*(tirze|mounjaro)/i },
   { nome: "Tirzepatida · até 30 un", secao: "Composição corporal e peso", preco: 390, lucroBruto: 196.09, imposto: 0.1148, comissao: 0.01, custoFixo: 145.241164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
   { nome: "Tirzepatida · 31 a 49 un", secao: "Composição corporal e peso", preco: 590, lucroBruto: 279.05, imposto: 0.1148, comissao: 0.01, custoFixo: 237.321164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Tirzepatida · acima de 50 un", secao: "Composição corporal e peso", preco: 790, lucroBruto: 336.95, imposto: 0.1148, comissao: 0.1, custoFixo: 283.361164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
-  { nome: "Honorários de implante (sem pellet)", secao: "Implante hormonal", preco: 5700, lucroBruto: 4166.66, imposto: 0.1148, comissao: 0.1, repasse: 100, custoFixo: 208.978629, minutosSala: 60, tipos: ["TRATAMENTO"], padrao: /implante|honor/i },
-  { nome: "Pellet testosterona 50mg", secao: "Implante hormonal", preco: 123, lucroBruto: -1.82, imposto: 0.1148, comissao: 0.1, custoFixo: 98.4, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 100mg", secao: "Implante hormonal", preco: 190, lucroBruto: -2.81, imposto: 0.1148, comissao: 0.1, custoFixo: 152, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 125mg", secao: "Implante hormonal", preco: 224, lucroBruto: -3.32, imposto: 0.1148, comissao: 0.1, custoFixo: 179.2, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 150mg", secao: "Implante hormonal", preco: 280, lucroBruto: -4.14, imposto: 0.1148, comissao: 0.1, custoFixo: 224, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet testosterona 200mg", secao: "Implante hormonal", preco: 336, lucroBruto: -4.97, imposto: 0.1148, comissao: 0.1, custoFixo: 268.8, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet estradiol 25mg", secao: "Implante hormonal", preco: 213, lucroBruto: -3.15, imposto: 0.1148, comissao: 0.1, custoFixo: 170.4, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet gestrinona 35mg", secao: "Implante hormonal", preco: 381, lucroBruto: -5.64, imposto: 0.1148, comissao: 0.1, custoFixo: 304.8, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
-  { nome: "Pellet gestrinona 50mg", secao: "Implante hormonal", preco: 538, lucroBruto: -7.96, imposto: 0.1148, comissao: 0.1, custoFixo: 430.4, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Tirzepatida · acima de 50 un", secao: "Composição corporal e peso", preco: 790, lucroBruto: 313.25, imposto: 0.1148, comissao: 0.13, custoFixo: 283.361164, minutosSala: 15, tipos: ["TRATAMENTO"], padrao: /tirze|mounjaro|zepbound/i },
+  { nome: "Honorários de implante (sem pellet)", secao: "Implante hormonal", preco: 5700, lucroBruto: 3995.66, imposto: 0.1148, comissao: 0.13, repasse: 100, custoFixo: 208.978629, minutosSala: 60, tipos: ["TRATAMENTO"], padrao: /implante|honor/i },
+  { nome: "Pellet testosterona 50mg", secao: "Implante hormonal", preco: 123, lucroBruto: -5.51, imposto: 0.1148, comissao: 0.13, custoFixo: 98.4, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 100mg", secao: "Implante hormonal", preco: 190, lucroBruto: -8.51, imposto: 0.1148, comissao: 0.13, custoFixo: 152, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 125mg", secao: "Implante hormonal", preco: 224, lucroBruto: -10.04, imposto: 0.1148, comissao: 0.13, custoFixo: 179.2, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 150mg", secao: "Implante hormonal", preco: 280, lucroBruto: -12.54, imposto: 0.1148, comissao: 0.13, custoFixo: 224, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet testosterona 200mg", secao: "Implante hormonal", preco: 336, lucroBruto: -15.05, imposto: 0.1148, comissao: 0.13, custoFixo: 268.8, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet estradiol 25mg", secao: "Implante hormonal", preco: 213, lucroBruto: -9.54, imposto: 0.1148, comissao: 0.13, custoFixo: 170.4, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet gestrinona 35mg", secao: "Implante hormonal", preco: 381, lucroBruto: -17.07, imposto: 0.1148, comissao: 0.13, custoFixo: 304.8, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
+  { nome: "Pellet gestrinona 50mg", secao: "Implante hormonal", preco: 538, lucroBruto: -24.1, imposto: 0.1148, comissao: 0.13, custoFixo: 430.4, minutosSala: 0, tipos: ["TRATAMENTO"], padrao: /pellet/i },
   // APP DO CLOSER — esteira de consultas (Lucas, 02/09/2026). Lucro bruto pela
   // mesma conta da planilha: preço − NF 13,33% (consulta) − comissão comercial
   // de 10% − custo de sala (60 min = R$ 113,78; 20 min = R$ 37,93).
   // SINAL DE R$ 200 (10/09/2026, áudio da CEO): "se eu coloco sinal de 500, eu
   // não consigo lançar um comprovante de 200... preciso ficar justificando esses
   // 200 reais". Os dois valores praticados viram opção própria; o lucro bruto
-  // segue a mesma FÓRMULA da planilha: 200 − NF 26% − comissão 10% − poltrona = 99,56.
-  { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 291.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["CONSULTA", "SINAL"], natureza: "SINAL" },
-  { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 99.56, imposto: 0.26, comissao: 0.1, custoFixo: 28.444657, minutosSala: 15, tipos: ["CONSULTA", "SINAL"], natureza: "SINAL" },
-  { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 1486.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
-  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 1540.62, imposto: 0.2984, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
-  { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 846.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
-  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 878.86, imposto: 0.2984, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
-  { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 590.22, imposto: 0.26, comissao: 0.1, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /diamond/i },
-  { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 138.08, imposto: 0.1148, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["CONSULTA", "BIOIMPEDANCIA"], natureza: "EXAME" },
-  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 167.74, imposto: 0.1532, comissao: 0.1, custoFixo: 18.963105, minutosSala: 10, tipos: ["CONSULTA", "BIOIMPEDANCIA"], natureza: "EXAME" },
+  // segue a mesma FÓRMULA da planilha: 200 − NF 26% − comissão 13% − poltrona = 93,56
+  // (99,56 com a comissão de 10% de antes de 01/10/2026).
+  { nome: "Sinal de consulta", secao: "Comercial e consultas", preco: 500, lucroBruto: 276.56, imposto: 0.26, comissao: 0.13, custoFixo: 28.444657, minutosSala: 15, tipos: ["CONSULTA", "SINAL"], natureza: "SINAL" },
+  { nome: "Sinal de consulta (R$ 200)", secao: "Comercial e consultas", preco: 200, lucroBruto: 93.56, imposto: 0.26, comissao: 0.13, custoFixo: 28.444657, minutosSala: 15, tipos: ["CONSULTA", "SINAL"], natureza: "SINAL" },
+  { nome: "Consulta avulsa + bioimpedância — Pix", secao: "Comercial e consultas", preco: 2500, lucroBruto: 1411.22, imposto: 0.26, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
+  { nome: "Consulta avulsa + bioimpedância — débito/2x", secao: "Comercial e consultas", preco: 2750, lucroBruto: 1458.12, imposto: 0.2984, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"] },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — Pix", secao: "Comercial e consultas", preco: 1500, lucroBruto: 801.22, imposto: 0.26, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Black (5% de desconto em tratamentos) — débito/2x", secao: "Comercial e consultas", preco: 1650, lucroBruto: 829.36, imposto: 0.2984, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /black|club|clube/i },
+  { nome: "Consulta Diamond — Pix", secao: "Comercial e consultas", preco: 1100, lucroBruto: 557.22, imposto: 0.26, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], padrao: /diamond/i },
+  { nome: "Mapeamento corporal — Pix", secao: "Comercial e consultas", preco: 200, lucroBruto: 132.08, imposto: 0.1148, comissao: 0.13, custoFixo: 18.963105, minutosSala: 10, tipos: ["CONSULTA", "BIOIMPEDANCIA"], natureza: "EXAME" },
+  { nome: "Mapeamento corporal — débito/2x", secao: "Comercial e consultas", preco: 250, lucroBruto: 160.24, imposto: 0.1532, comissao: 0.13, custoFixo: 18.963105, minutosSala: 10, tipos: ["CONSULTA", "BIOIMPEDANCIA"], natureza: "EXAME" },
   // Teste genético: o kit/laboratório ainda não tem custo comprovado (aba "Custos a
   // confirmar") — o lucro bruto aqui é SEM o kit e vai cair quando o custo entrar.
-  { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 2458.07, imposto: 0.26, comissao: 0.1, custoFixo: 37.92621, minutosSala: 20, tipos: ["CONSULTA", "TRATAMENTO"], natureza: "TRATAMENTO", padrao: /gen[eé]tic/i },
+  { nome: "Teste Genético (inclui consulta de 20 min para leitura)", secao: "Comercial e consultas", preco: 3900, lucroBruto: 2341.07, imposto: 0.26, comissao: 0.13, custoFixo: 37.92621, minutosSala: 20, tipos: ["CONSULTA", "TRATAMENTO"], natureza: "TRATAMENTO", padrao: /gen[eé]tic/i },
   // Nutri e psi: preço de tabela para o seletor; não são do médico executor.
-  { nome: "Dra. Géssica (nutricionista) — Pix", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 120.22, imposto: 0.26, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
-  { nome: "Dra. Géssica (nutricionista) — débito/3x", secao: "Nutrição e psicologia", preco: 650, lucroBruto: 127.26, imposto: 0.2984, comissao: 0.1, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"] },
-  { nome: "Dra. Bárbara (psicóloga) — 4 sessões", secao: "Nutrição e psicologia", preco: 790, lucroBruto: 50.49, imposto: 0.26, comissao: 0.1, custoFixo: 455.114517, minutosSala: 240, tipos: ["PSICOLOGA"], padrao: /b[aá]rbara|psic/i },
+  { nome: "Dra. Géssica (nutricionista) — Pix", secao: "Nutrição e psicologia", preco: 600, lucroBruto: 102.22, imposto: 0.26, comissao: 0.13, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"], padrao: /g[eé]ssica|nutri/i },
+  { nome: "Dra. Géssica (nutricionista) — débito/3x", secao: "Nutrição e psicologia", preco: 650, lucroBruto: 107.76, imposto: 0.2984, comissao: 0.13, repasse: 150, custoFixo: 113.778629, minutosSala: 60, tipos: ["NUTRICIONISTA"] },
+  { nome: "Dra. Bárbara (psicóloga) — 4 sessões", secao: "Nutrição e psicologia", preco: 790, lucroBruto: 26.79, imposto: 0.26, comissao: 0.13, custoFixo: 455.114517, minutosSala: 240, tipos: ["PSICOLOGA"], padrao: /b[aá]rbara|psic/i },
   // ---- DR. MOISÉS (biomédico) — 15/10/2026 ---------------------------------------
   // Copiado da aba "Precificação Dr. Moisés" (26 linhas, conferidas uma a uma: o
   // preço cheio reproduz a coluna P e 20% dela é a coluna Q, no comentário de cada
   // linha). Como a planilha calcula: avaliação com o imposto de CONSULTA (13,33%,
   // célula G1) e procedimento com o de PROCEDIMENTO (7,93%, I1); comissão comercial
   // 13%; consumíveis do dossiê (+ aluguel do laser no Lavieen e na depilação) e sala
-  // produtiva a R$ 1,896310/min = R$ 113,78/h. HORA DE SALA: o Lucas pediu em 15/10
-  // a atualizada ("o custo hora sala está desatualizado, use o atualizado e atualize
-  // na planilha") — a planilha dele vinha com a de 02/09 (R$ 101,33/h) e foi
-  // atualizada para a de 15/09, a mesma do Dr. Daniel ("… hora-sala atualizada
-  // 15-10.xlsx"). ATENÇÃO: o imposto da aba dele ainda é o de antes de 15/09 (NF
-  // 13,33%/7,93%); o Dr. Daniel, no app, usa 26%/11,48%. Ficou como a planilha
-  // manda — decisão do Lucas.
+  // produtiva a R$ 1,896310/min = R$ 113,78/h. Tudo igual ao Dr. Daniel desde
+  // 15/10/2026, a pedido do Lucas: hora de sala de 15/09 ("o custo hora sala está
+  // desatualizado, use o atualizado"), NF de 15/09 — 26% na avaliação (consulta) e
+  // 11,48% no procedimento ("pode usar os impostos de 15/09 na aba do Moisés
+  // também") — e comissão de 13% para os dois.
   // Palavra-chave: só serve para item do Dr. Moisés digitado à mão; produto dele
   // nunca é reconhecido num item do Dr. Daniel (ver produtoDoItem).
-  { nome: "Avaliação capilar (com tricoscopia)", secao: "Dr. Moisés · Avaliações", preco: 550, lucroBruto: 291.41, imposto: 0.1333, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /capilar|tricosc/i },  // linha 6 · Q 58.28
-  { nome: "Avaliação facial", secao: "Dr. Moisés · Avaliações", preco: 550, lucroBruto: 291.41, imposto: 0.1333, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /facial/i },  // linha 7 · Q 58.28
-  { nome: "Toxina botulínica facial — Botox 100U", secao: "Dr. Moisés · Toxina botulínica (1 frasco por paciente)", preco: 2500, lucroBruto: 1033.9, imposto: 0.0793, comissao: 0.13, custoFixo: 942.847944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /botox/i },  // linha 10 · Q 206.78
-  { nome: "Toxina botulínica facial — Dysport 300U", secao: "Dr. Moisés · Toxina botulínica (1 frasco por paciente)", preco: 2500, lucroBruto: 896.9, imposto: 0.0793, comissao: 0.13, custoFixo: 1079.847944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /dysport/i },  // linha 11 · Q 179.38
-  { nome: "Preenchimento ácido hialurônico — Juvéderm Volux (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 968.32, imposto: 0.0793, comissao: 0.13, custoFixo: 613.078629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /volux|juv[eé]derm/i },  // linha 14 · Q 193.66
-  { nome: "Preenchimento ácido hialurônico — Restylane Defyne (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 818.26, imposto: 0.0793, comissao: 0.13, custoFixo: 763.138629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /restylane|defyne/i },  // linha 15 · Q 163.65
-  { nome: "Preenchimento ácido hialurônico — Belotero Intense Lido (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 1118.82, imposto: 0.0793, comissao: 0.13, custoFixo: 462.578629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /belotero/i },  // linha 16 · Q 223.76
-  { nome: "Microagulhamento facial (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 900, lucroBruto: 515.29, imposto: 0.0793, comissao: 0.13, custoFixo: 196.340867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /microagulhamento.*facial|facial.*microagulhamento/i },  // linha 19 · Q 103.06
-  { nome: "Microagulhamento capilar (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 600, lucroBruto: 292.54, imposto: 0.0793, comissao: 0.13, custoFixo: 181.880867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /microagulhamento.*capilar|capilar.*microagulhamento/i },  // linha 20 · Q 58.51
-  { nome: "Intradermoterapia capilar (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 800, lucroBruto: 463.55, imposto: 0.0793, comissao: 0.13, custoFixo: 169.012419, minutosSala: 40, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /intradermo|mesoterapia/i },  // linha 21 · Q 92.71
-  { nome: "Lavieen facial (sessão)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 1500, lucroBruto: 803.41, imposto: 0.0793, comissao: 0.13, custoFixo: 382.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /lavieen/i },  // linha 24 · Q 160.68
-  { nome: "Lavieen + ativo premium (sessão)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 1800, lucroBruto: 980.62, imposto: 0.0793, comissao: 0.13, custoFixo: 442.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /lavieen.*(ativo|premium)/i },  // linha 25 · Q 196.12
-  { nome: "Jornada Lavieen + peeling (2 encontros)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 2350, lucroBruto: 1375.51, imposto: 0.0793, comissao: 0.13, custoFixo: 482.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peeling|jornada/i },  // linha 26 · Q 275.1
-  { nome: "Depilação a laser — full face", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 290, lucroBruto: 116.16, imposto: 0.0793, comissao: 0.13, custoFixo: 113.140867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /full ?face|rosto/i },  // linha 29 · Q 23.23
-  { nome: "Depilação a laser — axilas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 220, lucroBruto: 83.66, imposto: 0.0793, comissao: 0.13, custoFixo: 90.29621, minutosSala: 20, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /axila/i },  // linha 30 · Q 16.73
-  { nome: "Depilação a laser — virilha completa", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 390, lucroBruto: 159.47, imposto: 0.0793, comissao: 0.13, custoFixo: 148.903972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /virilha/i },  // linha 31 · Q 31.89
-  { nome: "Depilação a laser — barba + pescoço", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 290, lucroBruto: 108.84, imposto: 0.0793, comissao: 0.13, custoFixo: 120.459315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /barba|pesco[cç]o/i },  // linha 32 · Q 21.77
-  { nome: "Depilação a laser — braços completos", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 139.49, imposto: 0.0793, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /bra[cç]o/i },  // linha 33 · Q 27.9
-  { nome: "Depilação a laser — peitoral", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 139.49, imposto: 0.0793, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peitoral/i },  // linha 34 · Q 27.9
-  { nome: "Depilação a laser — abdômen", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 139.49, imposto: 0.0793, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /abd[oô]men/i },  // linha 35 · Q 27.9
-  { nome: "Depilação a laser — peitoral + abdômen", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 173.31, imposto: 0.0793, comissao: 0.13, custoFixo: 182.503972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peitoral.*abd[oô]men|abd[oô]men.*peitoral/i },  // linha 36 · Q 34.66
-  { nome: "Depilação a laser — costas completas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 173.31, imposto: 0.0793, comissao: 0.13, custoFixo: 182.503972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /costas/i },  // linha 37 · Q 34.66
-  { nome: "Depilação a laser — pernas completas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 184.96, imposto: 0.0793, comissao: 0.13, custoFixo: 170.859315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /perna/i },  // linha 38 · Q 36.99
-  { nome: "Avaliação corporal (Abdominal Sculpt)", secao: "Dr. Moisés · Abdominal Sculpt", preco: 550, lucroBruto: 291.41, imposto: 0.1333, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /corporal/i },  // linha 41 · Q 58.28
-  { nome: "Abdominal Sculpt — sessão Base", secao: "Dr. Moisés · Abdominal Sculpt", preco: 1290, lucroBruto: 824.25, imposto: 0.0793, comissao: 0.13, custoFixo: 195.748629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /sculpt.*base|base.*sculpt/i },  // linha 42 · Q 164.85
-  { nome: "Abdominal Sculpt — sessão Intensive", secao: "Dr. Moisés · Abdominal Sculpt", preco: 1290, lucroBruto: 824.25, imposto: 0.0793, comissao: 0.13, custoFixo: 195.748629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /intensive/i },  // linha 43 · Q 164.85
+  { nome: "Avaliação capilar (com tricoscopia)", secao: "Dr. Moisés · Avaliações", preco: 550, lucroBruto: 221.72, imposto: 0.26, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /capilar|tricosc/i },  // linha 6 · Q 44.34
+  { nome: "Avaliação facial", secao: "Dr. Moisés · Avaliações", preco: 550, lucroBruto: 221.72, imposto: 0.26, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /facial/i },  // linha 7 · Q 44.34
+  { nome: "Toxina botulínica facial — Botox 100U", secao: "Dr. Moisés · Toxina botulínica (1 frasco por paciente)", preco: 2500, lucroBruto: 945.15, imposto: 0.1148, comissao: 0.13, custoFixo: 942.847944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /botox/i },  // linha 10 · Q 189.03
+  { nome: "Toxina botulínica facial — Dysport 300U", secao: "Dr. Moisés · Toxina botulínica (1 frasco por paciente)", preco: 2500, lucroBruto: 808.15, imposto: 0.1148, comissao: 0.13, custoFixo: 1079.847944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /dysport/i },  // linha 11 · Q 161.63
+  { nome: "Preenchimento ácido hialurônico — Juvéderm Volux (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 897.32, imposto: 0.1148, comissao: 0.13, custoFixo: 613.078629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /volux|juv[eé]derm/i },  // linha 14 · Q 179.46
+  { nome: "Preenchimento ácido hialurônico — Restylane Defyne (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 747.26, imposto: 0.1148, comissao: 0.13, custoFixo: 763.138629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /restylane|defyne/i },  // linha 15 · Q 149.45
+  { nome: "Preenchimento ácido hialurônico — Belotero Intense Lido (1 mL)", secao: "Dr. Moisés · Preenchimento com ácido hialurônico (por mL)", preco: 2000, lucroBruto: 1047.82, imposto: 0.1148, comissao: 0.13, custoFixo: 462.578629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /belotero/i },  // linha 16 · Q 209.56
+  { nome: "Microagulhamento facial (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 900, lucroBruto: 483.34, imposto: 0.1148, comissao: 0.13, custoFixo: 196.340867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /microagulhamento.*facial|facial.*microagulhamento/i },  // linha 19 · Q 96.67
+  { nome: "Microagulhamento capilar (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 600, lucroBruto: 271.24, imposto: 0.1148, comissao: 0.13, custoFixo: 181.880867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /microagulhamento.*capilar|capilar.*microagulhamento/i },  // linha 20 · Q 54.25
+  { nome: "Intradermoterapia capilar (sessão)", secao: "Dr. Moisés · Microagulhamento e intradermoterapia (por sessão)", preco: 800, lucroBruto: 435.15, imposto: 0.1148, comissao: 0.13, custoFixo: 169.012419, minutosSala: 40, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /intradermo|mesoterapia/i },  // linha 21 · Q 87.03
+  { nome: "Lavieen facial (sessão)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 1500, lucroBruto: 750.16, imposto: 0.1148, comissao: 0.13, custoFixo: 382.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /lavieen/i },  // linha 24 · Q 150.03
+  { nome: "Lavieen + ativo premium (sessão)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 1800, lucroBruto: 916.72, imposto: 0.1148, comissao: 0.13, custoFixo: 442.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /lavieen.*(ativo|premium)/i },  // linha 25 · Q 183.34
+  { nome: "Jornada Lavieen + peeling (2 encontros)", secao: "Dr. Moisés · Lavieen e peeling (por sessão)", preco: 2350, lucroBruto: 1292.08, imposto: 0.1148, comissao: 0.13, custoFixo: 482.637944, minutosSala: 90, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peeling|jornada/i },  // linha 26 · Q 258.42
+  { nome: "Depilação a laser — full face", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 290, lucroBruto: 105.87, imposto: 0.1148, comissao: 0.13, custoFixo: 113.140867, minutosSala: 35, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /full ?face|rosto/i },  // linha 29 · Q 21.17
+  { nome: "Depilação a laser — axilas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 220, lucroBruto: 75.85, imposto: 0.1148, comissao: 0.13, custoFixo: 90.29621, minutosSala: 20, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /axila/i },  // linha 30 · Q 15.17
+  { nome: "Depilação a laser — virilha completa", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 390, lucroBruto: 145.62, imposto: 0.1148, comissao: 0.13, custoFixo: 148.903972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /virilha/i },  // linha 31 · Q 29.12
+  { nome: "Depilação a laser — barba + pescoço", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 290, lucroBruto: 98.55, imposto: 0.1148, comissao: 0.13, custoFixo: 120.459315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /barba|pesco[cç]o/i },  // linha 32 · Q 19.71
+  { nome: "Depilação a laser — braços completos", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 127.06, imposto: 0.1148, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /bra[cç]o/i },  // linha 33 · Q 25.41
+  { nome: "Depilação a laser — peitoral", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 127.06, imposto: 0.1148, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peitoral/i },  // linha 34 · Q 25.41
+  { nome: "Depilação a laser — abdômen", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 350, lucroBruto: 127.06, imposto: 0.1148, comissao: 0.13, custoFixo: 137.259315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /abd[oô]men/i },  // linha 35 · Q 25.41
+  { nome: "Depilação a laser — peitoral + abdômen", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 157.34, imposto: 0.1148, comissao: 0.13, custoFixo: 182.503972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /peitoral.*abd[oô]men|abd[oô]men.*peitoral/i },  // linha 36 · Q 31.47
+  { nome: "Depilação a laser — costas completas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 157.34, imposto: 0.1148, comissao: 0.13, custoFixo: 182.503972, minutosSala: 45, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /costas/i },  // linha 37 · Q 31.47
+  { nome: "Depilação a laser — pernas completas", secao: "Dr. Moisés · Depilação a laser (sessão avulsa)", preco: 450, lucroBruto: 168.98, imposto: 0.1148, comissao: 0.13, custoFixo: 170.859315, minutosSala: 30, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /perna/i },  // linha 38 · Q 33.8
+  { nome: "Avaliação corporal (Abdominal Sculpt)", secao: "Dr. Moisés · Abdominal Sculpt", preco: 550, lucroBruto: 221.72, imposto: 0.26, comissao: 0.13, custoFixo: 113.778629, minutosSala: 60, tipos: ["CONSULTA"], natureza: "CONSULTA", profissional: "moises", padrao: /corporal/i },  // linha 41 · Q 44.34
+  { nome: "Abdominal Sculpt — sessão Base", secao: "Dr. Moisés · Abdominal Sculpt", preco: 1290, lucroBruto: 778.46, imposto: 0.1148, comissao: 0.13, custoFixo: 195.748629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /sculpt.*base|base.*sculpt/i },  // linha 42 · Q 155.69
+  { nome: "Abdominal Sculpt — sessão Intensive", secao: "Dr. Moisés · Abdominal Sculpt", preco: 1290, lucroBruto: 778.46, imposto: 0.1148, comissao: 0.13, custoFixo: 195.748629, minutosSala: 60, tipos: ["TRATAMENTO"], natureza: "TRATAMENTO", profissional: "moises", padrao: /intensive/i },  // linha 43 · Q 155.69
 ];
 
 /** De quem é o produto (sem o campo = Dr. Daniel). */
@@ -229,21 +238,45 @@ export function produtoPorNome(nome: string) {
  * retorno e "outro" não são do médico executor.
  */
 export const LUCRO_BRUTO_PADRAO_POR_TIPO: Partial<Record<FinSaleItemType, number>> = {
-  TRATAMENTO: 3476.74 / 6997,
-  DESTRAVAR: 3476.74 / 6997,
-  CONSULTA: 1486.22 / 2500,
-  SINAL: 291.56 / 500,
-  BIOIMPEDANCIA: 138.08 / 200,
+  TRATAMENTO: 3266.83 / 6997,
+  DESTRAVAR: 3266.83 / 6997,
+  CONSULTA: 1411.22 / 2500,
+  SINAL: 276.56 / 500,
+  BIOIMPEDANCIA: 132.08 / 200,
 };
 
 /**
+ * A COMISSÃO DE 13% TEM DATA (15/10/2026). O catálogo guarda a comissão de hoje;
+ * as comandas antes de 01/10/2026 continuam com a de antes (10%), porque setembro
+ * já foi fechado e mandado à contabilidade. Só muda quem estava em 10% — as
+ * tirzepatidas de 1% e os procedimentos do Dr. Moisés (13% desde o começo) não.
+ */
+export const MUDANCA_DE_COMISSAO = { desde: "2026-10-01", antes: 0.1, depois: 0.13 } as const;
+
+/** A comissão do produto numa data (sem data = a de hoje). */
+export function comissaoNoDia(produto: ProdutoPrecificado, dia?: string | null) {
+  if (dia && dia < MUDANCA_DE_COMISSAO.desde && profissionalDoProduto(produto) === "daniel" && Math.abs(produto.comissao - MUDANCA_DE_COMISSAO.depois) < 1e-9) {
+    return MUDANCA_DE_COMISSAO.antes;
+  }
+  return produto.comissao;
+}
+
+/** A coluna P do produto pelo preço de tabela, com a comissão daquela data. */
+export function lucroBrutoDaTabela(produto: ProdutoPrecificado, dia?: string | null) {
+  const comissao = comissaoNoDia(produto, dia);
+  if (comissao === produto.comissao) return produto.lucroBruto;
+  return round2(produto.preco * (1 - produto.imposto - comissao) - custoFixoDoProduto(produto) - (produto.repasse ?? 0));
+}
+
+/**
  * O mesmo para o item do DR. MOISÉS que não é produto da tabela (digitado à
- * mão): a média da coluna P ÷ preço dos procedimentos dele (23 linhas, 46,7%)
- * e das três avaliações (53,0%). Os tipos que ele não usa ficam de fora.
+ * mão): a média da coluna P ÷ preço dos procedimentos dele (23 linhas, 43,2%)
+ * e das três avaliações (40,3%), com a NF e a comissão de 15/10/2026. Os tipos
+ * que ele não usa ficam de fora.
  */
 export const LUCRO_BRUTO_PADRAO_MOISES: Partial<Record<FinSaleItemType, number>> = {
-  TRATAMENTO: 0.467396,
-  CONSULTA: 0.52983,
+  TRATAMENTO: 0.431896,
+  CONSULTA: 0.40313,
 };
 
 type ItemParaReconhecer = { itemType: FinSaleItemType; amount: number; description?: string; profissional?: ProfissionalId | null };
@@ -324,21 +357,28 @@ export function custoFixoDoProduto(produto: ProdutoPrecificado) {
  * B = 1 reproduz a coluna P da tabela exatamente. Item sem produto na tabela usa
  * a fração padrão do tipo sobre o valor cobrado.
  */
-export function lucroBrutoDoItem(item: ItemParaReconhecer) {
+export function lucroBrutoDoItem(item: ItemParaReconhecer, dia?: string | null) {
   const amount = item.amount || 0;
   if (amount <= 0 || !itemEhDoMedico(item.itemType)) return 0;
   const produto = produtoDoItem(item);
   if (produto) {
     const quantidade = quantidadeDoItem(amount, produto.preco);
-    return round2(amount * (1 - produto.imposto - produto.comissao) - custoFixoDoProduto(produto) * quantidade - (produto.repasse ?? 0));
+    return round2(amount * (1 - produto.imposto - comissaoNoDia(produto, dia)) - custoFixoDoProduto(produto) * quantidade - (produto.repasse ?? 0));
   }
-  const fracao = fracaoPadraoDoItem(item);
+  const fracao = fracaoPadraoDoItem(item, dia);
   return fracao ? round2(fracao * amount) : 0;
 }
 
-/** A fração do preço que vira lucro bruto quando o item não é produto da tabela — a de quem executou. */
-export function fracaoPadraoDoItem(item: ItemParaReconhecer): number | undefined {
-  return profissionalDoItem(item) === "moises" ? LUCRO_BRUTO_PADRAO_MOISES[item.itemType] : LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
+/**
+ * A fração do preço que vira lucro bruto quando o item não é produto da tabela —
+ * a de quem executou. Para o Dr. Daniel antes de 01/10/2026, a comissão era 10%:
+ * a fração do produto de referência era 3 pontos maior.
+ */
+export function fracaoPadraoDoItem(item: ItemParaReconhecer, dia?: string | null): number | undefined {
+  if (profissionalDoItem(item) === "moises") return LUCRO_BRUTO_PADRAO_MOISES[item.itemType];
+  const fracao = LUCRO_BRUTO_PADRAO_POR_TIPO[item.itemType];
+  if (fracao === undefined) return undefined;
+  return dia && dia < MUDANCA_DE_COMISSAO.desde ? fracao + (MUDANCA_DE_COMISSAO.depois - MUDANCA_DE_COMISSAO.antes) : fracao;
 }
 
 /** Itens que têm parte do médico executor (os mesmos tipos do catálogo/padrão). */

@@ -213,7 +213,8 @@ export function executorDoMes(sales: FinSale[], monthKey: string, cfg: ConfigDoM
   const lucroBrutoPorDia = new Map<string, number>();
   for (const sale of sales) {
     if (sale.saleDate.slice(0, 7) !== monthKey) continue;
-    const daComanda = round2(sale.items.reduce((soma, item) => soma + (profissionalDoItem(item) === quem ? lucroBrutoDoItem(item) : 0), 0));
+    // A data da comanda vai junto: a comissão de 13% vale a partir de 01/10/2026.
+    const daComanda = round2(sale.items.reduce((soma, item) => soma + (profissionalDoItem(item) === quem ? lucroBrutoDoItem(item, sale.saleDate) : 0), 0));
     if (!daComanda) continue;
     lucroBrutoPorDia.set(sale.saleDate, round2((lucroBrutoPorDia.get(sale.saleDate) ?? 0) + daComanda));
   }
