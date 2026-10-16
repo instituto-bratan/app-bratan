@@ -144,7 +144,13 @@ export function normalizaConfig(raw: unknown): LucroConfig {
       lucroMensal: Number.isFinite(Number(item.lucroMensal)) ? Number(item.lucroMensal) : padrao.lucroMensal,
       medicoExecutor: formaAntiga || !Number.isFinite(Number(item.medicoExecutor)) ? padrao.medicoExecutor : Number(item.medicoExecutor),
       // Régua gravada antes de 15/10/2026 não tem o Dr. Moisés: vale o padrão (20%).
-      moises: Number.isFinite(numero(item.moises)) ? numero(item.moises) : padrao.moises,
+      // O padrão também pode vir sem ele (quem troca o padrão em tempo de execução,
+      // como a demonstração): aí vale o percentual do cadastro dos profissionais.
+      moises: Number.isFinite(numero(item.moises))
+        ? numero(item.moises)
+        : Number.isFinite(numero(padrao.moises))
+          ? numero(padrao.moises)
+          : PROFISSIONAIS.moises.percentualPadrao,
     };
   };
   const degraus = (bruto.degraus ?? []).map((degrau) => ({ ...converte(degrau, defaultLucroConfig.degraus[0]), desde: degrau.desde ?? defaultLucroConfig.degraus[0].desde }));

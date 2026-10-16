@@ -182,6 +182,9 @@ test("planilha do dia: o envelope do Dr. Moisés sai do líquido e o do Dr. Dani
 test("régua antiga (sem o Dr. Moisés) ganha os 20%; a régua pode mudar o percentual dele", () => {
   const antiga = lucro.normalizaConfig({ degraus: [{ desde: "2026-09-01", impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50 }] });
   assert.equal(lucro.reguaNoDia(antiga, "2026-10-15").moises, 20);
+  // Padrão trocado em tempo de execução sem o Dr. Moisés (o que a demonstração faz): continua 20%.
+  const padraoSemEle = lucro.normalizaConfig({ alvo: { impostos: 14, lucroMensal: 25000, medicoExecutor: 20 } });
+  assert.equal(padraoSemEle.alvo.moises, 20);
   const nova = lucro.normalizaConfig({ degraus: [{ desde: "2026-09-01", impostos: 16.6, lucroMensal: 40000, medicoExecutor: 50, moises: 25 }] });
   assert.equal(lucro.reguaNoDia(nova, "2026-10-15").moises, 25);
   motor.definirConfigDoMotor({ degraus: [{ desde: "2026-09-01", medicoExecutor: 50, lucroMensal: 40000, moises: 25 }] });
