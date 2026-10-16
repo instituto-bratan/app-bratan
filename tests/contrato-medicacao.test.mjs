@@ -308,3 +308,44 @@ test("o TTO semanal conta as aplicações e o contrato sai com a quantidade lida
   const linhas = mont.linhasCondicoes(d);
   assert.match(linhas[1].texto, /02 ampolas de TIRZEPATIDA 60 mg \/ 2,4 mL/);
 });
+
+// ---------------------------------------------------------------- Receituário do iClinic (16/10/2026): outro layout de TTO
+
+test("TTO no formato Receituário: nome, endereço com vírgulas, semanas no título, dose em unidades e rodapé fora", () => {
+  const texto = [
+    "Receituário",
+    "Paciente: MARIA DE TESTE FICTICIA",
+    "Idade: 40",
+    "Endereço do paciente: Rua das Flores, 100, São Paulo, SP.",
+    "Uso INTRAMUSCULAR/SUBCUTÂNEA",
+    "1. TRATAMENTO INJETÁVEL EMAGRECIMENTO - 08 SEMANAS. .............",
+    "TIRZEPATIDA.",
+    "APLICAR 18 UNIDADES - 1X/SEMANA.",
+    "EV ( ÁCIDO ALFA LIPÓICO + GLUTATIONA ).",
+    "ADMINISTRAR VIA ENDOVENOSA - 1X A CADA 15 DIAS.",
+    "Uso",
+    "2. PROTOCOLO REPOSIÇÃO HORMONAL FEMININA - LONGA DURAÇÃO ........",
+    "UNDECILATO DE TESTOSTERONA 1.000MG.",
+    "APLICAR VIA INTRAMUSCULAR - 1X/MÊS - 04 MESES.",
+    "04 SESSÕES.",
+    "CID1O: F52.0",
+    "Dr. Doutor Teste",
+    "CRM 000000 SP",
+    "Instituto Bratan - Rua Fictícia 1 - CEP: 00000-000",
+  ].join("\n");
+  const lido = tto.lerTto(texto);
+  assert.equal(lido.paciente, "MARIA DE TESTE FICTICIA");
+  assert.equal(lido.endereco.logradouro, "Rua das Flores");
+  assert.equal(lido.endereco.numero, "100");
+  assert.equal(lido.endereco.municipio, "São Paulo");
+  assert.equal(lido.endereco.uf, "SP");
+  assert.equal(lido.protocolos.length, 2);
+  assert.equal(lido.protocolos[0].sessoes, 8);
+  assert.equal(lido.protocolos[0].itens.length, 2, "tirzepatida e o EV composto");
+  assert.equal(lido.protocolos[1].itens.length, 1, "o CRM do rodapé não vira medicamento");
+  const t = mont.tirzepatidaDoTto(lido.protocolos);
+  // 18 unidades × 8 = 1,44 mL → cabe em 1 ampola de 2,4 mL.
+  assert.equal(t.ampolas, 1);
+  assert.match(t.explicacao, /18 unidades × 8 aplicações = 1,44 mL → 1 ampola de 2,4 mL/);
+  assert.equal(t.conferir, true, "a apresentação não está escrita no TTO");
+});

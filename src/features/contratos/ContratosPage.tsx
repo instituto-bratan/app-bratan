@@ -364,9 +364,13 @@ function FormularioDoContrato({
     setLendo(true);
     try {
       const texto = await extrairLinhasPdf(arquivo);
+      if (texto.replace(/\s/g, "").length < 20) {
+        toast("Este PDF não tem texto para ler: parece foto ou escaneado. Baixe o TTO de novo pelo iClinic (Imprimir → Salvar como PDF) ou preencha à mão abaixo.", { tom: "erro", duracaoMs: 10000 });
+        return;
+      }
       const tto = lerTto(texto);
       if (!tto.protocolos.length) {
-        toast("Não achei protocolos neste PDF. Confira se é o TTO do iClinicRx; dá para preencher à mão abaixo.", { tom: "erro" });
+        toast("Li o PDF, mas não achei protocolos numerados (1., 2., …). Confira se é o TTO do doutor; dá para preencher à mão abaixo. Se for um TTO, mande para o Lucas: o app aprende o formato.", { tom: "erro", duracaoMs: 10000 });
         return;
       }
       setD((x) => dadosDoTto(x, tto));

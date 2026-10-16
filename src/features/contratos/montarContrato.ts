@@ -215,6 +215,22 @@ export function tirzepatidaDoTto(protocolos: ProtocoloDoContrato[]): Tirzepatida
       conferir = true;
       partes.push("a posologia tem doses diferentes, confira");
     }
+    // Dose em unidades da seringa (Receituário: "APLICAR 18 UNIDADES - 1X/SEMANA"): 100 unidades = 1 mL.
+    const unidades = p.posologia.toUpperCase().match(/(\d+(?:[.,]\d+)?)\s*(?:UNIDADES|UI|U)\b/);
+    const mlDaAmpola = numero(((daAmpola ?? apresentacao)?.texto ?? APRESENTACAO_PADRAO_TIRZEPATIDA).match(/\/\s*(\d+(?:[.,]\d+)?)\s*mL/)?.[1] ?? "2,4");
+    if (unidades && !dosesNaPosologia.length) {
+      const aplicacoes = Math.max(1, Math.round(p.sessoes || 1));
+      const ml = (numero(unidades[1]) / 100) * aplicacoes;
+      const n = Math.max(1, Math.ceil(ml / mlDaAmpola - 1e-9));
+      ampolas += n;
+      const virgula = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
+      partes.push(`${unidades[1]} unidades × ${aplicacoes} ${aplicacoes === 1 ? "aplicação" : "aplicações"} = ${virgula(ml)} mL → ${n} ${n === 1 ? "ampola" : "ampolas"} de ${virgula(mlDaAmpola)} mL`);
+      if (aplicacoes === 1) {
+        conferir = true;
+        partes.push("o TTO não diz quantas aplicações");
+      }
+      continue;
+    }
     const noItem = item && !item.dose.includes("/") ? item.dose.toUpperCase().match(/^(\d+(?:[.,]\d+)?)MG$/) : null;
     const mgPorAplicacao = dosesNaPosologia.length ? dosesNaPosologia[0] : noItem ? numero(noItem[1]) : null;
     const aplicacoes = Math.max(1, Math.round(p.sessoes || 1));
