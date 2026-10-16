@@ -28,6 +28,10 @@ export type PagamentoDoContrato = { valor: number; meio: string; parcelas: numbe
 export type CondicoesDoContrato = {
   /** 1 · Só quando o tratamento tem tirzepatida. */
   tirzepatida: boolean;
+  /** Quantas ampolas o pagamento cobre (lido do TTO; ausente = 1, o texto original). */
+  tirzepatidaAmpolas?: number;
+  /** Apresentação da ampola, como sai no contrato: "60 mg / 2,4 mL" (ausente = essa). */
+  tirzepatidaApresentacao?: string;
   /** 2 · Todos os contratos: prazo de 6 meses para usar o que foi contratado. */
   prazoSeisMeses: boolean;
   /** 3 · Quem fechou o Plano (Programa) de Acompanhamento. */
@@ -118,12 +122,26 @@ export function dadosVazios(hojeIso: string): DadosDoContrato {
 // agendamento..."), numeradas 3.4 em diante, só as que valem para o contrato.
 // ---------------------------------------------------------------------------
 
-export const CLAUSULAS_DE_POLITICA: { chave: keyof CondicoesDoContrato; titulo: string; texto: string }[] = [
+export const APRESENTACAO_PADRAO_TIRZEPATIDA = "60 mg / 2,4 mL";
+
+/**
+ * Texto da clínica com a quantidade e a apresentação do TTO (pedido do Lucas,
+ * 16/10/2026). Com 1 ampola de 60 mg / 2,4 mL sai idêntico ao que mandaram.
+ */
+export function textoDaTirzepatida(ampolas = 1, apresentacao = APRESENTACAO_PADRAO_TIRZEPATIDA): string {
+  const n = Math.max(1, Math.round(ampolas));
+  const quantidade = `${String(n).padStart(2, "0")} ${n === 1 ? "ampola" : "ampolas"}`;
+  const nova = n === 1 ? "uma nova ampola" : "novas ampolas";
+  return `Esclarecemos que o pagamento realizado refere-se exclusivamente à aquisição de ${quantidade} de TIRZEPATIDA ${apresentacao.trim() || APRESENTACAO_PADRAO_TIRZEPATIDA}, conforme previsto em contrato. Ressaltamos que o valor pago não contempla ${nova} nem os custos de continuidade do tratamento, caso sejam necessários. Havendo indicação para dar continuidade ao protocolo, os valores correspondentes serão informados oportunamente e cobrados separadamente, mediante orientação médica.`;
+}
+
+export type ChaveDaPolitica = "tirzepatida" | "prazoSeisMeses" | "programa" | "faltasTratamento";
+
+export const CLAUSULAS_DE_POLITICA: { chave: ChaveDaPolitica; titulo: string; texto: string | ((c: CondicoesDoContrato) => string) }[] = [
   {
     chave: "tirzepatida",
     titulo: "AMPOLA DE TIRZEPATIDA",
-    texto:
-      "Esclarecemos que o pagamento realizado refere-se exclusivamente à aquisição de 01 ampola de TIRZEPATIDA 60 mg / 2,4 mL, conforme previsto em contrato. Ressaltamos que o valor pago não contempla uma nova ampola nem os custos de continuidade do tratamento, caso sejam necessários. Havendo indicação para dar continuidade ao protocolo, os valores correspondentes serão informados oportunamente e cobrados separadamente, mediante orientação médica.",
+    texto: (c) => textoDaTirzepatida(c.tirzepatidaAmpolas, c.tirzepatidaApresentacao),
   },
   {
     chave: "prazoSeisMeses",
@@ -146,10 +164,91 @@ export const CLAUSULAS_DE_POLITICA: { chave: keyof CondicoesDoContrato; titulo: 
 ];
 
 
+const TIRZEPATIDA = /tirzepatid|mounjaro/;
+const semAcentoMin = (t: string) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+export type TirzepatidaDoTto = { ampolas: number; apresentacao: string; explicacao: string; conferir: boolean };
+
+/** "1.000" = mil; "2,5" e "2.5" = dois e meio. */
+function numero(t: string) {
+  return Number(/\.\d{3}(?!\d)/.test(t) ? t.replace(/\./g, "").replace(",", ".") : t.replace(",", "."));
+}
+
+/** "60MG/2,4ML" → { mg: 60, texto: "60 mg / 2,4 mL" }. */
+function apresentacaoDe(texto: string): { mg: number; texto: string } | null {
+  const m = (texto || "").toUpperCase().match(/(\d+(?:[.,]\d+)?)\s*MG\s*\/\s*(\d+(?:[.,]\d+)?)\s*ML/);
+  if (!m) return null;
+  return { mg: numero(m[1]), texto: `${m[1]} mg / ${m[2]} mL` };
+}
+
+/**
+ * Quantas ampolas de tirzepatida e de qual apresentação, pelo TTO:
+ * 1) quantidade escrita junto do medicamento ("TIRZEPATIDA 60MG/2,4ML - 02 AMPOLAS");
+ * 2) senão, a conta: dose de cada aplicação × aplicações ÷ mg da ampola, para cima
+ *    ("APLICAR 5MG SC 1X/SEMANA", 8 sessões, ampola de 60 mg → 40 mg → 1 ampola).
+ * Sem como saber, 1 ampola de 60 mg / 2,4 mL e `conferir`. A recepção confere na tela.
+ */
+export function tirzepatidaDoTto(protocolos: ProtocoloDoContrato[]): TirzepatidaDoTto | null {
+  const comTirzepatida = protocolos.filter((p) => [p.titulo, p.posologia, ...p.itens.map((i) => i.nome)].some((t) => TIRZEPATIDA.test(semAcentoMin(t))));
+  if (!comTirzepatida.length) return null;
+  let ampolas = 0;
+  let apresentacao: { mg: number; texto: string } | null = null;
+  const partes: string[] = [];
+  let conferir = false;
+  for (const p of comTirzepatida) {
+    const item = p.itens.find((i) => TIRZEPATIDA.test(semAcentoMin(i.nome))) ?? null;
+    const linhaDoItem = item ? `${item.nome} ${item.dose}` : p.titulo;
+    const daAmpola = apresentacaoDe(linhaDoItem) ?? apresentacaoDe(p.titulo) ?? apresentacaoDe(p.posologia);
+    if (daAmpola && !apresentacao) apresentacao = daAmpola;
+    const mgDaAmpola = (daAmpola ?? apresentacao)?.mg ?? 60;
+    const escrita = `${linhaDoItem} ${p.titulo}`.toUpperCase().match(/(\d{1,2})\s*(?:AMPOLAS?|FRASCOS?)\b/);
+    if (escrita) {
+      ampolas += Number(escrita[1]);
+      partes.push(`o TTO diz ${escrita[1]} ${Number(escrita[1]) === 1 ? "ampola" : "ampolas"}`);
+      continue;
+    }
+    // Dose de cada aplicação: na posologia ("APLICAR 5MG") ou no medicamento, quando não é a apresentação.
+    // "MG/ML" é a apresentação, não a dose ("2,5MG/SEMANA" é dose).
+    const dosesNaPosologia = [...p.posologia.toUpperCase().matchAll(/(\d+(?:[.,]\d+)?)\s*MG\b(?!\s*\/\s*\d)/g)].map((m) => numero(m[1]));
+    // Dose que sobe ao longo do tratamento ("2,5MG ... DEPOIS 5MG"): a conta usa a primeira; a recepção confere.
+    if (new Set(dosesNaPosologia).size > 1) {
+      conferir = true;
+      partes.push("a posologia tem doses diferentes, confira");
+    }
+    const noItem = item && !item.dose.includes("/") ? item.dose.toUpperCase().match(/^(\d+(?:[.,]\d+)?)MG$/) : null;
+    const mgPorAplicacao = dosesNaPosologia.length ? dosesNaPosologia[0] : noItem ? numero(noItem[1]) : null;
+    const aplicacoes = Math.max(1, Math.round(p.sessoes || 1));
+    if (mgPorAplicacao && mgPorAplicacao > 0) {
+      const total = mgPorAplicacao * aplicacoes;
+      const n = Math.max(1, Math.ceil(total / mgDaAmpola - 1e-9));
+      ampolas += n;
+      partes.push(`${String(mgPorAplicacao).replace(".", ",")} mg × ${aplicacoes} ${aplicacoes === 1 ? "aplicação" : "aplicações"} = ${String(total).replace(".", ",")} mg → ${n} ${n === 1 ? "ampola" : "ampolas"} de ${String(mgDaAmpola).replace(".", ",")} mg`);
+    } else {
+      ampolas += 1;
+      conferir = true;
+      partes.push("o TTO não diz a dose de cada aplicação: 1 ampola");
+    }
+  }
+  if (!apresentacao) conferir = true;
+  return {
+    ampolas: Math.max(1, ampolas),
+    apresentacao: apresentacao?.texto ?? APRESENTACAO_PADRAO_TIRZEPATIDA,
+    explicacao: `${partes.join("; ")}${apresentacao ? "" : `; a apresentação não está escrita no TTO, ficou ${APRESENTACAO_PADRAO_TIRZEPATIDA}`}`,
+    conferir,
+  };
+}
+
 /** Tirzepatida no protocolo ou nos medicamentos (também pelo nome comercial). */
 export function temTirzepatida(protocolos: ProtocoloDoContrato[]): boolean {
   const sem = (t: string) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return protocolos.some((p) => [p.titulo, p.posologia, ...p.itens.map((i) => i.nome)].some((t) => /tirzepatid|mounjaro/.test(sem(t))));
+}
+
+/** Liga a cláusula da ampola e põe quantidade e apresentação do TTO. */
+export function comTirzepatidaDoTto(c: CondicoesDoContrato, protocolos: ProtocoloDoContrato[]): CondicoesDoContrato {
+  const lido = tirzepatidaDoTto(protocolos);
+  if (!lido) return c;
+  return { ...c, tirzepatidaAmpolas: lido.ampolas, tirzepatidaApresentacao: lido.apresentacao };
 }
 
 /**
@@ -165,7 +264,7 @@ export function linhasCondicoes(d: DadosDoContrato, numeracao: { clausula: numbe
   for (const clausula of CLAUSULAS_DE_POLITICA) {
     if (!c[clausula.chave]) continue;
     linhas.push({ texto: `${numeracao.clausula}.${n}. ${clausula.titulo}.`, destaque: true });
-    linhas.push({ texto: clausula.texto, destaque: false });
+    linhas.push({ texto: typeof clausula.texto === "function" ? clausula.texto(c) : clausula.texto, destaque: false });
     n += 1;
   }
   return linhas;
@@ -212,7 +311,7 @@ export function dadosDoTto(base: DadosDoContrato, tto: TtoLido): DadosDoContrato
     protocolos,
     tipo: tipoSugerido(protocolos),
     prazo: prazoSugerido(protocolos),
-    condicoes: { ...(base.condicoes ?? { tirzepatida: false, prazoSeisMeses: true, programa: false, faltasTratamento: true }), tirzepatida: temTirzepatida(protocolos) },
+    condicoes: comTirzepatidaDoTto({ ...(base.condicoes ?? { tirzepatida: false, prazoSeisMeses: true, programa: false, faltasTratamento: true }), tirzepatida: temTirzepatida(protocolos) }, protocolos),
   };
 }
 

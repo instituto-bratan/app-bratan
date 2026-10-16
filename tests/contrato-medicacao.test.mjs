@@ -252,3 +252,59 @@ test("contrato antigo (sem o campo) baixa de novo sem as cláusulas, como foi as
   assert.equal((cheio.match(/<w:b\/>/g) ?? []).length, 2, "só os títulos em negrito");
   assert.match(cheio, /3\.4\. PRAZO DE TRATAMENTO E CONSULTAS\./);
 });
+
+// ---------------------------------------------------------------- quantidade e apresentação da tirzepatida pelo TTO (16/10/2026)
+
+const ORIGINAL_TIRZEPATIDA =
+  "Esclarecemos que o pagamento realizado refere-se exclusivamente à aquisição de 01 ampola de TIRZEPATIDA 60 mg / 2,4 mL, conforme previsto em contrato. Ressaltamos que o valor pago não contempla uma nova ampola nem os custos de continuidade do tratamento, caso sejam necessários. Havendo indicação para dar continuidade ao protocolo, os valores correspondentes serão informados oportunamente e cobrados separadamente, mediante orientação médica.";
+
+test("1 ampola de 60 mg / 2,4 mL sai idêntica ao texto que a clínica mandou; mais ampolas, no plural", () => {
+  assert.equal(mont.textoDaTirzepatida(), ORIGINAL_TIRZEPATIDA);
+  assert.equal(mont.textoDaTirzepatida(1, "60 mg / 2,4 mL"), ORIGINAL_TIRZEPATIDA);
+  const duas = mont.textoDaTirzepatida(2, "40 mg / 1,6 mL");
+  assert.match(duas, /aquisição de 02 ampolas de TIRZEPATIDA 40 mg \/ 1,6 mL/);
+  assert.match(duas, /não contempla novas ampolas nem/);
+});
+
+test("quantidade escrita no TTO vence a conta", () => {
+  const lido = mont.tirzepatidaDoTto([protocolo("PROTOCOLO EMAGRECIMENTO", [{ nome: "TIRZEPATIDA 60MG/2,4ML - 02 AMPOLAS", dose: "" }])]);
+  assert.equal(lido.ampolas, 2);
+  assert.equal(lido.apresentacao, "60 mg / 2,4 mL");
+  assert.equal(lido.conferir, false);
+});
+
+test("sem quantidade escrita: dose × aplicações ÷ mg da ampola, para cima", () => {
+  const p = { ...protocolo("PROTOCOLO EMAGRECIMENTO", [{ nome: "TIRZEPATIDA", dose: "40MG/1,6ML" }]), posologia: "APLICAR 7,5MG VIA SUBCUTÂNEA 1X/SEMANA - 08 SEMANAS.", sessoes: 8 };
+  const lido = mont.tirzepatidaDoTto([p]);
+  // 7,5 × 8 = 60 mg em ampolas de 40 mg → 2 ampolas.
+  assert.equal(lido.ampolas, 2);
+  assert.equal(lido.apresentacao, "40 mg / 1,6 mL");
+  assert.match(lido.explicacao, /7,5 mg × 8 aplicações = 60 mg → 2 ampolas de 40 mg/);
+});
+
+test("dose que sobe ou apresentação ausente pedem conferência", () => {
+  const sobe = { ...protocolo("TIRZEPATIDA", []), posologia: "APLICAR 2,5MG 1X/SEMANA POR 4 SEMANAS E DEPOIS 5MG 1X/SEMANA.", sessoes: 8 };
+  const lido = mont.tirzepatidaDoTto([sobe]);
+  assert.equal(lido.conferir, true);
+  assert.equal(lido.apresentacao, "60 mg / 2,4 mL");
+  assert.match(lido.explicacao, /doses diferentes/);
+  assert.equal(mont.tirzepatidaDoTto([protocolo("SORO", [{ nome: "VITAMINA C", dose: "1G" }])]), null);
+});
+
+test("o TTO semanal conta as aplicações e o contrato sai com a quantidade lida", () => {
+  const texto = [
+    "Nome do Paciente: MARIA DE TESTE FICTICIA",
+    "1 PROTOCOLO DE EMAGRECIMENTO",
+    "TIRZEPATIDA 60MG/2,4ML",
+    "APLICAR 10MG VIA SUBCUTÂNEA 1X/SEMANA - 08 SEMANAS.",
+    "CID10: E66.",
+  ].join("\n");
+  const lido = tto.lerTto(texto);
+  assert.equal(lido.protocolos[0].sessoes, 8);
+  const d = mont.dadosDoTto(mont.dadosVazios("2026-10-16"), lido);
+  assert.equal(d.condicoes.tirzepatida, true);
+  // 10 × 8 = 80 mg → 2 ampolas de 60 mg.
+  assert.equal(d.condicoes.tirzepatidaAmpolas, 2);
+  const linhas = mont.linhasCondicoes(d);
+  assert.match(linhas[1].texto, /02 ampolas de TIRZEPATIDA 60 mg \/ 2,4 mL/);
+});

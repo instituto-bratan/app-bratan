@@ -49,7 +49,9 @@ import {
   dadosVazios,
   pendenciasDoContrato,
   prazoSugerido,
+  APRESENTACAO_PADRAO_TIRZEPATIDA,
   temTirzepatida,
+  tirzepatidaDoTto,
   tipoSugerido,
   type ComandaParaContrato,
   type CondicoesDoContrato,
@@ -256,6 +258,22 @@ function FormularioDoContrato({
     if (!condicaoManual.tirzepatida && d.condicoes?.tirzepatida !== tirzepatidaNoTto) mudarCondicao("tirzepatida", tirzepatidaNoTto, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tirzepatidaNoTto, condicaoManual.tirzepatida]);
+  // Quantas ampolas e qual apresentação, pelo TTO (16/10/2026), até a recepção corrigir à mão.
+  const tirzepatidaLida = useMemo(() => tirzepatidaDoTto(d.protocolos), [d.protocolos]);
+  const [ampolasManual, setAmpolasManual] = useState(false);
+  useEffect(() => {
+    if (ampolasManual || !tirzepatidaLida) return;
+    setD((x) => {
+      const c = x.condicoes ?? dadosVazios(hoje).condicoes!;
+      if (c.tirzepatidaAmpolas === tirzepatidaLida.ampolas && c.tirzepatidaApresentacao === tirzepatidaLida.apresentacao) return x;
+      return { ...x, condicoes: { ...c, tirzepatidaAmpolas: tirzepatidaLida.ampolas, tirzepatidaApresentacao: tirzepatidaLida.apresentacao } };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tirzepatidaLida?.ampolas, tirzepatidaLida?.apresentacao, ampolasManual]);
+  const mudarAmpolas = (mudanca: Partial<Pick<CondicoesDoContrato, "tirzepatidaAmpolas" | "tirzepatidaApresentacao">>) => {
+    setAmpolasManual(true);
+    setD((x) => ({ ...x, condicoes: { ...(x.condicoes ?? dadosVazios(hoje).condicoes!), ...mudanca } }));
+  };
 
   // Veio do Kanban (?contato=&deal=): liga o paciente e traz o valor fechado.
   useEffect(() => {
@@ -699,6 +717,35 @@ function FormularioDoContrato({
                     </span>
                   </span>
                 </label>
+                {c.chave === "tirzepatida" && ligada ? (
+                  <div className="mt-2 grid gap-2 pl-6">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <CampoRotulado rotulo="Ampolas" className="w-24">
+                        <Campo
+                          pequeno
+                          inputMode="numeric"
+                          value={String(d.condicoes?.tirzepatidaAmpolas ?? 1)}
+                          onChange={(e) => mudarAmpolas({ tirzepatidaAmpolas: Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1) })}
+                        />
+                      </CampoRotulado>
+                      <CampoRotulado rotulo="Apresentação da ampola" className="w-48">
+                        <Campo pequeno value={d.condicoes?.tirzepatidaApresentacao ?? APRESENTACAO_PADRAO_TIRZEPATIDA} onChange={(e) => mudarAmpolas({ tirzepatidaApresentacao: e.target.value })} />
+                      </CampoRotulado>
+                      {ampolasManual && tirzepatidaLida ? (
+                        <Botao tamanho="pq" variante="fantasma" onClick={() => setAmpolasManual(false)}>
+                          Voltar ao que o TTO diz
+                        </Botao>
+                      ) : null}
+                    </div>
+                    {tirzepatidaLida ? (
+                      <p className={cn("text-xs", tirzepatidaLida.conferir && !ampolasManual ? "font-semibold text-atencao" : "text-tinta-2")}>
+                        {ampolasManual ? "Corrigido à mão. " : ""}Pelo TTO: {tirzepatidaLida.explicacao}.{tirzepatidaLida.conferir && !ampolasManual ? " Confira com a receita." : ""}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-tinta-2">Sem tirzepatida no TTO: preencha a quantidade e a apresentação.</p>
+                    )}
+                  </div>
+                ) : null}
               </li>
             );
           })}

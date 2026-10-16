@@ -142,7 +142,13 @@ export function lerTto(texto: string): TtoLido {
     if (!p.via) p.via = viaDaPosologia(p.titulo);
     if (!p.sessoes) {
       const porMes = p.posologia.match(/(\d{1,2})\s*X\s*\/\s*M[ÊE]S/i);
-      p.sessoes = porMes && p.meses ? Number(porMes[1]) * p.meses : 1;
+      // 16/10/2026: aplicação semanal (tirzepatida): "1X/SEMANA - 04 SEMANAS" ou "1X/SEMANA - 02 MESES".
+      const porSemana = p.posologia.match(/(\d{1,2})\s*X\s*\/\s*SEMANA/i);
+      const semanas = p.posologia.match(/(\d{1,2})\s*SEMANAS\b/i);
+      if (porMes && p.meses) p.sessoes = Number(porMes[1]) * p.meses;
+      else if (porSemana && semanas) p.sessoes = Number(porSemana[1]) * Number(semanas[1]);
+      else if (porSemana && p.meses) p.sessoes = Number(porSemana[1]) * p.meses * 4;
+      else p.sessoes = 1;
     }
   }
   return resultado;
