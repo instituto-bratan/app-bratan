@@ -3,15 +3,24 @@
 // Edição direta, sem formulário: nome, horário, emoji, opcional; cada alimento
 // com o texto dela, a medida caseira, os gramas e as substituições. Enter no
 // último alimento cria o próximo. Alt + ↑/↓ reordena a refeição.
-import { ArrowDown, ArrowUp, Leaf, Plus, Trash2, X } from "lucide-react";
+//
+// 16/10/2026: a linha rápida ("4 colheres de sopa de arroz" + Enter), os gramas
+// que acompanham a medida ("4 colheres" → "5 colheres"), o cadeado que deixa a
+// quantidade fora do ajuste às metas e as substituições automáticas.
+import { useState } from "react";
+import { ArrowDown, ArrowUp, Leaf, Lock, LockOpen, Plus, Trash2, Wand2, X } from "lucide-react";
 import { Button } from "@/features/crm/comercialVisual";
 import { cn } from "@/lib/utils";
 import { azeiteSeAplica } from "../dominio/calculo";
+import { gerarSubstituicoes, gruposDoAlimento, ROTULO_DA_BASE, type GrupoSubstituicao } from "../dominio/equivalentes";
+import { medidaConhecida, type Memoria } from "../dominio/memoria";
 import { novoItem, tipoPeloNome } from "../dominio/plano";
+import { gramasAoTrocarMedida, lerQuantidade } from "../dominio/quantidade";
 import type { Alimento, ItemRefeicao, MedidaCaseira, Refeicao, TipoRefeicao } from "../dominio/tipos";
 import * as repo from "../store/repositorio";
 import { Bolinha, CAIXA_CAMPO, CAIXA_DISCRETA, NumeroEditavel } from "../ui/basicos";
 import { BuscaDeAlimento } from "./BuscaDeAlimento";
+import { LinhaRapida } from "./LinhaRapida";
 
 const EMOJIS = ["", "☕", "🍎", "🍽️", "🥪", "🥗", "🍲", "🌙", "🍵", "🥣", "🍓", "🥤"];
 const TIPOS: { id: TipoRefeicao; rotulo: string }[] = [
@@ -30,6 +39,8 @@ type Props = {
   alimentosPorId: Record<string, Alimento>;
   alimentos: Alimento[];
   medidas: MedidaCaseira[];
+  memoria: Memoria;
+  grupos: GrupoSubstituicao[];
   editavel: boolean;
   kcal: number | null;
   aoMudar: (r: Refeicao) => void;
@@ -40,12 +51,34 @@ type Props = {
 // Campo discreto: o texto dela parece texto, e só ganha contorno ao passar o mouse ou focar (Papel & Musgo, 08/10/2026).
 const campo = cn(CAIXA_DISCRETA, "h-8 px-2 text-sm focus-visible:bg-folha");
 
-export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alimentos, medidas, editavel, kcal, aoMudar, aoMover, aoRemover }: Props) {
+export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alimentos, medidas, memoria, grupos, editavel, kcal, aoMudar, aoMover, aoRemover }: Props) {
+  const [notaSubst, setNotaSubst] = useState<Record<string, string>>({});
   const mudarItem = (id: string, parcial: Partial<ItemRefeicao>) => aoMudar({ ...refeicao, itens: refeicao.itens.map((i) => (i.id === id ? { ...i, ...parcial } : i)) });
-  const adicionarItem = (parcial: Partial<ItemRefeicao> = {}) => {
+  const adicionarItem = (parcial: Partial<ItemRefeicao> = {}, focar = true) => {
     const item = novoItem(repo.novoId, parcial);
     aoMudar({ ...refeicao, itens: [...refeicao.itens, item] });
-    window.setTimeout(() => document.getElementById(`item-${item.id}`)?.focus(), 30);
+    if (focar) window.setTimeout(() => document.getElementById(`item-${item.id}`)?.focus(), 30);
+  };
+  /** A medida mudou ("4 colheres" → "5 colheres"): os gramas vão junto. */
+  const mudarMedida = (item: ItemRefeicao, quantidade: string) => {
+    const gramas = gramasAoTrocarMedida(item, quantidade);
+    mudarItem(item.id, gramas !== null ? { quantidade, gramas } : { quantidade });
+  };
+  /** Vinculou o alimento da tabela e a medida já é conhecida: os gramas aparecem sozinhos. */
+  const gramasPelaMedida = (alimentoId: string, quantidade: string): number | null => {
+    const q = lerQuantidade(quantidade);
+    if (!q || q.tipo !== "caseira") return q && q.tipo === "gramas" ? Math.round(q.numero) : null;
+    const m = medidaConhecida(memoria, alimentoId, q.unidade);
+    return m ? Math.round(q.numero * m.gramasPorUnidade) : null;
+  };
+  const substituir = (item: ItemRefeicao, grupo: GrupoSubstituicao) => {
+    const r = gerarSubstituicoes(item, grupo, alimentosPorId, memoria, repo.novoId);
+    mudarItem(item.id, { alternativas: r.alternativas });
+    const feitas = r.alternativas.filter((a) => a.auto).length;
+    setNotaSubst((n) => ({
+      ...n,
+      [item.id]: `${feitas} substituição(ões) pelo ${ROTULO_DA_BASE[grupo.base]} (${grupo.titulo})${r.puladas.length ? `. Fora: ${r.puladas.join("; ")}` : ""}.`,
+    }));
   };
   const azeiteAuto = refeicao.azeitePreparo === null;
   const comAzeite = azeiteSeAplica(refeicao);
@@ -135,7 +168,7 @@ export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alim
                     }}
                     className={cn(campo, "min-w-[9rem] flex-1 font-semibold")}
                   />
-                  <input aria-label="Medida caseira" placeholder="medida caseira" value={item.quantidade} disabled={!editavel} onChange={(e) => mudarItem(item.id, { quantidade: e.target.value })} className={cn(campo, "w-40")} />
+                  <input aria-label="Medida caseira" placeholder="medida caseira" value={item.quantidade} disabled={!editavel} onChange={(e) => mudarMedida(item, e.target.value)} className={cn(campo, "w-40")} />
                   <span className="inline-flex items-center">
                     <NumeroEditavel
                       aria-label="Gramas"
@@ -147,6 +180,18 @@ export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alim
                     />
                     <span className="text-xs text-tinta-2">g</span>
                   </span>
+                  {editavel && !item.legumes ? (
+                    <button
+                      type="button"
+                      className={cn("rounded p-1 hover:bg-saber", item.travado ? "text-ouro" : "text-tinta-2 opacity-60 hover:opacity-100")}
+                      onClick={() => mudarItem(item.id, { travado: !item.travado })}
+                      aria-pressed={Boolean(item.travado)}
+                      aria-label={item.travado ? `Destravar ${item.descricao || "alimento"}: o ajuste às metas pode mudar a quantidade` : `Travar ${item.descricao || "alimento"}: o ajuste às metas não muda a quantidade`}
+                      title={item.travado ? "Quantidade travada: o ajuste às metas não mexe" : "Travar a quantidade no ajuste às metas"}
+                    >
+                      {item.travado ? <Lock className="h-3.5 w-3.5" aria-hidden="true" /> : <LockOpen className="h-3.5 w-3.5" aria-hidden="true" />}
+                    </button>
+                  ) : null}
                   {editavel ? (
                     <button type="button" className="rounded p-1 text-tinta-2 hover:bg-erro-claro hover:text-erro" onClick={() => aoMudar({ ...refeicao, itens: refeicao.itens.filter((x) => x.id !== item.id) })} aria-label={`Tirar ${item.descricao || "alimento"}`}>
                       <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -161,7 +206,11 @@ export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alim
                       medidas={medidas}
                       vinculado={vinculado}
                       sugestaoInicial={item.descricao}
-                      aoEscolher={(a, m) => mudarItem(item.id, { alimentoId: a ? a.id : null, ...(m ? { quantidade: m.texto, gramas: m.gramas } : {}) })}
+                      aoEscolher={(a, m) => {
+                        if (m) return mudarItem(item.id, { alimentoId: a ? a.id : null, quantidade: m.texto, gramas: m.gramas });
+                        const gramas = a && !item.gramas ? gramasPelaMedida(a.id, item.quantidade) : null;
+                        mudarItem(item.id, { alimentoId: a ? a.id : null, ...(gramas ? { gramas } : {}) });
+                      }}
                     />
                   ) : vinculado ? (
                     <span className="text-xs text-tinta-2">{vinculado.nome}</span>
@@ -191,14 +240,16 @@ export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alim
                       onChange={(e) => mudarItem(item.id, { alternativas: item.alternativas.map((a) => (a.id === alt.id ? { ...a, quantidade: e.target.value } : a)) })}
                       className={cn(campo, "w-36 text-tinta-2")}
                     />
+                    {alt.gramas ? <span className="tabular-nums text-xs text-tinta-2">{alt.gramas} g</span> : null}
                     {editavel ? (
                       <button type="button" className="rounded p-1 text-tinta-2 hover:bg-saber" onClick={() => mudarItem(item.id, { alternativas: item.alternativas.filter((a) => a.id !== alt.id) })} aria-label="Tirar substituição">
                         <X className="h-3 w-3" aria-hidden="true" />
                       </button>
                     ) : null}
-                    <span className="text-xs text-tinta-2">fora do cálculo</span>
+                    <span className="text-xs text-tinta-2">{alt.auto ? "calculada · " : ""}fora do cálculo</span>
                   </div>
                 ))}
+                {notaSubst[item.id] ? <p className="pl-2 text-xs text-tinta-2">{notaSubst[item.id]}</p> : null}
                 {editavel ? (
                   <div className="flex flex-wrap gap-2 pl-2">
                     <button
@@ -208,6 +259,16 @@ export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alim
                     >
                       + substituição
                     </button>
+                    {(() => {
+                      const doAlimento = gruposDoAlimento(item.alimentoId, grupos);
+                      if (!doAlimento.length || !item.gramas) return null;
+                      return doAlimento.slice(0, 2).map((g) => (
+                        <button key={g.id} type="button" className="inline-flex items-center gap-1 text-xs font-semibold text-musgo hover:underline" onClick={() => substituir(item, g)} title={`Porções com o mesmo ${ROTULO_DA_BASE[g.base]}: ${g.alimentos.map((x) => x.nome).join(", ")}`}>
+                          <Wand2 className="h-3 w-3" aria-hidden="true" /> substituições pelo {ROTULO_DA_BASE[g.base]}
+                          {doAlimento.length > 1 ? ` (${g.titulo.toLowerCase()})` : ""}
+                        </button>
+                      ));
+                    })()}
                     <input
                       aria-label="Observação do alimento"
                       value={item.observacao}
@@ -223,6 +284,11 @@ export function EditorDeRefeicao({ refeicao, indice, total, alimentosPorId, alim
         })}
       </ul>
 
+      {editavel ? (
+        <div className="mt-2">
+          <LinhaRapida id={`linha-${refeicao.id}`} alimentos={alimentos} memoria={memoria} aoAdicionar={(parcial) => adicionarItem(parcial, false)} />
+        </div>
+      ) : null}
       {editavel ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" variant="ghost" className="gap-1.5 text-tinta-2" onClick={() => adicionarItem()}>

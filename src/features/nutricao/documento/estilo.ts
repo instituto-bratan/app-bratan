@@ -75,6 +75,15 @@ export const CSS_DO_DOCUMENTO = `
 .plano-doc .pd-lista li .pd-bolinha { width: 1.9mm; height: 1.9mm; margin-top: 1.5mm; }
 .plano-doc .pd-texto { font-size: 10.5pt; line-height: 1.5; color: var(--pd-tinta); background: var(--pd-creme); border-radius: 2mm; padding: 3mm 4mm; }
 
+.plano-doc .pd-numeros { border-top: 0.3mm solid var(--pd-linha); padding-top: 3.2mm; }
+.plano-doc .pd-numeros h3 { font-family: "Plano Fraunces", "Fraunces", Georgia, serif; font-weight: 500; font-size: 13pt; color: var(--pd-musgo); margin: 0 0 2mm; }
+.plano-doc .pd-numeros table { width: 100%; border-collapse: collapse; font-size: 10pt; font-variant-numeric: tabular-nums; }
+.plano-doc .pd-numeros th { text-align: right; font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--pd-suave); padding: 0 0 1.4mm; }
+.plano-doc .pd-numeros th:first-child, .plano-doc .pd-numeros td:first-child { text-align: left; }
+.plano-doc .pd-numeros td { text-align: right; padding: 1.3mm 0; border-top: 0.2mm solid var(--pd-linha); }
+.plano-doc .pd-numeros td:first-child { font-weight: 600; }
+.plano-doc .pd-numeros tr.pd-kcal td { background: var(--pd-creme); font-weight: 700; color: var(--pd-musgo); padding-left: 2mm; padding-right: 2mm; border-top: 0; }
+
 .plano-doc .pd-identificacao { border-top: 0.5mm solid var(--pd-dourado); padding-top: 3.5mm; font-size: 10pt; line-height: 1.55; }
 .plano-doc .pd-identificacao .pd-id-nome { font-family: "Plano Fraunces", "Fraunces", Georgia, serif; font-weight: 600; font-size: 12.5pt; color: var(--pd-musgo); }
 

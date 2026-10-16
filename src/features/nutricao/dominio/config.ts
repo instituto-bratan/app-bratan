@@ -20,4 +20,8 @@ export const CONFIG_PADRAO: ConfigNutricao = {
   // "NGV, nível de gordura visceral" (resposta dela, áudio de 28/09/2026).
   siglaVisceral: "NGV",
   separadorBio: " | ",
+  // "Legumes de consumo livre: calcula com 100 g de abóbora, o mais calórico" (resposta dela, 28/09/2026).
+  // TACO 4ª ed., item 64: "Abóbora, cabotian, cozida".
+  legumesLivresGramas: 100,
+  legumesLivresAlimentoId: "taco-64",
 };

@@ -28,6 +28,8 @@ const chaves = {
   config: ["nutricao", "config"] as const,
   identificacao: ["nutricao", "identificacao"] as const,
   gravacao: (id: string) => ["nutricao", "gravacoes", id] as const,
+  modelos: ["nutricao", "modelos"] as const,
+  substituicoes: ["nutricao", "substituicoes"] as const,
 };
 
 const PREFIXO_POR_COLECAO: Partial<Record<NomeDaColecao, readonly string[]>> = {
@@ -41,6 +43,8 @@ const PREFIXO_POR_COLECAO: Partial<Record<NomeDaColecao, readonly string[]>> = {
   agenda: ["nutricao", "agenda"],
   gravacoes: ["nutricao", "gravacoes"],
   meta: ["nutricao"],
+  modelos: ["nutricao", "modelos"],
+  substituicoes: ["nutricao", "substituicoes"],
 };
 
 const semTempo = { staleTime: Infinity } as const;
@@ -129,6 +133,14 @@ export function usePlano(id: string | undefined) {
 
 export function useBiblioteca() {
   return useQuery({ queryKey: chaves.biblioteca, queryFn: lerDepois(repo.listarBlocos), ...semTempo });
+}
+
+export function useModelos() {
+  return useQuery({ queryKey: chaves.modelos, queryFn: lerDepois(repo.listarModelos), ...semTempo });
+}
+
+export function useGruposSubstituicao() {
+  return useQuery({ queryKey: chaves.substituicoes, queryFn: lerDepois(repo.listarGruposSubstituicao), ...semTempo });
 }
 
 export function useAlimentos() {

@@ -48,6 +48,17 @@ export function revisarPlano(plano: Plano, identificacao: IdentificacaoProfissio
   }
   if (semMedida.length) itens.push({ id: "sem-medida", ok: false, bloqueia: false, texto: `Sem medida caseira: ${semMedida.join("; ")}` });
 
+  // Orientação sugerida pelo app só sai no papel depois que ela leu (16/10/2026).
+  const rascunhos = plano.blocos.filter((b) => b.rascunho && (b.itens.some((i) => i.incluido && normalizarTexto(i.texto)) || normalizarTexto(b.texto)));
+  if (rascunhos.length) {
+    itens.push({
+      id: "orientacoes-rascunho",
+      ok: false,
+      bloqueia: true,
+      texto: `Texto sugerido que você ainda não revisou: ${rascunhos.map((b) => normalizarTexto(b.titulo)).join(", ")}. Leia e marque “Revisei este texto” no bloco.`,
+    });
+  }
+
   const linhasId = identificacao.linhas.map((l) => l.trim());
   const idCompleta = linhasId.length >= 5 && linhasId.every(Boolean);
   itens.push(

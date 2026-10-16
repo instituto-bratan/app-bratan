@@ -6,6 +6,9 @@ import { todayISO } from "@/lib/localStore";
 import { camposVazios, trazerDoAnterior } from "../dominio/campos";
 import { CONFIG_PADRAO } from "../dominio/config";
 import { BLOCOS_INICIAIS, IDENTIFICACAO_PADRAO } from "../dominio/biblioteca";
+import { GRUPOS_INICIAIS, type GrupoSubstituicao } from "../dominio/equivalentes";
+import type { ModeloPlano } from "../dominio/modelos";
+import { ORIENTACOES_INICIAIS } from "../dominio/orientacoes";
 import { LINHA_PLANO_PADRAO } from "../dominio/roteiro";
 import { conferenciaDoItem } from "../dominio/suplementos";
 import type {
@@ -229,6 +232,34 @@ export async function listarBlocos(): Promise<BlocoBiblioteca[]> {
 
 /** Cada gravação de um bloco é uma versão nova; planos antigos guardam a cópia da versão que usaram. */
 export const salvarBloco = (bloco: BlocoBiblioteca, versaoLida: number | null) => gravar("biblioteca", { ...bloco, atualizadoEm: agora() }, versaoLida);
+
+// ------------------------------------------------------------ novidades de 16/10/2026
+
+/** Orientações sugeridas (rascunho) e grupos de substituição: uma vez só; o que ela apagar não volta. */
+export async function semearNovidades() {
+  if (await lerMeta<boolean>("semeado-2026-10-16", false)) return;
+  for (const g of GRUPOS_INICIAIS) {
+    if (!(await ler<GrupoSubstituicao>("substituicoes", g.id))) await gravar("substituicoes", { ...g, versao: 0 }, null);
+  }
+  for (const b of ORIENTACOES_INICIAIS) {
+    if (!(await ler<BlocoBiblioteca>("biblioteca", b.id))) await gravar("biblioteca", { ...b, versao: 0 }, null);
+  }
+  await gravarMeta("semeado-2026-10-16", true);
+}
+
+export async function listarModelos(): Promise<ModeloPlano[]> {
+  const modelos = await listar<ModeloPlano>("modelos");
+  return modelos.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+export const salvarModelo = (m: ModeloPlano, versaoLida: number | null) => gravar("modelos", { ...m, atualizadoEm: agora() }, versaoLida);
+export const apagarModelo = (id: string) => apagar("modelos", id);
+
+export async function listarGruposSubstituicao(): Promise<GrupoSubstituicao[]> {
+  const grupos = await listar<GrupoSubstituicao>("substituicoes");
+  return grupos.sort((a, b) => a.titulo.localeCompare(b.titulo, "pt-BR"));
+}
+export const salvarGrupoSubstituicao = (g: GrupoSubstituicao, versaoLida: number | null) => gravar("substituicoes", { ...g, atualizadoEm: agora() }, versaoLida);
+export const apagarGrupoSubstituicao = (id: string) => apagar("substituicoes", id);
 
 export async function semearBiblioteca() {
   for (const bloco of BLOCOS_INICIAIS) {

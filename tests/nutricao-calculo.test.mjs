@@ -408,7 +408,7 @@ test("legumes de consumo livre sem gramas ficam fora da conta sem aviso, e acion
   const arroz = item("arroz-teste", 100);
   const r = calculo.calcularPlano([refeicao("almoco", "almoco", [arroz, livres])], ALIMENTOS, opcoes());
   assert.deepEqual(plain(r.avisos), []);
-  assert.deepEqual(plain(r.livres), [{ refeicaoId: "almoco", itemId: livres.id, descricao: "Legumes e verduras à vontade" }]);
+  assert.deepEqual(plain(r.livres), [{ refeicaoId: "almoco", itemId: livres.id, descricao: "Legumes e verduras à vontade", gramas: 0 }]);
   assert.deepEqual(plain(r.azeiteIncluido), [{ refeicaoId: "almoco", gramas: 5 }]);
   assert.equal(r.linhas.filter((l) => !l.oculto).length, 1);
 });

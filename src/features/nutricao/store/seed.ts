@@ -96,8 +96,12 @@ async function salvarTudo(pessoas: Pessoa[], itens: ItemUso[], atendimentos: Ate
  */
 export async function garantirSemente({ comExemplos }: { comExemplos: boolean }): Promise<void> {
   await repo.prepararBanco();
-  if (await repo.jaSemeado()) return;
+  if (await repo.jaSemeado()) {
+    await repo.semearNovidades();
+    return;
+  }
   await repo.semearBiblioteca();
+  await repo.semearNovidades();
   if (!comExemplos) {
     await repo.marcarSemeado();
     return;

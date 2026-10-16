@@ -5,17 +5,18 @@
 // suplementos e medicamentos. Vazio é "não informado", nunca "nenhum".
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowRight, CalendarPlus, Copy, FilePlus2, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, BookMarked, CalendarPlus, Copy, FilePlus2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/features/crm/comercialVisual";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule } from "@/lib/access";
 import { CONFIG_PADRAO } from "../dominio/config";
+import { planoDoModelo, resumoDoModelo, type ModeloPlano } from "../dominio/modelos";
 import { blocoDaBiblioteca, duplicarPlano, estadoDaEntrega, novoPlano, tituloDoPlano } from "../dominio/plano";
 import { linhasDaFolha } from "../dominio/resumo";
 import { textoDaPrescricao } from "../dominio/suplementos";
 import { dataCurta, formatarNumero, mesRefDe } from "../dominio/texto";
 import type { Atendimento, ItemUso, OrigemRegistro, Pessoa, Plano, RegistroTexto } from "../dominio/tipos";
-import { useAtendimentosDaPessoa, useAtualizarNutricao, useBiblioteca, useConfig, useItensUso, useNutricaoPronta, usePessoa, usePlanosDaPessoa, useRascunho } from "../store/hooks";
+import { useAtendimentosDaPessoa, useAtualizarNutricao, useBiblioteca, useConfig, useItensUso, useModelos, useNutricaoPronta, usePessoa, usePlanosDaPessoa, useRascunho } from "../store/hooks";
 import * as repo from "../store/repositorio";
 import { BotaoNovaConsulta } from "../ui/acoes";
 import { Abas, Bolinha, CAIXA_CAMPO, CabecalhoDaPagina, Cartao, Carregando, Dialogo, Modulo, SeloFicticio, SeloSalvamento, Vazio } from "../ui/basicos";
@@ -234,6 +235,7 @@ export function NutricaoPessoaPage() {
   const { data: itens = [] } = useItensUso(id);
   const { data: planos = [] } = usePlanosDaPessoa(id);
   const { data: biblioteca = [] } = useBiblioteca();
+  const { data: modelos = [] } = useModelos();
   const atualizar = useAtualizarNutricao();
   const { rascunho: pessoa, alterar, estado } = useRascunho<Pessoa>(original, repo.salvarPessoa);
   const [horaAgenda, setHoraAgenda] = useState("");
@@ -254,15 +256,20 @@ export function NutricaoPessoaPage() {
   const mudarAba = (nova: Aba) => setParametros((p) => { p.set("aba", nova); p.delete("novoPara"); return p; });
   const ultimoFinalizado = planos.find((p) => p.estado === "finalizado") ?? null;
 
-  const criarPlano = async (modo: "branco" | "duplicar") => {
+  const criarPlano = async (modo: "branco" | "duplicar" | "modelo", modelo?: ModeloPlano) => {
     const numero = planos.reduce((m, p) => Math.max(m, p.numero), 0) + 1;
     const atendimentoRef = atendimentoDoPlano ?? atendimentos.find((a) => a.estado === "finalizado") ?? null;
     const bio = atendimentoRef?.campos.bio.bio;
-    const peso = bio?.pesoKg ? { kg: bio.pesoKg, origem: `Bio de ${dataCurta(atendimentoRef?.data)}` } : null;
+    // Peso: a bio da consulta; sem ela, o do último plano da pessoa.
+    const peso = bio?.pesoKg ? { kg: bio.pesoKg, origem: `Bio de ${dataCurta(atendimentoRef?.data)}` } : planos.find((p) => p.pesoReferencia)?.pesoReferencia ?? null;
+    // As orientações por condição não entram sozinhas: ela escolhe no plano.
+    const listas = biblioteca.filter((b) => b.tipo !== "orientacao");
     const base =
-      modo === "duplicar" && ultimoFinalizado
-        ? duplicarPlano(ultimoFinalizado, { mesRef: mesRefDe(repo.hoje()), novoId: repo.novoId, agora: repo.agora(), atendimentoId: atendimentoRef?.id ?? null })
-        : novoPlano({ pessoa, mesRef: mesRefDe(repo.hoje()), numero, atendimentoId: atendimentoRef?.id ?? null, novoId: repo.novoId, agora: repo.agora(), blocos: biblioteca.map((b) => blocoDaBiblioteca(b, repo.novoId)) });
+      modo === "modelo" && modelo
+        ? planoDoModelo({ modelo, pessoa, mesRef: mesRefDe(repo.hoje()), numero, atendimentoId: atendimentoRef?.id ?? null, pesoReferencia: peso, novoId: repo.novoId, agora: repo.agora() })
+        : modo === "duplicar" && ultimoFinalizado
+          ? duplicarPlano(ultimoFinalizado, { mesRef: mesRefDe(repo.hoje()), novoId: repo.novoId, agora: repo.agora(), atendimentoId: atendimentoRef?.id ?? null })
+          : novoPlano({ pessoa, mesRef: mesRefDe(repo.hoje()), numero, atendimentoId: atendimentoRef?.id ?? null, novoId: repo.novoId, agora: repo.agora(), blocos: listas.map((b) => blocoDaBiblioteca(b, repo.novoId)) });
     const salvo = await repo.salvarPlano({ ...base, numero, pesoReferencia: peso ?? base.pesoReferencia, versao: 0 }, null);
     await atualizar();
     navegar(`/nutricao/planos/${salvo.id}`);
@@ -410,6 +417,11 @@ export function NutricaoPessoaPage() {
               <Button type="button" variant="outline" className="gap-1.5" onClick={() => void criarPlano("branco")}>
                 <FilePlus2 className="h-4 w-4" aria-hidden="true" /> Plano novo com as listas
               </Button>
+              {modelos.length ? (
+                <Button type="button" variant="outline" className="gap-1.5" onClick={() => setDialogoPlano(true)}>
+                  <BookMarked className="h-4 w-4" aria-hidden="true" /> Começar de um modelo
+                </Button>
+              ) : null}
             </div>
           ) : null}
           {planos.length === 0 ? <Vazio titulo="Nenhum plano ainda">Comece por um plano novo: as listas de frutas e de legumes já entram como cópia.</Vazio> : null}
@@ -481,6 +493,25 @@ export function NutricaoPessoaPage() {
         }
       >
         <p>{ultimoFinalizado ? `Duplicar a versão ${ultimoFinalizado.numero} (${tituloDoPlano(ultimoFinalizado.mesRef)}) cria a versão nova em rascunho; a anterior fica guardada como está.` : "Ainda não há plano finalizado para duplicar."}</p>
+        {editavel && modelos.length ? (
+          <div className="grid gap-1.5">
+            <p className="font-semibold">Ou comece de um modelo</p>
+            <p className="text-tinta-2">O plano nasce com as refeições e as metas do modelo. Depois, “Ajustar as quantidades às metas” acerta tudo para esta pessoa em um clique.</p>
+            <ul className="grid gap-1">
+              {modelos.map((m) => (
+                <li key={m.id}>
+                  <button type="button" className="grid w-full gap-0.5 rounded-bloco border border-fio bg-folha px-3 py-2 text-left hover:border-fio-2 hover:bg-papel" onClick={() => void criarPlano("modelo", m)}>
+                    <span className="font-semibold">{m.nome}</span>
+                    <span className="text-xs text-tinta-2">
+                      {resumoDoModelo(m)}
+                      {m.descricao ? ` · ${m.descricao}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {atendimentoDoPlano?.campos.bio.bio?.pesoKg ? <p className="text-tinta-2">Peso de referência do cálculo: {formatarNumero(atendimentoDoPlano.campos.bio.bio.pesoKg, 1)} kg (bio de {dataCurta(atendimentoDoPlano.data)}).</p> : null}
       </Dialogo>
     </Modulo>

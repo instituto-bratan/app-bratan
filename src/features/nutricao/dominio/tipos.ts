@@ -268,6 +268,8 @@ export type Alternativa = {
   quantidade: string;
   gramas: number | null;
   alimentoId: Id | null;
+  /** Criada pelas substituições automáticas (equivalentes.ts): gerar de novo troca só estas. */
+  auto?: boolean;
 };
 
 export type ItemRefeicao = {
@@ -283,6 +285,8 @@ export type ItemRefeicao = {
   /** Item de legumes e verduras: aciona o azeite de preparo no almoço e no jantar. */
   legumes: boolean;
   origem: "acordo" | null;
+  /** "Não mexer": o ajuste às metas deixa esta quantidade como está. */
+  travado?: boolean;
 };
 
 export type Refeicao = {
@@ -308,6 +312,8 @@ export type BlocoPlano = {
   texto: string;
   /** Bloco da biblioteca de onde a cópia saiu. */
   origem: { blocoId: Id; versao: number } | null;
+  /** Veio de um rascunho de orientação que ela ainda não revisou: não sai em plano finalizado. */
+  rascunho?: boolean;
 };
 
 export type MetasPlano = {
@@ -356,6 +362,12 @@ export type Plano = {
   /** Congelados ao finalizar: o documento e o cálculo de um plano entregue não mudam depois. */
   identificacaoUsada?: IdentificacaoProfissional | null;
   regrasDoCalculo?: RegrasDoCalculo | null;
+  /**
+   * Tabela de calorias e macronutrientes no documento (resposta dela de 28/09:
+   * "sim, o paciente recebe"). Ausente = sim no rascunho; planos finalizados
+   * antes de 16/10/2026 não tinham a tabela e continuam sem.
+   */
+  tabelaNoDocumento?: boolean;
   versao: number;
   criadoEm: MomentoISO;
   atualizadoEm: MomentoISO;
@@ -371,11 +383,16 @@ export type BlocoBiblioteca = {
   versao: number;
   fonte: string;
   atualizadoEm: MomentoISO;
+  /** Texto sugerido que ela ainda não revisou (orientações por condição). */
+  rascunho?: boolean;
+  /** "lista" = listas dela (frutas, legumes); "orientacao" = orientações por condição. */
+  tipo?: "lista" | "orientacao";
 };
 
 export type IdentificacaoProfissional = { linhas: string[]; versao: number };
 
-export type RegrasDoCalculo = Pick<ConfigNutricao, "azeiteGramas" | "azeiteAlimentoId" | "caloriasPor">;
+/** Congeladas ao finalizar. Planos finalizados antes de 16/10/2026 não têm a regra dos legumes livres (ficavam fora da conta). */
+export type RegrasDoCalculo = Pick<ConfigNutricao, "azeiteGramas" | "azeiteAlimentoId" | "caloriasPor"> & Partial<Pick<ConfigNutricao, "legumesLivresGramas" | "legumesLivresAlimentoId">>;
 
 // ---------------------------------------------------------------- configuração
 
@@ -390,4 +407,7 @@ export type ConfigNutricao = {
   caloriasPor: "macros" | "tabela";
   siglaVisceral: string;
   separadorBio: string;
+  /** Legumes e verduras de consumo livre entram na conta como esta quantidade (resposta dela: "100 g de abóbora, o mais calórico"). 0 = fora da conta. */
+  legumesLivresGramas: number;
+  legumesLivresAlimentoId: Id;
 };

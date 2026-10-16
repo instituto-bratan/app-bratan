@@ -5,23 +5,41 @@
 // finalizado não se edita: vira uma versão nova, e a antiga fica guardada.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, CheckCircle2, Copy, Download, FilePlus2, GitCompare, ListPlus, Lock, MessageCircle, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, BookmarkPlus, Check, CheckCircle2, Copy, Download, FilePlus2, GitCompare, ListPlus, Lock, MessageCircle, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import { Button } from "@/features/crm/comercialVisual";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule } from "@/lib/access";
-import { calcularPlano } from "../dominio/calculo";
+import { calcularPlano, type OpcoesCalculo } from "../dominio/calculo";
+import { aprender } from "../dominio/memoria";
+import { modeloDoPlano } from "../dominio/modelos";
 import { CONFIG_PADRAO } from "../dominio/config";
 import { normalizarParaBusca } from "../dominio/extracao";
 import { alimentosDoRetrato, blocoDaBiblioteca, cabecalhoDoDocumento, diferencas, duplicarPlano, estadoDaEntrega, finalizarPlano, marcarSubstituido, novaRefeicao, novoItem, registrarEntrega, tituloDoPlano } from "../dominio/plano";
 import { revisarPlano } from "../dominio/revisao";
 import { dataCurta, mesPorExtenso, mesRefDe } from "../dominio/texto";
-import type { Alimento, BlocoPlano, IdentificacaoProfissional, Plano, Refeicao, RegrasDoCalculo, TipoEventoEntrega } from "../dominio/tipos";
-import { DocumentoPlano, type InfoDaPaginacao } from "../documento/DocumentoPlano";
+import type { Alimento, BlocoPlano, IdentificacaoProfissional, MedidaCaseira, Plano, Refeicao, RegrasDoCalculo, TipoEventoEntrega } from "../dominio/tipos";
+import { DocumentoPlano, mostraTabelaNoDocumento, type InfoDaPaginacao } from "../documento/DocumentoPlano";
 import { baixar, gerarPdf, nomeDoArquivo } from "../documento/exportar";
 import { EditorDeRefeicao } from "../plano/EditorDeRefeicao";
+import { FaixaDasMetas } from "../plano/FaixaDasMetas";
 import { PainelDoCalculo } from "../plano/PainelDoCalculo";
 import { FalaDeOrigem } from "../consulta/FalaDeOrigem";
-import { useAlimentos, useAtendimento, useAtualizarNutricao, useBiblioteca, useConfig, useIdentificacao, useMedidas, useNutricaoPronta, usePessoa, usePlano, usePlanosDaPessoa, useRascunho } from "../store/hooks";
+import {
+  useAlimentos,
+  useAtendimento,
+  useAtualizarNutricao,
+  useBiblioteca,
+  useConfig,
+  useGruposSubstituicao,
+  useIdentificacao,
+  useMedidas,
+  useNutricaoPronta,
+  usePessoa,
+  usePlano,
+  usePlanosDaPessoa,
+  useRascunho,
+  useTodosPlanos,
+} from "../store/hooks";
 import * as repo from "../store/repositorio";
 import { Abas, CAIXA_CAMPO, CabecalhoDaPagina, Cartao, Carregando, Dialogo, Modulo, SeloFicticio, SeloSalvamento, Vazio } from "../ui/basicos";
 
@@ -38,6 +56,10 @@ const CANAIS = ["WhatsApp", "E-mail", "Impresso na consulta", "Portal do pacient
 
 // Objeto fixo: um objeto novo a cada render faria a folha se medir sem parar.
 const SEM_IDENTIFICACAO: IdentificacaoProfissional = { linhas: [], versao: 0 };
+// Listas fixas enquanto a TACO e os planos carregam (um [] novo a cada render refaria o cálculo sem parar).
+const SEM_ALIMENTOS: Alimento[] = [];
+const SEM_PLANOS: Plano[] = [];
+const SEM_MEDIDAS: MedidaCaseira[] = [];
 
 export function NutricaoPlanoPage() {
   const { id } = useParams();
@@ -49,12 +71,19 @@ export function NutricaoPlanoPage() {
   const { data: anteriorPlano } = usePlano(original?.origem.deId ?? undefined);
   const { data: atendimento } = useAtendimento(original?.atendimentoId ?? undefined);
   const { data: planosDaPessoa = [] } = usePlanosDaPessoa(original?.pessoaId);
-  const { data: alimentos = [] } = useAlimentos();
-  const { data: medidas = [] } = useMedidas();
+  const { data: alimentos = SEM_ALIMENTOS } = useAlimentos();
+  const { data: medidas = SEM_MEDIDAS } = useMedidas();
   const { data: biblioteca = [] } = useBiblioteca();
   const { data: identificacao } = useIdentificacao();
   const { data: config = CONFIG_PADRAO } = useConfig();
+  const { data: todosPlanos = SEM_PLANOS } = useTodosPlanos();
+  const { data: grupos = [] } = useGruposSubstituicao();
   const atualizar = useAtualizarNutricao();
+  // O que ela já escreveu em todos os planos: nome → alimento, medida → gramas (memoria.ts).
+  const memoria = useMemo(() => aprender(todosPlanos, medidas), [todosPlanos, medidas]);
+  const [modeloAberto, setModeloAberto] = useState(false);
+  const [nomeModelo, setNomeModelo] = useState("");
+  const [descricaoModelo, setDescricaoModelo] = useState("");
   const { rascunho: plano, alterar, salvarJa, recarregar, estado } = useRascunho<Plano>(original, repo.salvarPlano);
 
   const [aba, setAba] = useState<"previa" | "calculo">("previa");
@@ -86,14 +115,26 @@ export function NutricaoPlanoPage() {
     if (plano && plano.estado !== "rascunho") for (const a of alimentosDoRetrato(plano)) mapa[a.id] = a;
     return mapa;
   }, [alimentos, plano]);
-  const regras: RegrasDoCalculo = (congelado && plano?.regrasDoCalculo) || { azeiteGramas: config.azeiteGramas, azeiteAlimentoId: config.azeiteAlimentoId, caloriasPor: config.caloriasPor };
-  const calculo = useMemo(
-    () =>
-      plano
-        ? calcularPlano(plano.refeicoes, alimentosPorId, { azeiteGramas: regras.azeiteGramas, azeite: alimentosPorId[regras.azeiteAlimentoId] ?? null, pesoKg: plano.pesoReferencia?.kg ?? null, caloriasPor: regras.caloriasPor })
-        : null,
-    [plano, alimentosPorId, regras.azeiteGramas, regras.azeiteAlimentoId, regras.caloriasPor],
+  const regras: RegrasDoCalculo = (congelado && plano?.regrasDoCalculo) || {
+    azeiteGramas: config.azeiteGramas,
+    azeiteAlimentoId: config.azeiteAlimentoId,
+    caloriasPor: config.caloriasPor,
+    legumesLivresGramas: config.legumesLivresGramas,
+    legumesLivresAlimentoId: config.legumesLivresAlimentoId,
+  };
+  const pesoKg = plano?.pesoReferencia?.kg ?? null;
+  const opcoesCalculo: OpcoesCalculo = useMemo(
+    () => ({
+      azeiteGramas: regras.azeiteGramas,
+      azeite: alimentosPorId[regras.azeiteAlimentoId] ?? null,
+      pesoKg,
+      caloriasPor: regras.caloriasPor,
+      // Planos finalizados antes de 16/10/2026 não têm a regra: os legumes livres continuam fora da conta deles.
+      legumesLivres: regras.legumesLivresAlimentoId ? { gramas: regras.legumesLivresGramas ?? 0, alimento: alimentosPorId[regras.legumesLivresAlimentoId] ?? null } : undefined,
+    }),
+    [alimentosPorId, pesoKg, regras.azeiteGramas, regras.azeiteAlimentoId, regras.caloriasPor, regras.legumesLivresGramas, regras.legumesLivresAlimentoId],
   );
+  const calculo = useMemo(() => (plano ? calcularPlano(plano.refeicoes, alimentosPorId, opcoesCalculo) : null), [plano, alimentosPorId, opcoesCalculo]);
 
   if (pronto.isLoading || isLoading) return <Carregando texto="Abrindo o plano" />;
   if (!plano || !pessoa || !calculo) {
@@ -187,7 +228,20 @@ export function NutricaoPlanoPage() {
   };
 
   const mensagem = `Olá, ${pessoa.nome.split(" ")[0]}! Seu plano alimentar de ${mesPorExtenso(plano.mesRef).replace(/ de \d{4}$/, "")} está pronto e segue em anexo. Qualquer dúvida, me chame por aqui.\n\n${ident.linhas[0] ?? ""}`;
-  const blocosDisponiveis = biblioteca.filter((b) => !plano.blocos.some((x) => x.origem?.blocoId === b.id));
+  const blocosDisponiveis = biblioteca.filter((b) => b.tipo !== "orientacao" && !plano.blocos.some((x) => x.origem?.blocoId === b.id));
+  const orientacoesDisponiveis = biblioteca.filter((b) => b.tipo === "orientacao" && !plano.blocos.some((x) => x.origem?.blocoId === b.id));
+
+  const salvarComoModelo = async () => {
+    try {
+      const modelo = modeloDoPlano(plano, { nome: nomeModelo, descricao: descricaoModelo }, repo.novoId, repo.agora());
+      await repo.salvarModelo(modelo, null);
+      await atualizar();
+      setModeloAberto(false);
+      setAviso(`Modelo “${modelo.nome}” salvo. Ele aparece em “Começar de um modelo” na ficha de qualquer pessoa.`);
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   return (
     <Modulo className="max-w-[1680px]">
@@ -391,7 +445,37 @@ export function NutricaoPlanoPage() {
               <span className="font-semibold text-tinta-2">Mês</span>
               <input id="mes-plano" type="month" value={plano.mesRef} disabled={!editavel} onChange={(e) => e.target.value && alterar((p) => ({ ...p, mesRef: e.target.value }))} className="h-8 rounded-controle border border-borda-campo bg-folha text-tinta px-2" />
             </label>
+            <label className="inline-flex items-center gap-2" htmlFor="tabela-no-documento">
+              <input id="tabela-no-documento" type="checkbox" checked={mostraTabelaNoDocumento(plano)} disabled={!editavel} onChange={(e) => alterar((p) => ({ ...p, tabelaNoDocumento: e.target.checked }))} />
+              <span className="font-semibold text-tinta-2">Tabela de calorias e nutrientes no documento</span>
+            </label>
+            {podeEditarModulo ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-auto gap-1.5"
+                onClick={() => {
+                  setNomeModelo(plano.metas.kcal ? `Plano de ${plano.metas.kcal} kcal` : "");
+                  setDescricaoModelo("");
+                  setModeloAberto(true);
+                }}
+              >
+                <BookmarkPlus className="h-4 w-4" aria-hidden="true" /> Salvar como modelo
+              </Button>
+            ) : null}
           </div>
+
+          <FaixaDasMetas
+            plano={plano}
+            calculo={calculo}
+            alimentosPorId={alimentosPorId}
+            opcoes={opcoesCalculo}
+            editavel={editavel}
+            aoMudarMetas={(metas) => alterar((p) => ({ ...p, metas }))}
+            aoMudarPeso={(kg) => alterar((p) => ({ ...p, pesoReferencia: kg === null ? null : { kg, origem: p.pesoReferencia?.origem ?? "digitado" } }))}
+            aoAplicar={(refeicoes) => alterar((p) => ({ ...p, refeicoes }))}
+          />
 
           {plano.refeicoes.map((r, i) => (
             <EditorDeRefeicao
@@ -402,6 +486,8 @@ export function NutricaoPlanoPage() {
               alimentosPorId={alimentosPorId}
               alimentos={alimentos}
               medidas={medidas}
+              memoria={memoria}
+              grupos={grupos}
               editavel={editavel}
               kcal={kcalDaRefeicao(r.id)}
               aoMudar={mudarRefeicao}
@@ -420,6 +506,12 @@ export function NutricaoPlanoPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <input aria-label="Título do bloco" value={b.titulo} disabled={!editavel} onChange={(e) => mudarBloco({ ...b, titulo: e.target.value })} className="h-8 min-w-[12rem] flex-1 rounded-controle border border-transparent bg-transparent px-2 font-semibold text-musgo hover:border-fio-2 focus-visible:border-musgo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foco" />
                 {b.origem ? <span className="text-xs text-tinta-2">cópia da biblioteca · versão {b.origem.versao}</span> : null}
+                {b.rascunho ? (
+                  <label className="inline-flex items-center gap-1.5 rounded-controle bg-atencao-claro px-2 py-0.5 text-xs font-semibold text-atencao">
+                    <input type="checkbox" checked={false} disabled={!editavel} onChange={() => mudarBloco({ ...b, rascunho: false })} />
+                    Texto sugerido pelo app: revisei este texto
+                  </label>
+                ) : null}
                 {editavel ? (
                   <button type="button" className="rounded p-1 text-tinta-2 hover:bg-erro-claro hover:text-erro" onClick={() => alterar((p) => ({ ...p, blocos: p.blocos.filter((x) => x.id !== b.id) }))} aria-label={`Tirar o bloco ${b.titulo}`}>
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -454,13 +546,32 @@ export function NutricaoPlanoPage() {
               ) : null}
             </section>
           ))}
-          {editavel && blocosDisponiveis.length ? (
-            <div className="flex flex-wrap gap-2">
+          {editavel && (blocosDisponiveis.length || orientacoesDisponiveis.length) ? (
+            <div className="flex flex-wrap items-center gap-2">
               {blocosDisponiveis.map((b) => (
                 <Button key={b.id} type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => alterar((p) => ({ ...p, blocos: [...p.blocos, blocoDaBiblioteca(b, repo.novoId)] }))}>
                   <ListPlus className="h-4 w-4" aria-hidden="true" /> {b.titulo}
                 </Button>
               ))}
+              {orientacoesDisponiveis.length ? (
+                <select
+                  aria-label="Acrescentar orientações por condição"
+                  value=""
+                  onChange={(e) => {
+                    const b = orientacoesDisponiveis.find((x) => x.id === e.target.value);
+                    if (b) alterar((p) => ({ ...p, blocos: [...p.blocos, blocoDaBiblioteca(b, repo.novoId)] }));
+                  }}
+                  className={`h-8 px-2 text-sm ${CAIXA_CAMPO}`}
+                >
+                  <option value="">+ Orientações por condição…</option>
+                  {orientacoesDisponiveis.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.titulo.replace(/^Orientações para /, "").replace(/^./, (c) => c.toUpperCase())}
+                      {b.rascunho ? " (sugestão a revisar)" : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </div>
           ) : null}
 
@@ -488,7 +599,7 @@ export function NutricaoPlanoPage() {
             aria-hidden={aba !== "previa"}
             className={aba === "previa" ? "max-h-[calc(100vh-9rem)] overflow-y-auto rounded-bloco bg-saber p-1" : "pointer-events-none fixed -left-[100000px] top-0 w-[480px]"}
           >
-            <DocumentoPlano ref={documentoRef} plano={plano} identificacao={ident} zoom={zoom} aoPaginar={setPaginacao} />
+            <DocumentoPlano ref={documentoRef} plano={plano} identificacao={ident} calculo={calculo} zoom={zoom} aoPaginar={setPaginacao} />
           </div>
           {aba === "calculo" ? (
             <Cartao>
@@ -541,6 +652,32 @@ export function NutricaoPlanoPage() {
           </div>
         ) : null}
         <p className="text-tinta-2">Finalizar congela esta versão com os valores da tabela de hoje. {anteriorPlano?.estado === "finalizado" ? `A versão ${anteriorPlano.numero} passa a “substituída” e continua guardada.` : ""}</p>
+      </Dialogo>
+
+      <Dialogo
+        aberto={modeloAberto}
+        aoFechar={() => setModeloAberto(false)}
+        titulo="Salvar como modelo"
+        acoes={
+          <>
+            <Button type="button" variant="ghost" onClick={() => setModeloAberto(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" className="gap-1.5" disabled={!nomeModelo.trim()} onClick={() => void salvarComoModelo()}>
+              <BookmarkPlus className="h-4 w-4" aria-hidden="true" /> Salvar modelo
+            </Button>
+          </>
+        }
+      >
+        <p className="text-tinta-2">Guarda as refeições, os alimentos, as substituições, as listas e as metas. Nada da pessoa vai junto: nome, peso, consulta e entrega ficam só neste plano.</p>
+        <label className="grid gap-1" htmlFor="nome-modelo">
+          <span className="text-sm font-semibold">Nome do modelo</span>
+          <input id="nome-modelo" value={nomeModelo} onChange={(e) => setNomeModelo(e.target.value)} placeholder="Por exemplo: Emagrecimento 1600 kcal, 5 refeições" className={`h-10 px-3 ${CAIXA_CAMPO}`} />
+        </label>
+        <label className="grid gap-1" htmlFor="descricao-modelo">
+          <span className="text-sm font-semibold">Para quem serve (opcional)</span>
+          <input id="descricao-modelo" value={descricaoModelo} onChange={(e) => setDescricaoModelo(e.target.value)} placeholder="Por exemplo: mulheres em emagrecimento, rotina de escritório" className={`h-10 px-3 ${CAIXA_CAMPO}`} />
+        </label>
       </Dialogo>
 
       <Dialogo aberto={comparacaoAberta} aoFechar={() => setComparacaoAberta(false)} titulo={`O que mudou desde a versão ${anteriorPlano?.numero ?? ""}`}>

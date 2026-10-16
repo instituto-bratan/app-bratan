@@ -43,8 +43,12 @@ export type ResultadoCalculo = {
   fibraG: number;
   avisos: AvisoCalculo[];
   azeiteIncluido: { refeicaoId: Id; gramas: number }[];
-  /** Legumes e verduras de consumo livre (sem gramas): fora da conta, sem aviso. */
-  livres: { refeicaoId: Id; itemId: Id; descricao: string }[];
+  /**
+   * Legumes e verduras de consumo livre (sem gramas). Com a regra dela ligada
+   * (opcoes.legumesLivres), cada um entra na conta como 100 g de abóbora;
+   * `gramas` diz quanto entrou (0 = fora da conta, como nos planos antigos).
+   */
+  livres: { refeicaoId: Id; itemId: Id; descricao: string; gramas: number }[];
 };
 
 export type OpcoesCalculo = {
@@ -53,6 +57,8 @@ export type OpcoesCalculo = {
   pesoKg: number | null;
   /** "macros": 4 × carboidrato + 4 × proteína + 9 × gordura; "tabela": soma da energia da tabela. */
   caloriasPor: "macros" | "tabela";
+  /** Resposta dela (28/09/2026): legumes de consumo livre contam como 100 g de abóbora. Ausente = fora da conta. */
+  legumesLivres?: { gramas: number; alimento: Alimento | null };
 };
 
 /** Nutrientes que, ausentes na tabela, geram aviso. A fibra não entra aqui. */
@@ -153,9 +159,17 @@ export function calcularPlano(refeicoes: Refeicao[], alimentos: Record<Id, Alime
     for (const item of refeicao.itens) {
       const semGramas = item.gramas === null || !(item.gramas > 0);
       const alimento = item.alimentoId ? alimentos[item.alimentoId] : undefined;
-      // Legumes e verduras "à vontade": consumo livre, fora da conta e sem aviso.
+      // Legumes e verduras "à vontade": consumo livre. Com a regra dela, entram como 100 g de abóbora; sem ela, fora da conta.
       if (item.legumes && semGramas) {
-        livres.push({ refeicaoId: refeicao.id, itemId: item.id, descricao: item.descricao });
+        const regra = opcoes.legumesLivres;
+        if (regra && regra.gramas > 0 && regra.alimento) {
+          const totais = nutrientesDoItem(regra.gramas, regra.alimento);
+          linhas.push({ refeicaoId: refeicao.id, itemId: item.id, descricao: `${item.descricao} (contado como ${regra.gramas} g de ${regra.alimento.nome})`, gramas: regra.gramas, totais, oculto: false });
+          totaisRefeicao = somar(totaisRefeicao, totais);
+          livres.push({ refeicaoId: refeicao.id, itemId: item.id, descricao: item.descricao, gramas: regra.gramas });
+        } else {
+          livres.push({ refeicaoId: refeicao.id, itemId: item.id, descricao: item.descricao, gramas: 0 });
+        }
         continue;
       }
       if (semGramas) {

@@ -168,6 +168,9 @@ export type Congelamento = { identificacao: IdentificacaoProfissional; regras: R
 
 export function conteudoCanonico(plano: Plano, alimentos: Alimento[], congelar?: Congelamento): string {
   const usados = idsDeAlimentosUsados(plano);
+  // O azeite de preparo e a abóbora dos legumes livres também entram no retrato.
+  if (congelar?.regras.azeiteAlimentoId) usados.add(congelar.regras.azeiteAlimentoId);
+  if (congelar?.regras.legumesLivresAlimentoId) usados.add(congelar.regras.legumesLivresAlimentoId);
   const documento = {
     nomeDocumento: plano.nomeDocumento,
     mesRef: plano.mesRef,
@@ -196,6 +199,8 @@ export function finalizarPlano(plano: Plano, alimentos: Alimento[], agora: Momen
     retrato: { em: agora, conteudo: conteudoCanonico(plano, alimentos, copia ?? undefined) },
     identificacaoUsada: copia ? copia.identificacao : plano.identificacaoUsada ?? null,
     regrasDoCalculo: copia ? copia.regras : plano.regrasDoCalculo ?? null,
+    // Resposta dela (28/09/2026): o paciente recebe a tabela. Ela pode tirar no rascunho.
+    tabelaNoDocumento: plano.tabelaNoDocumento ?? true,
     finalizadoEm: agora,
     atualizadoEm: agora,
   };
@@ -300,6 +305,8 @@ export function blocoDaBiblioteca(bloco: BlocoBiblioteca, novoId: () => Id): Blo
     itens: bloco.itens.map((texto) => ({ id: novoId(), texto, incluido: true })),
     texto: bloco.texto,
     origem: { blocoId: bloco.id, versao: bloco.versao },
+    // Orientação sugerida que ela ainda não revisou na Biblioteca: o plano lembra (revisao.ts).
+    ...(bloco.rascunho ? { rascunho: true } : {}),
   };
 }
 

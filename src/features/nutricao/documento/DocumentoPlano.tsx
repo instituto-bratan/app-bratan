@@ -10,6 +10,8 @@ import logoBratan from "@/assets/bratan-logo-horizontal.png";
 import { escolherDensidade, type BlocoMedido, type Densidade, type ResultadoPaginacao, type TipoBloco } from "../dominio/paginacao";
 import { cabecalhoDoDocumento } from "../dominio/plano";
 import { normalizarTexto } from "../dominio/texto";
+import type { ResultadoCalculo } from "../dominio/calculo";
+import { formatarNumero } from "../dominio/texto";
 import type { IdentificacaoProfissional, ItemRefeicao, Plano } from "../dominio/tipos";
 import { CSS_DO_DOCUMENTO, FOLHA, FONTES, cssDasFontes } from "./estilo";
 
@@ -22,7 +24,60 @@ export function quantidadeDoItem(item: Pick<ItemRefeicao, "quantidade" | "gramas
   return item.gramas ? `${item.gramas}g` : "";
 }
 
-function blocosDoPlano(plano: Plano, identificacao: IdentificacaoProfissional): Bloco[] {
+/**
+ * A tabela que a Dra. Géssica pediu no documento (resposta de 28/09/2026: "sim,
+ * o paciente recebe"): calorias e, para cada macronutriente, g/kg com uma casa,
+ * gramas inteiras e o percentual. Ausente = sim no rascunho; os planos
+ * finalizados antes de 16/10/2026 não tinham e continuam sem.
+ */
+export function mostraTabelaNoDocumento(plano: Pick<Plano, "tabelaNoDocumento" | "estado">): boolean {
+  return plano.tabelaNoDocumento ?? plano.estado === "rascunho";
+}
+
+function blocoDosNumeros(calculo: ResultadoCalculo): Bloco | null {
+  if (!(calculo.kcal > 0)) return null;
+  const comGkg = calculo.macros.ptn.gkg !== null;
+  const linhas = [
+    { nome: "Carboidrato", m: calculo.macros.cho },
+    { nome: "Proteína", m: calculo.macros.ptn },
+    { nome: "Gordura", m: calculo.macros.lip },
+  ];
+  return {
+    id: "numeros",
+    tipo: "lista",
+    conteudo: (
+      <section className="pd-numeros">
+        <h3>Seu plano em números</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Nutriente</th>
+              {comGkg ? <th>g por kg</th> : null}
+              <th>Gramas</th>
+              <th>% do plano</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="pd-kcal">
+              <td>Calorias</td>
+              <td colSpan={comGkg ? 3 : 2}>{calculo.kcal} kcal</td>
+            </tr>
+            {linhas.map(({ nome, m }) => (
+              <tr key={nome}>
+                <td>{nome}</td>
+                {comGkg ? <td>{m.gkg === null ? "" : formatarNumero(m.gkg, 1)}</td> : null}
+                <td>{m.g} g</td>
+                <td>{m.pct}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    ),
+  };
+}
+
+function blocosDoPlano(plano: Plano, identificacao: IdentificacaoProfissional, calculo: ResultadoCalculo | null): Bloco[] {
   const blocos: Bloco[] = [
     {
       id: "cabecalho",
@@ -83,6 +138,11 @@ function blocosDoPlano(plano: Plano, identificacao: IdentificacaoProfissional): 
     });
   }
 
+  if (calculo && mostraTabelaNoDocumento(plano)) {
+    const numeros = blocoDosNumeros(calculo);
+    if (numeros) blocos.push(numeros);
+  }
+
   for (const b of plano.blocos) {
     const incluidos = b.itens.filter((i) => i.incluido && normalizarTexto(i.texto));
     if (incluidos.length === 0 && !normalizarTexto(b.texto)) continue;
@@ -133,6 +193,8 @@ export type InfoDaPaginacao = { paginas: number; densidade: Densidade; avisos: R
 type Props = {
   plano: Plano;
   identificacao: IdentificacaoProfissional;
+  /** Cálculo do plano, para a tabela de nutrientes no documento. */
+  calculo?: ResultadoCalculo | null;
   /** Zoom da prévia (1 = tamanho real). */
   zoom?: number;
   aoPaginar?: (info: InfoDaPaginacao) => void;
@@ -160,8 +222,13 @@ function Pagina({ plano, numero, total, children }: { plano: Plano; numero: numb
   );
 }
 
-export const DocumentoPlano = forwardRef<HTMLDivElement, Props>(function DocumentoPlano({ plano, identificacao, zoom = 1, aoPaginar }, ref) {
-  const blocos = useMemo(() => blocosDoPlano(plano, identificacao), [plano, identificacao]);
+export const DocumentoPlano = forwardRef<HTMLDivElement, Props>(function DocumentoPlano({ plano, identificacao, calculo = null, zoom = 1, aoPaginar }, ref) {
+  // Só os números que saem na tabela entram na dependência: um cálculo novo com os mesmos
+  // números não pode medir e paginar a folha de novo (isso virava um laço de renderização).
+  const numeros = calculo ? JSON.stringify({ kcal: calculo.kcal, macros: calculo.macros }) : "";
+  const calculoRef = useRef(calculo);
+  calculoRef.current = calculo;
+  const blocos = useMemo(() => blocosDoPlano(plano, identificacao, numeros ? calculoRef.current : null), [plano, identificacao, numeros]);
   const medidorNormal = useRef<HTMLDivElement>(null);
   const medidorCompacto = useRef<HTMLDivElement>(null);
   const [resultado, setResultado] = useState<{ densidade: Densidade; paginas: string[][] } | null>(null);

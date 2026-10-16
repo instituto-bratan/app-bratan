@@ -26,6 +26,19 @@ A estação também abre com dois cliques em `tools/estacao-nutri/Iniciar Estaç
 - **Plano**: duplicar o anterior ou começar com as listas, refeições, alimentos da TACO com medida caseira, substituições fora do cálculo, opcional dentro, azeite de preparo de 5 g, tabela g/kg · g · %, prévia A4 igual ao PDF, revisão automática, versões e diferenças, entrega em etapas.
 - **Biblioteca**: listas dela com versão, TACO 4ª ed. (597 alimentos), medidas caseiras, identificação, ajustes, cópia de segurança.
 
+## Plano em minutos (16/10/2026)
+
+Pedido do Lucas: "se ficar escrevendo tudo, não vai adiantar". O plano deixou de ser montado alimento por alimento:
+
+- **Linha rápida** em cada refeição: "4 colheres de sopa de arroz", "1 ovo", "150 g de frango" + Enter → alimento, medida, gramas e vínculo com a TACO (`dominio/memoria.ts`, `dominio/quantidade.ts`). Nome comum aponta para o preparado (arroz → tipo 1 cozido), não para o cru.
+- **O app aprende com os planos dela**: nome → alimento e gramas de cada medida caseira ("1 colher de sopa de arroz = 25 g"). A medida da Biblioteca vale mais que a aprendida. Sem medida conhecida, o campo fica vazio e ela digita uma vez. Trocar "4 colheres" por "5 colheres" leva os gramas junto.
+- **Ajustar às metas** (`dominio/ajuste.ts`): ela diz calorias, proteína em g/kg e percentuais; o app acha um fator por papel (carboidrato, proteína, gordura), arredonda no jeito dela (meia unidade, gramas de 5 em 5, nunca mais de 25% fora do valor calculado) e mostra antes e depois. Prioridade quando não dá para acertar tudo: calorias e proteína. Ficam parados: cadeado fechado, frutas, legumes, bebidas. Avisa quando falta um alimento de gordura (ou carboidrato) para mexer.
+- **Substituições automáticas** (`dominio/equivalentes.ts`): pelo carboidrato (resposta dela) nos carboidratos, pela proteína nas carnes; grupos editáveis na Biblioteca › Substituições. Porção com o dobro das calorias não vira sugestão. Gerar de novo troca só as automáticas.
+- **Modelos de plano** (`dominio/modelos.ts`): "Salvar como modelo" no plano; "Começar de um modelo" na ficha da pessoa. Nada da pessoa vai para o modelo.
+- **Respostas dela que faltavam**: legumes livres contam como 100 g de abóbora (TACO 64), tabela de calorias e nutrientes no PDF ("Seu plano em números"). Planos finalizados antes continuam como foram entregues.
+- **Orientações por condição**: 12 rascunhos com fonte (refluxo, gastrite, gestação, esteatose, SOP, constipação, glicemia, hipertensão, dislipidemia, hipertrofia, GLP-1, endometriose) em Biblioteca › Orientações. Não entram sozinhos no plano e travam a finalização até ela marcar "Revisei".
+- Banco local na versão 2 (stores `modelos` e `substituicoes`): abrir só cria o que falta.
+
 ## O que falta para usar com pacientes reais
 
 1. **IA (opcional e paga por uso)**: o "Organizar com IA" usa a API da Anthropic, que cobra por uso. Decisão do Lucas em 28/09/2026: fica desligado. Sem a chave nada é cobrado, a transcrição continua local e ela preenche as linhas olhando a transcrição. Se um dia for ligado, a chave deve ser de uma organização separada, com retenção zero de dados, em `tools/estacao-nutri/.env.local`.

@@ -8,7 +8,8 @@
 // - toda gravação avisa as outras abas abertas (BroadcastChannel).
 
 const NOME_DO_BANCO = "bratan-nutricao";
-const VERSAO_DO_BANCO = 1;
+// 2 (16/10/2026): modelos de plano e grupos de substituição. Abrir a versão 2 só cria o que falta; nada existente muda.
+const VERSAO_DO_BANCO = 2;
 const CANAL = "bratan-nutricao";
 
 export type NomeDaColecao =
@@ -22,7 +23,9 @@ export type NomeDaColecao =
   | "agenda"
   | "gravacoes"
   | "pedacos"
-  | "meta";
+  | "meta"
+  | "modelos"
+  | "substituicoes";
 
 const COLECOES_POR_PESSOA: NomeDaColecao[] = ["atendimentos", "itensUso", "planos"];
 
@@ -68,7 +71,7 @@ export function abrirBanco(): Promise<IDBDatabase> {
     req.onupgradeneeded = () => {
       const db = req.result;
       const criar = (nome: NomeDaColecao) => (db.objectStoreNames.contains(nome) ? null : db.createObjectStore(nome, { keyPath: "id" }));
-      for (const nome of ["pessoas", "biblioteca", "alimentos", "medidas", "agenda", "gravacoes", "meta"] as NomeDaColecao[]) criar(nome);
+      for (const nome of ["pessoas", "biblioteca", "alimentos", "medidas", "agenda", "gravacoes", "meta", "modelos", "substituicoes"] as NomeDaColecao[]) criar(nome);
       for (const nome of COLECOES_POR_PESSOA) {
         const store = criar(nome);
         store?.createIndex("pessoaId", "pessoaId", { unique: false });
@@ -211,7 +214,7 @@ export async function apagarPedacos(gravacaoId: string): Promise<void> {
 
 // ------------------------------------------------------------ cópia de segurança
 
-const COLECOES_EXPORTADAS: NomeDaColecao[] = ["pessoas", "atendimentos", "itensUso", "planos", "biblioteca", "alimentos", "medidas", "agenda", "gravacoes", "meta"];
+const COLECOES_EXPORTADAS: NomeDaColecao[] = ["pessoas", "atendimentos", "itensUso", "planos", "biblioteca", "alimentos", "medidas", "agenda", "gravacoes", "meta", "modelos", "substituicoes"];
 
 export async function exportarTudo(): Promise<Record<string, unknown[]>> {
   const saida: Record<string, unknown[]> = {};

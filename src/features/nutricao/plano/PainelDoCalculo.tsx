@@ -145,7 +145,13 @@ export function PainelDoCalculo({ plano, resultado, regras, editavel, aoMudarMet
         ) : null}
         {plano.refeicoes.some((r) => r.opcional && r.itens.length) ? <li className="text-ok">✓ Refeição opcional entra no cálculo</li> : null}
         {plano.refeicoes.some((r) => r.itens.some((i) => i.alternativas.length)) ? <li className="text-ok">✓ Substituições aparecem no documento e ficam fora do cálculo</li> : null}
-        {resultado.livres.length ? <li className="text-tinta-2">Legumes e verduras de consumo livre sem gramas ficam fora do cálculo ({resultado.livres.length}).</li> : null}
+        {resultado.livres.length ? (
+          resultado.livres.some((l) => l.gramas > 0) ? (
+            <li className="text-ok">✓ Legumes e verduras de consumo livre no cálculo como {resultado.livres[0].gramas} g de abóbora cada ({resultado.livres.length})</li>
+          ) : (
+            <li className="text-tinta-2">Legumes e verduras de consumo livre sem gramas ficam fora do cálculo ({resultado.livres.length}).</li>
+          )
+        ) : null}
         {resultado.avisos.map((a, i) => (
           <li key={i} className="text-atencao">
             ! {a.descricao}

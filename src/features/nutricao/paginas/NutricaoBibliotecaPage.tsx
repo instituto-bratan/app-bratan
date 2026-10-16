@@ -14,13 +14,16 @@ import { formatarNumero } from "../dominio/texto";
 import type { BlocoBiblioteca, ConfigNutricao, IdentificacaoProfissional } from "../dominio/tipos";
 import { buscarAlimentos } from "../plano/BuscaDeAlimento";
 import { exportarTudo } from "../store/db";
-import { useAlimentos, useAtualizarNutricao, useBiblioteca, useConfig, useIdentificacao, useMedidas, useNutricaoPronta } from "../store/hooks";
+import { aprender } from "../dominio/memoria";
+import { AbaModelos } from "../biblioteca/AbaModelos";
+import { AbaSubstituicoes } from "../biblioteca/AbaSubstituicoes";
+import { useAlimentos, useAtualizarNutricao, useBiblioteca, useConfig, useGruposSubstituicao, useIdentificacao, useMedidas, useModelos, useNutricaoPronta, useTodosPlanos } from "../store/hooks";
 import * as repo from "../store/repositorio";
 import { baixar } from "../documento/exportar";
 import { fraseDaBiblioteca } from "../dominio/frases";
 import { Abas, CAIXA_CAMPO, CabecalhoDaPagina, Cartao, Carregando, Modulo, NumeroEditavel } from "../ui/basicos";
 
-type Aba = "listas" | "alimentos" | "medidas" | "identificacao" | "ajustes";
+type Aba = "listas" | "orientacoes" | "modelos" | "substituicoes" | "alimentos" | "medidas" | "identificacao" | "ajustes";
 type Aviso = { texto: string; erro: boolean };
 
 const naoSalvou = (e: unknown) =>
@@ -32,27 +35,35 @@ function EditorDeBloco({ bloco, editavel }: { bloco: BlocoBiblioteca; editavel: 
   const [salvo, setSalvo] = useState<Aviso | null>(null);
   const atualizar = useAtualizarNutricao();
   const mudou = titulo !== bloco.titulo || itens !== bloco.itens.join("\n");
+  const salvar = async (extra: Partial<BlocoBiblioteca> = {}) => {
+    try {
+      const salvoAgora = await repo.salvarBloco({ ...bloco, titulo: titulo.trim(), itens: itens.split("\n").map((l) => l.trim()).filter(Boolean), ...extra }, bloco.versao);
+      await atualizar();
+      setSalvo({ texto: `Versão ${salvoAgora.versao} salva. Planos já feitos continuam com a cópia que usaram.`, erro: false });
+    } catch (e) {
+      setSalvo({ texto: naoSalvou(e), erro: true });
+    }
+  };
   return (
     <Cartao titulo={`${bloco.titulo} · versão ${bloco.versao}`} acoes={<span className="text-xs text-tinta-2">fonte: {bloco.fonte}</span>}>
       <div className="grid gap-2">
+        {bloco.rascunho ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-bloco bg-atencao-claro px-3 py-2 text-sm text-atencao">
+            <span className="flex-1">
+              <strong>Texto sugerido pelo app, ainda não revisado.</strong> Leia, ajuste o que quiser e confirme. Enquanto não revisar, ele não sai em plano finalizado.
+            </span>
+            {editavel ? (
+              <Button type="button" size="sm" onClick={() => void salvar({ rascunho: false })}>
+                Revisei, pode usar
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         <input value={titulo} disabled={!editavel} onChange={(e) => setTitulo(e.target.value)} aria-label="Título da lista" className={`${CAIXA_CAMPO} h-10 px-3 text-sm font-semibold`} />
         <textarea value={itens} disabled={!editavel} onChange={(e) => setItens(e.target.value)} rows={Math.max(6, bloco.itens.length + 1)} aria-label="Itens, um por linha" className={`${CAIXA_CAMPO} p-3 text-sm font-medium leading-relaxed`} />
         {editavel ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              disabled={!mudou}
-              onClick={async () => {
-                try {
-                  const salvoAgora = await repo.salvarBloco({ ...bloco, titulo: titulo.trim(), itens: itens.split("\n").map((l) => l.trim()).filter(Boolean) }, bloco.versao);
-                  await atualizar();
-                  setSalvo({ texto: `Versão ${salvoAgora.versao} salva. Planos já feitos continuam com a cópia que usaram.`, erro: false });
-                } catch (e) {
-                  setSalvo({ texto: naoSalvou(e), erro: true });
-                }
-              }}
-            >
+            <Button type="button" size="sm" disabled={!mudou} onClick={() => void salvar()}>
               Salvar nova versão
             </Button>
             {salvo ? <span className={salvo.erro ? "text-xs font-medium text-erro" : "text-xs text-ok"} role={salvo.erro ? "alert" : undefined}>{salvo.texto}</span> : <span className="text-xs text-tinta-2">Um item por linha. Editar aqui não muda nenhum plano já feito.</span>}
@@ -73,7 +84,12 @@ export function NutricaoBibliotecaPage() {
   const { data: medidas = [] } = useMedidas();
   const { data: identificacao } = useIdentificacao();
   const { data: config = CONFIG_PADRAO } = useConfig();
+  const { data: modelos = [] } = useModelos();
+  const { data: grupos = [] } = useGruposSubstituicao();
+  const { data: todosPlanos = [] } = useTodosPlanos();
   const atualizar = useAtualizarNutricao();
+  // Medidas que o app aprendeu dos planos dela (usadas sozinhas na linha rápida e nas substituições).
+  const aprendidas = useMemo(() => [...aprender(todosPlanos, []).medidas.values()].sort((a, b) => b.vezes - a.vezes), [todosPlanos]);
   const [busca, setBusca] = useState("");
   const [novaMedida, setNovaMedida] = useState<{ alimentoId: string; texto: string; gramas: string }>({ alimentoId: "", texto: "", gramas: "" });
   const [linhasId, setLinhasId] = useState<string[] | null>(null);
@@ -96,7 +112,7 @@ export function NutricaoBibliotecaPage() {
     setLinhasId(novas);
   };
   const cfg = ajustes ?? config;
-  const fraseBib = fraseDaBiblioteca({ listas: blocos.length, alimentos: alimentos.length, medidas: medidas.length });
+  const fraseBib = fraseDaBiblioteca({ listas: blocos.filter((b) => b.tipo !== "orientacao").length, alimentos: alimentos.length, medidas: medidas.length });
   // Guarda os ajustes como estavam ao começar a mexer, para não gravar por cima de outra aba.
   const mudarAjustes = (novo: ConfigNutricao) => {
     if (!ajustes) setBaseAjustes(config);
@@ -123,6 +139,9 @@ export function NutricaoBibliotecaPage() {
           aoMudar={setAba}
           abas={[
             { id: "listas", rotulo: "Listas" },
+            { id: "orientacoes", rotulo: `Orientações${blocos.some((b) => b.rascunho) ? ` (${blocos.filter((b) => b.rascunho).length} a revisar)` : ""}` },
+            { id: "modelos", rotulo: `Modelos (${modelos.length})` },
+            { id: "substituicoes", rotulo: "Substituições" },
             { id: "alimentos", rotulo: "Alimentos (TACO)" },
             { id: "medidas", rotulo: `Medidas caseiras (${medidas.length})` },
             { id: "identificacao", rotulo: "Identificação" },
@@ -136,9 +155,39 @@ export function NutricaoBibliotecaPage() {
         </p>
       ) : null}
 
+      {aba === "orientacoes" ? (
+        <div className="grid gap-4">
+          <p className="text-sm text-tinta-2">
+            Orientações por condição para acrescentar ao plano (no plano: “+ Orientações por condição…”). As sugeridas pelo app foram escritas a partir das diretrizes citadas
+            em cada uma e só saem no papel depois que você revisar.
+          </p>
+          {blocos
+            .filter((b) => b.tipo === "orientacao")
+            .map((b) => (
+              <EditorDeBloco key={`${b.id}-${b.versao}`} bloco={b} editavel={editavel} />
+            ))}
+          {editavel ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-self-start gap-1.5"
+              onClick={async () => {
+                await repo.salvarBloco({ id: repo.novoId(), titulo: "Orientações para ", itens: [], texto: "", versao: 0, fonte: "Dra. Géssica Barbara", atualizadoEm: repo.agora(), tipo: "orientacao" }, null);
+                await atualizar();
+              }}
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" /> Orientação nova
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {aba === "modelos" ? <AbaModelos modelos={modelos} editavel={editavel} /> : null}
+      {aba === "substituicoes" ? <AbaSubstituicoes grupos={grupos} alimentos={alimentos} editavel={editavel} /> : null}
+
       {aba === "listas" ? (
         <div className="grid gap-4">
-          {blocos.map((b) => (
+          {blocos.filter((b) => b.tipo !== "orientacao").map((b) => (
             <EditorDeBloco key={`${b.id}-${b.versao}`} bloco={b} editavel={editavel} />
           ))}
           {editavel ? (
@@ -244,6 +293,22 @@ export function NutricaoBibliotecaPage() {
                 Guardar medida
               </Button>
             </form>
+          ) : null}
+          {aprendidas.length ? (
+            <details className="mb-4 rounded-bloco border border-fio px-3 py-2 text-sm">
+              <summary className="cursor-pointer font-semibold text-musgo">Aprendidas dos seus planos ({aprendidas.length}) · o app já usa sozinho</summary>
+              <ul className="mt-2 grid gap-1">
+                {aprendidas.map((m) => (
+                  <li key={`${m.alimentoId}-${m.unidade}`} className="flex flex-wrap justify-between gap-2 border-t border-fio pt-1">
+                    <span>
+                      <strong>1 {m.unidade}</strong> = {String(m.gramasPorUnidade).replace(".", ",")} g · {porId.get(m.alimentoId)?.nome ?? m.alimentoId}
+                    </span>
+                    <span className="text-xs text-tinta-2">visto em {m.vezes} linha(s)</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-tinta-2">Se alguma estiver errada, registre a medida certa acima: a sua vale mais que a aprendida.</p>
+            </details>
           ) : null}
           <ul className="grid gap-1 text-sm">
             {medidas.length === 0 ? <li className="italic text-tinta-2">nenhuma medida registrada ainda</li> : null}

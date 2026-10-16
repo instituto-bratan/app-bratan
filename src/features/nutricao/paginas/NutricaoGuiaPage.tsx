@@ -4,7 +4,7 @@
 // acontece, e o que fazer quando algo não funciona. Texto curto, sem jargão,
 // escrito para quem está com a pessoa na frente.
 import { Link } from "react-router-dom";
-import { AudioLines, ClipboardCopy, FileText, Mic, ShieldCheck, Sparkles, UserPlus, Wrench } from "lucide-react";
+import { AudioLines, ClipboardCopy, FileText, Keyboard, ListChecks, Mic, Scale, ShieldCheck, Sparkles, UserPlus, Wand2, Wrench } from "lucide-react";
 import { COMO_RELIGAR_ESTACAO } from "../estacao/cliente";
 import { CabecalhoDaPagina, Cartao, Modulo } from "../ui/basicos";
 
@@ -27,7 +27,11 @@ const DEPOIS: Passo[] = [
 ];
 
 const PLANO: Passo[] = [
-  { icone: FileText, titulo: "Monte o plano", texto: "Da consulta finalizada, Montar o plano: duplique a versão anterior ou comece pelas suas listas. Alimentos da TACO com as suas medidas caseiras, substituições fora do cálculo, azeite do preparo somado sem aparecer. A tabela de calorias e macros fica ao lado enquanto você monta." },
+  { icone: FileText, titulo: "Comece pronto", texto: "Da consulta finalizada, Montar o plano: duplique a versão anterior, comece de um modelo seu ou pelas suas listas. Um plano que ficou bom vira modelo com Salvar como modelo.", dica: "Os modelos ficam na Biblioteca › Modelos." },
+  { icone: Keyboard, titulo: "Escreva cada alimento numa linha", texto: "Em cada refeição, escreva como fala e tecle Enter: “4 colheres de sopa de arroz”, “1 ovo”, “150 g de frango”. O app acha o alimento na TACO e põe os gramas. Trocou “4 colheres” por “5 colheres”? Os gramas acompanham.", dica: "Na primeira vez que usar uma medida, digite os gramas. O app aprende e, da próxima, já sabe." },
+  { icone: Scale, titulo: "Ajuste às metas em um clique", texto: "Em Metas do plano, diga as calorias, a proteína em g/kg e os percentuais. Ajustar as quantidades às metas recalcula as porções e mostra o antes e o depois de cada alimento. Nada muda sem Aplicar.", dica: "Frutas, legumes e o que tiver cadeado fechado ficam como estão." },
+  { icone: Wand2, titulo: "Substituições calculadas", texto: "No arroz, substituições pelo carboidrato traz batata, mandioca, cuscuz e os outros do grupo na porção equivalente; nas carnes, pela proteína. Continuam fora do cálculo, como você pediu. Os grupos ficam na Biblioteca › Substituições." },
+  { icone: ListChecks, titulo: "Orientações por condição", texto: "“+ Orientações por condição…” acrescenta refluxo, gestação, SOP, esteatose e outras. As sugeridas pelo app só saem no papel depois que você revisar (Biblioteca › Orientações)." },
   { icone: ClipboardCopy, titulo: "PDF e entrega", texto: "Gerar o PDF sai com a sua identificação no fim e nenhuma refeição cortada entre páginas. Marque anexado, compartilhado e recebido para a tela Hoje parar de cobrar." },
 ];
 
