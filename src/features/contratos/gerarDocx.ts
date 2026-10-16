@@ -2,21 +2,30 @@
 // abre o ZIP, preenche o corpo e o cabeçalho, fecha de novo (14/10/2026).
 import { abrirZip } from "@/lib/planilhaLeitor";
 import { zipStored } from "@/lib/xlsxWriter";
-import { camposDoContrato, gruposDeMedicamentos, linhasContempla, linhasDoTexto, linhasPagamento, type DadosDoContrato } from "./montarContrato";
+import { camposDoContrato, gruposDeMedicamentos, linhasCondicoes, linhasContempla, linhasDoTexto, linhasPagamento, type DadosDoContrato } from "./montarContrato";
 import { preencherXml, type PreenchimentoDoContrato } from "./preencherXml";
 
-export function preenchimentoDoContrato(d: DadosDoContrato): PreenchimentoDoContrato {
+/**
+ * `modeloComCondicoes`: o modelo tem o parágrafo {{CONDICOES}} depois da 3.3
+ * (desde 16/10/2026). Num modelo mais velho, as cláusulas de política vão no
+ * fim da cláusula 2 para nunca saírem fora do contrato.
+ */
+export function preenchimentoDoContrato(d: DadosDoContrato, modeloComCondicoes = true): PreenchimentoDoContrato {
+  const prazo = linhasDoTexto(d.prazo);
   return {
     campos: camposDoContrato(d),
-    listas: { CONTEMPLA: linhasContempla(d), PRAZO: linhasDoTexto(d.prazo), PAGAMENTO: linhasPagamento(d) },
+    listas: modeloComCondicoes
+      ? { CONTEMPLA: linhasContempla(d), PRAZO: prazo, PAGAMENTO: linhasPagamento(d), CONDICOES: linhasCondicoes(d) }
+      : { CONTEMPLA: linhasContempla(d), PRAZO: [...prazo, ...linhasCondicoes(d, { clausula: 2, primeira: 2 })], PAGAMENTO: linhasPagamento(d) },
     grupos: gruposDeMedicamentos(d),
   };
 }
 
 export async function gerarDocxDoContrato(modelo: ArrayBuffer, d: DadosDoContrato): Promise<Blob> {
   const arquivos = await abrirZip(modelo);
-  const dados = preenchimentoDoContrato(d);
   const texto = new TextDecoder();
+  const documento = arquivos.get("word/document.xml");
+  const dados = preenchimentoDoContrato(d, documento ? texto.decode(documento).includes("{{CONDICOES}}") : true);
   const bytes = new TextEncoder();
   const saida: { nome: string; dados: Uint8Array }[] = [];
   // [Content_Types].xml primeiro, como o Word grava.

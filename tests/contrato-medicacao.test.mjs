@@ -201,3 +201,54 @@ test("a ficha guardada completa o contratante sem apagar o que já foi digitado"
   assert.equal(p.cep, "09000-000");
   assert.equal(p.nome, "MARIA DE TESTE FICTICIA");
 });
+
+// ---------------------------------------------------------------- cláusulas de política (16/10/2026)
+// "MENSAGENS CONTRATOS" + áudio de 15/10: 1 só com tirzepatida, 2 e 4 em todos,
+// 3 para quem fechou o Plano de Acompanhamento. Entram depois da 3.3.
+
+const puro = (v) => JSON.parse(JSON.stringify(v));
+const protocolo = (titulo, itens = []) => ({ titulo, via: "SUBCUTÂNEO", sessoes: 4, posologia: "", meses: 1, itens });
+
+test("tirzepatida é achada no protocolo ou no medicamento, com ou sem acento e pelo nome comercial", () => {
+  assert.equal(mont.temTirzepatida([protocolo("PROTOCOLO EMAGRECIMENTO", [{ nome: "TIRZEPATIDA 60MG/2,4ML", dose: "2,5MG" }])]), true);
+  assert.equal(mont.temTirzepatida([protocolo("Mounjaro")]), true);
+  assert.equal(mont.temTirzepatida([protocolo("SORO", [{ nome: "VITAMINA C", dose: "1G" }])]), false);
+});
+
+test("contrato novo: prazo de 6 meses e faltas do tratamento sempre; tirzepatida e programa só quando valem", () => {
+  const base = { ...mont.dadosVazios("2026-10-16") };
+  const linhas = mont.linhasCondicoes(base);
+  assert.deepEqual(
+    puro(linhas.filter((l) => l.destaque).map((l) => l.texto)),
+    ["3.4. PRAZO DE TRATAMENTO E CONSULTAS.", "3.5. POLÍTICA DE FALTAS E REMARCAÇÕES — TRATAMENTOS."],
+  );
+  const completo = { ...base, condicoes: { tirzepatida: true, prazoSeisMeses: true, programa: true, faltasTratamento: true } };
+  assert.deepEqual(
+    puro(mont.linhasCondicoes(completo).filter((l) => l.destaque).map((l) => l.texto.split(" ")[0])),
+    ["3.4.", "3.5.", "3.6.", "3.7."],
+  );
+  // O texto vai como a clínica mandou (sem caixa alta e sem negrito).
+  const texto = mont.linhasCondicoes(completo)[1];
+  assert.equal(texto.destaque, false);
+  assert.match(texto.texto, /^Esclarecemos que o pagamento realizado refere-se exclusivamente à aquisição de 01 ampola de TIRZEPATIDA 60 mg/);
+});
+
+test("o TTO com tirzepatida liga a cláusula da ampola sozinho", () => {
+  const lido = { paciente: "", cpf: "", endereco: null, emitidoEm: null, protocolos: [{ titulo: "PROTOCOLO", via: "SUBCUTÂNEO", sessoes: 4, posologia: "", meses: 1, cids: ["E66"], itens: [{ nome: "TIRZEPATIDA", dose: "5MG" }] }] };
+  const d = mont.dadosDoTto(mont.dadosVazios("2026-10-16"), lido);
+  assert.equal(d.condicoes.tirzepatida, true);
+  assert.equal(d.condicoes.prazoSeisMeses, true);
+});
+
+test("contrato antigo (sem o campo) baixa de novo sem as cláusulas, como foi assinado", () => {
+  const antigo = { ...mont.dadosVazios("2026-10-01") };
+  delete antigo.condicoes;
+  assert.deepEqual(puro(mont.linhasCondicoes(antigo)), []);
+  const modelo = `<w:body><w:p><w:r><w:t>3.3. política</w:t></w:r></w:p><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>{{CONDICOES}}</w:t></w:r></w:p><w:p><w:r><w:t>CLÁUSULA 4.0</w:t></w:r></w:p></w:body>`;
+  const vazio = xml.expandirLista(modelo, "CONDICOES", []);
+  assert.equal(vazio.includes("{{CONDICOES}}"), false);
+  assert.equal(vazio.includes("CLÁUSULA 4.0"), true);
+  const cheio = xml.expandirLista(modelo, "CONDICOES", mont.linhasCondicoes(mont.dadosVazios("2026-10-16")));
+  assert.equal((cheio.match(/<w:b\/>/g) ?? []).length, 2, "só os títulos em negrito");
+  assert.match(cheio, /3\.4\. PRAZO DE TRATAMENTO E CONSULTAS\./);
+});

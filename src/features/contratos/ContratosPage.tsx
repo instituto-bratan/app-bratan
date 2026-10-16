@@ -39,6 +39,7 @@ import { moedaDoContrato } from "./extenso";
 import { gerarDocxDoContrato, nomeDoArquivo } from "./gerarDocx";
 import { lerTto } from "./lerTto";
 import {
+  CLAUSULAS_DE_POLITICA,
   MEIOS_DE_PAGAMENTO,
   VIAS,
   avisosDoContrato,
@@ -48,8 +49,10 @@ import {
   dadosVazios,
   pendenciasDoContrato,
   prazoSugerido,
+  temTirzepatida,
   tipoSugerido,
   type ComandaParaContrato,
+  type CondicoesDoContrato,
   type DadosDoContrato,
   type LembreteParaContrato,
   type ProtocoloDoContrato,
@@ -242,6 +245,17 @@ function FormularioDoContrato({
   const [avisosDoPagamento, setAvisosDoPagamento] = useState<string[]>([]);
   // Respostas do banco que chegam depois de trocar de paciente são descartadas.
   const pacienteDaVez = useRef<string | null>(null);
+  // Cláusulas de política (16/10/2026): tirzepatida pelo TTO e programa pelo fechamento, até a recepção mexer na caixinha.
+  const [condicaoManual, setCondicaoManual] = useState<Partial<Record<keyof CondicoesDoContrato, boolean>>>({});
+  const mudarCondicao = (chave: keyof CondicoesDoContrato, valor: boolean, manual = true) => {
+    if (manual) setCondicaoManual((m) => ({ ...m, [chave]: true }));
+    setD((x) => ({ ...x, condicoes: { ...(x.condicoes ?? dadosVazios(hoje).condicoes!), [chave]: valor } }));
+  };
+  const tirzepatidaNoTto = temTirzepatida(d.protocolos);
+  useEffect(() => {
+    if (!condicaoManual.tirzepatida && d.condicoes?.tirzepatida !== tirzepatidaNoTto) mudarCondicao("tirzepatida", tirzepatidaNoTto, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tirzepatidaNoTto, condicaoManual.tirzepatida]);
 
   // Veio do Kanban (?contato=&deal=): liga o paciente e traz o valor fechado.
   useEffect(() => {
@@ -288,6 +302,7 @@ function FormularioDoContrato({
     const deal = (dealInicial ? crm.deals.find((x) => x.id === dealInicial) : null) ?? [...crm.deals].filter((x) => x.contactId === valor.ref).sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
     if (deal) {
       setDealRef(deal.id);
+      if (!condicaoManual.programa) mudarCondicao("programa", deal.adhesionChannel === "PROGRAMA_ACOMPANHAMENTO", false);
       const valorFechado = deal.soldAmount || deal.prescribedAmount;
       if (valorFechado > 0) setValorTotalTexto((t) => t || reais(valorFechado));
     }
@@ -652,6 +667,42 @@ function FormularioDoContrato({
             Soma: {moedaDoContrato(somaPagamentos)} de {moedaDoContrato(dados.valorTotal)}
           </span>
         </div>
+      </Secao>
+
+      <Secao titulo="Cláusulas de política (3.4 em diante)">
+        <p className="text-sm leading-6 text-tinta-2">
+          Entram depois da 3.3, numeradas na ordem. Prazo de 6 meses e faltas dos tratamentos valem para todos os contratos; tirzepatida e programa de acompanhamento o app marca sozinho pelo TTO e pelo fechamento.
+        </p>
+        <ul className="grid gap-2">
+          {CLAUSULAS_DE_POLITICA.map((c) => {
+            const paraTodos = c.chave === "prazoSeisMeses" || c.chave === "faltasTratamento";
+            const ligada = Boolean(d.condicoes?.[c.chave]);
+            const porque =
+              c.chave === "tirzepatida"
+                ? tirzepatidaNoTto
+                  ? "achei tirzepatida no TTO"
+                  : "não há tirzepatida no TTO"
+                : c.chave === "programa"
+                  ? dealRef && crm.deals.find((x) => x.id === dealRef)?.adhesionChannel === "PROGRAMA_ACOMPANHAMENTO"
+                    ? "o fechamento foi no Plano de Acompanhamento"
+                    : "o fechamento não é do Plano de Acompanhamento"
+                  : "todos os contratos";
+            return (
+              <li key={c.chave}>
+                <label className={cn("flex items-start gap-2 rounded-bloco border border-fio px-3 py-2 text-sm", paraTodos && "opacity-90")}>
+                  <input type="checkbox" className="mt-1" checked={ligada} disabled={paraTodos} onChange={(e) => mudarCondicao(c.chave, e.target.checked)} />
+                  <span className="grid gap-0.5">
+                    <span className="font-semibold">{c.titulo}</span>
+                    <span className="text-xs text-tinta-2">
+                      {ligada ? "Entra no contrato" : "Não entra"} · {porque}
+                      {condicaoManual[c.chave] ? " · marcado à mão" : ""}
+                    </span>
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
       </Secao>
 
       <Secao titulo="5. Contrato">

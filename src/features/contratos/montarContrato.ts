@@ -20,6 +20,22 @@ export type ProtocoloDoContrato = {
 
 export type PagamentoDoContrato = { valor: number; meio: string; parcelas: number; data: string };
 
+/**
+ * Cláusulas de política (16/10/2026, "MENSAGENS CONTRATOS" mandadas ao Lucas
+ * em 15/10 com o áudio de quando vale cada uma). Ficam gravadas no contrato:
+ * baixar de novo um contrato antigo, sem este campo, sai sem elas, como foi assinado.
+ */
+export type CondicoesDoContrato = {
+  /** 1 · Só quando o tratamento tem tirzepatida. */
+  tirzepatida: boolean;
+  /** 2 · Todos os contratos: prazo de 6 meses para usar o que foi contratado. */
+  prazoSeisMeses: boolean;
+  /** 3 · Quem fechou o Plano (Programa) de Acompanhamento. */
+  programa: boolean;
+  /** 4 · Todos os contratos: até 2 remarcações ou faltas no tratamento. */
+  faltasTratamento: boolean;
+};
+
 export type DadosDoContrato = {
   numero: number | null;
   ano: number;
@@ -50,6 +66,8 @@ export type DadosDoContrato = {
   valorTotal: number;
   pagamentos: PagamentoDoContrato[];
   assinaturaEm: string;
+  /** Ausente nos contratos gerados antes de 16/10/2026: saem sem as cláusulas de política. */
+  condicoes?: CondicoesDoContrato;
 };
 
 export type LinhaDoContrato = { texto: string; destaque: boolean };
@@ -90,7 +108,67 @@ export function dadosVazios(hojeIso: string): DadosDoContrato {
     valorTotal: 0,
     pagamentos: [],
     assinaturaEm: hojeIso,
+    condicoes: { tirzepatida: false, prazoSeisMeses: true, programa: false, faltasTratamento: true },
   };
+}
+
+// ---------------------------------------------------------------------------
+// CLÁUSULAS DE POLÍTICA (texto exatamente como a clínica mandou, 15/10/2026).
+// Entram depois da 3.3 ("A CONTRATADA adota política própria para o
+// agendamento..."), numeradas 3.4 em diante, só as que valem para o contrato.
+// ---------------------------------------------------------------------------
+
+export const CLAUSULAS_DE_POLITICA: { chave: keyof CondicoesDoContrato; titulo: string; texto: string }[] = [
+  {
+    chave: "tirzepatida",
+    titulo: "AMPOLA DE TIRZEPATIDA",
+    texto:
+      "Esclarecemos que o pagamento realizado refere-se exclusivamente à aquisição de 01 ampola de TIRZEPATIDA 60 mg / 2,4 mL, conforme previsto em contrato. Ressaltamos que o valor pago não contempla uma nova ampola nem os custos de continuidade do tratamento, caso sejam necessários. Havendo indicação para dar continuidade ao protocolo, os valores correspondentes serão informados oportunamente e cobrados separadamente, mediante orientação médica.",
+  },
+  {
+    chave: "prazoSeisMeses",
+    titulo: "PRAZO DE TRATAMENTO E CONSULTAS",
+    texto:
+      "O paciente declara estar ciente de que todos os itens contratados, incluindo tratamentos, medicamentos, consultas, exames e programas de acompanhamento, deverão ser utilizados no prazo máximo de 06 (seis) meses, contados a partir da data da contratação. Após esse período, os itens não utilizados perderão a validade, não sendo passíveis de utilização posterior ou de reembolso automático, considerando o planejamento, os descontos concedidos e a aquisição prévia de medicamentos e insumos, observadas as disposições contratuais e a legislação vigente.",
+  },
+  {
+    chave: "programa",
+    titulo: "POLÍTICA DE AGENDAMENTO, FALTAS E REMARCAÇÕES — PROGRAMA DE ACOMPANHAMENTO",
+    texto:
+      "O paciente declara estar ciente de que o programa tem duração de 06 (seis) meses e contempla o direito a apenas 01 (uma) falta durante sua vigência, seja em consulta com o Dr. Daniel, com a Dra. Géssica ou em exame de bioimpedância. As remarcações deverão ser solicitadas com antecedência mínima de 15 (quinze) dias. Em caso de falta ou solicitação de remarcação fora desse prazo, o atendimento agendado será considerado utilizado, sem direito à reposição. Essa política visa preservar a disponibilidade dos horários reservados e a organização da agenda dos profissionais.",
+  },
+  {
+    chave: "faltasTratamento",
+    titulo: "POLÍTICA DE FALTAS E REMARCAÇÕES — TRATAMENTOS",
+    texto:
+      "O paciente terá direito a, no máximo, 02 (duas) remarcações ou faltas durante todo o período do tratamento, independentemente de sua duração. Essa política visa garantir a organização da agenda, a disponibilidade da equipe de enfermagem e o cumprimento dos intervalos recomendados entre as sessões ou aplicações, contribuindo para a segurança e a eficácia do protocolo. Apresentada justificativa mediante atestado médico, a ausência não será contabilizada nesse limite, sendo a remarcação realizada conforme disponibilidade da agenda e orientação do profissional responsável.",
+  },
+];
+
+
+/** Tirzepatida no protocolo ou nos medicamentos (também pelo nome comercial). */
+export function temTirzepatida(protocolos: ProtocoloDoContrato[]): boolean {
+  const sem = (t: string) => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return protocolos.some((p) => [p.titulo, p.posologia, ...p.itens.map((i) => i.nome)].some((t) => /tirzepatid|mounjaro/.test(sem(t))));
+}
+
+/**
+ * As cláusulas que entram, cada uma em duas linhas: "3.4. TÍTULO." (negrito) e
+ * o texto. Começam na 3.4 (depois da 3.3 do modelo); num modelo antigo, sem o
+ * lugar delas, viram 2.2 em diante, no fim da cláusula 2.
+ */
+export function linhasCondicoes(d: DadosDoContrato, numeracao: { clausula: number; primeira: number } = { clausula: 3, primeira: 4 }): LinhaDoContrato[] {
+  const c = d.condicoes;
+  if (!c) return [];
+  const linhas: LinhaDoContrato[] = [];
+  let n = numeracao.primeira;
+  for (const clausula of CLAUSULAS_DE_POLITICA) {
+    if (!c[clausula.chave]) continue;
+    linhas.push({ texto: `${numeracao.clausula}.${n}. ${clausula.titulo}.`, destaque: true });
+    linhas.push({ texto: clausula.texto, destaque: false });
+    n += 1;
+  }
+  return linhas;
 }
 
 /** Tipo de tratamento sugerido: dose única = imediato; até 1 mês = curto; mais que isso = médio. */
@@ -134,6 +212,7 @@ export function dadosDoTto(base: DadosDoContrato, tto: TtoLido): DadosDoContrato
     protocolos,
     tipo: tipoSugerido(protocolos),
     prazo: prazoSugerido(protocolos),
+    condicoes: { ...(base.condicoes ?? { tirzepatida: false, prazoSeisMeses: true, programa: false, faltasTratamento: true }), tirzepatida: temTirzepatida(protocolos) },
   };
 }
 
