@@ -88,10 +88,19 @@ test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
   // O Lucas pediu o comprovante nos dois momentos da tela: ao cadastrar/vincular
   // o paciente e ao registrar o fechamento. A lógica mora numa função só, para
   // não existir chance de um caminho se comportar diferente do outro.
-  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
-  assert.ok(fonte.includes("function lancarComandaEComprovante("), "existe a função única");
-  const chamadas = fonte.match(/lancarComandaEComprovante\(\{/g) ?? [];
-  assert.equal(chamadas.length, 2, `os dois caminhos chamam a função única (achei ${chamadas.length})`);
+  const kanban = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  // 28/10/2026: a função única mora em registrarFechamento.ts (o app de
+  // Fechamento usa a mesma). O Kanban chama por ela nos DOIS caminhos: o
+  // cadastro do paciente pela casca da tela e o fechamento pelo registrarFechamento.
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/registrarFechamento.ts"), "utf8");
+  assert.ok(fonte.includes("export function lancarComandaEComprovante("), "existe a função única");
+  assert.ok(kanban.includes("function lancarComandaEComprovante(values: ValoresDoLancamento) {"), "o Kanban delega para ela");
+  assert.ok(/return lancarComandaEComprovanteNoModulo\(dependenciasDoLancamento, values\);/.test(kanban));
+  const noCadastro = kanban.match(/lancarComandaEComprovante\(\{/g) ?? [];
+  assert.equal(noCadastro.length, 1, `o cadastro chama a função única (achei ${noCadastro.length})`);
+  const noFechamento = fonte.match(/lancarComandaEComprovante\(deps, \{/g) ?? [];
+  assert.equal(noFechamento.length, 1, `o fechamento chama a função única (achei ${noFechamento.length})`);
+  assert.match(kanban, /await registrarFechamento\(/, "o fechamento do Kanban passa pelo módulo");
   // Desde 25/08/2026 addSale leva um aviso de falha (erro de gravação não pode
   // ficar só no console) — por isso a chamada tem segundo argumento.
   assert.ok(/financeiro\.addSale\(comanda,/.test(fonte), "ela cria a comanda do dia");
@@ -108,8 +117,8 @@ test("os DOIS caminhos do Kanban lançam comanda pelo mesmo código", () => {
 
 test("o fechamento lança o valor RECEBIDO, não o vendido", () => {
   // O vendido é o contrato; o que entra no caixa — e é o que o fechamento diário
-  // e o extrato conferem — é o recebido.
-  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  // e o extrato conferem — é o recebido. (28/10/2026: o código mora no módulo.)
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/registrarFechamento.ts"), "utf8");
   assert.ok(/valorRecebido: receivedAmount/.test(fonte), "o fechamento passa o recebido");
   assert.ok(!/valorRecebido: soldAmount/.test(fonte), "nunca o vendido");
   // Desde 20/08/2026 a comanda leva o recebido MENOS o dinheiro (que foi pro caixa).
@@ -453,7 +462,8 @@ test("os tipos de item oferecidos cobrem o que a recepção usa", () => {
 });
 
 test("o fechamento cria UM pagamento por forma, e o item com o tipo escolhido", () => {
-  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  // 28/10/2026: a comanda é montada em registrarFechamento.ts (Kanban e app de Fechamento).
+  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/registrarFechamento.ts"), "utf8");
   assert.ok(/payments: parcelasComanda\.map/.test(fonte), "a comanda monta os pagamentos da divisão (sem o dinheiro)");
   assert.ok(/itemType: values\.itemTipo/.test(fonte), "o item leva o tipo escolhido na tela");
   // Com uma forma só, ela leva o valor da comanda inteiro; com várias, cada uma o seu.

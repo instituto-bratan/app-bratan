@@ -4616,10 +4616,16 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   return { state: nextState, ok: true, message: "Kanban atualizado e tarefas ligadas aos setores criadas." };
 }
 
-export function createDealForContact(state: CrmState, values: { contactId: string; title: string; ownerUserId: string; estimatedValue: number; sourceChannel?: string }) {
+export function createDealForContact(
+  state: CrmState,
+  // `id` (28/10/2026): o app de Fechamento passa um id fixo por protocolo
+  // ("deal-prot-…"), para dois toques ou dois aparelhos caírem no MESMO negócio.
+  // Sem `id`, o de sempre: aleatório.
+  values: { contactId: string; title: string; ownerUserId: string; estimatedValue: number; sourceChannel?: string; id?: string },
+) {
   const now = new Date().toISOString();
   const deal: CrmDeal = {
-    id: createCrmId("deal"),
+    id: values.id || createCrmId("deal"),
     contactId: values.contactId,
     title: values.title,
     dealType: "FIRST_CONSULTATION",

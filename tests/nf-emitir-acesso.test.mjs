@@ -110,7 +110,8 @@ test("com a permissão, o emissor segue pedindo a nota como antes", async () => 
 // ---- os cinco caminhos que pedem a nota (guardados pela leitura da fonte) ----
 
 const CAMINHOS = [
-  ["src/features/crm/CrmKanbanPage.tsx", "emitirNotasDoFechamento({"],
+  // 28/10/2026: o fechamento do Kanban (e o do app de Fechamento) emite pelo módulo único.
+  ["src/features/crm/registrarFechamento.ts", "emitirNotasDoFechamento({"],
   ["src/features/financeiro/FinanceiroLancarDiaPage.tsx", "emitirNotasDoFechamento({"],
   ["src/features/financeiro/NotaDaComandaDialog.tsx", "emitirNotasDoFechamento({"],
   ["src/features/financeiro/EmitirNfseFocus.tsx", 'acao: "emitir"'],
@@ -134,8 +135,13 @@ test("Kanban: sem a permissão, salva o fechamento e manda a nota para a fila", 
   assert.match(src, /const fcPodeEmitirNota = podeEmitirNota\(pessoa\);/);
   assert.match(src, /const fcVaiEmitirNota = fcTemNotaParaEmitir && fcPodeEmitirNota;/, "o botão só promete emitir para quem pode");
   assert.match(src, /const fcNotaVaiParaFila = fcTemNotaParaEmitir && !fcPodeEmitirNota;/);
-  assert.match(src, /if \(fcNotaVaiParaFila\) \{[\s\S]{0,600}recadoNotaNaFila[\s\S]{0,400}\} else \{\s*const emissao = await emitirNotasDoFechamento\(/, "a fila vem antes, e a emissão só no else");
-  assert.match(src, /podeEmitir: fcPodeEmitirNota,/);
+  // 28/10/2026: o salvar chama registrarFechamento.ts, que decide de novo pela
+  // mesma pessoa (podeEmitirNota) — a fila vem antes, e a emissão só no else.
+  const modulo = ler("src/features/crm/registrarFechamento.ts");
+  assert.match(modulo, /const podeEmitir = podeEmitirNota\(pessoa\);\s*const vaiEmitir = e\.temNotaParaEmitir && podeEmitir;\s*const vaiParaFila = e\.temNotaParaEmitir && !podeEmitir;/);
+  assert.match(modulo, /if \(vaiParaFila\) \{[\s\S]{0,600}recadoNotaNaFila[\s\S]{0,400}\} else \{\s*const emissao = await emitirNotasDoFechamento\(/, "a fila vem antes, e a emissão só no else");
+  assert.match(modulo, /podeEmitir,\n/);
+  assert.match(src, /temNotaParaEmitir: fcTemNotaParaEmitir,/, "o Kanban entrega o mesmo 'vai ter nota' que mostra no botão");
   assert.match(src, /Nota fiscal: quem emite é o Estevão\. Ao salvar, a comanda fica na fila de notas\./, "avisa antes de salvar");
 });
 

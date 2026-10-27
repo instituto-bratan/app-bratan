@@ -75,8 +75,12 @@ test("o bloco de recebimento aparece TAMBÉM quando o paciente não fechou", () 
   assert.ok(/Pagou alguma coisa\?/.test(fonte), "com título próprio, não o de fechamento");
 });
 
+// 28/10/2026: a ordem do fechamento saiu do Kanban para registrarFechamento.ts
+// (o app de Fechamento usa a mesma); as garantias abaixo leem onde o código mora.
+const MODULO_DO_FECHAMENTO = "src/features/crm/registrarFechamento.ts";
+
 test("a comanda é lançada por VALOR RECEBIDO, não pelo resultado do fechamento", () => {
-  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  const fonte = fs.readFileSync(path.resolve(repoRoot, MODULO_DO_FECHAMENTO), "utf8");
   assert.ok(
     /\/\/ NÃO FECHOU TAMBÉM PAGA[\s\S]{0,200}if \(receivedAmount > 0\) \{/.test(fonte),
     'o gate virou "recebeu?" em vez de "fechou?"',
@@ -85,10 +89,12 @@ test("a comanda é lançada por VALOR RECEBIDO, não pelo resultado do fechament
 });
 
 test("o comprovante nunca é descartado — nem no caminho do dinheiro", () => {
-  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
-  const antesDoReturn = fonte.slice(0, fonte.indexOf("return { saleId: null, valorDinheiro, valorComanda: 0 };"));
+  const fonte = fs.readFileSync(path.resolve(repoRoot, MODULO_DO_FECHAMENTO), "utf8");
+  const saida = fonte.indexOf("return { saleId: null, valorDinheiro, valorComanda: 0");
+  assert.ok(saida > 0, "o caminho do dinheiro existe");
+  const antesDoReturn = fonte.slice(0, saida);
   assert.ok(
-    antesDoReturn.lastIndexOf("subirComprovantes({") > antesDoReturn.lastIndexOf("if (valorComanda <= 0) {"),
+    antesDoReturn.lastIndexOf("subirComprovantes(deps, {") > antesDoReturn.lastIndexOf("if (valorComanda <= 0) {"),
     "o upload tem de acontecer ANTES da saída do caminho em dinheiro",
   );
 });
@@ -96,7 +102,7 @@ test("o comprovante nunca é descartado — nem no caminho do dinheiro", () => {
 test("falha de gravação da comanda avisa a pessoa (não fica só no console)", () => {
   const hook = fs.readFileSync(path.resolve(repoRoot, "src/features/financeiro/useFinanceiro.ts"), "utf8");
   assert.ok(/function addSale\(sale: FinSale, onFalha\?/.test(hook), "addSale aceita o aviso de falha");
-  const fonte = fs.readFileSync(path.resolve(repoRoot, "src/features/crm/CrmKanbanPage.tsx"), "utf8");
+  const fonte = fs.readFileSync(path.resolve(repoRoot, MODULO_DO_FECHAMENTO), "utf8");
   assert.ok(/A COMANDA NÃO FOI GRAVADA/.test(fonte));
   assert.ok(/O DINHEIRO NÃO ENTROU NO CAIXA/.test(fonte));
 });
