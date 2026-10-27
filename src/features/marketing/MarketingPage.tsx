@@ -15,6 +15,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
+import { LinksDoWhatsappCard } from "@/features/atendimento/LinksDoWhatsappCard";
 import { AvisoSoVe, avisarSoVe, useNivelDaTela } from "@/hooks/useNivelDaTela";
 import { InfoTip } from "@/components/ui/info-tip";
 import { BlocoFolha, BlocoSaber, Botao, Cabecalho, FraseDoFluxo, Giro, MarcasDeEtapa } from "@/components/ui/fundacao";
@@ -920,6 +921,9 @@ export function MarketingPage() {
             ) : null}
           </div>
         ) : null}
+
+        {/* Links do WhatsApp por canal (27/10/2026, frente Atendimento digital). */}
+        <LinksDoWhatsappCard />
       </div>
     </AccessGate>
   );

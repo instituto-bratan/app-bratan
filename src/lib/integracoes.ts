@@ -47,17 +47,18 @@ export function assinarIntegracoes(fn: () => void) {
 
 /** O que cada integração exige do Lucas para ligar — texto que a tela mostra. */
 export const GUIA_ATIVACAO: Record<ChaveIntegracao, { passos: string[]; segredos: string[]; funcoes: string[] }> = {
+  // 27/10/2026 (frente Atendimento digital): passo a passo completo em docs/whatsapp/como-ligar.md.
   whatsapp: {
     passos: [
-      "Criar o app no Meta for Developers (Business) e ligar o número oficial do Instituto ao WhatsApp Business Platform (Cloud API).",
-      "Gerar um token permanente de sistema com permissão whatsapp_business_messaging e anotar o Phone Number ID.",
-      "Cadastrar o webhook: URL da função whatsapp-webhook + o verify token que você escolher; assinar 'messages'.",
-      "Copiar o App Secret do app da Meta para o segredo WHATSAPP_APP_SECRET: sem ele o webhook recusa tudo (29/09/2026), para ninguém forjar respostas de paciente.",
-      "Aprovar pelo menos um template (ex.: lembrete de consulta) — fora da janela de 24 h só template envia.",
-      "Ligar aqui. As mensagens das cadências passam a sair pelo número oficial; o histórico fica em mensagem_whatsapp.",
+      "Verificar a empresa na Meta e criar o app (tipo Empresa) com o produto WhatsApp, ligando o número da recepção em coexistência (continua no app WhatsApp Business do celular).",
+      "Gerar o token permanente de um usuário do sistema e anotar o identificador do número; copiar o App Secret e inventar o verify token. Gravar os quatro pelo Terminal (supabase secrets set).",
+      "Cadastrar o webhook: URL da função whatsapp-webhook + o verify token; assinar 'messages'. Sem o App Secret o webhook recusa tudo (29/09/2026), para ninguém forjar resposta de paciente.",
+      "Cadastrar os 6 modelos de utilidade de docs/whatsapp/modelos.md com os nomes exatos.",
+      "Ligar aqui com o MODO TESTE ligado (padrão): pôr o seu número na lista, mandar teste, tocar nos botões, criar uma vaga de teste.",
+      "Rodar docs/whatsapp/agendamento-encaixe.sql (oferta de encaixe a cada 10 min) e, por último, desligar o modo teste.",
     ],
     segredos: ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_APP_SECRET"],
-    funcoes: ["whatsapp-enviar", "whatsapp-webhook"],
+    funcoes: ["whatsapp-enviar", "whatsapp-webhook", "confirmar-consultas", "whatsapp-encaixe"],
   },
   focus_nfse: {
     passos: [

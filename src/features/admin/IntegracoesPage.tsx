@@ -19,6 +19,7 @@ import { CheckCircle2, CircleDashed, Plug, RefreshCw } from "lucide-react";
 import { AccessGate } from "@/components/access/AccessGate";
 import { BlocoFolha, Botao, Cabecalho, FraseDoFluxo } from "@/components/ui/fundacao";
 import { confirmar, toast } from "@/components/ui/avisos";
+import { PainelDoWhatsapp } from "@/features/atendimento/PainelDoWhatsapp";
 import { useAuth } from "@/hooks/useAuth";
 import { canManageAcessos, isCoordenacao } from "@/lib/access";
 import { GUIA_ATIVACAO, definirCacheIntegracoes, type ChaveIntegracao, type IntegracaoRecord } from "@/lib/integracoes";
@@ -165,7 +166,15 @@ function IntegracaoCard({ item, segredos, podeEditar, pessoaId, onMudou }: { ite
                   </Botao>
                 </>
               ) : (
-                <button type="button" className={BOTAO_TEXTO} onClick={() => setEditando(true)}>
+                <button
+                  type="button"
+                  className={BOTAO_TEXTO}
+                  onClick={() => {
+                    // Parte da config muda por fora do JSON (o painel do WhatsApp, 27/10/2026): abre com a versão atual.
+                    setConfigTexto(JSON.stringify(item.config, null, 2));
+                    setEditando(true);
+                  }}
+                >
                   Editar
                 </button>
               )}
@@ -185,6 +194,9 @@ function IntegracaoCard({ item, segredos, podeEditar, pessoaId, onMudou }: { ite
           )}
         </Detalhes>
       </div>
+
+      {/* WhatsApp oficial (27/10/2026): modo teste, números da lista, teste e rodar agora. */}
+      {item.chave === "whatsapp" ? <PainelDoWhatsapp ligada={item.ligada} podeEditar={podeEditar} pessoaId={pessoaId} onMudou={onMudou} /> : null}
 
       {teste && item.ligada && podeEditar ? (
         <Botao
