@@ -272,6 +272,11 @@ export type ModuleKey =
   | "agenda"
   | "compras"
   | "compras-aprovacao"
+  // 28/10/2026: a corrente do dinheiro — o app do doutor envia o protocolo e o
+  // app de Fechamento negocia (espelho de pode_enviar_protocolo /
+  // pode_ver_protocolos / pode_negociar_protocolo, 202610280101_protocolo.sql).
+  | "doutor"
+  | "fechamento"
   // 07/10/2026: emitir nota fiscal virou permissão própria (só o Estevão, por padrão).
   | "nf-emitir"
   | "pacientes";
@@ -311,6 +316,8 @@ export const moduleLabels: Record<ModuleKey, string> = {
   pacientes: "Pacientes (busca, ficha e CPF)",
   compras: "Pedidos de compra",
   "compras-aprovacao": "Aprovar pedidos de compra",
+  doutor: "App do Doutor (enviar o protocolo ao sistema)",
+  fechamento: "App de Fechamento (protocolos do doutor e fechamento comercial)",
 };
 
 export const moduleKeys = Object.keys(moduleLabels) as ModuleKey[];
@@ -394,6 +401,13 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
       // mesmo trio do financeiro completo. Acessos libera outra pessoa ou tira
       // de um deles. Espelho de pode_central() (202610280201_central_bratan.sql).
       return canFinanceiroFull(cargo) ? "EDITAR" : "OCULTO";
+    case "doutor":
+    case "fechamento":
+      // A corrente do dinheiro (28/10/2026). Padrão: a coordenação — o Dr.
+      // Daniel envia protocolo, o Estevão (gestor) negocia e fecha. Outra
+      // pessoa (um médico novo, um vendedor) ganha pela tela Acessos; a exceção
+      // vence nas duas direções, igual no banco (202610280101_protocolo.sql).
+      return isCoordenacao(cargo) ? "EDITAR" : "OCULTO";
     case "nf-emitir":
       // EMITIR NOTA FISCAL (07/10/2026). Lucas: "quero que apenas o Estevão
       // emita as notas no fechamento, ninguém mais, e que isso dê para a gente
