@@ -178,3 +178,15 @@ test("o app de Fechamento é instalável à parte e mora fora da casca do 360", 
   const vercel = JSON.parse(ler("vercel.json"));
   assert.ok(vercel.headers.some((h) => h.source === "/fechamento.webmanifest"));
 });
+
+test("o 360 mostra o protocolo: itens no cartão do Kanban e o prescrito real no check-in", () => {
+  const kanban = ler("src/features/crm/CrmKanbanPage.tsx");
+  assert.match(kanban, /const protocoloPorNegocio = useProtocolosDosNegocios\(\);/);
+  assert.match(kanban, /protocolo=\{protocoloPorNegocio\.get\(deal\.id\)\}/, "o cartão do Programa");
+  assert.match(kanban, /<ItensDoProtocolo protocolo=\{protocoloPorNegocio\.get\(deal\.id\)!\}/, "a lista Em aberto");
+  const checkin = ler("src/features/crm/CrmCheckinSemanalPage.tsx");
+  assert.match(checkin, /prescritoDaSemana\(\{ sextaISO: sexta, protocolos: protocolos\.data\?\.lista \?\? \[\], linhas \}\)/);
+  assert.match(checkin, /placeholder="prescrito"/, "o campo digitado continua");
+  assert.match(checkin, /Trazer dos protocolos/);
+  assert.match(checkin, /nos protocolos do doutor: \$\{numero\(prescritoReal\.total\)\}/, "a soma real ao lado do digitado");
+});

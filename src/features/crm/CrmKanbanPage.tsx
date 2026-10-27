@@ -54,7 +54,7 @@ import { GuidedTour, useTourSeen, type TourStep } from "@/components/ui/guided-t
 import { InfoTip } from "@/components/ui/info-tip";
 import { BlocoFolha, Botao, Cabecalho, CampoBusca, FraseDoFluxo } from "@/components/ui/fundacao";
 import { useAuth } from "@/hooks/useAuth";
-import { canContratos, isCoordenacao, podeEmitirNota } from "@/lib/access";
+import { canContratos, canSeeModule, isCoordenacao, podeEmitirNota } from "@/lib/access";
 import { readLocalValue, writeLocalValue } from "@/lib/localStore";
 import { cn } from "@/lib/utils";
 import {
@@ -110,6 +110,8 @@ import {
 } from "./registrarFechamento";
 import { descricaoPadraoDoFechamento, tipoDoItemDoFechamento } from "./tipoDoItemNoFechamento";
 import { CrmSyncBanner } from "./CrmSyncBanner";
+import { ItensDoProtocolo, useProtocolosDosNegocios } from "@/features/fechamento/ItensDoProtocolo";
+import type { Protocolo } from "@/features/fechamento/protocolo";
 import { PatientPicker, type PatientPickerValue } from "./PatientPicker";
 import { ContactChannelsFields } from "./ContactChannelsFields";
 import {
@@ -382,6 +384,7 @@ function ProgramCard({
   onSelect,
   onDragStart,
   onDragEnd,
+  protocolo,
 }: {
   deal: CrmDeal;
   contact?: CrmContact;
@@ -392,6 +395,8 @@ function ProgramCard({
   onSelect: () => void;
   onDragStart: (event: DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
+  /** O protocolo do doutor que abriu este negócio (28/10/2026): o cartão mostra os itens. */
+  protocolo?: Protocolo;
 }) {
   const contactName = contactDisplayName(contact);
   const contactPhone = contact ? (contact.whatsapp || contact.phone).replace(/\D/g, "") : "";
@@ -431,6 +436,7 @@ function ProgramCard({
         {deal.adhesionChannel ? <Etiqueta tom="musgo">{channelShort[deal.adhesionChannel]}</Etiqueta> : null}
       </div>
       {density !== "compact" && deal.title ? <p className="-mt-1 truncate text-[13px] font-medium leading-5 text-tinta-2">{deal.title}</p> : null}
+      {density !== "compact" && protocolo ? <ItensDoProtocolo protocolo={protocolo} className="-mt-1 line-clamp-2" /> : null}
       {statusDoPrazo || (risco && risco.nivel !== "VERDE") ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           {statusDoPrazo ? (
@@ -515,6 +521,8 @@ function CrmKanbanPageConteudo() {
   // "Só vê" vale aqui também (29/09/2026, auditoria B9): o useCrmState recusa a
   // gravação e os botões que abrem o fechamento ficam desabilitados.
   const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead, fechadosPorPagamento } = useCrmState({ modulo: "crm" });
+  // PROTOCOLO DO DOUTOR (28/10/2026): o cartão do negócio ligado mostra os itens prescritos.
+  const protocoloPorNegocio = useProtocolosDosNegocios();
   const [pagouDepoisVisto, setPagouDepoisVisto] = useState(0);
   const telaCrm = useNivelDaTela("crm");
   const [sncrData, setSncrData] = useState("");
@@ -1626,6 +1634,11 @@ function CrmKanbanPageConteudo() {
                 <Link to={crmModuleRoutes.tasks} className={menuAcao}>
                   <ArrowRight className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Minhas tarefas
                 </Link>
+                {canSeeModule(pessoa, "fechamento") ? (
+                  <Link to="/fechamento" className={menuAcao}>
+                    <ArrowRight className="h-4 w-4 text-tinta-2" aria-hidden="true" /> Protocolos do doutor (app de Fechamento)
+                  </Link>
+                ) : null}
                 {/* A densidade dos cartões saiu da barra (08/10/2026) e mora aqui: é preferência, não filtro. */}
                 <div role="group" aria-label="Densidade dos cards" className="mt-1 grid gap-0.5 border-t border-fio pt-2">
                   <p className="px-3 pb-1 text-xs font-bold uppercase leading-4 tracking-[0.08em] text-tinta-2">Tamanho dos cartões</p>
@@ -2248,6 +2261,7 @@ function CrmKanbanPageConteudo() {
                                     {deal.sourceChannel ? ` · ${deal.sourceChannel}` : ""}
                                     {phone ? ` · ${phone}` : ""}
                                   </p>
+                                  {protocoloPorNegocio.get(deal.id) ? <ItensDoProtocolo protocolo={protocoloPorNegocio.get(deal.id)!} className="truncate" /> : null}
                                 </div>
                                 <div className="flex shrink-0 gap-2">
                                   <Button
@@ -2347,6 +2361,7 @@ function CrmKanbanPageConteudo() {
                           onSelect={() => selectDeal(deal)}
                           onDragStart={() => undefined}
                           onDragEnd={() => undefined}
+                          protocolo={protocoloPorNegocio.get(deal.id)}
                         />
                       ))
                     ) : (

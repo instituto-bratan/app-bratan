@@ -11,7 +11,13 @@
 //
 // Todo o resto é derivado (`checkinSemanal.ts`) e nada disso é gravado: número
 // derivado que se grava congela e passa a mentir quando a régua muda.
+//
+// O PRESCRITO DOS PROTOCOLOS (28/10/2026): o doutor passou a enviar o protocolo
+// pelo app dele (tabela `protocolo`). A soma real da semana aparece ao lado do
+// que foi digitado, paciente a paciente; "Trazer dos protocolos" preenche quem
+// está zerado. O campo digitado continua valendo como alternativa.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CalendarRange, ChevronLeft, ChevronRight, Copy, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "@/components/ui/avisos";
@@ -24,6 +30,9 @@ import { todayISO } from "@/lib/localStore";
 import { moneyFin, parseFinAmount } from "@/features/financeiro/financeiroData";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { loadRemoteCrmCheckinSemana, saveRemoteCrmCheckinSemana } from "@/lib/remoteData";
+import { protocolosDoPeriodo } from "@/lib/remote/protocolo";
+import { canSeeModule } from "@/lib/access";
+import { linhasComOsProtocolos, prescritoDaSemana } from "@/features/fechamento/prescritoDaSemana";
 import {
   linhasDasComandas,
   proximaSexta,
@@ -44,7 +53,7 @@ function semanaAnterior(sextaISO: string) {
 }
 
 export function CrmCheckinSemanalPage() {
-  const { pessoa } = useAuth();
+  const { pessoa, session, isPreview } = useAuth();
   const financeiro = useFinanceiro();
   const [sexta, setSexta] = useState(() => sextaDaSemana(todayISO()));
   const [linhas, setLinhas] = useState<LinhaDoCheckin[]>([]);
@@ -128,6 +137,19 @@ export function CrmCheckinSemanalPage() {
     [sexta, linhas, metaBaseTexto, saldoHerdado],
   );
   const resumo = useMemo(() => resumoDoCheckin(semana), [semana]);
+
+  // O prescrito de verdade: os protocolos que o doutor enviou de sexta a quinta.
+  const protocolos = useQuery({
+    queryKey: ["protocolos", "semana", sexta],
+    queryFn: () => protocolosDoPeriodo(sexta, quintaDaSemana(sexta)),
+    enabled: Boolean(pessoa && session && !isPreview && canSeeModule(pessoa, "fechamento")),
+    staleTime: 60_000,
+  });
+  const prescritoReal = useMemo(
+    () => prescritoDaSemana({ sextaISO: sexta, protocolos: protocolos.data?.lista ?? [], linhas }),
+    [sexta, protocolos.data, linhas],
+  );
+  const temProtocolos = Boolean(protocolos.data?.tabelaPronta);
 
   function alterarLinha(ref: string, mudanca: Partial<LinhaDoCheckin>) {
     setLinhas((atual) => atual.map((linha) => (linha.ref === ref ? { ...linha, ...mudanca, origem: "MANUAL" as const } : linha)));
@@ -242,15 +264,22 @@ export function CrmCheckinSemanalPage() {
                   >
                     {linha.novo ? "Novo" : "Recorrente"}
                   </button>
-                  <Campo
-                    pequeno
-                    value={linha.prescrito ? String(linha.prescrito).replace(".", ",") : ""}
-                    onChange={(e) => alterarLinha(linha.ref, { prescrito: parseFinAmount(e.target.value) })}
-                    className="text-right tabular-nums"
-                    inputMode="decimal"
-                    placeholder="prescrito"
-                    aria-label="Valor prescrito"
-                  />
+                  <div className="grid gap-0.5">
+                    <Campo
+                      pequeno
+                      value={linha.prescrito ? String(linha.prescrito).replace(".", ",") : ""}
+                      onChange={(e) => alterarLinha(linha.ref, { prescrito: parseFinAmount(e.target.value) })}
+                      className="text-right tabular-nums"
+                      inputMode="decimal"
+                      placeholder="prescrito"
+                      aria-label="Valor prescrito"
+                    />
+                    {prescritoReal.porLinha[linha.ref] ? (
+                      <span className="text-right text-xs font-semibold leading-4 tabular-nums text-tinta-2" title="Soma dos protocolos que o doutor enviou para este paciente na semana (à vista no Pix)">
+                        protocolo {numero(prescritoReal.porLinha[linha.ref].valor)}
+                      </span>
+                    ) : null}
+                  </div>
                   <Campo
                     pequeno
                     value={linha.pago ? String(linha.pago).replace(".", ",") : ""}
@@ -277,6 +306,26 @@ export function CrmCheckinSemanalPage() {
             </p>
           )}
         </div>
+        {temProtocolos ? (
+          <div className="mt-4 grid gap-2 rounded-bloco bg-saber px-4 py-3 text-sm font-medium leading-6 text-tinta-2">
+            <p>
+              <strong className="font-bold text-tinta">Prescrito nos protocolos do doutor: {numero(prescritoReal.total)}</strong>{" "}
+              ({prescritoReal.quantos === 1 ? "1 protocolo" : `${prescritoReal.quantos} protocolos`} de sexta a quinta, no valor à vista no Pix). Digitado na
+              tabela: {numero(resumo.prescrito)}.
+              {prescritoReal.semLinha.length
+                ? ` ${prescritoReal.semLinha.length === 1 ? "1 paciente foi prescrito e ainda não tem linha" : `${prescritoReal.semLinha.length} pacientes foram prescritos e ainda não têm linha`} (não pagou ainda): ${prescritoReal.semLinha.map((item) => `${item.paciente} ${numero(item.valor)}`).join(" · ")}.`
+                : ""}
+            </p>
+            {prescritoReal.quantos ? (
+              <div>
+                <Botao tamanho="pq" onClick={() => setLinhas((atual) => linhasComOsProtocolos(atual, prescritoReal))}>
+                  Trazer dos protocolos
+                </Botao>
+                <span className="ml-2 text-xs">preenche quem está zerado e acrescenta quem foi prescrito; o que você digitou fica.</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <Botao
             tamanho="pq"
@@ -309,7 +358,7 @@ export function CrmCheckinSemanalPage() {
           { rotulo: "Pacientes novos", valor: String(resumo.pacientesNovos) },
           { rotulo: "Faturamento", valor: numero(resumo.faturamento) },
           { rotulo: "Ticket médio", valor: numero(resumo.ticketMedio) },
-          { rotulo: "Orçamento prescrito", valor: numero(resumo.prescrito) },
+          { rotulo: "Orçamento prescrito", valor: numero(resumo.prescrito), frase: temProtocolos ? `nos protocolos do doutor: ${numero(prescritoReal.total)}` : undefined },
           { rotulo: "Orçamento realizado", valor: numero(resumo.realizado) },
           { rotulo: "Conversão", valor: resumo.conversao === null ? "—" : `${(resumo.conversao * 100).toFixed(1).replace(".", ",")}%` },
           { rotulo: resumo.encerrada ? "Meta da próxima" : "Meta da próxima (por ora)", valor: numero(resumo.metaDaProxima) },
