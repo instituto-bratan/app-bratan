@@ -1,12 +1,37 @@
 // confirmar-consultas (15/09/2026, proposta 3.2): confirmação em dois toques.
-// 48 h e 2 h antes da consulta (agenda espelhada), manda o template de utilidade
-// "Confirmar / Remarcar" pelo WhatsApp oficial. A resposta chega no
-// whatsapp-webhook, que atualiza agenda_espelho.confirmacao_status. Quem não
-// responde entra em risco (motor riscoDeFalta) e a recepção liga primeiro.
-// Só trabalha com as integrações whatsapp E (feegow ou outlook) ligadas e com o
-// template configurado em integracao.whatsapp.config.templateConfirmacao.
-import { db, json, lerIntegracao, mesmaPessoa, registrarEvento, respostaDesligada, telefoneE164 } from "../_shared/integracoes.ts";
-import { COORDENACAO, exigirAcesso, headerDoCron } from "../_shared/guarda.ts";
+// Roda no agendador de hora em hora (confirmar-consultas-horario, 15 11-23 UTC).
+//
+// 27/10/2026 (frente Atendimento digital) — refeita:
+//   · NA VÉSPERA, não mais 48 h e 2 h antes: a partir das 10h sai o modelo
+//     confirmacao_consulta (botões "Confirmo" e "Preciso remarcar"); a partir das
+//     17h, quem ainda não respondeu recebe o lembrete_vespera. A consulta de
+//     segunda é confirmada no sábado (config confirmacao.enviarNoDomingo). A
+//     regra está em _shared/whatsappRegras.ts (toquesDevidos), com teste.
+//   · O ENVIO NÃO PASSA MAIS POR HTTP para a whatsapp-enviar. Essa chamada usava
+//     o x-cron-secret, e o CRON_SECRET não existe (regra do Lucas: segredo não
+//     mora no banco) — a whatsapp-enviar recusaria TODAS (401) e nenhuma
+//     confirmação sairia no dia de ligar. Agora a função manda pelo caminho
+//     único (_shared/whatsapp.ts), com a mesma trava do modo teste.
+//   · Lê todas as fichas do CRM em páginas de 1000 (o Supabase corta em 1000
+//     linhas: paciente na ficha 1001 ficava sem confirmação).
+//   · Vaga livre ("AGENDAR CONSULTA"), bloqueio, desmarcada e quem já respondeu
+//     (inclusive pelo portal) ficam de fora; ficha com opt-out também.
+//   · A mensagem leva só o primeiro nome, o dia e a hora — nada de profissional,
+//     procedimento ou dado clínico.
+// O telefone vem da ficha do CRM, casando pelo nome (o calendário do Google não
+// traz telefone — 17/09/2026): só vale quando UMA ficha casa.
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
+import { db, json, mesmaPessoa, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
+import { COORDENACAO, exigirAcesso } from "../_shared/guarda.ts";
+import { SEGREDOS_DO_WHATSAPP, contextoDoWhatsapp, enviar } from "../_shared/whatsapp.ts";
+import { diaPorExtenso, horaEmBrasilia, primeiroNome, telefoneBR, toquesDevidos, travaDoModoTeste, type LinhaParaConfirmar } from "../_shared/whatsappRegras.ts";
+
+type Ficha = { ref: string; nome: string; apelido: string; telefone: string; optOut: boolean };
+
+/** O nome da caixa sem anotação: "MARIA SILVA (retorno) - online" → "MARIA SILVA". */
+function nomeDaCaixa(resumo: string) {
+  return resumo.replace(/\([^)]*\)/g, " ").split(/\s[-–—]\s/)[0].replace(/\s+/g, " ").trim();
+}
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
@@ -15,66 +40,111 @@ Deno.serve(async (request) => {
   const acesso = await exigirAcesso(request, { cargos: COORDENACAO, cron: true, automatico: true });
   if (!acesso.ok) return acesso.resposta;
   const client = db();
-  const whatsapp = await lerIntegracao(client, "whatsapp");
-  if (!whatsapp.ligada) return respostaDesligada("whatsapp");
-  const template = String(whatsapp.config.templateConfirmacao ?? "");
-  if (!template) return json({ ok: false, error: "Configure templateConfirmacao (nome do template aprovado na Meta) na integração whatsapp." });
-  const agora = Date.now();
-  const em = (h: number) => new Date(agora + h * 3600_000).toISOString();
-  // Janela 48 h: consultas entre 44 h e 52 h à frente ainda sem o 1º toque.
-  const { data: a48 } = await client.from("agenda_espelho").select("id, inicio, paciente, telefone, profissional").gte("inicio", em(44)).lte("inicio", em(52)).is("confirmacao_48h_em", null).not("status", "in", "(cancelado,desmarcado)");
-  // Janela 2 h: entre 1 h e 3 h à frente, sem o 2º toque e ainda não confirmadas.
-  const { data: a2 } = await client.from("agenda_espelho").select("id, inicio, paciente, telefone, profissional").gte("inicio", em(1)).lte("inicio", em(3)).is("confirmacao_2h_em", null).not("status", "in", "(cancelado,desmarcado)").or("confirmacao_status.is.null,confirmacao_status.neq.CONFIRMADA");
-  // O TELEFONE NÃO VEM DA AGENDA (17/09/2026). O calendário do Google entrega só
-  // o nome do paciente: nos 283 eventos espelhados, `telefone` está vazio em
-  // todos. Sem este passo, a confirmação em dois toques rodaria de hora em hora
-  // e não mandaria uma única mensagem. Aqui o telefone vem da ficha do CRM,
-  // casando pelo nome com a mesma regra do resto do app.
-  const { data: fichas } = await client.from("crm_contacts").select("full_name, phone, whatsapp");
-  const comTelefone = ((fichas ?? []) as { full_name: string; phone: string | null; whatsapp: string | null }[])
-    .map((ficha) => ({ nome: ficha.full_name ?? "", telefone: telefoneE164(ficha.whatsapp || ficha.phone || "") }))
-    .filter((ficha) => ficha.nome && ficha.telefone.length >= 12);
-  const telefoneJaVisto = new Map<string, string>();
-  function telefoneDoPaciente(nomeNaAgenda: string, telefoneNaAgenda: string | null) {
-    const daAgenda = telefoneE164(telefoneNaAgenda ?? "");
-    if (daAgenda.length >= 12) return daAgenda;
-    const guardado = telefoneJaVisto.get(nomeNaAgenda);
-    if (guardado !== undefined) return guardado;
-    // Só vale quando UMA ficha casa: duas pessoas de nome parecido não podem
-    // receber a mensagem uma da outra.
-    const achadas = comTelefone.filter((ficha) => mesmaPessoa(ficha.nome, nomeNaAgenda));
-    const unico = achadas.length === 1 ? achadas[0].telefone : "";
-    telefoneJaVisto.set(nomeNaAgenda, unico);
-    return unico;
+  const contexto = await contextoDoWhatsapp(client);
+  if (!contexto.ligada) return respostaDesligada("whatsapp");
+  const faltam = segredosFaltando(SEGREDOS_DO_WHATSAPP);
+  if (faltam.length) return respostaSemSegredos("whatsapp", faltam);
+  if (!contexto.config.confirmacao.ligada) return json({ ok: true, pausada: true, enviados: 0 });
+
+  const agoraISO = new Date().toISOString();
+  // A véspera (ou o sábado da segunda) cai sempre nos próximos 3 dias.
+  const ate = new Date(Date.now() + 3 * 86_400_000).toISOString();
+  const { data, error } = await client
+    .from("agenda_espelho")
+    .select("id, inicio, status, paciente, profissional, telefone, confirmacao_status, confirmacao_enviada_em, confirmacao_para, lembrete_enviado_em")
+    .gt("inicio", agoraISO)
+    .lte("inicio", ate)
+    .order("inicio")
+    .limit(1000);
+  if (error) return json({ ok: false, error: error.message }, 500);
+  const linhas = (data ?? []) as (LinhaParaConfirmar & { telefone: string | null })[];
+  const toques = toquesDevidos(linhas, agoraISO, contexto.config.confirmacao);
+  if (!toques.length) return json({ ok: true, devidos: 0, enviados: 0 });
+
+  const fichas = await lerFichas(client);
+  const porId = new Map(linhas.map((linha) => [linha.id, linha]));
+  const cache = new Map<string, Ficha | null>();
+  function fichaDoPaciente(nomeNaAgenda: string, telefoneNaAgenda: string | null): Ficha | null {
+    const daAgenda = telefoneBR(telefoneNaAgenda ?? "");
+    const nome = nomeDaCaixa(nomeNaAgenda);
+    if (daAgenda) return fichas.find((ficha) => ficha.telefone === daAgenda && mesmaPessoa(ficha.nome, nome)) ?? { ref: "", nome, apelido: "", telefone: daAgenda, optOut: false };
+    if (cache.has(nome)) return cache.get(nome) ?? null;
+    // Só vale quando UMA ficha casa: duas pessoas de nome parecido não recebem a mensagem uma da outra.
+    const achadas = fichas.filter((ficha) => mesmaPessoa(ficha.nome, nome));
+    const unica = achadas.length === 1 ? achadas[0] : null;
+    cache.set(nome, unica);
+    return unica;
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  let enviados = 0;
-  let semTelefone = 0;
-  async function toque(item: { id: string; inicio: string; paciente: string | null; telefone: string | null; profissional: string | null }, etapa: "48h" | "2h") {
-    const telefone = telefoneDoPaciente(item.paciente ?? "", item.telefone);
-    if (!telefone || telefone.length < 12) {
-      semTelefone += 1;
-      return;
+  const conta = { enviados: 0, semTelefone: 0, foraDoModoTeste: 0, optOut: 0, falhas: 0 };
+  for (const toque of toques) {
+    const linha = porId.get(toque.linhaId);
+    if (!linha?.inicio) continue;
+    const ficha = fichaDoPaciente(linha.paciente ?? "", linha.telefone);
+    if (!ficha) {
+      conta.semTelefone += 1;
+      continue;
     }
-    const quando = new Date(item.inicio);
-    const dia = quando.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-    const hora = quando.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
-    const r = await fetch(`${supabaseUrl}/functions/v1/whatsapp-enviar`, {
-      method: "POST",
-      // x-cron-secret (29/09/2026): a whatsapp-enviar não aceita mais só a chave anônima.
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, ...headerDoCron() },
-      body: JSON.stringify({ telefone, template: { nome: template, parametros: [(item.paciente ?? "").split(" ")[0] || "paciente", dia, hora, item.profissional ?? "Instituto Bratan"] }, taskRef: `agenda:${item.id}` }),
+    if (ficha.optOut) {
+      conta.optOut += 1;
+      continue;
+    }
+    // Modo teste: quem não está na lista nem é tentado (nada de registro de erro por paciente).
+    if (!travaDoModoTeste(contexto.config, ficha.telefone).libera) {
+      conta.foraDoModoTeste += 1;
+      continue;
+    }
+    const resultado = await enviar(client, contexto, {
+      telefone: ficha.telefone,
+      modelo: { modelo: toque.modelo, variaveis: [primeiroNome(ficha.apelido || ficha.nome), diaPorExtenso(linha.inicio), horaEmBrasilia(linha.inicio)], refDosBotoes: linha.id },
+      contactRef: ficha.ref || null,
+      taskRef: `agenda:${linha.id}`,
     });
-    const ok = (await r.json().catch(() => ({ ok: false }))).ok;
-    if (ok) {
-      enviados += 1;
-      await client.from("agenda_espelho").update(etapa === "48h" ? { confirmacao_48h_em: new Date().toISOString(), confirmacao_status: "AGUARDANDO" } : { confirmacao_2h_em: new Date().toISOString() }).eq("id", item.id);
+    if (!resultado.ok) {
+      conta.falhas += 1;
+      continue;
     }
+    conta.enviados += 1;
+    const agora = new Date().toISOString();
+    await client
+      .from("agenda_espelho")
+      .update(
+        toque.tipo === "CONFIRMACAO"
+          ? { confirmacao_enviada_em: agora, confirmacao_para: linha.inicio, confirmacao_status: "AGUARDANDO", lembrete_enviado_em: null }
+          : { lembrete_enviado_em: agora },
+      )
+      .eq("id", linha.id);
   }
-  for (const item of a48 ?? []) await toque(item, "48h");
-  for (const item of a2 ?? []) await toque(item, "2h");
-  await registrarEvento(client, { chave: "whatsapp", direcao: "SAIDA", status: "OK", resumo: `Confirmação em dois toques: ${enviados} enviado(s) (${(a48 ?? []).length} de 48 h, ${(a2 ?? []).length} de 2 h)${semTelefone ? ` · ${semTelefone} sem telefone na ficha` : ""}` });
-  return json({ ok: true, enviados, semTelefone, janela48h: (a48 ?? []).length, janela2h: (a2 ?? []).length });
+  const confirmacoes = toques.filter((toque) => toque.tipo === "CONFIRMACAO").length;
+  await registrarEvento(client, {
+    chave: "whatsapp",
+    direcao: "SAIDA",
+    status: conta.falhas ? "ERRO" : "OK",
+    resumo:
+      `Confirmação na véspera: ${conta.enviados} de ${toques.length} enviada(s) (${confirmacoes} confirmação(ões), ${toques.length - confirmacoes} lembrete(s))` +
+      `${conta.semTelefone ? ` · ${conta.semTelefone} sem telefone na ficha` : ""}${conta.foraDoModoTeste ? ` · ${conta.foraDoModoTeste} fora da lista do modo teste` : ""}` +
+      `${conta.optOut ? ` · ${conta.optOut} com opt-out` : ""}${conta.falhas ? ` · ${conta.falhas} falha(s)` : ""}`,
+  });
+  return json({ ok: true, devidos: toques.length, ...conta });
 });
+
+/** Todas as fichas ativas com telefone, em páginas (o Supabase devolve no máximo 1000 por vez). */
+async function lerFichas(client: SupabaseClient): Promise<Ficha[]> {
+  const fichas: Ficha[] = [];
+  for (let pagina = 0; pagina < 20; pagina += 1) {
+    const { data, error } = await client
+      .from("crm_contacts")
+      .select("client_ref, full_name, preferred_name, phone, whatsapp, opt_out")
+      .is("archived_at", null)
+      .order("client_ref")
+      .range(pagina * 1000, pagina * 1000 + 999);
+    if (error) throw new Error(`fichas do CRM: ${error.message}`);
+    const linhas = (data ?? []) as { client_ref: string; full_name: string | null; preferred_name: string | null; phone: string | null; whatsapp: string | null; opt_out: boolean | null }[];
+    for (const linha of linhas) {
+      const telefone = telefoneBR(linha.whatsapp || linha.phone || "");
+      if (linha.full_name && telefone) fichas.push({ ref: linha.client_ref, nome: linha.full_name, apelido: linha.preferred_name ?? "", telefone, optOut: Boolean(linha.opt_out) });
+    }
+    if (linhas.length < 1000) break;
+  }
+  return fichas;
+}

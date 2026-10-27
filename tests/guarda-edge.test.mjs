@@ -62,9 +62,25 @@ test("as onze funções com chave de serviço passam pelo guarda (e só as do cr
   }
 });
 
-test("confirmar-consultas repassa o segredo do cron ao chamar a whatsapp-enviar", () => {
+// 27/10/2026 (frente Atendimento digital): a confirmar-consultas chamava a
+// whatsapp-enviar por HTTP com o x-cron-secret — mas o CRON_SECRET não existe
+// (segredo não mora no banco), e a whatsapp-enviar recusaria TODAS as chamadas.
+// Agora ela manda pelo caminho único (_shared/whatsapp.ts), com a mesma trava
+// do modo teste, sem HTTP entre funções.
+test("confirmar-consultas manda pelo caminho único, sem HTTP para a whatsapp-enviar", () => {
   const src = fs.readFileSync("supabase/functions/confirmar-consultas/index.ts", "utf8");
-  assert.match(src, /functions\/v1\/whatsapp-enviar[\s\S]*headerDoCron\(\)/);
+  assert.doesNotMatch(src, /functions\/v1\/whatsapp-enviar/);
+  assert.match(src, /from "\.\.\/_shared\/whatsapp\.ts"/);
+  assert.match(src, /await enviar\(client, contexto, \{/);
+});
+
+test("whatsapp-encaixe: agendador (corpo vazio) ou coordenação, guarda antes do banco", () => {
+  const src = fs.readFileSync("supabase/functions/whatsapp-encaixe/index.ts", "utf8");
+  assert.match(src, /exigirAcesso\(request, \{ cargos: COORDENACAO, cron: true, automatico: true \}\)/);
+  const inicioDoBanco = src.search(/\.from\(|db\(\)/);
+  assert.ok(src.indexOf("exigirAcesso(request") < inicioDoBanco, "o guarda vem antes de qualquer acesso ao banco");
+  // A vaga de teste é só pelo botão (corpo com conteúdo = login), nunca pelo agendador.
+  assert.match(src, /acao === "vaga-de-teste"[\s\S]*acesso\.quem\.viaCron[\s\S]*403/);
 });
 
 test("whatsapp-webhook recusa POST sem WHATSAPP_APP_SECRET (503) e nunca aceita sem assinatura", () => {
@@ -87,7 +103,7 @@ test("rotina automática sem segredo: só corpo vazio, sem pessoa, sem CRON_SECR
 
 test("só as rotinas agendadas ganham o caminho automático; envio de mensagem nunca", () => {
   const ler = (f) => fs.readFileSync(new URL(`../supabase/functions/${f}/index.ts`, import.meta.url), "utf8");
-  for (const f of ["sharepoint-dispatch", "rotina-diaria", "push-enviar", "feegow-sync", "outlook-agenda", "confirmar-consultas", "google-agenda-sync"]) {
+  for (const f of ["sharepoint-dispatch", "rotina-diaria", "push-enviar", "feegow-sync", "outlook-agenda", "confirmar-consultas", "google-agenda-sync", "whatsapp-encaixe"]) {
     assert.match(ler(f), /automatico: true/, f);
   }
   for (const f of ["whatsapp-enviar", "supersign-enviar", "marketing-briefing-parse", "integracoes-status"]) {
