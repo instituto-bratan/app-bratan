@@ -1,0 +1,21 @@
+{
+  "name": "Bratan Fechamento",
+  "short_name": "Fechamento",
+  "description": "Protocolos do doutor e fechamento comercial do Instituto Bratan, no celular do vendedor.",
+  "id": "/fechamento",
+  "start_url": "/fechamento",
+  "scope": "/fechamento",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#FAF8F1",
+  "theme_color": "#FAF8F1",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/fechamento-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/fechamento-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/fechamento-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,4 +1,4 @@
-import { Suspense, type ReactNode } from "react";
+import { Suspense, lazy, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AccessGate } from "@/components/access/AccessGate";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
@@ -76,6 +76,8 @@ const NutricaoPlanoPage = lazyRoute("nutricaoPlano");
 const NutricaoBibliotecaPage = lazyRoute("nutricaoBiblioteca");
 const NutricaoGuiaPage = lazyRoute("nutricaoGuia");
 const AgendaDoDiaPage = lazyRoute("agendaDoDia");
+// App de Fechamento comercial (28/10/2026): app próprio no celular do vendedor, fora da casca do 360.
+const FechamentoApp = lazy(() => import("@/features/fechamento/FechamentoApp").then((modulo) => ({ default: modulo.FechamentoApp })));
 
 // Nutrição (28/09/2026): dado clínico, a porta é o controle de Acessos (módulo "nutricao").
 function PortaNutricao({ children }: { children: ReactNode }) {
@@ -105,6 +107,10 @@ export function App() {
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          {/* APP DO DOUTOR (28/10/2026): o login do 360 dentro do escopo /doutor/; entrou, volta para o app dele. */}
+          <Route path="/doutor/entrar" element={<LoginPage voltarPara="/doutor/" />} />
+          {/* APP DE FECHAMENTO (28/10/2026): manifesto e ícone próprios, login dentro do escopo /fechamento. */}
+          <Route path="/fechamento/*" element={<FechamentoApp />} />
           {/* PORTAL DO PACIENTE (15/09/2026): fora do login da equipe; entra por link mágico. */}
           <Route path="/meu/*" element={<PortalPacienteApp />} />
           <Route element={<ProtectedRoute />}>

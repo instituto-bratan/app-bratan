@@ -304,3 +304,17 @@ test("continuação repete o canal do paciente em vez de trocar", () => {
   assert.equal(r.ok, true);
   assert.equal(r.state.deals.find((d) => d.id === r.dealId).adhesionChannel, "CLUBE_BRATAN");
 });
+
+// ---------------------------------------------------------------- as duas telas usam o mesmo código
+
+test("o Kanban e o app de Fechamento passam pelo mesmo registrarFechamento", () => {
+  const kanban = fs.readFileSync("src/features/crm/CrmKanbanPage.tsx", "utf8");
+  const app = fs.readFileSync("src/features/fechamento/FechouSheet.tsx", "utf8");
+  assert.match(kanban, /from "\.\/registrarFechamento";/);
+  assert.match(kanban, /await registrarFechamento\(/);
+  assert.match(app, /from "@\/features\/crm\/registrarFechamento";/);
+  assert.match(app, /await registrarFechamento\(/);
+  // O Kanban não tem mais uma cópia da ordem do fechamento.
+  assert.doesNotMatch(kanban, /financeiro\.addSale\(/);
+  assert.doesNotMatch(kanban, /emitirNotasDoFechamento\(/);
+});

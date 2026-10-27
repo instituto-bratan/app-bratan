@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -24,7 +24,13 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-export function LoginPage() {
+/**
+ * `voltarPara` (28/10/2026): os apps com escopo próprio (o do doutor em /doutor/,
+ * o de Fechamento em /fechamento) mostram este mesmo login sem sair do escopo e
+ * dizem para onde voltar. O app do doutor mora fora do React (é estático), então
+ * a volta para ele é uma navegação de verdade.
+ */
+export function LoginPage({ voltarPara }: { voltarPara?: string } = {}) {
   const { pessoa, signInWithPassword, enterPreview } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,9 +43,21 @@ export function LoginPage() {
     defaultValues: { email: "", password: "" },
   });
 
-  const redirectTo = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/";
+  const redirectTo = voltarPara ?? (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/";
+  const voltaParaForaDoApp = redirectTo.startsWith("/doutor/");
+
+  useEffect(() => {
+    if (pessoa && voltaParaForaDoApp) window.location.replace(redirectTo);
+  }, [pessoa, voltaParaForaDoApp, redirectTo]);
 
   if (pessoa) {
+    if (voltaParaForaDoApp) {
+      return (
+        <main className="grid min-h-screen place-items-center px-6">
+          <p className="text-sm font-medium text-brand-musgo">Voltando ao app do doutor…</p>
+        </main>
+      );
+    }
     return <Navigate to={redirectTo} replace />;
   }
 
@@ -57,6 +75,7 @@ export function LoginPage() {
 
   function startPreview(cargo: Cargo) {
     enterPreview(cargo);
+    if (voltaParaForaDoApp) return;
     navigate(redirectTo, { replace: true });
   }
 

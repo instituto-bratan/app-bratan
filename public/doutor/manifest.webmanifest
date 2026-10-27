@@ -1,0 +1,20 @@
+{
+  "name": "Plano Bratan · App do Doutor",
+  "short_name": "Plano Bratan",
+  "description": "Monta o protocolo na consulta, apresenta ao paciente e envia ao comercial do Instituto Bratan.",
+  "id": "/doutor/",
+  "start_url": "/doutor/",
+  "scope": "/doutor/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0D110A",
+  "theme_color": "#0D110A",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["medical", "business"],
+  "icons": [
+    { "src": "/doutor/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/doutor/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/doutor/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

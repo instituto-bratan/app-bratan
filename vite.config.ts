@@ -9,6 +9,13 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
+      // Duas páginas (28/10/2026): o APP BRATAN e o APP DO DOUTOR (/doutor/), que
+      // leva só a ponte com o sistema (src/doutor/ponte.ts); o resto dele é a v22
+      // estática em public/doutor/.
+      input: {
+        index: path.resolve(__dirname, "index.html"),
+        doutor: path.resolve(__dirname, "doutor/index.html"),
+      },
       output: {
         manualChunks: {
           react: ["react", "react-dom", "react-router-dom"],

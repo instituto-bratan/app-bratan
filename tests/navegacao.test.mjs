@@ -286,6 +286,9 @@ test("nenhuma rota de tela do App.tsx fica órfã, e nenhuma URL de hoje muda", 
   const EXCECOES = {
     "/login": "tela de entrar, antes do login (fora da casca)",
     "/meu/*": "portal do paciente, app separado com login próprio",
+    // 28/10/2026: a corrente do dinheiro — dois apps com escopo próprio, fora do menu do 360.
+    "/doutor/entrar": "login do 360 dentro do escopo do app do doutor (estático em /doutor/)",
+    "/fechamento/*": "app de Fechamento comercial, instalável à parte no celular do vendedor",
     "*": "endereço desconhecido volta ao Início",
   };
 

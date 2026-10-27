@@ -7,7 +7,13 @@
 //  - Requisições cross-origin (Supabase, wss, etc.): NÃO são interceptadas — sempre
 //    vão direto para a rede, preservando dados ao vivo e tempo real.
 // Troque o número da versão para forçar uma limpeza de cache em um deploy futuro.
-const CACHE = "bratan-shell-v1";
+// 28/10/2026 (v2): o APP DO DOUTOR mora em /doutor/ com service worker e cache
+// próprios. Este aqui não toca no /doutor/ e só apaga os PRÓPRIOS caches
+// (prefixo "bratan-shell-"); a v1 apagava todo cache do domínio que não fosse o
+// dela, o que levaria junto o cache do app do doutor. Subir para v2 também
+// limpa um /index.html que a v1 possa ter guardado ao abrir /doutor/.
+const PREFIXO = "bratan-shell-";
+const CACHE = `${PREFIXO}v2`;
 const OFFLINE_URL = "/index.html";
 
 self.addEventListener("install", (event) => {
@@ -24,7 +30,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
+      await Promise.all(keys.filter((key) => key.startsWith(PREFIXO) && key !== CACHE).map((key) => caches.delete(key)));
       await self.clients.claim();
     })(),
   );
@@ -44,6 +50,11 @@ self.addEventListener("fetch", (event) => {
 
   // O version.json é o sinal de "saiu versão nova" — nunca cachear, sempre rede.
   if (url.pathname === "/version.json") return;
+
+  // App do Doutor (28/10/2026): tem o próprio service worker (/doutor/sw.js).
+  // Antes de ele instalar, a página dele passa direto — senão este guardaria a
+  // tela do doutor como se fosse o index.html do 360.
+  if (url.pathname === "/doutor" || url.pathname.startsWith("/doutor/")) return;
 
   // Navegação (carregar uma página/rota): rede primeiro, cache como rede de segurança.
   if (request.mode === "navigate") {
