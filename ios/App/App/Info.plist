@@ -34,6 +34,8 @@
 	<string>O Meu Bratan usa a câmera só quando você escolhe tirar uma foto de evolução. A foto fica visível só para você.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>O Meu Bratan abre as suas fotos só quando você escolhe uma foto de evolução para enviar. A foto fica visível só para você.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>O Meu Bratan usa o microfone só quando você escolhe gravar o seu recado de até 1 minuto. O áudio fica guardado só para você.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

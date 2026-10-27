@@ -17,6 +17,9 @@ const SO_DA_EQUIPE = [
   "/administracao/integracoes",
   "/administracao/acessos",
   "/concierge/nps",
+  // 27/10/2026: o editor das Semanas do portal e a gravação do recado do Dr. são da equipe.
+  "/acompanhamento/semanas",
+  "Gravar recado do Dr.",
 ];
 /** Arquivos públicos que nunca entram no app: os POPs internos e o PWA da equipe. */
 const ARQUIVOS_PROIBIDOS = ["fluxogramas", "pdfjs", "sw.js", "manifest.webmanifest"];

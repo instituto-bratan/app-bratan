@@ -1,6 +1,17 @@
 // Dados de exemplo para o portal em modo prévia (sem Supabase): servem para
 // desenhar, testar e mostrar a interface sem tocar em paciente real.
 import type { PortalDados } from "./portalPaciente";
+import { SEMANAS_DE_EXEMPLO, semanaDoPlano } from "../../../supabase/functions/_shared/semanaDoPaciente";
+
+/**
+ * A semana do meio do plano na demonstração (27/10/2026). Texto de exemplo, no
+ * mesmo tom que a equipe vai escrever: educativo, sem promessa e sem remédio.
+ */
+export const SEMANA_DO_MEIO_DE_EXEMPLO = {
+  titulo: "Meio do caminho: constância vale mais que pressa",
+  costumaAcontecer: "Por volta do quarto mês é comum a balança andar mais devagar. Nesta fase a rotina pesa mais do que qualquer semana isolada, e a composição do corpo conta a parte da história que o peso não conta.",
+  missao: "Escolha uma refeição da semana para preparar com calma e repare em como você se sente depois dela.",
+};
 
 export function dadosDemo(hojeISO: string): PortalDados {
   const soma = (dias: number) => {
@@ -39,6 +50,11 @@ export function dadosDemo(hojeISO: string): PortalDados {
     consentimentos: [{ tipo: "LGPD", aceito: true, em: `${inicio}T15:00:00-03:00` }, { tipo: "TRATAMENTO", aceito: true, em: `${inicio}T15:00:00-03:00` }],
     // Fotos de evolução: na demo são silhuetas desenhadas (nunca foto de gente).
     // A voz do doutor: na demo é só texto (não existe áudio de exemplo — e não se inventa voz do médico).
+    // MOTIVO PARA ABRIR (27/10/2026): a semana do plano com o check-in em branco e um
+    // recado do Dr. ainda trancado. Na demonstração não existe áudio: o cadeado mostra
+    // a contagem, e quem toca um recado aberto lê que não se inventa a voz de ninguém.
+    semana: { numero: semanaDoPlano(inicio, hojeISO) ?? 1, conteudo: SEMANA_DO_MEIO_DE_EXEMPLO, checkin: null },
+    recados: [{ id: "demo-recado-dr", autor: "DOUTOR", quemFala: "Dr. Daniel", duracaoS: 42, abreEm: soma(5), aberto: false, ouvidoEm: null, criadoEm: `${soma(-40)}T15:00:00-03:00` }],
     vozDoDoutor: { id: "demo-voz", fase: "MEIO", rotuloDaFase: "Meio do caminho", titulo: "Você está no meio do caminho", texto: "Mariana, esse é o mês em que a balança costuma andar mais devagar — e é normal. O que eu olho agora é a composição: gordura caindo, músculo firme. Você está fazendo exatamente isso. Mantém a rotina, me manda a pesagem da semana, e a gente ajusta o resto na consulta.", urlAudio: null, duracaoS: null, ouvidaEm: null },
     fotos: [
       { id: "demo-f1", dia: inicio, angulo: "FRENTE", url: silhueta(1.0, "primeira") },
@@ -75,6 +91,10 @@ export function dadosDemoNovo(hojeISO: string): PortalDados {
     parcelasAbertas: [],
     documentos: [],
     fotos: [],
+    // Primeira semana: o texto de exemplo da semana 1 e o recado que o Dr. gravou no
+    // fechamento, trancado até o dia 15 do plano (27/10/2026).
+    semana: { numero: semanaDoPlano(inicio, hojeISO) ?? 1, conteudo: { titulo: SEMANAS_DE_EXEMPLO[0].titulo, costumaAcontecer: SEMANAS_DE_EXEMPLO[0].costumaAcontecer, missao: SEMANAS_DE_EXEMPLO[0].missao }, checkin: null },
+    recados: [{ id: "demo-recado-dr-novo", autor: "DOUTOR", quemFala: "Dr. Daniel", duracaoS: 38, abreEm: dia(12), aberto: false, ouvidoEm: null, criadoEm: `${inicio}T15:00:00-03:00` }],
     // Quem acabou de entrar está no COMEÇO — a mensagem do meio do caminho (e o
     // nome da Mariana) não cabem aqui (22/09/2026).
     vozDoDoutor: { id: "demo-voz-comeco", fase: "COMECO", rotuloDaFase: "Começo", titulo: "Bem-vinda ao seu plano", texto: "Começar é a parte mais difícil, e você já fez. Nas primeiras semanas o corpo está se ajustando: a balança sobe e desce, e isso não quer dizer nada ainda. Não se pese todo dia. Vem na primeira consulta que a gente monta o caminho juntos.", urlAudio: null, duracaoS: null, ouvidaEm: null },

@@ -1,7 +1,8 @@
 // Ponte do portal com a função portal-paciente. A sessão fica no aparelho do
 // paciente (localStorage) e nunca sai daqui a não ser para a própria função.
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import type { PortalDados } from "./portalPaciente";
+import type { PortalDados, PortalRecado, PortalSemana } from "./portalPaciente";
+import type { ItemDoCheckin, NivelDoCheckin } from "../../../supabase/functions/_shared/semanaDoPaciente";
 
 const CHAVE_SESSAO = "meu-bratan-sessao-v1";
 
@@ -95,6 +96,28 @@ export async function apagarFoto(sessao: string, id: string) {
 /** A voz do doutor (22/09/2026): o paciente terminou de ouvir a mensagem. */
 export async function marcarVozOuvida(sessao: string, mensagemId: string) {
   return chamar<Record<string, never>>({ acao: "voz_ouvida", sessao, mensagemId });
+}
+
+// ---- RECADO TRANCADO e CHECK-IN DA SEMANA (27/10/2026) --------------------------
+/** O link do áudio de um recado que já abriu. Vale 5 minutos; antes da data, o servidor recusa. */
+export async function linkDoRecado(sessao: string, recadoId: string) {
+  return chamar<{ url?: string; trancado?: boolean }>({ acao: "recado_url", sessao, recadoId });
+}
+/** Ouviu até o fim: é o que diz ao Dr. que o recado chegou. */
+export async function marcarRecadoOuvido(sessao: string, recadoId: string) {
+  return chamar<Record<string, never>>({ acao: "recado_ouvido", sessao, recadoId });
+}
+/** O "por que eu comecei": o áudio em base64 (sem prefixo); o servidor decide quando abre. */
+export async function gravarMeuPorque(sessao: string, base64: string, tipo: string, duracaoS: number) {
+  return chamar<{ recado?: PortalRecado }>({ acao: "recado_gravar", sessao, base64, tipo, duracaoS });
+}
+/** Apagar de verdade o recado que o próprio paciente gravou (arquivo e registro). */
+export async function apagarMeuPorque(sessao: string, recadoId: string) {
+  return chamar<Record<string, never>>({ acao: "recado_apagar", sessao, recadoId });
+}
+/** Um toque do check-in: um item e o nível (1 verde, 2 amarelo, 3 vermelho). */
+export async function responderCheckin(sessao: string, item: ItemDoCheckin, nivel: NivelDoCheckin) {
+  return chamar<{ semana?: number; checkin?: NonNullable<PortalSemana["checkin"]>; vermelho?: boolean }>({ acao: "checkin", sessao, item, nivel });
 }
 
 // ---- FACE ID / DIGITAL (29/09/2026) --------------------------------------------------

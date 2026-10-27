@@ -2160,13 +2160,16 @@ export function enforceOneActiveJourneyPerContact(state: CrmState): CrmState {
 // motivo registrado — nada some sem explicação.
 export function enforceOneTaskPerPersonPerPatient(state: CrmState): CrmState {
   // Reclamações (POP 2.3) ficam de fora: insatisfação é urgência e convive com
-  // qualquer outra tarefa — nunca é cancelada por esta regra.
+  // qualquer outra tarefa — nunca é cancelada por esta regra. O mesmo vale para
+  // o check-in vermelho do Meu Bratan (27/10/2026): a ligação da enfermagem não
+  // pode sumir por causa da régua de 14 dias, nem derrubá-la.
   const open = state.tasks.filter(
     (task) =>
       !["DONE", "CANCELED", "SKIPPED"].includes(task.status) &&
       task.contactId &&
       task.assignedToUserId &&
-      !task.id.startsWith("task-reclamacao-"),
+      !task.id.startsWith("task-reclamacao-") &&
+      !task.id.startsWith("task-checkin-"),
   );
   const groups = new Map<string, CrmTask[]>();
   for (const task of open) {

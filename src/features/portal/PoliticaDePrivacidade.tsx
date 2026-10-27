@@ -11,7 +11,9 @@ import bratanMark from "@/assets/bratan-mark.png";
 import { O_QUE_FICA, O_QUE_SE_APAGA } from "../../../supabase/functions/_shared/contaDoPortal";
 import "./portal.css";
 
-export const ATUALIZADA_EM = "1º de outubro de 2026";
+export const ATUALIZADA_EM = "27 de outubro de 2026";
+/** Chave da versão (o aviso "a política mudou" aparece uma vez por versão, 27/10/2026). */
+export const VERSAO_DA_POLITICA = "2026-10-27";
 
 export function PoliticaDePrivacidade() {
   return (
@@ -39,6 +41,8 @@ export function PoliticaDePrivacidade() {
             <li>O seu plano, as consultas, os passos do acompanhamento e o resumo do que você contratou e pagou.</li>
             <li>Os exames de bioimpedância feitos no Instituto.</li>
             <li>As pesagens e as fotos de evolução que você mesmo manda.</li>
+            <li>As respostas do check-in da semana (fome, energia e enjoo).</li>
+            <li>Os recados de voz: o que o seu médico gravou para você e o que você gravou para você mesmo.</li>
             <li>O registro de cada acesso: o dia, o aparelho e o que foi feito.</li>
           </ul>
         </section>
@@ -47,7 +51,8 @@ export function PoliticaDePrivacidade() {
           <h2 className="t-title3">Para que usamos</h2>
           <ul className="p-itens">
             <li>Para acompanhar o seu tratamento e mostrar a sua evolução.</li>
-            <li>Para avisar quando um exame chega ou lembrar de uma consulta, só se você ligar os avisos.</li>
+            <li>Para avisar quando um exame chega, quando um recado abre ou lembrar de uma consulta, só se você ligar os avisos. O aviso nunca traz dado de saúde.</li>
+            <li>Para a enfermagem ligar para você quando o check-in da semana mostrar um sinal de atenção. Nenhuma máquina decide nada por você: mudança no tratamento é sempre decisão do seu médico.</li>
             <li>Para cumprir o que a lei exige da clínica, como o prontuário e a nota fiscal.</li>
           </ul>
         </section>
@@ -58,6 +63,7 @@ export function PoliticaDePrivacidade() {
             <li>Não vendemos os seus dados.</li>
             <li>Não usamos os seus dados de saúde em publicidade ou em campanha de marketing.</li>
             <li>As fotos de evolução só aparecem para você. Ninguém da equipe vê essas fotos pelo sistema da clínica.</li>
+            <li>O recado que você grava para você mesmo só toca para você. Ninguém da equipe ouve.</li>
           </ul>
         </section>
 
@@ -105,7 +111,8 @@ export function PoliticaDePrivacidade() {
           <h2 className="t-title3">Saúde</h2>
           <p className="t-body">
             O portal acompanha a sua evolução e não faz diagnóstico. A bioimpedância vem do exame feito no aparelho InBody do Instituto, e o
-            peso da semana é o que você informa. Em qualquer dúvida sobre o seu tratamento, fale com o seu médico.
+            peso da semana é o que você informa. O cartão da semana é educativo e não promete resultado. Em qualquer dúvida sobre o seu
+            tratamento, fale com o seu médico; numa urgência, não espere a ligação da enfermagem: procure um pronto atendimento.
           </p>
         </section>
 
@@ -118,7 +125,8 @@ export function PoliticaDePrivacidade() {
           <h2 className="t-title3">Segurança</h2>
           <p className="t-body">
             A conexão é protegida, a senha nunca é guardada como foi digitada, o Face ID não sai do seu aparelho, as fotos ficam em arquivo
-            privado e abrem por um link que vence em uma hora, e cada acesso fica registrado.
+            privado e abrem por um link que vence em uma hora, os recados de voz ficam em arquivo privado e só abrem no dia marcado, por um
+            link que vence em cinco minutos, e cada acesso fica registrado.
           </p>
         </section>
 

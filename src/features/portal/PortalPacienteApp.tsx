@@ -40,6 +40,12 @@ import { HistoriaDoPlano } from "./HistoriaDoPlano";
 import { PerguntasDaConsulta } from "./PerguntasDaConsulta";
 import { ReguaDePeso } from "./ReguaDePeso";
 import { useRevelarAoRolar, vibrar } from "./movimento";
+// MOTIVO PARA ABRIR TODA SEMANA (27/10/2026): o recado trancado e a Semana X de N.
+import { RecadosDeHoje, SeuPorque, recadosNovos } from "./RecadosDoPortal";
+import { SemanaDoPlano } from "./SemanaDoPlano";
+import { AvisoDaPolitica } from "./AvisoDaPolitica";
+import { totalDeSemanas } from "../../../supabase/functions/_shared/semanaDoPaciente";
+import type { PortalRecado } from "./portalPaciente";
 import { ABAS, abaDaRota, brl, brlCentavos, diaCurto, diaMes, linhaDoTempo, medicoesAntesDoPlano, nomeDoPlano, pacienteDesde, pendenciasDasAbas, proximaConsulta, fraseDoDia, icsDaConsulta, linkDaConcierge, oQueABalancaNaoMostra, resumoDaJornada, resumoDaSemana, resumoEvolucao, resumoFinanceiro, resumoInBody, rotaDaAba, saudacao, temCurvaDeGordura, trilhaDoPlano, VISCERAL_LIMITE_NORMAL, type AbaDoPortal, type EventoDaJornada, type MarcoDoPlano, type PassoDaTrilha, type PortalDados, type ResumoDaJornada } from "./portalPaciente";
 
 const METODO: Record<string, string> = { PIX: "Pix", DINHEIRO: "dinheiro", CARTAO_DEBITO: "débito", CARTAO_CREDITO: "crédito", BOLETO: "boleto", TRANSFERENCIA: "transferência" };
@@ -485,7 +491,13 @@ function MeuPortal() {
   })();
   const ultimaPesagemPropria = dados?.medicoes.filter((m) => m.origem === "PACIENTE").sort((a, b) => b.dia.localeCompare(a.dia))[0] ?? null;
   const partes = proxima ? partesDaData(proxima.em) : null;
-  const pendencias = pendenciasDasAbas(proxima);
+  // O ponto da aba Hoje também acende quando um recado abriu e ainda não foi ouvido (27/10/2026).
+  const pendencias = pendenciasDasAbas(proxima, { recadosNovos: recadosNovos(dados?.recados, hoje) });
+  // Recados e check-in mudam na tela sem recarregar o portal (e a prévia guarda o que foi tocado).
+  const trocarRecados = (troca: (lista: PortalRecado[]) => PortalRecado[]) => setDados((atual) => (atual ? { ...atual, recados: troca(atual.recados ?? []) } : atual));
+  // SEMANA X DE N: o N vem dos meses da trilha; sem trilha (só tratamento), "Semana X do seu plano".
+  const totalDasSemanas = dados?.plano && trilha ? totalDeSemanas(dados.plano.inicio, trilha.meses) : null;
+  const semanaDoPlano = dados?.semana && (totalDasSemanas === null || dados.semana.numero <= totalDasSemanas) ? dados.semana : null;
   const desde = dados ? pacienteDesde(dados) : null;
   const mostrandoGordura = metricaDaCurva === "gordura";
   const deltaEmFoco = mostrandoGordura ? evolucao?.deltaGordura ?? null : evolucao?.deltaPeso ?? null;
@@ -743,6 +755,7 @@ function MeuPortal() {
   const painelHoje = dados ? (
     <>
       {!previa && dados.paciente.temFaceId === false && sessao ? <ConviteFaceId sessao={sessao} aoAtivar={() => void recarregar()} /> : null}
+      {!previa ? <AvisoDaPolitica /> : null}
       {semana.mostrar ? (
         <section className="p-sec p-anim wide" aria-labelledby="t-semana">
           <span className="t-sec" id="t-semana">Sua semana · {semana.periodo}</span>
@@ -762,6 +775,18 @@ function MeuPortal() {
       <section className="p-sec p-anim wide" aria-label="Onde você está na jornada">
         <HeroDaJornada jornada={jornada} plano={dados.plano} proxima={proxima} evolucao={evolucao} aoAbrir={() => irPara("jornada")} aoHistoria={capitulos.length ? () => setHistoriaAberta(true) : undefined} />
       </section>
+      {semanaDoPlano ? (
+        <SemanaDoPlano
+          semana={semanaDoPlano}
+          total={totalDasSemanas}
+          sessao={sessao}
+          previa={previa}
+          linkDaClinica={linkDaConcierge(dados.contato, dados.paciente.primeiroNome)}
+          aoMudarCheckin={(checkin) => setDados((atual) => (atual?.semana ? { ...atual, semana: { ...atual.semana, checkin } } : atual))}
+        />
+      ) : null}
+      {/* Sem o campo (função ainda não publicada), nada de recado: o convite gravaria numa ação que não existe. */}
+      {dados.recados ? <RecadosDeHoje sessao={sessao} previa={previa} recados={dados.recados} hojeISO={hoje} inicioDoPlano={inicioDoPlano} aoTrocar={trocarRecados} /> : null}
       {cartaoDaConsulta}
       <section className="p-sec p-anim" aria-labelledby="t-corpo-linha">
         <span className="t-sec" id="t-corpo-linha">Seu corpo</span>
@@ -1012,6 +1037,9 @@ function MeuPortal() {
           )}
         </div>
       </section>
+
+      {/* O "por que eu comecei" e os recados do Dr. já ouvidos (27/10/2026). */}
+      {dados.recados ? <SeuPorque sessao={sessao} previa={previa} recados={dados.recados} hojeISO={hoje} inicioDoPlano={inicioDoPlano} aoTrocar={trocarRecados} /> : null}
 
       <ConquistasDoPaciente conquistas={conquistas} contactRef={dados.paciente.contactRef} />
 
@@ -1639,6 +1667,8 @@ export function PortalPacienteApp() {
  * A regra do estudo: app que avisa quando chega DADO REAL segura o paciente;
  * app que avisa por avisar é desinstalado. Então há UM aviso — "sua
  * bioimpedância já está aqui" — e o paciente liga e desliga quando quiser.
+ * (27/10/2026: também "O recado do Dr. abriu." — é coisa dele chegando, e o
+ * texto não leva dado clínico.)
  *
  * Web Push só existe com o app instalado (no iPhone, "Adicionar à Tela de
  * Início"). Fora disso o botão não aparece: prometer e não entregar é pior do
@@ -1720,9 +1750,9 @@ function AvisosNoCelular({ sessao, previa, chavePublica }: { sessao: string | nu
     <section id="avisos" className="p-sec p-anim" aria-labelledby="t-avisos">
       <span className="t-sec" id="t-avisos">Avisos no celular</span>
       <div className="p-card">
-        <p className="t-headline">Saber na hora que a bioimpedância chegou</p>
+        <p className="t-headline">Saber na hora quando chega algo seu</p>
         <p className="t-foot t-2">
-          Um aviso só, quando a enfermagem colocar um exame novo aqui. Nada de propaganda, nada de lembrete diário.
+          Quando a enfermagem colocar um exame novo, quando um recado abrir e no resumo de sexta. Nada de propaganda, nada de lembrete diário.
         </p>
         {previa ? (
           <p className="t-foot t-2">Na prévia os avisos não são enviados — o botão aparece para quem entra pelo app.</p>

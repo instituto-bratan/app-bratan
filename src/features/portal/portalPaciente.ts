@@ -139,7 +139,36 @@ export type PortalDados = {
   fotos?: PortalFoto[];
   /** A voz do doutor (22/09/2026): a mensagem da fase em que o paciente está. null = sem gravação para a fase. */
   vozDoDoutor?: PortalVozDoDoutor | null;
+  /** Recados trancados (27/10/2026): o do Dr. e o "porquê" do paciente. Ausente = função antiga, sem recados. */
+  recados?: PortalRecado[];
+  /** Semana X de N (27/10/2026): null/ausente = sem plano (ou função antiga). */
+  semana?: PortalSemana | null;
   geradoEm: string;
+};
+
+/**
+ * Um recado trancado como o portal recebe (27/10/2026): a contagem e o estado,
+ * nunca o caminho do arquivo — o link do áudio só sai pela ação recado_url,
+ * depois da data, e vale 5 minutos.
+ */
+export type PortalRecado = {
+  id: string;
+  autor: "DOUTOR" | "PACIENTE";
+  /** "Dr. Daniel" — quem fala, como a equipe escreveu. null no recado do paciente. */
+  quemFala: string | null;
+  duracaoS: number;
+  /** Dia em que abre (AAAA-MM-DD, relógio de São Paulo). */
+  abreEm: string;
+  aberto: boolean;
+  ouvidoEm: string | null;
+  criadoEm: string;
+};
+
+/** O cartão da semana (27/10/2026): o número, o texto da equipe e a resposta já dada. */
+export type PortalSemana = {
+  numero: number;
+  conteudo: { titulo: string; costumaAcontecer: string; missao: string } | null;
+  checkin: { fome: number | null; energia: number | null; enjoo: number | null } | null;
 };
 
 export type PortalVozDoDoutor = {
@@ -737,9 +766,14 @@ export function linhaDoTempo(entrada: { plano: PortalPlano | null; consultas: Po
   return eventos.sort((a, b) => a.dia.slice(0, 10).localeCompare(b.dia.slice(0, 10)) || peso(a) - peso(b) || ordem[a.estado] - ordem[b.estado]);
 }
 
-/** O ponto na aba: só quando existe uma AÇÃO pendente de verdade (nunca lembrete por lembrete). */
-export function pendenciasDasAbas(proxima: ProximaConsulta | null): Partial<Record<AbaDoPortal, number>> {
-  return proxima?.podeResponder ? { hoje: 1 } : {};
+/**
+ * O ponto na aba: só quando existe uma AÇÃO pendente de verdade (nunca lembrete
+ * por lembrete) — confirmar a consulta, ou um recado que abriu e ainda não foi
+ * ouvido (27/10/2026).
+ */
+export function pendenciasDasAbas(proxima: ProximaConsulta | null, extras?: { recadosNovos?: number }): Partial<Record<AbaDoPortal, number>> {
+  const hoje = (proxima?.podeResponder ? 1 : 0) + Math.max(0, extras?.recadosNovos ?? 0);
+  return hoje ? { hoje } : {};
 }
 
 /** Desde quando a pessoa é paciente: o começo do plano, senão a primeira comanda ou medição. */

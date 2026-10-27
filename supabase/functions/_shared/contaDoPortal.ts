@@ -16,6 +16,8 @@ export const O_QUE_SE_APAGA = [
   "o seu login, a senha e o Face ID de todos os aparelhos",
   "as fotos de evolução, do arquivo e do banco",
   "as pesagens que você mesmo mandou pelo portal",
+  "o recado de voz que você gravou para você mesmo, do arquivo e do banco",
+  "as respostas do check-in da semana",
   "os avisos no celular",
 ] as const;
 

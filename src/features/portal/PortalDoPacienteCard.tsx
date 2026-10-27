@@ -30,8 +30,12 @@ import { cn } from "@/lib/utils";
 import type { Cargo } from "@/types/database";
 import { gerarTokenPortal, sha256Hex } from "./portalToken";
 import { montarLinkPortal } from "./portalPaciente";
+// Motivo para abrir (27/10/2026): o recado trancado do Dr. e o check-in da semana.
+import { podeGravarRecadoDoDoutor } from "@/lib/acessoDoPortal";
+import { CheckinsNaFicha } from "./CheckinsNaFicha";
+import { RecadoDoDoutorNaFicha } from "./RecadoDoDoutorNaFicha";
 
-const ACAO_LABEL: Record<string, string> = { ENTRADA: "entrou pelo link", ENTRADA_SENHA: "entrou com a senha", ENTRADA_FACE_ID: "entrou com Face ID", LEITURA: "abriu o portal", PESAGEM: "mandou pesagem", RESPOSTA_CONSULTA: "respondeu à consulta", RESPOSTA_RECUSADA: "resposta recusada", SAIDA: "saiu deste aparelho", SAIDA_DE_TODOS: "saiu de todos os aparelhos", ENTRADA_RECUSADA: "entrada recusada", SENHA_CRIADA: "criou a senha", FACE_ID_LIGADO: "ativou o Face ID", FACE_ID_DESLIGADO: "desligou o Face ID", PUSH_LIGADO: "ligou os avisos", PUSH_DESLIGADO: "desligou os avisos", FOTO_ENVIADA: "mandou foto", FOTO_APAGADA: "apagou foto", VOZ_OUVIDA: "ouviu a mensagem do doutor", LEITURA_ENTRADA: "abriu o portal" };
+const ACAO_LABEL: Record<string, string> = { ENTRADA: "entrou pelo link", ENTRADA_SENHA: "entrou com a senha", ENTRADA_FACE_ID: "entrou com Face ID", LEITURA: "abriu o portal", PESAGEM: "mandou pesagem", RESPOSTA_CONSULTA: "respondeu à consulta", RESPOSTA_RECUSADA: "resposta recusada", SAIDA: "saiu deste aparelho", SAIDA_DE_TODOS: "saiu de todos os aparelhos", ENTRADA_RECUSADA: "entrada recusada", SENHA_CRIADA: "criou a senha", FACE_ID_LIGADO: "ativou o Face ID", FACE_ID_DESLIGADO: "desligou o Face ID", PUSH_LIGADO: "ligou os avisos", PUSH_DESLIGADO: "desligou os avisos", FOTO_ENVIADA: "mandou foto", FOTO_APAGADA: "apagou foto", VOZ_OUVIDA: "ouviu a mensagem do doutor", LEITURA_ENTRADA: "abriu o portal", CHECKIN: "respondeu o check-in da semana", RECADO_OUVIDO: "ouviu um recado", RECADO_GRAVADO: "gravou o próprio recado", RECADO_APAGADO: "apagou o próprio recado", RECADO_RECUSADO: "tentou abrir um recado ainda trancado" };
 
 function parseNum(texto: string) {
   const v = Number(texto.replace(/\./g, "").replace(",", "."));
@@ -193,6 +197,9 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
           ) : null}
         </div>
 
+        {/* ---- recado trancado do Dr. (27/10/2026): só médicos e coordenação ---- */}
+        {podeGravarRecadoDoDoutor(cargo) ? <RecadoDoDoutorNaFicha contactRef={contactRef} nomePaciente={nomePaciente} temAcessoAoPortal={Boolean(acessoAtivo)} /> : null}
+
         {/* ---- próxima consulta ---- */}
         <div className="grid gap-2 border-t border-brand-oliva/15 pt-3">
           <p className="flex items-center gap-1.5 font-semibold text-brand-tinta">
@@ -329,6 +336,9 @@ export function PortalDoPacienteCard({ contactRef, nomePaciente, telefone, temPl
             )}
           </div>
         ) : null}
+
+        {/* ---- check-in da semana (27/10/2026): quem vê a bioimpedância ---- */}
+        {podeVerMedicoes ? <CheckinsNaFicha contactRef={contactRef} /> : null}
       </CardContent>
     </Card>
   );

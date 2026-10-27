@@ -708,3 +708,46 @@
 .portal .p-conferir-peso { display: grid; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--p-warn-bg); color: var(--p-label); }
 .portal .p-conferir-peso b { color: var(--p-warn-fg); font-weight: 700; }
 .portal .p-conferir-peso-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------------------------------------------------------------------------
+   RECADO TRANCADO e SEMANA X DE N (27/10/2026) — motivo para abrir toda semana.
+   O dourado do cadeado é o do PLANO (--p-plano): o que o portal guarda para
+   você. A cor do check-in é o semáforo da própria resposta, nunca da pessoa.
+   --------------------------------------------------------------------------- */
+.portal .p-recado { gap: 12px; }
+.portal .p-recado-cabeca { display: flex; align-items: center; gap: 12px; }
+.portal .p-recado-cabeca > .p-cresce { flex: 1; min-width: 0; }
+.portal .p-recado-icone { width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--p-tint-soft); color: var(--p-tint); }
+.portal .p-recado.trancado .p-recado-icone { background: color-mix(in oklab, var(--p-plano) 16%, var(--p-card)); color: var(--p-plano); }
+.portal .p-recado.novo { box-shadow: var(--p-shadow), inset 0 0 0 1.5px color-mix(in oklab, var(--p-tint) 45%, transparent); }
+.portal .p-recado-contagem { display: flex; align-items: baseline; gap: 8px; }
+.portal .p-recado-dias { font-family: var(--p-rounded); font-size: 52px; line-height: 1; font-weight: 800; letter-spacing: -.035em; color: var(--p-plano); font-variant-numeric: tabular-nums; }
+.portal .p-recado-frase { font-size: 15px; font-weight: 600; color: var(--p-label-2); }
+.portal .p-recado-acoes { display: flex; flex-wrap: wrap; gap: 4px; }
+.portal .p-recado .p-btn.plain.mini { padding-inline: 4px; }
+.portal .p-gravador { display: grid; gap: 10px; }
+.portal .p-btn.p-gravando { background: var(--p-bad); border-color: var(--p-bad); color: #fff; }
+.portal .p-btn.p-gravando svg { animation: p-respira 1.2s ease-in-out infinite; }
+
+.portal .p-semana-plano { gap: 16px; }
+.portal .p-semana-rotulo { display: block; font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--p-label-2); margin-bottom: 4px; }
+.portal .p-semana-missao { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: var(--p-tint-soft); }
+.portal .p-semana-missao-icone { color: var(--p-tint); flex: none; margin-top: 2px; }
+.portal .p-checkin { display: grid; gap: 14px; padding-top: 14px; border-top: 1px solid var(--p-sep); }
+.portal .p-checkin-linha { display: grid; gap: 6px; }
+.portal .p-checkin-item { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.portal .p-checkin-item b { font-size: 15px; font-weight: 600; }
+.portal .p-checkin-estado { font-size: 12px; font-weight: 600; color: var(--p-tint); min-height: 16px; }
+.portal .p-niveis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.portal .p-nivel { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 6px 8px; border-radius: 12px; border: 1.5px solid transparent; background: var(--p-card-2); font-size: 14px; font-weight: 600; line-height: 1.15; text-align: center; cursor: pointer; transition: background-color .18s var(--p-ease), border-color .18s var(--p-ease), transform .12s; }
+.portal .p-nivel:active { transform: scale(.97); }
+.portal .p-nivel:disabled { cursor: progress; color: inherit; }
+.portal .p-nivel i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.portal .p-nivel.n1 i { background: var(--p-ok); }
+.portal .p-nivel.n2 i { background: var(--p-warn); }
+.portal .p-nivel.n3 i { background: var(--p-bad); }
+.portal .p-nivel.n1[aria-pressed="true"] { background: var(--p-ok-bg); border-color: var(--p-ok); color: var(--p-ok-fg); }
+.portal .p-nivel.n2[aria-pressed="true"] { background: var(--p-warn-bg); border-color: var(--p-warn); color: var(--p-warn-fg); }
+.portal .p-nivel.n3[aria-pressed="true"] { background: var(--p-bad-bg); border-color: var(--p-bad); color: var(--p-bad-fg); }
+.portal .p-checkin-alerta { display: grid; gap: 8px; padding: 14px; border-radius: 14px; background: var(--p-bad-bg); color: var(--p-label); }
+.portal .p-checkin-alerta b { color: var(--p-bad-fg); }

@@ -863,6 +863,25 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    // 27/10/2026: o texto do cartão "Semana X de N" do Meu Bratan.
+    pattern: "/acompanhamento/semanas",
+    guide: {
+      title: "Semanas do Meu Bratan",
+      whatIs:
+        "O texto que o paciente lê no portal em cada semana do plano: o que costuma acontecer naquela semana e uma missão simples, junto com o check-in de fome, energia e enjoo.",
+      steps: [
+        "Cada linha é uma semana do plano, contada a partir do fechamento.",
+        "Toque em Editar, escreva o título, o que costuma acontecer e a missão, e salve.",
+        "Para escrever uma semana nova, use Escrever a semana no topo da lista.",
+        "Tirar do portal esconde a semana sem apagar o texto; Pôr no portal traz de volta.",
+      ],
+      tips: [
+        "Tom educativo: \"é comum…\", nunca \"você vai perder…\". Remédio e dose ficam para a consulta — a tela não salva texto com nome de remédio.",
+        "Resposta vermelha no check-in vira tarefa para a enfermagem ligar no mesmo dia, em Minhas tarefas.",
+      ],
+    },
+  },
+  {
     pattern: "/crm/indicacoes",
     guide: {
       title: "Indicações",

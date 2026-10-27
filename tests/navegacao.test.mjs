@@ -206,7 +206,8 @@ function telasAntigas(alguem) {
 // Telas que nasceram DEPOIS do redesenho (a régua "mesmas telas de 07/10" não
 // vale para elas; cada uma tem o seu teste de quem vê).
 // /central (28/10/2026): Central Bratan, só da diretoria (teste em central-bratan.test.mjs).
-const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos", "/central"]);
+// /acompanhamento/semanas (28/10/2026): textos da Semana X de N do Meu Bratan.
+const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos", "/central", "/acompanhamento/semanas"]);
 
 /** Todas as telas que o menu novo mostra (itens + abas, inclusive Ajustes), fora as rotas novas. */
 function telasDoMenuNovo(alguem) {
@@ -219,6 +220,17 @@ test("Contratos de medicação (14/10/2026): só coordenação e recepção veem
   const veContratos = (cargo) => telasDoMenuNovoComTudo(pessoa(cargo)).includes("/contratos");
   for (const cargo of ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "secretaria_executiva", "recepcionista"]) assert.ok(veContratos(cargo), `${cargo} deveria ver Contratos`);
   for (const cargo of ["enfermeira", "nutricionista", "marketing", "limpeza"]) assert.ok(!veContratos(cargo), `${cargo} não deveria ver Contratos`);
+});
+
+test("Semanas do Meu Bratan (27/10/2026): só coordenação e enfermagem veem, como no banco (pode_editar_semana_do_portal)", () => {
+  const veSemanas = (cargo, acessos = {}) => telasDoMenuNovoComTudo(pessoa(cargo, acessos)).includes("/acompanhamento/semanas");
+  for (const cargo of ["dr_daniel", "ceo", "gestor", "gestor_financeiro", "secretaria_executiva", "enfermeira"]) assert.ok(veSemanas(cargo), `${cargo} deveria ver Semanas do portal`);
+  for (const cargo of ["recepcionista", "nutricionista", "marketing", "limpeza"]) assert.ok(!veSemanas(cargo), `${cargo} não deveria ver Semanas do portal`);
+  // A aba mora no item Acompanhamento, depois do Plano de acompanhamento.
+  const abas = (alguem) => plain(nav.itensDoMenu(alguem).flatMap((grupo) => grupo.itens).find((item) => item.id === "acompanhamento").abas.map((aba) => aba.rotulo));
+  assert.deepEqual(abas(pessoa("enfermeira")), ["Acompanhamento", "Semanas do portal"]);
+  assert.deepEqual(abas(pessoa("recepcionista")), ["Acompanhamento"]);
+  assert.equal(nav.grupoDaRota("/acompanhamento/semanas"), "pacientes");
 });
 
 function telasDoMenuNovoComTudo(alguem) {

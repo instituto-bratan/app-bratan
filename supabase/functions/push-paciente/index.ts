@@ -13,10 +13,15 @@
 //
 // Mesmos segredos VAPID e a mesma chave `push` da integração: se a equipe pode
 // receber aviso, o paciente também pode; se estiver desligada, ninguém recebe.
+//
+// ROTINAS DO AGENDADOR (sem pessoa, corpo vazio): o resumo de sexta (29/09) e,
+// desde 27/10/2026, com ?rotina=recados, o "O recado do Dr. abriu." do recado
+// trancado — uma vez por recado, sem dado clínico no texto.
 import webpush from "npm:web-push@3.6.7";
 import { corpo, db, json, lerIntegracao, registrarEvento, respostaDesligada, respostaSemSegredos, segredosFaltando } from "../_shared/integracoes.ts";
 import { quemChama } from "../_shared/claude.ts";
 import { rotinaAutomaticaSemSegredo, segredoIgual } from "../_shared/acessoRegra.ts";
+import { hojeEmSaoPaulo, somaDias, textoDoAvisoDeRecado, type AutorDoRecado } from "../_shared/recadoTrancado.ts";
 
 const CARGOS_QUE_AVISAM = new Set(["enfermeira", "nutricionista", "recepcionista", "secretaria_executiva", "gestor", "gestor_financeiro", "ceo", "dr_daniel"]);
 
@@ -47,7 +52,7 @@ export function textoDoAviso(entrada: Entrada) {
 
 type Assinatura = { id: string; contact_ref: string; endpoint: string; p256dh: string; auth: string; falhas: number | null };
 
-async function enviarAvisos(client: ReturnType<typeof db>, assinaturas: Assinatura[], title: string, body: string, url: string) {
+async function enviarAvisos(client: ReturnType<typeof db>, assinaturas: Assinatura[], title: string, body: string, url: string, tag = "meu-bratan") {
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")!, Deno.env.get("VAPID_PUBLIC_KEY")!, Deno.env.get("VAPID_PRIVATE_KEY")!);
   let enviados = 0;
   let removidos = 0;
@@ -58,7 +63,7 @@ async function enviarAvisos(client: ReturnType<typeof db>, assinaturas: Assinatu
       // da Fila do dia num aparelho onde a mesma pessoa usa os dois.
       await webpush.sendNotification(
         { endpoint: assinatura.endpoint, keys: { p256dh: assinatura.p256dh, auth: assinatura.auth } },
-        JSON.stringify({ title, body, url, tag: "meu-bratan" }),
+        JSON.stringify({ title, body, url, tag }),
         { TTL: 24 * 3600 },
       );
       enviados += 1;
@@ -114,6 +119,51 @@ async function resumoDeSexta(client: ReturnType<typeof db>) {
   return json({ ok: true, enviados: r.enviados, pacientesAvisados: r.avisados.size, removidos: r.removidos });
 }
 
+/**
+ * O RECADO ABRIU (27/10/2026). Rotina diária (supabase/agendamentos/
+ * portal-recados-abertos.sql, 9h de Brasília): os recados que abriram nos
+ * últimos 3 dias e ainda não avisaram viram UM aviso por paciente — só para
+ * quem tem acesso ativo e ligou os avisos. Todos os recados lidos ficam com
+ * aviso_enviado_em, com ou sem celular: o aviso nunca se repete. O texto é
+ * fixo e não leva dado clínico (textoDoAvisoDeRecado).
+ */
+async function recadosQueAbriram(client: ReturnType<typeof db>) {
+  const hoje = hojeEmSaoPaulo();
+  const { data: recados, error } = await client.from("paciente_recado").select("id, contact_ref, autor").lte("abre_em", hoje).gte("abre_em", somaDias(hoje, -3)).is("aviso_enviado_em", null).limit(500);
+  if (error) return json({ ok: false, error: error.message });
+  const lista = (recados ?? []) as { id: string; contact_ref: string; autor: AutorDoRecado }[];
+  if (!lista.length) return json({ ok: true, enviados: 0, aviso: "nenhum recado abriu hoje" });
+  const refs = [...new Set(lista.map((r) => r.contact_ref))];
+  const { data: acessos } = await client.from("paciente_acesso").select("contact_ref").in("contact_ref", refs).is("revogado_em", null);
+  const ativos = new Set(((acessos ?? []) as { contact_ref: string }[]).map((a) => a.contact_ref));
+  const { data: assinaturasBrutas } = ativos.size
+    ? await client.from("paciente_push_assinatura").select("id, contact_ref, endpoint, p256dh, auth, falhas").in("contact_ref", [...ativos])
+    : { data: [] };
+  const assinaturas = (assinaturasBrutas ?? []) as Assinatura[];
+  let enviados = 0;
+  let removidos = 0;
+  const avisados = new Set<string>();
+  for (const autor of ["DOUTOR", "PACIENTE"] as const) {
+    const deQuem = new Set(lista.filter((r) => r.autor === autor && ativos.has(r.contact_ref)).map((r) => r.contact_ref));
+    const destino = assinaturas.filter((a) => deQuem.has(a.contact_ref));
+    if (!destino.length) continue;
+    const { title, body } = textoDoAvisoDeRecado(autor);
+    const r = await enviarAvisos(client, destino, title, body, "/meu", "meu-bratan-recado");
+    enviados += r.enviados;
+    removidos += r.removidos;
+    r.avisados.forEach((ref) => avisados.add(ref));
+  }
+  await client.from("paciente_recado").update({ aviso_enviado_em: new Date().toISOString() }).in("id", lista.map((r) => r.id));
+  await registrarEvento(client, {
+    chave: "push",
+    direcao: "SAIDA",
+    entidade: "RECADO_ABERTO",
+    status: "OK",
+    resumo: `Recados que abriram: ${lista.length} · ${avisados.size} paciente(s) avisado(s) no celular${removidos ? ` · ${removidos} assinatura(s) expirada(s) removida(s)` : ""}`,
+  });
+  return json({ ok: true, recados: lista.length, enviados, pacientesAvisados: avisados.size, removidos });
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return json({ ok: true });
   if (request.method !== "POST") return json({ ok: false, error: "use POST" }, 405);
@@ -133,7 +183,10 @@ Deno.serve(async (request) => {
     const corpoBruto = await request.clone().text().catch(() => "x");
     const viaSegredo = Boolean(cronEsperado && cronRecebido && segredoIgual(cronRecebido, cronEsperado));
     if (viaSegredo || rotinaAutomaticaSemSegredo({ automatico: true, cronEsperado, cronRecebido, temPessoa: false, corpo: corpoBruto })) {
-      return await resumoDeSexta(client);
+      // ?rotina=recados (27/10/2026) só escolhe QUAL rotina fixa roda: o aviso
+      // do recado que abriu. Sem ele, o de sempre (resumo de sexta).
+      const rotina = new URL(request.url).searchParams.get("rotina");
+      return rotina === "recados" ? await recadosQueAbriram(client) : await resumoDeSexta(client);
     }
     return json({ ok: false, error: "Entre com a sua conta para avisar pacientes." }, 401);
   }

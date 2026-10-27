@@ -27,6 +27,7 @@
 // ---------------------------------------------------------------------------
 import type { Cargo } from "@/types/database";
 import { canAdministracao, canContratos, canFinanceiroFull, canManageAcessos, canSeeModule, isCoordenacao, type ModuleKey } from "@/lib/access";
+import { podeEditarSemanasDoPortal } from "@/lib/acessoDoPortal";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -362,6 +363,19 @@ const MAPA: DefGrupo[] = [
             acesso: modulo("acompanhamento"),
             lugar: "menu",
             palavras: ["acompanhamento", "plano", "programa", "jornada", "marcos", "doses", "bioimpedância", "inbody", "checkpoint", "listas do dr daniel"],
+          },
+          // Semanas do Meu Bratan (27/10/2026): o texto de cada semana do plano no
+          // portal. Tela nova, depois do redesenho; coordenação e enfermagem (espelho
+          // de pode_editar_semana_do_portal).
+          {
+            id: "semanas-portal",
+            rotulo: "Semanas do Meu Bratan",
+            aba: "Semanas do portal",
+            rota: "/acompanhamento/semanas",
+            icone: "CalendarRange",
+            acesso: porCargo("podeEditarSemanasDoPortal", podeEditarSemanasDoPortal),
+            lugar: "aba",
+            palavras: ["semanas do portal", "meu bratan", "missão da semana", "conteúdo semanal", "texto da semana"],
           },
         ],
       },

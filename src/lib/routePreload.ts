@@ -53,6 +53,7 @@ const routeLoaders = {
   crmContact: namedPage(() => import("@/features/crm/CrmContactProfilePage"), "CrmContactProfilePage"),
   crmCadences: namedPage(() => import("@/features/crm/CrmCadencesPage"), "CrmCadencesPage"),
   acompanhamento: namedPage(() => import("@/features/programa/ProgramaAcompanhamentoPage"), "ProgramaAcompanhamentoPage"),
+  semanasDoPortal: namedPage(() => import("@/features/portal/SemanasDoPortalPage"), "SemanasDoPortalPage"),
   crmCanais: namedPage(() => import("@/features/crm/CrmCanaisPage"), "CrmCanaisPage"),
   crmPlanilha: namedPage(() => import("@/features/crm/CrmPlanilhaCadenciasPage"), "CrmPlanilhaCadenciasPage"),
   crmCoordenador: namedPage(() => import("@/features/crm/CrmCoordenadorPage"), "CrmCoordenadorPage"),
@@ -136,6 +137,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname.startsWith("/crm/contatos/")) return "crmContact";
   if (pathname === "/crm/cadencias") return "crmCadences";
   if (pathname === "/acompanhamento") return "acompanhamento";
+  if (pathname === "/acompanhamento/semanas") return "semanasDoPortal";
   if (pathname === "/crm/indicacoes" || pathname === "/crm/canais") return "crmCanais";
   if (pathname === "/crm/planilha") return "crmPlanilha";
   if (pathname === "/crm/coordenador") return "crmCoordenador";

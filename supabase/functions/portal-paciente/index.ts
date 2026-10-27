@@ -15,10 +15,19 @@
 //  · Face ID / digital (chave de acesso WebAuthn) como forma principal de
 //    entrar; a senha fica para quem não tem, agora com bcrypt e freio por IP;
 //  · a confirmação de consulta confere que a consulta é DESTE paciente.
+//
+// 27/10/2026 — MOTIVO PARA ABRIR TODA SEMANA (v1):
+//  · recado trancado: recado_url (link de 5 min, só depois de abre_em),
+//    recado_ouvido, recado_gravar e recado_apagar (o "por que eu comecei" do
+//    próprio paciente). "dados" leva os recados SEM caminho nem link;
+//  · semana X de N: checkin (um toque por item). O vermelho vira tarefa da
+//    enfermagem por gatilho no banco; "dados" leva a semana, o texto e a resposta.
 import { corpo, db, json, telefoneE164 } from "../_shared/integracoes.ts";
 import { FASE_INFO, faseDoPaciente, mensagemParaFase } from "../_shared/vozDoDoutor.ts";
 import { deBase64Url, linhasDoPaciente, nomeDoAparelho, origemPermitida, paraBase64Url } from "../_shared/portalAcesso.ts";
 import { ehContaDeRevisao } from "../_shared/contaDoPortal.ts";
+import { RECADO_BUCKET, RECADO_MAX_BYTES, RECADO_URL_SEGUNDOS, caminhoDoRecado, duracaoDoRecado, hojeEmSaoPaulo, quandoAbreOPorque, recadoAberto, tipoDoAudio, validarAudioDoRecado } from "../_shared/recadoTrancado.ts";
+import { SEMANA_MAXIMA, itemValido, nivelValido, semanaDoPlano } from "../_shared/semanaDoPaciente.ts";
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "npm:@simplewebauthn/server@13.3.3";
 import bcrypt from "npm:bcryptjs@3.0.3";
 
@@ -98,9 +107,20 @@ type Entrada = {
     | "passkey_login_verificar"
     | "aparelhos"
     | "passkey_apagar"
-    | "apagar_conta";
+    | "apagar_conta"
+    | "recado_url"
+    | "recado_ouvido"
+    | "recado_gravar"
+    | "recado_apagar"
+    | "checkin";
   /** Apagar a conta (01/10/2026): só vale com a confirmação explícita da tela. */
   confirmo?: boolean;
+  /** Recado trancado (27/10/2026): qual recado, e a duração medida no aparelho ao gravar o "porquê". */
+  recadoId?: string;
+  duracaoS?: number;
+  /** Check-in da semana (27/10/2026): um toque = um item e o nível (1 verde, 2 amarelo, 3 vermelho). */
+  item?: string;
+  nivel?: number;
   /** Face ID (29/09/2026): o desafio de uso único e a resposta do aparelho. */
   desafioId?: string;
   resposta_webauthn?: Record<string, unknown>;
@@ -324,6 +344,18 @@ Deno.serve(async (request) => {
   const contactRef = acesso.contact_ref as string;
   await client.from("paciente_acesso").update({ ultimo_acesso_em: agora() }).eq("id", acesso.id);
 
+  /**
+   * O dia em que o plano começou (27/10/2026) — a mesma escolha de "dados": o
+   * plano aberto mais recente, senão o último. É do servidor que sai a semana
+   * do check-in e o dia 45 do "porquê": o aparelho não escolhe.
+   */
+  async function inicioDoPlanoAtual(): Promise<string | null> {
+    const { data: deals } = await client.from("crm_deals").select("closed_at, program_phase_entered_at, updated_at, created_at, program_outcome").eq("contact_id", contactRef).in("status", ["WON_FULL", "WON_PARTIAL"]).not("program_phase", "is", null).order("closed_at", { ascending: false, nullsFirst: false });
+    const deal = ((deals ?? []) as Record<string, unknown>[]).find((d) => !d.program_outcome) ?? ((deals ?? []) as Record<string, unknown>[])[0] ?? null;
+    const inicio = deal ? String(deal.closed_at || deal.program_phase_entered_at || deal.updated_at || deal.created_at || "").slice(0, 10) : "";
+    return inicio || null;
+  }
+
   // ---- criar_senha: quem já está dentro cria o próprio login -------------------
   if (entrada.acao === "criar_senha") {
     const login = normalizarLogin(String(entrada.login ?? ""));
@@ -432,12 +464,24 @@ Deno.serve(async (request) => {
       const { error: erroDoArquivo } = await client.storage.from(FOTO_BUCKET).remove(caminhos);
       if (erroDoArquivo) return json({ ok: false, error: "Não consegui apagar as suas fotos agora. Nada foi apagado; tente de novo." });
     }
+    // O "por que eu comecei" que o PRÓPRIO paciente gravou (27/10/2026): arquivo e
+    // linha. O recado do Dr. é do Instituto e fica (como o prontuário).
+    const { data: meusRecados } = await client.from("paciente_recado").select("storage_path").eq("contact_ref", contactRef).eq("autor", "PACIENTE");
+    const caminhosDosRecados = ((meusRecados ?? []) as { storage_path: string }[]).map((r) => r.storage_path).filter(Boolean);
+    if (caminhosDosRecados.length) {
+      const { error: erroDoRecado } = await client.storage.from(RECADO_BUCKET).remove(caminhosDosRecados);
+      if (erroDoRecado) return json({ ok: false, error: "As fotos foram apagadas, mas o seu recado de voz não. Tente de novo para terminar." });
+    }
+    await client.from("paciente_recado").delete().eq("contact_ref", contactRef).eq("autor", "PACIENTE");
     await client.from("paciente_foto").delete().eq("contact_ref", contactRef);
     await client.from("paciente_push_assinatura").delete().eq("contact_ref", contactRef);
     const { count: pesagens } = await client.from("paciente_medicao").delete({ count: "exact" }).eq("contact_ref", contactRef).eq("origem", "PACIENTE");
+    // As respostas do check-in da semana são do paciente, como as pesagens. A
+    // tarefa de ligação que um vermelho gerou fica: é o registro do cuidado.
+    const { count: checkins } = await client.from("paciente_checkin").delete({ count: "exact" }).eq("contact_ref", contactRef);
     const { error: erroDoAcesso } = await client.from("paciente_acesso").delete().eq("contact_ref", contactRef);
     if (erroDoAcesso) return json({ ok: false, error: "As fotos e as pesagens foram apagadas, mas o login não. Tente de novo para terminar." });
-    await log(contactRef, "CONTA_APAGADA", { fotos: caminhos.length, pesagens: pesagens ?? 0 });
+    await log(contactRef, "CONTA_APAGADA", { fotos: caminhos.length, pesagens: pesagens ?? 0, recados: caminhosDosRecados.length, checkins: checkins ?? 0 });
     return json({ ok: true });
   }
 
@@ -596,6 +640,109 @@ Deno.serve(async (request) => {
     return json({ ok: true });
   }
 
+  // ---- RECADO TRANCADO (27/10/2026) ----------------------------------------------
+  // O link do áudio só existe DEPOIS de abre_em, só para o dono do recado, e vale
+  // 5 minutos. Antes da data, "dados" devolve só a contagem — nunca o caminho.
+  if (entrada.acao === "recado_url") {
+    const id = String(entrada.recadoId ?? "").trim();
+    if (!id) return json({ ok: false, error: "Diga qual recado." });
+    const { data: recado } = await client.from("paciente_recado").select("id, storage_path, abre_em").eq("id", id).eq("contact_ref", contactRef).maybeSingle();
+    if (!recado) return json({ ok: false, error: "Esse recado não está mais aqui." });
+    if (!recadoAberto(String(recado.abre_em), hojeEmSaoPaulo())) {
+      await log(contactRef, "RECADO_RECUSADO", { motivo: "ainda trancado" });
+      return json({ ok: false, trancado: true, error: "Este recado ainda está trancado. Ele abre no dia marcado." });
+    }
+    const { data: assinada } = await client.storage.from(RECADO_BUCKET).createSignedUrl(String(recado.storage_path), RECADO_URL_SEGUNDOS);
+    if (!assinada?.signedUrl) return json({ ok: false, error: "Não consegui abrir o áudio agora. Tente de novo." });
+    return json({ ok: true, url: assinada.signedUrl });
+  }
+
+  // Ouviu até o fim: é o que diz ao Dr. que o recado chegou.
+  if (entrada.acao === "recado_ouvido") {
+    const id = String(entrada.recadoId ?? "").trim();
+    if (!id) return json({ ok: false, error: "Diga qual recado." });
+    const { data: marcado } = await client.from("paciente_recado").update({ ouvido_em: agora() }).eq("id", id).eq("contact_ref", contactRef).is("ouvido_em", null).lte("abre_em", hojeEmSaoPaulo()).select("id, autor").maybeSingle();
+    if (marcado) await log(contactRef, "RECADO_OUVIDO", { autor: marcado.autor });
+    return json({ ok: true });
+  }
+
+  // "POR QUE EU COMECEI": o paciente grava para ele mesmo; abre no dia 45 do plano.
+  // Um trancado por vez: gravar de novo troca o que ainda não abriu.
+  if (entrada.acao === "recado_gravar") {
+    const tipo = tipoDoAudio(entrada.tipo);
+    const base64 = String(entrada.base64 ?? "").replace(/^data:[^,]+,/, "").trim();
+    if (!base64 || (base64.length * 3) / 4 > RECADO_MAX_BYTES + 1024) return json({ ok: false, error: "O áudio ficou grande demais. Grave de novo, em até 1 minuto." });
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ParaBytes(base64);
+    } catch {
+      return json({ ok: false, error: "Não consegui ler o áudio. Grave de novo." });
+    }
+    const problema = validarAudioDoRecado(tipo, bytes.length, Number(entrada.duracaoS));
+    if (problema) return json({ ok: false, error: problema });
+    const hoje = hojeEmSaoPaulo();
+    const { abreEm } = quandoAbreOPorque(await inicioDoPlanoAtual(), hoje);
+    const { data: antigos } = await client.from("paciente_recado").select("id, storage_path").eq("contact_ref", contactRef).eq("autor", "PACIENTE").gt("abre_em", hoje);
+    const id = crypto.randomUUID();
+    const caminho = caminhoDoRecado("PACIENTE", contactRef, id, tipo);
+    const { error: erroUpload } = await client.storage.from(RECADO_BUCKET).upload(caminho, bytes, { contentType: tipo, upsert: false });
+    if (erroUpload) return json({ ok: false, error: "Não consegui guardar o áudio agora. Tente de novo." });
+    const duracaoS = duracaoDoRecado(entrada.duracaoS);
+    const { error: erroLinha } = await client.from("paciente_recado").insert({ id, contact_ref: contactRef, autor: "PACIENTE", storage_path: caminho, mime_type: tipo, duracao_s: duracaoS, abre_em: abreEm });
+    if (erroLinha) {
+      // Sem a linha, o arquivo seria um órfão que ninguém consegue apagar pelo portal.
+      await client.storage.from(RECADO_BUCKET).remove([caminho]);
+      return json({ ok: false, error: "Não consegui guardar o áudio agora. Tente de novo." });
+    }
+    const velhos = ((antigos ?? []) as { id: string; storage_path: string }[]).filter((r) => r.id !== id);
+    if (velhos.length) {
+      await client.storage.from(RECADO_BUCKET).remove(velhos.map((r) => r.storage_path));
+      await client.from("paciente_recado").delete().in("id", velhos.map((r) => r.id));
+    }
+    await log(contactRef, "RECADO_GRAVADO", { abreEm, trocou: velhos.length > 0 });
+    return json({ ok: true, recado: { id, autor: "PACIENTE", quemFala: null, duracaoS, abreEm, aberto: false, ouvidoEm: null, criadoEm: agora() } });
+  }
+
+  // Só o recado que o próprio paciente gravou; o do Dr. não se apaga daqui.
+  if (entrada.acao === "recado_apagar") {
+    const id = String(entrada.recadoId ?? "").trim();
+    if (!id) return json({ ok: false, error: "Diga qual recado." });
+    const { data: recado } = await client.from("paciente_recado").select("id, storage_path").eq("id", id).eq("contact_ref", contactRef).eq("autor", "PACIENTE").maybeSingle();
+    if (!recado) return json({ ok: false, error: "Só dá para apagar o recado que você mesmo gravou." });
+    await client.storage.from(RECADO_BUCKET).remove([String(recado.storage_path)]);
+    await client.from("paciente_recado").delete().eq("id", recado.id);
+    await log(contactRef, "RECADO_APAGADO");
+    return json({ ok: true });
+  }
+
+  // ---- CHECK-IN DA SEMANA (27/10/2026) -------------------------------------------
+  // Um toque grava um item. A semana é a do plano, contada aqui no servidor. O
+  // vermelho vira tarefa da enfermagem pelo gatilho do banco
+  // (paciente_checkin_chama_enfermagem) — a função não decide nada sozinha.
+  if (entrada.acao === "checkin") {
+    const item = entrada.item;
+    const nivel = Number(entrada.nivel);
+    if (!itemValido(item) || !nivelValido(nivel)) return json({ ok: false, error: "Resposta inválida." });
+    const semana = semanaDoPlano(await inicioDoPlanoAtual(), hojeEmSaoPaulo());
+    if (!semana || semana > SEMANA_MAXIMA) return json({ ok: false, error: "O check-in da semana acompanha o seu plano. Ele aparece quando o plano começar." });
+    const colunas = "fome, energia, enjoo, vermelho";
+    const mudanca = { [item]: nivel, atualizado_em: agora() };
+    const { data: existente } = await client.from("paciente_checkin").select("id").eq("contact_ref", contactRef).eq("semana", semana).maybeSingle();
+    let resultado = existente
+      ? await client.from("paciente_checkin").update(mudanca).eq("id", existente.id).select(colunas).single()
+      : await client.from("paciente_checkin").insert({ contact_ref: contactRef, semana, [item]: nivel }).select(colunas).single();
+    if (!existente && resultado.error) {
+      // Dois toques ao mesmo tempo: a linha da semana nasceu no outro.
+      resultado = await client.from("paciente_checkin").update(mudanca).eq("contact_ref", contactRef).eq("semana", semana).select(colunas).single();
+    }
+    if (resultado.error || !resultado.data) return json({ ok: false, error: "Não consegui guardar a resposta agora. Tente de novo." });
+    const linha = resultado.data as Record<string, unknown>;
+    // No registro de acesso vai só a semana: a resposta em si fica na tabela do check-in.
+    await log(contactRef, "CHECKIN", { semana });
+    const nivelDe = (valor: unknown) => (valor === null || valor === undefined ? null : Number(valor));
+    return json({ ok: true, semana, checkin: { fome: nivelDe(linha.fome), energia: nivelDe(linha.energia), enjoo: nivelDe(linha.enjoo) }, vermelho: Boolean(linha.vermelho) });
+  }
+
   if (entrada.acao !== "dados") return json({ ok: false, error: `Ação desconhecida: ${entrada.acao}` }, 400);
 
   // ---- dados: o retrato do paciente, campo a campo ------------------------------
@@ -692,6 +839,40 @@ Deno.serve(async (request) => {
     vozDoDoutor = null;
   }
 
+  // ---- RECADOS TRANCADOS e SEMANA X DE N (27/10/2026) -----------------------------
+  // Recado: só a contagem e o estado — nunca o caminho do arquivo nem link (o link
+  // sai pela ação recado_url, depois de abre_em). Semana: o número vem do plano,
+  // o texto da tabela que a equipe edita, e a resposta já dada nesta semana.
+  // Sem as tabelas (migração ainda não aplicada), os dois somem sem derrubar o portal.
+  const hojeSP = hojeEmSaoPaulo();
+  let recados: Record<string, unknown>[] = [];
+  {
+    const { data: linhas, error } = await client.from("paciente_recado").select("id, autor, quem_fala, duracao_s, abre_em, ouvido_em, criado_em").eq("contact_ref", contactRef).order("abre_em", { ascending: false }).limit(30);
+    if (!error) {
+      recados = ((linhas ?? []) as Record<string, unknown>[]).map((r) => ({ id: String(r.id), autor: r.autor === "PACIENTE" ? "PACIENTE" : "DOUTOR", quemFala: (r.quem_fala as string | null) ?? null, duracaoS: Number(r.duracao_s ?? 0), abreEm: String(r.abre_em ?? "").slice(0, 10), aberto: recadoAberto(String(r.abre_em ?? ""), hojeSP), ouvidoEm: (r.ouvido_em as string | null) ?? null, criadoEm: String(r.criado_em ?? "") }));
+    }
+  }
+  let semana: Record<string, unknown> | null = null;
+  {
+    const numero = plano ? semanaDoPlano(plano.inicio, hojeSP) : null;
+    if (numero && numero <= SEMANA_MAXIMA) {
+      const [conteudo, checkin] = await Promise.all([
+        client.from("portal_semana_conteudo").select("titulo, costuma_acontecer, missao").eq("semana", numero).eq("ativo", true).maybeSingle(),
+        client.from("paciente_checkin").select("fome, energia, enjoo").eq("contact_ref", contactRef).eq("semana", numero).maybeSingle(),
+      ]);
+      if (!checkin.error) {
+        const c = conteudo.data as Record<string, unknown> | null;
+        const r = checkin.data as Record<string, unknown> | null;
+        const nivelDe = (valor: unknown) => (valor === null || valor === undefined ? null : Number(valor));
+        semana = {
+          numero,
+          conteudo: c ? { titulo: String(c.titulo ?? ""), costumaAcontecer: String(c.costuma_acontecer ?? ""), missao: String(c.missao ?? "") } : null,
+          checkin: r ? { fome: nivelDe(r.fome), energia: nivelDe(r.energia), enjoo: nivelDe(r.enjoo) } : null,
+        };
+      }
+    }
+  }
+
   const { count: faceIds } = await client.from("paciente_passkey").select("id", { count: "exact", head: true }).eq("acesso_id", acesso.id).is("revogada_em", null);
   // O WhatsApp da concierge (29/09/2026): vem das Configurações do negócio; sem
   // número configurado, o portal não mostra o botão.
@@ -706,6 +887,8 @@ Deno.serve(async (request) => {
     dados: {
       pushPublicKey,
       vozDoDoutor,
+      recados,
+      semana,
       contato: contatoDaConcierge,
       paciente: { nome, primeiroNome: nome.split(/\s+/)[0] || "paciente", contactRef, temSenha: Boolean(acesso.senha_hash), login: acesso.login ?? null, temFaceId: (faceIds ?? 0) > 0 },
       plano,

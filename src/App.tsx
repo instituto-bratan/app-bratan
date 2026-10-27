@@ -48,6 +48,7 @@ const CrmKanbanPage = lazyRoute("crmKanban");
 const CrmContactProfilePage = lazyRoute("crmContact");
 const CrmCadencesPage = lazyRoute("crmCadences");
 const ProgramaAcompanhamentoPage = lazyRoute("acompanhamento");
+const SemanasDoPortalPage = lazyRoute("semanasDoPortal");
 const CrmCanaisPage = lazyRoute("crmCanais");
 const CrmPlanilhaCadenciasPage = lazyRoute("crmPlanilha");
 const CrmCoordenadorPage = lazyRoute("crmCoordenador");
@@ -183,6 +184,8 @@ export function App() {
               {/* "Listas do Dr. Daniel" foi unificada na aba Acompanhamento. */}
               <Route path="/crm/listas" element={<Navigate to="/acompanhamento" replace />} />
               <Route path="/acompanhamento" element={<ProgramaAcompanhamentoPage />} />
+              {/* Semanas do Meu Bratan (27/10/2026): o texto semanal do portal; a porta (AccessGate) fica na própria tela. */}
+              <Route path="/acompanhamento/semanas" element={<SemanasDoPortalPage />} />
               {/* Canais de Venda virou INDICAÇÕES (19/08/2026) — link antigo redireciona. */}
               <Route path="/crm/indicacoes" element={<CrmCanaisPage />} />
               <Route path="/crm/canais" element={<Navigate to="/crm/indicacoes" replace />} />
