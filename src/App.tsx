@@ -13,6 +13,7 @@ import { ProtectedRoute } from "@/routes/ProtectedRoute";
 
 const HomePage = lazyRoute("home");
 const AvisosPage = lazyRoute("avisos");
+const CentralPage = lazyRoute("central");
 const MeuPerfilPage = lazyRoute("perfil");
 const ChecklistPage = lazyRoute("tarefas");
 const AlmocoPage = lazyRoute("almoco");
@@ -111,6 +112,15 @@ export function App() {
               <Route path="/inicio" element={<HomePage />} />
               {/* Avisos (08/10/2026, menu aprovado): rota NOVA do Início; nota sem CPF entra aqui como prioridade. */}
               <Route path="/avisos" element={<AvisosPage />} />
+              {/* Central Bratan (28/10/2026): todas as frentes num lugar só; a porta é o módulo "central" (Lucas, Dr. Daniel e CEO por padrão). */}
+              <Route
+                path="/central"
+                element={
+                  <AccessGate allowed={() => false} module="central" label="Central Bratan">
+                    <CentralPage />
+                  </AccessGate>
+                }
+              />
               <Route path="/meu-perfil" element={<MeuPerfilPage />} />
               <Route path="/tarefas" element={<ChecklistPage />} />
               <Route path="/almoco" element={<AlmocoPage />} />

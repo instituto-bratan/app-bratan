@@ -248,6 +248,8 @@ export type ModuleKey =
   | "comprovantes"
   | "marketing"
   | "inteligencia360"
+  // 28/10/2026: Central Bratan (/central), o estado de todas as frentes.
+  | "central"
   | "fin-lancar-dia"
   | "fin-contas"
   | "fin-compras"
@@ -283,6 +285,7 @@ export const moduleLabels: Record<ModuleKey, string> = {
   comprovantes: "Comprovantes",
   marketing: "Marketing",
   inteligencia360: "Inteligência 360",
+  central: "Central Bratan (todas as frentes e a saúde do sistema)",
   "fin-lancar-dia": "Financeiro · Lançar Dia",
   "fin-contas": "Financeiro · Contas a Pagar",
   "fin-compras": "Financeiro · Compras",
@@ -386,6 +389,11 @@ function cargoDefaultLevel(cargo: Cargo | null | undefined, module: ModuleKey): 
     case "inteligencia360":
       if (canManageInteligencia360(cargo)) return "EDITAR";
       return canInteligencia360(cargo) ? "VER" : "OCULTO";
+    case "central":
+      // Central Bratan (28/10/2026): da diretoria — Lucas, Dr. Daniel e CEO, o
+      // mesmo trio do financeiro completo. Acessos libera outra pessoa ou tira
+      // de um deles. Espelho de pode_central() (202610280201_central_bratan.sql).
+      return canFinanceiroFull(cargo) ? "EDITAR" : "OCULTO";
     case "nf-emitir":
       // EMITIR NOTA FISCAL (07/10/2026). Lucas: "quero que apenas o Estevão
       // emita as notas no fechamento, ninguém mais, e que isso dê para a gente

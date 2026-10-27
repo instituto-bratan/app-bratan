@@ -205,7 +205,8 @@ function telasAntigas(alguem) {
 
 // Telas que nasceram DEPOIS do redesenho (a régua "mesmas telas de 07/10" não
 // vale para elas; cada uma tem o seu teste de quem vê).
-const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos"]);
+// /central (28/10/2026): Central Bratan, só da diretoria (teste em central-bratan.test.mjs).
+const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos", "/central"]);
 
 /** Todas as telas que o menu novo mostra (itens + abas, inclusive Ajustes), fora as rotas novas. */
 function telasDoMenuNovo(alguem) {
@@ -376,9 +377,9 @@ test("quem vê o quê, nos casos que o Lucas conhece", () => {
   assert.deepEqual(plain(resultados.itens.map((item) => [item.rotulo, item.abas.map((aba) => aba.rotulo)])), [["Metas & PDCA", ["Metas"]]]);
 });
 
-test("o menu tem 29 itens para quem vê tudo, nos 7 grupos aprovados + Ajustes no rodapé", () => {
+test("o menu tem 29 itens (30 com a Central da diretoria) para quem vê tudo, nos 7 grupos aprovados + Ajustes no rodapé", () => {
   const MENU_APROVADO = {
-    inicio: ["Para decidir", "Hoje", "Avisos"],
+    inicio: ["Para decidir", "Hoje", "Avisos", "Central"],
     pacientes: ["Todos", "Acompanhamento", "NPS", "Nutrição"],
     comercial: ["Kanban", "Cadências", "Minhas tarefas", "Indicações", "Coordenação", "Marketing"],
     financeiro: ["Dia", "Pagar", "Banco", "Fechamento"],
@@ -405,7 +406,8 @@ test("o menu tem 29 itens para quem vê tudo, nos 7 grupos aprovados + Ajustes n
     assert.deepEqual(plain(menu.map((grupo) => grupo.rotulo)), ["Início", "Pacientes", "Comercial", "Financeiro", "Compras e estoque", "Resultados", "Equipe", "Ajustes"]);
     assert.deepEqual(plain(Object.fromEntries(menu.map((grupo) => [grupo.id, grupo.itens.map((item) => item.rotulo)]))), MENU_APROVADO);
     const noMenu = menu.filter((grupo) => !grupo.rodape).flatMap((grupo) => grupo.itens);
-    assert.equal(noMenu.length, 29);
+    // 29 do menu aprovado + a Central (28/10/2026), que só Lucas, Dr. Daniel e CEO veem.
+    assert.equal(noMenu.length, 30);
     // "24 seguem de hoje e 5 são novos: Avisos, Dia, Pagar, Banco e Fechamento."
     assert.deepEqual(plain(noMenu.filter((item) => item.novo).map((item) => item.rotulo)), ["Avisos", "Dia", "Pagar", "Banco", "Fechamento"]);
     assert.equal(menu.find((grupo) => grupo.id === "ajustes").rodape, true);

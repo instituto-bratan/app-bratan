@@ -47,6 +47,25 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    // Central Bratan (28/10/2026): todas as frentes num lugar só.
+    pattern: "/central",
+    guide: {
+      title: "Central Bratan",
+      whatIs:
+        "É o lugar para ver todas as frentes da empresa de uma vez: o app de gestão, o app do Doutor, o Fechamento, o app do paciente, o atendimento pelo WhatsApp, a fábrica de conteúdo, o financeiro automático e o produto para outras clínicas. Só leitura: daqui nada é gravado, enviado ou pago.",
+      steps: [
+        "Comece pelas Decisões esperando você: são as mesmas do Início, cada linha leva à tela onde se decide.",
+        "Olhe a Saúde do sistema: rotinas automáticas, chamadas, integrações, IA e arquivos das últimas 24 horas.",
+        "Leia os cartões das frentes: a situação (no ar, com erro, sem uso, desligado ou a construir), o uso de hoje e de 7 dias, o número que importa, o que travou e o próximo passo.",
+        "No fim, o Disjuntor mostra o que está parado há 30 dias ou mais. Copiar resumo para o Claude leva tudo isso num texto curto, sem nome de paciente.",
+      ],
+      tips: [
+        "Por padrão só o Lucas, o Dr. Daniel e a CEO abrem a Central; a tela Acessos libera ou tira por pessoa.",
+        "Frente marcada como a construir é a que ainda não tem tabela no banco: aparece sozinha quando a frente for publicada.",
+      ],
+    },
+  },
+  {
     pattern: "/tarefas",
     guide: {
       title: "Checklist do dia",

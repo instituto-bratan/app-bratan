@@ -304,6 +304,24 @@ const MAPA: DefGrupo[] = [
           },
         ],
       },
+      {
+        // CENTRAL BRATAN (28/10/2026): o estado de todas as frentes num lugar só.
+        // Só Lucas, Dr. Daniel e CEO por padrão (módulo "central" de Acessos).
+        id: "central",
+        rotulo: "Central",
+        icone: "Route",
+        destinos: [
+          {
+            id: "central",
+            rotulo: "Central Bratan",
+            rota: "/central",
+            icone: "Route",
+            acesso: modulo("central"),
+            lugar: "menu",
+            palavras: ["central", "frentes", "como está a empresa", "status dos apps", "o que travou", "painel do dono", "saúde do sistema", "disjuntor", "gerir tudo"],
+          },
+        ],
+      },
     ],
   },
   {
