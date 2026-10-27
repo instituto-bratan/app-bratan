@@ -4,7 +4,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { canEditModule, isCoordenacao, type ModuleKey } from "@/lib/access";
 import { avisarSoVe } from "@/hooks/useNivelDaTela";
-import { deleteRemoteCrmLead, listRemoteCrmState, saveRemoteCrmState, subscribeRemoteCrmState } from "@/lib/remoteData";
+import { todayISO } from "@/lib/localStore";
+import {
+  deleteRemoteCrmLead,
+  listRemoteCrmState,
+  listRemotePagamentosDosPacientes,
+  saveRemoteCrmState,
+  subscribeRemoteCrmState,
+} from "@/lib/remoteData";
+import {
+  JANELA_DO_PAGAMENTO_DIAS,
+  chaveDosPagamentosDoCrm,
+  fecharQuemPagouDepois,
+  pagamentosDosPacientes,
+  type FechamentoPorPagamento,
+} from "./pagouDepois";
 import {
   loadCrmState,
   mergeCrmCatalogWithSeeds,
@@ -65,6 +79,33 @@ export function useCrmState(opcoes?: { modulo?: ModuleKey }) {
     enabled: useRemote,
     staleTime: 30_000,
   });
+  // PAGOU DEPOIS (27/10/2026): o paciente do "Não fechou" que paga o tratamento
+  // pelo Lançar Dia ou pelos Lembretes tem o fechamento registrado sozinho. Só a
+  // coordenação faz isso — lê o caixa e enxerga as tarefas de todos os setores.
+  const fechaQuemPagouDepois = useRemote && isCoordenacao(pessoa?.cargo);
+  const hoje = todayISO();
+  const pagamentosQuery = useQuery({
+    queryKey: chaveDosPagamentosDoCrm(Number(hoje.slice(0, 4))),
+    queryFn: () => {
+      const desde = new Date(`${hoje}T12:00:00`);
+      desde.setDate(desde.getDate() - JANELA_DO_PAGAMENTO_DIAS);
+      const desdeISO = `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, "0")}-${String(desde.getDate()).padStart(2, "0")}`;
+      return listRemotePagamentosDosPacientes(desdeISO).then(pagamentosDosPacientes);
+    },
+    enabled: fechaQuemPagouDepois,
+    staleTime: 60_000,
+  });
+  // Quem o app fechou nesta sessão — o Kanban avisa.
+  const [fechadosPorPagamento, setFechadosPorPagamento] = useState<FechamentoPorPagamento[]>([]);
+  function fecharPagosDepois(base: CrmState) {
+    if (!fechaQuemPagouDepois || !pagamentosQuery.data) return { state: base, fechados: [] as FechamentoPorPagamento[] };
+    const resultado = fecharQuemPagouDepois(base, pagamentosQuery.data, { hoje: todayISO() });
+    return resultado.fechados.length ? { state: sanitizeCrmState(resultado.state, { curative }), fechados: resultado.fechados } : { state: base, fechados: [] };
+  }
+  function avisarFechados(fechados: FechamentoPorPagamento[]) {
+    if (!fechados.length) return;
+    setFechadosPorPagamento((atual) => [...atual.filter((item) => !fechados.some((novo) => novo.dealId === item.dealId)), ...fechados]);
+  }
   const saveRemoteMutation = useMutation({
     mutationFn: (next: CrmState) =>
       saveRemoteCrmState(next, { includeCatalog: canSyncCatalog, baseline: baselineRef.current ?? undefined }).then(({ fichasTrocadas }) => ({
@@ -106,25 +147,53 @@ export function useCrmState(opcoes?: { modulo?: ModuleKey }) {
     if (dirtyRef.current || saveRemoteMutation.isPending) return;
     const merged = mergeCrmCatalogWithSeeds(remoteStateQuery.data);
     baselineRef.current = merged;
-    const next = sanitizeCrmState(merged, { curative });
+    const pagos = fecharPagosDepois(sanitizeCrmState(merged, { curative }));
+    const next = pagos.state;
     setState(next);
     saveCrmStateWithIntelligence(next);
     // A cobertura automática (POP) pode ter criado inscrições/tarefas novas a
     // partir dos dados do banco. Só a coordenação (visão completa) sobe isso —
     // e apenas o DIFF, para não reescrever o estado inteiro. Converge: na volta
-    // nada novo nasce e nenhum save extra dispara.
+    // nada novo nasce e nenhum save extra dispara. O fechamento de quem pagou
+    // depois sobe junto.
     if (
       useRemote &&
       canPushCoverage &&
-      (next.cadenceEnrollments.length !== merged.cadenceEnrollments.length || next.tasks.length !== merged.tasks.length)
+      (pagos.fechados.length ||
+        next.cadenceEnrollments.length !== merged.cadenceEnrollments.length ||
+        next.tasks.length !== merged.tasks.length)
     ) {
       dirtyRef.current = true;
       void saveRemoteMutation.mutateAsync(next).catch((error) => {
         console.warn("CRM não sincronizou a cobertura automática.", error);
       });
     }
+    avisarFechados(pagos.fechados);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteStateQuery.dataUpdatedAt]);
+
+  // O pagamento pode chegar DEPOIS do retrato do CRM (comanda lançada nesta
+  // mesma sessão, ou a lista de pagamentos que demorou mais). Mesmo cuidado do
+  // effect acima: com mudança local pendente, espera a próxima rodada. A base é
+  // o retrato do BANCO, nunca o estado da tela — no primeiro carregamento os
+  // dois effects rodam juntos e o estado da tela ainda é o guardado no
+  // aparelho; gravar a partir dele desfaria o trabalho dos colegas.
+  useEffect(() => {
+    if (!pagamentosQuery.data || !remoteStateQuery.data) return;
+    if (dirtyRef.current || saveRemoteMutation.isPending) return;
+    const merged = mergeCrmCatalogWithSeeds(remoteStateQuery.data);
+    const pagos = fecharPagosDepois(sanitizeCrmState(merged, { curative }));
+    if (!pagos.fechados.length) return;
+    baselineRef.current = merged;
+    setState(pagos.state);
+    saveCrmStateWithIntelligence(pagos.state);
+    dirtyRef.current = true;
+    void saveRemoteMutation.mutateAsync(pagos.state).catch((error) => {
+      console.warn("CRM não sincronizou o fechamento de quem pagou depois.", error);
+    });
+    avisarFechados(pagos.fechados);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagamentosQuery.dataUpdatedAt]);
 
   useEffect(() => {
     saveCrmStateWithIntelligence(state);
@@ -246,5 +315,6 @@ export function useCrmState(opcoes?: { modulo?: ModuleKey }) {
     syncError: remoteStateQuery.error || saveRemoteMutation.error,
     syncFailed,
     syncErrorDetail,
+    fechadosPorPagamento,
   };
 }

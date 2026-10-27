@@ -16,6 +16,17 @@ type PagamentoBase = { method: string; amount: number };
 
 const round2 = (valor: number) => Math.round(valor * 100) / 100;
 
+const TIPO_SEM_DESCRICAO: Record<string, string> = {
+  CONSULTA: "Consulta",
+  RETORNO: "Retorno",
+  SINAL: "Sinal",
+  BIOIMPEDANCIA: "Bioimpedância",
+  TRATAMENTO: "Tratamento",
+  PSICOLOGA: "Psicóloga",
+  NUTRICIONISTA: "Nutricionista",
+  DESTRAVAR: "Destravar 360",
+};
+
 export function separarDinheiro<I extends ItemBase, P extends PagamentoBase>(itens: I[], pagamentos: P[]) {
   const dinheiro = round2(pagamentos.filter((p) => p.method === "DINHEIRO").reduce((soma, p) => soma + (p.amount || 0), 0));
   const totalDosItens = round2(itens.reduce((soma, item) => soma + (item.amount || 0), 0));
@@ -23,9 +34,12 @@ export function separarDinheiro<I extends ItemBase, P extends PagamentoBase>(ite
   const pagamentosDaComanda = pagamentos.filter((p) => p.method !== "DINHEIRO" && p.amount > 0);
   const valores = resto > 0 ? ratearValores(itens.map((item) => item.amount), resto) : itens.map(() => 0);
   const itensDaComanda = itens.map((item, indice) => ({ ...item, amount: valores[indice] ?? 0 })).filter((item) => item.amount > 0);
+  // Item sem descrição leva o tipo (27/10/2026): pago todo em espécie, esta
+  // frase é a única coisa que diz ao CRM se foi consulta ou tratamento (pagou
+  // depois → o cartão do "Não fechou" fecha sozinho).
   const resumoDosItens = itens
     .filter((item) => item.amount > 0)
-    .map((item) => (item.description ?? "").trim())
+    .map((item) => (item.description ?? "").trim() || TIPO_SEM_DESCRICAO[item.itemType] || "")
     .filter(Boolean)
     .join(" + ");
   return { dinheiro, resto, totalDosItens, itensDaComanda, pagamentosDaComanda, resumoDosItens, soDinheiro: dinheiro > 0 && resto <= 0 };

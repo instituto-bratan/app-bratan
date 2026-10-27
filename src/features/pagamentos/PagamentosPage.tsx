@@ -21,6 +21,7 @@ import {
   type ContactChannelsDraft,
 } from "@/features/crm/contactChannels";
 import { useCrmState } from "@/features/crm/useCrmState";
+import { chaveDosPagamentosDoCrm } from "@/features/crm/pagouDepois";
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { saleFromLembretePayment, saleRefFromLembretePayment } from "@/features/financeiro/financeiroData";
 import { canLembretesPagamento } from "@/lib/access";
@@ -378,6 +379,8 @@ export function PagamentosPage() {
         });
         void queryClient.invalidateQueries({ queryKey: ["pagamentos-lembretes"] });
         void queryClient.invalidateQueries({ queryKey: ["pagamento-recebimentos"] });
+        // Paciente do "Não fechou" pagando em espécie: o CRM confere de novo (pagou depois, 27/10/2026).
+        void queryClient.invalidateQueries({ queryKey: chaveDosPagamentosDoCrm(Number(todayISO().slice(0, 4))) });
       } catch (saveError) {
         setRecErro(`Não foi possível registrar o pagamento${remoteErrorDetail(saveError)}. Tente de novo.`);
         return;

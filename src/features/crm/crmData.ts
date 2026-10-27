@@ -364,6 +364,13 @@ export type CrmMoveDealOptions = {
   // USO INTERNO (ponte tarefa→Kanban): deixa mover sem a data da consulta — o
   // radar "fora do 3·1" fica responsável por cobrar. A tela NUNCA passa isto.
   allowMissingConsultaDate?: boolean;
+  // USO INTERNO — PAGOU DEPOIS (27/10/2026, pagouDepois.ts). O fechamento que o
+  // app registra quando o paciente do "Não fechou" paga: `closedAt` é o dia do
+  // pagamento (conta na semana certa), e `jornadaJaEmAndamento` faz a jornada
+  // começar direto em "Em acompanhamento", sem presente, quando o pagamento já
+  // passou de uma semana. A tela NUNCA passa isto.
+  closedAt?: string;
+  jornadaJaEmAndamento?: boolean;
 };
 
 // v2 (03/07/2026): chave trocada para descartar caches antigos que continham dados fictícios.
@@ -457,7 +464,7 @@ export const dealStageHints: Record<CrmDealStage, string> = {
   EM_NEGOCIACAO: "Proposta na mesa. Follow-up até decidir.",
   FECHOU_COMPLETO: "Comprou o plano inteiro! Presente e boas-vindas do D+1 saem sozinhos conforme o canal fechado.",
   FECHOU_PARCIAL: "Fechou uma parte. Registre o motivo — o resto do fluxo é igual ao completo.",
-  NAO_FECHOU: "Não fechou (objeção registrada). A Concierge acolhe em D+1 e segue a régua D1–D5; sem resposta, o Estevão assume.",
+  NAO_FECHOU: "Não fechou (objeção registrada). A Concierge acolhe em D+1 e segue a régua D1–D5; sem resposta, o Estevão assume. Se ele pagar o tratamento depois, o cartão vai para Fechou sozinho.",
   RECUPERACAO_D1_MEDICO: "Recuperação em andamento — régua da Concierge (histórico antigo usava o médico).",
   RECUPERACAO_D2_GESTOR: "Estevão está conduzindo a recuperação.",
   PERDIDO: "Não vai fechar agora. Entra nos resgates futuros (60 dias, 6 meses, 1 ano).",
@@ -2699,6 +2706,10 @@ export const stageDefaultCadence: Partial<Record<CrmDealStage, string>> = {
   CHURN: "cad-rescue-6m",
 };
 
+// A escalação do não-fechou (as 5 ligações do Estevão) não é régua de etapa,
+// mas também é recuperação: quando o paciente fecha, ela acaba (moveDealStage).
+const RECUPERACAO_QUE_ACABA_NO_FECHAMENTO = ["cad-gestor-5lig"];
+
 // Um contato está "coberto" quando tem régua ativa/pausada ou tarefa aberta.
 export function contactHasCoverage(state: CrmState, contactId: string) {
   const hasEnrollment = state.cadenceEnrollments.some(
@@ -3212,7 +3223,14 @@ export function advanceAllProgramGates(state: CrmState, reference = new Date()):
 }
 
 // Override manual da coordenação (arrastar o card): grava a fase e materializa.
-export function setProgramPhase(state: CrmState, dealId: string, phase: CrmProgramPhase, actorId: string, reference = new Date()): CrmState {
+export function setProgramPhase(
+  state: CrmState,
+  dealId: string,
+  phase: CrmProgramPhase,
+  actorId: string,
+  reference = new Date(),
+  motivo = "Ajuste manual da coordenação.",
+): CrmState {
   const deal = state.deals.find((item) => item.id === dealId);
   if (!deal) return state;
   const now = new Date().toISOString();
@@ -3222,7 +3240,7 @@ export function setProgramPhase(state: CrmState, dealId: string, phase: CrmProgr
   next = {
     ...next,
     timelineEvents: [
-      createTimelineEvent({ contactId: deal.contactId, eventType: "PHASE_OVERRIDE", eventTitle: `Movido para ${programPhaseLabels[phase]}`, eventDescription: "Ajuste manual da coordenação.", sourceModule: "JORNADA", sourceId: dealId, createdBy: actorId }),
+      createTimelineEvent({ contactId: deal.contactId, eventType: "PHASE_OVERRIDE", eventTitle: `Movido para ${programPhaseLabels[phase]}`, eventDescription: motivo, sourceModule: "JORNADA", sourceId: dealId, createdBy: actorId }),
       ...next.timelineEvents,
     ],
   };
@@ -4183,8 +4201,9 @@ function addPipelineTasksForStage(state: CrmState, deal: CrmDeal, options: CrmMo
 
     // POP v3.1 · Vendas: presente por faixa, SOMENTE na 1ª compra, entregue
     // NO DIA do pagamento. R$8.000–10.999 → caixa PillBox; R$11.000+ → Stanley.
+    // Pagou depois e o pagamento já passou de uma semana: o dia do presente passou.
     const closedAmount = options.soldAmount ?? deal.soldAmount;
-    if (deal.dealType === "FIRST_CONSULTATION" && closedAmount >= 8000) {
+    if (deal.dealType === "FIRST_CONSULTATION" && closedAmount >= 8000 && !options.jornadaJaEmAndamento) {
       const gift = closedAmount >= 11000 ? "garrafa Stanley" : "caixa PillBox";
       tasks.push(
         createTask({
@@ -4417,7 +4436,7 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
         : options.stage === "PERDIDO" || options.stage === "NAO_ADESAO"
           ? 0
           : deal.probability,
-    closedAt: options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL" ? now : deal.closedAt,
+    closedAt: options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL" ? options.closedAt ?? now : deal.closedAt,
     updatedAt: now,
   };
 
@@ -4449,15 +4468,20 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
   const stageCadenceIds = new Set(Object.values(stageDefaultCadence));
   const cadenceHasStageGuard = (cadenceId: string) =>
     nextState.cadenceSteps.some((step) => step.cadenceId === cadenceId && step.cancelIfStageChanged);
+  const fechou = options.stage === "FECHOU_COMPLETO" || options.stage === "FECHOU_PARCIAL";
   const staleCadenceIds = new Set(
     nextState.cadenceEnrollments
       .filter(
         (enrollment) =>
           enrollment.contactId === deal.contactId &&
           enrollment.status === "ACTIVE" &&
-          stageCadenceIds.has(enrollment.cadenceId) &&
-          enrollment.cadenceId !== newStageCadence &&
-          cadenceHasStageGuard(enrollment.cadenceId),
+          ((stageCadenceIds.has(enrollment.cadenceId) &&
+            enrollment.cadenceId !== newStageCadence &&
+            cadenceHasStageGuard(enrollment.cadenceId)) ||
+            // Fechou, a recuperação acabou (27/10/2026). As 5 ligações do
+            // Estevão (a escalação do não-fechou) não são régua de etapa, então
+            // a limpeza acima não as via: ele seguia ligando para quem já fechou.
+            (fechou && RECUPERACAO_QUE_ACABA_NO_FECHAMENTO.includes(enrollment.cadenceId))),
       )
       .map((enrollment) => enrollment.cadenceId),
   );
@@ -4505,7 +4529,16 @@ export function moveDealStage(state: CrmState, dealId: string, options: CrmMoveD
     const channel = options.adhesionChannel ?? deal.adhesionChannel ?? null;
     if (channel) {
       nextState = startProgramJourney(nextState, deal.id, channel, options.actorId);
-      nextState = advancePhaseIfGateComplete(nextState, deal.id, { actorId: options.actorId });
+      nextState = options.jornadaJaEmAndamento
+        ? setProgramPhase(
+            nextState,
+            deal.id,
+            "CADENCIA_PROGRAMA",
+            options.actorId,
+            new Date(),
+            "O paciente pagou há mais de uma semana: a jornada começou direto aqui, sem boas-vindas atrasadas.",
+          )
+        : advancePhaseIfGateComplete(nextState, deal.id, { actorId: options.actorId });
     }
   }
 

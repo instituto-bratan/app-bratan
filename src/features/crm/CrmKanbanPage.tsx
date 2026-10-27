@@ -34,6 +34,7 @@ import { ConferenciaFechamentoCard } from "@/features/financeiro/ConferenciaFech
 import { useFinanceiro } from "@/features/financeiro/useFinanceiro";
 import { createRemotePagamento, lerRemoteCpfDoContato, listRemoteFinCashEntries, listRemotePagamentos, salvarRemoteCpfDoContato, uploadRemoteComprovante } from "@/lib/remoteData";
 import { aReceberSugerido, fechamentoTemSaldo, fechamentoVaiTerNota, travaDoAReceber, travaDosDadosDaNota } from "./travasDoFechamento";
+import { linhaDoPagouDepois } from "./pagouDepois";
 import { sinaisEmAberto, somaDosSinais } from "@/features/financeiro/sinaisDoPaciente";
 import { cpfDigitos, cpfValido } from "@/lib/cpf";
 import { todayISO } from "@/lib/localStore";
@@ -259,7 +260,7 @@ const kanbanTourSteps: TourStep[] = [
     icon: CircleDollarSign,
     title: "Não fechou? A Concierge acolhe",
     description:
-      "Registrou \"não fechou\" com a objeção → a Aline recebe o acolhimento do D+1 e a régua D1–D5 segue um passo por vez. Qualquer resposta do paciente encerra a régua na hora.",
+      "Registrou \"não fechou\" com a objeção → a Aline recebe o acolhimento do D+1 e a régua D1–D5 segue um passo por vez. Qualquer resposta do paciente encerra a régua na hora. Se ele pagar o tratamento depois (Lançar dia, Crediário ou Lembrete), o card vai para Fechou sozinho e a régua para.",
     hint: "Sem resposta no D5 → o card vai para o Estevão (5 ligações).",
   },
   {
@@ -523,7 +524,8 @@ function CrmKanbanPageConteudo() {
   const { pessoa } = useAuth();
   // "Só vê" vale aqui também (29/09/2026, auditoria B9): o useCrmState recusa a
   // gravação e os botões que abrem o fechamento ficam desabilitados.
-  const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead } = useCrmState({ modulo: "crm" });
+  const { state, persist, syncFailed, syncErrorDetail, retrySync, deleteLead, fechadosPorPagamento } = useCrmState({ modulo: "crm" });
+  const [pagouDepoisVisto, setPagouDepoisVisto] = useState(0);
   const telaCrm = useNivelDaTela("crm");
   const [sncrData, setSncrData] = useState("");
   // O fechamento aqui também lança a comanda do dia (pedido do Lucas, 14/08).
@@ -2119,6 +2121,40 @@ function CrmKanbanPageConteudo() {
         <div role="status" className="flex items-start gap-2 rounded-bloco bg-saber px-4 py-3 text-sm font-semibold leading-5 text-tinta">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-tinta-2" aria-hidden="true" />
           {feedback}
+        </div>
+      ) : null}
+      {/* PAGOU DEPOIS (27/10/2026): quem estava em "Não fechou" e pagou o tratamento foi fechado pelo app. */}
+      {fechadosPorPagamento.length > pagouDepoisVisto ? (
+        <div role="status" className="flex items-start gap-2 rounded-bloco bg-ok-claro px-4 py-3 text-sm font-semibold leading-5 text-ok">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p>
+              {fechadosPorPagamento.length === 1
+                ? 'Um paciente que estava como "Não fechou" pagou o tratamento depois.'
+                : `${fechadosPorPagamento.length} pacientes que estavam como "Não fechou" pagaram o tratamento depois.`}{" "}
+              O app registrou o fechamento e parou a régua de recuperação:
+            </p>
+            <ul className="mt-1 grid gap-0.5 font-medium text-tinta">
+              {fechadosPorPagamento.map((fechado) => {
+                const deal = state.deals.find((item) => item.id === fechado.dealId);
+                return (
+                  <li key={fechado.dealId} className="min-w-0">
+                    {deal ? (
+                      <button type="button" className={NOME_LINK} onClick={() => selectDeal(deal)}>
+                        {fechado.paciente}
+                      </button>
+                    ) : (
+                      fechado.paciente
+                    )}
+                    : {linhaDoPagouDepois(fechado)}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setPagouDepoisVisto(fechadosPorPagamento.length)}>
+            Entendi
+          </Button>
         </div>
       ) : null}
       {selectedDeal ? (

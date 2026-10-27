@@ -32,6 +32,7 @@ import type {
   FinSavingsMove,
 } from "@/features/financeiro/financeiroData";
 import type { PagamentoLembrete } from "@/features/pagamentos/pagamentosData";
+import type { PagamentosParaOCrm } from "@/features/crm/pagouDepois";
 import { ehProfissional } from "@/features/financeiro/profissionais";
 import {
   deriveInteligencia360FromCrm,
@@ -2993,6 +2994,77 @@ export async function listRemoteFinSales(year: number): Promise<FinSale[]> {
       comprovanteRef: payment.comprovante_ref ? String(payment.comprovante_ref) : null,
     })),
   }));
+}
+
+/**
+ * PAGOU DEPOIS (27/10/2026): o que cada paciente pagou desde `desde`, pelos três
+ * caminhos — comanda, dinheiro que foi para o Crediário e recebimento de
+ * Lembrete em dinheiro (esse não vira comanda nem entrada do caixa). É o que o
+ * CRM lê para tirar do "Não fechou" quem pagou o tratamento depois. Caixa e
+ * recebimentos são só da coordenação (RLS), que é quem roda isso.
+ */
+export async function listRemotePagamentosDosPacientes(desde: string): Promise<PagamentosParaOCrm> {
+  const client = requireSupabase();
+  const [comandas, dinheiro, lembretes] = await Promise.all([
+    client
+      .from("fin_sales")
+      .select("client_ref, sale_date, crm_contact_ref, notes, created_at, fin_sale_items(item_type, amount, description, profissional)")
+      .gte("sale_date", desde)
+      .is("deleted_at", null)
+      .not("crm_contact_ref", "is", null),
+    client
+      .from("fin_cash_entries")
+      .select("client_ref, entry_date, amount, description, crm_contact_ref, sale_ref, created_at")
+      .eq("direction", "ENTRADA")
+      .gte("entry_date", desde)
+      .is("deleted_at", null)
+      .not("crm_contact_ref", "is", null),
+    client
+      .from("pagamento_recebimento")
+      .select("id, valor, recebido_em, created_at, lembrete:lembrete_id(crm_contact_ref, observacao, deleted_at)")
+      .eq("forma", "DINHEIRO")
+      .is("sale_ref", null)
+      .gte("recebido_em", desde),
+  ]);
+  for (const resposta of [comandas, dinheiro, lembretes]) if (resposta.error) throw resposta.error;
+  return {
+    comandas: ((comandas.data ?? []) as Record<string, any>[]).map((row) => ({
+      id: String(row.client_ref),
+      dia: String(row.sale_date),
+      contactRef: String(row.crm_contact_ref ?? ""),
+      criadoEm: String(row.created_at ?? ""),
+      notas: String(row.notes ?? ""),
+      itens: ((row.fin_sale_items ?? []) as Record<string, unknown>[]).map((item) => ({
+        itemType: item.item_type as FinSale["items"][number]["itemType"],
+        amount: Number(item.amount ?? 0),
+        description: String(item.description ?? ""),
+        profissional: ehProfissional(item.profissional) ? item.profissional : null,
+      })),
+    })),
+    dinheiro: ((dinheiro.data ?? []) as Record<string, unknown>[]).map((row) => ({
+      id: String(row.client_ref),
+      dia: String(row.entry_date),
+      valor: Number(row.amount ?? 0),
+      descricao: String(row.description ?? ""),
+      contactRef: String(row.crm_contact_ref ?? ""),
+      saleRef: row.sale_ref ? String(row.sale_ref) : null,
+      criadoEm: String(row.created_at ?? ""),
+    })),
+    lembretes: ((lembretes.data ?? []) as Record<string, unknown>[]).flatMap((row) => {
+      const lembrete = (Array.isArray(row.lembrete) ? row.lembrete[0] : row.lembrete) as Record<string, unknown> | null | undefined;
+      if (!lembrete?.crm_contact_ref || lembrete.deleted_at) return [];
+      return [
+        {
+          id: `receb-${String(row.id)}`,
+          dia: String(row.recebido_em),
+          valor: Number(row.valor ?? 0),
+          contactRef: String(lembrete.crm_contact_ref),
+          observacao: String(lembrete.observacao ?? ""),
+          criadoEm: String(row.created_at ?? ""),
+        },
+      ];
+    }),
+  };
 }
 
 /**

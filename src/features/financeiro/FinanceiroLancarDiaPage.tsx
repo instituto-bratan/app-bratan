@@ -70,6 +70,7 @@ import { integracaoLigada } from "@/lib/integracoes";
 import { cpfDigitos, cpfValido } from "@/lib/cpf";
 import { invocarIntegracao, lerRemoteCpfDoContato, listRemoteNfseDasComandas, salvarRemoteCpfDoContato } from "@/lib/remoteData";
 import { updateContactChannels } from "@/features/crm/crmData";
+import { chaveDosPagamentosDoCrm, quemPagouDepois } from "@/features/crm/pagouDepois";
 import { NotaNoFechamentoCard } from "@/features/crm/NotaNoFechamentoCard";
 import { emitirNotasDoFechamento } from "@/features/crm/emitirNotaDoFechamento";
 import { notaDoFechamentoVazia, planoDeNotas, resumoDaNota, travaDoFechamento, type NotaDoFechamento } from "@/features/crm/notaNoFechamento";
@@ -512,6 +513,20 @@ export function FinanceiroLancarDiaPage() {
       crmNote = " Telefone/e-mail salvos no cadastro do CRM.";
     }
 
+    // PAGOU DEPOIS (27/10/2026): o paciente estava como "Não fechou" no Kanban e
+    // está pagando o tratamento agora. Quem fecha o cartão é a sessão da
+    // coordenação (ela lê o caixa e vê as tarefas de todos); aqui a tela só avisa.
+    const fechaONaoFechou = editingSale
+      ? null
+      : quemPagouDepois(
+          crmState,
+          [{ id: sale.id, contactRef: sale.crmContactRef, dia: date, criadoEm: new Date().toISOString(), valor: paymentsTotal, itens: validItems }],
+          todayISO(),
+        ).fechar[0] ?? null;
+    const pagouDepoisNote = fechaONaoFechou
+      ? ` ${fechaONaoFechou.paciente} estava como "Não fechou" no Kanban: com este pagamento o cartão vai para Fechou sozinho e a régua de recuperação para.`
+      : "";
+
     // ENCAIXE: abate os Lembretes deste paciente com ESTA comanda. O
     // recebimento fica marcado com a comanda (saleRef) — o faturamento é a
     // comanda, e o lembrete só dá baixa. Nada é contado duas vezes.
@@ -583,7 +598,11 @@ export function FinanceiroLancarDiaPage() {
       dinheiroNote = ` ${moneyFin(divisao.dinheiro)} em dinheiro foi para o Crediário, fora do faturamento.`;
       if (useRemote) {
         void gravarRemoteDinheiroDaComanda(entrada)
-          .then(() => void queryClient.invalidateQueries({ queryKey: ["crediario-da-comanda"] }))
+          .then(() => {
+            void queryClient.invalidateQueries({ queryKey: ["crediario-da-comanda"] });
+            // Pagou tudo em espécie: não há comanda para recarregar o CRM (pagou depois).
+            void queryClient.invalidateQueries({ queryKey: chaveDosPagamentosDoCrm(Number(todayISO().slice(0, 4))) });
+          })
           .catch((falha) => {
             console.warn("Dinheiro não entrou no Crediário.", falha);
             toast(`O DINHEIRO NÃO ENTROU NO CREDIÁRIO (${(falha as Error).message}). Lance a entrada na mão em Financeiro › Crediário para o cofre não ficar furado.`, { tom: "erro", duracaoMs: 12000 });
@@ -592,7 +611,7 @@ export function FinanceiroLancarDiaPage() {
     }
     if (divisao.soDinheiro) {
       // Tudo em dinheiro: não nasce comanda (seria R$ 0 no faturamento). O registro é o Crediário, e ele aparece na lista do dia.
-      setFeedback(`Lançado no Crediário: ${sale.patientName} · ${moneyFin(divisao.dinheiro)} em dinheiro, fora do faturamento.${crmNote}${lembreteNote}`);
+      setFeedback(`Lançado no Crediário: ${sale.patientName} · ${moneyFin(divisao.dinheiro)} em dinheiro, fora do faturamento.${crmNote}${lembreteNote}${pagouDepoisNote}`);
       resetForm();
       setNotaFiscal(notaDoFechamentoVazia);
       setCpfNota("");
@@ -605,7 +624,7 @@ export function FinanceiroLancarDiaPage() {
       setFeedback(`Comanda de ${sale.patientName} atualizada: ${moneyFin(saleTotal(sale))}. P12, fechamento e repasses já refletem.${crmNote}${dinheiroNote}`);
     } else {
       const comandaGravada = financeiro.addSale(sale);
-      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))} no faturamento.${dinheiroNote}${crmNote}${lembreteNote} Pode adicionar o próximo paciente.${notaVaiParaFila ? ` ${recadoNotaNaFila}` : ""}`);
+      setFeedback(`Lançado: ${sale.patientName} · ${moneyFin(saleTotal(sale))} no faturamento.${dinheiroNote}${crmNote}${lembreteNote}${pagouDepoisNote} Pode adicionar o próximo paciente.${notaVaiParaFila ? ` ${recadoNotaNaFila}` : ""}`);
       // A NOTA SAI AQUI (23/09/2026), depois da comanda existir — igual ao Kanban.
       if (vaiEmitirNota && sale.crmContactRef) {
         setEmitindoNota(true);
