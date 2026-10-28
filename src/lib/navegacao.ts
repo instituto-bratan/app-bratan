@@ -801,6 +801,16 @@ const MAPA: DefGrupo[] = [
             lugar: "menu",
             palavras: ["lucro", "envelope", "envelopes", "profit first", "cabe gastar", "transferir", "antecipação"],
           },
+          {
+            id: "extrato-socios",
+            rotulo: "Extrato de cada um",
+            aba: "Extrato de cada um",
+            rota: "/financeiro/extrato-socios",
+            icone: "Sprout",
+            acesso: modulo("fin-lucro"),
+            lugar: "aba",
+            palavras: ["extrato do sócio", "extrato do médico", "quanto falta pagar", "repasse", "salário de sócio", "parte de médico", "executor", "dr. daniel", "andrya", "dr. moisés"],
+          },
         ],
       },
       {

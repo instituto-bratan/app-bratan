@@ -36,6 +36,7 @@ const FinanceiroPdcaPage = lazyRoute("finPdca");
 const FinanceiroPainelPage = lazyRoute("finPainel");
 const FinanceiroExtratoPage = lazyRoute("finExtrato");
 const FinanceiroLucroPage = lazyRoute("finLucro");
+const ExtratoDosSociosPage = lazyRoute("extratoSocios");
 const FinanceiroFaturaCartaoPage = lazyRoute("finFaturaCartao");
 const EstoquePage = lazyRoute("estoque");
 const AplicacoesPage = lazyRoute("estoqueAplicacoes");
@@ -180,6 +181,8 @@ export function App() {
               <Route path="/financeiro/relatorios" element={<Navigate to="/financeiro/painel" replace />} />
               <Route path="/financeiro/extrato" element={<FinanceiroExtratoPage />} />
               <Route path="/financeiro/lucro" element={<FinanceiroLucroPage />} />
+              {/* Extrato de cada um (28/10/2026): salário de sócio e parte de médico numa conta só. */}
+              <Route path="/financeiro/extrato-socios" element={<ExtratoDosSociosPage />} />
               {/* Fatura do cartão importada linha a linha (29/09/2026). */}
               <Route path="/financeiro/fatura-cartao" element={<FinanceiroFaturaCartaoPage />} />
               <Route path="/crm" element={<Navigate to="/crm/minhas-tarefas" replace />} />

@@ -207,7 +207,8 @@ function telasAntigas(alguem) {
 // vale para elas; cada uma tem o seu teste de quem vê).
 // /central (28/10/2026): Central Bratan, só da diretoria (teste em central-bratan.test.mjs).
 // /acompanhamento/semanas (28/10/2026): textos da Semana X de N do Meu Bratan.
-const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos", "/central", "/acompanhamento/semanas"]);
+// /financeiro/extrato-socios (28/10/2026): extrato do Lucro Inteligente por pessoa.
+const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos", "/central", "/acompanhamento/semanas", "/financeiro/extrato-socios"]);
 
 /** Todas as telas que o menu novo mostra (itens + abas, inclusive Ajustes), fora as rotas novas. */
 function telasDoMenuNovo(alguem) {
@@ -231,6 +232,19 @@ test("Semanas do Meu Bratan (27/10/2026): só coordenação e enfermagem veem, c
   assert.deepEqual(abas(pessoa("enfermeira")), ["Acompanhamento", "Semanas do portal"]);
   assert.deepEqual(abas(pessoa("recepcionista")), ["Acompanhamento"]);
   assert.equal(nav.grupoDaRota("/acompanhamento/semanas"), "pacientes");
+});
+
+test("Extrato de cada um (28/10/2026): vê quem vê o Lucro Inteligente, nem mais nem menos", () => {
+  const ve = (alguem, rota) => telasDoMenuNovoComTudo(alguem).includes(rota);
+  for (const alguem of todosOsPerfis()) {
+    assert.equal(ve(alguem, "/financeiro/extrato-socios"), ve(alguem, "/financeiro/lucro"), `extrato ≠ Lucro Inteligente para ${JSON.stringify(alguem ?? null)}`);
+  }
+  assert.ok(ve(pessoa("dr_daniel"), "/financeiro/extrato-socios"));
+  assert.ok(!ve(pessoa("recepcionista"), "/financeiro/extrato-socios"));
+  assert.ok(!ve(pessoa("dr_daniel", { "fin-lucro": "OCULTO" }), "/financeiro/extrato-socios"));
+  // A aba mora no item Lucro, logo depois do Lucro Inteligente.
+  const abas = plain(nav.itensDoMenu(pessoa("dr_daniel")).flatMap((grupo) => grupo.itens).find((item) => item.id === "lucro").abas.map((aba) => aba.href));
+  assert.equal(abas[abas.indexOf("/financeiro/lucro") + 1], "/financeiro/extrato-socios");
 });
 
 function telasDoMenuNovoComTudo(alguem) {

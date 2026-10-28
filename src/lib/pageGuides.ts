@@ -368,6 +368,25 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    pattern: "/financeiro/extrato-socios",
+    guide: {
+      title: "Extrato de cada um",
+      whatIs:
+        "O Lucro Inteligente de cada pessoa numa conta só, como extrato de banco: o salário de sócio e a parte de médico entram quando vencem, tudo o que foi pago entra quando saiu (transferência da clínica ou Pix de paciente na conta pessoal) e o saldo mostra quanto falta.",
+      steps: [
+        "Escolha a pessoa: Dr. Daniel, Andrya ou Dr. Moisés.",
+        "O primeiro número é o que falta pagar até o fim do mês (ou o que já foi pago a mais).",
+        "Na tabela, cada linha diz o que venceu ou o que foi pago, de onde veio o dinheiro e como ficou o saldo.",
+        "Use 'Copiar extrato' para mandar o resumo do mês à pessoa pelo WhatsApp ou por e-mail.",
+      ],
+      tips: [
+        "A conta é a mesma do Lucro Inteligente: só junta salário e parte de médico, sem separar.",
+        "A parcela do mês que está correndo ainda cresce com as comandas até o último dia.",
+        "Pagamento lançado em data errada muda o saldo: corrija o lançamento em Contas a Pagar.",
+      ],
+    },
+  },
+  {
     pattern: "/financeiro/lucro",
     guide: {
       title: "Lucro Inteligente",
