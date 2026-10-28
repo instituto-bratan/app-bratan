@@ -737,3 +737,9 @@ h3 {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* TORRE BRATAN (28/10/2026): a linha do mapa "anda" quando o dado corre sozinho
+   (só com motion-safe; parada para quem pede menos movimento). */
+@keyframes torre-fluxo {
+  to { stroke-dashoffset: -20; }
+}

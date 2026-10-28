@@ -279,7 +279,7 @@ function fraseDoAchado(tipo: string, n: number): { texto: string; href: string }
   }
 }
 
-const PAPEIS_DO_CRM: Record<string, string> = {
+export const PAPEIS_DO_CRM: Record<string, string> = {
   SDR_LEADS: "leads",
   COMERCIAL_VENDEDOR: "vendas",
   COMERCIAL_GESTOR: "coordenação comercial",

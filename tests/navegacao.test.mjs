@@ -208,7 +208,8 @@ function telasAntigas(alguem) {
 // /central (28/10/2026): Central Bratan, só da diretoria (teste em central-bratan.test.mjs).
 // /acompanhamento/semanas (28/10/2026): textos da Semana X de N do Meu Bratan.
 // /financeiro/extrato-socios (28/10/2026): extrato do Lucro Inteligente por pessoa.
-const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos", "/central", "/acompanhamento/semanas", "/financeiro/extrato-socios"]);
+// /torre (28/10/2026): o mapa vivo dos sistemas, aba da Central (teste em torre.test.mjs e abaixo).
+const TELAS_DEPOIS_DO_REDESENHO = new Set(["/contratos", "/central", "/acompanhamento/semanas", "/financeiro/extrato-socios", "/torre"]);
 
 /** Todas as telas que o menu novo mostra (itens + abas, inclusive Ajustes), fora as rotas novas. */
 function telasDoMenuNovo(alguem) {
@@ -245,6 +246,17 @@ test("Extrato de cada um (28/10/2026): vê quem vê o Lucro Inteligente, nem mai
   // A aba mora no item Lucro, logo depois do Lucro Inteligente.
   const abas = plain(nav.itensDoMenu(pessoa("dr_daniel")).flatMap((grupo) => grupo.itens).find((item) => item.id === "lucro").abas.map((aba) => aba.href));
   assert.equal(abas[abas.indexOf("/financeiro/lucro") + 1], "/financeiro/extrato-socios");
+});
+
+test("Torre Bratan (28/10/2026): vê quem vê a Central, nem mais nem menos, e mora na aba ao lado dela", () => {
+  const ve = (alguem, rota) => telasDoMenuNovoComTudo(alguem).includes(rota);
+  for (const alguem of todosOsPerfis()) {
+    assert.equal(ve(alguem, "/torre"), ve(alguem, "/central"), `Torre ≠ Central para ${JSON.stringify(alguem ?? null)}`);
+  }
+  for (const cargo of ["dr_daniel", "ceo", "gestor_financeiro"]) assert.ok(ve(pessoa(cargo), "/torre"), `${cargo} deveria ver a Torre`);
+  for (const cargo of ["recepcionista", "enfermeira", "nutricionista", "marketing"]) assert.ok(!ve(pessoa(cargo), "/torre"), `${cargo} não deveria ver a Torre`);
+  const abas = plain(nav.itensDoMenu(pessoa("dr_daniel")).flatMap((grupo) => grupo.itens).find((item) => item.id === "central").abas.map((aba) => aba.rotulo));
+  assert.deepEqual(abas, ["Central", "Torre"]);
 });
 
 function telasDoMenuNovoComTudo(alguem) {

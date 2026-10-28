@@ -66,6 +66,26 @@ export const pageGuides: Array<{ pattern: string; guide: PageGuide }> = [
     },
   },
   {
+    // Torre Bratan (28/10/2026): o mapa vivo dos sistemas.
+    pattern: "/torre",
+    guide: {
+      title: "Torre Bratan",
+      whatIs:
+        "É o mapa de todos os sistemas da clínica num quadro só: o que vem de fora (iClinic, Itaú, Rede, WhatsApp…), as portas que a equipe usa, o coração (o banco único) e o que espera você. Os números são os da Central e se leem de novo sozinhos a cada 2 minutos. Só leitura.",
+      steps: [
+        "Comece por Esperando você: as decisões do Início e o próximo passo de cada frente parada, cada uma com o link para resolver.",
+        "Verde é o que está em uso; âmbar, o que está parado ou esperando você; vermelho, erro; tracejado, o que está a construir.",
+        "As linhas mostram como o dado anda hoje: a verde que corre vai sozinha, a âmbar tracejada é feita à mão.",
+        "Clique num cartão para ver ao lado o que é, como está, o que travou e o próximo passo.",
+      ],
+      tips: [
+        "Arraste o fundo para andar; pinça ou ⌘ + rolar para o zoom. Os botões de cima levam direto a cada área.",
+        "Dá para arrastar os cartões para outro lugar; Arrumar como era volta ao desenho original.",
+        "Para ter a Torre como app próprio: abra esta tela e use Adicionar ao Dock (Mac) ou Adicionar à Tela de Início (iPad).",
+      ],
+    },
+  },
+  {
     pattern: "/tarefas",
     guide: {
       title: "Checklist do dia",

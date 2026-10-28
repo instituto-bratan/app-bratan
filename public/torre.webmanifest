@@ -1,0 +1,21 @@
+{
+  "name": "Torre Bratan",
+  "short_name": "Torre",
+  "description": "O mapa vivo dos sistemas do Instituto Bratan: o que está no ar, o que travou e o que espera a diretoria.",
+  "id": "/torre",
+  "start_url": "/torre",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0F1A14",
+  "theme_color": "#0F1A14",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/torre-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/torre-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/torre-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -315,11 +315,23 @@ const MAPA: DefGrupo[] = [
           {
             id: "central",
             rotulo: "Central Bratan",
+            aba: "Central",
             rota: "/central",
             icone: "Route",
             acesso: modulo("central"),
             lugar: "menu",
             palavras: ["central", "frentes", "como está a empresa", "status dos apps", "o que travou", "painel do dono", "saúde do sistema", "disjuntor", "gerir tudo"],
+          },
+          // TORRE BRATAN (28/10/2026): o mapa vivo dos sistemas, com os números da Central.
+          {
+            id: "torre",
+            rotulo: "Torre Bratan",
+            aba: "Torre",
+            rota: "/torre",
+            icone: "Route",
+            acesso: modulo("central"),
+            lugar: "aba",
+            palavras: ["torre", "mapa", "mapa dos sistemas", "visão geral", "ecossistema", "maestri", "esperando você", "quadro"],
           },
         ],
       },

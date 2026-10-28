@@ -14,6 +14,7 @@ import { ProtectedRoute } from "@/routes/ProtectedRoute";
 const HomePage = lazyRoute("home");
 const AvisosPage = lazyRoute("avisos");
 const CentralPage = lazyRoute("central");
+const TorrePage = lazyRoute("torre");
 const MeuPerfilPage = lazyRoute("perfil");
 const ChecklistPage = lazyRoute("tarefas");
 const AlmocoPage = lazyRoute("almoco");
@@ -126,6 +127,15 @@ export function App() {
                 element={
                   <AccessGate allowed={() => false} module="central" label="Central Bratan">
                     <CentralPage />
+                  </AccessGate>
+                }
+              />
+              {/* Torre Bratan (28/10/2026): o mapa vivo dos sistemas; mesma porta e mesmos números da Central. */}
+              <Route
+                path="/torre"
+                element={
+                  <AccessGate allowed={() => false} module="central" label="Torre Bratan">
+                    <TorrePage />
                   </AccessGate>
                 }
               />

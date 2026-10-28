@@ -19,6 +19,8 @@ const routeLoaders = {
   avisos: namedPage(() => import("@/features/avisos/AvisosPage"), "AvisosPage"),
   // Central Bratan (28/10/2026): todas as frentes num lugar só.
   central: namedPage(() => import("@/features/central/CentralPage"), "CentralPage"),
+  // Torre Bratan (28/10/2026): o mapa vivo dos sistemas, com os números da Central.
+  torre: namedPage(() => import("@/features/torre/TorrePage"), "TorrePage"),
   perfil: namedPage(() => import("@/features/perfil/MeuPerfilPage"), "MeuPerfilPage"),
   tarefas: namedPage(() => import("@/features/checklist/ChecklistPage"), "ChecklistPage"),
   almoco: namedPage(() => import("@/features/almoco/AlmocoPage"), "AlmocoPage"),
@@ -104,6 +106,7 @@ export function routeKeyForHref(href: string): RoutePreloadKey | null {
   if (pathname === "/" || pathname === "/inicio") return "home";
   if (pathname === "/avisos") return "avisos";
   if (pathname === "/central") return "central";
+  if (pathname === "/torre") return "torre";
   if (pathname === "/meu-perfil") return "perfil";
   if (pathname === "/tarefas") return "tarefas";
   if (pathname === "/almoco") return "almoco";
